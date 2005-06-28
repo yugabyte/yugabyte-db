@@ -1,0 +1,35 @@
+This module contains some usefull function which can help with porting
+Oracle application to PostgreSQL or can be usefull generally.
+
+o add_months(date, integer) date - Returns date plus n months
+	
+	add_months(date '2005-05-31',1) -> 2005-06-30
+
+
+o last_date(date) date - Returns last day of the month based on a date value
+	
+	last_day(date '2005-05-24') -> 2005-05-31
+
+
+o next_day(date, text) date - Returns the first weekday that is greather than a date value
+	
+	next_day(date '2005-05-24', 'monday') -> 2005-05-30
+
+
+o months_between(date, date) float8 - Returns the number of months between 
+	date1 and date2. If a fractional month is calculated, the months_between  
+	function calculates the fraction based on a 31-day month. 
+	
+	months_between(date '1995-02-02', date '1995-01-01') -> 1.0322580645161
+
+This module is released under BSD licence. 
+
+I inwite any comments, enhancing, objectives?
+
+Pavel Stehule
+stehule@kix.fsv.cvut.cz
+
+p.s. PostgreSQL 8.1. contains LEAST and GRETEST functions.
+
+ToDo:
+    round(date)
