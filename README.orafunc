@@ -21,6 +21,14 @@ o months_between(date, date) float8 - Returns the number of months between
 	function calculates the fraction based on a 31-day month. 
 	
 	months_between(date '1995-02-02', date '1995-01-01') -> 1.0322580645161
+	
+o trunc(date, text) date - truncate date according to the specified format
+	
+	trunc(date '2005-07-12', 'iw') ->
+	
+o round(date, text) date - will round dates according to the specified format
+
+	round(date '2005-07-12', 'yyyy') ->
 
 This module is released under BSD licence. 
 
@@ -32,4 +40,4 @@ stehule@kix.fsv.cvut.cz
 p.s. PostgreSQL 8.1. contains LEAST and GRETEST functions.
 
 ToDo:
-    round(date)
+    round(timestamp)

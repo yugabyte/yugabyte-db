@@ -9,6 +9,26 @@
 
 extern char *days[];
 
+#define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5:
+#define CASE_fmt_IYYY	case 6: case 7: case 8: case 9:
+#define	CASE_fmt_Q	case 10:
+#define	CASE_fmt_WW	case 11:
+#define CASE_fmt_IW	case 12:
+#define	CASE_fmt_W	case 13:
+#define CASE_fmt_DAY	case 14: case 15: case 16:
+#define CASE_fmt_MON	case 17: case 18: case 19: case 20:
+#define CASE_fmt_CC	case 21: case 22:
+
+
+char *date_fmt[] = 
+    {"Y", "Yy", "Yyy", "Yyyy", "Syyy", "syear",
+     "I", "Iy", "Iyy", "Iyyy",
+     "Q", "Ww", "Iw", "W",
+     "Day", "Dy", "D",
+     "Month", "Mon", "Mm", "Rm",
+     "Cc", "Scc",
+     NULL};
+     
 #define CHECK_SEQ_SEARCH(_l, _s) \
 do { \
      if ((_l) < 0) {                                                 \
@@ -27,11 +47,15 @@ Datum next_day (PG_FUNCTION_ARGS);
 Datum last_day (PG_FUNCTION_ARGS);
 Datum months_between (PG_FUNCTION_ARGS);
 Datum add_months (PG_FUNCTION_ARGS);
+Datum oround (PG_FUNCTION_ARGS);
+Datum otrunc (PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(next_day);
 PG_FUNCTION_INFO_V1(last_day);
 PG_FUNCTION_INFO_V1(months_between);
 PG_FUNCTION_INFO_V1(add_months);
+PG_FUNCTION_INFO_V1(oround);
+PG_FUNCTION_INFO_V1(otrunc);
 
 static int
 seq_search(char *name, char **array, int max)
@@ -44,14 +68,15 @@ seq_search(char *name, char **array, int max)
     
     *name = pg_toupper((unsigned char) *name);
     for (last = 0, a = array; *a != NULL; a++)
-    {
-	
+    {	
+    
 	if (*name != **a)
 	    continue;
 
 	for (i = 1, p = *a + 1, n = name + 1;; n++, p++, i++)
 	{
-	    if (i == max)
+	    
+	    if (i == max && *p == '\0')
 		return a - array;
 	    if (*p == '\0')
 	       break;
@@ -109,7 +134,7 @@ Datum next_day (PG_FUNCTION_ARGS)
  *
  * Purpose:
  *
- *Returns last day of the month based on a date value
+ * Returns last day of the month based on a date value
  *
  ********************************************************************/
 
@@ -135,7 +160,7 @@ Datum last_day (PG_FUNCTION_ARGS)
  *
  * Purpose:
  *
- *Returns the number of months between date1 and date2. If
+ * Returns the number of months between date1 and date2. If
  *      a fractional month is calculated, the months_between  function
  *      calculates the fraction based on a 31-day month.
  *
@@ -170,7 +195,7 @@ Datum months_between (PG_FUNCTION_ARGS)
  *
  * Purpose:
  *
- *Returns a date plus n months.
+ * Returns a date plus n months.
  *
  ********************************************************************/
 
@@ -198,4 +223,179 @@ Datum add_months (PG_FUNCTION_ARGS)
     }
     
     PG_RETURN_DATEADT (result);
+}
+
+/*
+ * ISO year - start first week contains thursday
+ * everytime monday!
+ */
+ 
+
+static
+DateADT iso_year (DateADT day, int y, int m, int d)
+{
+    DateADT result;
+    int off;
+    
+    result = date2j(y,1,1) - POSTGRES_EPOCH_JDATE;
+    off = 4 - j2day(result + POSTGRES_EPOCH_JDATE);
+    result = (off <= 0) ? result + 4 + off:result - 3 + off;
+
+    if (result > day)
+    {
+	result = date2j(y-1,1,1) - POSTGRES_EPOCH_JDATE;
+	off = 4 - j2day(result + POSTGRES_EPOCH_JDATE);
+	result = (off <= 0) ? result + 4 + off:result - 3 + off;
+    }
+    
+    return result;
+}
+    
+/********************************************************************
+ *
+ * otrunc .. trunc
+ *
+ * Syntax:
+ *
+ * date trunc(date date1, text format)
+ *
+ * Purpose:
+ *
+ * Returns d with the time portion of the day truncated to the unit 
+ * specified by the format fmt.
+ *
+ ********************************************************************/
+
+Datum otrunc (PG_FUNCTION_ARGS)
+{
+    DateADT day = PG_GETARG_DATEADT(0);
+    text *fmt = PG_GETARG_TEXT_P(1);
+    
+    int y, m, d;
+    DateADT result, tmp;
+    
+    int f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    CHECK_SEQ_SEARCH(f, "round/trunc format string");
+    
+    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+        
+    switch (f)
+    {
+	CASE_fmt_CC
+	    result = date2j((y/100)*100,1,1) - POSTGRES_EPOCH_JDATE;
+	    break;	
+	CASE_fmt_YYYY
+	    result = date2j(y,1,1) - POSTGRES_EPOCH_JDATE;
+	    break;
+	CASE_fmt_IYYY
+	    result = iso_year(day,y,m,d);
+	    break;
+	CASE_fmt_MON
+	    result = date2j(y,m,1) - POSTGRES_EPOCH_JDATE;
+	    break;
+	CASE_fmt_WW
+	    tmp = date2j(y,1,1) - POSTGRES_EPOCH_JDATE;
+	    result = day - (day - tmp) % 7;
+	    break;
+	CASE_fmt_IW
+	    tmp = iso_year(day, y, m, d);
+	    result = day - (day - tmp) % 7;
+	    break;
+	CASE_fmt_W
+	    tmp = date2j(y,m,1) - POSTGRES_EPOCH_JDATE;
+	    result = day - (day - tmp) % 7;
+	    break;
+	CASE_fmt_DAY
+	    result = day - j2day(day+POSTGRES_EPOCH_JDATE);
+	    break;
+	CASE_fmt_Q
+	    result = date2j(y,((m-1)/3)*3+1,1) - POSTGRES_EPOCH_JDATE;
+	    break;	    
+    }
+
+    PG_RETURN_DATEADT(result);
+}
+
+/********************************************************************
+ *
+ * oround .. round
+ *
+ * Syntax:
+ *
+ * date round(date date1, text format)
+ *
+ * Purpose:
+ *
+ * Returns d with the time portion of the day roundeded to the unit 
+ * specified by the format fmt.
+ *
+ ********************************************************************/
+
+
+Datum oround (PG_FUNCTION_ARGS)
+{
+    DateADT day = PG_GETARG_DATEADT(0);
+    text *fmt = PG_GETARG_TEXT_P(1);
+
+    int y, m, d, z; 
+    DateADT result, tmp;
+    
+    int f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    CHECK_SEQ_SEARCH(f, "round/trunc format string");
+    
+    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+
+    switch (f)
+    {
+	CASE_fmt_CC
+	    tmp = date2j((y/100)*100+50,7,1) - POSTGRES_EPOCH_JDATE;
+	    result = date2j((y/100)*100+(day<tmp?0:100),1,1) - POSTGRES_EPOCH_JDATE;
+	    break;	
+	CASE_fmt_YYYY
+	    tmp = date2j(y,7,1) - POSTGRES_EPOCH_JDATE;
+	    result = date2j(y+(day<tmp?0:1),1,1) - POSTGRES_EPOCH_JDATE;
+	    break;
+	CASE_fmt_IYYY
+	    {
+		DateADT isoyear = iso_year(day, y, m, d);
+		j2date(isoyear + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+		tmp = date2j(y, 7, 1) + POSTGRES_EPOCH_JDATE;
+		if (day < tmp)
+		    result = isoyear;
+		else
+		{
+		    tmp = date2j(y+1, 1, 8) + POSTGRES_EPOCH_JDATE;
+		    result = iso_year(tmp, y+1, 1, 8);
+		}
+		break;	
+	    }
+	CASE_fmt_MON
+	    tmp = date2j(y,m,16) - POSTGRES_EPOCH_JDATE;
+	    result = date2j(y,m+(day<tmp?0:1),1) - POSTGRES_EPOCH_JDATE;
+	    break;
+	CASE_fmt_WW
+	    tmp = date2j(y,1,1) - POSTGRES_EPOCH_JDATE;
+	    z = (day - tmp) % 7;
+	    result = day - z + (z < 3?0:7);
+	    break;
+	CASE_fmt_IW
+	    tmp = iso_year(day, y, m, d);
+	    z = (day - tmp) % 7;
+	    result = day - z + (z < 3?0:7);
+	    break;
+	CASE_fmt_W
+	    tmp = date2j(y,m,1) - POSTGRES_EPOCH_JDATE;
+	    z = (day - tmp) % 7;
+	    result = day - z + (z < 3?0:7);
+	    break;
+	CASE_fmt_DAY
+	    result = day - j2day(day+POSTGRES_EPOCH_JDATE);
+	    break;
+	CASE_fmt_Q
+	    tmp = date2j(y,((m-1)/3)*3+2,16) - POSTGRES_EPOCH_JDATE;
+	    result = date2j(y,((m-1)/3)*3+(day<tmp?1:4),1) - POSTGRES_EPOCH_JDATE;
+	    break;	    
+    }
+    
+    PG_RETURN_DATEADT(result);    
 }

@@ -1,5 +1,25 @@
 SET search_path = public;
 
+CREATE OR REPLACE FUNCTION trunc(value date, fmt text)
+RETURNS date
+AS 'MODULE_PATHNAME','otrunc'
+LANGUAGE 'C' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION trunc(value timestamp without time zone, fmt text) 
+RETURNS date 
+AS 'SELECT trunc($1::date, $2)'
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION round(value date, fmt text)
+RETURNS date
+AS 'MODULE_PATHNAME','oround'
+LANGUAGE 'C' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION round(value timestamp without time zone, fmt text) 
+RETURNS date 
+AS 'SELECT round($1::date, $2)'
+LANGUAGE sql IMMUTABLE STRICT;
+
 CREATE OR REPLACE FUNCTION next_day(value date, weekday text) 
 RETURNS date
 AS 'MODULE_PATHNAME'
