@@ -1,5 +1,31 @@
 This module contains some usefull function which can help with porting
-Oracle application to PostgreSQL or can be usefull generally.
+Oracle application to PostgreSQL or can be usefull generally. I tested 
+conformance with Oracle10 on dates from interval 1960..2070 years.
+
+All functions all full compatible with Oracle and respect all known
+format strings. Detailed description you can find on internet. Find
+keywords oracle round trunc date iyyy.
+
+List of format strings for trunc, round functions
+=================================================
+Y,YY,YYY,YYYY,SYYY,SYEAR	year
+I,IY,IYY,IYYY			iso year
+Q,				quartal
+WW				week, day as first day of year
+IW				week, monday
+W				week, day as first day of month
+DAY,DY,D			first day of week, sunday
+MONTH,MON,MM,RM			month
+CC,SCC				century
+DDD,DD,J			day
+HH,HH12,HH24			hour
+MI				minute
+
+function round rounds up on July 1st for year, 16th day for month, 
+and thursday for week.
+
+Functions
+=========
 
 o add_months(date, integer) date - Returns date plus n months
 	
@@ -24,11 +50,14 @@ o months_between(date, date) float8 - Returns the number of months between
 	
 o trunc(date, text) date - truncate date according to the specified format
 	
-	trunc(date '2005-07-12', 'iw') ->
+	trunc(date '2005-07-12', 'iw') -> 2005-07-11
 	
 o round(date, text) date - will round dates according to the specified format
 
-	round(date '2005-07-12', 'yyyy') ->
+	round(date '2005-07-12', 'yyyy') -> 2006-01-01
+
+
+
 
 This module is released under BSD licence. 
 
@@ -37,7 +66,6 @@ I inwite any comments, enhancing, objectives?
 Pavel Stehule
 stehule@kix.fsv.cvut.cz
 
-p.s. PostgreSQL 8.1. contains LEAST and GRETEST functions.
 
 ToDo:
     round(timestamp)

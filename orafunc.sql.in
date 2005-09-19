@@ -2,7 +2,7 @@ SET search_path = public;
 
 CREATE OR REPLACE FUNCTION trunc(value date, fmt text)
 RETURNS date
-AS 'MODULE_PATHNAME','otrunc'
+AS 'MODULE_PATHNAME','ora_date_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION trunc(value timestamp without time zone, fmt text) 
@@ -12,7 +12,7 @@ LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION round(value date, fmt text)
 RETURNS date
-AS 'MODULE_PATHNAME','oround'
+AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION round(value timestamp without time zone, fmt text) 
