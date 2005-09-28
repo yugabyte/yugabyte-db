@@ -5,20 +5,10 @@ RETURNS date
 AS 'MODULE_PATHNAME','ora_date_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION trunc(value timestamp without time zone, fmt text) 
-RETURNS date 
-AS 'SELECT trunc($1::date, $2)'
-LANGUAGE sql IMMUTABLE STRICT;
-
 CREATE OR REPLACE FUNCTION round(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
-
-CREATE OR REPLACE FUNCTION round(value timestamp without time zone, fmt text) 
-RETURNS date 
-AS 'SELECT round($1::date, $2)'
-LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION next_day(value date, weekday text) 
 RETURNS date
@@ -39,3 +29,14 @@ CREATE OR REPLACE FUNCTION add_months(day date, value int)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone, fmt text) 
+RETURNS timestamp with time zone
+AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
+LANGUAGE 'C' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION round(value timestamp with time zone, fmt text) 
+RETURNS timestamp with time zone
+AS 'MODULE_PATHNAME','ora_timestamptz_round'
+LANGUAGE 'C' IMMUTABLE STRICT;
+
