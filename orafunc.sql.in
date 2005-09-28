@@ -40,3 +40,22 @@ RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','ora_timestamptz_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 
+CREATE OR REPLACE FUNCTION round(value timestamp with time zone)
+RETURNS timestamp with time zone
+AS $$ SELECT round($1, 'DDD'); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION round(value date)
+RETURNS date 
+AS $$ SELECT $1; $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION trunc(value timestamp with time zone)
+RETURNS timestamp with time zone
+AS $$ SELECT trunc($1, 'DDD'); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION trunc(value date)
+RETURNS date 
+AS $$ SELECT $1; $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
