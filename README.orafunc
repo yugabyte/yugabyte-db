@@ -26,8 +26,8 @@ MI				minute
 function round rounds up on July 1st for year, 16th day for month, 
 and thursday for week.
 
-Functions
-=========
+Date Functions
+==============
 
 o add_months(date, integer) date - Returns date plus n months
 	
@@ -59,6 +59,35 @@ o round(date, text) date - will round dates according to the specified format
 	round(date '2005-07-12', 'yyyy') -> 2006-01-01
 
 
+Table dual
+==========
+PostgreSQL don't need oracle's table dual, but for some purposes (SELECT compatibility)
+this table is usefull. Script create it.
+
+Package dbms_output
+===================
+PostgreSQL send info to client via RAISE NOTICE. Oracle dbms_output.put_line works
+little bit different -  Oracle has session queue, function put_line add line to 
+queue, function get_line reads from queue. If flag serveroutput is set, then client
+over all sql statements reads queue. You can use:
+
+    select dbms_output.enable();
+    select dbms_output.put_line('first_line');
+    select dbms_output.put_line('next_line');
+    select * from dbms_output.get_lines(NULL);
+    
+or
+    select dbms_output.serveroutput('on');
+    select dbms_output.put_line('first_line');
+    
+package contains functions: enable, disable, serveroutput, put, put_line, new_line,
+get_line, get_lines.
+
+Others functions
+================
+This module contains implementation of functions: concat, nvl and nvl2.
+
+Atention! concat isn't strict function. concat('a',null) -> 'a'
 
 
 This module is released under BSD licence. 

@@ -59,3 +59,76 @@ CREATE OR REPLACE FUNCTION trunc(value date)
 RETURNS date 
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+DROP TABLE dual CASCADE;
+CREATE TABLE dual(dummy varchar(1));
+INSERT INTO dual(dummy) VALUES('X');
+REVOKE ALL ON dual FROM PUBLIC;
+GRANT SELECT, REFERENCES ON dual TO PUBLIC;
+VACUUM ANALYZE dual;
+
+CREATE OR REPLACE FUNCTION protect_table_fx() 
+RETURNS TRIGGER 
+AS 'MODULE_PATHNAME','ora_protect_table_fx'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE TRIGGER protect_dual BEFORE INSERT OR UPDATE OR DELETE
+ON dual FOR EACH STATEMENT EXECUTE PROCEDURE protect_table_fx();
+
+-- this packege is emulation of dbms_ouput Oracle packege
+-- 
+
+DROP SCHEMA dbms_output CASCADE;
+
+CREATE SCHEMA dbms_output;
+
+CREATE FUNCTION dbms_output.enable(IN buffer_size int4) 
+RETURNS void 
+AS 'MODULE_PATHNAME','dbms_output_enable' LANGUAGE C VOLATILE STRICT;
+    
+CREATE FUNCTION dbms_output.enable()
+RETURNS void 
+AS 'MODULE_PATHNAME','dbms_output_enable_default' LANGUAGE C VOLATILE STRICT;
+    
+CREATE FUNCTION dbms_output.disable()
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_disable' LANGUAGE C VOLATILE STRICT; 
+
+CREATE FUNCTION dbms_output.serveroutput(IN bool)
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_serveroutput' LANGUAGE C VOLATILE STRICT;
+    
+CREATE FUNCTION dbms_output.put(IN a text)
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_put' LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_output.put_line(IN a text)
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_put_line' LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_output.new_line()
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_new_line' LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_output.get_line(OUT line text, OUT status int4) 
+AS 'MODULE_PATHNAME','dbms_output_get_line' LANGUAGE C VOLATILE STRICT;
+    
+CREATE FUNCTION dbms_output.get_lines(OUT lines text[], INOUT numlines int4)
+AS 'MODULE_PATHNAME','dbms_output_get_lines' LANGUAGE C VOLATILE STRICT;
+
+-- others functions
+
+CREATE FUNCTION nvl(anyelement, anyelement) 
+RETURNS anyelement
+AS 'MODULE_PATHNAME','ora_nvl' 
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION nvl2(anyelement, anyelement) 
+RETURNS anyelement
+AS 'MODULE_PATHNAME','ora_nvl2' 
+LANGUAGE C IMMUTABLE STRICT;
+
+CREATE FUNCTION concat(text, text) 
+RETURNS text 
+AS 'MODULE_PATHNAME','ora_concat' 
+LANGUAGE C IMMUTABLE;

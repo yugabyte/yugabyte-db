@@ -1,5 +1,5 @@
 MODULE_big = orafunc
-OBJS= datefce.o
+OBJS= datefce.o protectable.o putline.o others.o
 
 DATA_built = orafunc.sql
 DOCS = README.orafunc
@@ -17,5 +17,10 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-orafunc.o: datefunc.c
+orafunc.o: datefunc.c 
 
+protectable.o: protectable.c
+
+putline.o: putline.c
+
+others.o: others.c
