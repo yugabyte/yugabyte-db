@@ -473,11 +473,12 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
     struct pg_tm tt, *tm = &tt;
     char *tzn;
     bool redotz = false;
+    int f;
     
     if (TIMESTAMP_NOT_FINITE(timestamp))
 	PG_RETURN_TIMESTAMPTZ(timestamp);
 	
-    int f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
@@ -576,11 +577,12 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
     char *tzn;
     bool redotz = false;
     bool rounded = true;
+    int f;
     
     if (TIMESTAMP_NOT_FINITE(timestamp))
 	PG_RETURN_TIMESTAMPTZ(timestamp);
 	
-    int f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)

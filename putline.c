@@ -1,4 +1,3 @@
- 
 #include "postgres.h"
 #include "funcapi.h"
 #include "access/heapam.h"
@@ -10,6 +9,8 @@
 #include "catalog/pg_type.h"
 #include "utils/array.h"
 #include "utils/lsyscache.h"
+
+#include "putline.h"
 
 static bool is_server_output = false;
 static bool is_enabled = false; 
@@ -308,20 +309,23 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
     int fldnum = 0;
     char *cursor = buffer;
 
+    text *line = palloc(255 + VARHDRSZ);
+
     if (max_lines == 0)
 	max_lines = lines;
     
-    text *line = palloc(255 + VARHDRSZ);
     
     if (lines > 0 && max_lines > 0)
     {
 	while (lines > 0 && max_lines-- > 0)
 	{
+	    Datum dvalue;
+	    
 	    int len = strlen(cursor);
 	    memcpy(VARDATA(line), cursor, len);
 	    VARATT_SIZEP(line) = len + VARHDRSZ;
 	    
-	    Datum dvalue = PointerGetDatum(line);
+	    dvalue = PointerGetDatum(line);
 	    astate = accumArrayResult(astate, dvalue,
 			  disnull, TEXTOID,  CurrentMemoryContext);
 	    cursor += len + 1;
@@ -347,7 +351,13 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 	char		typalign;
 
 	get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
-	dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);	
+	
+#ifdef PG_VERSION_82_COMPAT
+	dvalues[0] = (Datum) construct_md_array(NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
+#else
+	dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
+#endif
+
     }
 
     dvalues[1] = Int32GetDatum(fldnum);
