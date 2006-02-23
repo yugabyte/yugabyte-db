@@ -206,8 +206,8 @@ dbms_output_put(PG_FUNCTION_ARGS)
 {
     if (is_enabled)
     {
-	text *str = PG_GETARG_TEXT_P(0);
-	add_toLine(str);
+		text *str = PG_GETARG_TEXT_P(0);
+		add_toLine(str);
     }
     PG_RETURN_NULL();
 } 
@@ -219,16 +219,16 @@ dbms_output_put_line(PG_FUNCTION_ARGS)
 {
     if (is_enabled)
     {
-	text *str = PG_GETARG_TEXT_P(0);
-	add_toLine(str);
-	if (buffer_len + line_len + 1 > buffer_size)
-	    elog(ERROR, BUFFER_OVERFLOW_TEXT, buffer_size);
-	memcpy(buffer + buffer_len, line, line_len + 1);
-	buffer_len += line_len + 1;
-	line_len = 0; 
-	lines++;
-	if (is_server_output)
-	    send_buffer();
+		text *str = PG_GETARG_TEXT_P(0);
+		add_toLine(str);
+		if (buffer_len + line_len + 1 > buffer_size)
+			elog(ERROR, BUFFER_OVERFLOW_TEXT, buffer_size);
+		memcpy(buffer + buffer_len, line, line_len + 1);
+		buffer_len += line_len + 1;
+		line_len = 0; 
+		lines++;
+		if (is_server_output)
+			send_buffer();
     }
     PG_RETURN_NULL();
 }
@@ -240,14 +240,14 @@ dbms_output_new_line(PG_FUNCTION_ARGS)
 {
     if (is_enabled)
     {
-	if (buffer_len + line_len + 1 > buffer_size)
-	    elog(ERROR, BUFFER_OVERFLOW_TEXT, buffer_size);
-	memcpy(buffer + buffer_len, line, line_len + 1);
-	buffer_len += line_len + 1;
-	line_len = 0; 
-	lines++;
-	if (is_server_output)
-	    send_buffer();
+		if (buffer_len + line_len + 1 > buffer_size)
+			elog(ERROR, BUFFER_OVERFLOW_TEXT, buffer_size);
+		memcpy(buffer + buffer_len, line, line_len + 1);
+		buffer_len += line_len + 1;
+		line_len = 0; 
+		lines++;
+		if (is_server_output)
+			send_buffer();
     }
     PG_RETURN_NULL();
 }
@@ -263,11 +263,11 @@ dbms_output_get_line(PG_FUNCTION_ARGS)
     Datum 	result;
     
     char *str[2] = {NULL,"0"};
-
+	
     if (lines > 0)
     {
-	str[0] = buffer;
-	str[1] = "1";
+		str[0] = buffer;
+		str[1] = "1";
     }
 
     get_call_result_type(fcinfo, NULL, &tupdesc);
@@ -278,10 +278,10 @@ dbms_output_get_line(PG_FUNCTION_ARGS)
     
     if (lines > 0)
     {
-	int len = strlen(buffer) + 1;
-	memcpy(buffer, buffer + len, buffer_len - len);
-	buffer_len -= len;
-	lines--;
+		int len = strlen(buffer) + 1;
+		memcpy(buffer, buffer + len, buffer_len - len);
+		buffer_len -= len;
+		lines--;
     }
     
     return result;
@@ -296,9 +296,9 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 {
     int32 max_lines = PG_GETARG_INT32(0);
     bool disnull = false;
-
+	
     ArrayBuildState *astate = NULL;
-
+	
     TupleDesc	tupdesc, btupdesc;
     HeapTuple	tuple;
     Datum 	result;
@@ -310,52 +310,52 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
     char *cursor = buffer;
 
     text *line = palloc(255 + VARHDRSZ);
-
+	
     if (max_lines == 0)
 	max_lines = lines;
     
     
     if (lines > 0 && max_lines > 0)
     {
-	while (lines > 0 && max_lines-- > 0)
-	{
-	    Datum dvalue;
+		while (lines > 0 && max_lines-- > 0)
+		{
+			Datum dvalue;
+			
+			int len = strlen(cursor);
+			memcpy(VARDATA(line), cursor, len);
+			VARATT_SIZEP(line) = len + VARHDRSZ;
 	    
-	    int len = strlen(cursor);
-	    memcpy(VARDATA(line), cursor, len);
-	    VARATT_SIZEP(line) = len + VARHDRSZ;
-	    
-	    dvalue = PointerGetDatum(line);
-	    astate = accumArrayResult(astate, dvalue,
-			  disnull, TEXTOID,  CurrentMemoryContext);
-	    cursor += len + 1;
-	    fldnum++;    
-	    lines--;
-	}
-	dvalues[0] = makeArrayResult(astate, CurrentMemoryContext);
-
-	if (lines > 0)
-	{
-	    memcpy(buffer, cursor, buffer_len - (cursor - buffer));
-	    buffer_len -= cursor - buffer;
-	}
-	else
-	{
-	    buffer_len = 0;
-	}
+			dvalue = PointerGetDatum(line);
+			astate = accumArrayResult(astate, dvalue,
+									  disnull, TEXTOID,  CurrentMemoryContext);
+			cursor += len + 1;
+			fldnum++;    
+			lines--;
+		}
+		dvalues[0] = makeArrayResult(astate, CurrentMemoryContext);
+		
+		if (lines > 0)
+		{
+			memcpy(buffer, cursor, buffer_len - (cursor - buffer));
+			buffer_len -= cursor - buffer;
+		}
+		else
+		{
+			buffer_len = 0;
+		}
     }
     else
     {
-	int16		typlen;
-	bool		typbyval;
-	char		typalign;
+		int16		typlen;
+		bool		typbyval;
+		char		typalign;
 
-	get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
+		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
 	
 #ifdef PG_VERSION_82_COMPAT
-	dvalues[0] = (Datum) construct_md_array(NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
+		dvalues[0] = (Datum) construct_md_array(NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
 #else
-	dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
+		dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
 #endif
 
     }

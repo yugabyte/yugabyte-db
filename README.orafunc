@@ -74,7 +74,7 @@ over all sql statements reads queue. You can use:
     select dbms_output.enable();
     select dbms_output.put_line('first_line');
     select dbms_output.put_line('next_line');
-    select * from dbms_output.get_lines(NULL);
+    select * from dbms_output.get_lines(0);
     
 or
     select dbms_output.serveroutput('on');

@@ -132,3 +132,23 @@ CREATE OR REPLACE FUNCTION concat(text, text)
 RETURNS text 
 AS 'MODULE_PATHNAME','ora_concat' 
 LANGUAGE C IMMUTABLE;
+
+DROP SCHEMA dbms_pipe CASCADE;
+
+CREATE SCHEMA dbms_pipe;
+
+CREATE FUNCTION dbms_pipe.pack_message(text)
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message' LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.unpack_message()
+RETURNS text
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message' LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.receive_message(cstring, int)
+RETURNS int
+AS 'MODULE_PATHNAME','dbms_pipe_receive_message' LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.send_message(cstring, int)
+RETURNS int
+AS 'MODULE_PATHNAME','dbms_pipe_send_message' LANGUAGE C VOLATILE STRICT;
