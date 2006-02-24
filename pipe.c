@@ -22,6 +22,9 @@
 #endif
 #endif
 
+#define RESULT_DATA	0
+#define RESULT_WAIT	1
+
 Datum dbms_pipe_pack_message(PG_FUNCTION_ARGS);
 Datum dbms_pipe_unpack_message(PG_FUNCTION_ARGS);
 Datum dbms_pipe_send_message(PG_FUNCTION_ARGS);
@@ -58,13 +61,11 @@ initSharedBuffer(int size)
     result = (ShmemBuffer*) ShmemInitStruct("dbms_pipe",size,&found);
     if (!found)
     {
-	if (result->lock == 0)
-	{
-	    result->lock = LWLockAssign();
-	    result->size = 0;
-	    result->count = 0;
-	}
-    }
+        result->lock = LWLockAssign();
+        result->size = 0;
+        result->count = 0;
+    } else if (result->lock == 0)
+	result = NULL;
 
     return result;
 }
@@ -76,11 +77,15 @@ loc_to_shm(MultiLineBuffer *buf, ShmemBuffer **sbuf)
     {
 	if (*sbuf == NULL)
 	    *sbuf = initSharedBuffer(SHMEMMSGSZ);
+	/* wait for lock */
+	if (*sbuf == NULL)
+	    return RESULT_WAIT;
+	    
 	LWLockAcquire((*sbuf)->lock, LW_EXCLUSIVE);
 	if ((*sbuf)->count > 0)
 	{
 	    LWLockRelease((*sbuf)->lock);
-	    return 1;
+	    return RESULT_WAIT;
 	}
 	memcpy((*sbuf)->data, buf, buf->size + sizeof(MultiLineBuffer));
 	(*sbuf)->count = 1;
@@ -91,7 +96,7 @@ loc_to_shm(MultiLineBuffer *buf, ShmemBuffer **sbuf)
 	buf->size = 0;
 	LWLockRelease((*sbuf)->lock);
     }
-    return 0;
+    return RESULT_DATA;
 }
 
 static int
@@ -100,6 +105,10 @@ shm_to_loc(MultiLineBuffer **buf, ShmemBuffer **sbuf)
     if (*sbuf == NULL)
 	*sbuf = initSharedBuffer(SHMEMMSGSZ);
 
+    /* wai for lock */
+    if (*sbuf == NULL)
+	return RESULT_WAIT;
+	
     if (*buf == NULL)
     {
 	*buf = (MultiLineBuffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ+sizeof(MultiLineBuffer));
@@ -112,7 +121,7 @@ shm_to_loc(MultiLineBuffer **buf, ShmemBuffer **sbuf)
     if ((*sbuf)->count == 0)
     {
 	LWLockRelease((*sbuf)->lock);
-	return 1;
+	return RESULT_WAIT;
     }
     
     memcpy((*buf), (*sbuf)->data, (*sbuf)->size);
@@ -120,7 +129,7 @@ shm_to_loc(MultiLineBuffer **buf, ShmemBuffer **sbuf)
     (*sbuf)->count = 0;
     (*sbuf)->size = 0;
     LWLockRelease((*sbuf)->lock);
-    return 0;
+    return RESULT_DATA;
 }
 
 PG_FUNCTION_INFO_V1(dbms_pipe_receive_message);
@@ -138,15 +147,15 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
     for(;;)
     {
 	if (GetNowFloat() > endtime)
-	    PG_RETURN_INT32(1);
+	    PG_RETURN_INT32(RESULT_WAIT);
 	if (cycle++ % 100 == 0)
 	    CHECK_FOR_INTERRUPTS();
 	result = shm_to_loc(&ibuffer,&sbuffer);
-	if (result == 0)
+	if (result == RESULT_DATA)
 	    break;
 	pg_usleep(10000L);
     }
-    PG_RETURN_INT32(0);
+    PG_RETURN_INT32(RESULT_DATA);
 }
 
 PG_FUNCTION_INFO_V1(dbms_pipe_send_message);
@@ -164,15 +173,15 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
     for(;;)
     {
 	if (GetNowFloat() > endtime)
-	    PG_RETURN_INT32(1);
+	    PG_RETURN_INT32(RESULT_WAIT);
 	if (cycle++ % 100 == 0)
 	    CHECK_FOR_INTERRUPTS();
 	result = loc_to_shm(obuffer,&sbuffer);
-	if (result == 0)
+	if (result == RESULT_DATA)
 	    break;
 	pg_usleep(10000L);
     }
-    PG_RETURN_INT32(0);
+    PG_RETURN_INT32(RESULT_DATA);
 }
 
 
