@@ -67,8 +67,10 @@ PG_FUNCTION_INFO_V1(ora_date_round);
 PG_FUNCTION_INFO_V1(ora_timestamptz_trunc);
 PG_FUNCTION_INFO_V1(ora_timestamptz_round);
 
-static int
-seq_search(char *name, char **array, int max)
+int ora_seq_search(char *name, char **array, int max);
+
+int
+ora_seq_search(char *name, char **array, int max)
 {
     char *p, *n, **a;
     int last, i;
@@ -127,7 +129,7 @@ next_day (PG_FUNCTION_ARGS)
     text *day_txt = PG_GETARG_TEXT_P(1);
     int off;
 
-    int d = seq_search(VARDATA(day_txt), days, VARATT_SIZEP(day_txt) - VARHDRSZ);
+    int d = ora_seq_search(VARDATA(day_txt), days, VARATT_SIZEP(day_txt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(d, "DAY/Day/day");
     
     off = d - j2day(day+POSTGRES_EPOCH_JDATE);
@@ -455,7 +457,7 @@ Datum ora_date_trunc (PG_FUNCTION_ARGS)
     
     DateADT result;
     
-    int f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    int f = ora_seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
     
     result = _ora_date_trunc(day, f);
@@ -478,7 +480,7 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
     if (TIMESTAMP_NOT_FINITE(timestamp))
 	PG_RETURN_TIMESTAMPTZ(timestamp);
 	
-    f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    f = ora_seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
@@ -551,7 +553,7 @@ Datum ora_date_round (PG_FUNCTION_ARGS)
 
     DateADT result;
     
-    int f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    int f = ora_seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     result = _ora_date_round(day, f);
@@ -582,7 +584,7 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
     if (TIMESTAMP_NOT_FINITE(timestamp))
 	PG_RETURN_TIMESTAMPTZ(timestamp);
 	
-    f = seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
+    f = ora_seq_search(VARDATA(fmt), date_fmt, VARATT_SIZEP(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)

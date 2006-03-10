@@ -83,9 +83,31 @@ or
 package contains functions: enable, disable, serveroutput, put, put_line, new_line,
 get_line, get_lines.
 
+Package dbms_pipe
+=================
+This packege is emulation of Oracle's package dbms_pipe. It's very simple and
+basic now. Use only one pipe with size one.
+
+try:
+
+session A                            | session B
+----------------------------------------------------------
+pack_message('a');
+pack_message('b');
+send_message('blabla',1);
+                                        receive_message('blabla',1);
+                                        unpack_message();
+					unpack_message();
+					
+					
+Package PLVdate
+===============
+This module contains some function for working with bussines days from
+package PLVdate.
+
 Others functions
 ================
-This module contains implementation of functions: concat, nvl and nvl2.
+This module contains implementation of functions: concat, nvl, nvl2.
 
 Atention! concat isn't strict function. concat('a',null) -> 'a'
 

@@ -11,6 +11,11 @@ PG_FUNCTION_INFO_V1(ora_concat);
 Datum
 ora_concat(PG_FUNCTION_ARGS)
 {
+    text *t1;
+    text *t2;
+    int l1;
+    int l2;
+    text *result;
     
     if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
 	PG_RETURN_NULL();
@@ -21,13 +26,13 @@ ora_concat(PG_FUNCTION_ARGS)
     if (PG_ARGISNULL(1))
 		PG_RETURN_TEXT_P(PG_GETARG_TEXT_P(0));
 
-    text *t1 = PG_GETARG_TEXT_P(0);
-    text *t2 = PG_GETARG_TEXT_P(1);    
+    t1 = PG_GETARG_TEXT_P(0);
+    t2 = PG_GETARG_TEXT_P(1);    
     
-    int l1 = VARSIZE(t1) - VARHDRSZ;
-    int l2 = VARSIZE(t2) - VARHDRSZ;
+    l1 = VARSIZE(t1) - VARHDRSZ;
+    l2 = VARSIZE(t2) - VARHDRSZ;
     
-    text *result = palloc(l1+l2+VARHDRSZ);
+    result = palloc(l1+l2+VARHDRSZ);
     memcpy(VARDATA(result), VARDATA(t1), l1);
     memcpy(VARDATA(result) + l1, VARDATA(t2), l2);
     VARATT_SIZEP(result) = l1 + l2 + VARHDRSZ;
