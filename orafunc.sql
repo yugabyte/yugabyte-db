@@ -224,12 +224,12 @@ LANGUAGE C VOLATILE STRICT;
 
 CREATE FUNCTION plvdate.set_nonbizday(date)
 RETURNS bool
-AS $$SELECT plvdate.set_nonbizday($1, false);$$
+AS $$SELECT plvdate.set_nonbizday($1, false); SELECT NULL::boolean;$$
 LANGUAGE SQL VOLATILE STRICT;
 
 CREATE FUNCTION plvdate.unset_nonbizday(date)
 RETURNS bool
-AS $$SELECT plvdate.unset_nonbizday($1, false); $$
+AS $$SELECT plvdate.unset_nonbizday($1, false); SELECT NULL::boolean;$$
 LANGUAGE SQL VOLATILE STRICT;
 
 CREATE FUNCTION plvdate.use_easter(bool)
@@ -237,12 +237,74 @@ RETURNS void
 AS '$libdir/orafunc','plvdate_use_easter'
 LANGUAGE C VOLATILE STRICT;
 
-CREATE FUNCTION plvdate.version()
+CREATE FUNCTION plvdate.use_easter()
+RETURNS bool
+AS $$SELECT plvdate.use_easter(true); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.unuse_easter()
+RETURNS bool
+AS $$SELECT plvdate.use_easter(false); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.using_easter()
+RETURNS bool
+AS '$libdir/orafunc','plvdate_using_easter'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.include_start(bool)
 RETURNS void
+AS '$libdir/orafunc','plvdate_include_start'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.include_start()
+RETURNS bool
+AS $$SELECT plvdate.include_start(true); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.noinclude_start()
+RETURNS bool
+AS $$SELECT plvdate.include_start(false); SELECT NULL::boolean;$$
+LANGUAGE SQL VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.including_start()
+RETURNS bool
+AS '$libdir/orafunc','plvdate_including_start'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.version()
+RETURNS cstring
 AS '$libdir/orafunc','plvdate_version'
 LANGUAGE C VOLATILE STRICT;
 
-CREATE FUNCTION plvdate.default_czech()
+CREATE FUNCTION plvdate.default_holydays(varchar)
 RETURNS void
-AS '$libdir/orafunc','plvdate_default_czech'
+AS '$libdir/orafunc','plvdate_default_holydays'
+LANGUAGE C VOLATILE STRICT;
+
+-- debug
+
+CREATE FUNCTION sh_init()
+RETURNS void
+AS '$libdir/orafunc','__sinit'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION sh_print()
+RETURNS void
+AS '$libdir/orafunc','__sprint'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION sh_alloc(int)
+RETURNS int
+AS '$libdir/orafunc','__salloc'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION sh_sfree(int)
+RETURNS void
+AS '$libdir/orafunc','__sfree'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION sh_defrag()
+RETURNS void
+AS '$libdir/orafunc','__sdefrag'
 LANGUAGE C VOLATILE STRICT;

@@ -82,25 +82,25 @@ ora_seq_search(char *name, char **array, int max)
     for (last = 0, a = array; *a != NULL; a++)
     {	
     
-	if (*name != **a)
-	    continue;
-
-	for (i = 1, p = *a + 1, n = name + 1;; n++, p++, i++)
-	{
+		if (*name != **a)
+			continue;
+		
+		for (i = 1, p = *a + 1, n = name + 1;; n++, p++, i++)
+		{
 	    
-	    if (i == max && *p == '\0')
-		return a - array;
-	    if (*p == '\0')
-	       break;
-	    if (i > last)
-	    {
-		*n = pg_tolower((unsigned char) *n);
-		last = i;
-	    }
-	    
-	    if (*n != *p)
-		     break;
-	}
+			if (i == max && *p == '\0')
+				return a - array;
+			if (*p == '\0')
+				break;
+			if (i > last)
+			{
+				*n = pg_tolower((unsigned char) *n);
+				last = i;
+			}
+			
+			if (*n != *p)
+				break;
+		}
     }
     
     return -1;

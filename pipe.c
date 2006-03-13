@@ -6,6 +6,8 @@
 #include "storage/lwlock.h"
 #include "miscadmin.h"
 
+#include "shmmc.h"
+
 /*
  * First test version 0.0.1
  * @ Pavel Stehule 2006
@@ -30,6 +32,24 @@ Datum dbms_pipe_unpack_message(PG_FUNCTION_ARGS);
 Datum dbms_pipe_send_message(PG_FUNCTION_ARGS);
 Datum dbms_pipe_receive_message(PG_FUNCTION_ARGS);
 
+Datum __salloc(PG_FUNCTION_ARGS);
+Datum __sfree(PG_FUNCTION_ARGS);
+Datum __sdefrag(PG_FUNCTION_ARGS);
+Datum __sprint(PG_FUNCTION_ARGS);
+Datum __sinit(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1(__salloc);
+PG_FUNCTION_INFO_V1(__sfree);
+PG_FUNCTION_INFO_V1(__sdefrag);
+PG_FUNCTION_INFO_V1(__sprint);
+PG_FUNCTION_INFO_V1(__sinit);
+
+typedef struct 
+{
+	bool dispos;
+	void *ptr;
+} ptr_handle;
+
 typedef struct 
 {
     int unread;
@@ -51,6 +71,71 @@ typedef struct
 } ShmemBuffer;
 
 ShmemBuffer *sbuffer = NULL;
+
+
+ptr_handle handles[10000];
+
+Datum 
+__sinit(PG_FUNCTION_ARGS)
+{
+	int i;
+	bool found;
+	void *ptr;
+
+	for (i = 0; i < 10000; i++)
+	{
+		handles[i].dispos = true;
+		handles[i].ptr = NULL;
+	}
+
+	ptr = ShmemInitStruct("test_shmmc",20*1024,&found);
+	ora_sinit(ptr, 20*1024);
+	PG_RETURN_VOID();
+}
+
+Datum
+__sprint(PG_FUNCTION_ARGS)
+{
+	show_memory();
+	PG_RETURN_VOID();
+}	
+
+Datum
+__sdefrag(PG_FUNCTION_ARGS)
+{
+	defragmentation();
+	PG_RETURN_VOID();
+}
+
+Datum
+__salloc(PG_FUNCTION_ARGS)
+{
+	int i;
+	for (i = 0; i < 10000; i++)
+		if (handles[i].dispos)
+		{
+			if(NULL == (handles[i].ptr = ora_salloc(PG_GETARG_INT32(0))))
+				elog(ERROR, "Out of memory");
+			handles[i].dispos = false;
+			PG_RETURN_INT32(i);
+		}
+	elog(ERROR, "All handlers are used");
+	PG_RETURN_NULL();
+}
+
+Datum
+__sfree(PG_FUNCTION_ARGS)
+{
+	int i = PG_GETARG_INT32(0);
+
+	if (handles[i].dispos)
+		elog(ERROR, "Access unused handler");
+	ora_sfree(handles[i].ptr);
+	handles[i].dispos = true;
+	handles[i].ptr = NULL;
+	PG_RETURN_VOID();
+}
+
 
 static ShmemBuffer*
 initSharedBuffer(int size)
