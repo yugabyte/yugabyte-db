@@ -1,0 +1,188 @@
+Oracle functions and Oracle packages
+====================================
+
+This module contains some usefull function which can help with porting
+Oracle application to PostgreSQL or can be usefull generally. Bildin
+Oracle date functions was tested on conformance with Oracle10 on dates 
+from interval 1960..2070 years. Dates before 1100-03-01 can't be 
+verified via Oracle bug.
+
+All functions all full compatible with Oracle and respect all known
+format strings. Detailed description you can find on internet. Find
+keywords oracle round trunc date iyyy.
+
+This library don't support multibyte encoding.
+
+List of format strings for trunc, round functions
+-------------------------------------------------
+Y,YY,YYY,YYYY,SYYY,SYEAR	year
+I,IY,IYY,IYYY			iso year
+Q,				quartal
+WW				week, day as first day of year
+IW				week, monday
+W				week, day as first day of month
+DAY,DY,D			first day of week, sunday
+MONTH,MON,MM,RM			month
+CC,SCC				century
+DDD,DD,J			day
+HH,HH12,HH24			hour
+MI				minute
+
+function round rounds up on July 1st for year, 16th day for month, 
+and thursday for week.
+
+Date Functions
+==============
+
+o add_months(date, integer) date - Returns date plus n months
+	
+	add_months(date '2005-05-31',1) -> 2005-06-30
+
+
+o last_date(date) date - Returns last day of the month based on a date value
+	
+	last_day(date '2005-05-24') -> 2005-05-31
+
+
+o next_day(date, text) date - Returns the first weekday that is greather than a date value
+	
+	next_day(date '2005-05-24', 'monday') -> 2005-05-30
+
+
+o months_between(date, date) float8 - Returns the number of months between 
+	date1 and date2. If a fractional month is calculated, the months_between  
+	function calculates the fraction based on a 31-day month. 
+	
+	months_between(date '1995-02-02', date '1995-01-01') -> 1.0322580645161
+	
+o trunc(date, text) date - truncate date according to the specified format
+	
+	trunc(date '2005-07-12', 'iw') -> 2005-07-11
+	
+o round(date, text) date - will round dates according to the specified format
+
+	round(date '2005-07-12', 'yyyy') -> 2006-01-01
+
+
+Table dual
+==========
+PostgreSQL don't need oracle's table dual, but for some purposes (SELECT compatibility)
+this table is usefull. Script create it.
+
+Package dbms_output
+===================
+PostgreSQL send info to client via RAISE NOTICE. Oracle dbms_output.put_line works
+little bit different -  Oracle has session queue, function put_line add line to 
+queue, function get_line reads from queue. If flag serveroutput is set, then client
+over all sql statements reads queue. You can use:
+
+    select dbms_output.enable();
+    select dbms_output.put_line('first_line');
+    select dbms_output.put_line('next_line');
+    select * from dbms_output.get_lines(0);
+    
+or
+    select dbms_output.serveroutput('on');
+    select dbms_output.put_line('first_line');
+    
+package contains functions: enable, disable, serveroutput, put, put_line, new_line,
+get_line, get_lines. This package really implements line's queue in session's memory.
+
+Package dbms_pipe
+=================
+This packege is emulation of Oracle's package dbms_pipe. It's very simple and
+basic now. Use only one pipe with size one.
+
+try:
+
+session A                            | session B
+----------------------------------------------------------
+pack_message('a');
+pack_message('b');
+send_message('blabla',1);
+                                        receive_message('blabla',1);
+                                        unpack_message();
+					unpack_message();
+					
+					
+Package PLVdate
+===============
+This module contains some function for working with bussines days from
+package PLVdate. Detailed documentation can be found in PLVision library.
+This package is multicultural, but default configurations are only for
+european countries yet (see source code).
+
+You should define own nonbizdays (max 50 days) and own holydays (max 30 days).
+Holyday is any nonbizday, which is same every year - 1. May, 24. december, ... 
+
+o plvdate.add_bizdays(day date, days int) date - Get the date created by adding <n> business days to a date
+o plvdate.nearest_bizday(day date) date -  Get the nearest business date to a given date, user defined
+o plvdate.next_bizday(day date) date - Get the next business date from a given date, user defined
+o plvdate.bizdays_between(day1 date, day2 date) int - Get the number of business days between two dates
+o plvdate.prev_bizday(day date) date - Get the previous business date from a given date
+o plvdate_isbizday(date) bool - Call this function to determine if a date is a business day
+
+o plvdate.set_nonbizday(dow varchar) - Set day of week as non bussines day
+o plvdate.unset_nonbizday(dow varchar) - Unset day of week as non bussines day
+o plvdate.set_nonbizday(day date) - Set day as non bussines day
+o plvdate.unset_nonbizday(day date) - Unset day as non bussines day
+o plvdate.set_nonbizday(day date, repeat bool) - Set day as non bussines day, if 'repeat' is true, then day is nonbiz every year
+o plvdate.unset_nonbizday(day date, repeat bool) - Unset day as non bussines day, if 'repeat' is true, then day is nonbiz every year
+
+o plvdate.use_easter() - Easter Sunday and easter monday will be holyday
+o plvdate.unuse_easter();
+o plvdate.use_easter(useit boolean);
+o plvdate.using_easter() bool - If we use easter then returns true
+o plvdate.include_start() - Include starting date in bizdays_between calculation
+o plvdate.noinclude_start();
+o plvdate.include_start(include boolean);
+o plvdate.including_start() bool;
+
+o plvdate.default_holydays(varchar) - load default configurations. You can use configurations
+    Czech, German*, Austria, Poland, Slovakia, Russia, GB* and  USA at this moment.
+
+*configurations contains only common holydays for all regions. You have to add some regional holydays 
+    calling function plvdate.set_nonbizday(nonbizday, true)
+
+Example:
+--------
+postgres=# select plvdate.default_holydays('czech');
+ default_holydays 
+------------------
+ 
+(1 row)
+postgres=# select to_char(current_date, 'day'),
+           plvdate.next_bizday(current_date), 
+	   to_char(plvdate.next_bizday(current_date),'day');
+  to_char  | next_bizday |  to_char  
+-----------+-------------+-----------
+ saturday  | 2006-03-13  | monday   
+(1 row)
+
+Change for noneuropean environment:
+-----------------------------------
+select plvdate.unset_nonbizday('saturday');
+select plvdate.unset_nonbizday('sunday');
+select plvdate.set_nonbizday('friday');
+select plvdate.set_nonbizday('2006-05-19', true);
+select plvdate.unuse_easter();
+
+
+Others functions
+================
+This module contains implementation of functions: concat, nvl, nvl2.
+
+Atention! concat isn't strict function. concat('a',null) -> 'a'
+
+
+This module is released under BSD licence. 
+
+I inwite any comments, enhancing, objectives?
+
+Pavel Stehule
+stehule@kix.fsv.cvut.cz
+
+Prague 2006
+
+p.s.
+If use this library, please, send me mail about it.

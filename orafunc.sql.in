@@ -202,12 +202,12 @@ RETURNS bool
 AS 'MODULE_PATHNAME','plvdate_isbizday'
 LANGUAGE C IMMUTABLE STRICT;
 
-CREATE FUNCTION plvdate.set_nonbizday(varchar)
+CREATE FUNCTION plvdate.set_nonbizday(text)
 RETURNS void
 AS 'MODULE_PATHNAME','plvdate_set_nonbizday_dow'
 LANGUAGE C VOLATILE STRICT;
 
-CREATE FUNCTION plvdate.unset_nonbizday(varchar)
+CREATE FUNCTION plvdate.unset_nonbizday(text)
 RETURNS void
 AS 'MODULE_PATHNAME','plvdate_unset_nonbizday_dow'
 LANGUAGE C VOLATILE STRICT;
@@ -277,7 +277,7 @@ RETURNS cstring
 AS 'MODULE_PATHNAME','plvdate_version'
 LANGUAGE C VOLATILE STRICT;
 
-CREATE FUNCTION plvdate.default_holydays(varchar)
+CREATE FUNCTION plvdate.default_holydays(text)
 RETURNS void
 AS 'MODULE_PATHNAME','plvdate_default_holydays'
 LANGUAGE C VOLATILE STRICT;
@@ -308,3 +308,161 @@ CREATE FUNCTION sh_defrag()
 RETURNS void
 AS 'MODULE_PATHNAME','__sdefrag'
 LANGUAGE C VOLATILE STRICT;
+
+-- PLVstr package
+
+DROP SCHEMA plvstr CASCADE;
+
+CREATE SCHEMA plvstr;
+
+CREATE FUNCTION plvstr.normalize(str text)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvstr_normalize'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.is_prefix(str text, prefix text, cs bool)
+RETURNS bool
+AS 'MODULE_PATHNAME','plvstr_is_prefix_text'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.is_prefix(str text, prefix text)
+RETURNS bool
+AS $$ SELECT plvstr.is_prefix($1,$2,true);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.is_prefix(str int, prefix int)
+RETURNS bool
+AS 'MODULE_PATHNAME','plvstr_is_prefix_int'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.is_prefix(str bigint, prefix bigint)
+RETURNS bool
+AS 'MODULE_PATHNAME','plvstr_is_prefix_int64'
+LANGUAGE C STABLE STRICT;
+
+
+
+CREATE FUNCTION plvstr.rvrs(str text, start int, _end int)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvstr_rvrs'
+LANGUAGE C STABLE;
+
+CREATE FUNCTION plvstr.rvrs(str text, start int)
+RETURNS varchar
+AS $$ SELECT plvstr.rvrs($1,$2,NULL);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.rvrs(str text)
+RETURNS varchar
+AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
+LANGUAGE SQL STABLE STRICT;
+
+DROP SCHEMA plvchr CASCADE;
+
+CREATE SCHEMA plvchr;
+
+CREATE FUNCTION plvchr.nth(str text, n int)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvchr_nth'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvchr.first(str text)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvchr_first'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvchr.last(str text)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvchr_last'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvchr._is_kind(str text, kind int)
+RETURNS bool
+AS 'MODULE_PATHNAME','plvchr_is_kind_a'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvchr._is_kind(c int, kind int)
+RETURNS bool
+AS 'MODULE_PATHNAME','plvchr_is_kind_i'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_blank(c int)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 1);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_blank(c text)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 1);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_digit(c int)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 2);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_digit(c text)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 2);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_quote(c int)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 3);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_quote(c text)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 3);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_other(c int)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 4);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_other(c text)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 4);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_letter(c int)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 5);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.is_letter(c text)
+RETURNS BOOL
+AS $$ SELECT plvchr._is_kind($1, 5);$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.char_name(c text)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvchr_char_name'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.left(str text, n int)
+RETURNS varchar
+AS 'MODULE_PATHNAME', 'plvstr_left'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.right(str text, n int)
+RETURNS varchar
+AS 'MODULE_PATHNAME','plvstr_right'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvchr.quoted1(str text)
+RETURNS varchar
+AS $$SELECT E'\''||$1||E'\'';$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.quoted2(str text)
+RETURNS varchar
+AS $$SELECT '"'||$1||'"';$$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvchr.stripped(str text, char_in text)
+RETURNS varchar
+AS $$ SELECT TRANSLATE($1, 'A'||$2, 'A'); $$
+LANGUAGE SQL STABLE STRICT;
+

@@ -1,5 +1,5 @@
 MODULE_big = orafunc
-OBJS= datefce.o protectable.o others.o putline.o pipe.o plvdate.o shmmc.o
+OBJS= datefce.o protectable.o others.o putline.o pipe.o plvdate.o shmmc.o plvstr.o
 
 DATA_built = orafunc.sql
 DOCS = README.orafunc
@@ -30,3 +30,5 @@ pipe.o: pipe.c
 plvdate.o: plvdate.c
 
 shmmc.o: shmmc.c
+
+plvstr.o: plvstr.c
