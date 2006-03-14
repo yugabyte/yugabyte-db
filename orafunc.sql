@@ -340,20 +340,103 @@ RETURNS bool
 AS '$libdir/orafunc','plvstr_is_prefix_int64'
 LANGUAGE C STABLE STRICT;
 
+CREATE FUNCTION plvstr.substr(str text, start int, len int)
+RETURNS varchar
+AS '$libdir/orafunc','plvstr_substr3'
+LANGUAGE C STABLE STRICT;
 
+CREATE FUNCTION plvstr.substr(str text, start int)
+RETURNS varchar
+AS '$libdir/orafunc','plvstr_substr2'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.instr(str text, patt text, start int, nth int)
+RETURNS int
+AS '$libdir/orafunc','plvstr_instr4'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.instr(str text, patt text, start int)
+RETURNS int
+AS '$libdir/orafunc','plvstr_instr3'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.instr(str text, patt text)
+RETURNS int
+AS '$libdir/orafunc','plvstr_instr2'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.lpart(str text, div text, start int, nth int, all_if_notfound bool)
+RETURNS text
+AS '$libdir/orafunc','plvstr_lpart'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.lpart(str text, div text, start int, nth int)
+RETURNS text
+AS $$ SELECT plvstr.lpart($1,$2, $3, $4, false); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.lpart(str text, div text, start int)
+RETURNS text
+AS $$ SELECT plvstr.lpart($1,$2, $3, 1, false); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.lpart(str text, div text)
+RETURNS text
+AS $$ SELECT plvstr.lpart($1,$2, 1, 1, false); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.rpart(str text, div text, start int, nth int, all_if_notfound bool)
+RETURNS text
+AS '$libdir/orafunc','plvstr_rpart'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.rpart(str text, div text, start int, nth int)
+RETURNS text
+AS $$ SELECT plvstr.rpart($1,$2, $3, $4, false); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.rpart(str text, div text, start int)
+RETURNS text
+AS $$ SELECT plvstr.rpart($1,$2, $3, 1, false); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.rpart(str text, div text)
+RETURNS text
+AS $$ SELECT plvstr.rpart($1,$2, 1, 1, false); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.lstrip(str text, substr text, num int)
+RETURNS text
+AS '$libdir/orafunc','plvstr_lstrip'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.lstrip(str text, substr text)
+RETURNS text
+AS $$ SELECT plvstr.lstrip($1, $2, 1); $$
+LANGUAGE SQL STABLE STRICT;
+
+CREATE FUNCTION plvstr.rstrip(str text, substr text, num int)
+RETURNS text
+AS '$libdir/orafunc','plvstr_rstrip'
+LANGUAGE C STABLE STRICT;
+
+CREATE FUNCTION plvstr.rstrip(str text, substr text)
+RETURNS text
+AS $$ SELECT plvstr.rstrip($1, $2, 1); $$
+LANGUAGE SQL STABLE STRICT;
 
 CREATE FUNCTION plvstr.rvrs(str text, start int, _end int)
-RETURNS varchar
+RETURNS text
 AS '$libdir/orafunc','plvstr_rvrs'
 LANGUAGE C STABLE;
 
 CREATE FUNCTION plvstr.rvrs(str text, start int)
-RETURNS varchar
+RETURNS text
 AS $$ SELECT plvstr.rvrs($1,$2,NULL);$$
 LANGUAGE SQL STABLE STRICT;
 
 CREATE FUNCTION plvstr.rvrs(str text)
-RETURNS varchar
+RETURNS text
 AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL STABLE STRICT;
 
@@ -362,7 +445,7 @@ DROP SCHEMA plvchr CASCADE;
 CREATE SCHEMA plvchr;
 
 CREATE FUNCTION plvchr.nth(str text, n int)
-RETURNS varchar
+RETURNS text
 AS '$libdir/orafunc','plvchr_nth'
 LANGUAGE C STABLE STRICT;
 

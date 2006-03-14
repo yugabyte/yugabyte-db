@@ -1,6 +1,6 @@
 #include "postgres.h"
 #include "fmgr.h"
-
+#include "orafunc.h"
 
 Datum ora_nvl(PG_FUNCTION_ARGS);
 Datum ora_nvl2(PG_FUNCTION_ARGS);

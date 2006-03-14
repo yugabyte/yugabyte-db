@@ -167,6 +167,65 @@ select plvdate.set_nonbizday('friday');
 select plvdate.set_nonbizday('2006-05-19', true);
 select plvdate.unuse_easter();
 
+Package PLVstr and PLVchr
+=========================
+
+This package contains some usefull string, char functions. Function 
+supports positive or negative (from end positioning). Example:
+
+plvstr.left('abcdef',2) -> ab
+plvstr.left('abcdef',-2) -> abcd
+plvstr.substr('abcdef',1,1) -> a
+plvstr.substr('abcdef',-1,1) -> f
+plvstr.substr('abcde',-2,1) -> d
+
+List of functions:
+o plvstr.normalize(str text) - Normalize string - replace white chars by space, replace  spaces by space
+o plvstr.is_prefix(str text, prefix text, cs bool) - Returns true, if prefix is prefix of str
+o plvstr.is_prefix(str text, prefix text)          - Returns true, if prefix is prefix of str
+o plvstr.is_prefix(str int, prefix int)            - Returns true, if prefix is prefix of str
+o plvstr.is_prefix(str bigint, prefix bigint)      - Returns true, if prefix is prefix of str
+o plvstr.substr(str text, start int, len int) - Returns substring started on start_in to end
+o plvstr.substr(str text, start int)          - Returns substring started on start_in to end
+o plvstr.instr(str text, patt text, start int, nth int) - Search pattern in string
+o plvstr.instr(str text, patt text, start int)          - Search pattern in string
+o plvstr.instr(str text, patt text)                     - Search pattern in string
+o plvstr.lpart(str text, div text, start int, nth int, all_if_notfound bool) - Call this function to return the left part of a string
+o plvstr.lpart(str text, div text, start int, nth int) - Call this function to return the left part of a string
+o plvstr.lpart(str text, div text, start int)          - Call this function to return the left part of a string
+o plvstr.lpart(str text, div text)                     - Call this function to return the left part of a string
+o plvstr.rpart(str text, div text, start int, nth int, all_if_notfound bool) - Call this function to return the right part of a string
+o plvstr.rpart(str text, div text, start int, nth int) - Call this function to return the right part of a string
+o plvstr.rpart(str text, div text, start int)          - Call this function to return the right part of a string
+o plvstr.rpart(str text, div text)                     - Call this function to return the right part of a string
+o plvstr.lstrip(str text, substr text, num int) - Call this function to remove characters from the beginning 
+o plvstr.lstrip(str text, substr text)          - Call this function to remove characters from the beginning 
+o plvstr.rstrip(str text, substr text, num int) - Call this function to remove characters from the end
+o plvstr.rstrip(str text, substr text)          - Call this function to remove characters from the end
+o plvstr.rvrs(str text, start int, _end int) - Reverse string or part of string
+o plvstr.rvrs(str text, start int)           - Reverse string or part of string
+o plvstr.rvrs(str text)                      - Reverse string or part of string
+o plvstr.left(str text, n int)  -  Returns firs num_in charaters. You can use negative num_in
+o plvstr.right(str text, n int) - Returns last num_in charaters. You can use negative num_ni
+
+o plvchr.nth(str text, n int) - Call this function to return the Nth character in a string
+o plvchr.first(str text)      - Call this function to return the first character in a string
+o plvchr.last(str text)       - Call this function to return the last character in a string
+o plvchr.is_blank(c int)  - Is blank
+o plvchr.is_blank(c text) - Is blank
+o plvchr.is_digit(c int)  - Is digit 
+o plvchr.is_digit(c text) - Is digit 
+o plvchr.is_quote(c int)  - Is quote
+o plvchr.is_quote(c text) - Is quote
+o plvchr.is_other(c int)  - Is other
+o plvchr.is_other(c text) - Is other
+o plvchr.is_letter(c int) - Is letter
+o plvchr.is_letter(c text) - Is letter
+o plvchr.char_name(c text) - Returns the name of the character to ascii code as a VARCHAR.
+o plvchr.quoted1(str text) - Quoted text between '''
+o plvchr.quoted2(str text) - Quoted text between '"'
+o plvchr.stripped(str text, char_in text) - Strips a string of all instances of the specified characters
+
 
 Others functions
 ================

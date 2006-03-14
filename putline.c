@@ -10,7 +10,7 @@
 #include "utils/array.h"
 #include "utils/lsyscache.h"
 
-#include "putline.h"
+#include "orafunc.h"
 
 static bool is_server_output = false;
 static bool is_enabled = false; 

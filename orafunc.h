@@ -1,7 +1,5 @@
-/*
- * I need identification of Pg version for diff API fce 
- * construct_md_array
- */
+#ifndef _ORAFUNC_
+#define _ORAFUNC_
 
 #include "catalog/catversion.h"
 
@@ -15,4 +13,16 @@
 #define PG_VERSION_81_COMPAT
 #else
 #define PG_VERSION_82_COMPAT
+#endif
+
+text* ora_substr(text *str, int start, int len, bool valid_length);
+text* ora_make_text(char *c);
+int   ora_instr(text *txt, text *pattern, int start, int nth);
+text* ora_clone_text(text *t);
+text* ora_make_text_fix(char *c, int n);
+
+
+
+
+
 #endif
