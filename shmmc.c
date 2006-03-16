@@ -7,6 +7,7 @@
 #include "postgres.h"
 #include "shmmc.h"
 #include "stdlib.h"
+#include "string.h"
 
 #define LIST_ITEMS  512
 
@@ -16,6 +17,11 @@ typedef struct {
 	bool dispossible;
 } list_item;
 
+typedef struct {
+	int list_c;
+	int max_size;
+	char *data;
+} mem_desc;
 
 #define MAX_SIZE 82688
 
@@ -26,20 +32,15 @@ static size_t asize[] = {
     2848,   4608,  7456, 12064, 
     19520, 31584, 51104, 82688};
 
-int list_c = 0;
+
+
+int *list_c = 0;
+list_item *list = NULL;
 size_t max_size;
 
-list_item *list;
+
 
 /* allign requested size */
-
-void
-show_memory()
-{
-	int i;
-	for (i = 0; i < list_c; i++)
-		elog(NOTICE, "%d %d", list[i].size, list[i].dispossible);
-}
 
 static int 
 ptr_comp(const void* a, const void* b)
@@ -53,18 +54,31 @@ ptr_comp(const void* a, const void* b)
 #define MOVE_CUR 1
 #define ADD_CUR  2
 
-void
+char *
+ora_sstrcpy(char *str)
+{
+	int len;
+	char *result;
+
+	len = strlen(str);
+	result = ora_salloc(len+1);
+	memcpy(result, str, len + 1);
+	
+	return result;
+}
+
+static void
 defragmentation()
 {
 	int i, w;
 	int state = MOVE_CUR;
 
-	qsort(list, list_c, sizeof(list_item), ptr_comp);
+	qsort(list, *list_c, sizeof(list_item), ptr_comp);
 	
     /* list strip -  every field have to check or move */
 
 	w = 0;
-	for (i = 0; i < list_c; i++)
+	for (i = 0; i < *list_c; i++)
 	{
 		if (state == MOVE_CUR)
 		{
@@ -80,12 +94,13 @@ defragmentation()
 			else
 			{
 				if (i != ++w)
-					memcpy(&list[w], &list[i], sizeof(list_item));;
+					memcpy(&list[w], &list[i], sizeof(list_item));
+				w += 1;
 				state = MOVE_CUR;
 			}
 		}
 	}
-	list_c = w + 1;(state == ADD_CUR ? 1:0);
+	*list_c = w + 1 + (state == ADD_CUR ? 1:0);
 
 }
 
@@ -102,14 +117,23 @@ allign_size(size_t size)
 }
 
 void 
-ora_sinit(void *ptr, size_t size)
+ora_sinit(void *ptr, size_t size, bool create)
 {
-	list = ptr;
-	list[0].size = size - sizeof(list_item)*LIST_ITEMS;;
-	list[0].first_byte_ptr = (char*)ptr + sizeof(list_item)*LIST_ITEMS;
-	list[0].dispossible = true;
-	list_c = 1;
-	max_size = size;
+	if (list == NULL)
+	{
+		mem_desc *m = (mem_desc*)ptr;
+		list = (list_item*)m->data;
+		list_c = &m->list_c;
+		max_size = m->max_size = size;
+
+		if (create)
+		{
+			list[0].size = size - sizeof(list_item)*LIST_ITEMS - sizeof(mem_desc);
+			list[0].first_byte_ptr = &m->data + sizeof(list_item)*LIST_ITEMS;
+			list[0].dispossible = true;
+			*list_c = 1;			
+		}
+	}
 }
 
 void*
@@ -131,7 +155,7 @@ ora_salloc(size_t size)
 	{
 
 		/* find first good free block */
-		for(i = 0; i < list_c; i++)
+		for(i = 0; i < *list_c; i++)
 			if (list[i].dispossible)
 			{
 				if (list[i].size == alligned_size)
@@ -150,7 +174,7 @@ ora_salloc(size_t size)
 		
 		/* if I haven't well block or free slot */
 
-		if (select == -1 || list_c == LIST_ITEMS)
+		if (select == -1 || *list_c == LIST_ITEMS)
 		{
 			defragmentation();
 			continue;
@@ -158,13 +182,13 @@ ora_salloc(size_t size)
 		
 		/* I have to divide block */
 		
-		list[list_c].size = list[select].size - alligned_size;
-		list[list_c].first_byte_ptr = (char*)list[select].first_byte_ptr + alligned_size;
-		list[list_c].dispossible = true;
+		list[*list_c].size = list[select].size - alligned_size;
+		list[*list_c].first_byte_ptr = (char*)list[select].first_byte_ptr + alligned_size;
+		list[*list_c].dispossible = true;
 		list[select].size = alligned_size;
 		list[select].dispossible = false;
 		ptr = list[select].first_byte_ptr;
-		list_c += 1;
+		*list_c += 1;
 		break;
 	}
 
@@ -175,7 +199,7 @@ void
 ora_sfree(void* ptr)
 {
 	int i;
-	for (i = 0; i < list_c; i++)
+	for (i = 0; i < *list_c; i++)
 		if (list[i].first_byte_ptr == ptr)
 		{
 			list[i].dispossible = true;

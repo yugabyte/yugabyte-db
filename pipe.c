@@ -5,16 +5,20 @@
 #include "utils/timestamp.h"
 #include "storage/lwlock.h"
 #include "miscadmin.h"
+#include "string.h"
+#include "lib/stringinfo.h"
+#include "orafunc.h"
 
 #include "shmmc.h"
 
 /*
- * First test version 0.0.1
+ * First test version 0.0.2
  * @ Pavel Stehule 2006
  */
 
 #define LOCALMSGSZ (4*1024)
-#define SHMEMMSGSZ (8*1024)
+#define SHMEMMSGSZ (30*1024)
+#define MAX_PIPES  30
 
 #ifndef GetNowFloat
 #ifdef HAVE_INT64_TIMESTAMP
@@ -27,339 +31,520 @@
 #define RESULT_DATA	0
 #define RESULT_WAIT	1
 
-Datum dbms_pipe_pack_message(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message(PG_FUNCTION_ARGS);
+Datum dbms_pipe_pack_message_text(PG_FUNCTION_ARGS);
+Datum dbms_pipe_unpack_message_text(PG_FUNCTION_ARGS);
 Datum dbms_pipe_send_message(PG_FUNCTION_ARGS);
 Datum dbms_pipe_receive_message(PG_FUNCTION_ARGS);
+Datum dbms_pipe_unique_session_name (PG_FUNCTION_ARGS);
 
-Datum __salloc(PG_FUNCTION_ARGS);
-Datum __sfree(PG_FUNCTION_ARGS);
-Datum __sdefrag(PG_FUNCTION_ARGS);
-Datum __sprint(PG_FUNCTION_ARGS);
-Datum __sinit(PG_FUNCTION_ARGS);
 
-PG_FUNCTION_INFO_V1(__salloc);
-PG_FUNCTION_INFO_V1(__sfree);
-PG_FUNCTION_INFO_V1(__sdefrag);
-PG_FUNCTION_INFO_V1(__sprint);
-PG_FUNCTION_INFO_V1(__sinit);
-
-typedef struct 
-{
-	bool dispos;
+typedef struct _queue_item {
 	void *ptr;
-} ptr_handle;
+	struct _queue_item *next_item;
+} queue_item;
 
-typedef struct 
-{
-    int unread;
-    int size;
-    int free;
-    char *carret;
-    char data[];
-} MultiLineBuffer;
 
-MultiLineBuffer *ibuffer = NULL;
-MultiLineBuffer *obuffer = NULL;
+typedef struct {
+	bool is_valid;
+	bool registered;
+	char *pipe_name;
+	struct _queue_item *items;
+	int count;
+	int limit;
+	int size;
+} pipe;
+
+#define NOT_INITIALIZED -1
+
+
+pipe* pipes = NULL;
+LWLockId shmem_lock = NOT_INITIALIZED;
+
+typedef struct {
+	size_t size;
+	int items_count;
+	char data;
+} message_buffer;
+
+
+typedef enum {
+	IT_NO_MORE_ITEMS = 0,
+	IT_NUMBER = 9, 
+	IT_VARCHAR = 11,
+	IT_DATE = 12,
+	IT_BYTEA = 23
+} message_data_type;
+
+typedef struct {
+	message_data_type type;
+	size_t size;
+	char data;
+} message_data_item;
+
 
 typedef struct
 {
-    LWLockId lock;
-    int size;
-    int count;
-    char data[];
-} ShmemBuffer;
+    LWLockId shmem_lock;
+	pipe *pipes;
+	size_t size;
+	char data[];
+} sh_memory;
 
-ShmemBuffer *sbuffer = NULL;
+message_buffer *output_buffer = NULL;
+message_buffer *input_buffer = NULL;
+
+message_data_item *writer = NULL;
+message_data_item *reader = NULL;
+
+static void 
+pack_field(message_buffer *message, message_data_item **writer,
+		   message_data_type type, int size, void *ptr)
+{
+	int l;
+	message_data_item *_wr = *writer;
+
+	l = size + sizeof(message_data_item);
+	if (message->size + l > LOCALMSGSZ-sizeof(message_buffer))
+		elog(ERROR, "Full output buffer");
+
+	if (_wr == NULL)
+		_wr = (message_data_item*)&message->data;
+
+	_wr->size = l;
+	_wr->type = type;
+	memcpy(&_wr->data, ptr, size);
+
+	message->size += l;
+	message->items_count +=1;
+
+	_wr = (message_data_item*)((char*)_wr + l);
+	*writer = _wr;
+}
 
 
-ptr_handle handles[10000];
+static void*
+unpack_field(message_buffer *message, message_data_item **reader, 
+			 message_data_type *type, size_t *size)
+{
+	void *ptr;
+	message_data_item *_rd = *reader;
 
-Datum 
-__sinit(PG_FUNCTION_ARGS)
+	if (_rd == NULL)
+		_rd = (message_data_item*)&message->data;
+	if ((message->items_count)--)
+	{
+		*size = _rd->size - sizeof(message_data_type);
+		*type = _rd->type;
+		ptr  = (void*)&_rd->data;
+
+		_rd += _rd->size;
+		*reader = message->items_count > 0 ? _rd : NULL;
+
+		return ptr;
+	}
+
+	return NULL;
+}
+
+/* na zacatek jedu jednoduse pres pole, predelat do hashe */
+
+/*
+ * Add ptr to queue. If pipe doesn't exist, regigister new pipe
+ */
+
+static bool
+lock_shmem(size_t size, int max_pipes, bool reset)
 {
 	int i;
 	bool found;
-	void *ptr;
 
-	for (i = 0; i < 10000; i++)
+	sh_memory *sh_mem;
+
+	if (pipes == NULL)
 	{
-		handles[i].dispos = true;
-		handles[i].ptr = NULL;
+		sh_mem = ShmemInitStruct("dbms_pipe",size,&found);
+		if (sh_mem == NULL)
+			elog(ERROR, "Can't to access shared memory");
+
+		if (!found)
+		{
+			shmem_lock = sh_mem->shmem_lock = LWLockAssign();
+			LWLockAcquire(sh_mem->shmem_lock, LW_EXCLUSIVE);
+			sh_mem->size = size - sizeof(sh_memory);
+			ora_sinit(&sh_mem->data, size, true);
+			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(pipe));
+			
+			for(i = 0; i < max_pipes; i++)
+				pipes[i].is_valid = false;
+		}
+		else if (sh_mem->shmem_lock != 0)
+		{
+			pipes = sh_mem->pipes;
+			shmem_lock = sh_mem->shmem_lock;
+			LWLockAcquire(sh_mem->shmem_lock, LW_EXCLUSIVE);
+			ora_sinit(&sh_mem->data, sh_mem->size, reset); 
+		}
 	}
+	else
+		LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
+	
+	if (reset && pipes == NULL)
+		elog(ERROR, "Can't purge memory");
 
-	ptr = ShmemInitStruct("test_shmmc",20*1024,&found);
-	ora_sinit(ptr, 20*1024);
-	PG_RETURN_VOID();
+	return pipes != NULL;	
 }
 
-Datum
-__sprint(PG_FUNCTION_ARGS)
-{
-	show_memory();
-	PG_RETURN_VOID();
-}	
-
-Datum
-__sdefrag(PG_FUNCTION_ARGS)
-{
-	defragmentation();
-	PG_RETURN_VOID();
-}
-
-Datum
-__salloc(PG_FUNCTION_ARGS)
+static pipe*
+find_pipe(char* pipe_name, bool* created, bool only_check)
 {
 	int i;
-	for (i = 0; i < 10000; i++)
-		if (handles[i].dispos)
+	for (i = 0; i < MAX_PIPES; i++)
+		if (strcmp(pipe_name, pipes[i].pipe_name) == 0 && pipes[i].is_valid)
+			return &pipes[i];
+
+	if (only_check)
+		return NULL;
+
+	for (i = 0; i < MAX_PIPES; i++)
+		if (!pipes[i].is_valid)
 		{
-			if(NULL == (handles[i].ptr = ora_salloc(PG_GETARG_INT32(0))))
-				elog(ERROR, "Out of memory");
-			handles[i].dispos = false;
-			PG_RETURN_INT32(i);
+			if (NULL != (pipes[i].pipe_name = ora_sstrcpy(pipe_name)))
+			{
+				pipes[i].is_valid = true;
+				pipes[i].registered = false;
+				pipes[i].count = 0;
+				pipes[i].limit = -1;
+
+				return &pipes[i];
+			}
+			else
+				return NULL;
 		}
-	elog(ERROR, "All handlers are used");
-	PG_RETURN_NULL();
+	
+	return NULL;	
 }
 
-Datum
-__sfree(PG_FUNCTION_ARGS)
+static bool
+new_last(pipe *p, void *ptr)
 {
-	int i = PG_GETARG_INT32(0);
+	queue_item *q, *aux_q;
 
-	if (handles[i].dispos)
-		elog(ERROR, "Access unused handler");
-	ora_sfree(handles[i].ptr);
-	handles[i].dispos = true;
-	handles[i].ptr = NULL;
+	if (p->count >= p->limit)
+		return false;
+
+	if (p->items == NULL)
+	{
+		if (NULL == (p->items = ora_salloc(sizeof(queue_item))))
+			return false;
+		p->items->next_item = NULL;
+		p->items->ptr = ptr;
+		return true;
+	}
+
+	q = p->items;
+	while (q->next_item != NULL)
+		q = q->next_item;
+	
+	if (NULL == (aux_q = ora_salloc(sizeof(queue_item))))
+		return false;
+
+	q->next_item = aux_q;
+	aux_q->next_item = NULL;
+	aux_q->ptr = ptr;
+
+	p->items += 1;
+	
+	return true;
+}
+
+
+static void*
+remove_first(pipe *p)
+{
+	struct _queue_item *q;
+	void *ptr;
+
+	if (NULL != (q = p->items))
+	{
+		p->items -= 1;
+		ptr = q->ptr;
+		p->items = q->next_item;
+		
+		ora_sfree(p);
+		if (p->items == NULL && !p->registered)
+		{
+			ora_sfree(p->pipe_name);
+			p->is_valid = false;
+		}
+		return ptr;
+	}
+
+	return NULL;
+}
+
+/* copy message to local memory, if exists */
+
+static message_buffer*
+get_from_pipe(char *name)
+{
+	pipe *p;
+	bool created;
+	message_buffer *shm_msg;
+	message_buffer *result = NULL;
+
+	if (!lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+		return NULL;
+
+	if (NULL != (p = find_pipe(name, &created,false)))
+	{
+		if (!created)
+		{
+			if (NULL != (shm_msg = remove_first(p)))
+				p->size -= result->size;
+		
+
+			if (shm_msg != NULL)
+			{
+				result = (message_buffer*) MemoryContextAlloc(TopMemoryContext, shm_msg->size);
+				memcpy(result, shm_msg, shm_msg->size);
+				ora_sfree(shm_msg);
+			}
+		}
+	}
+
+	LWLockRelease(shmem_lock);
+	return result;
+}
+
+/*
+ * if ptr is null, then only register pipe
+ */
+
+static bool
+add_to_pipe(char *name, message_buffer *ptr, int limit, bool limit_is_valid)
+{
+	pipe *p;
+	bool created;
+	bool result = false;
+	message_buffer *sh_ptr;
+	
+	if (!lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+		return false;
+		
+	for (;;)
+	{
+		if (NULL != (p = find_pipe(name, &created, false)))
+		{
+			if (created)
+				p->registered = ptr == NULL;
+		
+			if (limit_is_valid && (created || (p->limit < limit)))
+				p->limit = limit;
+		
+			if (ptr != NULL)
+			{
+				if (NULL != (sh_ptr = ora_salloc(ptr->size)))
+				{
+					memcpy(sh_ptr,ptr,ptr->size);
+					if (new_last(p, sh_ptr))
+					{
+						p->size += ptr->size;
+						result = true;
+						break;
+					}
+					else
+						
+						ora_sfree(sh_ptr);
+				}
+				if (created)
+				{
+					/* I created new pipe, but haven't memory for new value */
+					ora_sfree(p->pipe_name);
+					p->is_valid = false;
+					result = false;
+				}	
+			}
+			else
+				result = true;
+		}
+		break;
+	}
+	LWLockRelease(shmem_lock);
+	return result;
+}
+
+static void
+remove_pipe(char *pipe_name, bool purge)
+{
+	pipe *p;
+	bool created;
+
+	if (NULL != (p = find_pipe(pipe_name, &created, true)))
+	{
+		queue_item *q = p->items;
+		while (q != NULL)
+		{
+			queue_item *aux_q;
+
+			aux_q = q->next_item;
+			if (q->ptr)
+				ora_sfree(q->ptr);
+			ora_sfree(q);
+		}
+		p->items = NULL;
+		p->size = 0;
+		p->count = 0;
+		if (!purge)
+		{
+			ora_sfree(p->pipe_name);
+			p->is_valid = false;
+		}
+	}
+}
+
+
+PG_FUNCTION_INFO_V1 (dbms_pipe_pack_message);
+
+Datum
+dbms_pipe_pack_message_text(PG_FUNCTION_ARGS)
+{
+	text *str = PG_GETARG_TEXT_P(0);
+   
+	if (output_buffer == NULL)
+	{
+		output_buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ);
+		output_buffer->size = 0;
+		output_buffer->items_count = 0;
+		writer = (message_data_item*) &output_buffer->data;
+	}	
+
+	pack_field(output_buffer, &writer, IT_VARCHAR, 
+			   VARSIZE(str) - VARHDRSZ, VARDATA(str)); 
 	PG_RETURN_VOID();
 }
 
 
-static ShmemBuffer*
-initSharedBuffer(int size)
+Datum
+dbms_pipe_unpack_message_text(PG_FUNCTION_ARGS)
 {
-    ShmemBuffer *result;
-    bool found;
-    
-    result = (ShmemBuffer*) ShmemInitStruct("dbms_pipe",size,&found);
-    if (!found)
-    {
-        result->lock = LWLockAssign();
-        result->size = 0;
-        result->count = 0;
-    } else if (result->lock == 0)
+	text *result;
+	void *ptr; 
+	message_data_type type; 
+	size_t size;
+
+	if (input_buffer == NULL)
+		PG_RETURN_NULL();
+
 	result = NULL;
-
-    return result;
-}
-
-static int
-loc_to_shm(MultiLineBuffer *buf, ShmemBuffer **sbuf)
-{
-    if (buf != NULL)
-    {
-	if (*sbuf == NULL)
-	    *sbuf = initSharedBuffer(SHMEMMSGSZ);
-	/* wait for lock */
-	if (*sbuf == NULL)
-	    return RESULT_WAIT;
-	    
-	LWLockAcquire((*sbuf)->lock, LW_EXCLUSIVE);
-	if ((*sbuf)->count > 0)
+	if (NULL != (ptr = unpack_field(input_buffer, &reader, 
+									&type, &size)))
 	{
-	    LWLockRelease((*sbuf)->lock);
-	    return RESULT_WAIT;
+		switch (type)
+		{
+			case IT_VARCHAR:
+				result = ora_make_text_fix((char*)ptr, size);
+				break;
+			default:
+				result = NULL;
+		}
 	}
-	memcpy((*sbuf)->data, buf, buf->size + sizeof(MultiLineBuffer));
-	(*sbuf)->count = 1;
-	(*sbuf)->size = buf->size + sizeof(MultiLineBuffer);
-	buf->unread = 0;
-	buf->free = LOCALMSGSZ;
-	buf->carret = buf->data;
-	buf->size = 0;
-	LWLockRelease((*sbuf)->lock);
-    }
-    return RESULT_DATA;
+	if (input_buffer->items_count == 0)
+	{
+		pfree(input_buffer);
+		input_buffer = NULL;
+	}
+	if (result != NULL)
+		PG_RETURN_TEXT_P(result);
+	else
+		PG_RETURN_NULL();			
 }
 
-static int
-shm_to_loc(MultiLineBuffer **buf, ShmemBuffer **sbuf)
-{
-    if (*sbuf == NULL)
-	*sbuf = initSharedBuffer(SHMEMMSGSZ);
 
-    /* wai for lock */
-    if (*sbuf == NULL)
-	return RESULT_WAIT;
-	
-    if (*buf == NULL)
-    {
-	*buf = (MultiLineBuffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ+sizeof(MultiLineBuffer));
-	(*buf)->unread = 0;
-	(*buf)->free = LOCALMSGSZ;
-	(*buf)->carret = (*buf)->data;
-	(*buf)->size = 0;
-    }
-    LWLockAcquire((*sbuf)->lock, LW_EXCLUSIVE);
-    if ((*sbuf)->count == 0)
-    {
-	LWLockRelease((*sbuf)->lock);
-	return RESULT_WAIT;
-    }
-    
-    memcpy((*buf), (*sbuf)->data, (*sbuf)->size);
-    (*buf)->carret = (*buf)->data;
-    (*sbuf)->count = 0;
-    (*sbuf)->size = 0;
-    LWLockRelease((*sbuf)->lock);
-    return RESULT_DATA;
-}
+#define WATCH_PRE(t, et, c) \
+et = GetNowFloat() + (float8)t; c = 0; \
+for (;;) \
+{ \
+if (GetNowFloat() > et) \
+PG_RETURN_INT32(RESULT_WAIT); \
+if (cycle++ % 100 == 0) \
+   CHECK_FOR_INTERRUPTS(); 
 
-PG_FUNCTION_INFO_V1(dbms_pipe_receive_message);
+#define WATCH_POST() \
+     pg_usleep(10000L); \
+   }
+
+
+PG_FUNCTION_INFO_V1 (dbms_pipe_receive_message);
 
 Datum
 dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 {
-    //char *pipe_name = PG_GETARG_CSTRING(0); 
+    char *pipe_name = PG_GETARG_CSTRING(0); 
     int timeout = PG_GETARG_INT32(1);
     int cycle = 0;
     float8 endtime;
-    int result;
-    
-    endtime = GetNowFloat() + (float8)(timeout);
-    for(;;)
-    {
-	if (GetNowFloat() > endtime)
-	    PG_RETURN_INT32(RESULT_WAIT);
-	if (cycle++ % 100 == 0)
-	    CHECK_FOR_INTERRUPTS();
-	result = shm_to_loc(&ibuffer,&sbuffer);
-	if (result == RESULT_DATA)
-	    break;
-	pg_usleep(10000L);
-    }
-    PG_RETURN_INT32(RESULT_DATA);
+
+	if (input_buffer != NULL)
+		pfree(input_buffer);
+	input_buffer = NULL;
+	reader = NULL;
+  
+    WATCH_PRE(timeout, endtime, cycle);	
+	if (NULL != (input_buffer = get_from_pipe(pipe_name)))
+	{
+		reader = (message_data_item*)&input_buffer->data;
+		break;
+	}
+	WATCH_POST();
+	PG_RETURN_INT32(RESULT_DATA);
 }
 
-PG_FUNCTION_INFO_V1(dbms_pipe_send_message);
 
 Datum
 dbms_pipe_send_message(PG_FUNCTION_ARGS)
 {
-    //char *pipe_name = PG_GETARG_CSTRING(0); 
+    char *pipe_name = PG_GETARG_CSTRING(0); 
     int timeout = PG_GETARG_INT32(1);
+    int limit = PG_GETARG_INT32(2);
+	bool valid_limit = true;
+
     int cycle = 0;
     float8 endtime;
-    int result;
-    
-    endtime = GetNowFloat() + (float8)(timeout);
-    for(;;)
-    {
-	if (GetNowFloat() > endtime)
-	    PG_RETURN_INT32(RESULT_WAIT);
-	if (cycle++ % 100 == 0)
-	    CHECK_FOR_INTERRUPTS();
-	result = loc_to_shm(obuffer,&sbuffer);
-	if (result == RESULT_DATA)
-	    break;
-	pg_usleep(10000L);
-    }
-    PG_RETURN_INT32(RESULT_DATA);
+
+	if (PG_ARGISNULL(2))
+		valid_limit = false;
+
+	if (input_buffer != NULL)
+		pfree(input_buffer);
+	input_buffer = NULL;
+	reader = NULL;
+  
+    WATCH_PRE(timeout, endtime, cycle);	
+	if (add_to_pipe(pipe_name, output_buffer, 
+					limit, valid_limit))
+		break;
+	WATCH_POST();
+
+	output_buffer->items_count = 0;
+	output_buffer->size = 0;
+	writer = (message_data_item*)&output_buffer->data;
+
+	PG_RETURN_INT32(RESULT_DATA);
 }
 
 
-static void
-loc_msg_add(MultiLineBuffer **buf, char *str)
-{
-    int l;
-    if (*buf == NULL)
-    {
-	*buf = (MultiLineBuffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ+sizeof(MultiLineBuffer));
-	(*buf)->unread = 0;
-	(*buf)->free = LOCALMSGSZ;
-	(*buf)->carret = (*buf)->data;
-	(*buf)->size = 0;
-    }
-   
-    l = strlen(str) + 1;
-    if ((*buf)->free < l)
-	elog(ERROR, "Local buffer is full");
-    memcpy((*buf)->data+(*buf)->size, str, l);
-
-    (*buf)->size += l;
-    (*buf)->unread += l;
-    (*buf)->free -= l;
-}
-
-static char*
-loc_msg_mv(MultiLineBuffer *buf)
-{
-    if (buf != NULL)
-    {
-	if (buf->unread > 0)
-	{
-	    char *rv = buf->carret;
-	    int l = strlen(buf->carret) + 1;
-	    buf->carret += l;
-	    if ((buf->unread -= l) == 0)
-	    {
-		buf->carret = buf->data;
-		buf->size = 0;
-		buf->free = LOCALMSGSZ;
-		buf->unread = 0;
-	    } 
-//	    else if (((buf->carret += l) - buf->data) > LOCALMSGSZ/4)
-//	    {
-//		memcpy(buf->data,buf->carret,buf->unread);
-//		buf->carret = buf->data;
-//		buf->size = buf->unread;
-//	    }
-
-	    return rv;
-	}
-    }
-    return NULL;
-}
-
-PG_FUNCTION_INFO_V1(dbms_pipe_unpack_message);
+PG_FUNCTION_INFO_V1(dbms_pipe_unique_session_name);
 
 Datum
-dbms_pipe_unpack_message(PG_FUNCTION_ARGS)
+dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 {
-    char *str;
-    text *result;
-    int l;
-    
-    str = loc_msg_mv(ibuffer);
-    if (str != NULL)
-    {
-	l = strlen(str);
-	result = (text*) palloc(l + VARHDRSZ);
-	memcpy(VARDATA(result), str, l);
-	VARATT_SIZEP(result) = l + VARHDRSZ;
+	StringInfoData strbuf;
+	text *result;
+
+	initStrngInfo(&strbuf);
+
+	appendStringInfo(&strbuf,"PG$PIPE$%d",MyProcPid);
+	result = ora_make_text_fix(&strbuf.data, strbuf.len);
+	pfree(strbuf.data);
 	PG_RETURN_TEXT_P(result);
-    }
-    PG_RETURN_NULL();
 }
-
-PG_FUNCTION_INFO_V1(dbms_pipe_pack_message);
-
-Datum
-dbms_pipe_pack_message(PG_FUNCTION_ARGS)
-{
-    int l;
-    char *str;
-    
-    text *txt = PG_GETARG_TEXT_P(0);
-    l = VARSIZE(txt) - VARHDRSZ;
-    str = (char*) palloc(l + 1);
-    memcpy(str, VARDATA(txt), l);
-    str[l] = '\0';
-    
-    loc_msg_add(&obuffer, str);
-    PG_RETURN_VOID();
-}
-
-
