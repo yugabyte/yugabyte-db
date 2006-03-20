@@ -1,5 +1,5 @@
-#ifndef _ORAFUNC_
-#define _ORAFUNC_
+#ifndef __ORAFUNC__
+#define __ORAFUNC__
 
 #include "catalog/catversion.h"
 
@@ -17,12 +17,8 @@
 
 text* ora_substr(text *str, int start, int len, bool valid_length);
 text* ora_make_text(char *c);
+text* ora_make_text_fix(char *c, int n);
 int   ora_instr(text *txt, text *pattern, int start, int nth);
 text* ora_clone_text(text *t);
-text* ora_make_text_fix(char *c, int n);
-
-
-
-
 
 #endif

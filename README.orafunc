@@ -90,19 +90,38 @@ get_line, get_lines. This package really implements line's queue in session's me
 
 Package dbms_pipe
 =================
-This packege is emulation of Oracle's package dbms_pipe. It's very simple and
-basic now. Use only one pipe with size one.
+This packege is emulation of Oracle's package dbms_pipe. It provides 
+inter session comunication. You can send, read any message with or without 
+waiting, can read system table about current pipes, can set pipe as 
+private or public, can use explicit, implicit pipes. Max count of pipes is
+50. For transport messages is used shared memory buffer.
 
-try:
+-- Session A
+select dbms_pipe.create_pipe('my_pipe',10,true); -- explicit pipe creating
+select dbms_pipe.pack_message('neco je jinak');
+select dbms_pipe.pack_message('anything is else');
+select dbms_pipe.send_message('my_pipe',20,0); -- change limit and send without waiting
+select * from dbms_pipe.db_pipes; -- list of current pipes
 
-session A                            | session B
-----------------------------------------------------------
-pack_message('a');
-pack_message('b');
-send_message('blabla',1);
-                                        receive_message('blabla',1);
-                                        unpack_message();
-					unpack_message();
+-- Session B
+select dbms_pipe.receive_message('my_pipe',1); -- wait max 1 sec for message
+select dbms_pipe.next_item_type(); -- -> 11, text
+select dbms_pipe.unpack_message_text();
+select dbms_pipe.next_item_type(); -- -> 11, text
+select dbms_pipe.unpack_message_text();
+select dbms_pipe.next_item_type(); -- -> 0, no more items
+select dbms_pipe.remove_pipe('my_pipe');
+
+Diff to Oracle:
+  o limit for pipe isn't in bytes but in elements in pipe
+  o can send message without waiting
+  o cam send empty message
+  o next_item_type knows TIMESTAMP -> 13
+  o PostgreSQL don't know RAW format, use BYTEA
+
+Functions:
+----------
+
 					
 					
 Package PLVdate
@@ -233,6 +252,14 @@ This module contains implementation of functions: concat, nvl, nvl2.
 
 Atention! concat isn't strict function. concat('a',null) -> 'a'
 
+
+ToDo:
+  o support for multibyte encoding for string functions
+  o better error messages
+  o better documentation
+  o regress tests
+  o comments on functions
+  o better seralization in dbms_pipe (via _send and _recv functions)
 
 This module is released under BSD licence. 
 

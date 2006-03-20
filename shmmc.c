@@ -1,9 +1,10 @@
 /*
  *
- * Shared memory controll
+ * Shared memory control - based on alocating chunks alligned on
+ * asize array (fibonachi), and dividing free bigger block.
  *
  */
-
+ 
 #include "postgres.h"
 #include "shmmc.h"
 #include "stdlib.h"
@@ -33,11 +34,9 @@ static size_t asize[] = {
     19520, 31584, 51104, 82688};
 
 
-
 int *list_c = 0;
 list_item *list = NULL;
 size_t max_size;
-
 
 
 /* allign requested size */
@@ -64,6 +63,20 @@ ora_sstrcpy(char *str)
 	result = ora_salloc(len+1);
 	memcpy(result, str, len + 1);
 	
+	return result;
+}
+
+char *
+ora_scstring(text *str)
+{
+	int len;
+	char *result;
+
+	len = VARSIZE(str) - VARHDRSZ;
+	result = ora_salloc(len+1);
+	memcpy(result, VARDATA(str), len);
+	result[len] = '\0';
+
 	return result;
 }
 
@@ -114,7 +127,14 @@ allign_size(size_t size)
 			return asize[i];
 
 	elog(ERROR, "Can't alloc block of size %d bytes.", size);
+	return 0;
 }
+
+/* 
+  inicialize shared memory. It works in two modes, create and no create.
+  No create is used for mounting shared memory buffer. Top of memory is
+  used for list_item array. 
+*/
 
 void 
 ora_sinit(void *ptr, size_t size, bool create)
@@ -122,7 +142,7 @@ ora_sinit(void *ptr, size_t size, bool create)
 	if (list == NULL)
 	{
 		mem_desc *m = (mem_desc*)ptr;
-		list = (list_item*)m->data;
+		list = (list_item*)&m->data;
 		list_c = &m->list_c;
 		max_size = m->max_size = size;
 
@@ -162,6 +182,7 @@ ora_salloc(size_t size)
 				{
 					list[i].dispossible = false;
 					ptr = list[i].first_byte_ptr;
+
 					return ptr;
 				}
 				
@@ -189,7 +210,7 @@ ora_salloc(size_t size)
 		list[select].dispossible = false;
 		ptr = list[select].first_byte_ptr;
 		*list_c += 1;
-		break;
+ 		break;
 	}
 
 	return ptr;
@@ -199,6 +220,7 @@ void
 ora_sfree(void* ptr)
 {
 	int i;
+
 	for (i = 0; i < *list_c; i++)
 		if (list[i].first_byte_ptr == ptr)
 		{
