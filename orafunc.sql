@@ -148,23 +148,137 @@ CREATE SCHEMA dbms_pipe;
 
 CREATE FUNCTION dbms_pipe.pack_message(text)
 RETURNS void
-AS '$libdir/orafunc','dbms_pipe_pack_message' 
+AS '$libdir/orafunc','dbms_pipe_pack_message_text' 
 LANGUAGE C VOLATILE STRICT;
 
-CREATE FUNCTION dbms_pipe.unpack_message()
+CREATE FUNCTION dbms_pipe.unpack_message_text()
 RETURNS text
-AS '$libdir/orafunc','dbms_pipe_unpack_message' 
-LANGUAGE C VOLATILE STRICT;
+AS '$libdir/orafunc','dbms_pipe_unpack_message_text' 
+LANGUAGE C VOLATILE;
 
-CREATE FUNCTION dbms_pipe.receive_message(cstring, int)
+CREATE FUNCTION dbms_pipe.receive_message(text, int)
 RETURNS int
 AS '$libdir/orafunc','dbms_pipe_receive_message' 
-LANGUAGE C VOLATILE STRICT;
+LANGUAGE C VOLATILE;
 
-CREATE FUNCTION dbms_pipe.send_message(cstring, int)
+CREATE FUNCTION dbms_pipe.receive_message(text)
+RETURNS int
+AS $$SELECT dbms_pipe.receive_message($1,NULL::int);$$
+LANGUAGE SQL VOLATILE;
+
+CREATE FUNCTION dbms_pipe.send_message(text, int, int)
 RETURNS int
 AS '$libdir/orafunc','dbms_pipe_send_message' 
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION dbms_pipe.send_message(text, int)
+RETURNS int
+AS $$SELECT dbms_pipe.send_message($1,$2,NULL);$$
+LANGUAGE SQL VOLATILE;
+
+CREATE FUNCTION dbms_pipe.send_message(text)
+RETURNS int
+AS $$SELECT dbms_pipe.send_message($1,NULL,NULL);$$
+LANGUAGE SQL VOLATILE;
+
+CREATE FUNCTION dbms_pipe.unique_session_name()
+RETURNS varchar
+AS '$libdir/orafunc','dbms_pipe_unique_session_name' 
 LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.__list_pipes()
+RETURNS SETOF RECORD
+AS '$libdir/orafunc','dbms_pipe_list_pipes' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE VIEW dbms_pipe.db_pipes 
+AS SELECT * FROM dbms_pipe.__list_pipes() AS (Name varchar, Items int, Size int, "limit" int, "private" bool, "owner" varchar);
+
+CREATE FUNCTION dbms_pipe.next_item_type()
+RETURNS int
+AS '$libdir/orafunc','dbms_pipe_next_item_type' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.create_pipe(text, int, bool)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_create_pipe' 
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION dbms_pipe.create_pipe(text, int)
+RETURNS void
+AS $$SELECT dbms_pipe.create_pipe($1,$2,false);$$
+LANGUAGE SQL VOLATILE;
+
+CREATE FUNCTION dbms_pipe.create_pipe(text)
+RETURNS void
+AS $$SELECT dbms_pipe.create_pipe($1,NULL,false);$$
+LANGUAGE SQL VOLATILE;
+
+CREATE FUNCTION dbms_pipe.reset_buffer()
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_reset_buffer' 
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION dbms_pipe.purge(text)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_purge' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.remove_pipe(text)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_remove_pipe' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.pack_message(date)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_pack_message_date' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.unpack_message_date()
+RETURNS date
+AS '$libdir/orafunc','dbms_pipe_unpack_message_date' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.pack_message(timestamp with time zone)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_pack_message_timestamp' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.unpack_message_timestamp()
+RETURNS timestamp with time zone
+AS '$libdir/orafunc','dbms_pipe_unpack_message_timestamp' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.pack_message(numeric)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_pack_message_number' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.unpack_message_number()
+RETURNS numeric
+AS '$libdir/orafunc','dbms_pipe_unpack_message_number' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.pack_message(integer)
+RETURNS void
+AS $$select dbms_pipe.pack_message($1::numeric);$$
+LANGUAGE SQL VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.pack_message(bigint)
+RETURNS void
+AS $$select dbms_pipe.pack_message($1::numeric);$$
+LANGUAGE SQL VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.pack_message(bytea)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_pack_message_bytea' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.unpack_message_bytea()
+RETURNS bytea
+AS '$libdir/orafunc','dbms_pipe_unpack_message_bytea' 
+LANGUAGE C VOLATILE STRICT;
+
 
 -- follow package PLVdate emulation
 
@@ -282,32 +396,6 @@ RETURNS void
 AS '$libdir/orafunc','plvdate_default_holydays'
 LANGUAGE C VOLATILE STRICT;
 
--- debug
-
-CREATE FUNCTION sh_init()
-RETURNS void
-AS '$libdir/orafunc','__sinit'
-LANGUAGE C VOLATILE STRICT;
-
-CREATE FUNCTION sh_print()
-RETURNS void
-AS '$libdir/orafunc','__sprint'
-LANGUAGE C VOLATILE STRICT;
-
-CREATE FUNCTION sh_alloc(int)
-RETURNS int
-AS '$libdir/orafunc','__salloc'
-LANGUAGE C VOLATILE STRICT;
-
-CREATE FUNCTION sh_sfree(int)
-RETURNS void
-AS '$libdir/orafunc','__sfree'
-LANGUAGE C VOLATILE STRICT;
-
-CREATE FUNCTION sh_defrag()
-RETURNS void
-AS '$libdir/orafunc','__sdefrag'
-LANGUAGE C VOLATILE STRICT;
 
 -- PLVstr package
 
@@ -439,6 +527,10 @@ CREATE FUNCTION plvstr.rvrs(str text)
 RETURNS text
 AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL STABLE STRICT;
+
+COMMENT ON FUNCTION plvstr.rvrs(text,int,int) IS 'Reverse string or part of string';
+COMMENT ON FUNCTION plvstr.rvrs(text,int) IS 'Reverse string or part of string';
+COMMENT ON FUNCTION plvstr.rvrs(text) IS 'Reverse string or part of string';
 
 DROP SCHEMA plvchr CASCADE;
 
