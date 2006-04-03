@@ -225,6 +225,7 @@ ora_sfree(void* ptr)
 		if (list[i].first_byte_ptr == ptr)
 		{
 			list[i].dispossible = true;
+			memset(list[i].first_byte_ptr, '#', list[i].size);
 			break;
 		}
 }

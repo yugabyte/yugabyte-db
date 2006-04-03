@@ -15,15 +15,13 @@
 #include "utils/numeric.h"
 
 #include "shmmc.h"
+#include "pipe.h"
 
 /*
  * First test version 0.0.9
  * @ Pavel Stehule 2006
  */
 
-#define LOCALMSGSZ (8*1024)
-#define SHMEMMSGSZ (30*1024)
-#define MAX_PIPES  30
 
 #ifndef GetNowFloat
 #ifdef HAVE_INT64_TIMESTAMP
@@ -129,8 +127,10 @@ typedef struct
 {
 	LWLockId shmem_lock;
 	pipe *pipes;
+	alert_event *events;
+	alert_lock *locks;
 	size_t size;
-	int sid;
+	unsigned int sid;
 	char data[];
 } sh_memory;
 
@@ -143,9 +143,11 @@ message_data_item *reader = NULL;
 
 pipe* pipes = NULL;
 LWLockId shmem_lock = NOT_INITIALIZED;
-int sid;                                 /* session id */
+unsigned int sid;                                 /* session id */
 Oid uid;
 
+extern alert_event *events;
+extern alert_lock  *locks;
 
 /*
  * write on writer size bytes from ptr
@@ -210,7 +212,7 @@ unpack_field(message_buffer *message, message_data_item **reader,
  */
 
 bool
-ora_lock_shmem(size_t size, int max_pipes, bool reset)
+ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool reset)
 {
 	int i;
 	bool found;
@@ -231,10 +233,28 @@ ora_lock_shmem(size_t size, int max_pipes, bool reset)
 			sh_mem->size = size - sizeof(sh_memory);
 			ora_sinit(&sh_mem->data, size, true);
 			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(pipe));
-			sid = sh_mem->sid = 1;
-			
+			sid = sh_mem->sid = 1;			
 			for(i = 0; i < max_pipes; i++)
 				pipes[i].is_valid = false;
+
+			events = sh_mem->events = ora_salloc(max_events*sizeof(alert_event));
+			locks = sh_mem->locks = ora_salloc(max_locks*sizeof(alert_lock));
+
+
+			elog(NOTICE, "inicializace pameti");
+			for(i = 0; i < max_events; i++)
+			{
+				events[i].event_name = NULL;
+				events[i].max_receivers = 0;
+				events[i].receivers = NULL;
+				events[i].messages = NULL;
+			}
+			for (i = 0; i < max_locks; i++)
+			{
+				locks[i].sid = -1;
+				locks[i].echo = NULL;
+			}
+												 
 		}
 		else if (sh_mem->shmem_lock != 0)
 		{
@@ -243,13 +263,18 @@ ora_lock_shmem(size_t size, int max_pipes, bool reset)
 			LWLockAcquire(sh_mem->shmem_lock, LW_EXCLUSIVE);
 			ora_sinit(&sh_mem->data, sh_mem->size, reset);
 			sid = ++(sh_mem->sid);
+			events = sh_mem->events;
+			locks = sh_mem->locks;
 		}
 	}
 	else
+	{
 		LWLockAcquire(shmem_lock, LW_EXCLUSIVE);
-	
+	}
+/*
 	if (reset && pipes == NULL)
 		elog(ERROR, "Can't purge memory");
+*/
 
 	return pipes != NULL;	
 }
@@ -381,7 +406,7 @@ get_from_pipe(text *pipe_name, bool *found)
 	message_buffer *shm_msg;
 	message_buffer *result = NULL;
 
-	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 		return NULL;
 
 	if (NULL != (p = find_pipe(pipe_name, &created,false)))
@@ -417,7 +442,7 @@ add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid
 	bool result = false;
 	message_buffer *sh_ptr;
 
-	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 		return false;
 		
 	for (;;)
@@ -726,31 +751,30 @@ pg_usleep(10000L); \
 Datum
 dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 {
-    text *pipe_name = PG_GETARG_TEXT_P(0); 
-    int timeout = PG_GETARG_INT32(1);
-    int cycle = 0;
-    float8 endtime;
+	text *pipe_name = PG_GETARG_TEXT_P(0); 
+	int timeout = PG_GETARG_INT32(1);
+	int cycle = 0;
+	float8 endtime;
 	bool found = false;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "Pipe name is NULL");
-
 	if (PG_ARGISNULL(1))
 		timeout = ONE_YEAR;
 
 	if (input_buffer != NULL)
 		pfree(input_buffer);
-
+	
 	input_buffer = NULL;
 	reader = NULL;
   
-    WATCH_PRE(timeout, endtime, cycle);	
+	WATCH_PRE(timeout, endtime, cycle);	
 	if (NULL != (input_buffer = get_from_pipe(pipe_name, &found)))
 	{
 		reader = (message_data_item*)&input_buffer->data;
 		break;
 	}
-	/* found empty message */
+/* found empty message */
 	if (found)
 		break;
 
@@ -762,17 +786,17 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_send_message(PG_FUNCTION_ARGS)
 {
-    text *pipe_name = PG_GETARG_TEXT_P(0); 
-    int timeout = PG_GETARG_INT32(1);
-    int limit = PG_GETARG_INT32(2);
+	text *pipe_name = PG_GETARG_TEXT_P(0); 
+	int timeout = PG_GETARG_INT32(1);
+	int limit = PG_GETARG_INT32(2);
 	bool valid_limit = true;
 
-    int cycle = 0;
-    float8 endtime;
+	int cycle = 0;
+	float8 endtime;
 
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "Pipe name is NULL");
-
+	
 	if (output_buffer == NULL)
 	{
 		output_buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ);
@@ -791,7 +815,7 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 
 	input_buffer = NULL;
 	reader = NULL;
-	
+
 	WATCH_PRE(timeout, endtime, cycle);	
 	if (add_to_pipe(pipe_name, output_buffer, 
 					limit, valid_limit))
@@ -817,7 +841,7 @@ dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 	int timeout = 10;
 
 	WATCH_PRE(timeout, endtime, cycle);	
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 		initStringInfo(&strbuf);
 		appendStringInfo(&strbuf,"PG$PIPE$%d$%d",sid, MyProcPid);
@@ -849,12 +873,12 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 	int timeout = 10;	
 
 	if (SRF_IS_FIRSTCALL ())
-    {
+{
 		MemoryContext  oldcontext;
 		bool has_lock = false;
 
 		WATCH_PRE(timeout, endtime, cycle);	
-		if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+		if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 		{
 			has_lock = true;
 			break;
@@ -974,7 +998,7 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 	is_private = PG_ARGISNULL(2) ? false : PG_GETARG_BOOL(2);
 
 	WATCH_PRE(timeout, endtime, cycle);	
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 		pipe *p;
 		if (NULL != (p = find_pipe(pipe_name, &created, false)))
@@ -1042,7 +1066,7 @@ dbms_pipe_purge (PG_FUNCTION_ARGS)
 	int timeout = 10;
 
 	WATCH_PRE(timeout, endtime, cycle);	
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 
 		remove_pipe(pipe_name, true);
@@ -1069,7 +1093,7 @@ Datum dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 	int timeout = 10;
 
 	WATCH_PRE(timeout, endtime, cycle);	
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 
 		remove_pipe(pipe_name, false);
