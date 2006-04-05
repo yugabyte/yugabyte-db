@@ -12,10 +12,13 @@
 
 #define LIST_ITEMS  512
 
+int context;
+
 typedef struct {
 	size_t size;
 	void* first_byte_ptr;
 	bool dispossible;
+	int16 context;
 } list_item;
 
 typedef struct {
@@ -37,6 +40,8 @@ static size_t asize[] = {
 int *list_c = 0;
 list_item *list = NULL;
 size_t max_size;
+
+int cycle = 0;
 
 
 /* allign requested size */
@@ -60,8 +65,8 @@ ora_sstrcpy(char *str)
 	char *result;
 
 	len = strlen(str);
-	result = ora_salloc(len+1);
-	memcpy(result, str, len + 1);
+	if (NULL != (result = ora_salloc(len+1)))
+		memcpy(result, str, len + 1);
 	
 	return result;
 }
@@ -73,10 +78,11 @@ ora_scstring(text *str)
 	char *result;
 
 	len = VARSIZE(str) - VARHDRSZ;
-	result = ora_salloc(len+1);
-	memcpy(result, VARDATA(str), len);
-	result[len] = '\0';
-
+	if (NULL != (result = ora_salloc(len+1)))
+	{
+		memcpy(result, VARDATA(str), len);
+		result[len] = '\0';
+	}
 	return result;
 }
 
@@ -93,6 +99,7 @@ defragmentation()
 	w = 0;
 	for (i = 0; i < *list_c; i++)
 	{
+		elog(NOTICE, "%d %d %d", list[i].dispossible, list[w].size, list[w].context);
 		if (state == MOVE_CUR)
 		{
 			if (i != w)
@@ -103,7 +110,10 @@ defragmentation()
 		else if (state == ADD_CUR)
 		{
 			if (list[i].dispossible)
+			{
+				elog(NOTICE, "success %d", list[w].size);
 				list[w].size += list[i].size;
+			}
 			else
 			{
 				if (i != ++w)
@@ -182,6 +192,7 @@ ora_salloc(size_t size)
 				{
 					list[i].dispossible = false;
 					ptr = list[i].first_byte_ptr;
+					list[i].context = context;
 
 					return ptr;
 				}
@@ -208,6 +219,7 @@ ora_salloc(size_t size)
 		list[*list_c].dispossible = true;
 		list[select].size = alligned_size;
 		list[select].dispossible = false;
+		list[select].context = context;
 		ptr = list[select].first_byte_ptr;
 		*list_c += 1;
  		break;
@@ -221,10 +233,20 @@ ora_sfree(void* ptr)
 {
 	int i;
 
+	if (cycle++ % 100 == 0)
+	{
+		size_t suma = 0;
+		for (i = 0; i < *list_c; i++)
+			if (list[i].dispossible)
+				suma += list[i].size;
+		elog(NOTICE, "=============== FREE MEM REPORT === %10d ================", suma);
+	}
+
 	for (i = 0; i < *list_c; i++)
 		if (list[i].first_byte_ptr == ptr)
 		{
 			list[i].dispossible = true;
+			list[i].context = -1;
 			memset(list[i].first_byte_ptr, '#', list[i].size);
 			break;
 		}

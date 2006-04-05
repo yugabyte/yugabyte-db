@@ -677,3 +677,7 @@ RETURNS record
 AS 'MODULE_PATHNAME','dbms_alert_waitone'
 LANGUAGE C VOLATILE;
 
+CREATE FUNCTION dbms_alert.set_defaults(sensitivity float8)
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_alert_set_defaults'
+LANGUAGE C VOLATILE;

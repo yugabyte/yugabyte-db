@@ -1,6 +1,8 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "string.h"
+#include "storage/lwlock.h"
+#include "miscadmin.h"
 
 #include "pipe.h"
 #include "shmmc.h"
@@ -24,8 +26,20 @@ PG_FUNCTION_INFO_V1(dbms_alert_waitone);
 
 
 extern unsigned char sid;
-float8 sensitivity = 5.0;
+float8 sensitivity = 250.0;
 extern LWLockId shmem_lock;
+extern int context;
+
+#ifndef GetNowFloat
+#ifdef HAVE_INT64_TIMESTAMP
+#define GetNowFloat()   ((float8) GetCurrentTimestamp() / 1000000.0)
+#else
+#define GetNowFloat()   GetCurrentTimestamp()
+#endif
+#endif
+
+#define TDAYS (1000*24*3600)
+
 
 /* 
  * There are maximum 30 events and 255 colaborated sessions
@@ -86,6 +100,20 @@ textcmpm(text *txt, char *str)
 
 
 /*
+ *  alloc shared memory, raise exception if not
+ */
+
+static void*
+salloc(size_t size)
+{
+	void* result;
+	if (NULL == (result = ora_salloc(size)))
+		elog(ERROR, "Out of shared memory");
+
+	return result;
+}
+
+/*
  * find or create event rec
  *
  */
@@ -129,6 +157,7 @@ find_event(text *event_name, bool create, int *event_id)
 {
 	int i;
 
+	context = 0;
 
 	for (i = 0; i < MAX_EVENTS;i++)
 	{
@@ -145,10 +174,13 @@ find_event(text *event_name, bool create, int *event_id)
 		for(i=0; i < MAX_EVENTS;i++)
 			if (events[i].event_name == NULL)
 			{
-				events[i].event_name = ora_scstring(event_name);
+				if (NULL == (events[i].event_name = ora_scstring(event_name)))
+					elog(ERROR, "Out of memory");
+
 				events[i].max_receivers = 0;
 				events[i].receivers = NULL;
 				events[i].messages = NULL;
+				events[i].receivers_number = 0;
 				
 				if (event_id != NULL)
 					*event_id = i;
@@ -169,6 +201,8 @@ register_event(text *event_name)
 	int first_free;
 	int i;
 
+	context = 1;
+
 	find_lock(sid, true);
 	ev = find_event(event_name, true, NULL);
 	
@@ -186,15 +220,16 @@ register_event(text *event_name)
 		if (ev->max_receivers + 16 > MAX_LOCKS)
 			elog(ERROR,"Too much colaborating sessions");
 
-		if (NULL == (new_receivers = (int*)ora_salloc((ev->max_receivers + 16)*sizeof(int))))
-			elog(ERROR, "Out of memory");
+		new_receivers = (int*)salloc((ev->max_receivers + 16)*sizeof(int));
 			
 		for (i = 0; i < ev->max_receivers + 16; i++)
+		{
 			if (i < ev->max_receivers)
 				new_receivers[i] = ev->receivers[i];
 			else
 				new_receivers[i] = NOT_USED;
-		
+		}		
+
 		ev->max_receivers += 16;
 		ora_sfree(ev->receivers);
 		ev->receivers = new_receivers;
@@ -259,12 +294,14 @@ remove_receiver(message_item *msg, int sid)
 			found = true;
 		}
 		else if (msg->receivers[i] != NOT_USED)
+		{
+	   
 			find_other = true;
-
+		}
 		if (found && find_other)
 			break;
 	}
-	
+
 	return find_other;
 }
 
@@ -407,11 +444,28 @@ create_message(text *event_name, text *message)
 	{
 		if (ev->receivers_number > 0)
 		{
-			msg_item = ora_salloc(sizeof(message_item));
-			msg_item->receivers = ora_salloc( ev->receivers_number*sizeof(int));
+
+			context = 21;
+
+			msg_item = salloc(sizeof(message_item));
+	
+
+			context = 22;
+			msg_item->receivers = salloc( ev->receivers_number*sizeof(int));
+			msg_item->receivers_number = ev->receivers_number;
 			
-			msg_item->message = ora_scstring(message);
-			
+			context = 23;
+
+			if (message != NULL)
+			{
+				if (NULL == (msg_item->message = ora_scstring(message)))
+					elog(ERROR, "Out of shared memory");
+			}
+			else
+				msg_item->message = NULL;
+
+			context = 24;
+
 			msg_item->message_id = event_id;
 
 			for (i = j = 0; j < ev->max_receivers; j++)
@@ -422,8 +476,9 @@ create_message(text *event_name, text *message)
 						if (locks[k].sid == ev->receivers[j])
 						{
 							/* create echo */
-							
-							message_echo *echo = ora_salloc(sizeof(message_echo));
+						
+			context = 3;	
+							message_echo *echo = salloc(sizeof(message_echo));
 							echo->message = msg_item;
 							echo->message_id = event_id;
 							echo->next_echo = NULL;
@@ -465,7 +520,20 @@ create_message(text *event_name, text *message)
 	}	
 }
 
-#define MEMORY_INIT() ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false);
+
+#define WATCH_PRE(t, et, c) \
+et = GetNowFloat() + (float8)t; c = 0; \
+do \
+{ \
+
+#define WATCH_POST(t,et,c) \
+if (GetNowFloat() >= et) \
+break; \
+if (cycle++ % 100 == 0) \
+CHECK_FOR_INTERRUPTS(); \
+pg_usleep(10000L); \
+} while(t != 0);
+
 
 
 /*
@@ -480,11 +548,19 @@ Datum
 dbms_alert_register(PG_FUNCTION_ARGS)
 {
 	text *name = PG_GETARG_TEXT_P(0);
+	int cycle = 0;
+	float8 endtime;
+	float8 timeout = 2;
 
-	MEMORY_INIT();
-	register_event(name);
-
-	LWLockRelease(shmem_lock);	
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	{
+		register_event(name);
+		LWLockRelease(shmem_lock);
+		PG_RETURN_VOID();
+	}
+	WATCH_POST(timeout, endtime, cycle);
+	elog(ERROR, "Can't to lock shared memory");
 	PG_RETURN_VOID();
 }
 
@@ -505,17 +581,25 @@ dbms_alert_remove(PG_FUNCTION_ARGS)
 
 	alert_event *ev;
 	int ev_id;
+	int cycle = 0;
+	float8 endtime;
+	float8 timeout = 2;
 
-	MEMORY_INIT();
-	ev = find_event(name, false, &ev_id);
-	if (NULL != ev)
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
-
-		find_and_remove_message_item(ev_id, sid, 
+		ev = find_event(name, false, &ev_id);
+		if (NULL != ev)
+		{
+			find_and_remove_message_item(ev_id, sid, 
 									 false, true, true, NULL, NULL);
-		unregister_event(ev_id, sid);
-	}	
-
+			unregister_event(ev_id, sid);
+		}	
+		LWLockRelease(shmem_lock);
+		PG_RETURN_VOID();
+	}
+	WATCH_POST(timeout, endtime, cycle);
+	elog(ERROR, "Can't to lock shared memory");
 	PG_RETURN_VOID();
 }
 
@@ -532,20 +616,28 @@ Datum
 dbms_alert_removeall(PG_FUNCTION_ARGS)
 {
 	int i;
+	int cycle = 0;
+	float8 endtime;
+	float8 timeout = 2;
 
-	MEMORY_INIT();
-	for(i = 0; i < MAX_EVENTS; i++)
-		if (events[i].event_name != NULL)
-		{
-			find_and_remove_message_item(i, sid, 
-									 false, true, true, NULL, NULL);
-			unregister_event(i, sid);
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	{
+		for(i = 0; i < MAX_EVENTS; i++)
+			if (events[i].event_name != NULL)
+			{
+				find_and_remove_message_item(i, sid, 
+											 false, true, true, NULL, NULL);
+				unregister_event(i, sid);
 			
-		}
-
+			}
+		LWLockRelease(shmem_lock);
+		PG_RETURN_VOID();
+	}
+	WATCH_POST(timeout, endtime, cycle);
+	elog(ERROR, "Can't to lock shared memory");
 	PG_RETURN_VOID();
 }
-
 
 
 /*
@@ -563,12 +655,19 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 {
 	text *name = PG_GETARG_TEXT_P(0);
 	text *message = PG_GETARG_TEXT_P(1);
+	int cycle = 0;
+	float8 endtime;
+	float8 timeout = 2;
 
-	MEMORY_INIT();
-	create_message(name, message);
-
-	elog(NOTICE, "before unlock");
-	LWLockRelease(shmem_lock);	
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	{
+		create_message(name, message);
+		LWLockRelease(shmem_lock);	
+		PG_RETURN_VOID();
+	}
+	WATCH_POST(timeout, endtime, cycle);
+	elog(ERROR, "Can't to lock shared memory");
 	PG_RETURN_VOID();
 }
 
@@ -589,31 +688,43 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_waitany(PG_FUNCTION_ARGS)
 {
-//	int timeout = PG_GETARG_INT32(0);
+	float8 timeout = PG_GETARG_FLOAT8(0);
     TupleDesc   tupdesc, btupdesc;
     AttInMetadata       *attinmeta;
     HeapTuple   tuple;
-    Datum       result;
-	
+    Datum       result;	
 	char *str[3] = {NULL, NULL, "1"};
+	int cycle = 0;
+	float8 endtime;
 
-	MEMORY_INIT();
-	if (NULL != (str[1] = find_and_remove_message_item(-1, sid, 
-							 true, false, false, NULL, &str[0])))
-		str[2] = "0";
+	if (PG_ARGISNULL(0))
+		timeout = TDAYS;
 
-    get_call_result_type(fcinfo, NULL, &tupdesc);
-    btupdesc = BlessTupleDesc(tupdesc);
-    attinmeta = TupleDescGetAttInMetadata(btupdesc);
-    tuple = BuildTupleFromCStrings(attinmeta, str);
-    result = HeapTupleGetDatum(tuple);
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	{
+		if (NULL != (str[1] = find_and_remove_message_item(-1, sid, 
+														   true, false, false, NULL, &str[0])))
+		{
+			str[2] = "0";
+			LWLockRelease(shmem_lock);	
+			break;
+		}
+		LWLockRelease(shmem_lock);	
+	}
+	WATCH_POST(timeout, endtime, cycle);
 
+	get_call_result_type(fcinfo, NULL, &tupdesc);
+	btupdesc = BlessTupleDesc(tupdesc);
+	attinmeta = TupleDescGetAttInMetadata(btupdesc);
+	tuple = BuildTupleFromCStrings(attinmeta, str);
+	result = HeapTupleGetDatum(tuple);
+			
 	if (str[1])
 	{
 		pfree(str[1]);
 		pfree(str[0]);
 	}
-	LWLockRelease(shmem_lock);	
 	return result;
 }
 
@@ -634,7 +745,7 @@ Datum
 dbms_alert_waitone(PG_FUNCTION_ARGS)
 {
 	text *name = PG_GETARG_TEXT_P(0);
-//	int timeout = PG_GETARG_INT32(1);
+	int timeout = PG_GETARG_INT32(1);
     TupleDesc   tupdesc, btupdesc;
     AttInMetadata       *attinmeta;
     HeapTuple   tuple;
@@ -642,20 +753,35 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	int message_id;
 	char *str[2] = {NULL,"1"};
 	char *event_name;
+	int cycle = 0;
+	float8 endtime;
 
-	MEMORY_INIT();
 
-	if (NULL != find_event(name, false, &message_id))
+
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "Event name is NULL");
+
+	if (PG_ARGISNULL(1))
+		timeout = TDAYS;
+
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
-		str[0] = find_and_remove_message_item(message_id, sid, 
-											  false, false, false, NULL, &event_name);
-		if (event_name != NULL)
+		if (NULL != find_event(name, false, &message_id))
 		{
-			str[1] = "0";
-			pfree(event_name);
+			str[0] = find_and_remove_message_item(message_id, sid, 
+												  false, false, false, NULL, &event_name);
+			if (event_name != NULL)
+			{
+				str[1] = "0";
+				pfree(event_name);
+				LWLockRelease(shmem_lock);	
+				break;
+			}
 		}
+		LWLockRelease(shmem_lock);	
 	}
-
+	WATCH_POST(timeout, endtime, cycle);
 
     get_call_result_type(fcinfo, NULL, &tupdesc);
     btupdesc = BlessTupleDesc(tupdesc);
@@ -666,7 +792,6 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	if (str[0])
 		pfree(str[0]);
 
-	LWLockRelease(shmem_lock);	
 	return result;
 }
 
@@ -685,10 +810,7 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_set_defaults(PG_FUNCTION_ARGS)
 {
-	float8 arg = PG_GETARG_FLOAT8(0);
-	
-	if (arg >= 0.01)
-		sensitivity = arg;
+	elog(ERROR, "Not implemented");
 
 	PG_RETURN_VOID();
 }
