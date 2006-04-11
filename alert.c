@@ -157,8 +157,6 @@ find_event(text *event_name, bool create, int *event_id)
 {
 	int i;
 
-	context = 0;
-
 	for (i = 0; i < MAX_EVENTS;i++)
 	{
 		if (events[i].event_name != NULL && textcmpm(event_name,events[i].event_name) == 0)
@@ -200,8 +198,6 @@ register_event(text *event_name)
 	int *new_receivers;
 	int first_free;
 	int i;
-
-	context = 1;
 
 	find_lock(sid, true);
 	ev = find_event(event_name, true, NULL);
@@ -315,9 +311,6 @@ remove_receiver(message_item *msg, int sid)
  *
  */
 
-/* pokud mam odlozene spusteni, tak zpravu nezpracuju, ale
-   vypocitam, jak dlouho jeste musim spat a vracim null,
-   nepovinny parametr */
 
 static char*
 find_and_remove_message_item(int message_id, int sid, 
@@ -359,13 +352,6 @@ find_and_remove_message_item(int message_id, int sid,
 
 			message_text = echo->message->message;
 			_message_id = echo->message_id;
-
-			/* odlozene spusteni */
-//			if (echo->message->message_id == message_id && sleep != NULL)
-//			{
-//				if (0 < (*sleep = echo->message->timestamp + latency - current_time))
-//					return NULL; /* have to wait */
-//			}
 
 			if (!remove_receiver(echo->message, sid))
 			{
@@ -438,23 +424,17 @@ create_message(text *event_name, text *message)
 	int i,j,k;
 
 	find_event(event_name, false, &event_id);
-
+	
 	/* process event only when any recipient exitsts */
 	if (NULL != (ev = find_event(event_name, false, &event_id)))
 	{
 		if (ev->receivers_number > 0)
 		{
-
-			context = 21;
-
 			msg_item = salloc(sizeof(message_item));
-	
-
-			context = 22;
+			
 			msg_item->receivers = salloc( ev->receivers_number*sizeof(int));
 			msg_item->receivers_number = ev->receivers_number;
 			
-			context = 23;
 
 			if (message != NULL)
 			{
@@ -463,8 +443,6 @@ create_message(text *event_name, text *message)
 			}
 			else
 				msg_item->message = NULL;
-
-			context = 24;
 
 			msg_item->message_id = event_id;
 
@@ -476,8 +454,7 @@ create_message(text *event_name, text *message)
 						if (locks[k].sid == ev->receivers[j])
 						{
 							/* create echo */
-						
-			context = 3;	
+							
 							message_echo *echo = salloc(sizeof(message_echo));
 							echo->message = msg_item;
 							echo->message_id = event_id;
@@ -688,17 +665,20 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_waitany(PG_FUNCTION_ARGS)
 {
-	float8 timeout = PG_GETARG_FLOAT8(0);
-    TupleDesc   tupdesc, btupdesc;
-    AttInMetadata       *attinmeta;
-    HeapTuple   tuple;
-    Datum       result;	
+	float8 timeout; 
+	TupleDesc   tupdesc, btupdesc;
+	AttInMetadata       *attinmeta;
+	HeapTuple   tuple;
+	Datum       result;	
 	char *str[3] = {NULL, NULL, "1"};
 	int cycle = 0;
 	float8 endtime;
 
+	
 	if (PG_ARGISNULL(0))
 		timeout = TDAYS;
+	else 
+		timeout = PG_GETARG_FLOAT8(0);
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
@@ -744,12 +724,12 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_waitone(PG_FUNCTION_ARGS)
 {
-	text *name = PG_GETARG_TEXT_P(0);
-	int timeout = PG_GETARG_INT32(1);
-    TupleDesc   tupdesc, btupdesc;
-    AttInMetadata       *attinmeta;
-    HeapTuple   tuple;
-    Datum       result;
+	text *name;
+	int timeout;
+	TupleDesc   tupdesc, btupdesc;
+	AttInMetadata       *attinmeta;
+	HeapTuple   tuple;
+	Datum       result;
 	int message_id;
 	char *str[2] = {NULL,"1"};
 	char *event_name;
@@ -757,12 +737,15 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	float8 endtime;
 
 
-
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "Event name is NULL");
 
 	if (PG_ARGISNULL(1))
 		timeout = TDAYS;
+	else
+		timeout = PG_GETARG_INT32(1);
+		
+	name = PG_GETARG_TEXT_P(0);
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
@@ -783,11 +766,11 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
-    get_call_result_type(fcinfo, NULL, &tupdesc);
-    btupdesc = BlessTupleDesc(tupdesc);
-    attinmeta = TupleDescGetAttInMetadata(btupdesc);
-    tuple = BuildTupleFromCStrings(attinmeta, str);
-    result = HeapTupleGetDatum(tuple);
+	get_call_result_type(fcinfo, NULL, &tupdesc);
+	btupdesc = BlessTupleDesc(tupdesc);
+	attinmeta = TupleDescGetAttInMetadata(btupdesc);
+	tuple = BuildTupleFromCStrings(attinmeta, str);
+	result = HeapTupleGetDatum(tuple);
 
 	if (str[0])
 		pfree(str[0]);

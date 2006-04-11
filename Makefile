@@ -17,20 +17,3 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-orafunc.o: datefunc.c 
-
-protectable.o: protectable.c
-
-putline.o: putline.c
-
-others.o: others.c
-
-pipe.o: pipe.c 
-
-plvdate.o: plvdate.c
-
-shmmc.o: shmmc.c
-
-plvstr.o: plvstr.c
-
-alert.o: alert.c

@@ -56,6 +56,8 @@ Datum dbms_pipe_pack_message_number(PG_FUNCTION_ARGS);
 Datum dbms_pipe_unpack_message_number(PG_FUNCTION_ARGS);
 Datum dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS);
 Datum dbms_pipe_unpack_message_bytea(PG_FUNCTION_ARGS);
+Datum dbms_pipe_pack_message_record(PG_FUNCTION_ARGS);
+Datum dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS);
 
 
 PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_text);
@@ -77,6 +79,8 @@ PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_number);
 PG_FUNCTION_INFO_V1(dbms_pipe_unpack_message_number);
 PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_bytea);
 PG_FUNCTION_INFO_V1(dbms_pipe_unpack_message_bytea);
+PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_record);
+PG_FUNCTION_INFO_V1(dbms_pipe_unpack_message_record);
 
 
 typedef enum {
@@ -85,7 +89,8 @@ typedef enum {
 	IT_VARCHAR = 11,
 	IT_DATE = 12,
 	IT_TIMESTAMPTZ = 13,
-	IT_BYTEA = 23
+	IT_BYTEA = 23,
+	IT_RECORD = 24
 } message_data_type;
 
 
@@ -115,6 +120,7 @@ typedef struct {
 typedef struct {
 	size_t size;
 	message_data_type type;
+	Oid tupType;
 	char data;
 } message_data_item;
 
@@ -155,7 +161,7 @@ extern alert_lock  *locks;
 
 static void 
 pack_field(message_buffer *message, message_data_item **writer,
-		   message_data_type type, int size, void *ptr)
+		   message_data_type type, int size, void *ptr, Oid *tupType)
 {
 	int l;
 	message_data_item *_wr = *writer;
@@ -170,6 +176,9 @@ pack_field(message_buffer *message, message_data_item **writer,
 	_wr->size = l;
 
 	_wr->type = type;
+	if (tupType != NULL)
+	    _wr->tupType = *tupType;
+	
 	memcpy(&_wr->data, ptr, size);
 
 	message->size += l;
@@ -182,7 +191,7 @@ pack_field(message_buffer *message, message_data_item **writer,
 
 static void*
 unpack_field(message_buffer *message, message_data_item **reader, 
-			 message_data_type *type, size_t *size)
+			 message_data_type *type, size_t *size, Oid *tupType)
 {
 	void *ptr;
 	message_data_item *_rd = *reader;
@@ -195,6 +204,10 @@ unpack_field(message_buffer *message, message_data_item **reader,
 	{
 		*size = _rd->size - sizeof(message_data_item);
 		*type = _rd->type;
+		
+		if (tupType)
+			*tupType = _rd->tupType;
+
 		ptr  = (void*)&_rd->data;
 
 		_rd = (message_data_item*)((char*)_rd + _rd->size);
@@ -240,8 +253,6 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			events = sh_mem->events = ora_salloc(max_events*sizeof(alert_event));
 			locks = sh_mem->locks = ora_salloc(max_locks*sizeof(alert_lock));
 
-
-			elog(NOTICE, "inicializace pameti");
 			for(i = 0; i < max_events; i++)
 			{
 				events[i].event_name = NULL;
@@ -545,7 +556,8 @@ dbms_pipe_pack_message_text(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_VARCHAR, 
-			   VARSIZE(str) - VARHDRSZ, VARDATA(str)); 
+			   VARSIZE(str) - VARHDRSZ, VARDATA(str),
+			   NULL); 
 
 	PG_RETURN_VOID();
 }
@@ -558,7 +570,8 @@ dbms_pipe_pack_message_date(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_DATE,
-			   sizeof(dt), &dt); 
+			   sizeof(dt), &dt,
+			   NULL); 
 
 	PG_RETURN_VOID();
 }
@@ -571,7 +584,8 @@ dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_TIMESTAMPTZ,
-			   sizeof(dt), &dt); 
+			   sizeof(dt), &dt,
+			   NULL); 
 
 	PG_RETURN_VOID();
 
@@ -585,7 +599,8 @@ dbms_pipe_pack_message_number(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_NUMBER,
-			   VARSIZE(num) - VARHDRSZ, VARDATA(num)); 
+			   VARSIZE(num) - VARHDRSZ, VARDATA(num),
+			   NULL); 
 
 	PG_RETURN_VOID();
 
@@ -599,15 +614,56 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_BYTEA,
-			   VARSIZE(data) - VARHDRSZ, VARDATA(data)); 
+			   VARSIZE(data) - VARHDRSZ, VARDATA(data),
+			   NULL); 
 
 	PG_RETURN_VOID();
 
 }
 
 
+/*
+ *  We can serialize only typed record
+ */
+
+Datum
+dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
+{
+	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(0);
+	Oid tupType;
+	bytea *data;
+	FunctionCallInfoData locfcinfo;
+
+	tupType = HeapTupleHeaderGetTypeId(rec);
+	
+	/*
+	 * Normally one would call record_send() using DirectFunctionCall3,
+	 * but that does not work since record_send wants to cache some data
+	 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
+	 * flinfo parameter.
+	 */
+	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 3, NULL, NULL);
+
+	locfcinfo.arg[0] = PointerGetDatum(rec);
+	locfcinfo.arg[1] = ObjectIdGetDatum(tupType);
+	locfcinfo.arg[2] = Int32GetDatum(-1);
+	locfcinfo.argnull[0] = false;
+	locfcinfo.argnull[1] = false;
+	locfcinfo.argnull[2] = false;
+			
+	data = (bytea*) DatumGetPointer(record_send(&locfcinfo));
+
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
+	pack_field(output_buffer, &writer, IT_RECORD,
+			   VARSIZE(data), VARDATA(data),
+			   &tupType); 
+
+	PG_RETURN_VOID();
+}
+
+
 static int64
-dbms_pipe_unpack_message(message_data_type dtype, bool *is_null)
+dbms_pipe_unpack_message(message_data_type dtype, bool *is_null, Oid *tupType)
 {
 	void *ptr;
 	message_data_type type;
@@ -626,7 +682,7 @@ dbms_pipe_unpack_message(message_data_type dtype, bool *is_null)
 	if (next_type != dtype)
 		elog(ERROR, "Read different type");
 	
-	if (NULL == (ptr = unpack_field(input_buffer, &reader, &type, &size)))
+	if (NULL == (ptr = unpack_field(input_buffer, &reader, &type, &size, tupType)))
 		return result;
 
 	switch (type)
@@ -642,6 +698,7 @@ dbms_pipe_unpack_message(message_data_type dtype, bool *is_null)
 		case IT_VARCHAR:
 		case IT_NUMBER:
 		case IT_BYTEA:
+		case IT_RECORD:
 			result = (int64)((int32)ora_make_text_fix((char*)ptr, size));
 			break;			
 	
@@ -668,7 +725,8 @@ dbms_pipe_unpack_message_text(PG_FUNCTION_ARGS)
 	bool is_null;
 	text *result;
 	
-	result = (text*)((int32)dbms_pipe_unpack_message(IT_VARCHAR, &is_null));
+	result = (text*)((int32)dbms_pipe_unpack_message(IT_VARCHAR, &is_null,
+													 NULL));
 	if (is_null)
 		PG_RETURN_NULL();
 	else
@@ -682,7 +740,8 @@ dbms_pipe_unpack_message_date(PG_FUNCTION_ARGS)
 	bool is_null;
 	DateADT result;
 	
-	result = (DateADT)dbms_pipe_unpack_message(IT_DATE, &is_null);
+	result = (DateADT)dbms_pipe_unpack_message(IT_DATE, &is_null,
+											   NULL);
 	if (is_null)
 		PG_RETURN_NULL();
 	else
@@ -697,7 +756,8 @@ dbms_pipe_unpack_message_timestamp(PG_FUNCTION_ARGS)
 
 	int64 value;
 
-	value = dbms_pipe_unpack_message(IT_TIMESTAMPTZ, &is_null);
+	value = dbms_pipe_unpack_message(IT_TIMESTAMPTZ, &is_null, 
+									 NULL);
 	if (is_null)
 		PG_RETURN_NULL();
 	else
@@ -712,7 +772,8 @@ dbms_pipe_unpack_message_number(PG_FUNCTION_ARGS)
 	bool is_null;
 	Numeric result;
 
-	result = (Numeric)((int32)dbms_pipe_unpack_message(IT_NUMBER, &is_null));
+	result = (Numeric)((int32)dbms_pipe_unpack_message(IT_NUMBER, &is_null,
+													   NULL));
 	if (is_null)
 		PG_RETURN_NULL();
 	else
@@ -726,11 +787,58 @@ dbms_pipe_unpack_message_bytea(PG_FUNCTION_ARGS)
 	bool is_null;
 	bytea *result;
 
-	result = (bytea*)((int32)dbms_pipe_unpack_message(IT_BYTEA, &is_null));
+	result = (bytea*)((int32)dbms_pipe_unpack_message(IT_BYTEA, &is_null,
+													  NULL));
 	if (is_null)
 		PG_RETURN_NULL();
 	else
 		PG_RETURN_BYTEA_P(result);
+}
+
+
+Datum
+dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS)
+{
+	bool is_null;
+	bytea *data;
+	FunctionCallInfoData locfcinfo;
+	Oid tupType;
+	HeapTupleHeader rec; 
+	StringInfoData buf;
+
+	data = (bytea*)((int32)dbms_pipe_unpack_message(IT_RECORD, &is_null, &tupType));
+	
+	if (!is_null)
+	{												
+		buf.data = VARDATA(data);
+		buf.len = VARSIZE(data) - VARHDRSZ;
+		buf.maxlen = buf.len;
+		buf.cursor = 0;
+	
+		/*
+		 * Normally one would call record_recv() using DirectFunctionCall3,
+		 * but that does not work since record_recv wants to cache some data
+		 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
+		 * flinfo parameter.
+		 */
+		InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 3, NULL, NULL);
+		
+		locfcinfo.arg[0] = PointerGetDatum(&buf);
+		locfcinfo.arg[1] = ObjectIdGetDatum(tupType);
+		locfcinfo.arg[2] = Int32GetDatum(-1);
+		locfcinfo.argnull[0] = false;
+		locfcinfo.argnull[1] = false;
+		locfcinfo.argnull[2] = false;
+		
+		rec =  DatumGetHeapTupleHeader(record_recv(&locfcinfo));
+	
+		/* I have to translate rec to tuple */
+	
+		pfree(data);
+		PG_RETURN_HEAPTUPLEHEADER(rec);
+	}
+
+	PG_RETURN_NULL();
 }
 
 
@@ -873,7 +981,7 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 	int timeout = 10;	
 
 	if (SRF_IS_FIRSTCALL ())
-{
+	{
 		MemoryContext  oldcontext;
 		bool has_lock = false;
 

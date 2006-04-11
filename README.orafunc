@@ -122,6 +122,21 @@ Diff to Oracle:
 Functions:
 ----------
 
+
+Package dbms_alert
+==================
+This package isn't transaction based, Oracle yes!
+
+-- Session A
+select dbms_alert.register('boo');
+select * from dbms_alert.waitany(10);
+
+-- Session B
+select dbms_alert.register('boo');
+select * from dbms_alert.waitany(10);
+
+-- Session C
+select dbms_alert.signal('boo','Nice day');
 					
 					
 Package PLVdate

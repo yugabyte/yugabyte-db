@@ -18,7 +18,7 @@ typedef struct {
 	size_t size;
 	void* first_byte_ptr;
 	bool dispossible;
-	int16 context;
+/*	int16 context; */
 } list_item;
 
 typedef struct {
@@ -94,12 +94,12 @@ defragmentation()
 
 	qsort(list, *list_c, sizeof(list_item), ptr_comp);
 	
-    /* list strip -  every field have to check or move */
+	/* list strip -  every field have to check or move */
+
 
 	w = 0;
 	for (i = 0; i < *list_c; i++)
 	{
-		elog(NOTICE, "%d %d %d", list[i].dispossible, list[w].size, list[w].context);
 		if (state == MOVE_CUR)
 		{
 			if (i != w)
@@ -111,7 +111,6 @@ defragmentation()
 		{
 			if (list[i].dispossible)
 			{
-				elog(NOTICE, "success %d", list[w].size);
 				list[w].size += list[i].size;
 			}
 			else
@@ -192,7 +191,7 @@ ora_salloc(size_t size)
 				{
 					list[i].dispossible = false;
 					ptr = list[i].first_byte_ptr;
-					list[i].context = context;
+					/* list[i].context = context; */
 
 					return ptr;
 				}
@@ -219,7 +218,7 @@ ora_salloc(size_t size)
 		list[*list_c].dispossible = true;
 		list[select].size = alligned_size;
 		list[select].dispossible = false;
-		list[select].context = context;
+		/* list[select].context = context; */
 		ptr = list[select].first_byte_ptr;
 		*list_c += 1;
  		break;
@@ -233,6 +232,7 @@ ora_sfree(void* ptr)
 {
 	int i;
 
+/*
 	if (cycle++ % 100 == 0)
 	{
 		size_t suma = 0;
@@ -241,12 +241,13 @@ ora_sfree(void* ptr)
 				suma += list[i].size;
 		elog(NOTICE, "=============== FREE MEM REPORT === %10d ================", suma);
 	}
+*/
 
 	for (i = 0; i < *list_c; i++)
 		if (list[i].first_byte_ptr == ptr)
 		{
 			list[i].dispossible = true;
-			list[i].context = -1;
+			/* list[i].context = -1; */
 			memset(list[i].first_byte_ptr, '#', list[i].size);
 			break;
 		}
