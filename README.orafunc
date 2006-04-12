@@ -11,8 +11,6 @@ All functions all full compatible with Oracle and respect all known
 format strings. Detailed description you can find on internet. Find
 keywords oracle round trunc date iyyy.
 
-This library don't support multibyte encoding.
-
 List of format strings for trunc, round functions
 -------------------------------------------------
 Y,YY,YYY,YYYY,SYYY,SYEAR	year
@@ -269,7 +267,7 @@ Atention! concat isn't strict function. concat('a',null) -> 'a'
 
 
 ToDo:
-  o support for multibyte encoding for string functions
+  o support for multibyte encoding for string functions (70% complete)
   o better error messages
   o better documentation
   o regress tests

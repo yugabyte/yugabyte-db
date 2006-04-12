@@ -408,11 +408,7 @@ find_and_remove_message_item(int message_id, int sid,
 }
 
 /* 
-
-  bude se muset predelat, jenom co se tyce text,
-  ktery bude buffrovan, necha se povyresit minimalnim
-  zpozdenim. Messages budou lokalne buffrovany,
-  v transakcnim kontextu nebo neco na ten zpusob
+Je treba zajistit odstraneni duplicitnich zprav.
 */  
 
 static void
@@ -430,6 +426,19 @@ create_message(text *event_name, text *message)
 	{
 		if (ev->receivers_number > 0)
 		{
+			msg_item = ev->messages;
+			while (msg_item != NULL)
+			{
+				if (msg_item->message == NULL && message == NULL)
+				    return;  
+				if (msg_item->message != NULL && message != NULL)
+					if (0 == textcmpm(message,msg_item->message))
+						return;
+				
+				msg_item = msg_item->next_message;
+			}
+		
+		
 			msg_item = salloc(sizeof(message_item));
 			
 			msg_item->receivers = salloc( ev->receivers_number*sizeof(int));

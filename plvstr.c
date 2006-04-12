@@ -17,6 +17,9 @@
 #include "utils/numeric.h"
 #include "string.h"
 #include "stdlib.h"
+#include "utils/pg_locale.h"
+#include "mb/pg_wchar.h"
+
 
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
@@ -135,11 +138,75 @@ ora_make_text_fix(char *c, int n)
  * 
  */
 
+
+static int
+mb_strlen(text *str, char **sizes, int **positions)
+{
+	int r_len;
+	int cur_size = 0;
+	int sz;
+	char *p;
+	int cur = 0;
+	
+	p = (char*)VARDATA(str);
+	r_len = VARSIZE(str) - VARHDRSZ;
+
+    if (NULL != sizes)
+		*sizes = palloc(r_len * sizeof(char));
+	if (NULL != positions)
+		*positions = palloc(r_len * sizeof(int));
+
+	while (cur < r_len)
+	{
+		sz = pg_mblen(p);
+		if (sizes)
+			(*sizes)[cur_size] = sz;
+		if (positions)
+			(*positions)[cur_size] = cur;
+		cur += sz;
+		p += sz;
+		cur_size += 1;
+	}
+
+	return cur_size;
+}
+
+
+static int
+mb_strlen1(text *str)
+{
+	int r_len;
+	int c;
+	char *p;
+
+	r_len = VARSIZE(str) - VARHDRSZ;
+	
+	if (pg_database_encoding_max_length() == 1)
+		return r_len;
+
+	p = (char*)VARDATA(str);
+	c = 0;
+	while (r_len > 0)
+	{
+		int sz;
+		
+		sz = pg_mblen(p);
+		p += sz;
+		r_len -= sz;
+		c += 1;
+	}
+
+	return c;
+}
+
 text*
 ora_substr(text *str, int start, int len, bool valid_length)
 {
 	text *result;
 	int l;
+	bool mb_encode;
+	char *sizes = NULL;
+	int *positions = NULL;
 
 	if (start == 0)
 		return ora_make_text("");
@@ -147,20 +214,130 @@ ora_substr(text *str, int start, int len, bool valid_length)
 	if (len < 0 && valid_length)
 		elog(ERROR, "Invalid params");
 
-	l = VARSIZE(str) - VARHDRSZ;
+
+	mb_encode = pg_database_encoding_max_length() > 1;
+	if (!mb_encode)
+		l = VARSIZE(str) - VARHDRSZ;
+	else
+		l = mb_strlen(str, &sizes, &positions);
+
 	start = start > 0 ? start : l + start + 1;
 	len = valid_length ? len : l - start + 1;
 	len = len + start - 1> l ? l - start + 1 : len;
 	len = len < 0 ? 0 : len;
 
-	result = palloc(len + VARHDRSZ);
-	VARATT_SIZEP(result) = len + VARHDRSZ;
-	memcpy(VARDATA(result), ((char*)VARDATA(str))+start - 1, len);
+	if (!mb_encode)
+	{
+		result = palloc(len + VARHDRSZ);
+		VARATT_SIZEP(result) = len + VARHDRSZ;
+		memcpy(VARDATA(result), ((char*)VARDATA(str))+start - 1, len);
+	}
+	else
+	{
+		int r_len;
+		int m_len;
+		int c_len;
+		int i;
+		int j;
+		char *p, *d;
+
+		r_len = VARSIZE(str) - VARHDRSZ;
+		m_len = len * pg_database_encoding_max_length();
+
+		if (r_len > m_len)
+			result = palloc(m_len + VARHDRSZ);
+		else
+			result = palloc(r_len + VARHDRSZ);
+		d =(char*) VARDATA(result);
+		
+		c_len = 0;
+		p = &((char*)VARDATA(str))[positions[start-1]];
+		for (i = start - 1; i < start+len-1; i++)
+		{
+			for (j = 0; j < sizes[i]; j++)
+				*d++ = *p++;
+			c_len += sizes[i]; 
+		}
+
+		VARATT_SIZEP(result) = c_len + VARHDRSZ;
+
+		pfree(sizes);
+		pfree(positions);
+	}
 
 	return result;
 }
 
 /* simply search algorhitm - can be better */
+
+static int 
+ora_instr_mb(text *txt, text *pattern, int start, int nth)
+{
+	int c_len_txt, c_len_pat;
+	char *sizes_txt,  *sizes_pat;
+	int *pos_txt, *pos_pat;
+	char *str , *patt_f, *txt_p, *patt_p;
+	int dx, i, j;
+	int fzs_pat, fzs_txt;
+	int pos;
+
+	c_len_txt = mb_strlen(txt, &sizes_txt, &pos_txt);
+	c_len_pat = mb_strlen(pattern, &sizes_pat, &pos_pat);
+	fzs_txt = VARSIZE(txt) - VARHDRSZ;
+	fzs_pat = VARSIZE(pattern) - VARHDRSZ;
+
+	if (start > 0)
+	{
+		dx = 1; pos = 1;
+		str = &((char*)VARDATA(txt))[pos_txt[start-1]]; 
+		patt_f = (char*)VARDATA(pattern);
+		
+	}
+	else
+	{
+		dx = -1; pos = c_len_txt;
+		str = &((char*)VARDATA(txt))[pos_txt[c_len_txt+ start]+sizes_txt[c_len_txt+ start]-1]; 
+		patt_f = ((char*)VARDATA(pattern)) + fzs_pat - 1;
+	}
+
+	for(i = 0; i < fzs_txt; i++)
+	{
+		patt_p = patt_f;
+		txt_p = str;
+		for (j = 0; j < fzs_pat; j++)
+		{
+			if (*txt_p != *patt_p)
+				break;
+			txt_p += dx;
+			patt_p += dx;
+		}
+		if (j < fzs_pat)
+		{
+			str += dx*sizes_txt[pos-1];
+			pos += dx;
+		}
+		else
+		{
+			if (--nth == 0)
+			{
+				pfree(sizes_txt); pfree(sizes_pat);
+				pfree(pos_txt); pfree(pos_pat);
+
+				return dx < 0 ? pos - c_len_pat + 1: pos + start-1;
+			}
+			else
+			{
+				str += (fzs_pat)*dx;
+				pos += c_len_pat;
+			}
+		}
+	}			
+
+	pfree(sizes_txt); pfree(sizes_pat);
+	pfree(pos_txt); pfree(pos_pat);
+	return 0;
+}
+
 
 int 
 ora_instr(text *txt, text *pattern, int start, int nth)
@@ -168,8 +345,17 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 	int i, j, len, len_p, dx;
 	char *str, *txt_p, *patt_p, *patt_f;
 
+	
+	/*
+     * Forward for multibyte strings
+     */
+
+	if (pg_database_encoding_max_length() > 1)
+		return ora_instr_mb(txt, pattern, start, nth);
+
 	len = VARSIZE(txt) - VARHDRSZ;
-	len_p = VARSIZE(pattern) - VARHDRSZ;
+	len_p = VARSIZE(pattern) - VARHDRSZ;	
+
 
 	if (start > 0)
 	{
@@ -236,6 +422,10 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 	char c, *cur;
 	bool write_spc = false;
 	bool ignore_stsp = true;
+	bool mb_encode;
+	int sz;
+	
+	mb_encode = pg_database_encoding_max_length() > 1;
 
 	l = VARSIZE(str) - VARHDRSZ;
 	aux_cur = aux = palloc(l);
@@ -245,28 +435,55 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 
 	for (i = 0; i < l; i++)
 	{
-		switch ((c = *cur++))
+		switch ((c = *cur))
 		{
 			case '\t':
 			case '\n':
 			case '\r':
 			case ' ':
 				write_spc = ignore_stsp ? false : true;
-				continue;
+				break;
 			default:
 				/* ignore all other unvisible chars */
-				if (c > 32)
+				
+				if (mb_encode)
 				{
-					if (write_spc)
+					sz = pg_mblen(cur);
+					if (sz > 1 || (sz == 1 && c > 32))
 					{
-						*aux_cur++ = ' ';
-						write_spc = false;
+					    int j;
+					    
+					    if (write_spc)
+					    {
+						    *aux_cur++ = ' ';
+						    write_spc = false;
+
+					    }
+					    for (j = 0; j < sz; j++)
+					    {
+						    *aux_cur++ = *cur++;
+					    }
+					    ignore_stsp = false;
+					    i += sz - 1;
 					}
-					*aux_cur++ = c;
-					ignore_stsp = false;
 					continue;
+				
 				}
+				else
+					if (c > 32)
+					{
+						if (write_spc)
+						{
+							*aux_cur++ = ' ';
+							write_spc = false;
+						}
+						*aux_cur++ = c;
+						ignore_stsp = false;
+						continue;
+					}
+		
 		}
+		cur += 1;
 	}
 
 	l = aux_cur - aux;
@@ -352,6 +569,9 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 	text *str = PG_GETARG_TEXT_P(0);
 	text *prefix = PG_GETARG_TEXT_P(1);
 	bool case_sens = PG_GETARG_BOOL(2);
+	bool mb_encode;
+	bool free_str = false;
+
 
 	int str_len = VARSIZE(str) - VARHDRSZ;
 	int pref_len = VARSIZE(prefix) - VARHDRSZ;
@@ -359,21 +579,40 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 	int i;
 	char *ap, *bp;
 
+	
+	mb_encode = pg_database_encoding_max_length() > 1;
+
+	if (mb_encode && !case_sens)
+	{
+		free_str = true;
+
+		str = (text*)DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(str)));
+		prefix = (text*)DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(prefix)));
+	}
+
 	ap = (char*)VARDATA(str);
 	bp = (char*)VARDATA(prefix);
-	
+
 	for (i = 0; i < pref_len; i++)
 	{
 		if (i >= str_len)
 			break;
-		if (case_sens)
+		if (case_sens || mb_encode)
 		{
 			if (*ap++ != *bp++)
 				break;
 		}
-		else
+		else if (!mb_encode)
+		{
 			if (pg_toupper((unsigned char) *ap++) != pg_toupper((unsigned char) *bp++))
 				break;
+		}
+	}
+
+	if (free_str)
+	{
+		pfree(str);
+		pfree(prefix);
 	}
 
 	PG_RETURN_BOOL(i == pref_len);
@@ -447,11 +686,22 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 	int new_len;
 	text *result;
 	char *data;
+	char *sizes = NULL;
+	int *positions = NULL;
+	bool mb_encode;
 
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
-	len = VARSIZE(str) - VARHDRSZ;
+	mb_encode = pg_database_encoding_max_length() > 1;
+	
+	if (!mb_encode)
+		len = VARSIZE(str) - VARHDRSZ;
+	else
+		len = mb_strlen(str, &sizes, &positions);
+	
+		
+
 	start = PG_ARGISNULL(1) ? 1 : start;
 	end = PG_ARGISNULL(2) ? (start < 0 ? -len : len) : end;
 
@@ -466,12 +716,46 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 	}
 
 	new_len = end - start + 1;
-	result = palloc(new_len + VARHDRSZ);
-	data = (char*) VARDATA(result);
-	VARATT_SIZEP(result) = new_len + VARHDRSZ;
 
-	for (i = end - 1; i >= start - 1; i--)
-		*data++ = ((char*)VARDATA(str))[i];
+	if (mb_encode)
+	{
+		int max_size;
+		int cur_size;
+		char *p;
+		int j;
+		int fz_size;
+		
+		fz_size = VARSIZE(str) - VARHDRSZ;
+		
+		if ((max_size = (new_len*pg_database_encoding_max_length())) > fz_size)
+		    result = palloc(fz_size + VARHDRSZ);
+		else
+		    result = palloc(max_size + VARHDRSZ);    
+		data = (char*) VARDATA(result);
+		
+		cur_size = 0; 
+		p = VARDATA(str);
+		for (i = end - 1; i>= start - 1; i--)
+		{
+		    for(j=0;j<sizes[i];j++)
+		        *data++ = *(p+positions[i]+j);
+		    cur_size += sizes[i];
+		}
+		VARATT_SIZEP(result) = cur_size + VARHDRSZ;
+		
+		pfree(positions);
+		pfree(sizes);
+	}
+	else
+	{
+		result = palloc(new_len + VARHDRSZ);
+    		data = (char*) VARDATA(result);
+		VARATT_SIZEP(result) = new_len + VARHDRSZ;
+
+		for (i = end - 1; i >= start - 1; i--)
+			*data++ = ((char*)VARDATA(str))[i];
+			
+	}
 	
 	PG_RETURN_TEXT_P(result);
 }
@@ -689,7 +973,7 @@ plvstr_left (PG_FUNCTION_ARGS)
 	text *str = PG_GETARG_TEXT_P(0);
 	int n = PG_GETARG_INT32(1);
 	if (n < 0)
-		n = VARSIZE(str) - VARHDRSZ + n;
+		n = mb_strlen1(str) + n;
 	n = n < 0 ? 0 : n;
 	
 	PG_RETURN_TEXT_P(ora_substr(str,1,n, true));
@@ -715,7 +999,7 @@ plvstr_right (PG_FUNCTION_ARGS)
 	text *str = PG_GETARG_TEXT_P(0);
 	int n = PG_GETARG_INT32(1);
 	if (n < 0)
-		n = VARSIZE(str) - VARHDRSZ + n;
+		n = mb_strlen1(str) + n;
 	n = (n < 0) ? 0 : n;
 
 	PG_RETURN_TEXT_P(ora_substr(str,-n, 0, false));
@@ -882,6 +1166,12 @@ plvchr_is_kind_a (PG_FUNCTION_ARGS)
 	char c;
 
 	NON_EMPTY_CHECK(str);	
+	if (pg_database_encoding_max_length() > 1)
+	{
+		if (pg_mblen(((char*)VARDATA(str))) > 1)
+			PG_RETURN_INT32( (k == 5) );
+	}
+
 	c = *((char*)VARDATA(str));
 	PG_RETURN_INT32(is_kind((char)c,k));
 }
@@ -909,7 +1199,8 @@ plvchr_char_name(PG_FUNCTION_ARGS)
 	NON_EMPTY_CHECK(str);
 	c = *((char*)VARDATA(str));
 
-	if (c > 32)
+
+	if (c > 32 && pg_mblen(((char*)VARDATA(str))) == 1)
 		result = ora_substr(str,1, 1, true);
 	else
 		result = ora_make_text(char_names[(int)c]);
