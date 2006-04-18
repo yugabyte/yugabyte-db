@@ -60,6 +60,21 @@ RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 
+CREATE OR REPLACE FUNCTION nlssort(text, text)
+RETURNS bytea
+AS '$libdir/orafunc', 'ora_nlssort'
+LANGUAGE 'C' IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION nlssort(text)
+RETURNS bytea
+AS $$ SELECT nlssort($1, null); $$
+LANGUAGE 'SQL' IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION set_nls_sort(text)
+RETURNS void
+AS '$libdir/orafunc', 'ora_set_nls_sort'
+LANGUAGE 'C' IMMUTABLE STRICT;
+
 DROP TABLE dual CASCADE;
 CREATE TABLE dual(dummy varchar(1));
 INSERT INTO dual(dummy) VALUES('X');
@@ -279,6 +294,17 @@ RETURNS bytea
 AS '$libdir/orafunc','dbms_pipe_unpack_message_bytea' 
 LANGUAGE C VOLATILE STRICT;
 
+CREATE FUNCTION dbms_pipe.pack_message(record)
+RETURNS void
+AS '$libdir/orafunc','dbms_pipe_pack_message_record' 
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION dbms_pipe.unpack_message_record()
+RETURNS record
+AS '$libdir/orafunc','dbms_pipe_unpack_message_record' 
+LANGUAGE C VOLATILE STRICT;
+
+
 
 -- follow package PLVdate emulation
 
@@ -394,6 +420,16 @@ LANGUAGE C VOLATILE STRICT;
 CREATE FUNCTION plvdate.default_holydays(text)
 RETURNS void
 AS '$libdir/orafunc','plvdate_default_holydays'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.days_inmonth(date)
+RETURNS integer
+AS '$libdir/orafunc','plvdate_days_inmonth'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.isleapyear(date)
+RETURNS bool
+AS '$libdir/orafunc','plvdate_isleapyear'
 LANGUAGE C VOLATILE STRICT;
 
 
@@ -662,7 +698,7 @@ RETURNS void
 AS '$libdir/orafunc','dbms_alert_removeall'
 LANGUAGE C VOLATILE;
 
-CREATE FUNCTION dbms_alert.signal(name text, message text)
+CREATE FUNCTION dbms_alert._signal(name text, message text)
 RETURNS void
 AS '$libdir/orafunc','dbms_alert_signal'
 LANGUAGE C VOLATILE;
@@ -675,9 +711,43 @@ LANGUAGE C VOLATILE;
 CREATE FUNCTION dbms_alert.waitone(name text, OUT message text, OUT status integer, timeout float8)
 RETURNS record
 AS '$libdir/orafunc','dbms_alert_waitone'
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE STRICT;
 
 CREATE FUNCTION dbms_alert.set_defaults(sensitivity float8)
 RETURNS void
 AS '$libdir/orafunc','dbms_alert_set_defaults'
 LANGUAGE C VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION dbms_alert._defered_signal() RETURNS trigger AS $$
+BEGIN
+  PERFORM dbms_alert._signal(NEW.event, NEW.message);
+  DELETE FROM ora_alerts WHERE id=NEW.id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER VOLATILE;
+
+
+CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) RETURNS void AS $$
+BEGIN
+  PERFORM 1 FROM pg_catalog.pg_class c
+            WHERE pg_catalog.pg_table_is_visible(c.oid)
+            AND c.relkind='r' AND c.relname = 'ora_alerts';
+  IF NOT FOUND THEN
+    CREATE TEMP TABLE ora_alerts(id serial PRIMARY KEY, event text, message text);
+    REVOKE ALL ON TABLE ora_alerts FROM PUBLIC;
+    CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts
+      INITIALLY DEFERRED  FOR EACH ROW EXECUTE PROCEDURE dbms_alert._defered_signal();
+  END IF;
+  INSERT INTO ora_alerts(event, message) VALUES(_event, _message);
+END;
+$$ LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER;
+
+GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
+GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
+GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
+GRANT USAGE ON SCHEMA plvstr TO PUBLIC;
+GRANT USAGE ON SCHEMA plvchr TO PUBLIC;
+GRANT USAGE ON SCHEMA dbms_output TO PUBLIC;
+
+GRANT SELECT ON dbms_pipe.db_pipes to public;

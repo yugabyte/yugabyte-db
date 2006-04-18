@@ -50,6 +50,9 @@ Datum plvdate_default_holydays (PG_FUNCTION_ARGS);
 
 Datum plvdate_version (PG_FUNCTION_ARGS);
 
+Datum plvdate_days_inmonth (PG_FUNCTION_ARGS);
+Datum plvdate_isleapyear (PG_FUNCTION_ARGS);
+
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);
 PG_FUNCTION_INFO_V1(plvdate_next_bizday);
@@ -70,6 +73,10 @@ PG_FUNCTION_INFO_V1(plvdate_including_start);
 PG_FUNCTION_INFO_V1(plvdate_default_holydays);
 
 PG_FUNCTION_INFO_V1(plvdate_version);
+
+PG_FUNCTION_INFO_V1(plvdate_days_inmonth);
+PG_FUNCTION_INFO_V1(plvdate_isleapyear);
+
 
 #define CHECK_SEQ_SEARCH(_l, _s) \
 do { \
@@ -763,3 +770,53 @@ plvdate_version (PG_FUNCTION_ARGS)
 	PG_RETURN_CSTRING(PLVDATE_VERSION);
 }
 
+
+/****************************************************************
+ * PLVdate.days_inmonth
+ *
+ * Syntax:
+ *   FUNCTION days_inmonth(date) RETURNS integer
+ *
+ * Purpouse:
+ *   Returns month's length
+ *
+ ****************************************************************/
+
+Datum 
+plvdate_days_inmonth(PG_FUNCTION_ARGS)
+{
+    DateADT day = PG_GETARG_DATEADT(0);
+    int result;
+    int y, m, d;
+    
+    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+    
+    result = date2j(y, m+1, 1) - date2j(y, m, 1);
+                    
+    PG_RETURN_INT32(result);
+}
+
+
+/****************************************************************
+ * PLVdate.isleapyear
+ *
+ * Syntax:
+ *   FUNCTION isleapyear() RETURNS bool
+ *
+ * Purpouse:
+ *   Returns true, if year is leap
+ *
+ ****************************************************************/
+
+Datum 
+plvdate_isleapyear(PG_FUNCTION_ARGS)
+{
+	DateADT day = PG_GETARG_DATEADT(0);
+	int y, m, d;
+	bool result;
+
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	result = ((( y % 4) == 0) && ((y % 100) != 0)) || ((y / 400) == 0);
+	
+	PG_RETURN_BOOL(result);
+}

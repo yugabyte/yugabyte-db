@@ -422,6 +422,16 @@ RETURNS void
 AS 'MODULE_PATHNAME','plvdate_default_holydays'
 LANGUAGE C VOLATILE STRICT;
 
+CREATE FUNCTION plvdate.days_inmonth(date)
+RETURNS integer
+AS 'MODULE_PATHNAME','plvdate_days_inmonth'
+LANGUAGE C VOLATILE STRICT;
+
+CREATE FUNCTION plvdate.isleapyear(date)
+RETURNS bool
+AS 'MODULE_PATHNAME','plvdate_isleapyear'
+LANGUAGE C VOLATILE STRICT;
+
 
 -- PLVstr package
 
@@ -732,3 +742,12 @@ BEGIN
   INSERT INTO ora_alerts(event, message) VALUES(_event, _message);
 END;
 $$ LANGUAGE plpgsql VOLATILE STRICT SECURITY DEFINER;
+
+GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
+GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
+GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
+GRANT USAGE ON SCHEMA plvstr TO PUBLIC;
+GRANT USAGE ON SCHEMA plvchr TO PUBLIC;
+GRANT USAGE ON SCHEMA dbms_output TO PUBLIC;
+
+GRANT SELECT ON dbms_pipe.db_pipes to public;

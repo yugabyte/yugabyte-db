@@ -305,7 +305,8 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 	for (i = 0; i < MAX_PIPES; i++)
 	{
 		if (pipes[i].is_valid && 
-			strncmp((char*)VARDATA(pipe_name), pipes[i].pipe_name, VARSIZE(pipe_name) - VARHDRSZ) == 0)
+			strncmp((char*)VARDATA(pipe_name), pipes[i].pipe_name, VARSIZE(pipe_name) - VARHDRSZ) == 0
+			&& (strlen(pipes[i].pipe_name) == (VARSIZE(pipe_name) - VARHDRSZ)))
 		{
 			/* check owner if non public pipe */
 
