@@ -35,7 +35,6 @@ Datum dbms_output_new_line(PG_FUNCTION_ARGS);
 Datum dbms_output_get_line(PG_FUNCTION_ARGS);
 Datum dbms_output_get_lines(PG_FUNCTION_ARGS);
 
-
 /*
  * Main purpouse is still notification about events, but with serveroutput(false)
  * you can use this module like clasic queue implementation put_line, get_line.

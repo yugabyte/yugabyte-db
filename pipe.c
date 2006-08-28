@@ -22,7 +22,6 @@
  * @ Pavel Stehule 2006
  */
 
-
 #ifndef GetNowFloat
 #ifdef HAVE_INT64_TIMESTAMP
 #define GetNowFloat()   ((float8) GetCurrentTimestamp() / 1000000.0)

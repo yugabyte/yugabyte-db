@@ -11,7 +11,6 @@
  *
  */
 
-
 Datum ora_nvl(PG_FUNCTION_ARGS);
 Datum ora_nvl2(PG_FUNCTION_ARGS);
 Datum ora_concat(PG_FUNCTION_ARGS);
