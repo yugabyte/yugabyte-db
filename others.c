@@ -16,12 +16,23 @@ Datum ora_nvl2(PG_FUNCTION_ARGS);
 Datum ora_concat(PG_FUNCTION_ARGS);
 Datum ora_nlssort(PG_FUNCTION_ARGS);
 Datum ora_set_nls_sort(PG_FUNCTION_ARGS);
-
+Datum ora_lnnvl(PG_FUNCTION_ARGS);
 
 static char *lc_collate_cache = NULL;
 static int multiplication = 1;
 
 text *def_locale = NULL;
+
+PG_FUNCTION_INFO_V1(ora_lnnvl);
+
+Datum
+ora_lnnvl(PG_FUNCTION_ARGS)
+{
+    if (PG_ARGISNULL(0))
+	PG_RETURN_BOOL(true);
+
+    PG_RETURN_BOOL(!PG_GETARG_BOOL(0));
+}
 
 PG_FUNCTION_INFO_V1(ora_concat);
 

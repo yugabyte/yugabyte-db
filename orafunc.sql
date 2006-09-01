@@ -112,6 +112,12 @@ AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL STABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.reverse(text) IS '';
 
+CREATE OR REPLACE FUNCTION pg_catalog.lnnvl(bool)
+RETURNS bool
+AS '$libdir/orafunc','ora_lnnvl'
+LANGUAGE C STABLE;
+COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
+
 
 -- can't overwrite PostgreSQL functions!!!!
 
