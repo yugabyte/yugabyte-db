@@ -217,7 +217,8 @@ easter_sunday(int year, int* dd, int* mm)
 	if (year < 1900 || year > 2099)
 		ereport(ERROR,
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-				 errmsg("Easter is defined for years between 1900 and 2099")));
+				 errmsg("date is out of range"),
+				 errdetail("Easter is defined only for years between 1900 and 2099")));
 	
 	b = 255 - 11 * (year % 19);
 	d = ((b - 21) % 30) + 21;
@@ -513,7 +514,11 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 
 	check = nonbizdays | (1 << d);
 	if (check == 0x7f)
-		elog(ERROR, "Can't to set all non bussined days.");
+                ereport(ERROR,
+                        (errcode(ERRCODE_DATA_EXCEPTION),
+                         errmsg("nonbizday registeration error"),
+                         errdetail("Constraint violation."),
+                         errhint("One day in week have to be bizday.")));
     
 	nonbizdays = nonbizdays | (1 << d);
 
@@ -568,36 +573,44 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 	if (arg2)
 	{
 		if (holydays_c == MAX_HOLYDAYS)
-			elog(ERROR, "Too much holydays");
+                        ereport(ERROR,
+                                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+                                 errmsg("nonbizday registeration error"),
+                                 errdetail("Too much registered nonbizdays."),
+                                 errhint("Increase MAX_HOLYDAYS in 'plvdate.c'.")));
 
 		j2date(arg1 + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 		hd.month = m; hd.day = d;
 
 		if (NULL != bsearch(&hd, holydays, holydays_c, sizeof(holyday_desc), holyday_desc_comp))
-			elog(WARNING, "Date is registered");
-		else
-		{
-			holydays[holydays_c].month = m;
-			holydays[holydays_c].day = d;
-			holydays_c += 1;
+                        ereport(ERROR,
+                                (errcode(ERRCODE_DUPLICATE_OBJECT),
+                                 errmsg("nonbizday registeration error"),
+                                 errdetail("Date is registered.")));
 
-			qsort(holydays, holydays_c, sizeof(holyday_desc), holyday_desc_comp);
-		}   
+		holydays[holydays_c].month = m;
+		holydays[holydays_c].day = d;
+		holydays_c += 1;
+
+		qsort(holydays, holydays_c, sizeof(holyday_desc), holyday_desc_comp);   
 	}
 	else
 	{
 		if (exceptions_c == MAX_EXCEPTIONS)
-			elog(ERROR, "Too much exceptions");
+                        ereport(ERROR,
+                                (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+                                 errmsg("nonbizday registeration error"),
+                                 errdetail("Too much registered nonrepeated nonbizdays."),
+                                 errhint("Increase MAX_EXCEPTIONS in 'plvdate.c'.")));
+
 		if (NULL != bsearch(&arg1, exceptions, exceptions_c, sizeof(DateADT), dateadt_comp))
-			elog(WARNING, "Date is registerd");
-		else
-		{
-			exceptions[exceptions_c++] = arg1;
-			qsort(exceptions, exceptions_c, sizeof(DateADT), dateadt_comp);
-			if (NULL != bsearch(&arg1, exceptions, exceptions_c, sizeof(DateADT), dateadt_comp))
-				elog(WARNING, "Nasel");
+                        ereport(ERROR,
+                                (errcode(ERRCODE_DUPLICATE_OBJECT),
+                                 errmsg("nonbizday registeration error"),
+                                 errdetail("Date is registered.")));
 		
-		}
+		exceptions[exceptions_c++] = arg1;
+		qsort(exceptions, exceptions_c, sizeof(DateADT), dateadt_comp);
 	}
     
 	PG_RETURN_VOID();
@@ -652,7 +665,10 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 			exceptions_c -= 1;
 	}
 	if (!found)
-		elog(WARNING, "Date not found");
+                ereport(ERROR,
+                        (errcode(ERRCODE_UNDEFINED_OBJECT),
+                         errmsg("nonbizday unregisteration error"),
+                         errdetail("Nonbizday not found.")));
 
 	PG_RETURN_VOID();
 }

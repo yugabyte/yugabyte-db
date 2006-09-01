@@ -123,8 +123,6 @@ Functions:
 
 Package dbms_alert
 ==================
-This package isn't transaction based, Oracle yes!
-
 -- Session A
 select dbms_alert.register('boo');
 select * from dbms_alert.waitany(10);
@@ -265,13 +263,17 @@ This module contains implementation of functions: concat, nvl, nvl2.
 
 Atention! concat isn't strict function. concat('a',null) -> 'a'
 
+! can't put it into pg_catalog
+
+o orafce.substr(str text, start int, len int) - Oracle compatible substring
+o orafce.substr(str text, start int)          - Oracle compatible substring
 
 ToDo:
-  o better error messages
-  o better documentation
-  o regress tests
+  o better documentation                                             v3
+  o regress tests                                                    v3
   o comments on functions
-  o better seralization in dbms_pipe (via _send and _recv functions)
+  o better seralization in dbms_pipe (via _send and _recv functions) v3
+  o alter plpgsql functions by native functions                      v3
 
 This module is released under BSD licence. 
 

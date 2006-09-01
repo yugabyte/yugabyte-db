@@ -38,5 +38,14 @@ typedef struct {
 
 bool ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool reset);
 
+#define ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR        MAKE_SQLSTATE('3','0', '0','0','1') 
+
+#define LOCK_ERROR() \
+    ereport(ERROR, \
+	(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR), \
+	 errmsg("lock request error"), \
+         errdetail("Failed exclusive locking of shared memory."), \
+	 errhint("Restart PostgreSQL server."))); 
+
 
 #endif

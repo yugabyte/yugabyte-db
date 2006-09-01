@@ -50,6 +50,9 @@ Datum plvchr_is_kind_i (PG_FUNCTION_ARGS);
 Datum plvchr_is_kind_a (PG_FUNCTION_ARGS);
 Datum plvchr_char_name (PG_FUNCTION_ARGS);
 
+Datum oracle_substr2(PG_FUNCTION_ARGS);
+Datum oracle_substr3(PG_FUNCTION_ARGS);
+
 
 PG_FUNCTION_INFO_V1(plvstr_rvrs);
 PG_FUNCTION_INFO_V1(plvstr_normalize);
@@ -76,6 +79,9 @@ PG_FUNCTION_INFO_V1(plvchr_is_kind_i);
 PG_FUNCTION_INFO_V1(plvchr_is_kind_a);
 PG_FUNCTION_INFO_V1(plvchr_char_name);
 
+PG_FUNCTION_INFO_V1(oracle_substr2);
+PG_FUNCTION_INFO_V1(oracle_substr3);
+
 char* char_names[] = {
 	"NULL","SOH","STX","ETX","EOT","ENQ","ACK","DEL",
 	"BS",  "HT", "NL", "VT", "NP", "CR", "SO", "SI",
@@ -85,7 +91,16 @@ char* char_names[] = {
 
 #define NON_EMPTY_CHECK(str) \
 if (VARSIZE(str) - VARHDRSZ == 0) \
-   elog(ERROR, "Params error, empty string");
+	ereport(ERROR, \
+    		(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
+    		 errmsg("invalid parametr"), \
+		 errdetail("Not allowed empty string.")));
+
+#define PARAMETER_ERROR(detail) \
+	ereport(ERROR, \
+		(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
+		 errmsg("invalid detail"), \
+		 errdetail(detail))); 
 
 
 typedef enum
@@ -212,7 +227,7 @@ ora_substr(text *str, int start, int len, bool valid_length)
 		return ora_make_text("");
 
 	if (len < 0 && valid_length)
-		elog(ERROR, "Invalid params");
+		PARAMETER_ERROR("Third parameter is negative.");
 
 
 	mb_encode = pg_database_encoding_max_length() > 1;
@@ -706,7 +721,7 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 	end = PG_ARGISNULL(2) ? (start < 0 ? -len : len) : end;
 
 	if ((start > end && start > 0) || (start < end && start < 0))
-		elog(ERROR, "Invalid arguments");
+		PARAMETER_ERROR("Second parameter is biger than third.");
 
 	if (start < 0)
 	{
@@ -1144,7 +1159,7 @@ is_kind(char c, int kind)
 		case 5:
 			return ('A' <= c && c <= 'Z') || ('a' <= c && c <= 'z');
 		default:
-			elog(ERROR, "Wrong kind identificator");
+			PARAMETER_ERROR("Second parametr isn't in enum {1,2,3,4,5}");
 			return false; 
 	}
 }
@@ -1208,3 +1223,37 @@ plvchr_char_name(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
+
+/****************************************************************
+ * substr
+ *
+ * Syntax:
+ *   FUNCTION substr (string, start_position, [length]) 
+ *   	RETURN VARCHAR;
+ *
+ * Purpouse:
+ *   The substr functions allows you to extract a substring from a string.
+ *
+ ****************************************************************/
+
+Datum
+oracle_substr3(PG_FUNCTION_ARGS)
+{
+	text *str = PG_GETARG_TEXT_P(0);
+	int start = PG_GETARG_INT32(1);
+	int len = PG_GETARG_INT32(2);
+
+	if (len < 0)
+		PG_RETURN_NULL();
+
+	PG_RETURN_TEXT_P(ora_substr(str, start != 0 ? start : 1, len, true));
+}
+
+Datum
+oracle_substr2(PG_FUNCTION_ARGS)
+{
+	text *str = PG_GETARG_TEXT_P(0);
+	int start = PG_GETARG_INT32(1);
+
+	PG_RETURN_TEXT_P(ora_substr(str, start != 0 ? start : 1, 0, false));
+}

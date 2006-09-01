@@ -10,6 +10,7 @@
 #include "stdlib.h"
 #include "string.h"
 
+
 #define LIST_ITEMS  512
 
 int context;
@@ -67,6 +68,12 @@ ora_sstrcpy(char *str)
 	len = strlen(str);
 	if (NULL != (result = ora_salloc(len+1)))
 		memcpy(result, str, len + 1);
+	else
+		ereport(ERROR,                                                                                 
+                	(errcode(ERRCODE_OUT_OF_MEMORY),                                               
+                	errmsg("out of memory"),                                                      
+                	errdetail("Failed while allocation block %d bytes in shared memory.", len+1),
+                	errhint("Increase SHMEMMSGSZ and recompile package.")));
 	
 	return result;
 }
@@ -78,11 +85,19 @@ ora_scstring(text *str)
 	char *result;
 
 	len = VARSIZE(str) - VARHDRSZ;
+
 	if (NULL != (result = ora_salloc(len+1)))
 	{
 		memcpy(result, VARDATA(str), len);
 		result[len] = '\0';
 	}
+	else
+		ereport(ERROR,                                                                                 
+                	(errcode(ERRCODE_OUT_OF_MEMORY),                                               
+                	errmsg("out of memory"),                                                      
+                	errdetail("Failed while allocation block %d bytes in shared memory.", len+1),
+                	errhint("Increase SHMEMMSGSZ and recompile package.")));
+
 	return result;
 }
 
@@ -95,7 +110,6 @@ defragmentation()
 	qsort(list, *list_c, sizeof(list_item), ptr_comp);
 	
 	/* list strip -  every field have to check or move */
-
 
 	w = 0;
 	for (i = 0; i < *list_c; i++)
@@ -131,11 +145,18 @@ allign_size(size_t size)
 {
 	int i;
 
+	/* default, we can allocate max MAX_SIZE memory block */
+
 	for(i = 0; i < 17; i++)
 		if (asize[i] >= size)
 			return asize[i];
 
-	elog(ERROR, "Can't alloc block of size %d bytes.", size);
+	ereport(ERROR,                                                                                 
+                   (errcode(ERRCODE_OUT_OF_MEMORY),                                               
+                    errmsg("too much large memory block request"),                                                      
+                    errdetail("Failed while allocation block %d bytes in shared memory.", size),
+                    errhint("Increase MAX_SIZE constant, fill table a_size and recompile package.")));                     
+
 	return 0;
 }
 
@@ -164,6 +185,7 @@ ora_sinit(void *ptr, size_t size, bool create)
 		}
 	}
 }
+
 
 void*
 ora_salloc(size_t size)
@@ -253,4 +275,20 @@ ora_sfree(void* ptr)
 		}
 }
 
-	
+/*                                                                                                                     
+ *  alloc shared memory, raise exception if not                                                                        
+ */                                                                                                                    
+                                                                                                                       
+void*                                                                                                           
+salloc(size_t size)                                                                                                    
+{                                                                                                                      
+        void* result;                                                                                                  
+        if (NULL == (result = ora_salloc(size)))
+		ereport(ERROR,                                                                                 
+                	(errcode(ERRCODE_OUT_OF_MEMORY),
+                	errmsg("out of memory"),
+                	errdetail("Failed while allocation block %d bytes in shared memory.", size),
+                	errhint("Increase SHMEMMSGSZ and recompile package.")));
+
+        return result;
+}

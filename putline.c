@@ -12,6 +12,8 @@
 
 #include "orafunc.h"
 
+#define MAX_LINE_BUFFER		2048
+
 static bool is_server_output = false;
 static bool is_enabled = false; 
 static char *buffer = NULL;
@@ -19,7 +21,7 @@ static int   buffer_size = 0;
 static int   buffer_len = 0;
 
 static int  line_len = 0;
-static char line[256];
+static char line[MAX_LINE_BUFFER+1];
 static int  lines = 0;				/* I need to know row count for get_lines() */
 
 static void add_toLine(text *str);
@@ -41,7 +43,6 @@ Datum dbms_output_get_lines(PG_FUNCTION_ARGS);
  * I respect Oracle limits, data 1Mb, line 255 chars.
  */
 
-#define BUFFER_OVERFLOW_TEXT "buffer overflow, limit of %d bytes"
 #define LINE_OVERFLOW_TEXT   "line length overflow, limit of 255 bytes"
 
 /*
@@ -52,8 +53,13 @@ static void
 add_toLine(text *str)
 {
 	int len = VARSIZE(str) - VARHDRSZ;
-	if (line_len + len > 255)
-	    elog(ERROR, LINE_OVERFLOW_TEXT);
+	if (line_len + len > MAX_LINE_BUFFER)
+		ereport(ERROR,
+			(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+			 errmsg("line length overflow"),
+			 errdetail("Line length overflow, limit of %d bytes", MAX_LINE_BUFFER),
+			 errhint("Increase MAX_LINE_BUFFER in 'putline.c' and recompile")));
+
 	memcpy(line+line_len, VARDATA(str), len);
 	line_len += len;
 	line[line_len] = '\0';
@@ -72,11 +78,15 @@ send_buffer()
 	{
 	    if (*cursor == '\0')
 		*cursor = '\n';
-	    *cursor++;
+	    cursor++;
 	}
+
 	if (*cursor != '\0')
-	    elog(ERROR, "internal error");	
-    
+	        ereport(ERROR,
+		        (errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("internal error"),
+		         errdetail("Wrong message format detected")));
+		    
 	pq_beginmessage(&msgbuf, 'N');
     
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
@@ -130,11 +140,15 @@ dbms_output_enable(PG_FUNCTION_ARGS)
     int32 n_buf_size = PG_GETARG_INT32(0);
     
     if (n_buf_size > 1000000)
-        elog(ERROR, "limit excaushed");
+	ereport(ERROR,
+		(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
+		 errmsg("value is out of range"),
+		 errdetail("Output buffer is limited to 1M bytes.")));
+
     if (n_buf_size < 2000)
     {
         n_buf_size = 2000;
-        elog(WARNING, "limit increased to 2000 bytes");
+        elog(WARNING, "Limit increased to 2000 bytes.");
     }	     
     if (buffer != NULL)
         pfree(buffer);
@@ -221,7 +235,12 @@ dbms_output_put_line(PG_FUNCTION_ARGS)
 		text *str = PG_GETARG_TEXT_P(0);
 		add_toLine(str);
 		if (buffer_len + line_len + 1 > buffer_size)
-			elog(ERROR, BUFFER_OVERFLOW_TEXT, buffer_size);
+			ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("buffer overflow"),
+				 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
+				 errhint("Increase buffer size in dbms_output.enable() next time")));
+
 		memcpy(buffer + buffer_len, line, line_len + 1);
 		buffer_len += line_len + 1;
 		line_len = 0; 
@@ -240,7 +259,12 @@ dbms_output_new_line(PG_FUNCTION_ARGS)
     if (is_enabled)
     {
 		if (buffer_len + line_len + 1 > buffer_size)
-			elog(ERROR, BUFFER_OVERFLOW_TEXT, buffer_size);
+			ereport(ERROR,
+				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
+				 errmsg("buffer overflow"),
+				 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
+				 errhint("Increase buffer size in dbms_output.enable() next time")));
+
 		memcpy(buffer + buffer_len, line, line_len + 1);
 		buffer_len += line_len + 1;
 		line_len = 0; 

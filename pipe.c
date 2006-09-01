@@ -167,7 +167,11 @@ pack_field(message_buffer *message, message_data_item **writer,
 
 	l = size + sizeof(message_data_item);
 	if (message->size + l > LOCALMSGSZ-sizeof(message_buffer))
-		elog(ERROR, "Full output buffer");
+    		ereport(ERROR,             
+                            (errcode(ERRCODE_OUT_OF_MEMORY),
+                             errmsg("out of memory"),
+                             errdetail("Packed message is biger than local buffer."),
+			     errhint("Increase LOCALMSGSZ in 'pipe.h' and recompile library.")));                     
 
 	if (_wr == NULL)
 		_wr = (message_data_item*)&message->data;
@@ -233,10 +237,13 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 	if (pipes == NULL)
 	{
-		sh_mem = ShmemInitStruct("dbms_pipe",size,&found);
+		sh_mem = ShmemInitStruct("dbms_pipe", size, &found);
 		uid = GetUserId();
 		if (sh_mem == NULL)
-			elog(ERROR, "Can't to access shared memory");
+    			ereport(ERROR,             
+                        	(errcode(ERRCODE_OUT_OF_MEMORY),
+                                 errmsg("out of memory"),
+                                 errdetail("Failed while allocation block %d bytes in shared memory.", size))); 
 
 		if (!found)
 		{
@@ -312,7 +319,10 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 			if (pipes[i].creator != NULL && pipes[i].uid != uid)
 			{
 				LWLockRelease(shmem_lock);
-				elog(ERROR, "Cannot use pipe");
+    				ereport(ERROR,             
+                        		(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+                                	 errmsg("insufficient privilege"),
+                                	 errdetail("Insufficient privilege to access pipe"))); 
 			}
 
 			return &pipes[i];
@@ -453,7 +463,7 @@ add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid
 	bool result = false;
 	message_buffer *sh_ptr;
 
-	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS,false))
 		return false;
 		
 	for (;;)
@@ -680,7 +690,10 @@ dbms_pipe_unpack_message(message_data_type dtype, bool *is_null, Oid *tupType)
 		return result;
 
 	if (next_type != dtype)
-		elog(ERROR, "Read different type");
+		ereport(ERROR,             
+                    	(errcode(ERRCODE_DATATYPE_MISMATCH),
+                         errmsg("datatype mismatch"),
+                         errdetail("unpack unexpcected type"))); 
 	
 	if (NULL == (ptr = unpack_field(input_buffer, &reader, &type, &size, tupType)))
 		return result;
@@ -866,7 +879,11 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 	bool found = false;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "Pipe name is NULL");
+             ereport(ERROR,
+                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                         errmsg("pipe name is NULL"),
+                         errdetail("Pipename may not be NULL.")));
+
 	if (PG_ARGISNULL(1))
 		timeout = ONE_YEAR;
 
@@ -903,8 +920,11 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	float8 endtime;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "Pipe name is NULL");
-	
+             ereport(ERROR,
+                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                         errmsg("pipe name is NULL"),
+                         errdetail("Pipename may not be NULL.")));
+
 	if (output_buffer == NULL)
 	{
 		output_buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ);
@@ -961,8 +981,8 @@ dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 		PG_RETURN_TEXT_P(result);
 	}
 	WATCH_POST(timeout, endtime, cycle);
-
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
+	
 	PG_RETURN_NULL();
 }
 
@@ -993,7 +1013,7 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 		}
 		WATCH_POST(timeout, endtime, cycle);
 		if (!has_lock)
-			elog(ERROR, "Can't to get lock");
+			LOCK_ERROR();
 
 		funcctx = SRF_FIRSTCALL_INIT ();
 		oldcontext = MemoryContextSwitchTo (funcctx->multi_call_memory_ctx);
@@ -1100,7 +1120,10 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 	int timeout = 10;
 
 	if (PG_ARGISNULL(0))
-		elog(ERROR,"Pipe name is NULL");
+             ereport(ERROR,
+                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                         errmsg("pipe name is NULL"),
+                         errdetail("Pipename may not be NULL.")));
 
 	limit_is_valid = !PG_ARGISNULL(1);
 	is_private = PG_ARGISNULL(2) ? false : PG_GETARG_BOOL(2);
@@ -1114,7 +1137,10 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 			if (!created)
 			{
 				LWLockRelease(shmem_lock);
-				elog(ERROR, "Pipe exists");
+                    		ereport(ERROR,                                                                                                        
+                            		(errcode(ERRCODE_DUPLICATE_OBJECT),                                                                           
+                                	 errmsg("pipe creation error"),                                                                     
+                                	 errdetail("Pipe is registered.")));                       
 			}
 			if (is_private)
 			{
@@ -1133,8 +1159,8 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 		}
 	}
 	WATCH_POST(timeout, endtime, cycle);
-
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
+	
 	PG_RETURN_VOID();	
 }
 
@@ -1183,8 +1209,8 @@ dbms_pipe_purge (PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
-
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
+	
 	PG_RETURN_VOID();
 }
 
@@ -1210,8 +1236,8 @@ Datum dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
-
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
+	
 	PG_RETURN_VOID();
 }
 

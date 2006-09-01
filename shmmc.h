@@ -6,5 +6,5 @@ void* ora_salloc(size_t size);
 void  ora_sfree(void* ptr);
 char* ora_sstrcpy(char *str);
 char* ora_scstring(text *str);
-
+void* salloc(size_t size);        
 #endif

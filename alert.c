@@ -3,6 +3,7 @@
 #include "string.h"
 #include "storage/lwlock.h"
 #include "miscadmin.h"
+#include "utils/timestamp.h"
 
 #include "pipe.h"
 #include "shmmc.h"
@@ -100,20 +101,6 @@ textcmpm(text *txt, char *str)
 
 
 /*
- *  alloc shared memory, raise exception if not
- */
-
-static void*
-salloc(size_t size)
-{
-	void* result;
-	if (NULL == (result = ora_salloc(size)))
-		elog(ERROR, "Out of shared memory");
-
-	return result;
-}
-
-/*
  * find or create event rec
  *
  */
@@ -145,7 +132,11 @@ find_lock(int sid, bool create)
 			return &locks[first_free];
 		}
 		else
-			elog(ERROR, "Too much colaborated sessions");
+			ereport(ERROR,                                                          
+    				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
+        			 errmsg("lock request error"),
+				 errdetail("Failed to create session lock."),
+        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));   
 	}
 
 	return NULL;
@@ -172,8 +163,7 @@ find_event(text *event_name, bool create, int *event_id)
 		for(i=0; i < MAX_EVENTS;i++)
 			if (events[i].event_name == NULL)
 			{
-				if (NULL == (events[i].event_name = ora_scstring(event_name)))
-					elog(ERROR, "Out of memory");
+				events[i].event_name = ora_scstring(event_name);
 
 				events[i].max_receivers = 0;
 				events[i].receivers = NULL;
@@ -184,7 +174,12 @@ find_event(text *event_name, bool create, int *event_id)
 					*event_id = i;
 				return &events[i];
 			}
-		elog(ERROR, "Max number of events");
+
+			ereport(ERROR,                                                          
+    				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+        			 errmsg("event registeration error"),
+				 errdetail("Too much registered events."),
+        			 errhint("There are too much colaborated sessions. Increase MAX_EVENTS in 'pipe.h'.")));            
 	}
 
 	return NULL;
@@ -211,10 +206,21 @@ register_event(text *event_name)
 			first_free = i;
 	}
 
+	/* 
+	 * I can have maximalne MAX_LOCKS receivers for one event.
+	 * Array receivers is increased for 16 fields 
+	 */
+
 	if (first_free == NOT_FOUND)
 	{
 		if (ev->max_receivers + 16 > MAX_LOCKS)
-			elog(ERROR,"Too much colaborating sessions");
+			ereport(ERROR,                                                          
+    				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
+        			 errmsg("lock request error"),
+				 errdetail("Failed to create session lock."),
+        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));   
+
+		/* increase receiver's array */
 
 		new_receivers = (int*)salloc((ev->max_receivers + 16)*sizeof(int));
 			
@@ -327,7 +333,7 @@ find_and_remove_message_item(int message_id, int sid,
 
 	alck = find_lock(sid, false);
 
-	if (event_name != NULL)
+	if (event_name)
 		*event_name = NULL;
 
 	if (alck != NULL && alck->echo != NULL)
@@ -389,15 +395,16 @@ find_and_remove_message_item(int message_id, int sid,
 			}
 			else if (_message_id == message_id || all)
 			{
-				/* I have to do local copy */
-				
-				result = pstrcpy(message_text);
+				/* I have to do local copy */				
+				if (message_text)
+				{
+					result = pstrcpy(message_text);
+					if (destroy_msg_item)
+						ora_sfree(message_text);
+				}
 
 				if (event_name != NULL)
 					*event_name = pstrcpy(events[_message_id].event_name);
-				
-				if (message_text != NULL && destroy_msg_item)
-					ora_sfree(message_text);
 				
 				break;
 			}
@@ -420,7 +427,7 @@ create_message(text *event_name, text *message)
 	int i,j,k;
 
 	find_event(event_name, false, &event_id);
-	
+
 	/* process event only when any recipient exitsts */
 	if (NULL != (ev = find_event(event_name, false, &event_id)))
 	{
@@ -438,7 +445,6 @@ create_message(text *event_name, text *message)
 				msg_item = msg_item->next_message;
 			}
 		
-		
 			msg_item = salloc(sizeof(message_item));
 			
 			msg_item->receivers = salloc( ev->receivers_number*sizeof(int));
@@ -446,15 +452,11 @@ create_message(text *event_name, text *message)
 			
 
 			if (message != NULL)
-			{
-				if (NULL == (msg_item->message = ora_scstring(message)))
-					elog(ERROR, "Out of shared memory");
-			}
+				msg_item->message = ora_scstring(message);
 			else
 				msg_item->message = NULL;
 
 			msg_item->message_id = event_id;
-
 			for (i = j = 0; j < ev->max_receivers; j++)
 				if (ev->receivers[j] != NOT_USED)
 				{
@@ -521,7 +523,6 @@ pg_usleep(10000L); \
 } while(t != 0);
 
 
-
 /*
  *
  *  PROCEDURE DBMS_ALERT.REGISTER (name IN VARCHAR2);
@@ -539,14 +540,14 @@ dbms_alert_register(PG_FUNCTION_ARGS)
 	float8 timeout = 2;
 
 	WATCH_PRE(timeout, endtime, cycle);
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 	{
 		register_event(name);
 		LWLockRelease(shmem_lock);
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
 	PG_RETURN_VOID();
 }
 
@@ -578,14 +579,14 @@ dbms_alert_remove(PG_FUNCTION_ARGS)
 		if (NULL != ev)
 		{
 			find_and_remove_message_item(ev_id, sid, 
-									 false, true, true, NULL, NULL);
+							 false, true, true, NULL, NULL);
 			unregister_event(ev_id, sid);
 		}	
 		LWLockRelease(shmem_lock);
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
 	PG_RETURN_VOID();
 }
 
@@ -613,7 +614,7 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 			if (events[i].event_name != NULL)
 			{
 				find_and_remove_message_item(i, sid, 
-											 false, true, true, NULL, NULL);
+								 false, true, true, NULL, NULL);
 				unregister_event(i, sid);
 			
 			}
@@ -621,7 +622,7 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
 	PG_RETURN_VOID();
 }
 
@@ -640,20 +641,31 @@ Datum
 dbms_alert_signal(PG_FUNCTION_ARGS)
 {
 	text *name = PG_GETARG_TEXT_P(0);
-	text *message = PG_GETARG_TEXT_P(1);
+	text *message;
 	int cycle = 0;
 	float8 endtime;
 	float8 timeout = 2;
 
+	if (PG_ARGISNULL(0)) 
+		ereport(ERROR,                                                          
+    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
+        		 errmsg("event name is NULL"),
+			 errdetail("Eventname may not be NULL.")));                    
+
+	if (PG_ARGISNULL(1))
+		message = NULL;
+	else
+		message = PG_GETARG_TEXT_P(1);
+
 	WATCH_PRE(timeout, endtime, cycle);
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 	{
 		create_message(name, message);
 		LWLockRelease(shmem_lock);	
 		PG_RETURN_VOID();
 	}
 	WATCH_POST(timeout, endtime, cycle);
-	elog(ERROR, "Can't to lock shared memory");
+	LOCK_ERROR();
 	PG_RETURN_VOID();
 }
 
@@ -682,7 +694,6 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 	char *str[3] = {NULL, NULL, "1"};
 	int cycle = 0;
 	float8 endtime;
-
 	
 	if (PG_ARGISNULL(0))
 		timeout = TDAYS;
@@ -690,10 +701,11 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 		timeout = PG_GETARG_FLOAT8(0);
 
 	WATCH_PRE(timeout, endtime, cycle);
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 	{
-		if (NULL != (str[1] = find_and_remove_message_item(-1, sid, 
-														   true, false, false, NULL, &str[0])))
+		str[1]  = find_and_remove_message_item(-1, sid, 
+							   true, false, false, NULL, &str[0]);
+		if (str[0])		
 		{
 			str[2] = "0";
 			LWLockRelease(shmem_lock);	
@@ -708,12 +720,13 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 	attinmeta = TupleDescGetAttInMetadata(btupdesc);
 	tuple = BuildTupleFromCStrings(attinmeta, str);
 	result = HeapTupleGetDatum(tuple);
-			
-	if (str[1])
-	{
-		pfree(str[1]);
+		
+	if (str[0])
 		pfree(str[0]);
-	}
+	
+	if (str[1])
+		pfree(str[1]);
+
 	return result;
 }
 
@@ -745,24 +758,26 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	int cycle = 0;
 	float8 endtime;
 
-
 	if (PG_ARGISNULL(0))
-		elog(ERROR, "Event name is NULL");
+		ereport(ERROR,                                                          
+    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
+        		 errmsg("event name is NULL"),
+			 errdetail("Eventname may not be NULL.")));                       
 
 	if (PG_ARGISNULL(1))
 		timeout = TDAYS;
 	else
-		timeout = PG_GETARG_INT32(1);
+		timeout = PG_GETARG_FLOAT8(1);
 		
 	name = PG_GETARG_TEXT_P(0);
 
 	WATCH_PRE(timeout, endtime, cycle);
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 	{
 		if (NULL != find_event(name, false, &message_id))
 		{
 			str[0] = find_and_remove_message_item(message_id, sid, 
-												  false, false, false, NULL, &event_name);
+								  false, false, false, NULL, &event_name);
 			if (event_name != NULL)
 			{
 				str[1] = "0";
@@ -802,7 +817,10 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_set_defaults(PG_FUNCTION_ARGS)
 {
-	elog(ERROR, "Not implemented");
+	ereport(ERROR,
+		(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+		 errmsg("feature not supported"),
+		 errdetail("Sensitivity isn't supported.")));
 
 	PG_RETURN_VOID();
 }
