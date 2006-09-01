@@ -106,6 +106,13 @@ AS '$libdir/orafunc','plvstr_instr2'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text) IS '';
 
+CREATE OR REPLACE FUNCTION pg_catalog.reverse(str text)
+RETURNS text
+AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
+LANGUAGE SQL STABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.reverse(text) IS '';
+
+
 -- can't overwrite PostgreSQL functions!!!!
 
 DROP SCHEMA orafce CASCADE;
@@ -122,8 +129,6 @@ RETURNS text
 AS '$libdir/orafunc','oracle_substr3'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION orafce.substr(text, int, int) IS '';
-
-
 
 DROP TABLE public.dual CASCADE;
 CREATE TABLE public.dual(dummy varchar(1));

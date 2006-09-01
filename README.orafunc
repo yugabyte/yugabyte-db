@@ -263,6 +263,8 @@ This module contains implementation of functions: concat, nvl, nvl2.
 
 Atention! concat isn't strict function. concat('a',null) -> 'a'
 
+undocumented function reverse(text)
+
 ! can't put it into pg_catalog
 
 o orafce.substr(str text, start int, len int) - Oracle compatible substring
