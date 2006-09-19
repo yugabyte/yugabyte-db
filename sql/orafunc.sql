@@ -1,5 +1,7 @@
-\i ../orafunc.sql	\
-
+\set ECHO none
+\i orafunc.sql
+SET DATESTYLE TO ISO;
+\set ECHO all
 
 
 --
@@ -31,12 +33,16 @@ select dbms_pipe.send_message('pavel',0,2);
 select dbms_pipe.receive_message('pavel',0);
 select '>>>>'||dbms_pipe.unpack_message_text()||'<<<<';
 select '>>>>'||dbms_pipe.unpack_message_text()||'<<<<';
+select dbms_pipe.receive_message('pavel',0);
 
-select dbms_pipe.pack_message('012345678901234');
+select dbms_pipe.purge('bob');
+select dbms_pipe.reset_buffer();
+
+select dbms_pipe.pack_message('012345678901234+1');
 select dbms_pipe.send_message('bob',0,10);
-select dbms_pipe.pack_message('012345678901234');
+select dbms_pipe.pack_message('012345678901234+2');
 select dbms_pipe.send_message('bob',0,10);
-select dbms_pipe.pack_message('012345678901234');
+select dbms_pipe.pack_message('012345678901234+3');
 select dbms_pipe.send_message('bob',0,10);
 --------------------------------------------
 select dbms_pipe.receive_message('bob',0);
@@ -46,18 +52,18 @@ select dbms_pipe.unpack_message_text();
 select dbms_pipe.receive_message('bob',0);
 select dbms_pipe.unpack_message_text();
 
-select dbms_pipe.unique_session_name();
-select dbms_pipe.pack_message('012345678901234');
+select dbms_pipe.unique_session_name() LIKE 'PG$PIPE$%';
+select dbms_pipe.pack_message('012345678901234-1');
 select dbms_pipe.send_message('bob',0,10);
 select dbms_pipe.receive_message('bob',0);
 select dbms_pipe.unpack_message_text();
-select dbms_pipe.pack_message('012345678901234');
+select dbms_pipe.pack_message('012345678901234-2');
 select dbms_pipe.send_message('bob',0,10);
 select dbms_pipe.send_message('bob',0,10);
 select dbms_pipe.receive_message('bob',0);
 select dbms_pipe.unpack_message_text();
 
-select dbms_pipe.pack_message(current_date);
+select dbms_pipe.pack_message(TO_DATE('2006-10-11', 'YYYY-MM-DD'));
 select dbms_pipe.send_message('test_date');
 select dbms_pipe.receive_message('test_date');
 select dbms_pipe.next_item_type();
@@ -67,9 +73,9 @@ select dbms_pipe.pack_message(current_timestamp);
 select dbms_pipe.send_message('test_date');
 select dbms_pipe.receive_message('test_date');
 select dbms_pipe.next_item_type();
-select dbms_pipe.unpack_message_timestamp();
+select to_char(dbms_pipe.unpack_message_timestamp(),'YYYY-MM-DD::hh24:ss:mm') = to_char(current_timestamp,'YYYY-MM-DD::hh24:ss:mm');
 
-select dbms_pipe.pack_message(6262626262);
+select dbms_pipe.pack_message(6262626262::numeric);
 select dbms_pipe.send_message('test_int');
 select dbms_pipe.receive_message('test_int');
 select dbms_pipe.next_item_type();

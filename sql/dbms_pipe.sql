@@ -13,7 +13,7 @@ CREATE OR REPLACE FUNCTION sk()
 RETURNS void AS $$
 DECLARE t testt;
  o testt;
-BEGIN t.x := 1; t.y := 2; t.v := 'Pavel Stìhule';
+BEGIN t.x := 1; t.y := 2; t.v := 'Pavel Stehule';
   RAISE NOTICE 'SEND';
   PERFORM dbms_pipe.pack_message(t);
   PERFORM dbms_pipe.send_message('boo',4,10);
@@ -56,4 +56,3 @@ BEGIN
 END; $$ LANGUAGE plpgsql;
 
 
-CREATE OR REPLACE 

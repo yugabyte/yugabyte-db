@@ -837,3 +837,38 @@ plvdate_isleapyear(PG_FUNCTION_ARGS)
 	
 	PG_RETURN_BOOL(result);
 }
+
+/****************************************************************
+ * PLVdate.set_nonbizdays
+ *
+ * Syntax:
+ *   FUNCTION set_nonbizdays(IN dow bool[7]) RETURNS void;
+ *
+ * Purpouse:
+ *   Set pattern bussines/nonbussines days in week
+ *
+ ****************************************************************/
+
+/****************************************************************
+ * PLVdate.set_nonbizday
+ *
+ * Syntax:
+ *   FUNCTION set_nonbizdays(IN days DATE[]) RETURNS void;
+ *   FUNCTION set_nonbizdays(IN days DATE[], IN repeat := false BOOL) RETURNS void;
+ *
+ * Purpouse:
+ *   Set days as non bussines day, second arg specify year's 
+ * periodicity
+ *
+ ****************************************************************/
+
+/****************************************************************
+ * PLVdate.display
+ *
+ * Syntax:
+ *   FUNCTION display() RETURNS void;
+ *
+ * Purpouse:
+ *   Show current calendar
+ *
+ ****************************************************************/

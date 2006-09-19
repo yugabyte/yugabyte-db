@@ -8,6 +8,9 @@
 #include "pipe.h"
 #include "shmmc.h"
 
+#include "executor/spi.h"
+#include "commands/trigger.h"
+
 Datum dbms_alert_register(PG_FUNCTION_ARGS);
 Datum dbms_alert_remove(PG_FUNCTION_ARGS);
 Datum dbms_alert_removeall(PG_FUNCTION_ARGS);
@@ -15,7 +18,7 @@ Datum dbms_alert_set_defaults(PG_FUNCTION_ARGS);
 Datum dbms_alert_signal(PG_FUNCTION_ARGS);
 Datum dbms_alert_waitany(PG_FUNCTION_ARGS);
 Datum dbms_alert_waitone(PG_FUNCTION_ARGS);
-
+Datum dbms_alert_defered_signal(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(dbms_alert_register);
 PG_FUNCTION_INFO_V1(dbms_alert_remove);
@@ -24,6 +27,8 @@ PG_FUNCTION_INFO_V1(dbms_alert_set_defaults);
 PG_FUNCTION_INFO_V1(dbms_alert_signal);
 PG_FUNCTION_INFO_V1(dbms_alert_waitany);
 PG_FUNCTION_INFO_V1(dbms_alert_waitone);
+PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
+
 
 
 extern unsigned char sid;
@@ -232,8 +237,10 @@ register_event(text *event_name)
 				new_receivers[i] = NOT_USED;
 		}		
 
-		ev->max_receivers += 16;
-		ora_sfree(ev->receivers);
+		ev->max_receivers += 16;	
+		if (ev->receivers)
+			ora_sfree(ev->receivers);
+
 		ev->receivers = new_receivers;
 		
 		first_free = ev->max_receivers - 16;
@@ -627,48 +634,6 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 }
 
 
-/*
- *
- *  PROCEDURE DBMS_ALERT.SIGNAL(name IN VARCHAR2,message IN VARCHAR2);
- *
- *  Signals the occurrence of alert name and attaches message. (Sessions 
- *  registered for alert name are notified only when the signaling transaction 
- *  commits.)
- * 
- */
-
-Datum
-dbms_alert_signal(PG_FUNCTION_ARGS)
-{
-	text *name = PG_GETARG_TEXT_P(0);
-	text *message;
-	int cycle = 0;
-	float8 endtime;
-	float8 timeout = 2;
-
-	if (PG_ARGISNULL(0)) 
-		ereport(ERROR,                                                          
-    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
-        		 errmsg("event name is NULL"),
-			 errdetail("Eventname may not be NULL.")));                    
-
-	if (PG_ARGISNULL(1))
-		message = NULL;
-	else
-		message = PG_GETARG_TEXT_P(1);
-
-	WATCH_PRE(timeout, endtime, cycle);
-	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
-	{
-		create_message(name, message);
-		LWLockRelease(shmem_lock);	
-		PG_RETURN_VOID();
-	}
-	WATCH_POST(timeout, endtime, cycle);
-	LOCK_ERROR();
-	PG_RETURN_VOID();
-}
-
 
 /*
  *
@@ -826,3 +791,214 @@ dbms_alert_set_defaults(PG_FUNCTION_ARGS)
 }
 
 
+
+/*
+ * This code was originally in plpgsql
+ *
+ */ 
+
+/*
+CREATE OR REPLACE FUNCTION dbms_alert._defered_signal() RETURNS trigger AS $$                                                         
+BEGIN                                                                                                                                 
+  PERFORM dbms_alert._signal(NEW.event, NEW.message);                                                                                 
+  DELETE FROM ora_alerts WHERE oid=NEW.oid;                                                                                           
+  RETURN NEW;                                                                                                                         
+END;                                                                                                                                  
+$$ LANGUAGE plpgsql SECURITY DEFINER VOLATILE;
+*/
+
+#define DatumGetItemPointer(X)   ((ItemPointer) DatumGetPointer(X))                                      
+#define ItemPointerGetDatum(X)   PointerGetDatum(X)                                                      
+
+Datum
+dbms_alert_defered_signal(PG_FUNCTION_ARGS)
+{
+	TriggerData *trigdata = (TriggerData *) fcinfo->context;
+	TupleDesc tupdesc;
+	HeapTuple rettuple;
+	char *relname;
+	text *name;
+	text *message;
+	int event_col; 
+	int message_col;
+
+	bool isnull;
+	int cycle = 0;
+	float8 endtime;
+	float8 timeout = 2;
+
+
+	if (!CALLED_AS_TRIGGER(fcinfo))
+		ereport(ERROR,
+			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+			 errmsg("not called by trigger manager")));
+
+	if (!TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
+		ereport(ERROR,
+			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+			 errmsg("not called on good event")));
+
+	if (SPI_connect() < 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+			 errmsg("SPI_connect failed")));
+
+	if (strcmp((relname = SPI_getrelname(trigdata->tg_relation)), "ora_alerts") != 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+			 errmsg("not called with good relatio")));
+
+	rettuple = trigdata->tg_trigtuple;
+	tupdesc = trigdata->tg_relation->rd_att;
+
+	if (SPI_ERROR_NOATTRIBUTE == (event_col = SPI_fnumber(tupdesc, "event")))
+		ereport(ERROR,
+			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+			 errmsg("attribute event not found")));
+
+
+	if (SPI_ERROR_NOATTRIBUTE == (message_col = SPI_fnumber(tupdesc, "message")))
+		ereport(ERROR,
+			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+			 errmsg("attribute message not found")));
+
+	name = DatumGetTextP(SPI_getbinval(rettuple, tupdesc, event_col, &isnull));
+	if (isnull) 
+		ereport(ERROR,                                                          
+    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
+        		 errmsg("event name is NULL"),
+			 errdetail("Eventname may not be NULL.")));                    
+
+	message = DatumGetTextP(SPI_getbinval(rettuple, tupdesc, message_col, &isnull));
+	if (isnull)
+		message = NULL;
+
+	WATCH_PRE(timeout, endtime, cycle);
+	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
+	{
+		ItemPointer tid;
+		Oid argtypes[1] = {TIDOID};
+		char nulls[1] = {' '};
+		Datum values[1];
+		void *plan;
+
+		create_message(name, message);
+		LWLockRelease(shmem_lock);	
+		
+		tid = &rettuple->t_data->t_ctid;
+
+		if (!(plan = SPI_prepare("DELETE FROM ora_alerts WHERE ctid = $1", 1, argtypes)))
+			ereport(ERROR,
+				(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+				 errmsg("SPI_prepare failed")));
+
+		values[0] = ItemPointerGetDatum(tid);
+
+		if (SPI_OK_DELETE != SPI_execute_plan(plan, values, nulls, false, 1))
+			ereport(ERROR,
+				(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
+				errmsg("can't execute sql")));
+		
+		SPI_finish();
+		return PointerGetDatum(rettuple);
+	}
+	WATCH_POST(timeout, endtime, cycle);
+	LOCK_ERROR();
+
+	PG_RETURN_NULL();
+}
+
+
+/*
+ *
+ *  PROCEDURE DBMS_ALERT.SIGNAL(name IN VARCHAR2,message IN VARCHAR2);
+ *
+ *  Signals the occurrence of alert name and attaches message. (Sessions 
+ *  registered for alert name are notified only when the signaling transaction 
+ *  commits.)
+ * 
+ */
+
+/*
+                                                                                                                                      
+CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) RETURNS void AS $$                                           
+BEGIN                                                                                                                                 
+  PERFORM 1 FROM pg_catalog.pg_class c                                                                                                
+            WHERE pg_catalog.pg_table_is_visible(c.oid)                                                                               
+            AND c.relkind='r' AND c.relname = 'ora_alerts';                                                                           
+  IF NOT FOUND THEN                                                                                                                   
+    CREATE TEMP TABLE ora_alerts(event text, message text) WITH OIDS;                                                                 
+    REVOKE ALL ON TABLE ora_alerts FROM PUBLIC;                                                                                       
+    CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts                                                             
+      INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert._defered_signal();                                                 
+  END IF;                                                                                                                             
+  INSERT INTO ora_alerts(event, message) VALUES(_event, _message);                                                                    
+END;                                                                                                                                  
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;                                                                                        
+COMMENT ON FUNCTION dbms_alert.signal(text, text) IS '';  
+
+*/
+
+#define SPI_EXEC(cmd,_type_) \
+if (SPI_OK_##_type_ != SPI_execute(cmd, false, 1)) \
+		ereport(ERROR, \
+    			(errcode(ERRCODE_INTERNAL_ERROR), \
+        		 errmsg("SPI execute error"), \
+			 errdetail("Can't execute %s.", cmd)));
+	
+Datum
+dbms_alert_signal(PG_FUNCTION_ARGS)
+{
+	void *plan;
+	Oid argtypes[] = {TEXTOID, TEXTOID};
+	Datum values[2];
+	char nulls[2] = {' ',' '};
+
+	if (PG_ARGISNULL(0))
+		ereport(ERROR,                                                          
+    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),  
+        		 errmsg("event name is NULL"),
+			 errdetail("Eventname may not be NULL.")));                    
+
+	if (PG_ARGISNULL(1))
+		nulls[1] = 'n';
+
+	values[0] = PG_GETARG_DATUM(0);
+	values[1] = PG_GETARG_DATUM(1);
+
+
+	if (SPI_connect() < 0)
+		ereport(ERROR,
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("SPI_connect failed")));
+
+	SPI_EXEC("SELECT 1 FROM pg_catalog.pg_class c "
+                    "WHERE pg_catalog.pg_table_is_visible(c.oid) "
+                            "AND c.relkind='r' AND c.relname = 'ora_alerts'", SELECT);
+	if (0 == SPI_processed)
+	{
+		SPI_EXEC("CREATE TEMP TABLE ora_alerts(event text, message text)", UTILITY);
+		SPI_EXEC("REVOKE ALL ON TABLE ora_alerts FROM PUBLIC", UTILITY);
+		SPI_EXEC("CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts "
+    		    "INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()", UTILITY);
+	}
+
+
+	if (!(plan = SPI_prepare(
+			"INSERT INTO ora_alerts(event,message) VALUES($1, $2)",
+			2, 
+			argtypes)))
+			ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				 errmsg("SPI_prepare failed")));
+
+
+	if (SPI_OK_INSERT != SPI_execute_plan(plan, values, nulls, false, 1))
+			ereport(ERROR,
+				(errcode(ERRCODE_INTERNAL_ERROR),
+				errmsg("can't execute sql")));
+
+
+	SPI_finish();
+	PG_RETURN_VOID();
+}

@@ -271,8 +271,49 @@ ora_sfree(void* ptr)
 			list[i].dispossible = true;
 			/* list[i].context = -1; */
 			memset(list[i].first_byte_ptr, '#', list[i].size);
-			break;
+			return;
 		}
+	
+	ereport(ERROR,                                                                                 
+            	(errcode(ERRCODE_INTERNAL_ERROR),
+            	errmsg("corrupted pointer"),
+            	errdetail("Failed while reallocating memory block in shared memory."),
+            	errhint("Report this bug to autors.")));
+
+
+}
+
+
+void*
+ora_srealloc(void *ptr, size_t size)
+{
+	void *result;
+	size_t aux_s = 0;	
+	int i;
+
+	for (i = 0; i < *list_c; i++)
+		if (list[i].first_byte_ptr == ptr)
+		{
+			if (allign_size(size) <= list[i].size)
+				return ptr;
+			aux_s = list[i].size;
+		}
+
+	if (aux_s == 0)
+		ereport(ERROR,                                                                                 
+                	(errcode(ERRCODE_INTERNAL_ERROR),
+                	errmsg("corrupted pointer"),
+                	errdetail("Failed while reallocating memory block in shared memory."),
+                	errhint("Report this bug to autors.")));
+
+		
+	if (NULL != (result = ora_salloc(size)))
+	{
+		memcpy(result, ptr, aux_s);
+		ora_sfree(ptr);
+	}
+
+	return result;
 }
 
 /*                                                                                                                     
@@ -282,12 +323,28 @@ ora_sfree(void* ptr)
 void*                                                                                                           
 salloc(size_t size)                                                                                                    
 {                                                                                                                      
-        void* result;                                                                                                  
+        void* result; 
+                                                                                                 
         if (NULL == (result = ora_salloc(size)))
 		ereport(ERROR,                                                                                 
                 	(errcode(ERRCODE_OUT_OF_MEMORY),
                 	errmsg("out of memory"),
                 	errdetail("Failed while allocation block %d bytes in shared memory.", size),
+                	errhint("Increase SHMEMMSGSZ and recompile package.")));
+
+        return result;
+}
+
+void*                                                                                                           
+srealloc(void *ptr, size_t size)                                                                                                    
+{                                                                                                                      
+        void* result; 
+                                                                                                 
+        if (NULL == (result = ora_srealloc(ptr, size)))
+		ereport(ERROR,                                                                                 
+                	(errcode(ERRCODE_OUT_OF_MEMORY),
+                	errmsg("out of memory"),
+                	errdetail("Failed while reallocation block %d bytes in shared memory.", size),
                 	errhint("Increase SHMEMMSGSZ and recompile package.")));
 
         return result;

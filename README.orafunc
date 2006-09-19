@@ -2,7 +2,7 @@ Oracle functions and Oracle packages
 ====================================
 
 This module contains some usefull function which can help with porting
-Oracle application to PostgreSQL or can be usefull generally. Bildin
+Oracle application to PostgreSQL or can be usefull generally. Buildin
 Oracle date functions was tested on conformance with Oracle10 on dates 
 from interval 1960..2070 years. Dates before 1100-03-01 can't be 
 verified via Oracle bug.
@@ -272,10 +272,11 @@ o orafce.substr(str text, start int)          - Oracle compatible substring
 
 ToDo:
   o better documentation                                             v3
-  o regress tests                                                    v3
+  o regress tests                                                    
   o comments on functions
   o better seralization in dbms_pipe (via _send and _recv functions) v3
-  o alter plpgsql functions by native functions                      v3
+  o alter shared memory structures by temporary tables		     v3
+      only locks are in shmem, (bitmaps), data in tmp tbl
 
 This module is released under BSD licence. 
 

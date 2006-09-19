@@ -144,7 +144,7 @@ CREATE RULE nodel_dual AS ON DELETE TO public.dual DO NOTHING;
 CREATE RULE noupd_dual AS ON UPDATE TO public.dual DO NOTHING;
 REVOKE ALL ON public.dual FROM PUBLIC;
 GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
-VACUUM ANALYZE public.dual;
+ANALYZE public.dual;
 
 -- this packege is emulation of dbms_ouput Oracle packege
 -- 
@@ -302,14 +302,14 @@ COMMENT ON FUNCTION dbms_pipe.create_pipe(text, int, bool) IS '';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.create_pipe(text, int)
 RETURNS void
-AS $$BEGIN PERFORM dbms_pipe.create_pipe($1,$2,false); END$$
-LANGUAGE plpgsql VOLATILE;
+AS 'MODULE_PATHNAME','dbms_pipe_create_pipe_2' 
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.create_pipe(text, int) IS '';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.create_pipe(text)
 RETURNS void
-AS $$BEGIN PERFORM dbms_pipe.create_pipe($1,NULL,false); END$$
-LANGUAGE plpgsql VOLATILE;
+AS 'MODULE_PATHNAME','dbms_pipe_create_pipe_1' 
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.create_pipe(text) IS '';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.reset_buffer()
@@ -368,14 +368,14 @@ COMMENT ON FUNCTION dbms_pipe.unpack_message_number() IS '';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(integer)
 RETURNS void
-AS $$BEGIN PERFORM dbms_pipe.pack_message($1::numeric); END$$
-LANGUAGE plpgsql VOLATILE STRICT;
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_integer' 
+LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(integer) IS '';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(bigint)
 RETURNS void
-AS $$BEGIN PERFORM dbms_pipe.pack_message($1::numeric); END$$
-LANGUAGE plpgsql VOLATILE STRICT;
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_bigint' 
+LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(bigint) IS '';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(bytea)
@@ -889,28 +889,19 @@ AS 'MODULE_PATHNAME','dbms_alert_set_defaults'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.set_defaults(float8) IS '';
 
-CREATE OR REPLACE FUNCTION dbms_alert._defered_signal() RETURNS trigger AS $$
-BEGIN
-  PERFORM dbms_alert._signal(NEW.event, NEW.message);
-  DELETE FROM ora_alerts WHERE oid=NEW.oid;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER VOLATILE;
+CREATE OR REPLACE FUNCTION dbms_alert.defered_signal() 
+RETURNS trigger
+AS 'MODULE_PATHNAME','dbms_alert_defered_signal'
+LANGUAGE C SECURITY DEFINER;
+REVOKE ALL ON FUNCTION dbms_alert.defered_signal() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION dbms_alert.defered_signal() TO POSTGRES;
 
-CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) RETURNS void AS $$
-BEGIN
-  PERFORM 1 FROM pg_catalog.pg_class c
-            WHERE pg_catalog.pg_table_is_visible(c.oid)
-            AND c.relkind='r' AND c.relname = 'ora_alerts';
-  IF NOT FOUND THEN
-    CREATE TEMP TABLE ora_alerts(event text, message text) WITH OIDS;
-    REVOKE ALL ON TABLE ora_alerts FROM PUBLIC;
-    CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts
-      INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert._defered_signal();
-  END IF;
-  INSERT INTO ora_alerts(event, message) VALUES(_event, _message);
-END;
-$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
+-- je potreba zmenit grant, tak aby ji mohl spustit pouze uzivatel
+
+CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) 
+RETURNS void 
+AS 'MODULE_PATHNAME','dbms_alert_signal'
+LANGUAGE C SECURITY DEFINER;
 COMMENT ON FUNCTION dbms_alert.signal(text, text) IS '';
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;

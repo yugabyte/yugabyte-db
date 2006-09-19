@@ -1,3 +1,15 @@
+\set ECHO none
+psql:orafunc.sql:112: ERROR:  schema "plvstr" does not exist
+CONTEXT:  SQL function "reverse"
+psql:orafunc.sql:113: ERROR:  function pg_catalog.reverse(text) does not exist
+psql:orafunc.sql:124: ERROR:  schema "orafce" does not exist
+psql:orafunc.sql:139: ERROR:  table "dual" does not exist
+psql:orafunc.sql:152: ERROR:  schema "dbms_output" does not exist
+psql:orafunc.sql:230: ERROR:  schema "dbms_pipe" does not exist
+psql:orafunc.sql:409: ERROR:  schema "plvdate" does not exist
+psql:orafunc.sql:560: ERROR:  schema "plvstr" does not exist
+psql:orafunc.sql:714: ERROR:  schema "plvchr" does not exist
+psql:orafunc.sql:846: ERROR:  schema "dbms_alert" does not exist
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -83,5 +95,288 @@ SELECT months_between (to_date ('2003/08/02', 'yyyy/mm/dd'), to_date ('2003/06/0
  months_between 
 ----------------
               2
+(1 row)
+
+select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
+ length | pack_message 
+--------+--------------
+     24 | 
+(1 row)
+
+select length('a bydlim ve Skalici'),dbms_pipe.pack_message('a bydlim ve Skalici');
+ length | pack_message 
+--------+--------------
+     19 | 
+(1 row)
+
+select dbms_pipe.send_message('pavel',0,1);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.send_message('pavel',0,2);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.receive_message('pavel',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select '>>>>'||dbms_pipe.unpack_message_text()||'<<<<';
+             ?column?             
+----------------------------------
+ >>>>jmenuji se Pavel Stehule<<<<
+(1 row)
+
+select '>>>>'||dbms_pipe.unpack_message_text()||'<<<<';
+          ?column?           
+-----------------------------
+ >>>>a bydlim ve Skalici<<<<
+(1 row)
+
+select dbms_pipe.receive_message('pavel',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.purge('bob');
+ purge 
+-------
+ 
+(1 row)
+
+select dbms_pipe.reset_buffer();
+ reset_buffer 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.pack_message('012345678901234+1');
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('bob',0,10);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.pack_message('012345678901234+2');
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('bob',0,10);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.pack_message('012345678901234+3');
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('bob',0,10);
+ send_message 
+--------------
+            0
+(1 row)
+
+--------------------------------------------
+select dbms_pipe.receive_message('bob',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.unpack_message_text();
+ unpack_message_text 
+---------------------
+ 012345678901234+1
+(1 row)
+
+select dbms_pipe.receive_message('bob',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.unpack_message_text();
+ unpack_message_text 
+---------------------
+ 012345678901234+2
+(1 row)
+
+select dbms_pipe.receive_message('bob',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.unpack_message_text();
+ unpack_message_text 
+---------------------
+ 012345678901234+3
+(1 row)
+
+select dbms_pipe.unique_session_name() LIKE 'PG$PIPE$%';
+ ?column? 
+----------
+ t
+(1 row)
+
+select dbms_pipe.pack_message('012345678901234-1');
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('bob',0,10);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.receive_message('bob',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.unpack_message_text();
+ unpack_message_text 
+---------------------
+ 012345678901234-1
+(1 row)
+
+select dbms_pipe.pack_message('012345678901234-2');
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('bob',0,10);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.send_message('bob',0,10);
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.receive_message('bob',0);
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.unpack_message_text();
+ unpack_message_text 
+---------------------
+ 012345678901234-2
+(1 row)
+
+select dbms_pipe.pack_message(TO_DATE('2006-10-11', 'YYYY-MM-DD'));
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('test_date');
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.receive_message('test_date');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.next_item_type();
+ next_item_type 
+----------------
+             12
+(1 row)
+
+select dbms_pipe.unpack_message_date();
+ unpack_message_date 
+---------------------
+ 2006-10-11
+(1 row)
+
+select dbms_pipe.pack_message(current_timestamp);
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('test_date');
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.receive_message('test_date');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.next_item_type();
+ next_item_type 
+----------------
+             13
+(1 row)
+
+select to_char(dbms_pipe.unpack_message_timestamp(),'YYYY-MM-DD::hh24:ss:mm') = to_char(current_timestamp,'YYYY-MM-DD::hh24:ss:mm');
+ ?column? 
+----------
+ t
+(1 row)
+
+select dbms_pipe.pack_message(6262626262::numeric);
+ pack_message 
+--------------
+ 
+(1 row)
+
+select dbms_pipe.send_message('test_int');
+ send_message 
+--------------
+            0
+(1 row)
+
+select dbms_pipe.receive_message('test_int');
+ receive_message 
+-----------------
+               0
+(1 row)
+
+select dbms_pipe.next_item_type();
+ next_item_type 
+----------------
+              9
+(1 row)
+
+select dbms_pipe.unpack_message_number();
+ unpack_message_number 
+-----------------------
+            6262626262
 (1 row)
 
