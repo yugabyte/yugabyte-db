@@ -935,8 +935,6 @@ BEGIN
   INSERT INTO ora_alerts(event, message) VALUES(_event, _message);                                                                    
 END;                                                                                                                                  
 $$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;                                                                                        
-COMMENT ON FUNCTION dbms_alert.signal(text, text) IS '';  
-
 */
 
 #define SPI_EXEC(cmd,_type_) \

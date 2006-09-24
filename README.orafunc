@@ -146,7 +146,7 @@ You should define own nonbizdays (max 50 days) and own holydays (max 30 days).
 Holyday is any nonbizday, which is same every year - 1. May, 24. december, ... 
 
 o plvdate.add_bizdays(day date, days int) date - Get the date created by adding <n> business days to a date
-o plvdate.nearest_bizday(day date) date -  Get the nearest business date to a given date, user defined
+o plvdate.nearest_bizday(day date) date - Get the nearest business date to a given date, user defined
 o plvdate.next_bizday(day date) date - Get the next business date from a given date, user defined
 o plvdate.bizdays_between(day1 date, day2 date) int - Get the number of business days between two dates
 o plvdate.prev_bizday(day date) date - Get the previous business date from a given date
@@ -210,7 +210,7 @@ plvstr.substr('abcdef',-1,1) -> f
 plvstr.substr('abcde',-2,1) -> d
 
 List of functions:
-o plvstr.normalize(str text) - Normalize string - replace white chars by space, replace  spaces by space
+o plvstr.normalize(str text) - Normalize string - Replace white chars by space, replace  spaces by space
 o plvstr.is_prefix(str text, prefix text, cs bool) - Returns true, if prefix is prefix of str
 o plvstr.is_prefix(str text, prefix text)          - Returns true, if prefix is prefix of str
 o plvstr.is_prefix(str int, prefix int)            - Returns true, if prefix is prefix of str
@@ -237,6 +237,12 @@ o plvstr.rvrs(str text, start int)           - Reverse string or part of string
 o plvstr.rvrs(str text)                      - Reverse string or part of string
 o plvstr.left(str text, n int)  -  Returns firs num_in charaters. You can use negative num_in
 o plvstr.right(str text, n int) - Returns last num_in charaters. You can use negative num_ni
+o plvstr.swap(str text, replace text, start int, lengh int) - Replace a substring in a string with a specified string
+o plvstr.swap(str text, replace text)                       - Replace a substring in a string with a specified string
+o plvstr.betwn(str text, start int, _end int, inclusive bool) - Find the Substring Between Start and End Locations
+o plvstr.betwn(str text, start text, _end text, startnth int, endnth int, inclusive bool, gotoend bool) - Find the Substring Between Start and End Locations
+o plvstr.betwn(str text, start text, _end text) - Find the Substring Between Start and End Locations
+o plvstr.betwn(str text, start text, _end text, startnth int, endnth int) - Find the Substring Between Start and End Locations
 
 o plvchr.nth(str text, n int) - Call this function to return the Nth character in a string
 o plvchr.first(str text)      - Call this function to return the first character in a string
@@ -257,6 +263,38 @@ o plvchr.quoted2(str text) - Quoted text between '"'
 o plvchr.stripped(str text, char_in text) - Strips a string of all instances of the specified characters
 
 
+Package PLVsubst
+================
+The PLVsubst package performs string substitutions based on a substitution keyword. 
+
+o plvsubst.string(template_in text, vals_in text[])                 - Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list
+o plvsubst.string(template_in text, vals_in text[], subst_in text)
+o plvsubst.string(template_in text, vals_in text, delim_in text)
+o plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text)
+o plvsubst.setsubst(str text) - Set substitution keyword to default '%s'
+o plvsubst,setsubst() 
+o plvsubst.subst() - Retrieve substitution keyword 
+
+Samples:
+select plvsubst.string('My name is %s %s.', ARRAY['Pavel','Stěhule']);
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+select plvsubst.string('My name is %s %s.', 'Pavel,Stěhule');
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+select plvsubst.string('My name is $$ $$.', 'Pavel|Stěhule','|','$$');
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+
 Others functions
 ================
 This module contains implementation of functions: concat, nvl, nvl2.
@@ -273,7 +311,6 @@ o orafce.substr(str text, start int)          - Oracle compatible substring
 ToDo:
   o better documentation                                             v3
   o regress tests                                                    
-  o comments on functions
   o better seralization in dbms_pipe (via _send and _recv functions) v3
   o alter shared memory structures by temporary tables		     v3
       only locks are in shmem, (bitmaps), data in tmp tbl

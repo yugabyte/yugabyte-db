@@ -20,5 +20,6 @@ text* ora_make_text(char *c);
 text* ora_make_text_fix(char *c, int n);
 int   ora_instr(text *txt, text *pattern, int start, int nth);
 text* ora_clone_text(text *t);
-
+int ora_mb_strlen(text *str, char **sizes, int **positions);
+int ora_mb_strlen1(text *str);
 #endif

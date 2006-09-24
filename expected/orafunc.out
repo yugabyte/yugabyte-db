@@ -8,8 +8,9 @@ psql:orafunc.sql:152: ERROR:  schema "dbms_output" does not exist
 psql:orafunc.sql:230: ERROR:  schema "dbms_pipe" does not exist
 psql:orafunc.sql:409: ERROR:  schema "plvdate" does not exist
 psql:orafunc.sql:560: ERROR:  schema "plvstr" does not exist
-psql:orafunc.sql:714: ERROR:  schema "plvchr" does not exist
-psql:orafunc.sql:846: ERROR:  schema "dbms_alert" does not exist
+psql:orafunc.sql:757: ERROR:  schema "plvchr" does not exist
+psql:orafunc.sql:889: ERROR:  schema "dbms_alert" does not exist
+psql:orafunc.sql:948: ERROR:  schema "plvsubst" does not exist
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -378,5 +379,95 @@ select dbms_pipe.unpack_message_number();
  unpack_message_number 
 -----------------------
             6262626262
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 7, 9);
+ betwn 
+-------
+ and
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 7, 9, FALSE);
+ betwn 
+-------
+ n
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', -3, -1);
+ betwn 
+-------
+ ppy
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'ry');
+ betwn 
+-------
+ arry
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'ry', 1,1,FALSE,FALSE);
+ betwn 
+-------
+ r
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'ry', 2,1,TRUE,FALSE);
+       betwn        
+--------------------
+ and Sally are very
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'y', 2,1);
+   betwn   
+-----------
+ and Sally
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'a', 2, 2);
+    betwn    
+-------------
+ and Sally a
+(1 row)
+
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'a', 2, 3, FALSE,FALSE);
+        betwn        
+---------------------
+ nd Sally are very h
+(1 row)
+
+select plvsubst.string('My name is %s %s.', ARRAY['Pavel','Stěhule']);
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+select plvsubst.string('My name is % %.', ARRAY['Pavel','Stěhule'], '%');
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+select plvsubst.string('My name is %s.', ARRAY['Stěhule']);
+       string        
+---------------------
+ My name is Stěhule.
+(1 row)
+
+select plvsubst.string('My name is %s %s.', 'Pavel,Stěhule');
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+select plvsubst.string('My name is %s %s.', 'Pavel|Stěhule','|');
+          string           
+---------------------------
+ My name is Pavel Stěhule.
+(1 row)
+
+select plvsubst.string('My name is %s.', 'Stěhule');
+       string        
+---------------------
+ My name is Stěhule.
 (1 row)
 

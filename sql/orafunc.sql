@@ -80,3 +80,20 @@ select dbms_pipe.send_message('test_int');
 select dbms_pipe.receive_message('test_int');
 select dbms_pipe.next_item_type();
 select dbms_pipe.unpack_message_number();
+
+select PLVstr.betwn('Harry and Sally are very happy', 7, 9);
+select PLVstr.betwn('Harry and Sally are very happy', 7, 9, FALSE);
+select PLVstr.betwn('Harry and Sally are very happy', -3, -1);
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'ry');
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'ry', 1,1,FALSE,FALSE);
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'ry', 2,1,TRUE,FALSE);
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'y', 2,1);
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'a', 2, 2);
+select PLVstr.betwn('Harry and Sally are very happy', 'a', 'a', 2, 3, FALSE,FALSE);
+
+select plvsubst.string('My name is %s %s.', ARRAY['Pavel','Stěhule']);
+select plvsubst.string('My name is % %.', ARRAY['Pavel','Stěhule'], '%');
+select plvsubst.string('My name is %s.', ARRAY['Stěhule']);
+select plvsubst.string('My name is %s %s.', 'Pavel,Stěhule');
+select plvsubst.string('My name is %s %s.', 'Pavel|Stěhule','|');
+select plvsubst.string('My name is %s.', 'Stěhule');
