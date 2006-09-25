@@ -10,21 +10,21 @@
 
 extern char *days[];
 
-#define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5:
-#define CASE_fmt_IYYY	case 6: case 7: case 8: case 9:
-#define	CASE_fmt_Q	case 10:
-#define	CASE_fmt_WW	case 11:
-#define CASE_fmt_IW	case 12:
-#define	CASE_fmt_W	case 13:
-#define CASE_fmt_DAY	case 14: case 15: case 16:
-#define CASE_fmt_MON	case 17: case 18: case 19: case 20:
-#define CASE_fmt_CC	case 21: case 22:
-#define CASE_fmt_DDD	case 23: case 24: case 25:
-#define CASE_fmt_HH	case 26: case 27: case 28:
-#define CASE_fmt_MI	case 29:
+#define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:
+#define CASE_fmt_IYYY	case 7: case 8: case 9: case 10:
+#define	CASE_fmt_Q	case 11:
+#define	CASE_fmt_WW	case 12:
+#define CASE_fmt_IW	case 13:
+#define	CASE_fmt_W	case 14:
+#define CASE_fmt_DAY	case 15: case 16: case 17:
+#define CASE_fmt_MON	case 18: case 19: case 20: case 21:
+#define CASE_fmt_CC	case 22: case 23:
+#define CASE_fmt_DDD	case 24: case 25: case 26:
+#define CASE_fmt_HH	case 27: case 28: case 29:
+#define CASE_fmt_MI	case 30:
 
 char *date_fmt[] = 
-    {"Y", "Yy", "Yyy", "Yyyy", "Syyy", "syear",
+    {"Y", "Yy", "Yyy", "Yyyy", "Year", "Syyyy", "syear",
      "I", "Iy", "Iyy", "Iyyy",
      "Q", "Ww", "Iw", "W",
      "Day", "Dy", "D",

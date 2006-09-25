@@ -2,7 +2,7 @@
 psql:orafunc.sql:112: ERROR:  schema "plvstr" does not exist
 CONTEXT:  SQL function "reverse"
 psql:orafunc.sql:113: ERROR:  function pg_catalog.reverse(text) does not exist
-psql:orafunc.sql:124: ERROR:  schema "orafce" does not exist
+psql:orafunc.sql:124: ERROR:  schema "oracle" does not exist
 psql:orafunc.sql:139: ERROR:  table "dual" does not exist
 psql:orafunc.sql:152: ERROR:  schema "dbms_output" does not exist
 psql:orafunc.sql:230: ERROR:  schema "dbms_pipe" does not exist
@@ -469,5 +469,215 @@ select plvsubst.string('My name is %s.', 'Stěhule');
        string        
 ---------------------
  My name is Stěhule.
+(1 row)
+
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'YEAR')  =  to_date ('01-JAN-04', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'Q')  =  to_date ('01-OCT-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'MONTH') =  to_date ('01-SEP-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select round(to_date ('22-AUG-03', 'DD-MON-YY'),'DAY')  =  to_date ('24-AUG-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'YEAR')  =  to_date ('01-JAN-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');                                                                       
+ ?column? 
+----------
+ t
+(1 row)
+
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');                                                                 
+ ?column? 
+----------
+ t
+(1 row)
+
+select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select last_day(to_date('2003/03/15', 'yyyy/mm/dd'))   =  to_date ('Mar 31, 2003', 'Mon DD, YYYY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select last_day(to_date('2003/02/03', 'yyyy/mm/dd'))  =  to_date ('Feb 28, 2003', 'Mon DD, YYYY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select last_day(to_date('2004/02/03', 'yyyy/mm/dd'))  =  to_date ('Feb 29, 2004', 'Mon DD, YYYY');
+ ?column? 
+----------
+ t
+(1 row)
+
+select instr('Tech on the net', 'e') =2;
+ ?column? 
+----------
+ t
+(1 row)
+
+select instr('Tech on the net', 'e', 1, 1) = 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+select instr('Tech on the net', 'e', 1, 2) = 11;
+ ?column? 
+----------
+ t
+(1 row)
+
+select instr('Tech on the net', 'e', 1, 3) = 14;
+ ?column? 
+----------
+ t
+(1 row)
+
+select instr('Tech on the net', 'e', -3, 2) = 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr('This is a test', 6, 2) = 'is';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr('This is a test', 6) =  'is a test';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr('TechOnTheNet', 1, 4) =  'Tech';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr('TechOnTheNet', -3, 3) =  'Net';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr('TechOnTheNet', -6, 3) =  'The';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr('TechOnTheNet', -8, 2) =  'On';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('Tech on', ' the Net') =  'Tech on the Net';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('a', 'b') =  'ab';
+ ?column? 
+----------
+ t
+(1 row)
+
+select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
+ ?column? 
+----------
+ t
+(1 row)
+
+select PLVstr.rvrs ('Jumping Jack Flash', 9) = 'hsalF kcaJ';
+ ?column? 
+----------
+ t
+(1 row)
+
+select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';
+ ?column? 
+----------
+ t
+(1 row)
+
+select PLVstr.lstrip ('*val1|val2|val3|*', '*') = 'val1|val2|val3|*';
+ ?column? 
+----------
+ t
+(1 row)
+
+select PLVstr.lstrip (',,,val1,val2,val3,', ',', 3)= 'val1,val2,val3,';
+ ?column? 
+----------
+ t
+(1 row)
+
+select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'WHITE = ''FRONT'' AND COMP# = 1500';
+ ?column? 
+----------
+ t
 (1 row)
 

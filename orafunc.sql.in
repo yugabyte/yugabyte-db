@@ -121,20 +121,20 @@ COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
 -- can't overwrite PostgreSQL functions!!!!
 
-DROP SCHEMA orafce CASCADE;
-CREATE SCHEMA orafce;
+DROP SCHEMA oracle CASCADE;
+CREATE SCHEMA oracle;
 
-CREATE OR REPLACE FUNCTION orafce.substr(str text, start int)
+CREATE OR REPLACE FUNCTION oracle.substr(str text, start int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
 LANGUAGE C STABLE STRICT;
-COMMENT ON FUNCTION orafce.substr(text, int) IS 'Returns substring started on start_in to end';
+COMMENT ON FUNCTION oracle.substr(text, int) IS 'Returns substring started on start_in to end';
 
-CREATE OR REPLACE FUNCTION orafce.substr(str text, start int, len int)
+CREATE OR REPLACE FUNCTION oracle.substr(str text, start int, len int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C STABLE STRICT;
-COMMENT ON FUNCTION orafce.substr(text, int, int) IS 'Returns substring started on start_in len chars';
+COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
 DROP TABLE public.dual CASCADE;
 CREATE TABLE public.dual(dummy varchar(1));

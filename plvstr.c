@@ -286,10 +286,11 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 	}
 	else
 	{
-		dx = -1; pos = c_len_txt;
+		dx = -1; pos = c_len_txt+start+1;
 		str = &((char*)VARDATA(txt))[pos_txt[c_len_txt+ start]+sizes_txt[c_len_txt+ start]-1]; 
 		patt_f = ((char*)VARDATA(pattern)) + fzs_pat - 1;
 	}
+
 
 	for(i = 0; i < fzs_txt; i++)
 	{
@@ -321,7 +322,7 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 			else
 			{
 				str += (fzs_pat)*dx;
-				pos += c_len_pat;
+				pos += dx*c_len_pat;
 			}
 		}
 	}			
@@ -340,7 +341,6 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 {
 	int i, j, len, len_p, dx;
 	char *str, *txt_p, *patt_p, *patt_f;
-
 
 	if (nth <= 0)
 		PARAMETER_ERROR("Four parameter isn't positive.");
