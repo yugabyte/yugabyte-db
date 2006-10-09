@@ -295,6 +295,22 @@ select plvsubst.string('My name is $$ $$.', 'Pavel|Stěhule','|','$$');
 (1 row)
 
 
+Package DBMS_utility
+====================
+o dms_utility.format_call_stack()  -- return formated string with content of call stack
+
+postgres=# select foo2();
+               foo2               
+----------------------------------
+ -----  Call Stack  -----
+   line             object
+ number  statement  name
+      1  return     function foo
+      1  return     function foo1
+      1  return     function foo2
+(1 row)
+
+
 Others functions
 ================
 This module contains implementation of functions: concat, nvl, nvl2.
@@ -310,7 +326,6 @@ o orafce.substr(str text, start int)          - Oracle compatible substring
 
 ToDo:
   o better documentation                                             v3
-  o regress tests                                                    
   o better seralization in dbms_pipe (via _send and _recv functions) v3
   o alter shared memory structures by temporary tables		     v3
       only locks are in shmem, (bitmaps), data in tmp tbl

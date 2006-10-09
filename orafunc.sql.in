@@ -996,6 +996,15 @@ AS 'MODULE_PATHNAME','plvsubst_subst'
 LANGUAGE C STRICT STABLE;
 COMMENT ON FUNCTION plvsubst.subst() IS 'Retrieve the current substitution keyword';
 
+DROP SCHEMA dbms_utility CASCADE;
+CREATE SCHEMA dbms_utility;
+
+CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack() 
+RETURNS text
+AS 'MODULE_PATHNAME','dbms_utility_format_call_stack'
+LANGUAGE C STRICT STABLE;
+COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call stack';
+
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
 GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
@@ -1003,5 +1012,11 @@ GRANT USAGE ON SCHEMA plvstr TO PUBLIC;
 GRANT USAGE ON SCHEMA plvchr TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_output TO PUBLIC;
 GRANT USAGE ON SCHEMA plvsubst TO PUBLIC;
+GRANT SELECT ON dbms_pipe.db_pipes to PUBLIC;
+GRANT USAGE ON SCHEMA dbms_utility TO PUBLIC;
 
-GRANT SELECT ON dbms_pipe.db_pipes to public;
+CREATE OR REPLACE FUNCTION foo() 
+RETURNS text
+AS 'MODULE_PATHNAME','foo'
+LANGUAGE C STRICT STABLE;
+
