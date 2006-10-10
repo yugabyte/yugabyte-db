@@ -33,18 +33,19 @@
 #include "utils/elog.h"
 
 
-Datum dbms_utility_format_call_stack(PG_FUNCTION_ARGS);
+Datum dbms_utility_format_call_stack0(PG_FUNCTION_ARGS);
+Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
 
-PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack);
+PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack0);
+PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack1);
 
-Datum 
-dbms_utility_format_call_stack(PG_FUNCTION_ARGS)
+static char*
+dbms_utility_format_call_stack(char mode)
 {
 	MemoryContext oldcontext = CurrentMemoryContext;
 	ErrorData *edata;
 	ErrorContextCallback *econtext;
 	StringInfo   sinfo;
-
 
 	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO);
 	
@@ -64,27 +65,31 @@ dbms_utility_format_call_stack(PG_FUNCTION_ARGS)
 
 	sinfo = makeStringInfo(); 
 
-	appendStringInfoString(sinfo, "-----  Call Stack  -----\n");
-	appendStringInfoString(sinfo, "  line             object\n");
-	appendStringInfoString(sinfo, "number  statement  name\n");
+	switch (mode)
+	{
+		case 'o':
+			appendStringInfoString(sinfo, "----- PL/pgSQL Call Stack -----\n");
+			appendStringInfoString(sinfo, "  object     line  object\n");
+			appendStringInfoString(sinfo, "  handle   number  name\n");
+			break;
+	}
 
 	if (edata->context)
 	{
 		char *start = edata->context;
-	    
 		while (*start)
 		{
-			char *oname =  "unamed object";
-			char *stmt  = pstrdup("         ");
-			char *line  = pstrdup("      ");
+			char *oname =  "anonymous object";
+			char *line  = "";
 			char *eol = strchr(start, '\n');
+			Oid fnoid = InvalidOid;
 
 			/* first, solve multilines */
 			if (eol)
 				*eol = '\0';
     
 			/* first know format */
-			if (strncmp(start, "PL/pgSQL function \"",19) == 0)
+			if (strncmp(start, "PL/pgSQL function ",18) == 0)
 			{
 
 		    		char *p1, *p2;
@@ -95,11 +100,28 @@ dbms_utility_format_call_stack(PG_FUNCTION_ARGS)
 
 					if ((p2 = strchr(p1, '"')))
 					{
-						*p2 = '\0';
-						start = p2 + 1;
+						*p2++ = '\0';
 						oname = p1;
+						start = p2;
 					}
 				}
+				else if ((p1 = strstr(start, "function ")))
+				{
+					p1 += strlen("function ");
+				    
+					if ((p2 = strchr(p1, ')')))
+					{
+						char c = *++p2;
+						*p2 = '\0';
+						
+						oname = pstrdup(p1);
+						fnoid = DatumGetObjectId(DirectFunctionCall1(regprocedurein, 
+							CStringGetDatum(oname)));
+						*p2 = c;
+						start = p2;
+					}
+				}
+		
 
 				if ((p1 = strstr(start, "line ")))
 				{
@@ -113,34 +135,28 @@ dbms_utility_format_call_stack(PG_FUNCTION_ARGS)
 					c = p1[p2i]; 
 										
 					p1[p2i] = '\0';
-					strcpy(line + (6 - strlen(p1)), p1);
+					line = pstrdup(p1);
 					p1[p2i] = c;
 					
 					start = p1 + p2i;									
 				} 
-
-
-				if ((p1 = strstr(start, "at ")))
-				{
-					int l;
-
-					p1 += strlen("at ");
-					l = strlen(p1);
-
-					l = l > 9 ? 9 : l;
-					strncpy(stmt, p1, l);
-				}
 			} 
 
-			appendStringInfoString(sinfo, line);
-			appendStringInfoString(sinfo, "  ");
-			appendStringInfoString(sinfo, stmt);
-			appendStringInfoString(sinfo, "  function ");
-			appendStringInfoString(sinfo, oname);
-
-			pfree(line);
-			pfree(stmt);
-
+			switch (mode)
+			{
+				case 'o':
+					appendStringInfo(sinfo, "%8x    %5s  function %s", (int)fnoid, line, oname);
+					break;
+				
+				case 'p':
+    					appendStringInfo(sinfo, "%8d    %5s  function %s", (int)fnoid, line, oname);
+					break;
+				
+				case 's':
+					appendStringInfo(sinfo, "%d,%s,%s", (int)fnoid, line, oname);
+					break;
+			}
+	    
 			if (eol)
 			{
 				start = eol + 1;							
@@ -152,6 +168,44 @@ dbms_utility_format_call_stack(PG_FUNCTION_ARGS)
 		    
 	}
 
-	PG_RETURN_TEXT_P(ora_make_text(sinfo->data));
+	return sinfo->data;
+	
 }
 
+
+
+
+Datum 
+dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(ora_make_text(dbms_utility_format_call_stack('o')));
+};
+
+Datum 
+dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
+{
+	text *arg = PG_GETARG_TEXT_P(0);
+	char mode;
+
+	if ((1 != VARSIZE(arg) - VARHDRSZ))
+		ereport(ERROR, 
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+			 errmsg("invalid parameter"),
+			 errdetail("Allowed only chars [ops].")));
+
+	mode = *VARDATA(arg);
+	switch (mode)
+	{
+		case 'o':
+		case 'p':
+		case 's':
+			break;
+		default:
+	    		ereport(ERROR, 
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid parameter"),
+				 errdetail("Allowed only chars [ops].")));
+	}
+
+	PG_RETURN_TEXT_P(ora_make_text(dbms_utility_format_call_stack(mode)));
+}

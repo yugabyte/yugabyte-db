@@ -42,7 +42,8 @@
      ICONST = 258,
      DCONST = 259,
      DPOINTS = 260,
-     SCONST = 261
+     SCONST = 261,
+     OTHERS = 262
    };
 #endif
 /* Tokens.  */
@@ -50,6 +51,7 @@
 #define DCONST 259
 #define DPOINTS 260
 #define SCONST 261
+#define OTHERS 262
 
 
 
@@ -58,8 +60,6 @@
 typedef union YYSTYPE
 #line 21 "sqlparse.y"
 {
-    int			ival;
-    double		dval;
     char		*str;
 }
 /* Line 1529 of yacc.c.  */

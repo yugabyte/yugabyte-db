@@ -19,42 +19,62 @@ int orafce_sql_yyparse(void *result);
 %}
 %union
 {
-    int			ival;
-    double		dval;
     char		*str;
 }
     
 /* BISON Declarations */
-%token ICONST DCONST DPOINTS SCONST
+%token ICONST DCONST DPOINTS SCONST OTHERS
 %start root
 
-%type <ival> ICONST iconst
-%type <dval> DCONST dconst
+%type <str> ICONST iconst
+%type <str> DCONST dconst
 %type <str> SCONST sconst
-%type <node> root
+%type <str> OTHERS others
+%type <str> root
+%type <str> anyelement
+%type <str> anyelementlist
 
 /* Grammar follows */
 %%
 
 /* ext_dow_lst and ext_number_lst I need for updates */
 
-root:	ICONST
+root: anyelementlist 	{ $$ = $1; }
+	;
+
+anyelementlist:
+		    anyelement		{ $$ = $1; };
+		    | anyelementlist anyelement {$$ = $1; };
+		;
+
+anyelement:
+	iconst
 	    {
 		    *((void **) result) = $1;
-		    elog(NOTICE, "ICONST \"%d\"", $1);
+		    elog(NOTICE, "ICONST \"%s\"", $1);
 	    }
-	| SCONST
+	| sconst
 	    {
 		*((void **) result) = $1;
 		elog(NOTICE, "SCONST \"%s\"", $1);
 	    }
-
+	| dconst
+	    {
+		*((void **) result) = $1;
+		elog(NOTICE, "DCONST \"%s\"", $1);
+	    }
+	| others
+	    {
+		*((void **) result) = $1;
+		elog(NOTICE, "OTHERS \"%s\"", $1);
+	    }    
 	;
 
 	
 iconst:		ICONST		{ $$ = $1;}
 dconst:		DCONST		{ $$ = $1;}
 sconst:		SCONST		{ $$ = $1;}
+others:		OTHERS		{ $$ = $1;}
 %%
 
 #include "sqlscan.c"

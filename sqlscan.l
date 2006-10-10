@@ -43,9 +43,9 @@ identifier   [A-Za-z_][A-Z_a-z0-9]*
 
 {
 
-{integer}    yylval.ival = atoi(yytext); return ICONST;
+{integer}    yylval.str = yytext; return ICONST;
 
-{real}	     yylval.dval = strtod(yytext, NULL); return DCONST;
+{real}	     yylval.str = yytext; return DCONST;
 
 {identifier} {
 	    const ScanKeyword *keyword;
@@ -56,11 +56,11 @@ identifier   [A-Za-z_][A-Z_a-z0-9]*
 		return SCONST;
 	    }
 	    yylval.str = keyword->name;
-	    return keyword->value;
+	    return SCONST;
 	}
 
-[ \t\n\r\f]  return yytext[0];
-.            return yytext[0]; /* alert parser of the garbage */
+[ \t\n\r]+ yylval.str = yytext; return OTHERS;
+.          yylval.str = yytext; return OTHERS;  /* alert parser of the garbage */
 }
 %%
 

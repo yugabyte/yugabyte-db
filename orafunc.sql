@@ -999,11 +999,19 @@ COMMENT ON FUNCTION plvsubst.subst() IS 'Retrieve the current substitution keywo
 DROP SCHEMA dbms_utility CASCADE;
 CREATE SCHEMA dbms_utility;
 
+CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack(text) 
+RETURNS text
+AS '$libdir/orafunc','dbms_utility_format_call_stack1'
+LANGUAGE C STRICT VOLATILE;
+COMMENT ON FUNCTION dbms_utility.format_call_stack(text) IS 'Return formated call stack';
+
 CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack() 
 RETURNS text
-AS '$libdir/orafunc','dbms_utility_format_call_stack'
-LANGUAGE C STRICT STABLE;
+AS '$libdir/orafunc','dbms_utility_format_call_stack0'
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call stack';
+
+
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
