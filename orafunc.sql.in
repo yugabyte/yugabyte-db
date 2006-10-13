@@ -1011,6 +1011,17 @@ AS 'MODULE_PATHNAME','dbms_utility_format_call_stack0'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call stack';
 
+DROP SCHEMA plvlex CASCADE;
+CREATE SCHEMA plvlex;
+
+CREATE OR REPLACE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qualified_names bool,
+OUT pos int, OUT token text, OUT code int, OUT class text, OUT separator text, OUT mod text)
+RETURNS SETOF RECORD
+AS 'MODULE_PATHNAME','plvlex_tokens' 
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
+
+
 
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
@@ -1022,9 +1033,6 @@ GRANT USAGE ON SCHEMA dbms_output TO PUBLIC;
 GRANT USAGE ON SCHEMA plvsubst TO PUBLIC;
 GRANT SELECT ON dbms_pipe.db_pipes to PUBLIC;
 GRANT USAGE ON SCHEMA dbms_utility TO PUBLIC;
+GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
 
-CREATE OR REPLACE FUNCTION foo() 
-RETURNS text
-AS 'MODULE_PATHNAME','foo'
-LANGUAGE C STRICT STABLE;
 

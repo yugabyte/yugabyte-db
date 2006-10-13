@@ -311,6 +311,29 @@ postgres=# select foo2();
 (1 row)
 
 
+Package PLVlex
+==============
+This package isn't compatible with original PLVlex. Use SRF functionality for return of result. Contains SQL lexer,
+
+postgres=# select * from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
+ pos | token  | code |  class  | separator | mod  
+-----+--------+------+---------+-----------+------
+   0 | select |  527 | KEYWORD |           | 
+   7 | *      |   42 | OTHERS  |           | self
+   9 | from   |  377 | KEYWORD |           | 
+  25 | a.b.c  |      | IDENT   |           | 
+  20 | join   |  418 | KEYWORD |           | 
+  25 | d      |      | IDENT   |           | 
+  27 | on     |  473 | KEYWORD |           | 
+  30 | x      |      | IDENT   |           | 
+  31 | =      |   61 | OTHERS  |           | self
+  32 | y      |      | IDENT   |           | 
+(10 rows)
+
+Warning: Keyword's codes can be changed between PostgreSQL versions!
+o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns table of lexical elements in str. 
+
+
 Others functions
 ================
 This module contains implementation of functions: concat, nvl, nvl2.

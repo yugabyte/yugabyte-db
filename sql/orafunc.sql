@@ -134,3 +134,5 @@ select PLVstr.lstrip ('*val1|val2|val3|*', '*') = 'val1|val2|val3|*';
 select PLVstr.lstrip (',,,val1,val2,val3,', ',', 3)= 'val1,val2,val3,';
 select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'WHITE = ''FRONT'' AND COMP# = 1500';
 select plvstr.left('Příliš žluťoučký kůň',4) = 'Příl';
+
+select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);

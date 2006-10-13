@@ -3,10 +3,41 @@
 #define YYPARSE_PARAM result  /* need this to pass a pointer (void *) to yyparse */
 #define YYDEBUG 1
 
-#include "postgres.h"
+#define YYLLOC_DEFAULT(Current, Rhs, N) \
+do { \
+if (N) \
+(Current) = (Rhs)[1]; \
+else \
+(Current) = (Rhs)[0]; \
+} while (0)                      
 
-#undef yylex                 /* failure to redefine yylex will result in a call to  the */
-#define yylex orafce_sql_yylex     /* wrong scanner when running inside the postgres backend  */
+#include "postgres.h"
+#include "plvlex.h"
+#include "nodes/pg_list.h"
+
+
+#define MOVE_TO_S(src,dest,col)	dest->col = src.col ? pstrdup(src.col) : NULL
+#define MOVE_TO(src,dest,col)	dest->col = src.col
+
+#define FILL_NODE(src,dest)	\
+	MOVE_TO_S(src,dest,str), \
+	MOVE_TO(src,dest,keycode), \
+	MOVE_TO(src,dest,lloc), \
+	MOVE_TO_S(src,dest,sep), \
+	MOVE_TO(src,dest,modificator)
+
+static orafce_lexnode *__node;
+
+#define CREATE_NODE(src,type) 	\
+  ( \
+    __node = (orafce_lexnode*) palloc(sizeof(orafce_lexnode)), \
+    __node->typenode = type, \
+    __node->classname = #type, \
+    FILL_NODE(src,__node), \
+    __node)
+    
+    
+
 
 extern int yylex(void);      /* defined as fdate_yylex in fdatescan.l */
 
@@ -14,67 +45,66 @@ static char *scanbuf;
 static int	scanbuflen;
 
 void orafce_sql_yyerror(const char *message);
-int orafce_sql_yyparse(void *result);
+
+
+#define YYLTYPE int
 
 %}
+%name-prefix="orafce_sql_yy" 
+%locations
+
 %union
 {
-    char		*str;
+    int 	ival;
+    orafce_lexnode	*node;
+    List		*list;
+    struct
+    {
+	    char 	*str;
+	    int		keycode;
+	    int		lloc;
+	    char	*sep;
+	    char *modificator;
+    }				val;
+
+
 }
     
 /* BISON Declarations */
-%token ICONST DCONST DPOINTS SCONST OTHERS
+%token <val>    IDENT NCONST SCONST OP PARAM COMMENT WHITESPACE KEYWORD OTHERS TYPECAST
+
+%type <list> elements
+%type <node> anyelement
+%type <list> root
+
 %start root
 
-%type <str> ICONST iconst
-%type <str> DCONST dconst
-%type <str> SCONST sconst
-%type <str> OTHERS others
-%type <str> root
-%type <str> anyelement
-%type <str> anyelementlist
 
 /* Grammar follows */
 %%
 
-/* ext_dow_lst and ext_number_lst I need for updates */
-
-root: anyelementlist 	{ $$ = $1; }
+root:
+	    elements { *((void**)result) = $1; }
 	;
 
-anyelementlist:
-		    anyelement		{ $$ = $1; };
-		    | anyelementlist anyelement {$$ = $1; };
-		;
+elements:
+		anyelement { $$ = list_make1($1);}
+		| elements anyelement { $$ = lappend($1, $2);}
+	;
 
 anyelement:
-	iconst
-	    {
-		    *((void **) result) = $1;
-		    elog(NOTICE, "ICONST \"%s\"", $1);
-	    }
-	| sconst
-	    {
-		*((void **) result) = $1;
-		elog(NOTICE, "SCONST \"%s\"", $1);
-	    }
-	| dconst
-	    {
-		*((void **) result) = $1;
-		elog(NOTICE, "DCONST \"%s\"", $1);
-	    }
-	| others
-	    {
-		*((void **) result) = $1;
-		elog(NOTICE, "OTHERS \"%s\"", $1);
-	    }    
+		IDENT		{ $$ = (orafce_lexnode*) CREATE_NODE($1, IDENT);  }
+		| NCONST	{ $$ = (orafce_lexnode*) CREATE_NODE($1, NCONST); }
+		| SCONST	{ $$ = (orafce_lexnode*) CREATE_NODE($1, SCONST); }
+		| OP		{ $$ = (orafce_lexnode*) CREATE_NODE($1, OP);    }
+		| PARAM		{ $$ = (orafce_lexnode*) CREATE_NODE($1, PARAM); }
+		| COMMENT	{ $$ = (orafce_lexnode*) CREATE_NODE($1, COMMENT);    }
+		| WHITESPACE	{ $$ = (orafce_lexnode*) CREATE_NODE($1, WHITESPACE); }
+		| KEYWORD	{ $$ = (orafce_lexnode*) CREATE_NODE($1, KEYWORD); }
+		| OTHERS	{ $$ = (orafce_lexnode*) CREATE_NODE($1, OTHERS);  }
 	;
-
-	
-iconst:		ICONST		{ $$ = $1;}
-dconst:		DCONST		{ $$ = $1;}
-sconst:		SCONST		{ $$ = $1;}
-others:		OTHERS		{ $$ = $1;}
 %%
+
+
 
 #include "sqlscan.c"

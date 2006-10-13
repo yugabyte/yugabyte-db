@@ -252,8 +252,6 @@ ora_substr(text *str, int start, int len, bool valid_length)
 
 		VARATT_SIZEP(result) = c_len + VARHDRSZ;
 
-		pfree(sizes);
-		pfree(positions);
 	}
 
 	return result;
@@ -312,11 +310,6 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 		{
 			if (--nth == 0)
 			{
-				pfree(sizes_txt); 
-				pfree(sizes_pat);
-				pfree(pos_txt); 
-				pfree(pos_pat);
-
 				return dx < 0 ? pos - c_len_pat + 1: pos + start-1;
 			}
 			else
@@ -326,11 +319,6 @@ ora_instr_mb(text *txt, text *pattern, int start, int nth)
 			}
 		}
 	}			
-
-	pfree(sizes_txt); 
-	pfree(sizes_pat);
-	pfree(pos_txt); 
-	pfree(pos_pat);
 
 	return 0;
 }
@@ -490,8 +478,6 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 	VARATT_SIZEP(result) = l + VARHDRSZ;
 	memcpy(VARDATA(result), aux, l);
 	
-	pfree(aux);
-
 	PG_RETURN_TEXT_P(result);
 }
 
@@ -569,8 +555,6 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 	text *prefix = PG_GETARG_TEXT_P(1);
 	bool case_sens = PG_GETARG_BOOL(2);
 	bool mb_encode;
-	bool free_str = false;
-
 
 	int str_len = VARSIZE(str) - VARHDRSZ;
 	int pref_len = VARSIZE(prefix) - VARHDRSZ;
@@ -583,8 +567,6 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 
 	if (mb_encode && !case_sens)
 	{
-		free_str = true;
-
 		str = (text*)DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(str)));
 		prefix = (text*)DatumGetPointer(DirectFunctionCall1(lower, PointerGetDatum(prefix)));
 	}
@@ -606,12 +588,6 @@ plvstr_is_prefix_text (PG_FUNCTION_ARGS)
 			if (pg_toupper((unsigned char) *ap++) != pg_toupper((unsigned char) *bp++))
 				break;
 		}
-	}
-
-	if (free_str)
-	{
-		pfree(str);
-		pfree(prefix);
 	}
 
 	PG_RETURN_BOOL(i == pref_len);
@@ -742,8 +718,6 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 		}
 		VARATT_SIZEP(result) = cur_size + VARHDRSZ;
 		
-		pfree(positions);
-		pfree(sizes);
 	}
 	else
 	{

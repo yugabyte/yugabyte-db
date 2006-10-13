@@ -11,6 +11,8 @@ psql:orafunc.sql:560: ERROR:  schema "plvstr" does not exist
 psql:orafunc.sql:757: ERROR:  schema "plvchr" does not exist
 psql:orafunc.sql:889: ERROR:  schema "dbms_alert" does not exist
 psql:orafunc.sql:948: ERROR:  schema "plvsubst" does not exist
+psql:orafunc.sql:999: ERROR:  schema "dbms_utility" does not exist
+psql:orafunc.sql:1014: ERROR:  schema "plvlex" does not exist
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -680,4 +682,25 @@ select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'W
 ----------
  t
 (1 row)
+
+select plvstr.left('Příliš žluťoučký kůň',4) = 'Příl';
+ ?column? 
+----------
+ t
+(1 row)
+
+select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
+ pos | token  
+-----+--------
+   0 | select
+   7 | *
+   9 | from
+  14 | a.b.c
+  20 | join
+  25 | d
+  27 | on
+  30 | x
+  31 | =
+  32 | y
+(10 rows)
 

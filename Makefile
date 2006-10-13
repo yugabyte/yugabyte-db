@@ -17,7 +17,8 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
-# fdatescan is compiled as part of fdateparse                                                                                                  
+plvlex.o: sqlparse.o
+
 sqlparse.o: sqlscan.c                                                                                                                      
                                                                                                                                                
 sqlparse.c: sqlparse.h ;                                                                                                                   
