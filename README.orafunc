@@ -1,33 +1,34 @@
 Oracle functions and Oracle packages
 ====================================
 
-This module contains some usefull function which can help with porting
-Oracle application to PostgreSQL or can be usefull generally. Buildin
-Oracle date functions was tested on conformance with Oracle10 on dates 
-from interval 1960..2070 years. Dates before 1100-03-01 can't be 
-verified via Oracle bug.
+This module contains some useful function which can help with porting
+Oracle application to PostgreSQL or can be useful generally. 
 
-All functions all full compatible with Oracle and respect all known
+Built-in Oracle date functions have been tested against Oracle 10 for
+comformance. Date ranges from 1960 to 2070 work correctly. Dates before
+1100-03-01 cannot be verified due to a bug in Oracle.
+
+All functions are fully compatible with Oracle and respect all known
 format strings. Detailed description you can find on internet. Find
 keywords oracle round trunc date iyyy.
 
 List of format strings for trunc, round functions
 -------------------------------------------------
 Y,YY,YYY,YYYY,SYYY,SYEAR	year
-I,IY,IYY,IYYY			iso year
-Q,				quartal
-WW				week, day as first day of year
-IW				week, monday
-W				week, day as first day of month
-DAY,DY,D			first day of week, sunday
-MONTH,MON,MM,RM			month
-CC,SCC				century
-DDD,DD,J			day
-HH,HH12,HH24			hour
-MI				minute
+I,IY,IYY,IYYY				iso year
+Q,							quarter
+WW							week, day as first day of year
+IW							week, beginning Monday
+W							week, day as first day of month
+DAY,DY,D					first day of week, sunday
+MONTH,MON,MM,RM				month
+CC,SCC						century
+DDD,DD,J					day
+HH,HH12,HH24				hour
+MI							minute
 
-function round rounds up on July 1st for year, 16th day for month, 
-and thursday for week.
+Functions round up. That is, a date of July 1st will be rounded to the next
+year. The 16th of July will be rounded to August.
 
 Date Functions
 ==============
@@ -42,7 +43,8 @@ o last_date(date) date - Returns last day of the month based on a date value
 	last_day(date '2005-05-24') -> 2005-05-31
 
 
-o next_day(date, text) date - Returns the first weekday that is greather than a date value
+o next_day(date, text) date - Returns the first weekday that is greater
+	than a date value
 	
 	next_day(date '2005-05-24', 'monday') -> 2005-05-30
 
@@ -64,14 +66,15 @@ o round(date, text) date - will round dates according to the specified format
 
 Table dual
 ==========
-PostgreSQL don't need oracle's table dual, but for some purposes (SELECT compatibility)
-this table is usefull. Script create it.
+PostgreSQL does not need Oracle's table 'dual', but since it is intensively
+used by Oracle users, we create it.
 
 Package dbms_output
 ===================
-PostgreSQL send info to client via RAISE NOTICE. Oracle dbms_output.put_line works
-little bit different -  Oracle has session queue, function put_line add line to 
-queue, function get_line reads from queue. If flag serveroutput is set, then client
+PostgreSQL sends information to the client via RAISE NOTICE. Oracle uses
+dbms_output.put_line(). This works differently to RAISE NOTICE. Oracle has 
+a session queue, put_line() adds a line to the queue and the function 
+get_line() reads from queue. If flag 'serveroutput' is set, then client
 over all sql statements reads queue. You can use:
 
     select dbms_output.enable();
@@ -80,19 +83,25 @@ over all sql statements reads queue. You can use:
     select * from dbms_output.get_lines(0);
     
 or
-    select dbms_output.serveroutput('on');
+	select dbms_output.enable();
+    select dbms_output.serveroutput('t');
     select dbms_output.put_line('first_line');
     
-package contains functions: enable, disable, serveroutput, put, put_line, new_line,
-get_line, get_lines. This package really implements line's queue in session's memory.
+This package contains the following functions: enable(), disable(), 
+serveroutput(), put(), put_line(), new_line(), get_line(), get_lines(). 
+The package queue is implemented in the session's local memory.
 
 Package dbms_pipe
 =================
-This packege is emulation of Oracle's package dbms_pipe. It provides 
-inter session comunication. You can send, read any message with or without 
-waiting, can read system table about current pipes, can set pipe as 
-private or public, can use explicit, implicit pipes. Max count of pipes is
-50. For transport messages is used shared memory buffer.
+
+This packege is an emulation of Oracle's package dbms_pipe. It provides 
+inter-session comunication. You can send and read any message with or without 
+waiting; can read system tables about active pipes; can set a pipe as 
+private or public; and, can use explicit or  implicit pipes. 
+
+The maximum number of is 50.
+
+Shared memory is used to send messages.
 
 -- Session A
 select dbms_pipe.create_pipe('my_pipe',10,true); -- explicit pipe creating
@@ -110,16 +119,15 @@ select dbms_pipe.unpack_message_text();
 select dbms_pipe.next_item_type(); -- -> 0, no more items
 select dbms_pipe.remove_pipe('my_pipe');
 
-Diff to Oracle:
-  o limit for pipe isn't in bytes but in elements in pipe
+There are some differences compared to Oracle, however:
+  o limit for pipes isn't in bytes but in elements in pipe
   o can send message without waiting
-  o cam send empty message
+  o can send empty message
   o next_item_type knows TIMESTAMP -> 13
   o PostgreSQL don't know RAW format, use BYTEA
 
 Functions:
 ----------
-
 
 Package dbms_alert
 ==================
