@@ -146,10 +146,10 @@ filterList(List *list, bool skip_spaces, bool qnames)
                 orafce_lexnode *nd = (orafce_lexnode *) lfirst(cell);
 		
 		if (qnames)
-		{
+		{	
 			isdot = (IsType(nd,OTHERS) && (nd->str[0] == '.'));
 
-			if (IsType(nd, IDENT) && dot)
+			if (IsType(nd, IDENT) && dot && a)
 			{
 				a = compose(a, nd);
 				dot = NULL;
@@ -157,12 +157,12 @@ filterList(List *list, bool skip_spaces, bool qnames)
 			}
 			else if (isdot && !dot && a)
 			{
-				dot = nd;
+				dot = COPY_NODE(nd);
 				continue;
 			} 
 			else if (IsType(nd, IDENT) && !a)
 			{
-				a = nd;
+				a = COPY_NODE(nd);
 				continue;
 			}
 		}
@@ -205,6 +205,8 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		if (orafce_sql_yyparse(&lexems) != 0)
     		    orafce_sql_yyerror("bogus input");
 
+
+
 		orafce_sql_scanner_finish();
 
 		funcctx = SRF_FIRSTCALL_INIT ();
@@ -217,7 +219,7 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		fctx->nnodes = list_length(fctx->nodes);
 		fctx->cnode = 0;
 
-		fctx->values = (char **) palloc (4 * sizeof (char *));
+		fctx->values = (char **) palloc (6 * sizeof (char *));
 		fctx->values  [0] = (char*) palloc (16 * sizeof (char));
 		fctx->values  [1] = (char*) palloc (1024 * sizeof (char));
 		fctx->values  [2] = (char*) palloc (16 * sizeof (char));
@@ -239,9 +241,10 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		
 		attinmeta = TupleDescGetAttInMetadata (tupdesc);
 		funcctx -> attinmeta = attinmeta;
-		
+
 		MemoryContextSwitchTo (oldcontext);
 	}
+
 
 	funcctx = SRF_PERCALL_SETUP ();
 	fctx = (tokensFctx*) funcctx->user_fctx;
@@ -261,7 +264,7 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		back_vals[5] = values[5];
 
 		snprintf(values[0],    16, "%d", nd->lloc);
-		snprintf(values[1], 10000, "%s", nd->str);
+		snprintf(values[1], 10000, "%s", SF(nd->str));
 		snprintf(values[2],    16, "%d", nd->keycode);
 		snprintf(values[3],    16, "%s", nd->classname);
 		snprintf(values[4],   255, "%s", SF(nd->sep));
