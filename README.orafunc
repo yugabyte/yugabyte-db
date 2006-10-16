@@ -94,14 +94,16 @@ The package queue is implemented in the session's local memory.
 Package dbms_pipe
 =================
 
-This packege is an emulation of Oracle's package dbms_pipe. It provides 
+This package is an emulation of Oracle's package dbms_pipe. It provides 
 inter-session comunication. You can send and read any message with or without 
-waiting; can read system tables about active pipes; can set a pipe as 
-private or public; and, can use explicit or  implicit pipes. 
+waiting; list active pipes; set a pipe as private or public; and, use 
+explicit or implicit pipes. 
 
-The maximum number of is 50.
+The maximum number of pipes is 50.
 
 Shared memory is used to send messages.
+
+An example follows:
 
 -- Session A
 select dbms_pipe.create_pipe('my_pipe',10,true); -- explicit pipe creating
@@ -121,16 +123,16 @@ select dbms_pipe.remove_pipe('my_pipe');
 
 There are some differences compared to Oracle, however:
   o limit for pipes isn't in bytes but in elements in pipe
-  o can send message without waiting
-  o can send empty message
-  o next_item_type knows TIMESTAMP -> 13
-  o PostgreSQL don't know RAW format, use BYTEA
-
-Functions:
-----------
+  o you can send message without waiting
+  o you can send empty messages
+  o next_item_type knows about TIMESTAMP (type 13)
+  o PostgreSQL don't know about the RAW type, use bytea instead
 
 Package dbms_alert
 ==================
+
+Another means of inter-process communication.
+
 -- Session A
 select dbms_alert.register('boo');
 select * from dbms_alert.waitany(10);
@@ -148,44 +150,67 @@ Package PLVdate
 This module contains some function for working with bussines days from
 package PLVdate. Detailed documentation can be found in PLVision library.
 This package is multicultural, but default configurations are only for
-european countries yet (see source code).
+european countries (see source code).
 
-You should define own nonbizdays (max 50 days) and own holydays (max 30 days).
-Holyday is any nonbizday, which is same every year - 1. May, 24. december, ... 
+You should define your own non-business days (max 50 days) and own 
+holidays (max 30 days). A holiday is any non-business day, which is same every 
+year. For example, Christmas day in Western countries.
+
+Functions:
+----------
 
 o plvdate.add_bizdays(day date, days int) date - Get the date created by adding <n> business days to a date
+
 o plvdate.nearest_bizday(day date) date - Get the nearest business date to a given date, user defined
+
 o plvdate.next_bizday(day date) date - Get the next business date from a given date, user defined
+
 o plvdate.bizdays_between(day1 date, day2 date) int - Get the number of business days between two dates
+
 o plvdate.prev_bizday(day date) date - Get the previous business date from a given date
+
 o plvdate_isbizday(date) bool - Call this function to determine if a date is a business day
 
 o plvdate.set_nonbizday(dow varchar) - Set day of week as non bussines day
+
 o plvdate.unset_nonbizday(dow varchar) - Unset day of week as non bussines day
+
 o plvdate.set_nonbizday(day date) - Set day as non bussines day
+
 o plvdate.unset_nonbizday(day date) - Unset day as non bussines day
+
 o plvdate.set_nonbizday(day date, repeat bool) - Set day as non bussines day, if 'repeat' is true, then day is nonbiz every year
+
 o plvdate.unset_nonbizday(day date, repeat bool) - Unset day as non bussines day, if 'repeat' is true, then day is nonbiz every year
 
-o plvdate.use_easter() - Easter Sunday and easter monday will be holyday
+o plvdate.use_easter() - Easter Sunday and easter monday will be holiday
+
 o plvdate.unuse_easter();
+
 o plvdate.use_easter(useit boolean);
+
 o plvdate.using_easter() bool - If we use easter then returns true
+
 o plvdate.include_start() - Include starting date in bizdays_between calculation
+
 o plvdate.noinclude_start();
+
 o plvdate.include_start(include boolean);
+
 o plvdate.including_start() bool;
 
-o plvdate.default_holydays(varchar) - load default configurations. You can use configurations
-    Czech, German*, Austria, Poland, Slovakia, Russia, GB* and  USA at this moment.
+o plvdate.default_holidays(varchar) - load default configurations. You can use
+  the following configurations:
+  Czech, German*, Austria, Poland, Slovakia, Russia, GB* and USA at this moment.
 
-*configurations contains only common holydays for all regions. You have to add some regional holydays 
-    calling function plvdate.set_nonbizday(nonbizday, true)
+* configuration contains only common holidays for all regions. You can add
+    your own regional holiday with
+    plvdate.set_nonbizday(nonbizday, true)
 
 Example:
 --------
-postgres=# select plvdate.default_holydays('czech');
- default_holydays 
+postgres=# select plvdate.default_holidays('czech');
+ default_holidays 
 ------------------
  
 (1 row)
@@ -197,8 +222,8 @@ postgres=# select to_char(current_date, 'day'),
  saturday  | 2006-03-13  | monday   
 (1 row)
 
-Change for noneuropean environment:
------------------------------------
+Change for non-European environment:
+------------------------------------
 select plvdate.unset_nonbizday('saturday');
 select plvdate.unset_nonbizday('sunday');
 select plvdate.set_nonbizday('friday');
@@ -208,8 +233,9 @@ select plvdate.unuse_easter();
 Package PLVstr and PLVchr
 =========================
 
-This package contains some usefull string, char functions. Function 
-supports positive or negative (from end positioning). Example:
+This package contains some useful string and character functions. Each
+function supports positive and negative offsets -- i.e., offset from the
+end of the string. For example:
 
 plvstr.left('abcdef',2) -> ab
 plvstr.left('abcdef',-2) -> abcd
@@ -219,55 +245,103 @@ plvstr.substr('abcde',-2,1) -> d
 
 List of functions:
 o plvstr.normalize(str text) - Normalize string - Replace white chars by space, replace  spaces by space
+
 o plvstr.is_prefix(str text, prefix text, cs bool) - Returns true, if prefix is prefix of str
+
 o plvstr.is_prefix(str text, prefix text)          - Returns true, if prefix is prefix of str
+
 o plvstr.is_prefix(str int, prefix int)            - Returns true, if prefix is prefix of str
+
 o plvstr.is_prefix(str bigint, prefix bigint)      - Returns true, if prefix is prefix of str
+
 o plvstr.substr(str text, start int, len int) - Returns substring started on start_in to end
+
 o plvstr.substr(str text, start int)          - Returns substring started on start_in to end
+
 o plvstr.instr(str text, patt text, start int, nth int) - Search pattern in string
+
 o plvstr.instr(str text, patt text, start int)          - Search pattern in string
+
 o plvstr.instr(str text, patt text)                     - Search pattern in string
+
 o plvstr.lpart(str text, div text, start int, nth int, all_if_notfound bool) - Call this function to return the left part of a string
+
 o plvstr.lpart(str text, div text, start int, nth int) - Call this function to return the left part of a string
+
 o plvstr.lpart(str text, div text, start int)          - Call this function to return the left part of a string
+
 o plvstr.lpart(str text, div text)                     - Call this function to return the left part of a string
+
 o plvstr.rpart(str text, div text, start int, nth int, all_if_notfound bool) - Call this function to return the right part of a string
+
 o plvstr.rpart(str text, div text, start int, nth int) - Call this function to return the right part of a string
+
 o plvstr.rpart(str text, div text, start int)          - Call this function to return the right part of a string
+
 o plvstr.rpart(str text, div text)                     - Call this function to return the right part of a string
+
 o plvstr.lstrip(str text, substr text, num int) - Call this function to remove characters from the beginning 
+
 o plvstr.lstrip(str text, substr text)          - Call this function to remove characters from the beginning 
+
 o plvstr.rstrip(str text, substr text, num int) - Call this function to remove characters from the end
+
 o plvstr.rstrip(str text, substr text)          - Call this function to remove characters from the end
+
 o plvstr.rvrs(str text, start int, _end int) - Reverse string or part of string
+
 o plvstr.rvrs(str text, start int)           - Reverse string or part of string
+
 o plvstr.rvrs(str text)                      - Reverse string or part of string
+
 o plvstr.left(str text, n int)  -  Returns firs num_in charaters. You can use negative num_in
+
 o plvstr.right(str text, n int) - Returns last num_in charaters. You can use negative num_ni
+
 o plvstr.swap(str text, replace text, start int, lengh int) - Replace a substring in a string with a specified string
+
 o plvstr.swap(str text, replace text)                       - Replace a substring in a string with a specified string
+
 o plvstr.betwn(str text, start int, _end int, inclusive bool) - Find the Substring Between Start and End Locations
+
 o plvstr.betwn(str text, start text, _end text, startnth int, endnth int, inclusive bool, gotoend bool) - Find the Substring Between Start and End Locations
+
 o plvstr.betwn(str text, start text, _end text) - Find the Substring Between Start and End Locations
+
 o plvstr.betwn(str text, start text, _end text, startnth int, endnth int) - Find the Substring Between Start and End Locations
 
 o plvchr.nth(str text, n int) - Call this function to return the Nth character in a string
+
 o plvchr.first(str text)      - Call this function to return the first character in a string
+
 o plvchr.last(str text)       - Call this function to return the last character in a string
+
 o plvchr.is_blank(c int)  - Is blank
+
 o plvchr.is_blank(c text) - Is blank
+
 o plvchr.is_digit(c int)  - Is digit 
+
 o plvchr.is_digit(c text) - Is digit 
+
 o plvchr.is_quote(c int)  - Is quote
+
 o plvchr.is_quote(c text) - Is quote
+
 o plvchr.is_other(c int)  - Is other
+
 o plvchr.is_other(c text) - Is other
+
 o plvchr.is_letter(c int) - Is letter
+
 o plvchr.is_letter(c text) - Is letter
+
 o plvchr.char_name(c text) - Returns the name of the character to ascii code as a VARCHAR.
+
 o plvchr.quoted1(str text) - Quoted text between '''
+
 o plvchr.quoted2(str text) - Quoted text between '"'
+
 o plvchr.stripped(str text, char_in text) - Strips a string of all instances of the specified characters
 
 
@@ -276,14 +350,20 @@ Package PLVsubst
 The PLVsubst package performs string substitutions based on a substitution keyword. 
 
 o plvsubst.string(template_in text, vals_in text[])                 - Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list
+
 o plvsubst.string(template_in text, vals_in text[], subst_in text)
+
 o plvsubst.string(template_in text, vals_in text, delim_in text)
+
 o plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text)
+
 o plvsubst.setsubst(str text) - Set substitution keyword to default '%s'
-o plvsubst,setsubst() 
+
 o plvsubst.subst() - Retrieve substitution keyword 
 
-Samples:
+Examples:
+---------
+
 select plvsubst.string('My name is %s %s.', ARRAY['Pavel','Stěhule']);
           string           
 ---------------------------
@@ -305,7 +385,8 @@ select plvsubst.string('My name is $$ $$.', 'Pavel|Stěhule','|','$$');
 
 Package DBMS_utility
 ====================
-o dms_utility.format_call_stack()  -- return formated string with content of call stack
+o dms_utility.format_call_stack()  -- return a formatted string with content 
+									  of call stack
 
 postgres=# select foo2();
                foo2               
@@ -321,9 +402,11 @@ postgres=# select foo2();
 
 Package PLVlex
 ==============
-This package isn't compatible with original PLVlex. Use SRF functionality for return of result. Contains SQL lexer,
+This package isn't compatible with original PLVlex. 
 
-postgres=# select * from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
+postgres=# select * from 
+	plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
+
  pos | token  | code |  class  | separator | mod  
 -----+--------+------+---------+-----------+------
    0 | select |  527 | KEYWORD |           | 
@@ -346,12 +429,6 @@ Others functions
 ================
 This module contains implementation of functions: concat, nvl, nvl2.
 
-Atention! concat isn't strict function. concat('a',null) -> 'a'
-
-undocumented functions reverse(text), lnnvl
-
-! can't put it into pg_catalog
-
 o orafce.substr(str text, start int, len int) - Oracle compatible substring
 o orafce.substr(str text, start int)          - Oracle compatible substring
 
@@ -362,8 +439,6 @@ ToDo:
       only locks are in shmem, (bitmaps), data in tmp tbl
 
 This module is released under BSD licence. 
-
-I inwite any comments, enhancing, objectives?
 
 Pavel Stehule
 stehule@kix.fsv.cvut.cz

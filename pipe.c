@@ -697,9 +697,9 @@ dbms_pipe_unpack_message(message_data_type dtype, bool *is_null, Oid *tupType)
 
 	if (next_type != dtype)
 		ereport(ERROR,             
-                    	(errcode(ERRCODE_DATATYPE_MISMATCH),
-                         errmsg("datatype mismatch"),
-                         errdetail("unpack unexpcected type"))); 
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("datatype mismatch"),
+				 errdetail("unpack unexpected type"))); 
 	
 	if (NULL == (ptr = unpack_field(input_buffer, &reader, &type, &size, tupType)))
 		return result;

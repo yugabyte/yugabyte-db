@@ -47,7 +47,7 @@ Datum plvdate_using_easter (PG_FUNCTION_ARGS);
 Datum plvdate_include_start (PG_FUNCTION_ARGS);
 Datum plvdate_including_start (PG_FUNCTION_ARGS);
 
-Datum plvdate_default_holydays (PG_FUNCTION_ARGS);
+Datum plvdate_default_holidays (PG_FUNCTION_ARGS);
 
 Datum plvdate_version (PG_FUNCTION_ARGS);
 
@@ -71,7 +71,7 @@ PG_FUNCTION_INFO_V1(plvdate_using_easter);
 PG_FUNCTION_INFO_V1(plvdate_include_start);
 PG_FUNCTION_INFO_V1(plvdate_including_start);
 
-PG_FUNCTION_INFO_V1(plvdate_default_holydays);
+PG_FUNCTION_INFO_V1(plvdate_default_holidays);
 
 PG_FUNCTION_INFO_V1(plvdate_version);
 
@@ -103,22 +103,22 @@ static bool include_start = true;
 typedef struct {
 	char day;
 	char month;
-} holyday_desc;
+} holiday_desc;
 
 typedef struct {
 	unsigned char nonbizdays;
 	bool use_easter;
-	holyday_desc *holydays;
-	int holydays_c;
+	holiday_desc *holidays;
+	int holidays_c;
 } cultural_info;
 
-static holyday_desc holydays[MAX_HOLYDAYS];  /* sorted array */
+static holiday_desc holidays[MAX_HOLYDAYS];  /* sorted array */
 static DateADT exceptions[MAX_EXCEPTIONS];   /* sorted array */
 
-static int holydays_c = 0;
+static int holidays_c = 0;
 static int exceptions_c = 0;
 
-static holyday_desc czech_holydays[] = {
+static holiday_desc czech_holidays[] = {
 	{1,1}, // Novy rok
 	{1,5}, // Svatek prace
 	{8,5}, // Den osvobozeni
@@ -133,53 +133,53 @@ static holyday_desc czech_holydays[] = {
 };
 
 
-static holyday_desc germany_holydays[] = {
+static holiday_desc germany_holidays[] = {
 	{1,1},{1,5},{25,5},{4,6},{5,6},
 	{15,8},{3,10},{25,12},{26,12}
 };
 
-static holyday_desc poland_holydays[] = {
+static holiday_desc poland_holidays[] = {
 	{1,1},{1,5},{3,5},{15,6},{15,8},
 	{1,11},{11,11},{25,12},{26,12}
 };	
 
-static holyday_desc austria_holydays[] = {
+static holiday_desc austria_holidays[] = {
 	{1,1},{6,1},{1,5},{25,5},{4,6},
 	{5,6},{15,6},{15,8},{26,10},{1,11},
 	{8,12},{25,12},{26,12}
 };
 
-static holyday_desc slovakia_holydays[] = {
+static holiday_desc slovakia_holidays[] = {
 	{1,1},{6,1},{1,5},{8,5},{5,7},
 	{29,8},{1,9},{15,9},{1,11},{17,11},
 	{24,12},{25,12},{26,12}
 };
 
-static holyday_desc russian_holydays[] = {
+static holiday_desc russian_holidays[] = {
 	{1,1},{2,1},{3,1},{4,1},{5,1},
 	{7,1},{23,2},{8,3},{1,5},{9,5},
 	{12,6}, {4,11}
 };
 
-static holyday_desc england_holydays[] = {
+static holiday_desc england_holidays[] = {
 	{1,1},{2,1},{1,5},{29,5},{28,8},
 	{25,12},{26,12}
 };
 
-static holyday_desc usa_holydays[] = {
+static holiday_desc usa_holidays[] = {
 	{1,1},{16,1},{20,2},{29,5},{4,7},
 	{4,9},{9,10},{11,11},{23,11},{25,12}
 };
 
 cultural_info defaults_ci[] = {
-	{SUNDAY | SATURDAY, true, czech_holydays, 11},
-	{SUNDAY | SATURDAY, true, germany_holydays, 9},
-	{SUNDAY | SATURDAY, true, poland_holydays, 9},
-	{SUNDAY | SATURDAY, true, austria_holydays, 13},
-	{SUNDAY | SATURDAY, true, slovakia_holydays, 13},
-	{SUNDAY | SATURDAY, false, russian_holydays, 12},
-	{SUNDAY | SATURDAY, true, england_holydays, 7},
-	{SUNDAY | SATURDAY, false, usa_holydays, 10}
+	{SUNDAY | SATURDAY, true, czech_holidays, 11},
+	{SUNDAY | SATURDAY, true, germany_holidays, 9},
+	{SUNDAY | SATURDAY, true, poland_holidays, 9},
+	{SUNDAY | SATURDAY, true, austria_holidays, 13},
+	{SUNDAY | SATURDAY, true, slovakia_holidays, 13},
+	{SUNDAY | SATURDAY, false, russian_holidays, 12},
+	{SUNDAY | SATURDAY, true, england_holidays, 7},
+	{SUNDAY | SATURDAY, false, usa_holidays, 10}
 };
 
 static char *states[] = {
@@ -199,11 +199,11 @@ dateadt_comp(const void* a, const void* b)
 }
 
 static int 
-holyday_desc_comp(const void* a, const void* b)
+holiday_desc_comp(const void* a, const void* b)
 {
 	int result;
-	if (0 == (result = ((holyday_desc*)a)->month - ((holyday_desc*)b)->month)) 
-		result = ((holyday_desc*)a)->day - ((holyday_desc*)b)->day;
+	if (0 == (result = ((holiday_desc*)a)->month - ((holiday_desc*)b)->month)) 
+		result = ((holiday_desc*)a)->day - ((holiday_desc*)b)->day;
 		
 	return result;
 }
@@ -240,7 +240,7 @@ ora_add_bizdays(DateADT day, int days)
 {
 	int d, dx;
 	int y, m, auxd;
-	holyday_desc hd;
+	holiday_desc hd;
 
 	d = j2day(day+POSTGRES_EPOCH_JDATE);
 	dx = days > 0? 1 : -1;
@@ -267,8 +267,8 @@ ora_add_bizdays(DateADT day, int days)
 			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
 				continue;
 		}
-		if (NULL != bsearch(&hd, holydays, holydays_c, 
-							sizeof(holyday_desc), holyday_desc_comp))
+		if (NULL != bsearch(&hd, holidays, holidays_c, 
+							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
 		days -= dx;
@@ -283,7 +283,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 {
 	int d, days;
 	int y, m, auxd;
-	holyday_desc hd;
+	holiday_desc hd;
 
 	int cycle_c = 0;
 	bool start_is_bizday = false;
@@ -322,8 +322,8 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
 				continue;
 		}
-		if (NULL != bsearch(&hd, holydays, holydays_c, 
-							sizeof(holyday_desc), holyday_desc_comp))
+		if (NULL != bsearch(&hd, holidays, holidays_c, 
+							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
 		days += 1;
@@ -467,7 +467,7 @@ plvdate_isbizday (PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	int y, m, d;
-	holyday_desc hd;
+	holiday_desc hd;
 	
 	if (0 != ((1 << j2day(day+POSTGRES_EPOCH_JDATE)) & nonbizdays))
 		return false;
@@ -486,8 +486,8 @@ plvdate_isbizday (PG_FUNCTION_ARGS)
 			return false;
 	}
 
-	PG_RETURN_BOOL (NULL == bsearch(&hd, holydays, holydays_c, 
-									sizeof(holyday_desc), holyday_desc_comp));
+	PG_RETURN_BOOL (NULL == bsearch(&hd, holidays, holidays_c, 
+									sizeof(holiday_desc), holiday_desc_comp));
 }
 
 
@@ -568,11 +568,11 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 	DateADT arg1 = PG_GETARG_DATEADT(0);
 	bool arg2 = PG_GETARG_BOOL(1);
 	int y, m, d;
-	holyday_desc hd;
+	holiday_desc hd;
     
 	if (arg2)
 	{
-		if (holydays_c == MAX_HOLYDAYS)
+		if (holidays_c == MAX_HOLYDAYS)
                         ereport(ERROR,
                                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                                  errmsg("nonbizday registeration error"),
@@ -582,17 +582,17 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 		j2date(arg1 + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 		hd.month = m; hd.day = d;
 
-		if (NULL != bsearch(&hd, holydays, holydays_c, sizeof(holyday_desc), holyday_desc_comp))
+		if (NULL != bsearch(&hd, holidays, holidays_c, sizeof(holiday_desc), holiday_desc_comp))
                         ereport(ERROR,
                                 (errcode(ERRCODE_DUPLICATE_OBJECT),
                                  errmsg("nonbizday registeration error"),
                                  errdetail("Date is registered.")));
 
-		holydays[holydays_c].month = m;
-		holydays[holydays_c].day = d;
-		holydays_c += 1;
+		holidays[holidays_c].month = m;
+		holidays[holidays_c].day = d;
+		holidays_c += 1;
 
-		qsort(holydays, holydays_c, sizeof(holyday_desc), holyday_desc_comp);   
+		qsort(holidays, holidays_c, sizeof(holiday_desc), holiday_desc_comp);   
 	}
 	else
 	{
@@ -641,18 +641,18 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 	if (arg2)
 	{
 		j2date(arg1 + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-		for (i = 0; i < holydays_c; i++)
+		for (i = 0; i < holidays_c; i++)
 		{
-			if (!found && holydays[i].month == m && holydays[i].day == d)
+			if (!found && holidays[i].month == m && holidays[i].day == d)
 				found = true;
 			else if (found)
 			{
-				holydays[i-1].month = holydays[i].month;
-				holydays[i-1].day = holydays[i].day;
+				holidays[i-1].month = holidays[i].month;
+				holidays[i-1].day = holidays[i].day;
 			}
 		}
 		if (found)
-			holydays_c -= 1;
+			holidays_c -= 1;
 	}
 	else
 	{
@@ -760,7 +760,7 @@ plvdate_including_start (PG_FUNCTION_ARGS)
  */
 
 Datum
-plvdate_default_holydays (PG_FUNCTION_ARGS)
+plvdate_default_holidays (PG_FUNCTION_ARGS)
 {
     text *country = PG_GETARG_TEXT_P(0);
 	
@@ -771,8 +771,8 @@ plvdate_default_holydays (PG_FUNCTION_ARGS)
 	use_easter = defaults_ci[c].use_easter;
 	exceptions_c = 0;
 
-	holydays_c = defaults_ci[c].holydays_c;
-	memcpy(holydays, defaults_ci[c].holydays, holydays_c*sizeof(holyday_desc));
+	holidays_c = defaults_ci[c].holidays_c;
+	memcpy(holidays, defaults_ci[c].holidays, holidays_c*sizeof(holiday_desc));
 
 	PG_RETURN_VOID();
 }

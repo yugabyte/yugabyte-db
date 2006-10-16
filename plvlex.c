@@ -132,7 +132,7 @@ compose(orafce_lexnode *a, orafce_lexnode *b)
 	return result;
 }
 
-static List *                                                                                                                                               
+static List *
 filterList(List *list, bool skip_spaces, bool qnames)                                                                                                                                        
 {                                                                                                                                                           
         List *result = NIL;                                                                                                                         
@@ -201,9 +201,8 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		bool skip_spaces = PG_GETARG_BOOL(1);
 		bool qnames = PG_GETARG_BOOL(2);
 
-		orafce_sql_scanner_init(CSTRING(src));                                                                                                       
-                                                                                                                                               
-		if (orafce_sql_yyparse(&lexems) != 0)                                                                                                
+		orafce_sql_scanner_init(CSTRING(src)); 
+		if (orafce_sql_yyparse(&lexems) != 0)
     		    orafce_sql_yyerror("bogus input");
 
 		orafce_sql_scanner_finish();
