@@ -91,25 +91,25 @@ COMMENT ON FUNCTION pg_catalog.set_nls_sort(text) IS '';
 CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text, start int, nth int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text, int, int) IS 'Search pattern in string';
 
 CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text, start int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text, int) IS 'Search pattern in string';
 
 CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text) IS 'Search pattern in string';
 
 CREATE OR REPLACE FUNCTION pg_catalog.reverse(str text)
 RETURNS text
 AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.reverse(text) IS 'Reverse string or part of string';
 
 CREATE OR REPLACE FUNCTION pg_catalog.lnnvl(bool)
@@ -127,13 +127,13 @@ CREATE SCHEMA oracle;
 CREATE OR REPLACE FUNCTION oracle.substr(str text, start int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int) IS 'Returns substring started on start_in to end';
 
 CREATE OR REPLACE FUNCTION oracle.substr(str text, start int, len int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
 DROP TABLE public.dual CASCADE;
@@ -486,19 +486,19 @@ CREATE OR REPLACE FUNCTION plvdate.use_easter(bool)
 RETURNS void
 AS 'MODULE_PATHNAME','plvdate_use_easter'
 LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION plvdate.use_easter(bool) IS 'Easter Sunday and easter monday will be holyday';
+COMMENT ON FUNCTION plvdate.use_easter(bool) IS 'Easter Sunday and easter monday will be holiday';
 
 CREATE OR REPLACE FUNCTION plvdate.use_easter()
 RETURNS bool
 AS $$SELECT plvdate.use_easter(true); SELECT NULL::boolean;$$
 LANGUAGE SQL VOLATILE STRICT;
-COMMENT ON FUNCTION plvdate.use_easter() IS 'Easter Sunday and easter monday will be holyday';
+COMMENT ON FUNCTION plvdate.use_easter() IS 'Easter Sunday and easter monday will be holiday';
 
 CREATE OR REPLACE FUNCTION plvdate.unuse_easter()
 RETURNS bool
 AS $$SELECT plvdate.use_easter(false); SELECT NULL::boolean;$$
 LANGUAGE SQL VOLATILE STRICT;
-COMMENT ON FUNCTION plvdate.unuse_easter() IS 'Easter Sunday and easter monday will not be holyday';
+COMMENT ON FUNCTION plvdate.unuse_easter() IS 'Easter Sunday and easter monday will not be holiday';
 
 CREATE OR REPLACE FUNCTION plvdate.using_easter()
 RETURNS bool
@@ -536,11 +536,11 @@ AS 'MODULE_PATHNAME','plvdate_version'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.version() IS '';
 
-CREATE OR REPLACE FUNCTION plvdate.default_holydays(text)
+CREATE OR REPLACE FUNCTION plvdate.default_holidays(text)
 RETURNS void
-AS 'MODULE_PATHNAME','plvdate_default_holydays'
+AS 'MODULE_PATHNAME','plvdate_default_holidays'
 LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION plvdate.default_holydays(text) IS 'Load calendar for some nations';
+COMMENT ON FUNCTION plvdate.default_holidays(text) IS 'Load calendar for some nations';
 
 CREATE OR REPLACE FUNCTION plvdate.days_inmonth(date)
 RETURNS integer
@@ -564,194 +564,194 @@ CREATE SCHEMA plvstr;
 CREATE OR REPLACE FUNCTION plvstr.normalize(str text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_normalize'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.normalize(text) IS 'Replace white chars by space, replace  spaces by space';
 
 CREATE OR REPLACE FUNCTION plvstr.is_prefix(str text, prefix text, cs bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvstr_is_prefix_text'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(text, text, bool) IS 'Returns true, if prefix is prefix of str';
 
 CREATE OR REPLACE FUNCTION plvstr.is_prefix(str text, prefix text)
 RETURNS bool
 AS $$ SELECT plvstr.is_prefix($1,$2,true);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(text, text) IS 'Returns true, if prefix is prefix of str';
 
 CREATE OR REPLACE FUNCTION plvstr.is_prefix(str int, prefix int)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvstr_is_prefix_int'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(int, int) IS 'Returns true, if prefix is prefix of str';
 
 CREATE OR REPLACE FUNCTION plvstr.is_prefix(str bigint, prefix bigint)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvstr_is_prefix_int64'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(bigint, bigint) IS 'Returns true, if prefix is prefix of str';
 
 CREATE OR REPLACE FUNCTION plvstr.substr(str text, start int, len int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_substr3'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.substr(text, int, int) IS 'Returns substring started on start_in to end';
 
 CREATE OR REPLACE FUNCTION plvstr.substr(str text, start int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_substr2'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.substr(text, int) IS 'Returns substring started on start_in to end';
 
 CREATE OR REPLACE FUNCTION plvstr.instr(str text, patt text, start int, nth int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.instr(text, text, int, int) IS 'Search pattern in string';
 
 CREATE OR REPLACE FUNCTION plvstr.instr(str text, patt text, start int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.instr(text, text, int) IS 'Search pattern in string';
 
 CREATE OR REPLACE FUNCTION plvstr.instr(str text, patt text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.instr(text, text) IS 'Search pattern in string';
 
 CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text, start int, nth int, all_if_notfound bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_lpart'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text, int, int, bool) IS 'Call this function to return the left part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text, start int, nth int)
 RETURNS text
 AS $$ SELECT plvstr.lpart($1,$2, $3, $4, false); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text, int, int) IS 'Call this function to return the left part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text, start int)
 RETURNS text
 AS $$ SELECT plvstr.lpart($1,$2, $3, 1, false); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text, int) IS 'Call this function to return the left part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text)
 RETURNS text
 AS $$ SELECT plvstr.lpart($1,$2, 1, 1, false); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text) IS 'Call this function to return the left part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text, start int, nth int, all_if_notfound bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rpart'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text, int, int, bool) IS 'Call this function to return the right part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text, start int, nth int)
 RETURNS text
 AS $$ SELECT plvstr.rpart($1,$2, $3, $4, false); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text, int, int) IS 'Call this function to return the right part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text, start int)
 RETURNS text
 AS $$ SELECT plvstr.rpart($1,$2, $3, 1, false); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text, int) IS 'Call this function to return the right part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text)
 RETURNS text
 AS $$ SELECT plvstr.rpart($1,$2, 1, 1, false); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text) IS 'Call this function to return the right part of a string';
 
 CREATE OR REPLACE FUNCTION plvstr.lstrip(str text, substr text, num int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_lstrip'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lstrip(text, text, int) IS 'Call this function to remove characters from the beginning ';
 
 CREATE OR REPLACE FUNCTION plvstr.lstrip(str text, substr text)
 RETURNS text
 AS $$ SELECT plvstr.lstrip($1, $2, 1); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lstrip(text, text) IS 'Call this function to remove characters from the beginning ';
 
 CREATE OR REPLACE FUNCTION plvstr.rstrip(str text, substr text, num int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rstrip'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rstrip(text, text, int) IS 'Call this function to remove characters from the end';
 
 CREATE OR REPLACE FUNCTION plvstr.rstrip(str text, substr text)
 RETURNS text
 AS $$ SELECT plvstr.rstrip($1, $2, 1); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rstrip(text, text) IS 'Call this function to remove characters from the end';
 
 CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int, _end int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rvrs'
-LANGUAGE C STABLE;
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvstr.rvrs(text, int, int) IS 'Reverse string or part of string';
 
 CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int)
 RETURNS text
 AS $$ SELECT plvstr.rvrs($1,$2,NULL);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text, int) IS 'Reverse string or part of string';
 
 CREATE OR REPLACE FUNCTION plvstr.rvrs(str text)
 RETURNS text
 AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text) IS 'Reverse string or part of string';
 
 
 CREATE OR REPLACE FUNCTION plvstr.swap(str text, replace text, start int, length int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_swap'
-LANGUAGE C STABLE;
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvstr.swap(text,text, int, int) IS 'Replace a substring in a string with a specified string';
 
 CREATE OR REPLACE FUNCTION plvstr.swap(str text, replace text)
 RETURNS text
 AS $$ SELECT plvstr.swap($1,$2,1, NULL);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.swap(text,text) IS 'Replace a substring in a string with a specified string';
 
 CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start int, _end int, inclusive bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_betwn_i'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.betwn(text, int, int, bool) IS 'Find the Substring Between Start and End Locations';
 
 CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start int, _end int)
 RETURNS text
 AS $$ SELECT plvstr.betwn($1,$2,$3,true);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.betwn(text, int, int) IS 'Find the Substring Between Start and End Locations';
 
 CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start text, _end text, startnth int, endnth int, inclusive bool, gotoend bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_betwn_c'
-LANGUAGE C STABLE;
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text, int, int, bool, bool) IS 'Find the Substring Between Start and End Locations';
 
 CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start text, _end text)
 RETURNS text
 AS $$ SELECT plvstr.betwn($1,$2,$3,1,1,true,false);$$
-LANGUAGE SQL STABLE;
+LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text) IS 'Find the Substring Between Start and End Locations';
 
 CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start text, _end text, startnth int, endnth int)
 RETURNS text
 AS $$ SELECT plvstr.betwn($1,$2,$3,$4,$5,true,false);$$
-LANGUAGE SQL STABLE;
+LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text, int, int) IS 'Find the Substring Between Start and End Locations';
 
 DROP SCHEMA plvchr CASCADE;
@@ -761,127 +761,127 @@ CREATE SCHEMA plvchr;
 CREATE OR REPLACE FUNCTION plvchr.nth(str text, n int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvchr_nth'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.nth(text, int) IS 'Call this function to return the Nth character in a string';
 
 CREATE OR REPLACE FUNCTION plvchr.first(str text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvchr_first'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.first(text) IS 'Call this function to return the first character in a string';
 
 CREATE OR REPLACE FUNCTION plvchr.last(str text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvchr_last'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.last(text) IS 'Call this function to return the last character in a string';
 
 CREATE OR REPLACE FUNCTION plvchr._is_kind(str text, kind int)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvchr_is_kind_a'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr._is_kind(text, int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr._is_kind(c int, kind int)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvchr_is_kind_i'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr._is_kind(int, int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_blank(c int)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 1);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_blank(int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_blank(c text)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 1);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_blank(text) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_digit(c int)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 2);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_digit(int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_digit(c text)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 2);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_digit(text) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_quote(c int)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 3);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_quote(int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_quote(c text)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 3);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_quote(text) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_other(c int)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 4);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_other(int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_other(c text)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 4);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_other(text) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_letter(c int)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 5);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_letter(int) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.is_letter(c text)
 RETURNS BOOL
 AS $$ SELECT plvchr._is_kind($1, 5);$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_letter(text) IS '';
 
 CREATE OR REPLACE FUNCTION plvchr.char_name(c text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvchr_char_name'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.char_name(text) IS '';
 
 CREATE OR REPLACE FUNCTION plvstr.left(str text, n int)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'plvstr_left'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.left(text, int) IS 'Returns firs num_in charaters. You can use negative num_in';
 
 CREATE OR REPLACE FUNCTION plvstr.right(str text, n int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_right'
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.right(text, int) IS 'Returns last num_in charaters. You can use negative num_ni';
 
 CREATE OR REPLACE FUNCTION plvchr.quoted1(str text)
 RETURNS varchar
 AS $$SELECT E'\''||$1||E'\'';$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.quoted1(text) IS E'Quoted text between \'';
 
 CREATE OR REPLACE FUNCTION plvchr.quoted2(str text)
 RETURNS varchar
 AS $$SELECT '"'||$1||'"';$$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.quoted2(text) IS 'Quoted text between "';
 
 CREATE OR REPLACE FUNCTION plvchr.stripped(str text, char_in text)
 RETURNS varchar
 AS $$ SELECT TRANSLATE($1, 'A'||$2, 'A'); $$
-LANGUAGE SQL STABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.stripped(text, text) IS 'Strips a string of all instances of the specified characters';
 
 -- dbms_alert
@@ -951,49 +951,49 @@ CREATE SCHEMA plvsubst;
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[], subst text) 
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_string_array'
-LANGUAGE C STABLE;
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text[], text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[]) 
 RETURNS text
 AS $$SELECT plvsubst.string($1,$2, NULL);$$
-LANGUAGE SQL STRICT STABLE;
+LANGUAGE SQL STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.string(text, text[]) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text) 
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_string_string'
-LANGUAGE C STABLE;
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text, text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text) 
 RETURNS text
 AS $$SELECT plvsubst.string($1, $2, ',', NULL); $$ 
-LANGUAGE SQL STRICT STABLE;
+LANGUAGE SQL STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.string(text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text) 
 RETURNS text
 AS $$SELECT plvsubst.string($1, $2, $3, NULL); $$ 
-LANGUAGE SQL STRICT STABLE;
+LANGUAGE SQL STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.string(text, text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
 CREATE OR REPLACE FUNCTION plvsubst.setsubst(str text) 
 RETURNS void
 AS 'MODULE_PATHNAME','plvsubst_setsubst'
-LANGUAGE C STRICT STABLE;
+LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.setsubst(text) IS 'Change the substitution keyword';
 
 CREATE OR REPLACE FUNCTION plvsubst.setsubst() 
 RETURNS void
 AS 'MODULE_PATHNAME','plvsubst_setsubst_default'
-LANGUAGE C STRICT STABLE;
+LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.setsubst() IS 'Change the substitution keyword to default %s';
 
 CREATE OR REPLACE FUNCTION plvsubst.subst() 
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_subst'
-LANGUAGE C STRICT STABLE;
+LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.subst() IS 'Retrieve the current substitution keyword';
 
 DROP SCHEMA dbms_utility CASCADE;
@@ -1018,7 +1018,7 @@ CREATE OR REPLACE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qu
 OUT pos int, OUT token text, OUT code int, OUT class text, OUT separator text, OUT mod text)
 RETURNS SETOF RECORD
 AS 'MODULE_PATHNAME','plvlex_tokens' 
-LANGUAGE C STABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
 
 

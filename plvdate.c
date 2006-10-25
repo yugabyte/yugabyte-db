@@ -97,7 +97,7 @@ static unsigned char nonbizdays = SUNDAY | SATURDAY;
 static bool use_easter = true;
 static bool include_start = true;
 
-#define MAX_HOLYDAYS   30
+#define MAX_holidays   30
 #define MAX_EXCEPTIONS 50
 
 typedef struct {
@@ -112,7 +112,7 @@ typedef struct {
 	int holidays_c;
 } cultural_info;
 
-static holiday_desc holidays[MAX_HOLYDAYS];  /* sorted array */
+static holiday_desc holidays[MAX_holidays];  /* sorted array */
 static DateADT exceptions[MAX_EXCEPTIONS];   /* sorted array */
 
 static int holidays_c = 0;
@@ -572,12 +572,12 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
     
 	if (arg2)
 	{
-		if (holidays_c == MAX_HOLYDAYS)
+		if (holidays_c == MAX_holidays)
                         ereport(ERROR,
                                 (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
                                  errmsg("nonbizday registeration error"),
                                  errdetail("Too much registered nonbizdays."),
-                                 errhint("Increase MAX_HOLYDAYS in 'plvdate.c'.")));
+                                 errhint("Increase MAX_holidays in 'plvdate.c'.")));
 
 		j2date(arg1 + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 		hd.month = m; hd.day = d;
