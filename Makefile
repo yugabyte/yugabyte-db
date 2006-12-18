@@ -2,7 +2,7 @@ MODULE_big = orafunc
 OBJS= datefce.o others.o putline.o pipe.o plvdate.o shmmc.o plvstr.o alert.o magic.o plvsubst.o plvlex.o utility.o sqlparse.o
 
 DATA_built = orafunc.sql
-DOCS = README.orafunc
+DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
 REGRESS = orafunc
 
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h 
