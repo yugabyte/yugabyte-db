@@ -1021,7 +1021,176 @@ AS 'MODULE_PATHNAME','plvlex_tokens'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
 
+DROP SCHEMA utl_file CASCADE;
+CREATE SCHEMA utl_file;
+CREATE DOMAIN utl_file.file_type integer;
 
+CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer)
+RETURNS utl_file.file_type
+AS 'MODULE_PATHNAME','utl_file_fopen' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
+
+CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text)
+RETURNS utl_file.file_type
+AS $$SELECT utl_file.fopen($1, $2, $3, 1023); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
+
+CREATE FUNCTION utl_file.is_open(file utl_file.file_type)
+RETURNS bool
+AS $$SELECT $1 IS NOT NULL; $$
+LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION utl_file.is_open(utl_file.file_type) IS 'Functions returns true if handle points to file that is open';
+
+CREATE FUNCTION utl_file.get_line(file utl_file.file_type)
+RETURNS text
+AS 'MODULE_PATHNAME','utl_file_get_line' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type) IS 'Returns one line from file';
+
+CREATE FUNCTION utl_file.__put(file utl_file.file_type, buffer text, new_line bool)
+RETURNS bool
+AS 'MODULE_PATHNAME','utl_file___put' 
+LANGUAGE C VOLATILE;
+
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer text)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2, false); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type, text) IS 'Puts data to specified file';
+
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer numeric)
+RETURNS bool
+AS $$SELECT utl_file.put($1, $2::text); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type, numeric) IS 'Puts data to specified file';
+
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer timestamp)
+RETURNS bool
+AS $$SELECT utl_file.put($1, $2::text); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type, timestamp) IS 'Puts data to specified file';
+
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer date)
+RETURNS bool
+AS $$SELECT utl_file.put($1, $2::text); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type, date) IS 'Puts data to specified file';
+
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer time)
+RETURNS bool
+AS $$SELECT utl_file.put($1, $2::text); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type, time) IS 'Puts data to specified file';
+
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer timestamp with time zone)
+RETURNS bool
+AS $$SELECT utl_file.put($1, $2::text); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type,  timestamp with time zone) IS 'Puts data to specified file';
+
+CREATE FUNCTION utl_file.new_line(file utl_file.file_type)
+RETURNS bool
+AS $$SELECT utl_file.put($1, E'\n'); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
+
+CREATE FUNCTION utl_file.new_line(file utl_file.file_type, lines int)
+RETURNS bool
+AS $$SELECT utl_file.put($1, repeat(E'\n', $2)); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
+
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer text)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2, true); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, text) IS 'Puts data to specified file and append newline character';
+
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer numeric)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2::text, true); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, numeric) IS 'Puts data to specified file and append newline character';
+
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer date)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2::text, true); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, date) IS 'Puts data to specified file and append newline character';
+
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer time)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2::text, true); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, time) IS 'Puts data to specified file and append newline character';
+
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer timestamp)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2::text, true); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, timestamp) IS 'Puts data to specified file and append newline character';
+
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer timestamp with time zone)
+RETURNS bool
+AS $$SELECT utl_file.__put($1, $2::text, true); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, timestamp with time zone) IS 'Puts data to specified file and append newline character';
+
+CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text, arg5 text)
+RETURNS bool
+AS 'MODULE_PATHNAME','utl_file_putf' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text, text) IS 'Puts formatted data to specified file';
+
+CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text)
+RETURNS bool
+AS $$SELECT utl_file.putf($1, $2, $3, $4, $5, $6, NULL); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text) IS 'Puts formatted data to specified file';
+
+CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text)
+RETURNS bool
+AS $$SELECT utl_file.putf($1, $2, $3, $4, $5, NULL, NULL); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text) IS 'Puts formatted data to specified file';
+
+CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text)
+RETURNS bool
+AS $$SELECT utl_file.putf($1, $2, $3, $4, NULL, NULL, NULL); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text) IS 'Puts formatted data to specified file';
+
+CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text)
+RETURNS bool
+AS $$SELECT utl_file.putf($1, $2, $3, NULL, NULL, NULL, NULL); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text) IS 'Puts formatted data to specified file';
+
+CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text)
+RETURNS bool
+AS $$SELECT utl_file.putf($1, $2, NULL, NULL, NULL, NULL, NULL); $$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text) IS 'Puts formatted data to specified file';
+
+CREATE FUNCTION utl_file.fflush(file utl_file.file_type)
+RETURNS void
+AS 'MODULE_PATHNAME','utl_file_fflush' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.fflush(file utl_file.file_type) IS 'This procedure makes sure that all pending data for specified file is written physically out to a file';
+
+CREATE FUNCTION utl_file.fclose(file utl_file.file_type)
+RETURNS void
+AS 'MODULE_PATHNAME','utl_file_fclose' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.fclose(utl_file.file_type) IS 'Close file';
+
+CREATE FUNCTION utl_file.fclose_all()
+RETURNS void
+AS 'MODULE_PATHNAME','utl_file_fclose_all' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
@@ -1034,5 +1203,5 @@ GRANT USAGE ON SCHEMA plvsubst TO PUBLIC;
 GRANT SELECT ON dbms_pipe.db_pipes to PUBLIC;
 GRANT USAGE ON SCHEMA dbms_utility TO PUBLIC;
 GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
-
+GRANT USAGE ON SCHEMA utl_file TO PUBLIC;
 
