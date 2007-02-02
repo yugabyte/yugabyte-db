@@ -13,6 +13,7 @@ psql:orafunc.sql:889: ERROR:  schema "dbms_alert" does not exist
 psql:orafunc.sql:948: ERROR:  schema "plvsubst" does not exist
 psql:orafunc.sql:999: ERROR:  schema "dbms_utility" does not exist
 psql:orafunc.sql:1014: ERROR:  schema "plvlex" does not exist
+psql:orafunc.sql:1024: ERROR:  schema "utl_file" does not exist
 --
 -- test built-in date type oracle compatibility functions
 --

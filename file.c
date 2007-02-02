@@ -245,6 +245,8 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 
 	buffer = palloc(max_linesize + 2);
 	bpt = buffer;
+
+	errno = 0;
 	
 	while ((c = fgetc(f)) != EOF)
 	{

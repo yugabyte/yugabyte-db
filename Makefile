@@ -3,7 +3,8 @@ OBJS= file.o datefce.o others.o putline.o pipe.o plvdate.o shmmc.o plvstr.o aler
 
 DATA_built = orafunc.sql
 DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
-REGRESS = orafunc
+REGRESS = orafunc files
+REGRESS_OPTS = --load-language=plpgsql
 
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h 
 

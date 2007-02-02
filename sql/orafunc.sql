@@ -136,3 +136,5 @@ select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'W
 select plvstr.left('Příliš žluťoučký kůň',4) = 'Příl';
 
 select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
+
+

@@ -1,0 +1,63 @@
+create or replace function gen_file() returns void as $$
+declare 
+  f utl_file.file_type;
+  r record;
+begin
+  f := utl_file.fopen('/tmp','regress_orafce','w');
+  for r in select m from generate_series(1,20) m(m) loop
+    perform utl_file.put_line(f, r.m::numeric);
+  end loop;
+  f := utl_file.fclose(f);
+end;
+$$ language plpgsql;
+select gen_file();
+ gen_file 
+----------
+ 
+(1 row)
+
+create or replace function read_file() returns void as $$
+declare 
+  f utl_file.file_type;
+begin
+  f := utl_file.fopen('/tmp','regress_orafce','r');
+  loop 
+    raise notice '>>%<<', utl_file.get_line(f);
+  end loop;
+  exception
+    when no_data_found then
+      raise notice 'finish % ', sqlerrm;
+      raise notice 'kuku';
+      f := utl_file.fclose(f);
+      raise notice 'bbbb';
+end;
+$$ language plpgsql;
+select read_file();
+NOTICE:  >>1<<
+NOTICE:  >>2<<
+NOTICE:  >>3<<
+NOTICE:  >>4<<
+NOTICE:  >>5<<
+NOTICE:  >>6<<
+NOTICE:  >>7<<
+NOTICE:  >>8<<
+NOTICE:  >>9<<
+NOTICE:  >>10<<
+NOTICE:  >>11<<
+NOTICE:  >>12<<
+NOTICE:  >>13<<
+NOTICE:  >>14<<
+NOTICE:  >>15<<
+NOTICE:  >>16<<
+NOTICE:  >>17<<
+NOTICE:  >>18<<
+NOTICE:  >>19<<
+NOTICE:  >>20<<
+NOTICE:  finish no data found 
+NOTICE:  kuku
+NOTICE:  bbbb
+ read_file 
+-----------
+ 
+(1 row)
+
