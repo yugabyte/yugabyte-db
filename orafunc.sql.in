@@ -1028,7 +1028,7 @@ CREATE DOMAIN utl_file.file_type integer;
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer)
 RETURNS utl_file.file_type
 AS 'MODULE_PATHNAME','utl_file_fopen' 
-LANGUAGE C VOLATILE;
+LANGUAGE C VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
 
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text)
@@ -1198,6 +1198,9 @@ AS 'MODULE_PATHNAME','utl_file_fclose_all'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 
+/* carry all safe directories */
+CREATE TABLE utl_file.utl_file_dir(dir text);
+REVOKE ALL ON utl_file.utl_file_dir FROM PUBLIC;
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
