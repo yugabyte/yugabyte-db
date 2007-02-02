@@ -1049,6 +1049,12 @@ AS 'MODULE_PATHNAME','utl_file_get_line'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type) IS 'Returns one line from file';
 
+CREATE FUNCTION utl_file.get_nextline(file utl_file.file_type)
+RETURNS text
+AS 'MODULE_PATHNAME','utl_file_get_nextline' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.get_nextline(utl_file.file_type) IS 'Returns one line from file or returns NULL';
+
 CREATE FUNCTION utl_file.__put(file utl_file.file_type, buffer text, new_line bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','utl_file___put' 
