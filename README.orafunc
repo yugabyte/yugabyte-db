@@ -1,6 +1,5 @@
 Oracle functions and Oracle packages
 ====================================
-
 This module contains some useful function which can help with porting
 Oracle application to PostgreSQL or can be useful generally. 
 
@@ -91,9 +90,65 @@ This package contains the following functions: enable(), disable(),
 serveroutput(), put(), put_line(), new_line(), get_line(), get_lines(). 
 The package queue is implemented in the session's local memory.
 
+Package utl_file
+================
+This package allows PL/pgSQL prgrams read from and write to any files that are
+accessible from server. Every session can open maximaly ten files and max
+line size is 32K. This package contains functions:
+
+* utl_file.fclose(file utl_file.file_type)  - close file
+* utl_file.fclose_all()  - close all files
+* utl_file.fflush(file utl_file.file_type)  - flushes all data from buffers
+* utl_file.fopen(location text, filename text, file_mode text [, maxlinesize int) utl_file.file_type  - open file
+* utl_file.get_line(file utl_file.file_type) text  - read one line from file
+* utl_file.get_nextline(file utl_file.file_type) text  - read one line from file or returns NULL
+* utl_file.is_open(file utl_file.file_type) bool  - returns true, if file is opened
+* utl_file.new_line(file utl_file.file_type [,rows int])  - puts some new line chars to file
+* utl_file.put(file utl_file.file_type, buffer text)  - puts buffer to file
+* utl_file.put_line(file utl_file.file_type, buffer text)  - puts line to file
+* utl_file.putf(file utl_file.file_type, format buffer [,arg1 text][,arg2 text][..][,arg5 text])  - put formated text into file
+
+Because PostgreSQL doesn't support call by reference, some function's are gently different:
+fclose and get_line.
+
+  declare f utl_file.file_type;
+  begin
+    f := utl_file.fopen('/tmp', 'sample.txt', 'r');
+    <<readl>>
+    loop
+      begin
+        raise notice '%', utl_file.get_line(f);
+      exception
+        when no_data_found then
+          exit readl;
+      end;
+    end loop;
+    f := fclose(f);
+  end; 
+
+or second (with PostgreSQL specific function get_nextline)
+
+    declare 
+      f utl_file.file_type;
+      line text;
+    begin
+      f := utl_file.fopen('/tmp', 'sample.txt', 'r');
+      loop
+        line := utl_file.get_nextline(f);
+        exit when line is NULL;
+        raise notice '%', line;
+    exception
+      when others then
+        utl_file.fclose_all();
+    end;
+
+Before using package you have to set utl_file_dir in postgresql.conf. This syntax is
+postgresql (unix) specific - list of directories separated ':' There is one exception
+ file /tmp/regress_orafce which can be accessed withou utl_file_dir settings. It's 
+used for regress test.
+
 Package dbms_pipe
 =================
-
 This package is an emulation of Oracle's package dbms_pipe. It provides 
 inter-session comunication. You can send and read any message with or without 
 waiting; list active pipes; set a pipe as private or public; and, use 
@@ -130,7 +185,6 @@ There are some differences compared to Oracle, however:
 
 Package dbms_alert
 ==================
-
 Another means of inter-process communication.
 
 -- Session A
@@ -232,7 +286,6 @@ select plvdate.unuse_easter();
 
 Package PLVstr and PLVchr
 =========================
-
 This package contains some useful string and character functions. Each
 function supports positive and negative offsets -- i.e., offset from the
 end of the string. For example:
@@ -443,7 +496,7 @@ This module is released under BSD licence.
 Pavel Stehule
 stehule@kix.fsv.cvut.cz
 
-Prague 2006
+Prague 2007
 
 p.s.
 If use this library, please, send me mail about it.
