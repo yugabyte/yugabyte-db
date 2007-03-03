@@ -7,6 +7,7 @@
 
 #include "pipe.h"
 #include "shmmc.h"
+#include "orafunc.h"
 
 #include "executor/spi.h"
 #include "commands/trigger.h"

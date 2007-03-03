@@ -346,7 +346,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 			
 			int len = strlen(cursor);
 			memcpy(VARDATA(line), cursor, len);
-			VARATT_SIZEP(line) = len + VARHDRSZ;
+			SET_VARSIZE(line, len + VARHDRSZ);
 	    
 			dvalue = PointerGetDatum(line);
 			astate = accumArrayResult(astate, dvalue,

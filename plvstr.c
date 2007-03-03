@@ -95,7 +95,7 @@ ora_make_text(char *c)
 
 	len = strlen(c);
 	result = palloc(len + VARHDRSZ);
-	VARATT_SIZEP(result) = len + VARHDRSZ;
+	SET_VARSIZE(result, len + VARHDRSZ);
 	memcpy(VARDATA(result), c, len);
 
 	return result;
@@ -107,7 +107,7 @@ ora_clone_text(text *t)
 	text *result;
 	
 	result = palloc(VARSIZE(t));
-	VARATT_SIZEP(result) = VARSIZE(t);
+	SET_VARSIZE(result, VARSIZE(t));
 	memcpy(VARDATA(result), VARDATA(t), VARSIZE(t) - VARHDRSZ);
 
 	return result;
@@ -118,7 +118,7 @@ ora_make_text_fix(char *c, int n)
 {
 	text *result;
 	result = palloc(n + VARHDRSZ);
-	VARATT_SIZEP(result) = n + VARHDRSZ;
+	SET_VARSIZE(result, n + VARHDRSZ);
 	memcpy(VARDATA(result), c, n);
 
 	return result;
@@ -220,7 +220,7 @@ ora_substr(text *str, int start, int len, bool valid_length)
 	if (!mb_encode)
 	{
 		result = palloc(len + VARHDRSZ);
-		VARATT_SIZEP(result) = len + VARHDRSZ;
+		SET_VARSIZE(result, len + VARHDRSZ);
 		memcpy(VARDATA(result), ((char*)VARDATA(str))+start - 1, len);
 	}
 	else
@@ -250,7 +250,7 @@ ora_substr(text *str, int start, int len, bool valid_length)
 			c_len += sizes[i]; 
 		}
 
-		VARATT_SIZEP(result) = c_len + VARHDRSZ;
+		SET_VARSIZE(result, c_len + VARHDRSZ);
 
 	}
 
@@ -475,7 +475,7 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 
 	l = aux_cur - aux;
 	result = palloc(l+VARHDRSZ);
-	VARATT_SIZEP(result) = l + VARHDRSZ;
+	SET_VARSIZE(result, l + VARHDRSZ);
 	memcpy(VARDATA(result), aux, l);
 	
 	PG_RETURN_TEXT_P(result);
@@ -716,14 +716,14 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 		        *data++ = *(p+positions[i]+j);
 		    cur_size += sizes[i];
 		}
-		VARATT_SIZEP(result) = cur_size + VARHDRSZ;
+		SET_VARSIZE(result, cur_size + VARHDRSZ);
 		
 	}
 	else
 	{
 		result = palloc(new_len + VARHDRSZ);
     		data = (char*) VARDATA(result);
-		VARATT_SIZEP(result) = new_len + VARHDRSZ;
+		SET_VARSIZE(result, new_len + VARHDRSZ);
 
 		for (i = end - 1; i >= start - 1; i--)
 			*data++ = ((char*)VARDATA(str))[i];
@@ -1232,7 +1232,7 @@ ora_concat2(text *str1, text *str2)
 	result = palloc(l1+l2+VARHDRSZ);                                                                                                               
 	memcpy(VARDATA(result), VARDATA(str1), l1);                                                                                                      
 	memcpy(VARDATA(result) + l1, VARDATA(str2), l2);                                                                                                 
-	VARATT_SIZEP(result) = l1 + l2 + VARHDRSZ;                                                                                                     
+	SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
                             
 	return result;                                                                                                                       
 }
@@ -1254,7 +1254,7 @@ ora_concat3(text *str1, text *str2, text *str3)
 	memcpy(VARDATA(result), VARDATA(str1), l1);
 	memcpy(VARDATA(result) + l1, VARDATA(str2), l2);
 	memcpy(VARDATA(result) + l1+l2, VARDATA(str3), l3);
-	VARATT_SIZEP(result) = l1 + l2 + l3 + VARHDRSZ;                                                                                                     
+	SET_VARSIZE(result, l1 + l2 + l3 + VARHDRSZ);
                             
 	return result;                                                                                                                       
 }

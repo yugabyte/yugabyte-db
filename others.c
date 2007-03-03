@@ -63,7 +63,7 @@ ora_concat(PG_FUNCTION_ARGS)
     result = palloc(l1+l2+VARHDRSZ);
     memcpy(VARDATA(result), VARDATA(t1), l1);
     memcpy(VARDATA(result) + l1, VARDATA(t2), l2);
-    VARATT_SIZEP(result) = l1 + l2 + VARHDRSZ;
+    SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
     
     PG_RETURN_TEXT_P(result);
 }
@@ -247,7 +247,7 @@ _nls_run_strxfrm(text *string, text *locale)
 		multiplication = (rest / string_len) + 1;
 
 	result = (text *) tmp;
-	result->vl_len = rest + VARHDRSZ;
+	SET_VARSIZE(result, rest + VARHDRSZ);
 	return result;
 }
 
@@ -268,7 +268,7 @@ ora_nlssort(PG_FUNCTION_ARGS)
 		else
 		{
 			locale = palloc(VARHDRSZ);
-			locale->vl_len = 0;
+			SET_VARSIZE(locale, VARHDRSZ);
 		}
 	}
 	else

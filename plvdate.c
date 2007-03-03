@@ -22,6 +22,7 @@
 #include "utils/nabstime.h"
 #include <sys/time.h>
 #include <stdlib.h>
+#include "orafunc.h"
 
 
 /*
@@ -509,7 +510,7 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 
 	text *day_txt = PG_GETARG_TEXT_P(0);
 	
-	int d = ora_seq_search(VARDATA(day_txt), days, VARATT_SIZEP(day_txt) - VARHDRSZ);
+	int d = ora_seq_search(VARDATA(day_txt), days, VARSIZE(day_txt) - VARHDRSZ);
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
 	check = nonbizdays | (1 << d);
@@ -541,7 +542,7 @@ plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS)
 {
 	text *day_txt = PG_GETARG_TEXT_P(0);
 	
-	int d = ora_seq_search(VARDATA(day_txt), days, VARATT_SIZEP(day_txt) - VARHDRSZ);
+	int d = ora_seq_search(VARDATA(day_txt), days, VARSIZE(day_txt) - VARHDRSZ);
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
     
 	nonbizdays = (nonbizdays | (1 << d)) ^ (1 << d);
@@ -764,7 +765,7 @@ plvdate_default_holidays (PG_FUNCTION_ARGS)
 {
     text *country = PG_GETARG_TEXT_P(0);
 	
-	int c = ora_seq_search(VARDATA(country), states, VARATT_SIZEP(country) - VARHDRSZ);
+	int c = ora_seq_search(VARDATA(country), states, VARSIZE(country) - VARHDRSZ);
 	CHECK_SEQ_SEARCH(c, "STATE/State/state");
 
 	nonbizdays = defaults_ci[c].nonbizdays;

@@ -3,6 +3,7 @@
 #include "stdio.h"
 #include "utils/memutils.h"
 #include "executor/spi.h"
+#include "orafunc.h"
 
 #define INVALID_OPERATION		"UTL_FILE_INVALID_OPERATION"
 #define WRITE_ERROR			"UTL_FILE_WRITE_ERROR"
@@ -282,8 +283,7 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 	{
 		result = palloc(csize + VARHDRSZ);
 		memcpy(VARDATA(result), buffer, csize);
-		VARATT_SIZEP(result) = csize + VARHDRSZ;
-
+		SET_VARSIZE(result, csize + VARHDRSZ);
 		*iseof = false;
 	}
 	else
@@ -643,7 +643,7 @@ check_secure_locality(text *loc)
 	{
 		text *aux = palloc(len + 1 + VARHDRSZ);
 		memcpy(VARDATA(aux), VARDATA(loc), len);
-		VARATT_SIZEP(aux) = len + 1 + VARHDRSZ;
+		SET_VARSIZE(aux, len + 1 + VARHDRSZ);
 #if defined(WIN32)
 		((char*)VARDATA(aux))[len] = '\\';
 #else
