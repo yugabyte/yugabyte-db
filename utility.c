@@ -39,6 +39,7 @@ Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack0);
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack1);
 
+#ifndef PG_VERSION_74_COMPAT
 static char*
 dbms_utility_format_call_stack(char mode)
 {
@@ -168,22 +169,26 @@ dbms_utility_format_call_stack(char mode)
 		    
 	}
 
-	return sinfo->data;
-	
+	return sinfo->data;	
 }
-
-
+#endif
 
 
 Datum 
 dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
 {
+#ifdef PG_VERSION_74_COMPAT
+	elog(ERROR, "PostgreSQL 7.4 doesn't allow access to call stack");
+	PG_RETURN_NULL();
+#else
 	PG_RETURN_TEXT_P(ora_make_text(dbms_utility_format_call_stack('o')));
+#endif
 };
 
 Datum 
 dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 {
+#ifndef PG_VERSION_74_COMPAT
 	text *arg = PG_GETARG_TEXT_P(0);
 	char mode;
 
@@ -208,4 +213,8 @@ dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(ora_make_text(dbms_utility_format_call_stack(mode)));
+#else
+	elog(ERROR, "PostgreSQL 7.4 doesn't allow access to call stack");
+	PG_RETURN_NULL();
+#endif
 }

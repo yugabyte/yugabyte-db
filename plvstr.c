@@ -79,6 +79,10 @@ if (VARSIZE(str) - VARHDRSZ == 0) \
 		 errdetail(detail))); 
 
 
+#ifndef _pg_mblen
+#define _pg_mblen	pg_mblen
+#endif
+
 typedef enum
 {
 	POSITION,
@@ -149,7 +153,7 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 
 	while (cur < r_len)
 	{
-		sz = pg_mblen(p);
+		sz = _pg_mblen(p);
 		if (sizes)
 			(*sizes)[cur_size] = sz;
 		if (positions)
@@ -181,7 +185,7 @@ ora_mb_strlen1(text *str)
 	{
 		int sz;
 		
-		sz = pg_mblen(p);
+		sz = _pg_mblen(p);
 		p += sz;
 		r_len -= sz;
 		c += 1;
@@ -435,7 +439,7 @@ plvstr_normalize(PG_FUNCTION_ARGS)
 				
 				if (mb_encode)
 				{
-					sz = pg_mblen(cur);
+					sz = _pg_mblen(cur);
 					if (sz > 1 || (sz == 1 && c > 32))
 					{
 					    int j;
@@ -1141,7 +1145,7 @@ plvchr_is_kind_a (PG_FUNCTION_ARGS)
 	NON_EMPTY_CHECK(str);	
 	if (pg_database_encoding_max_length() > 1)
 	{
-		if (pg_mblen(((char*)VARDATA(str))) > 1)
+		if (_pg_mblen(((char*)VARDATA(str))) > 1)
 			PG_RETURN_INT32( (k == 5) );
 	}
 
@@ -1173,7 +1177,7 @@ plvchr_char_name(PG_FUNCTION_ARGS)
 	c = *((char*)VARDATA(str));
 
 
-	if (c > 32 && pg_mblen(((char*)VARDATA(str))) == 1)
+	if (c > 32 && _pg_mblen(((char*)VARDATA(str))) == 1)
 		result = ora_substr(str,1, 1, true);
 	else
 		result = ora_make_text(char_names[(int)c]);

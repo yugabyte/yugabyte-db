@@ -77,6 +77,11 @@ static int	lexer_errposition(void);
 static char *scanbuf;
 
 static unsigned char unescape_single_char(unsigned char c);
+
+#ifndef _pg_mbstrlen_with_len
+#define _pg_mbstrlen_with_len(buf,loc) 	pg_mbstrlen_with_len(buf,loc)
+#endif
+
 %}
 
 %option 8bit
@@ -866,7 +871,7 @@ lexer_errposition(void)
 	int		pos;
 
 	/* Convert byte offset to character number */
-	pos = pg_mbstrlen_with_len(scanbuf, yylloc) + 1;
+	pos = _pg_mbstrlen_with_len(scanbuf, yylloc) + 1;
 	/* And pass it to the ereport mechanism */
 	return errposition(pos);
 }

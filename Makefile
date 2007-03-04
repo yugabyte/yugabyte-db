@@ -1,5 +1,5 @@
 MODULE_big = orafunc
-OBJS= file.o datefce.o others.o putline.o pipe.o plvdate.o shmmc.o plvstr.o alert.o magic.o plvsubst.o plvlex.o utility.o sqlparse.o
+OBJS= backport.o file.o datefce.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o magic.o   sqlparse.o putline.o
 
 DATA_built = orafunc.sql
 DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc

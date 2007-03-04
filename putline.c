@@ -280,34 +280,47 @@ PG_FUNCTION_INFO_V1(dbms_output_get_line);
 Datum
 dbms_output_get_line(PG_FUNCTION_ARGS)
 {
-    TupleDesc	tupdesc, btupdesc;
-    AttInMetadata	*attinmeta;    
-    HeapTuple	tuple;
-    Datum 	result;
+	TupleDesc	tupdesc;
+	AttInMetadata	*attinmeta;    
+	HeapTuple	tuple;
+	Datum 	result;
+#ifdef PG_VERSION_74_COMPAT 
+        TupleTableSlot  *slot;
+#else 
+        TupleDesc       btupdesc;
+#endif 
     
-    char *str[2] = {NULL,"0"};
+	char *str[2] = {NULL,"0"};
 	
-    if (lines > 0)
-    {
+	if (lines > 0)
+	{
 		str[0] = buffer;
 		str[1] = "1";
-    }
+	}
 
-    get_call_result_type(fcinfo, NULL, &tupdesc);
-    btupdesc = BlessTupleDesc(tupdesc);
-    attinmeta = TupleDescGetAttInMetadata(btupdesc);
-    tuple = BuildTupleFromCStrings(attinmeta, str);
-    result = HeapTupleGetDatum(tuple);
+#ifdef PG_VERSION_74_COMPAT
+	tupdesc = RelationNameGetTupleDesc("dbms_output_get_line_res");
+	slot = TupleDescGetSlot(tupdesc);
+	attinmeta = TupleDescGetAttInMetadata(tupdesc);
+	tuple = BuildTupleFromCStrings(attinmeta, str);
+	result = TupleGetDatum(slot, tuple);
+#else
+	get_call_result_type(fcinfo, NULL, &tupdesc);
+	btupdesc = BlessTupleDesc(tupdesc);
+	attinmeta = TupleDescGetAttInMetadata(btupdesc);
+	tuple = BuildTupleFromCStrings(attinmeta, str);
+	result = HeapTupleGetDatum(tuple);
+#endif
     
-    if (lines > 0)
-    {
+	if (lines > 0)
+	{
 		int len = strlen(buffer) + 1;
 		memcpy(buffer, buffer + len, buffer_len - len);
 		buffer_len -= len;
 		lines--;
-    }
+	}
     
-    return result;
+	return result;
 }
 
 
@@ -322,7 +335,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 	
     ArrayBuildState *astate = NULL;
 	
-    TupleDesc	tupdesc, btupdesc;
+    TupleDesc	tupdesc;
     HeapTuple	tuple;
     Datum 	result;
 
@@ -331,6 +344,11 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 
     int fldnum = 0;
     char *cursor = buffer;
+#ifdef PG_VERSION_74_COMPAT 
+    TupleTableSlot  *slot;
+#else 
+    TupleDesc       btupdesc;
+#endif 
 
     text *line = palloc(255 + VARHDRSZ);
 	
@@ -380,14 +398,20 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 #else
 		dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
 #endif
-
     }
 
+#ifdef PG_VERSION_74_COMPAT
+    tupdesc = RelationNameGetTupleDesc("dbms_alert_waitone_res");
+    tuple = heap_formtuple(tupdesc, dvalues, isnull);
+    slot = TupleDescGetSlot(tupdesc);
+    result = TupleGetDatum(slot, tuple);
+#else
     dvalues[1] = Int32GetDatum(fldnum);
     get_call_result_type(fcinfo, NULL, &tupdesc);
     btupdesc = BlessTupleDesc(tupdesc);
     tuple = heap_form_tuple(btupdesc, dvalues, isnull);
     result = HeapTupleGetDatum(tuple);
+#endif
 
     return result;    
 }

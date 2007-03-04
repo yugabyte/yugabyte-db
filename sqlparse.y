@@ -12,6 +12,7 @@ else \
 } while (0)                      
 
 #include "postgres.h"
+#include "orafunc.h"
 #include "plvlex.h"
 #include "nodes/pg_list.h"
 

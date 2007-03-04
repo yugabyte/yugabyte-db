@@ -484,7 +484,11 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
     f = ora_seq_search(VARDATA(fmt), date_fmt, VARSIZE(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
+#ifdef PG_VERSION_74_COMPAT
+    if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn) != 0)
+#else
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+#endif
 	ereport(ERROR,
 	    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 	    errmsg("timestamp out of range")));
@@ -521,7 +525,11 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
     }
     
     if (redotz)
+#ifdef PG_VERSION_74_COMPAT
+	tz = DetermineLocalTimeZone(tm);
+#else
 	tz = DetermineTimeZoneOffset(tm, global_timezone);
+#endif
 	
     if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 	ereport(ERROR,
@@ -588,7 +596,11 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
     f = ora_seq_search(VARDATA(fmt), date_fmt, VARSIZE(fmt) - VARHDRSZ);
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
+#ifdef PG_VERSION_74_COMPAT
+    if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn) != 0)
+#else
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+#endif
 	ereport(ERROR,
 	    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 	    errmsg("timestamp out of range")));
@@ -674,7 +686,11 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
     tm->tm_sec = 0;
 
     if (redotz)
+#ifdef PG_VERSION_74_COMPAT
+	tz = DetermineLocalTimeZone(tm);
+#else
 	tz = DetermineTimeZoneOffset(tm, global_timezone);
+#endif
 	
     if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 	ereport(ERROR,

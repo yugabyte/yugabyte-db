@@ -37,11 +37,15 @@ float8 sensitivity = 250.0;
 extern LWLockId shmem_lock;
 extern int context;
 
+#ifndef _GetCurrentTimestamp
+#define _GetCurrentTimestamp()		GetCurrentTimestamp()
+#endif
+
 #ifndef GetNowFloat
 #ifdef HAVE_INT64_TIMESTAMP
-#define GetNowFloat()   ((float8) GetCurrentTimestamp() / 1000000.0)
+#define GetNowFloat()   ((float8) _GetCurrentTimestamp() / 1000000.0)
 #else
-#define GetNowFloat()   GetCurrentTimestamp()
+#define GetNowFloat()   _GetCurrentTimestamp()
 #endif
 #endif
 
@@ -653,13 +657,19 @@ Datum
 dbms_alert_waitany(PG_FUNCTION_ARGS)
 {
 	float8 timeout; 
-	TupleDesc   tupdesc, btupdesc;
+	TupleDesc   tupdesc;
 	AttInMetadata       *attinmeta;
 	HeapTuple   tuple;
 	Datum       result;	
 	char *str[3] = {NULL, NULL, "1"};
 	int cycle = 0;
 	float8 endtime;
+#ifdef PG_VERSION_74_COMPAT
+	TupleTableSlot	*slot;
+#else
+	TupleDesc	btupdesc;
+#endif
+
 	
 	if (PG_ARGISNULL(0))
 		timeout = TDAYS;
@@ -681,11 +691,19 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
+#ifdef PG_VERSION_74_COMPAT
+	tupdesc = RelationNameGetTupleDesc("dbms_alert_waitany_res");
+	slot = TupleDescGetSlot(tupdesc);
+	attinmeta = TupleDescGetAttInMetadata(tupdesc);
+	tuple = BuildTupleFromCStrings(attinmeta, str);
+	result = TupleGetDatum(slot, tuple);
+#else
 	get_call_result_type(fcinfo, NULL, &tupdesc);
 	btupdesc = BlessTupleDesc(tupdesc);
 	attinmeta = TupleDescGetAttInMetadata(btupdesc);
 	tuple = BuildTupleFromCStrings(attinmeta, str);
 	result = HeapTupleGetDatum(tuple);
+#endif
 		
 	if (str[0])
 		pfree(str[0]);
@@ -714,7 +732,7 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 {
 	text *name;
 	int timeout;
-	TupleDesc   tupdesc, btupdesc;
+	TupleDesc   tupdesc;
 	AttInMetadata       *attinmeta;
 	HeapTuple   tuple;
 	Datum       result;
@@ -723,6 +741,12 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	char *event_name;
 	int cycle = 0;
 	float8 endtime;
+#ifdef PG_VERSION_74_COMPAT
+	TupleTableSlot	*slot;
+#else
+	TupleDesc	btupdesc;
+#endif
+
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,                                                          
@@ -756,11 +780,19 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
+#ifdef PG_VERSION_74_COMPAT
+	tupdesc = RelationNameGetTupleDesc("dbms_alert_waitone_res");
+	slot = TupleDescGetSlot(tupdesc);
+	attinmeta = TupleDescGetAttInMetadata(tupdesc);
+	tuple = BuildTupleFromCStrings(attinmeta, str);
+	result = TupleGetDatum(slot, tuple);
+#else
 	get_call_result_type(fcinfo, NULL, &tupdesc);
 	btupdesc = BlessTupleDesc(tupdesc);
 	attinmeta = TupleDescGetAttInMetadata(btupdesc);
 	tuple = BuildTupleFromCStrings(attinmeta, str);
 	result = HeapTupleGetDatum(tuple);
+#endif
 
 	if (str[0])
 		pfree(str[0]);
@@ -895,7 +927,11 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 
 		values[0] = ItemPointerGetDatum(tid);
 
+#ifdef PG_VERSION_74_COMPAT
+		if (SPI_OK_SELECT != SPI_execp(plan, values, nulls, 1))	
+#else
 		if (SPI_OK_DELETE != SPI_execute_plan(plan, values, nulls, false, 1))
+#endif
 			ereport(ERROR,
 				(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
 				errmsg("can't execute sql")));
@@ -938,12 +974,21 @@ END;
 $$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;                                                                                        
 */
 
+#ifndef PG_VERSION_74_COMPAT
 #define SPI_EXEC(cmd,_type_) \
 if (SPI_OK_##_type_ != SPI_execute(cmd, false, 1)) \
 		ereport(ERROR, \
     			(errcode(ERRCODE_INTERNAL_ERROR), \
         		 errmsg("SPI execute error"), \
 			 errdetail("Can't execute %s.", cmd)));
+#else
+#define SPI_EXEC(cmd,_type_) \
+if (SPI_OK_##_type_ != SPI_exec(cmd, 1)) \
+		ereport(ERROR, \
+    			(errcode(ERRCODE_INTERNAL_ERROR), \
+        		 errmsg("SPI execute error"), \
+			 errdetail("Can't execute %s.", cmd)));
+#endif
 	
 Datum
 dbms_alert_signal(PG_FUNCTION_ARGS)
@@ -991,8 +1036,11 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				 errmsg("SPI_prepare failed")));
 
-
+#ifdef PG_VERSION_74_COMPAT
+	if (SPI_OK_SELECT != SPI_execp(plan, values, nulls, 1))	
+#else
 	if (SPI_OK_INSERT != SPI_execute_plan(plan, values, nulls, false, 1))
+#endif
 			ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("can't execute sql")));

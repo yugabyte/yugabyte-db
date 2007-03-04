@@ -192,7 +192,9 @@ _nls_run_strxfrm(text *string, text *locale)
 	 * nice since it would leave the server with changed locales 
 	 * setting, resulting in bad things.
 	 */
+#ifndef PG_VERSION_74_COMPAT
 	PG_TRY();
+#endif
 	{
 
 		/*
@@ -217,7 +219,9 @@ _nls_run_strxfrm(text *string, text *locale)
 				multiplication = (rest / string_len) + 2;
 		}
 	}
+#ifndef PG_VERSION_74_COMPAT
 	PG_CATCH ();
+#endif
 	{
 		if (changed_locale) {
 			/*
@@ -227,7 +231,9 @@ _nls_run_strxfrm(text *string, text *locale)
 				elog(FATAL, "failed to set back the default LC_COLLATE value [%s]", lc_collate_cache);
 		}
 	}
+#ifndef PG_VERSION_74_COMPAT
 	PG_END_TRY ();
+#endif
 
 	if (changed_locale)
 	{
