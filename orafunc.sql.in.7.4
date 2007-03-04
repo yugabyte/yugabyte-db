@@ -1,72 +1,72 @@
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value date, fmt text)
+CREATE OR REPLACE FUNCTION pg_catalog.trunc(date, text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(date,text) IS 'truncate date according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.round(value date, fmt text)
+CREATE OR REPLACE FUNCTION pg_catalog.round(date, text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(date, text) IS 'round dates according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday text) 
+CREATE OR REPLACE FUNCTION pg_catalog.next_day(date, text) 
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greather than a date value';
 
-CREATE OR REPLACE FUNCTION pg_catalog.last_day(value date) 
+CREATE OR REPLACE FUNCTION pg_catalog.last_day(date) 
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.last_day(date) IS 'returns last day of the month based on a date value';
 
-CREATE OR REPLACE FUNCTION pg_catalog.months_between(date1 date, date2 date) 
+CREATE OR REPLACE FUNCTION pg_catalog.months_between(date, date) 
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.months_between(date, date) IS 'returns the number of months between date1 and date2';
 
-CREATE OR REPLACE FUNCTION pg_catalog.add_months(day date, value int) 
+CREATE OR REPLACE FUNCTION pg_catalog.add_months(date, int) 
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.add_months(date, int) IS 'returns date plus n months';
 
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value timestamp with time zone, fmt text) 
+CREATE OR REPLACE FUNCTION pg_catalog.trunc( timestamp with time zone, text) 
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.round(value timestamp with time zone, fmt text) 
+CREATE OR REPLACE FUNCTION pg_catalog.round( timestamp with time zone, text) 
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','ora_timestamptz_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone, text) IS 'round dates according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.round(value timestamp with time zone)
+CREATE OR REPLACE FUNCTION pg_catalog.round(timestamp with time zone)
 RETURNS timestamp with time zone
-AS $$ SELECT pg_catalog.round($1, 'DDD'); $$
+AS ' SELECT pg_catalog.round($1, ''DDD''); '
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone) IS 'will round dates according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.round(value date)
+CREATE OR REPLACE FUNCTION pg_catalog.round(date)
 RETURNS date 
-AS $$ SELECT $1; $$
+AS ' SELECT $1; '
 LANGUAGE 'SQL' IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.round(value date)IS 'will round dates according to the specified format';
+COMMENT ON FUNCTION pg_catalog.round(date)IS 'will round dates according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value timestamp with time zone)
+CREATE OR REPLACE FUNCTION pg_catalog.trunc(timestamp with time zone)
 RETURNS timestamp with time zone
-AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
+AS ' SELECT pg_catalog.trunc($1, ''DDD''); '
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value date)
+CREATE OR REPLACE FUNCTION pg_catalog.trunc(date)
 RETURNS date 
-AS $$ SELECT $1; $$
+AS ' SELECT $1; '
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(date) IS 'truncate date according to the specified format';
 
@@ -78,7 +78,7 @@ COMMENT ON FUNCTION pg_catalog.nlssort(text, text) IS '';
 
 CREATE OR REPLACE FUNCTION pg_catalog.nlssort(text)
 RETURNS bytea
-AS $$ SELECT pg_catalog.nlssort($1, null); $$
+AS ' SELECT pg_catalog.nlssort($1, null); '
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.nlssort(text)IS '';
 
@@ -88,45 +88,45 @@ AS 'MODULE_PATHNAME', 'ora_set_nls_sort'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.set_nls_sort(text) IS '';
 
-CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text, start int, nth int)
+CREATE OR REPLACE FUNCTION pg_catalog.instr(text, text, int, int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text, int, int) IS 'Search pattern in string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text, start int)
+CREATE OR REPLACE FUNCTION pg_catalog.instr(text, text, int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text, int) IS 'Search pattern in string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.instr(str text, patt text)
+CREATE OR REPLACE FUNCTION pg_catalog.instr(text, text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text) IS 'Search pattern in string';
 
-CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int, _end int)
+CREATE OR REPLACE FUNCTION plvstr.rvrs(text, int, int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rvrs'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvstr.rvrs(text, int, int) IS 'Reverse string or part of string';
 
-CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int)
+CREATE OR REPLACE FUNCTION plvstr.rvrs(text, int)
 RETURNS text
-AS $$ SELECT plvstr.rvrs($1,$2,NULL);$$
+AS ' SELECT plvstr.rvrs($1,$2,NULL);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text, int) IS 'Reverse string or part of string';
 
-CREATE OR REPLACE FUNCTION plvstr.rvrs(str text)
+CREATE OR REPLACE FUNCTION plvstr.rvrs(text)
 RETURNS text
-AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
+AS ' SELECT plvstr.rvrs($1,1,NULL);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text) IS 'Reverse string or part of string';
 
-CREATE OR REPLACE FUNCTION pg_catalog.reverse(str text)
+CREATE OR REPLACE FUNCTION pg_catalog.reverse(text)
 RETURNS text
-AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
+AS 'SELECT plvstr.rvrs($1,1,NULL);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.reverse(text) IS 'Reverse string or part of string';
 
@@ -136,19 +136,18 @@ AS 'MODULE_PATHNAME','ora_lnnvl'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
-
 -- can't overwrite PostgreSQL functions!!!!
 
 DROP SCHEMA oracle CASCADE;
 CREATE SCHEMA oracle;
 
-CREATE OR REPLACE FUNCTION oracle.substr(str text, start int)
+CREATE OR REPLACE FUNCTION oracle.substr(text, int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int) IS 'Returns substring started on start_in to end';
 
-CREATE OR REPLACE FUNCTION oracle.substr(str text, start int, len int)
+CREATE OR REPLACE FUNCTION oracle.substr(text, int, int)
 RETURNS text
 AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
@@ -171,11 +170,11 @@ DROP SCHEMA dbms_output CASCADE;
 
 CREATE SCHEMA dbms_output;
 
-CREATE OR REPLACE FUNCTION dbms_output.enable(IN buffer_size int4) 
+CREATE OR REPLACE FUNCTION dbms_output.enable(int4) 
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_output_enable' 
 LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.enable(IN int4) IS 'Enable package functionality';
+COMMENT ON FUNCTION dbms_output.enable(int4) IS 'Enable package functionality';
     
 CREATE OR REPLACE FUNCTION dbms_output.enable()
 RETURNS void 
@@ -189,23 +188,23 @@ AS 'MODULE_PATHNAME','dbms_output_disable'
 LANGUAGE C VOLATILE STRICT; 
 COMMENT ON FUNCTION dbms_output.disable() IS 'Disable package functionality';
 
-CREATE OR REPLACE FUNCTION dbms_output.serveroutput(IN bool)
+CREATE OR REPLACE FUNCTION dbms_output.serveroutput(bool)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_output_serveroutput' 
 LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.serveroutput(IN bool) IS 'Set drowing output';
+COMMENT ON FUNCTION dbms_output.serveroutput(bool) IS 'Set drowing output';
     
-CREATE OR REPLACE FUNCTION dbms_output.put(IN a text)
+CREATE OR REPLACE FUNCTION dbms_output.put(text)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_output_put' 
 LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.put(IN text) IS 'Put some text to output';
+COMMENT ON FUNCTION dbms_output.put(text) IS 'Put some text to output';
 
-CREATE OR REPLACE FUNCTION dbms_output.put_line(IN a text)
+CREATE OR REPLACE FUNCTION dbms_output.put_line(text)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_output_put_line' 
 LANGUAGE C VOLATILE STRICT;
-COMMENT ON FUNCTION dbms_output.put_line(IN text) IS 'Put line to output';
+COMMENT ON FUNCTION dbms_output.put_line(text) IS 'Put line to output';
 
 CREATE OR REPLACE FUNCTION dbms_output.new_line()
 RETURNS void
@@ -219,7 +218,7 @@ LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.get_line(OUT text, OUT int4) IS 'Get line from output buffer';
 
     
-CREATE OR REPLACE FUNCTION dbms_output.get_lines(OUT lines text[], INOUT numlines int4)
+CREATE OR REPLACE FUNCTION dbms_output.get_lines(OUT text[], INOUT numlines int4)
 AS 'MODULE_PATHNAME','dbms_output_get_lines' 
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.get_lines(OUT text[], INOUT int4) IS 'Get lines from output buffer';
@@ -269,7 +268,7 @@ COMMENT ON FUNCTION dbms_pipe.receive_message(text, int) IS 'Receive message fro
 
 CREATE OR REPLACE FUNCTION dbms_pipe.receive_message(text)
 RETURNS int
-AS $$SELECT dbms_pipe.receive_message($1,NULL::int);$$
+AS 'SELECT dbms_pipe.receive_message($1,NULL::int);'
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.receive_message(text) IS 'Receive message from pipe';
 
@@ -281,13 +280,13 @@ COMMENT ON FUNCTION dbms_pipe.send_message(text, int, int) IS 'Send message to p
 
 CREATE OR REPLACE FUNCTION dbms_pipe.send_message(text, int)
 RETURNS int
-AS $$SELECT dbms_pipe.send_message($1,$2,NULL);$$
+AS 'SELECT dbms_pipe.send_message($1,$2,NULL);'
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.send_message(text, int) IS 'Send message to pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.send_message(text)
 RETURNS int
-AS $$SELECT dbms_pipe.send_message($1,NULL,NULL);$$
+AS 'SELECT dbms_pipe.send_message($1,NULL,NULL);'
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.send_message(text) IS 'Send message to pipe';
 
@@ -490,13 +489,13 @@ COMMENT ON FUNCTION plvdate.unset_nonbizday(date, bool) IS 'Unset day as non bus
 
 CREATE OR REPLACE FUNCTION plvdate.set_nonbizday(date)
 RETURNS bool
-AS $$SELECT plvdate.set_nonbizday($1, false); SELECT NULL::boolean;$$
+AS 'SELECT plvdate.set_nonbizday($1, false); SELECT NULL::boolean;'
 LANGUAGE SQL VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.set_nonbizday(date) IS 'Set day as non bussines day';
 
 CREATE OR REPLACE FUNCTION plvdate.unset_nonbizday(date)
 RETURNS bool
-AS $$SELECT plvdate.unset_nonbizday($1, false); SELECT NULL::boolean;$$
+AS 'SELECT plvdate.unset_nonbizday($1, false); SELECT NULL::boolean;'
 LANGUAGE SQL VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.unset_nonbizday(date) IS 'Unset day as non bussines day';
 
@@ -508,13 +507,13 @@ COMMENT ON FUNCTION plvdate.use_easter(bool) IS 'Easter Sunday and easter monday
 
 CREATE OR REPLACE FUNCTION plvdate.use_easter()
 RETURNS bool
-AS $$SELECT plvdate.use_easter(true); SELECT NULL::boolean;$$
+AS 'SELECT plvdate.use_easter(true); SELECT NULL::boolean;'
 LANGUAGE SQL VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.use_easter() IS 'Easter Sunday and easter monday will be holiday';
 
 CREATE OR REPLACE FUNCTION plvdate.unuse_easter()
 RETURNS bool
-AS $$SELECT plvdate.use_easter(false); SELECT NULL::boolean;$$
+AS 'SELECT plvdate.use_easter(false); SELECT NULL::boolean;'
 LANGUAGE SQL VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.unuse_easter() IS 'Easter Sunday and easter monday will not be holiday';
 
@@ -532,13 +531,13 @@ COMMENT ON FUNCTION plvdate.include_start(bool) IS 'Include starting date in biz
 
 CREATE OR REPLACE FUNCTION plvdate.include_start()
 RETURNS bool
-AS $$SELECT plvdate.include_start(true); SELECT NULL::boolean;$$
+AS 'SELECT plvdate.include_start(true); SELECT NULL::boolean;'
 LANGUAGE SQL VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.include_start() IS '';
 
 CREATE OR REPLACE FUNCTION plvdate.noinclude_start()
 RETURNS bool
-AS $$SELECT plvdate.include_start(false); SELECT NULL::boolean;$$
+AS 'SELECT plvdate.include_start(false); SELECT NULL::boolean;'
 LANGUAGE SQL VOLATILE STRICT;
 COMMENT ON FUNCTION plvdate.noinclude_start() IS '';
 
@@ -579,179 +578,178 @@ DROP SCHEMA plvstr CASCADE;
 
 CREATE SCHEMA plvstr;
 
-CREATE OR REPLACE FUNCTION plvstr.normalize(str text)
+CREATE OR REPLACE FUNCTION plvstr.normalize(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_normalize'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.normalize(text) IS 'Replace white chars by space, replace  spaces by space';
 
-CREATE OR REPLACE FUNCTION plvstr.is_prefix(str text, prefix text, cs bool)
+CREATE OR REPLACE FUNCTION plvstr.is_prefix(text, text, bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvstr_is_prefix_text'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(text, text, bool) IS 'Returns true, if prefix is prefix of str';
 
-CREATE OR REPLACE FUNCTION plvstr.is_prefix(str text, prefix text)
+CREATE OR REPLACE FUNCTION plvstr.is_prefix(text, text)
 RETURNS bool
-AS $$ SELECT plvstr.is_prefix($1,$2,true);$$
+AS 'SELECT plvstr.is_prefix($1,$2,true);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(text, text) IS 'Returns true, if prefix is prefix of str';
 
-CREATE OR REPLACE FUNCTION plvstr.is_prefix(str int, prefix int)
+CREATE OR REPLACE FUNCTION plvstr.is_prefix(int, int)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvstr_is_prefix_int'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(int, int) IS 'Returns true, if prefix is prefix of str';
 
-CREATE OR REPLACE FUNCTION plvstr.is_prefix(str bigint, prefix bigint)
+CREATE OR REPLACE FUNCTION plvstr.is_prefix(bigint, bigint)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvstr_is_prefix_int64'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.is_prefix(bigint, bigint) IS 'Returns true, if prefix is prefix of str';
 
-CREATE OR REPLACE FUNCTION plvstr.substr(str text, start int, len int)
+CREATE OR REPLACE FUNCTION plvstr.substr(text, int, int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.substr(text, int, int) IS 'Returns substring started on start_in to end';
 
-CREATE OR REPLACE FUNCTION plvstr.substr(str text, start int)
+CREATE OR REPLACE FUNCTION plvstr.substr(text, int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_substr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.substr(text, int) IS 'Returns substring started on start_in to end';
 
-CREATE OR REPLACE FUNCTION plvstr.instr(str text, patt text, start int, nth int)
+CREATE OR REPLACE FUNCTION plvstr.instr(text, text, int, int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr4'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.instr(text, text, int, int) IS 'Search pattern in string';
 
-CREATE OR REPLACE FUNCTION plvstr.instr(str text, patt text, start int)
+CREATE OR REPLACE FUNCTION plvstr.instr(text, text, int)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.instr(text, text, int) IS 'Search pattern in string';
 
-CREATE OR REPLACE FUNCTION plvstr.instr(str text, patt text)
+CREATE OR REPLACE FUNCTION plvstr.instr(text, text)
 RETURNS int
 AS 'MODULE_PATHNAME','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.instr(text, text) IS 'Search pattern in string';
 
-CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text, start int, nth int, all_if_notfound bool)
+CREATE OR REPLACE FUNCTION plvstr.lpart(text, text, int, int, bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_lpart'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text, int, int, bool) IS 'Call this function to return the left part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text, start int, nth int)
+CREATE OR REPLACE FUNCTION plvstr.lpart(text, text, int, int)
 RETURNS text
-AS $$ SELECT plvstr.lpart($1,$2, $3, $4, false); $$
+AS ' SELECT plvstr.lpart($1,$2, $3, $4, false); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text, int, int) IS 'Call this function to return the left part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text, start int)
+CREATE OR REPLACE FUNCTION plvstr.lpart(text, text, int)
 RETURNS text
-AS $$ SELECT plvstr.lpart($1,$2, $3, 1, false); $$
+AS ' SELECT plvstr.lpart($1,$2, $3, 1, false); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text, int) IS 'Call this function to return the left part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.lpart(str text, div text)
+CREATE OR REPLACE FUNCTION plvstr.lpart(text, text)
 RETURNS text
-AS $$ SELECT plvstr.lpart($1,$2, 1, 1, false); $$
+AS ' SELECT plvstr.lpart($1,$2, 1, 1, false); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lpart(text, text) IS 'Call this function to return the left part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text, start int, nth int, all_if_notfound bool)
+CREATE OR REPLACE FUNCTION plvstr.rpart(text, text, int, int, bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rpart'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text, int, int, bool) IS 'Call this function to return the right part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text, start int, nth int)
+CREATE OR REPLACE FUNCTION plvstr.rpart(text, text, int, int)
 RETURNS text
-AS $$ SELECT plvstr.rpart($1,$2, $3, $4, false); $$
+AS ' SELECT plvstr.rpart($1,$2, $3, $4, false); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text, int, int) IS 'Call this function to return the right part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text, start int)
+CREATE OR REPLACE FUNCTION plvstr.rpart(text, text, int)
 RETURNS text
-AS $$ SELECT plvstr.rpart($1,$2, $3, 1, false); $$
+AS ' SELECT plvstr.rpart($1,$2, $3, 1, false); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text, int) IS 'Call this function to return the right part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.rpart(str text, div text)
+CREATE OR REPLACE FUNCTION plvstr.rpart(text, text)
 RETURNS text
-AS $$ SELECT plvstr.rpart($1,$2, 1, 1, false); $$
+AS ' SELECT plvstr.rpart($1,$2, 1, 1, false); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rpart(text, text) IS 'Call this function to return the right part of a string';
 
-CREATE OR REPLACE FUNCTION plvstr.lstrip(str text, substr text, num int)
+CREATE OR REPLACE FUNCTION plvstr.lstrip(text, text, int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_lstrip'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lstrip(text, text, int) IS 'Call this function to remove characters from the beginning ';
 
-CREATE OR REPLACE FUNCTION plvstr.lstrip(str text, substr text)
+CREATE OR REPLACE FUNCTION plvstr.lstrip(text, text)
 RETURNS text
-AS $$ SELECT plvstr.lstrip($1, $2, 1); $$
+AS ' SELECT plvstr.lstrip($1, $2, 1); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.lstrip(text, text) IS 'Call this function to remove characters from the beginning ';
 
-CREATE OR REPLACE FUNCTION plvstr.rstrip(str text, substr text, num int)
+CREATE OR REPLACE FUNCTION plvstr.rstrip(text, text, int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rstrip'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rstrip(text, text, int) IS 'Call this function to remove characters from the end';
 
-CREATE OR REPLACE FUNCTION plvstr.rstrip(str text, substr text)
+CREATE OR REPLACE FUNCTION plvstr.rstrip(text, text)
 RETURNS text
-AS $$ SELECT plvstr.rstrip($1, $2, 1); $$
+AS 'SELECT plvstr.rstrip($1, $2, 1);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rstrip(text, text) IS 'Call this function to remove characters from the end';
 
 
-
-CREATE OR REPLACE FUNCTION plvstr.swap(str text, replace text, start int, length int)
+CREATE OR REPLACE FUNCTION plvstr.swap(text, text, int, int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_swap'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvstr.swap(text,text, int, int) IS 'Replace a substring in a string with a specified string';
 
-CREATE OR REPLACE FUNCTION plvstr.swap(str text, replace text)
+CREATE OR REPLACE FUNCTION plvstr.swap(text, text)
 RETURNS text
-AS $$ SELECT plvstr.swap($1,$2,1, NULL);$$
+AS ' SELECT plvstr.swap($1,$2,1, NULL);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.swap(text,text) IS 'Replace a substring in a string with a specified string';
 
-CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start int, _end int, inclusive bool)
+CREATE OR REPLACE FUNCTION plvstr.betwn(text, int, int, bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_betwn_i'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.betwn(text, int, int, bool) IS 'Find the Substring Between Start and End Locations';
 
-CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start int, _end int)
+CREATE OR REPLACE FUNCTION plvstr.betwn(text, int, int)
 RETURNS text
-AS $$ SELECT plvstr.betwn($1,$2,$3,true);$$
+AS ' SELECT plvstr.betwn($1,$2,$3,true);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.betwn(text, int, int) IS 'Find the Substring Between Start and End Locations';
 
-CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start text, _end text, startnth int, endnth int, inclusive bool, gotoend bool)
+CREATE OR REPLACE FUNCTION plvstr.betwn(text, text, text, int, int, bool, bool)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_betwn_c'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text, int, int, bool, bool) IS 'Find the Substring Between Start and End Locations';
 
-CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start text, _end text)
+CREATE OR REPLACE FUNCTION plvstr.betwn(text, text, text)
 RETURNS text
-AS $$ SELECT plvstr.betwn($1,$2,$3,1,1,true,false);$$
+AS ' SELECT plvstr.betwn($1,$2,$3,1,1,true,false);'
 LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text) IS 'Find the Substring Between Start and End Locations';
 
-CREATE OR REPLACE FUNCTION plvstr.betwn(str text, start text, _end text, startnth int, endnth int)
+CREATE OR REPLACE FUNCTION plvstr.betwn(text, text, text, int, int)
 RETURNS text
-AS $$ SELECT plvstr.betwn($1,$2,$3,$4,$5,true,false);$$
+AS ' SELECT plvstr.betwn($1,$2,$3,$4,$5,true,false);'
 LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text, int, int) IS 'Find the Substring Between Start and End Locations';
 
@@ -759,129 +757,129 @@ DROP SCHEMA plvchr CASCADE;
 
 CREATE SCHEMA plvchr;
 
-CREATE OR REPLACE FUNCTION plvchr.nth(str text, n int)
+CREATE OR REPLACE FUNCTION plvchr.nth(text, int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvchr_nth'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.nth(text, int) IS 'Call this function to return the Nth character in a string';
 
-CREATE OR REPLACE FUNCTION plvchr.first(str text)
+CREATE OR REPLACE FUNCTION plvchr.first(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvchr_first'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.first(text) IS 'Call this function to return the first character in a string';
 
-CREATE OR REPLACE FUNCTION plvchr.last(str text)
+CREATE OR REPLACE FUNCTION plvchr.last(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvchr_last'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.last(text) IS 'Call this function to return the last character in a string';
 
-CREATE OR REPLACE FUNCTION plvchr._is_kind(str text, kind int)
+CREATE OR REPLACE FUNCTION plvchr._is_kind(text, int)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvchr_is_kind_a'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr._is_kind(text, int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr._is_kind(c int, kind int)
+CREATE OR REPLACE FUNCTION plvchr._is_kind(int, int)
 RETURNS bool
 AS 'MODULE_PATHNAME','plvchr_is_kind_i'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr._is_kind(int, int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_blank(c int)
+CREATE OR REPLACE FUNCTION plvchr.is_blank(int)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 1);$$
+AS ' SELECT plvchr._is_kind($1, 1);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_blank(int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_blank(c text)
+CREATE OR REPLACE FUNCTION plvchr.is_blank(text)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 1);$$
+AS ' SELECT plvchr._is_kind($1, 1);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_blank(text) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_digit(c int)
+CREATE OR REPLACE FUNCTION plvchr.is_digit(int)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 2);$$
+AS ' SELECT plvchr._is_kind($1, 2);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_digit(int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_digit(c text)
+CREATE OR REPLACE FUNCTION plvchr.is_digit(text)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 2);$$
+AS ' SELECT plvchr._is_kind($1, 2);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_digit(text) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_quote(c int)
+CREATE OR REPLACE FUNCTION plvchr.is_quote(int)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 3);$$
+AS ' SELECT plvchr._is_kind($1, 3);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_quote(int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_quote(c text)
+CREATE OR REPLACE FUNCTION plvchr.is_quote(text)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 3);$$
+AS ' SELECT plvchr._is_kind($1, 3);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_quote(text) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_other(c int)
+CREATE OR REPLACE FUNCTION plvchr.is_other(int)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 4);$$
+AS ' SELECT plvchr._is_kind($1, 4);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_other(int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_other(c text)
+CREATE OR REPLACE FUNCTION plvchr.is_other(text)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 4);$$
+AS ' SELECT plvchr._is_kind($1, 4);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_other(text) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_letter(c int)
+CREATE OR REPLACE FUNCTION plvchr.is_letter(int)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 5);$$
+AS ' SELECT plvchr._is_kind($1, 5);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_letter(int) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.is_letter(c text)
+CREATE OR REPLACE FUNCTION plvchr.is_letter(text)
 RETURNS BOOL
-AS $$ SELECT plvchr._is_kind($1, 5);$$
+AS ' SELECT plvchr._is_kind($1, 5);'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.is_letter(text) IS '';
 
-CREATE OR REPLACE FUNCTION plvchr.char_name(c text)
+CREATE OR REPLACE FUNCTION plvchr.char_name(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvchr_char_name'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.char_name(text) IS '';
 
-CREATE OR REPLACE FUNCTION plvstr.left(str text, n int)
+CREATE OR REPLACE FUNCTION plvstr."left"(text, int)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'plvstr_left'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION plvstr.left(text, int) IS 'Returns firs num_in charaters. You can use negative num_in';
+COMMENT ON FUNCTION plvstr."left"(text, int) IS 'Returns firs num_in charaters. You can use negative num_in';
 
-CREATE OR REPLACE FUNCTION plvstr.right(str text, n int)
+CREATE OR REPLACE FUNCTION plvstr."right"(text,int)
 RETURNS varchar
 AS 'MODULE_PATHNAME','plvstr_right'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION plvstr.right(text, int) IS 'Returns last num_in charaters. You can use negative num_ni';
+COMMENT ON FUNCTION plvstr."right"(text, int) IS 'Returns last num_in charaters. You can use negative num_ni';
 
-CREATE OR REPLACE FUNCTION plvchr.quoted1(str text)
+CREATE OR REPLACE FUNCTION plvchr.quoted1(text)
 RETURNS varchar
-AS $$SELECT E'\''||$1||E'\'';$$
+AS 'SELECT ''''||$1||'''';'
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION plvchr.quoted1(text) IS E'Quoted text between \'';
+COMMENT ON FUNCTION plvchr.quoted1(text) IS 'Quoted text between \'';
 
-CREATE OR REPLACE FUNCTION plvchr.quoted2(str text)
+CREATE OR REPLACE FUNCTION plvchr.quoted2(text)
 RETURNS varchar
-AS $$SELECT '"'||$1||'"';$$
+AS 'SELECT ''"''||$1||''"'';'
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.quoted2(text) IS 'Quoted text between "';
 
-CREATE OR REPLACE FUNCTION plvchr.stripped(str text, char_in text)
+CREATE OR REPLACE FUNCTION plvchr.stripped(text, text)
 RETURNS varchar
-AS $$ SELECT TRANSLATE($1, 'A'||$2, 'A'); $$
+AS ' SELECT TRANSLATE($1, ''A''||$2, ''A''); '
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvchr.stripped(text, text) IS 'Strips a string of all instances of the specified characters';
 
@@ -891,13 +889,13 @@ DROP SCHEMA dbms_alert CASCADE;
 
 CREATE SCHEMA dbms_alert;
 
-CREATE OR REPLACE FUNCTION dbms_alert.register(name text)
+CREATE OR REPLACE FUNCTION dbms_alert.register(text)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_register'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_alert.register(text) IS 'Register session as recipient of alert name';
 
-CREATE OR REPLACE FUNCTION dbms_alert.remove(name text)
+CREATE OR REPLACE FUNCTION dbms_alert.remove(text)
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_alert_remove'
 LANGUAGE C VOLATILE STRICT;
@@ -909,25 +907,25 @@ AS 'MODULE_PATHNAME','dbms_alert_removeall'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.removeall() IS 'Remove registration for all alerts';
 
-CREATE OR REPLACE FUNCTION dbms_alert._signal(name text, message text)
+CREATE OR REPLACE FUNCTION dbms_alert._signal(text, text)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_signal'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert._signal(text, text) IS '';
 
-CREATE OR REPLACE FUNCTION dbms_alert.waitany(OUT name text, OUT message text, OUT status integer, timeout float8)
+CREATE OR REPLACE FUNCTION dbms_alert.waitany(OUT text, OUT message text, OUT status integer, timeout float8)
 RETURNS record 
 AS 'MODULE_PATHNAME','dbms_alert_waitany'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.waitany(OUT text, OUT text, OUT integer, float8) IS 'Wait for any signal';
 
-CREATE OR REPLACE FUNCTION dbms_alert.waitone(name text, OUT message text, OUT status integer, timeout float8)
+CREATE OR REPLACE FUNCTION dbms_alert.waitone(text, OUT message text, OUT status integer, timeout float8)
 RETURNS record
 AS 'MODULE_PATHNAME','dbms_alert_waitone'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.waitone(text, OUT text, OUT integer, float8) IS 'Wait for specific signal';
 
-CREATE OR REPLACE FUNCTION dbms_alert.set_defaults(sensitivity float8)
+CREATE OR REPLACE FUNCTION dbms_alert.set_defaults(float8)
 RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_set_defaults'
 LANGUAGE C VOLATILE;
@@ -940,7 +938,7 @@ LANGUAGE C SECURITY DEFINER;
 REVOKE ALL ON FUNCTION dbms_alert.defered_signal() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION dbms_alert.defered_signal() TO POSTGRES;
 
-CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) 
+CREATE OR REPLACE FUNCTION dbms_alert.signal(text, text) 
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_alert_signal'
 LANGUAGE C SECURITY DEFINER;
@@ -949,37 +947,37 @@ COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipie
 DROP SCHEMA plvsubst CASCADE;
 CREATE SCHEMA plvsubst;
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[], subst text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(text, text[], text) 
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_string_array'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text[], text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[]) 
+CREATE OR REPLACE FUNCTION plvsubst.string(text, text[]) 
 RETURNS text
-AS $$SELECT plvsubst.string($1,$2, NULL);$$
+AS 'SELECT plvsubst.string($1,$2, NULL);'
 LANGUAGE SQL STRICT VOLATILE;
-COMMENT ON FUNCTION plvsubst.string(text, text[]) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
+COMMENT ON FUNCTION plvsubst.string(text, text[]) IS 'Scans a string for all instances of the substitution keyword and replace it with the next  in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(text, text, text, text) 
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_string_string'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text, text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(text, text) 
 RETURNS text
-AS $$SELECT plvsubst.string($1, $2, ',', NULL); $$ 
+AS 'SELECT plvsubst.string($1, $2, '','', NULL); ' 
 LANGUAGE SQL STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.string(text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(text, text, text) 
 RETURNS text
-AS $$SELECT plvsubst.string($1, $2, $3, NULL); $$ 
+AS 'SELECT plvsubst.string($1, $2, $3, NULL); ' 
 LANGUAGE SQL STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.string(text, text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.setsubst(str text) 
+CREATE OR REPLACE FUNCTION plvsubst.setsubst(text) 
 RETURNS void
 AS 'MODULE_PATHNAME','plvsubst_setsubst'
 LANGUAGE C STRICT VOLATILE;
@@ -1015,8 +1013,8 @@ COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call st
 DROP SCHEMA plvlex CASCADE;
 CREATE SCHEMA plvlex;
 
-CREATE OR REPLACE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qualified_names bool,
-OUT pos int, OUT token text, OUT code int, OUT class text, OUT separator text, OUT mod text)
+CREATE OR REPLACE FUNCTION plvlex.tokens(text, bool, bool,
+OUT int, OUT text, OUT int, OUT text, OUT text, OUT text)
 RETURNS SETOF RECORD
 AS 'MODULE_PATHNAME','plvlex_tokens' 
 LANGUAGE C IMMUTABLE STRICT;
@@ -1026,168 +1024,168 @@ DROP SCHEMA utl_file CASCADE;
 CREATE SCHEMA utl_file;
 CREATE DOMAIN utl_file.file_type integer;
 
-CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer)
+CREATE FUNCTION utl_file.fopen(text, text, text, integer)
 RETURNS utl_file.file_type
 AS 'MODULE_PATHNAME','utl_file_fopen' 
 LANGUAGE C VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
 
-CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text)
+CREATE FUNCTION utl_file.fopen(text, text, text)
 RETURNS utl_file.file_type
-AS $$SELECT utl_file.fopen($1, $2, $3, 1023); $$
+AS 'SELECT utl_file.fopen($1, $2, $3, 1023); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
 
-CREATE FUNCTION utl_file.is_open(file utl_file.file_type)
+CREATE FUNCTION utl_file.is_open(utl_file.file_type)
 RETURNS bool
-AS $$SELECT $1 IS NOT NULL; $$
+AS 'SELECT $1 IS NOT NULL; '
 LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION utl_file.is_open(utl_file.file_type) IS 'Functions returns true if handle points to file that is open';
 
-CREATE FUNCTION utl_file.get_line(file utl_file.file_type)
+CREATE FUNCTION utl_file.get_line(utl_file.file_type)
 RETURNS text
 AS 'MODULE_PATHNAME','utl_file_get_line' 
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type) IS 'Returns one line from file';
 
-CREATE FUNCTION utl_file.get_nextline(file utl_file.file_type)
+CREATE FUNCTION utl_file.get_nextline(utl_file.file_type)
 RETURNS text
 AS 'MODULE_PATHNAME','utl_file_get_nextline' 
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_nextline(utl_file.file_type) IS 'Returns one line from file or returns NULL';
 
-CREATE FUNCTION utl_file.__put(file utl_file.file_type, buffer text, new_line bool)
+CREATE FUNCTION utl_file.__put(utl_file.file_type, text, bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','utl_file___put' 
 LANGUAGE C VOLATILE;
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer text)
+CREATE FUNCTION utl_file.put(utl_file.file_type, text)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2, false); $$
+AS 'SELECT utl_file.__put($1, $2, false); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, text) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer numeric)
+CREATE FUNCTION utl_file.put(utl_file.file_type, numeric)
 RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
+AS 'SELECT utl_file.put($1, $2::text);'
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, numeric) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer timestamp)
+CREATE FUNCTION utl_file.put(utl_file.file_type, timestamp)
 RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
+AS 'SELECT utl_file.put($1, $2::text); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, timestamp) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer date)
+CREATE FUNCTION utl_file.put(utl_file.file_type, date)
 RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
+AS 'SELECT utl_file.put($1, $2::text); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, date) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer time)
+CREATE FUNCTION utl_file.put(utl_file.file_type, time)
 RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
+AS 'SELECT utl_file.put($1, $2::text); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, time) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer timestamp with time zone)
+CREATE FUNCTION utl_file.put( utl_file.file_type, timestamp with time zone)
 RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
+AS 'SELECT utl_file.put($1, $2::text); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type,  timestamp with time zone) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.new_line(file utl_file.file_type)
+CREATE FUNCTION utl_file.new_line(utl_file.file_type)
 RETURNS bool
-AS $$SELECT utl_file.put($1, E'\n'); $$
+AS 'SELECT utl_file.put($1, ''\n''); '
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
+COMMENT ON FUNCTION utl_file.new_line(utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
 
-CREATE FUNCTION utl_file.new_line(file utl_file.file_type, lines int)
+CREATE FUNCTION utl_file.new_line(utl_file.file_type, int)
 RETURNS bool
-AS $$SELECT utl_file.put($1, repeat(E'\n', $2)); $$
+AS 'SELECT utl_file.put($1, repeat(''\n'', $2)); '
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
+COMMENT ON FUNCTION utl_file.new_line(utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer text)
+CREATE FUNCTION utl_file.put_line(utl_file.file_type, text)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2, true); $$
+AS 'SELECT utl_file.__put($1, $2, true); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, text) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer numeric)
+CREATE FUNCTION utl_file.put_line(utl_file.file_type, numeric)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS 'SELECT utl_file.__put($1, $2::text, true); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, numeric) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer date)
+CREATE FUNCTION utl_file.put_line(utl_file.file_type, date)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS 'SELECT utl_file.__put($1, $2::text, true); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, date) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer time)
+CREATE FUNCTION utl_file.put_line(utl_file.file_type, time)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS 'SELECT utl_file.__put($1, $2::text, true); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, time) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer timestamp)
+CREATE FUNCTION utl_file.put_line(utl_file.file_type, timestamp)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS 'SELECT utl_file.__put($1, $2::text, true); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, timestamp) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer timestamp with time zone)
+CREATE FUNCTION utl_file.put_line(utl_file.file_type, timestamp with time zone)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS 'SELECT utl_file.__put($1, $2::text, true); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, timestamp with time zone) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text, arg5 text)
+CREATE FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text, text)
 RETURNS bool
 AS 'MODULE_PATHNAME','utl_file_putf' 
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text, text) IS 'Puts formatted data to specified file';
 
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text)
+CREATE FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text)
 RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, $4, $5, $6, NULL); $$
+AS 'SELECT utl_file.putf($1, $2, $3, $4, $5, $6, NULL); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text) IS 'Puts formatted data to specified file';
 
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text)
+CREATE FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text)
 RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, $4, $5, NULL, NULL); $$
+AS 'SELECT utl_file.putf($1, $2, $3, $4, $5, NULL, NULL); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text) IS 'Puts formatted data to specified file';
 
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text)
+CREATE FUNCTION utl_file.putf(utl_file.file_type, text, text, text)
 RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, $4, NULL, NULL, NULL); $$
+AS 'SELECT utl_file.putf($1, $2, $3, $4, NULL, NULL, NULL); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text) IS 'Puts formatted data to specified file';
 
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text)
+CREATE FUNCTION utl_file.putf(utl_file.file_type, text, text)
 RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, $3, NULL, NULL, NULL, NULL); $$
+AS 'SELECT utl_file.putf($1, $2, $3, NULL, NULL, NULL, NULL); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text) IS 'Puts formatted data to specified file';
 
-CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text)
+CREATE FUNCTION utl_file.putf(utl_file.file_type, text)
 RETURNS bool
-AS $$SELECT utl_file.putf($1, $2, NULL, NULL, NULL, NULL, NULL); $$
+AS 'SELECT utl_file.putf($1, $2, NULL, NULL, NULL, NULL, NULL); '
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text) IS 'Puts formatted data to specified file';
 
-CREATE FUNCTION utl_file.fflush(file utl_file.file_type)
+CREATE FUNCTION utl_file.fflush(utl_file.file_type)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fflush' 
 LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fflush(file utl_file.file_type) IS 'This procedure makes sure that all pending data for specified file is written physically out to a file';
+COMMENT ON FUNCTION utl_file.fflush(utl_file.file_type) IS 'This procedure makes sure that all pending data for specified file is written physically out to a file';
 
-CREATE FUNCTION utl_file.fclose(file utl_file.file_type)
+CREATE FUNCTION utl_file.fclose(utl_file.file_type)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fclose' 
 LANGUAGE C VOLATILE;

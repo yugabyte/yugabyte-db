@@ -24,3 +24,5 @@ psql -U postgres postgres < orafunc.sql
 Other administration tools that use this module may have different requirements,
 please consult the tool's documentation for further details.
 
+You can compile this package with PostgreSQL 7.4 or 8.1, but some functionality 
+will be blocked, because these version has not necessary functionality.
