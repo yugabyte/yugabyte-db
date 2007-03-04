@@ -27,5 +27,9 @@ int ora_mb_strlen1(text *str);
 #define SET_VARSIZE(x,len)	VARATT_SIZEP(x) = (len)
 #endif
 
+/* 8.1. has not defined no_data_found */
+#ifndef ERRCODE_NO_DATA_FOUND
+#define ERRCODE_NO_DATA_FOUND MAKE_SQLSTATE('P','0','0','0','2') 
+#endif
 
 #endif

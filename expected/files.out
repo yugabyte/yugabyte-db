@@ -25,7 +25,8 @@ begin
     raise notice '>>%<<', utl_file.get_line(f);
   end loop;
   exception
-    when no_data_found then
+    -- when no_data_found then,  8.1 plpgsql doesn't know no_data_found
+    when others then
       raise notice 'finish % ', sqlerrm;
       raise notice 'kuku';
       f := utl_file.fclose(f);
