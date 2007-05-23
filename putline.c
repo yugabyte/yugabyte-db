@@ -393,7 +393,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 
 		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
 	
-#ifdef PG_VERSION_82_COMPAT
+#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 		dvalues[0] = (Datum) construct_md_array(NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
 #else
 		dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);

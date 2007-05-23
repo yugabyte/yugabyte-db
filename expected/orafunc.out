@@ -1,19 +1,16 @@
 \set ECHO none
-psql:orafunc.sql:112: ERROR:  schema "plvstr" does not exist
-CONTEXT:  SQL function "reverse"
-psql:orafunc.sql:113: ERROR:  function pg_catalog.reverse(text) does not exist
-psql:orafunc.sql:124: ERROR:  schema "oracle" does not exist
-psql:orafunc.sql:139: ERROR:  table "dual" does not exist
-psql:orafunc.sql:152: ERROR:  schema "dbms_output" does not exist
-psql:orafunc.sql:230: ERROR:  schema "dbms_pipe" does not exist
-psql:orafunc.sql:409: ERROR:  schema "plvdate" does not exist
-psql:orafunc.sql:560: ERROR:  schema "plvstr" does not exist
-psql:orafunc.sql:757: ERROR:  schema "plvchr" does not exist
-psql:orafunc.sql:889: ERROR:  schema "dbms_alert" does not exist
-psql:orafunc.sql:948: ERROR:  schema "plvsubst" does not exist
-psql:orafunc.sql:999: ERROR:  schema "dbms_utility" does not exist
-psql:orafunc.sql:1014: ERROR:  schema "plvlex" does not exist
-psql:orafunc.sql:1024: ERROR:  schema "utl_file" does not exist
+psql:orafunc.sql:109: ERROR:  schema "plvstr" does not exist
+psql:orafunc.sql:146: ERROR:  schema "oracle" does not exist
+psql:orafunc.sql:161: ERROR:  table "dual" does not exist
+psql:orafunc.sql:174: ERROR:  schema "dbms_output" does not exist
+psql:orafunc.sql:252: ERROR:  schema "dbms_pipe" does not exist
+psql:orafunc.sql:431: ERROR:  schema "plvdate" does not exist
+psql:orafunc.sql:759: ERROR:  schema "plvchr" does not exist
+psql:orafunc.sql:891: ERROR:  schema "dbms_alert" does not exist
+psql:orafunc.sql:950: ERROR:  schema "plvsubst" does not exist
+psql:orafunc.sql:1001: ERROR:  schema "dbms_utility" does not exist
+psql:orafunc.sql:1016: ERROR:  schema "plvlex" does not exist
+psql:orafunc.sql:1026: ERROR:  schema "utl_file" does not exist
 --
 -- test built-in date type oracle compatibility functions
 --

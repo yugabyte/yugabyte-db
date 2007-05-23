@@ -106,6 +106,10 @@ AS 'MODULE_PATHNAME','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text) IS 'Search pattern in string';
 
+DROP SCHEMA plvstr CASCADE;
+
+CREATE SCHEMA plvstr;
+
 CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int, _end int)
 RETURNS text
 AS 'MODULE_PATHNAME','plvstr_rvrs'
@@ -157,9 +161,9 @@ COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started 
 DROP TABLE public.dual CASCADE;
 CREATE TABLE public.dual(dummy varchar(1));
 INSERT INTO public.dual(dummy) VALUES('X');
-CREATE RULE noins_dual AS ON INSERT TO public.dual DO NOTHING;
-CREATE RULE nodel_dual AS ON DELETE TO public.dual DO NOTHING;
-CREATE RULE noupd_dual AS ON UPDATE TO public.dual DO NOTHING;
+CREATE RULE noins_dual AS ON INSERT TO public.dual DO INSTEAD NOTHING;
+CREATE RULE nodel_dual AS ON DELETE TO public.dual DO INSTEAD NOTHING;
+CREATE RULE noupd_dual AS ON UPDATE TO public.dual DO INSTEAD NOTHING;
 REVOKE ALL ON public.dual FROM PUBLIC;
 GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
 ANALYZE public.dual;
@@ -575,9 +579,6 @@ COMMENT ON FUNCTION plvdate.isleapyear(date) IS 'Is leap year';
 
 -- PLVstr package
 
-DROP SCHEMA plvstr CASCADE;
-
-CREATE SCHEMA plvstr;
 
 CREATE OR REPLACE FUNCTION plvstr.normalize(str text)
 RETURNS varchar

@@ -51,6 +51,7 @@ PG_FUNCTION_INFO_V1(plvsubst_subst);
 
 #define C_SUBST  "%s"
 
+
 text *c_subst = NULL;
 
 static void 
@@ -103,7 +104,7 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	int subst_mb_len;
 	int subst_len;
 
-#if defined(PG_VERSION_82_COMPAT)
+#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 	bits8 *bitmap;
 	int 	bitmask;
 
@@ -142,7 +143,7 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 
 			if (items++ < nitems)
 			{
-#if defined(PG_VERSION_82_COMPAT)
+#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 				if (bitmap && (*bitmap & bitmask) == 0)
 					value = pstrdup("NULL");
 				else
@@ -154,16 +155,21 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
                 					ObjectIdGetDatum(typelem),
                 					Int32GetDatum(-1)));
 
+#if defined(PG_VERSION_83_COMPAT)
+				p = att_addlength_pointer(p, typlen, p);
+				p = (char *) att_align_nominal(p, typalign);
+#else
 				p = att_addlength(p, typlen,
                 				    PointerGetDatum(p));
 				p = (char *) att_align(p, typalign);
-#if defined(PG_VERSION_82_COMPAT)
+#endif
+#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 				}
 #endif
 				appendStringInfoString(sinfo, value);
 				pfree(value);
 
-#if defined(PG_VERSION_82_COMPAT)
+#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 				if (bitmap)
 				{
 					bitmask <<= 1;
