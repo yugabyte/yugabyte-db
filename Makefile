@@ -1,5 +1,9 @@
+ifdef XSLT
+xslt=xslt.c
+endif
+
 MODULE_big = orafunc
-OBJS= backport.o file.o datefce.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o magic.o   sqlparse.o putline.o
+OBJS= backport.o file.o datefce.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o magic.o   sqlparse.o putline.o xslprocessor.o
 
 DATA_built = orafunc.sql
 DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
@@ -39,3 +43,4 @@ ifdef FLEX
 else                                                                                                                                           
 	@$(missing) flex $< $@                                                                                                                 
 endif                                           
+
