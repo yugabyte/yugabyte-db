@@ -14,6 +14,10 @@
 #include "executor/spi.h"
 #include "funcapi.h"
 #include "miscadmin.h"
+#include "executor/tuptable.h"
+#include "utils/lsyscache.h" 
+#include "utils/typcache.h"
+
 
 /* libxml includes */
 
@@ -63,6 +67,130 @@ Datum orafce_xsl_resetParams(PG_FUNCTION_ARGS);
 Datum orafce_xsl_freestylesheet(PG_FUNCTION_ARGS);
 Datum orafce_xsl_freeProcessor(PG_FUNCTION_ARGS);
 
+int32 getIdFromRecord(HeapTupleHeader rec);
+HeapTuple BuildIdRec(int32 id, TupleDesc tupdesc);
+
+/*
+
+Datum
+dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
+{
+	FuncCallContext *funcctx;
+	TupleDesc        tupdesc;
+	TupleTableSlot  *slot;
+	AttInMetadata   *attinmeta;
+	PipesFctx       *fctx;
+
+	float8 endtime;
+	int cycle = 0;
+	int timeout = 10;	
+
+	if (SRF_IS_FIRSTCALL ())
+	{
+		MemoryContext  oldcontext;
+		bool has_lock = false;
+
+		WATCH_PRE(timeout, endtime, cycle);	
+		if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+		{
+			has_lock = true;
+			break;
+		}
+		WATCH_POST(timeout, endtime, cycle);
+		if (!has_lock)
+			LOCK_ERROR();
+
+		funcctx = SRF_FIRSTCALL_INIT ();
+		oldcontext = MemoryContextSwitchTo (funcctx->multi_call_memory_ctx);
+
+		fctx = (PipesFctx*) palloc (sizeof (PipesFctx));
+		funcctx->user_fctx = (void *)fctx;
+
+		fctx->values = (char **) palloc (4 * sizeof (char *));
+		fctx->values  [0] = (char*) palloc (255 * sizeof (char));
+		fctx->values  [1] = (char*) palloc  (16 * sizeof (char));
+		fctx->values  [2] = (char*) palloc  (16 * sizeof (char));
+		fctx->values  [3] = (char*) palloc  (16 * sizeof (char));
+		fctx->values  [4] = (char*) palloc  (10 * sizeof (char));
+		fctx->values  [5] = (char*) palloc (255 * sizeof (char));
+		fctx->pipe_nth = 0;
+
+		tupdesc = CreateTemplateTupleDesc (6 , false);
+
+#ifndef PG_VERSION_74_COMPAT 
+		TupleDescInitEntry (tupdesc,  1, "Name",    VARCHAROID, -1, 0);
+		TupleDescInitEntry (tupdesc,  2, "Items",   INT4OID   , -1, 0);
+		TupleDescInitEntry (tupdesc,  3, "Size",    INT4OID,    -1, 0);
+		TupleDescInitEntry (tupdesc,  4, "Limit",   INT4OID,    -1, 0);
+		TupleDescInitEntry (tupdesc,  5, "Private", BOOLOID,    -1, 0);
+		TupleDescInitEntry (tupdesc,  6, "Owner",   VARCHAROID, -1, 0);
+#else
+		TupleDescInitEntry (tupdesc,  1, "Name",    VARCHAROID, -1, 0, false);
+		TupleDescInitEntry (tupdesc,  2, "Items",   INT4OID   , -1, 0, false);
+		TupleDescInitEntry (tupdesc,  3, "Size",    INT4OID,    -1, 0, false);
+		TupleDescInitEntry (tupdesc,  4, "Limit",   INT4OID,    -1, 0, false);
+		TupleDescInitEntry (tupdesc,  5, "Private", BOOLOID,    -1, 0, false);
+		TupleDescInitEntry (tupdesc,  6, "Owner",   VARCHAROID, -1, 0, false);
+#endif
+		
+		slot = TupleDescGetSlot (tupdesc); 
+		funcctx -> slot = slot;
+		
+		attinmeta = TupleDescGetAttInMetadata (tupdesc);
+		funcctx -> attinmeta = attinmeta;
+		
+		MemoryContextSwitchTo (oldcontext);
+	}
+
+	funcctx = SRF_PERCALL_SETUP ();
+	fctx = (PipesFctx*) funcctx->user_fctx;
+
+	while (fctx->pipe_nth < MAX_PIPES)
+	{
+		if (pipes[fctx->pipe_nth].is_valid)
+		{
+			Datum    result;
+			char   **values;
+			HeapTuple tuple;
+			char     *aux_3, *aux_5;
+
+			values = fctx->values;
+			aux_3 = values[3]; aux_5 = values[5];
+			values[3] = NULL; values[5] = NULL;
+
+			snprintf (values[0], 255, "%s", pipes[fctx->pipe_nth].pipe_name);
+			snprintf (values[1],  16, "%d", pipes[fctx->pipe_nth].count);
+			snprintf (values[2],  16, "%d", pipes[fctx->pipe_nth].size);
+			if (pipes[fctx->pipe_nth].limit != -1)
+			{
+				snprintf (aux_3,  16, "%d", pipes[fctx->pipe_nth].limit);
+				values[3] = aux_3;
+
+			}
+			snprintf (values[4], 10, "%s", pipes[fctx->pipe_nth].creator != NULL ? "true" : "false");
+			if (pipes[fctx->pipe_nth].creator != NULL)
+			{
+				snprintf (aux_5,  255, "%s", pipes[fctx->pipe_nth].creator);
+				values[5] = aux_5;
+			}
+				
+			tuple = BuildTupleFromCStrings (funcctx -> attinmeta,
+											fctx -> values);
+			result = TupleGetDatum (funcctx -> slot, tuple);
+			
+			values[3] = aux_3; values[5] = aux_5;
+			fctx->pipe_nth += 1;
+			SRF_RETURN_NEXT (funcctx, result);
+		}
+		fctx->pipe_nth += 1;
+			
+	}
+
+	LWLockRelease(shmem_lock);	
+	SRF_RETURN_DONE (funcctx);
+
+*/
+
 
 
 
@@ -72,12 +200,82 @@ Datum orafce_xsl_freeProcessor(PG_FUNCTION_ARGS);
  * Syntax
  *
  * FUNCTION newProcessor RETURN Processor;
+ *
+ * TYPE Processor IS RECORD (ID integer);
+ * TYPE Stylesheet IS RECORD (ID integer);
  */
 Datum
 orafce_xsl_newProcessor(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_NULL();
+	TupleDesc       tupdesc;
+	TupleDesc       btupdesc;
+	HeapTupleHeader rec;
+
+	int id =  getIdFromRecord(PG_GETARG_HEAPTUPLEHEADER(0));
+                                                                                                                                                
+	get_call_result_type(fcinfo, NULL, &tupdesc);
+        btupdesc = BlessTupleDesc(tupdesc);
+
+	rec = SPI_returntuple(BuildIdRec(++id, btupdesc), btupdesc);
+
+	PG_RETURN_HEAPTUPLEHEADER(rec);	
 }
+
+/*
+ * Return integer field "id" from record
+ */
+int32
+getIdFromRecord(HeapTupleHeader rec)
+{
+        int32           tupTypmod;
+        Oid                     tupType;
+        TupleDesc       tupdesc;
+        HeapTupleData tuple;
+	Datum	   *values;
+	char	   *nulls;
+	int 	ncolumns;
+
+	/* Extract type info from the tuple itself */
+        tupType = HeapTupleHeaderGetTypeId(rec);
+        tupTypmod = HeapTupleHeaderGetTypMod(rec);
+        tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	ncolumns = tupdesc->natts;
+	if (ncolumns != 1 || tupdesc->attrs[0]->atttypid != INT4OID)
+		ereport(ERROR, 
+			(errcode(ERRCODE_INTERNAL_ERROR),
+			 errmsg("Internal error"),
+			 errdetail("used wrong record type")));
+
+        /* Build a temporary HeapTuple control structure */
+        tuple.t_len = HeapTupleHeaderGetDatumLength(rec);
+        ItemPointerSetInvalid(&(tuple.t_self));
+        tuple.t_tableOid = InvalidOid;
+        tuple.t_data = rec;
+
+        values = (Datum *) palloc(ncolumns * sizeof(Datum));
+        nulls = (char *) palloc(ncolumns * sizeof(char));
+
+        /* Break down the tuple into fields */
+        heap_deformtuple(&tuple, tupdesc, values, nulls);
+
+	ReleaseTupleDesc(tupdesc);
+
+	return DatumGetInt32(values[0]);
+}
+
+
+HeapTuple
+BuildIdRec(int32 id, TupleDesc tupdesc)
+{
+	Datum	values[1];
+	char	nulls[1];
+
+	values[0] = Int32GetDatum(id);
+	nulls[0] = ' ';
+
+	return heap_formtuple(tupdesc, values, nulls);
+}
+
 
 
 /* 
@@ -328,3 +526,4 @@ xslt_process(PG_FUNCTION_ARGS)
 
 
 */
+
