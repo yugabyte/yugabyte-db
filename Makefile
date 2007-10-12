@@ -22,6 +22,14 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
+ifeq (,$(FLEX))
+FLEX = flex
+endif
+
+ifeq (,$(YACC))
+YACC = yacc
+endif
+
 plvlex.o: sqlparse.o
 
 sqlparse.o: sqlscan.c                                                                                                                      
@@ -29,18 +37,9 @@ sqlparse.o: sqlscan.c
 sqlparse.c: sqlparse.h ;                                                                                                                   
                                                                                                                                                
 sqlparse.h: sqlparse.y                                                                                                                     
-ifdef YACC                                                                                                                                     
 	$(YACC) -d $(YFLAGS) -p orafce_sql_yy $<                                                                                                    
 	mv -f y.tab.c sqlparse.c                                                                                                             
 	mv -f y.tab.h sqlparse.h                                                                                                             
-else                                                                                                                                           
-	@$(missing) bison $< $@                                                                                                                
-endif                                                                                                                                          
                                                                                                                                                
 sqlscan.c: sqlscan.l                                                                                                                       
-ifdef FLEX                                                                                                                                     
 	$(FLEX) $(FLEXFLAGS) -o'$@' $<                                                                                                         
-else                                                                                                                                           
-	@$(missing) flex $< $@                                                                                                                 
-endif                                           
-
