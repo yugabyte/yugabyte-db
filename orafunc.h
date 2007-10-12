@@ -8,7 +8,7 @@
 #include "utils/datetime.h"
 
 #if (CATALOG_VERSION_NO <= 200211021)
-#error PostgreSQL 7.3.x isn't supported
+#error PostgreSQL 7.3.x is not supported
 #define PG_VERSION_73_COMPAT
 #elif (CATALOG_VERSION_NO <= 200310211)
 #define PG_VERSION_74_COMPAT
