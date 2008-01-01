@@ -527,6 +527,8 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
     if (redotz)
 #ifdef PG_VERSION_74_COMPAT
 	tz = DetermineLocalTimeZone(tm);
+#elif defined(PG_VERSION_83_COMPAT)
+	tz = DetermineTimeZoneOffset(tm, session_timezone);
 #else
 	tz = DetermineTimeZoneOffset(tm, global_timezone);
 #endif
@@ -688,6 +690,8 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
     if (redotz)
 #ifdef PG_VERSION_74_COMPAT
 	tz = DetermineLocalTimeZone(tm);
+#elif defined(PG_VERSION_83_COMPAT)
+	tz = DetermineTimeZoneOffset(tm, session_timezone);
 #else
 	tz = DetermineTimeZoneOffset(tm, global_timezone);
 #endif
