@@ -106,6 +106,42 @@ AS 'MODULE_PATHNAME','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text) IS 'Search pattern in string';
 
+CREATE OR REPLACE FUNCTION pg_catalog.to_char(num int)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_char_int4'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(int) IS 'Convert number to string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.to_char(num bigint)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_char_int8'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(bigint) IS 'Convert number to string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.to_char(num real)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_char_float4'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(real) IS 'Convert number to string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.to_char(num double precision)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_char_float8'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(double precision) IS 'Convert number to string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.to_char(num numeric)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_char_numeric'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(numeric) IS 'Convert number to string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.to_number(str text)
+RETURNS numeric
+AS 'MODULE_PATHNAME','orafce_to_number'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(numeric) IS 'Convert string to number';
+
 DROP SCHEMA plvstr CASCADE;
 
 CREATE SCHEMA plvstr;

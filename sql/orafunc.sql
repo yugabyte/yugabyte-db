@@ -137,4 +137,11 @@ select plvstr.left('Příliš žluťoučký kůň',4) = 'Příl';
 
 select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
 
-
+SET lc_numeric TO 'C';
+select to_char(22);
+select to_char(-44444);
+select to_char(1234567890123456::bigint);
+select to_char(123.456::real);
+select to_char(1234.5678::double precision);
+select to_char(12345678901234567890::numeric);
+select to_char(1234567890.12345);
