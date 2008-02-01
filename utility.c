@@ -172,6 +172,12 @@ dbms_utility_format_call_stack(char mode)
 }
 
 
+Datum
+dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(ora_make_text(dbms_utility_format_call_stack('o')));
+};
+
 Datum 
 dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 {
