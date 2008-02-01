@@ -104,13 +104,11 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	int subst_mb_len;
 	int subst_len;
 
-#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 	bits8 *bitmap;
 	int 	bitmask;
 
 	bitmap = ARR_NULLBITMAP(v);
 	bitmask = 1;
-#endif
 
 	p = ARR_DATA_PTR(v);
 	ndims = ARR_NDIM(v);
@@ -143,33 +141,22 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 
 			if (items++ < nitems)
 			{
-#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 				if (bitmap && (*bitmap & bitmask) == 0)
 					value = pstrdup("NULL");
 				else
 				{
-#endif
 				itemvalue = fetch_att(p, typbyval, typlen);
 				value = DatumGetCString(FunctionCall3(&proc,
                 					itemvalue,
                 					ObjectIdGetDatum(typelem),
                 					Int32GetDatum(-1)));
 
-#if defined(PG_VERSION_83_COMPAT)
 				p = att_addlength_pointer(p, typlen, p);
 				p = (char *) att_align_nominal(p, typalign);
-#else
-				p = att_addlength(p, typlen,
-                				    PointerGetDatum(p));
-				p = (char *) att_align(p, typalign);
-#endif
-#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 				}
-#endif
 				appendStringInfoString(sinfo, value);
 				pfree(value);
 
-#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 				if (bitmap)
 				{
 					bitmask <<= 1;
@@ -179,8 +166,6 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 						bitmask = 1;
 					}
 				}
-#endif
-
 			}
 			else
                                ereport(ERROR,                                                               

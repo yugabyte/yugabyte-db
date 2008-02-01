@@ -46,6 +46,4 @@ bool ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, b
 	 errmsg("lock request error"), \
          errdetail("Failed exclusive locking of shared memory."), \
 	 errhint("Restart PostgreSQL server."))); 
-
-
 #endif

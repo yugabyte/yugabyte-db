@@ -284,12 +284,7 @@ dbms_output_get_line(PG_FUNCTION_ARGS)
 	AttInMetadata	*attinmeta;    
 	HeapTuple	tuple;
 	Datum 	result;
-#ifdef PG_VERSION_74_COMPAT 
-        TupleTableSlot  *slot;
-#else 
-        TupleDesc       btupdesc;
-#endif 
-    
+        TupleDesc       btupdesc;    
 	char *str[2] = {NULL,"0"};
 	
 	if (lines > 0)
@@ -298,19 +293,11 @@ dbms_output_get_line(PG_FUNCTION_ARGS)
 		str[1] = "1";
 	}
 
-#ifdef PG_VERSION_74_COMPAT
-	tupdesc = RelationNameGetTupleDesc("dbms_output_get_line_res");
-	slot = TupleDescGetSlot(tupdesc);
-	attinmeta = TupleDescGetAttInMetadata(tupdesc);
-	tuple = BuildTupleFromCStrings(attinmeta, str);
-	result = TupleGetDatum(slot, tuple);
-#else
 	get_call_result_type(fcinfo, NULL, &tupdesc);
 	btupdesc = BlessTupleDesc(tupdesc);
 	attinmeta = TupleDescGetAttInMetadata(btupdesc);
 	tuple = BuildTupleFromCStrings(attinmeta, str);
 	result = HeapTupleGetDatum(tuple);
-#endif
     
 	if (lines > 0)
 	{
@@ -344,11 +331,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 
     int fldnum = 0;
     char *cursor = buffer;
-#ifdef PG_VERSION_74_COMPAT 
-    TupleTableSlot  *slot;
-#else 
     TupleDesc       btupdesc;
-#endif 
 
     text *line = palloc(255 + VARHDRSZ);
 	
@@ -392,26 +375,14 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 		char		typalign;
 
 		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
-	
-#if defined(PG_VERSION_82_COMPAT) || defined(PG_VERSION_83_COMPAT)
 		dvalues[0] = (Datum) construct_md_array(NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
-#else
-		dvalues[0] = (Datum) construct_md_array(NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
-#endif
     }
 
-#ifdef PG_VERSION_74_COMPAT
-    tupdesc = RelationNameGetTupleDesc("dbms_alert_waitone_res");
-    tuple = heap_formtuple(tupdesc, dvalues, isnull);
-    slot = TupleDescGetSlot(tupdesc);
-    result = TupleGetDatum(slot, tuple);
-#else
     dvalues[1] = Int32GetDatum(fldnum);
     get_call_result_type(fcinfo, NULL, &tupdesc);
     btupdesc = BlessTupleDesc(tupdesc);
     tuple = heap_form_tuple(btupdesc, dvalues, isnull);
     result = HeapTupleGetDatum(tuple);
-#endif
 
     return result;    
 }

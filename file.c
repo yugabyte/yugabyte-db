@@ -677,11 +677,7 @@ check_secure_locality(text *loc)
 		plan = SPI_saveplan(plan);
 	}   
 
-#ifdef PG_VERSION_74_COMPAT
-	if (SPI_OK_SELECT != SPI_execp(plan, values, nulls, 1))	
-#else
 	if (SPI_OK_SELECT != SPI_execute_plan(plan, values, nulls, false, 1))	
-#endif
 		ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("can't execute sql")));

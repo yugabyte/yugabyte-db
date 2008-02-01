@@ -8,9 +8,8 @@ as a user with appropriate privileges from the orafce source directory:
 make
 make install
 
-Alternatively, if you have a PostgreSQL 8.2 or higher installation but no 
-source tree you can install using PGXS. Simply run the following commands the
-adminpack source directory:
+Alternatively, if you have no source tree you can install using PGXS. Simply
+run the following commands the adminpack source directory:
  
 make USE_PGXS=1 
 make USE_PGXS=1 install 
@@ -24,5 +23,4 @@ psql -U postgres postgres < orafunc.sql
 Other administration tools that use this module may have different requirements,
 please consult the tool's documentation for further details.
 
-You can compile this package with PostgreSQL 7.4 or 8.1, but some functionality 
-will be blocked, because these version has not necessary functionality.
+This package requires PostgreSQL 8.3 or later.

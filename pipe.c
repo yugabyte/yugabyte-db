@@ -649,7 +649,6 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 {
-#ifndef PG_VERSION_74_COMPAT
 	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(0);
 	Oid tupType;
 	bytea *data;
@@ -678,12 +677,6 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	pack_field(output_buffer, &writer, IT_RECORD,
 			   VARSIZE(data), VARDATA(data),
 			   &tupType); 
-#else
-	ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		 errmsg("feature not supported"),
-		 errdetail("PostgreSQL 7.4 doesn't allow send or receive record")));
-#endif
 
 	PG_RETURN_VOID();
 }
@@ -829,7 +822,6 @@ dbms_pipe_unpack_message_bytea(PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS)
 {
-#ifndef PG_VERSION_74_COMPAT
 	bool is_null;
 	bytea *data;
 	FunctionCallInfoData locfcinfo;
@@ -868,12 +860,6 @@ dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS)
 		pfree(data);
 		PG_RETURN_HEAPTUPLEHEADER(rec);
 	}
-#else
-	ereport(ERROR,
-                (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-		 errmsg("feature not supported"),
-		 errdetail("PostgreSQL 7.4 doesn't allow send or receive record")));
-#endif
 
 	PG_RETURN_NULL();
 }
@@ -1065,21 +1051,12 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 
 		tupdesc = CreateTemplateTupleDesc (6 , false);
 
-#ifndef PG_VERSION_74_COMPAT 
 		TupleDescInitEntry (tupdesc,  1, "Name",    VARCHAROID, -1, 0);
 		TupleDescInitEntry (tupdesc,  2, "Items",   INT4OID   , -1, 0);
 		TupleDescInitEntry (tupdesc,  3, "Size",    INT4OID,    -1, 0);
 		TupleDescInitEntry (tupdesc,  4, "Limit",   INT4OID,    -1, 0);
 		TupleDescInitEntry (tupdesc,  5, "Private", BOOLOID,    -1, 0);
 		TupleDescInitEntry (tupdesc,  6, "Owner",   VARCHAROID, -1, 0);
-#else
-		TupleDescInitEntry (tupdesc,  1, "Name",    VARCHAROID, -1, 0, false);
-		TupleDescInitEntry (tupdesc,  2, "Items",   INT4OID   , -1, 0, false);
-		TupleDescInitEntry (tupdesc,  3, "Size",    INT4OID,    -1, 0, false);
-		TupleDescInitEntry (tupdesc,  4, "Limit",   INT4OID,    -1, 0, false);
-		TupleDescInitEntry (tupdesc,  5, "Private", BOOLOID,    -1, 0, false);
-		TupleDescInitEntry (tupdesc,  6, "Owner",   VARCHAROID, -1, 0, false);
-#endif
 		
 		slot = TupleDescGetSlot (tupdesc); 
 		funcctx -> slot = slot;
