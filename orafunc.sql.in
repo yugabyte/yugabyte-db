@@ -142,7 +142,7 @@ AS 'MODULE_PATHNAME','orafce_to_number'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_char(numeric) IS 'Convert string to number';
 
-DROP SCHEMA plvstr CASCADE;
+DROP SCHEMA IF EXISTS plvstr CASCADE;
 
 CREATE SCHEMA plvstr;
 
@@ -179,7 +179,7 @@ COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
 -- can't overwrite PostgreSQL functions!!!!
 
-DROP SCHEMA oracle CASCADE;
+DROP SCHEMA IF EXISTS oracle CASCADE;
 CREATE SCHEMA oracle;
 
 CREATE OR REPLACE FUNCTION oracle.substr(str text, start int)
@@ -194,7 +194,7 @@ AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
-DROP TABLE public.dual CASCADE;
+DROP TABLE IF EXISTS public.dual CASCADE;
 CREATE TABLE public.dual(dummy varchar(1));
 INSERT INTO public.dual(dummy) VALUES('X');
 CREATE RULE noins_dual AS ON INSERT TO public.dual DO INSTEAD NOTHING;
@@ -207,7 +207,7 @@ ANALYZE public.dual;
 -- this packege is emulation of dbms_ouput Oracle packege
 -- 
 
-DROP SCHEMA dbms_output CASCADE;
+DROP SCHEMA IF EXISTS dbms_output CASCADE;
 
 CREATE SCHEMA dbms_output;
 
@@ -285,7 +285,7 @@ AS 'MODULE_PATHNAME','ora_concat'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION concat(text, text) IS 'Concat two strings';
 
-DROP SCHEMA dbms_pipe CASCADE;
+DROP SCHEMA IF EXISTS dbms_pipe CASCADE;
 
 CREATE SCHEMA dbms_pipe;
 
@@ -464,7 +464,7 @@ COMMENT ON FUNCTION dbms_pipe.unpack_message_record() IS 'Get record field from 
 
 -- follow package PLVdate emulation
 
-DROP SCHEMA plvdate CASCADE;
+DROP SCHEMA IF EXISTS plvdate CASCADE;
 
 CREATE SCHEMA plvdate;
 
@@ -792,7 +792,7 @@ AS $$ SELECT plvstr.betwn($1,$2,$3,$4,$5,true,false);$$
 LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text, int, int) IS 'Find the Substring Between Start and End Locations';
 
-DROP SCHEMA plvchr CASCADE;
+DROP SCHEMA IF EXISTS plvchr CASCADE;
 
 CREATE SCHEMA plvchr;
 
@@ -924,7 +924,7 @@ COMMENT ON FUNCTION plvchr.stripped(text, text) IS 'Strips a string of all insta
 
 -- dbms_alert
 
-DROP SCHEMA dbms_alert CASCADE;
+DROP SCHEMA IF EXISTS dbms_alert CASCADE;
 
 CREATE SCHEMA dbms_alert;
 
@@ -983,7 +983,7 @@ AS 'MODULE_PATHNAME','dbms_alert_signal'
 LANGUAGE C SECURITY DEFINER;
 COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipients';
 
-DROP SCHEMA plvsubst CASCADE;
+DROP SCHEMA IF EXISTS plvsubst CASCADE;
 CREATE SCHEMA plvsubst;
 
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[], subst text) 
@@ -1034,7 +1034,7 @@ AS 'MODULE_PATHNAME','plvsubst_subst'
 LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.subst() IS 'Retrieve the current substitution keyword';
 
-DROP SCHEMA dbms_utility CASCADE;
+DROP SCHEMA IF EXISTS dbms_utility CASCADE;
 CREATE SCHEMA dbms_utility;
 
 CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack(text) 
@@ -1049,7 +1049,7 @@ AS 'MODULE_PATHNAME','dbms_utility_format_call_stack0'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call stack';
 
-DROP SCHEMA plvlex CASCADE;
+DROP SCHEMA IF EXISTS plvlex CASCADE;
 CREATE SCHEMA plvlex;
 
 CREATE OR REPLACE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qualified_names bool,
@@ -1059,7 +1059,7 @@ AS 'MODULE_PATHNAME','plvlex_tokens'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
 
-DROP SCHEMA utl_file CASCADE;
+DROP SCHEMA IF EXISTS utl_file CASCADE;
 CREATE SCHEMA utl_file;
 CREATE DOMAIN utl_file.file_type integer;
 
