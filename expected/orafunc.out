@@ -1,16 +1,16 @@
 \set ECHO none
-psql:orafunc.sql:109: ERROR:  schema "plvstr" does not exist
-psql:orafunc.sql:146: ERROR:  schema "oracle" does not exist
-psql:orafunc.sql:161: ERROR:  table "dual" does not exist
-psql:orafunc.sql:174: ERROR:  schema "dbms_output" does not exist
-psql:orafunc.sql:252: ERROR:  schema "dbms_pipe" does not exist
-psql:orafunc.sql:431: ERROR:  schema "plvdate" does not exist
-psql:orafunc.sql:759: ERROR:  schema "plvchr" does not exist
-psql:orafunc.sql:891: ERROR:  schema "dbms_alert" does not exist
-psql:orafunc.sql:950: ERROR:  schema "plvsubst" does not exist
-psql:orafunc.sql:1001: ERROR:  schema "dbms_utility" does not exist
-psql:orafunc.sql:1016: ERROR:  schema "plvlex" does not exist
-psql:orafunc.sql:1026: ERROR:  schema "utl_file" does not exist
+psql:orafunc.sql:145: NOTICE:  schema "plvstr" does not exist, skipping
+psql:orafunc.sql:182: NOTICE:  schema "oracle" does not exist, skipping
+psql:orafunc.sql:197: NOTICE:  table "dual" does not exist, skipping
+psql:orafunc.sql:210: NOTICE:  schema "dbms_output" does not exist, skipping
+psql:orafunc.sql:288: NOTICE:  schema "dbms_pipe" does not exist, skipping
+psql:orafunc.sql:467: NOTICE:  schema "plvdate" does not exist, skipping
+psql:orafunc.sql:795: NOTICE:  schema "plvchr" does not exist, skipping
+psql:orafunc.sql:927: NOTICE:  schema "dbms_alert" does not exist, skipping
+psql:orafunc.sql:986: NOTICE:  schema "plvsubst" does not exist, skipping
+psql:orafunc.sql:1037: NOTICE:  schema "dbms_utility" does not exist, skipping
+psql:orafunc.sql:1052: NOTICE:  schema "plvlex" does not exist, skipping
+psql:orafunc.sql:1062: NOTICE:  schema "utl_file" does not exist, skipping
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -701,4 +701,47 @@ select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, t
   31 | =
   32 | y
 (10 rows)
+
+SET lc_numeric TO 'C';
+select to_char(22);
+ to_char 
+---------
+ 22
+(1 row)
+
+select to_char(-44444);
+ to_char 
+---------
+ -44444
+(1 row)
+
+select to_char(1234567890123456::bigint);
+     to_char      
+------------------
+ 1234567890123456
+(1 row)
+
+select to_char(123.456::real);
+  to_char   
+------------
+ 123.456001
+(1 row)
+
+select to_char(1234.5678::double precision);
+   to_char   
+-------------
+ 1234.567800
+(1 row)
+
+select to_char(12345678901234567890::numeric);
+       to_char        
+----------------------
+ 12345678901234567890
+(1 row)
+
+select to_char(1234567890.12345);
+     to_char      
+------------------
+ 1234567890.12345
+(1 row)
 
