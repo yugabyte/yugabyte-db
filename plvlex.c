@@ -230,22 +230,13 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 
 		tupdesc = CreateTemplateTupleDesc (6 , false);
 
-#ifndef PG_VERSION_74_COMPAT
 		TupleDescInitEntry (tupdesc,  1, "start_pos", INT4OID, -1, 0);
 		TupleDescInitEntry (tupdesc,  2, "token",     TEXTOID, -1, 0);
 		TupleDescInitEntry (tupdesc,  3, "keycode",   INT4OID, -1, 0);
 		TupleDescInitEntry (tupdesc,  4, "class",     TEXTOID, -1, 0);
 		TupleDescInitEntry (tupdesc,  5, "separator", TEXTOID, -1, 0);
 		TupleDescInitEntry (tupdesc,  6, "mod",       TEXTOID, -1, 0);
-#else
-		TupleDescInitEntry (tupdesc,  1, "start_pos", INT4OID, -1, 0, false);
-		TupleDescInitEntry (tupdesc,  2, "token",     TEXTOID, -1, 0, false);
-		TupleDescInitEntry (tupdesc,  3, "keycode",   INT4OID, -1, 0, false);
-		TupleDescInitEntry (tupdesc,  4, "class",     TEXTOID, -1, 0, false);
-		TupleDescInitEntry (tupdesc,  5, "separator", TEXTOID, -1, 0, false);
-		TupleDescInitEntry (tupdesc,  6, "mod",       TEXTOID, -1, 0, false);
-#endif
-		
+ 		
 		slot = TupleDescGetSlot (tupdesc); 
 		funcctx -> slot = slot;
 		
