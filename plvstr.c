@@ -91,20 +91,6 @@ typedef enum
 }  position_mode;
 
 
-text *
-ora_make_text(char *c)
-{
-	text *result;
-	int len;
-
-	len = strlen(c);
-	result = palloc(len + VARHDRSZ);
-	SET_VARSIZE(result, len + VARHDRSZ);
-	memcpy(VARDATA(result), c, len);
-
-	return result;
-}
-
 text*
 ora_clone_text(text *t)
 {
@@ -204,7 +190,7 @@ ora_substr(text *str, int start, int len, bool valid_length)
 	int *positions = NULL;
 
 	if (start == 0)
-		return ora_make_text("");
+		return CStringGetTextP("");
 
 	if (len < 0 && valid_length)
 		PARAMETER_ERROR("Third parameter is negative.");
@@ -1180,7 +1166,7 @@ plvchr_char_name(PG_FUNCTION_ARGS)
 	if (c > 32 && _pg_mblen(((char*)VARDATA(str))) == 1)
 		result = ora_substr(str,1, 1, true);
 	else
-		result = ora_make_text(char_names[(int)c]);
+		result = CStringGetTextP(char_names[(int)c]);
 	
 	PG_RETURN_TEXT_P(result);
 }
@@ -1378,7 +1364,7 @@ plvstr_betwn_i(PG_FUNCTION_ARGS)
 		end_in -= 1;
 
 		if (start_in > end_in)
-			PG_RETURN_TEXT_P(ora_make_text(""));
+			PG_RETURN_TEXT_P(CStringGetTextP(""));
 	}    
 
 	PG_RETURN_TEXT_P(ora_substr(string_in, 

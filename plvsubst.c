@@ -62,7 +62,7 @@ init_c_subst()
 		MemoryContext oldctx;
 
 		oldctx = MemoryContextSwitchTo(TopMemoryContext);
-		c_subst = ora_make_text(C_SUBST);
+		c_subst = CStringGetTextP(C_SUBST);
 		MemoryContextSwitchTo(oldctx);
 	}
 }
@@ -76,7 +76,7 @@ set_c_subst(text *sc)
 		pfree(c_subst);
 
 	oldctx = MemoryContextSwitchTo(TopMemoryContext);
-	c_subst = sc ? ora_clone_text(sc) : ora_make_text(C_SUBST);
+	c_subst = sc ? ora_clone_text(sc) : CStringGetTextP(C_SUBST);
 	MemoryContextSwitchTo(oldctx);
 }
 
@@ -178,7 +178,7 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 			appendBinaryStringInfo(sinfo, &(VARDATA(template_in)[positions[i]]), sizes[i]);
 	}
 
-	return ora_make_text(sinfo->data);
+	return CStringGetTextP(sinfo->data);
 }
 
 
@@ -215,7 +215,7 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
         InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);                                                                   
                                                                                                                                               
         locfcinfo.arg[0] = PG_GETARG_DATUM(1);                                                                                              
-        locfcinfo.arg[1] = PG_ARGISNULL(2)? PointerGetDatum(ora_make_text(",")) : PG_GETARG_DATUM(2);              
+        locfcinfo.arg[1] = PG_ARGISNULL(2)? PointerGetDatum(CStringGetTextP(",")) : PG_GETARG_DATUM(2);              
         locfcinfo.argnull[0] = false;                                                                                                         
         locfcinfo.argnull[1] = false;                                                                                                         
                                                                                                                                               

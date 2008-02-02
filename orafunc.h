@@ -7,9 +7,13 @@
 #include <sys/time.h>
 #include "utils/datetime.h"
 
+#define TextPGetCString(t) \
+        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t))) 
+#define CStringGetTextP(c) \
+        DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(c)))
+
 
 text* ora_substr(text *str, int start, int len, bool valid_length);
-text* ora_make_text(char *c);
 text* ora_make_text_fix(char *c, int n);
 int   ora_instr(text *txt, text *pattern, int start, int nth);
 text* ora_clone_text(text *t);
