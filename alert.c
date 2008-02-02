@@ -425,8 +425,8 @@ find_and_remove_message_item(int message_id, int sid,
 }
 
 /* 
-Je treba zajistit odstraneni duplicitnich zprav.
-*/  
+ * Queue mustn't to contain duplicate messages
+ */  
 
 static void
 create_message(text *event_name, text *message)
