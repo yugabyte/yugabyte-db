@@ -76,7 +76,7 @@ set_c_subst(text *sc)
 		pfree(c_subst);
 
 	oldctx = MemoryContextSwitchTo(TopMemoryContext);
-	c_subst = sc ? ora_clone_text(sc) : CStringGetTextP(C_SUBST);
+	c_subst = sc ? TextPCopy(sc) : CStringGetTextP(C_SUBST);
 	MemoryContextSwitchTo(oldctx);
 }
 
@@ -252,5 +252,5 @@ Datum
 plvsubst_subst(PG_FUNCTION_ARGS)
 {
 	init_c_subst();
-	PG_RETURN_TEXT_P(ora_clone_text(c_subst));
+	PG_RETURN_TEXT_P(TextPCopy(c_subst));
 }

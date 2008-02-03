@@ -90,19 +90,6 @@ typedef enum
 	LAST
 }  position_mode;
 
-
-text*
-ora_clone_text(text *t)
-{
-	text *result;
-	
-	result = palloc(VARSIZE(t));
-	SET_VARSIZE(result, VARSIZE(t));
-	memcpy(VARDATA(result), VARDATA(t), VARSIZE(t) - VARHDRSZ);
-
-	return result;
-}
-
 text *
 ora_make_text_fix(char *c, int n)
 {
@@ -132,7 +119,7 @@ ora_mb_strlen(text *str, char **sizes, int **positions)
 	p = (char*)VARDATA(str);
 	r_len = VARSIZE(str) - VARHDRSZ;
 
-    if (NULL != sizes)
+	if (NULL != sizes)
 		*sizes = palloc(r_len * sizeof(char));
 	if (NULL != positions)
 		*positions = palloc(r_len * sizeof(int));
@@ -754,7 +741,7 @@ plvstr_lpart (PG_FUNCTION_ARGS)
 	if (loc == 0)
 	{
 		if (all_if_notfound)
-			PG_RETURN_TEXT_P(ora_clone_text(str));
+			PG_RETURN_TEXT_P(TextPCopy(str));
 		else
 			PG_RETURN_NULL();
 	}
@@ -793,7 +780,7 @@ plvstr_rpart (PG_FUNCTION_ARGS)
 	if (loc == 0)
 	{
 		if (all_if_notfound)
-			PG_RETURN_TEXT_P(ora_clone_text(str));
+			PG_RETURN_TEXT_P(TextPCopy(str));
 		else
 			PG_RETURN_NULL();
 	}
@@ -1298,7 +1285,7 @@ plvstr_swap(PG_FUNCTION_ARGS)
 	start_in = start_in > 0 ? start_in : v_len + start_in + 1;
 
 	if (start_in == 0 || start_in > v_len)
-	        PG_RETURN_TEXT_P(ora_clone_text(string_in));
+	        PG_RETURN_TEXT_P(TextPCopy(string_in));
 	else if (start_in == 1)
 	        PG_RETURN_TEXT_P(ora_concat2(replace_in, 
 					      ora_substr(string_in, oldlen_in+1,0, false)));
