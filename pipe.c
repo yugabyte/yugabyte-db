@@ -18,7 +18,6 @@
 #include "pipe.h"
 
 /*
- * First test version 0.0.9
  * @ Pavel Stehule 2006
  */
 
