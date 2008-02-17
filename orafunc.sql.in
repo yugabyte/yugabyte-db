@@ -1240,6 +1240,48 @@ COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 CREATE TABLE utl_file.utl_file_dir(dir text);
 REVOKE ALL ON utl_file.utl_file_dir FROM PUBLIC;
 
+-- dbms_assert
+
+DROP SCHEMA IF EXISTS dbms_assert CASCADE;
+CREATE SCHEMA dbms_assert;
+
+CREATE FUNCTION dbms_assert.enquote_literal(str varchar)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_enquote_literal'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION dbms_assert.enquote_literal(varchar) IS 'Add leading and trailing quotes, verify that all single quotes are paired with adjacent single quotes';
+
+CREATE FUNCTION dbms_assert.enquote_name(str varchar, loweralize boolean)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_enquote_name'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.enquote_name(varchar, boolean) IS 'Enclose name in double quotes';
+
+CREATE FUNCTION dbms_assert.enquote_name(str varchar)
+RETURNS varchar
+AS 'SELECT dbms_assert.enquote_name($1, true)'
+LANGUAGE SQL IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.enquote_name(varchar) IS 'Enclose name in double quotes';
+
+CREATE FUNCTION dbms_assert.noop(str varchar)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_noop'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.noop(varchar) IS 'Returns value without any checking.';
+
+CREATE FUNCTION dbms_assert.schema_name(str varchar)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_schema_name'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.schema_name(varchar) IS 'Verify input string is an existing schema name.';
+
+CREATE FUNCTION dbms_assert.object_name(str varchar)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_object_name'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an existing object name.';
+
+
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
 GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
@@ -1251,4 +1293,4 @@ GRANT SELECT ON dbms_pipe.db_pipes to PUBLIC;
 GRANT USAGE ON SCHEMA dbms_utility TO PUBLIC;
 GRANT USAGE ON SCHEMA plvlex TO PUBLIC;
 GRANT USAGE ON SCHEMA utl_file TO PUBLIC;
-
+GRANT USAGE ON SCHEMA dbms_assert TO PUBLIC;
