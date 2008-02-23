@@ -145,3 +145,34 @@ select to_char(123.456::real);
 select to_char(1234.5678::double precision);
 select to_char(12345678901234567890::numeric);
 select to_char(1234567890.12345);
+
+select dbms_assert.enquote_literal(E'some text \' some text');
+select dbms_assert.enquote_name(E'\'"AAA');
+select dbms_assert.enquote_name(E'\'"AAA', false);
+select dbms_assert.noop('some string');
+select dbms_assert.qualified_sql_name('aaa.bbb.ccc."aaaa""aaa"');
+select dbms_assert.qualified_sql_name('aaa.bbb.cc%c."aaaa""aaa"');
+select dbms_assert.schema_name('dbms_assert');
+select dbms_assert.schema_name('jabadabado');
+select dbms_assert.simple_sql_name('"Aaa dghh shsh"');
+select dbms_assert.simple_sql_name('ajajaj -- ajaj');
+select dbms_assert.object_name('pg_catalog.pg_class');
+select dbms_assert.object_name('dbms_assert.fooo');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -7,6 +7,8 @@
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "catalog/namespace.h"
+#include "ctype.h"
+#include "string.h"
 
 Datum dbms_assert_enquote_literal(PG_FUNCTION_ARGS);
 Datum dbms_assert_enquote_name(PG_FUNCTION_ARGS);
@@ -43,6 +45,88 @@ PG_FUNCTION_INFO_V1(dbms_assert_object_name);
 	CUSTOM_EXCEPTION(ISNOT_QUALIFIED_SQL_NAME, "string is not qualified SQL name")
 
 #define EMPTY_STR(str)		((VARSIZE(str) - VARHDRSZ) == 0)
+
+
+static bool check_sql_name(char *cp, int len);
+static bool ParseIdentifierString(char *rawstring);
+
+/* 
+ * Procedure ParseIdentifierString is based on SplitIdentifierString
+ * from varlena.c. We need different behave of quote symbol evaluation.
+ */
+bool
+ParseIdentifierString(char *rawstring)
+{
+	char	   *nextp = rawstring;
+	bool		done = false;
+
+	while (isspace((unsigned char) *nextp))
+		nextp++;				/* skip leading whitespace */
+
+	if (*nextp == '\0')
+		return true;			/* allow empty string */
+
+	/* At the top of the loop, we are at start of a new identifier. */
+	do
+	{
+		char	   *curname;
+		char	   *endp;
+
+		if (*nextp == '\"')
+		{
+			/* Quoted name --- collapse quote-quote pairs, no downcasing */
+			curname = nextp + 1;
+			for (;;)
+			{
+				endp = strchr(nextp + 1, '\"');
+				if (endp == NULL)
+					return false;		/* mismatched quotes */
+				if (endp[1] != '\"')
+					break;		/* found end of quoted name */
+				/* Collapse adjacent quotes into one quote, and look again */
+				memmove(endp, endp + 1, strlen(endp));
+				nextp = endp;
+			}
+			/* endp now points at the terminating quote */
+			nextp = endp + 1;
+		}
+		else
+		{
+			/* Unquoted name --- extends to separator or whitespace */
+			curname = nextp;
+			while (*nextp && *nextp != '.' &&
+				   !isspace((unsigned char) *nextp))
+			{
+				if (!isalnum(*nextp) && *nextp != '_')
+					return false;
+				nextp++;
+			}
+			endp = nextp;
+			if (curname == nextp)
+				return false;	/* empty unquoted name not allowed */
+		}
+
+		while (isspace((unsigned char) *nextp))
+			nextp++;			/* skip trailing whitespace */
+
+		if (*nextp == '.')
+		{
+			nextp++;
+			while (isspace((unsigned char) *nextp))
+				nextp++;		/* skip leading whitespace for next */
+			/* we expect another name, so done remains false */
+		}
+		else if (*nextp == '\0')
+			done = true;
+		else
+			return false;		/* invalid syntax */
+
+		/* Loop back if we didn't reach end of string */
+	} while (!done);
+
+	return true;
+}
+
 
 
 /****************************************************************
@@ -129,7 +213,19 @@ dbms_assert_noop(PG_FUNCTION_ARGS)
 Datum 
 dbms_assert_qualified_sql_name(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_NULL();
+	text *qname;
+
+	if (PG_ARGISNULL(0))
+		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
+	
+	qname = PG_GETARG_TEXT_P(0);
+	if (EMPTY_STR(qname))
+		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
+	
+	if (!ParseIdentifierString(TextPGetCString(qname)))
+		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
+
+	PG_RETURN_TEXT_P(qname);
 }
 
 
@@ -194,10 +290,59 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
+static bool
+check_sql_name(char *cp, int len)
+{
+	if (*cp == '"')
+    	{
+		for (cp++, len -= 2; len-- > 0; cp++)
+		{
+			/* all double quotes have to be paired */
+			if (*cp == '"')
+			{
+				if (len-- == 0)
+					return false;
+				/* next char has to be quote */
+				if (*cp != '"')
+					return false;
+			}
+
+		}
+		if (*cp != '"')
+			return false;
+	}
+	else
+	{
+		/* Doesn't allow national characters in sql name :( */
+		for (; len-- > 0; cp++)
+			if (!isalnum(*cp) && *cp != '_')
+				return false;
+	}
+
+	return true;
+}
+
 Datum 
 dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_NULL();
+	text  *sname;
+	int		len;
+	char *cp;
+	
+	if (PG_ARGISNULL(0))
+		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
+	
+	sname = PG_GETARG_TEXT_P(0);
+	if (EMPTY_STR(sname))
+		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
+
+	len = VARSIZE(sname) - VARHDRSZ;
+	cp = VARDATA(sname);
+
+	if (!check_sql_name(cp, len))
+		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
+
+	PG_RETURN_TEXT_P(sname);
 }
 
 

@@ -11,6 +11,7 @@ psql:orafunc.sql:986: NOTICE:  schema "plvsubst" does not exist, skipping
 psql:orafunc.sql:1037: NOTICE:  schema "dbms_utility" does not exist, skipping
 psql:orafunc.sql:1052: NOTICE:  schema "plvlex" does not exist, skipping
 psql:orafunc.sql:1062: NOTICE:  schema "utl_file" does not exist, skipping
+psql:orafunc.sql:1245: NOTICE:  schema "dbms_assert" does not exist, skipping
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -745,3 +746,59 @@ select to_char(1234567890.12345);
  1234567890.12345
 (1 row)
 
+select dbms_assert.enquote_literal(E'some text \' some text');
+     enquote_literal      
+--------------------------
+ 'some text '' some text'
+(1 row)
+
+select dbms_assert.enquote_name(E'\'"AAA');
+ enquote_name 
+--------------
+ "'""aaa"
+(1 row)
+
+select dbms_assert.enquote_name(E'\'"AAA', false);
+ enquote_name 
+--------------
+ "'""AAA"
+(1 row)
+
+select dbms_assert.noop('some string');
+    noop     
+-------------
+ some string
+(1 row)
+
+select dbms_assert.qualified_sql_name('aaa.bbb.ccc."aaaa""aaa"');
+   qualified_sql_name    
+-------------------------
+ aaa.bbb.ccc."aaaa""aaa"
+(1 row)
+
+select dbms_assert.qualified_sql_name('aaa.bbb.cc%c."aaaa""aaa"');
+ERROR:  string is not qualified SQL name
+select dbms_assert.schema_name('dbms_assert');
+ schema_name 
+-------------
+ dbms_assert
+(1 row)
+
+select dbms_assert.schema_name('jabadabado');
+ERROR:  invalid schema name
+select dbms_assert.simple_sql_name('"Aaa dghh shsh"');
+ simple_sql_name 
+-----------------
+ "Aaa dghh shsh"
+(1 row)
+
+select dbms_assert.simple_sql_name('ajajaj -- ajaj');
+ERROR:  string is not simple SQL name
+select dbms_assert.object_name('pg_catalog.pg_class');
+     object_name     
+---------------------
+ pg_catalog.pg_class
+(1 row)
+
+select dbms_assert.object_name('dbms_assert.fooo');
+ERROR:  invalid object name

@@ -1281,6 +1281,19 @@ AS 'MODULE_PATHNAME','dbms_assert_object_name'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an existing object name.';
 
+CREATE FUNCTION dbms_assert.simple_sql_name(str varchar)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_simple_sql_name'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an sql name.';
+
+CREATE FUNCTION dbms_assert.qualified_sql_name(str varchar)
+RETURNS varchar
+AS 'MODULE_PATHNAME','dbms_assert_qualified_sql_name'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an qualified sql name.';
+
+
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
