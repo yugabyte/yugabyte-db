@@ -265,7 +265,7 @@ unregister_event(int event_id, int sid)
 	int i;
 
 	ev = &events[event_id];
-	if (ev->receivers_number > 1)
+	if (ev->receivers_number > 0)
 	{
 		for (i = 0; i < ev->max_receivers; i++)
 			if (ev->receivers[i] == sid)
@@ -827,11 +827,11 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 	int event_col; 
 	int message_col;
 
+	Datum datum;
 	bool isnull;
 	int cycle = 0;
 	float8 endtime;
 	float8 timeout = 2;
-
 
 	if (!CALLED_AS_TRIGGER(fcinfo))
 		ereport(ERROR,
@@ -841,7 +841,7 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 	if (!TRIGGER_FIRED_BY_INSERT(trigdata->tg_event))
 		ereport(ERROR,
 			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
-			 errmsg("not called on good event")));
+			 errmsg("not called on valid event")));
 
 	if (SPI_connect() < 0)
 		ereport(ERROR,
@@ -851,7 +851,7 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 	if (strcmp((relname = SPI_getrelname(trigdata->tg_relation)), "ora_alerts") != 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
-			 errmsg("not called with good relatio")));
+			 errmsg("not called with valid relation")));
 
 	rettuple = trigdata->tg_trigtuple;
 	tupdesc = trigdata->tg_relation->rd_att;
@@ -867,16 +867,19 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 			(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
 			 errmsg("attribute message not found")));
 
-	name = DatumGetTextP(SPI_getbinval(rettuple, tupdesc, event_col, &isnull));
+	datum = SPI_getbinval(rettuple, tupdesc, event_col, &isnull);
 	if (isnull) 
 		ereport(ERROR,                                                          
     			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
         		 errmsg("event name is NULL"),
 			 errdetail("Eventname may not be NULL.")));                    
+	name = DatumGetTextP(datum);
 
-	message = DatumGetTextP(SPI_getbinval(rettuple, tupdesc, message_col, &isnull));
+	datum = SPI_getbinval(rettuple, tupdesc, message_col, &isnull);
 	if (isnull)
 		message = NULL;
+	else
+		message = DatumGetTextP(datum);
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
