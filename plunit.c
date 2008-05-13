@@ -5,6 +5,8 @@
 
 #include "postgres.h"
 #include "funcapi.h"
+#include "orafunc.h"
+#include "utils/builtins.h"
 
 Datum plunit_assert_true(PG_FUNCTION_ARGS);
 Datum plunit_assert_true_message(PG_FUNCTION_ARGS);
@@ -68,6 +70,31 @@ plunit_assert_true(PG_FUNCTION_ARGS)
 Datum 
 plunit_assert_true_message(PG_FUNCTION_ARGS)
 {
+	char	*message;
+	bool condition = PG_GETARG_BOOL(0);
+	
+	if (PG_NARGS() == 2)
+	{
+		text	*msg;
+	
+		if (PG_ARGISNULL(1))
+		    	ereport(ERROR,
+                    		(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+                        	 errmsg("message is NULL"),
+                        	 errdetail("Message may not be NULL.")));
+
+		msg = PG_GETARG_TEXT_P(1);
+		message = TextPGetCString(msg);
+	}
+	else
+		message = "plunit.assert_true exception";
+	
+	if (!PG_ARGISNULL(0) && !condition)
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg(message),
+				 errdetail("Plunit.assertation fails.")));
+
 	PG_RETURN_VOID();
 }
 
