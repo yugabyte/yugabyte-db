@@ -1293,6 +1293,21 @@ AS 'MODULE_PATHNAME','dbms_assert_qualified_sql_name'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an qualified sql name.';
 
+DROP SCHEMA IF EXISTS plunit CASCADE;
+CREATE SCHEMA plunit;
+
+CREATE FUNCTION plunit.assert_equal(expected anyelement, actual anyelement)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_equals'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_equal(expected anyelement, actual anyelement) IS 'Asserts that expected and actual are equal';
+
+CREATE FUNCTION plunit.assert_equal(expected anyelement, actual anyelement, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_equals_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_equal(expected anyelement, actual anyelement, message varchar) IS 'Asserts that expected and actual are equal';
+
 
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
