@@ -49,6 +49,7 @@ PG_FUNCTION_INFO_V1(plunit_fail_message);
 
 
 static bool assert_equals_base(FunctionCallInfo fcinfo);
+static bool assert_equals_range_base(FunctionCallInfo fcinfo);
 static char *assert_get_message(FunctionCallInfo fcinfo, int nargs, char *default_message);
 
  
@@ -86,7 +87,6 @@ plunit_assert_true_message(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /****************************************************************
  * plunit.assert_false
  * plunit.assert_false_message
@@ -121,7 +121,6 @@ plunit_assert_false_message(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
-
 /****************************************************************
  * plunit.assert_null
  * plunit.assert_null_message
@@ -154,7 +153,6 @@ plunit_assert_null_message(PG_FUNCTION_ARGS)
 
 	PG_RETURN_VOID();
 }
-
 
 /****************************************************************
  * plunit.assert_not_null
@@ -199,7 +197,7 @@ plunit_assert_not_null_message(PG_FUNCTION_ARGS)
  * Syntax:
  *   PROCEDURE assert_equals(expected anyelement,actual anyelement, 
  *                           message varchar default '');
- *   PROCEDURE assert_equals(expected double precision, expected double precision,
+ *   PROCEDURE assert_equals(expected double precision, actual double precision,
  *                           range double precision, message varchar default '');
  *
  * Purpouse:
@@ -302,9 +300,43 @@ plunit_assert_equals_range(PG_FUNCTION_ARGS)
 	return plunit_assert_equals_range_message(fcinfo);
 }
 
+static bool
+assert_equals_range_base(FunctionCallInfo fcinfo)
+{
+	float8	expected_value;
+	float8	actual_value;
+	float8	range_value;
+
+        range_value = PG_GETARG_FLOAT8(2);
+	if (range_value < 0) 
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("cannot set range to negative number")));
+
+	expected_value = PG_GETARG_FLOAT8(0);
+	actual_value = PG_GETARG_FLOAT8(1);
+	
+	return fabs(expected_value - actual_value) < range_value;
+}
+
 Datum 
 plunit_assert_equals_range_message(PG_FUNCTION_ARGS)
 {
+	char *message = assert_get_message(fcinfo, 4, "plunit.assert_equal exception");
+
+	/* skip all tests for NULL value */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg(message),
+				 errdetail("Plunit.assertation fails (assert_equals).")));
+	
+	if (!assert_equals_range_base(fcinfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg(message),
+				 errdetail("Plunit.assertation fails (assert_equals).")));
+    	
 	PG_RETURN_VOID();
 }
 
@@ -366,9 +398,23 @@ plunit_assert_not_equals_range(PG_FUNCTION_ARGS)
 Datum 
 plunit_assert_not_equals_range_message(PG_FUNCTION_ARGS)
 {
+	char *message = assert_get_message(fcinfo, 3, "plunit.assert_not_equal exception");
+
+	/* skip all tests for NULL value */
+	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg(message),
+				 errdetail("Plunit.assertation fails (assert_not_equals).")));
+	
+	if (assert_equals_range_base(fcinfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_CHECK_VIOLATION),
+				 errmsg(message),
+				 errdetail("Plunit.assertation fails (assert_not_equals).")));
+
 	PG_RETURN_VOID();
 }
-
 
 /****************************************************************
  * plunit.fail

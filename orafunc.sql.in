@@ -1296,19 +1296,101 @@ COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is 
 DROP SCHEMA IF EXISTS plunit CASCADE;
 CREATE SCHEMA plunit;
 
-CREATE FUNCTION plunit.assert_equal(expected anyelement, actual anyelement)
+CREATE FUNCTION plunit.assert_true(condition boolean)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_true'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_true(condition boolean) IS 'Asserts that the condition is true';
+
+CREATE FUNCTION plunit.assert_true(condition boolean, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_true_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_true(condition boolean, message varchar) IS 'Asserts that the condition is true';
+
+CREATE FUNCTION plunit.assert_false(condition boolean)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_false'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_false(condition boolean) IS 'Asserts that the condition is false';
+
+CREATE FUNCTION plunit.assert_false(condition boolean, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_false_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_false(condition boolean, message varchar) IS 'Asserts that the condition is false';
+
+CREATE FUNCTION plunit.assert_null(actual boolean)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_null'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_null(actual boolean) IS 'Asserts that the actual is null';
+
+CREATE FUNCTION plunit.assert_null(actual boolean, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_null_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_null(actual boolean, message varchar) IS 'Asserts that the condition is null';
+
+CREATE FUNCTION plunit.assert_equals(expected anyelement, actual anyelement)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_equals'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_equal(expected anyelement, actual anyelement) IS 'Asserts that expected and actual are equal';
+COMMENT ON FUNCTION plunit.assert_equals(expected anyelement, actual anyelement) IS 'Asserts that expected and actual are equal';
 
-CREATE FUNCTION plunit.assert_equal(expected anyelement, actual anyelement, message varchar)
+CREATE FUNCTION plunit.assert_equals(expected anyelement, actual anyelement, message varchar)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_equals_message'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_equal(expected anyelement, actual anyelement, message varchar) IS 'Asserts that expected and actual are equal';
+COMMENT ON FUNCTION plunit.assert_equals(expected anyelement, actual anyelement, message varchar) IS 'Asserts that expected and actual are equal';
 
+CREATE FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_equals_range'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision) IS 'Asserts that expected and actual are equal';
 
+CREATE FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_equals_range_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision, message varchar) IS 'Asserts that expected and actual are equal';
+
+CREATE FUNCTION plunit.assert_not_equals(expected anyelement, actual anyelement)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_not_equals'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_not_equals(expected anyelement, actual anyelement) IS 'Asserts that expected and actual are equal';
+
+CREATE FUNCTION plunit.assert_not_equals(expected anyelement, actual anyelement, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_not_equals_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_not_equals(expected anyelement, actual anyelement, message varchar) IS 'Asserts that expected and actual are equal';
+
+CREATE FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, range double precision)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_not_equals_range'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision) IS 'Asserts that expected and actual are equal';
+
+CREATE FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, range double precision, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_not_equals_range_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, range double precision, message varchar) IS 'Asserts that expected and actual are equal';
+
+CREATE FUNCTION plunit.fail()
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_fail'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.fail() IS 'Immediately fail.';
+
+CREATE FUNCTION plunit.fail(message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_fail_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
