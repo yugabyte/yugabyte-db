@@ -12,6 +12,7 @@ psql:orafunc.sql:1037: NOTICE:  schema "dbms_utility" does not exist, skipping
 psql:orafunc.sql:1052: NOTICE:  schema "plvlex" does not exist, skipping
 psql:orafunc.sql:1062: NOTICE:  schema "utl_file" does not exist, skipping
 psql:orafunc.sql:1245: NOTICE:  schema "dbms_assert" does not exist, skipping
+psql:orafunc.sql:1296: NOTICE:  schema "plunit" does not exist, skipping
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -802,3 +803,75 @@ select dbms_assert.object_name('pg_catalog.pg_class');
 
 select dbms_assert.object_name('dbms_assert.fooo');
 ERROR:  invalid object name
+select plunit.assert_true(NULL);
+ERROR:  plunit.assert_true exception
+DETAIL:  Plunit.assertation fails (assert_true).
+select plunit.assert_true(1 = 2);
+ERROR:  plunit.assert_true exception
+DETAIL:  Plunit.assertation fails (assert_true).
+select plunit.assert_true(1 = 2, 'one is not two');
+ERROR:  one is not two
+DETAIL:  Plunit.assertation fails (assert_true).
+select plunit.assert_true(1 = 1);
+ assert_true 
+-------------
+ 
+(1 row)
+
+select plunit.assert_false(1 = 1);
+ERROR:  plunit.assert_false exception
+DETAIL:  Plunit.assertation fails (assert_false).
+select plunit.assert_false(1 = 1, 'trap is open');
+ERROR:  trap is open
+DETAIL:  Plunit.assertation fails (assert_false).
+select plunit.assert_false(NULL);
+ERROR:  plunit.assert_false exception
+DETAIL:  Plunit.assertation fails (assert_false).
+select plunit.assert_null(current_date);
+ERROR:  plunit.assert_null exception
+DETAIL:  Plunit.assertation fails (assert_null).
+select plunit.assert_null(NULL::date);
+ assert_null 
+-------------
+ 
+(1 row)
+
+select plunit.assert_not_null(current_date);
+ assert_not_null 
+-----------------
+ 
+(1 row)
+
+select plunit.assert_not_null(NULL::date);
+ERROR:  plunit.assert_not_null exception
+DETAIL:  Plunit.assertation fails (assert_not_null).
+select plunit.assert_equals('Pavel','Pa'||'vel');
+ assert_equals 
+---------------
+ 
+(1 row)
+
+select plunit.assert_equals(current_date, current_date + 1, 'diff dates');
+ERROR:  diff dates
+DETAIL:  Plunit.assertation fails (assert_equals).
+select plunit.assert_equals(10.2, 10.3, 0.5);
+ assert_equals 
+---------------
+ 
+(1 row)
+
+select plunit.assert_equals(10.2, 10.3, 0.01, 'attention some diff');
+ERROR:  attention some diff
+DETAIL:  Plunit.assertation fails (assert_equals).
+select plunit.assert_not_equals(current_date, current_date + 1, 'yestarday is today');
+ assert_not_equals 
+-------------------
+ 
+(1 row)
+
+select plunit.fail();
+ERROR:  plunit.assert_fail exception
+DETAIL:  Plunit.assertation (assert_fail).
+select plunit.fail('custom exception');
+ERROR:  custom exception
+DETAIL:  Plunit.assertation (assert_fail).

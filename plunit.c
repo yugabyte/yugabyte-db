@@ -380,7 +380,7 @@ plunit_assert_not_equals_message(PG_FUNCTION_ARGS)
 				 errmsg(message),
 				 errdetail("Plunit.assertation fails (assert_not_equals).")));
                                                                                                                                     
-	if (!assert_equals_base(fcinfo))
+	if (assert_equals_base(fcinfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
 				 errmsg(message),

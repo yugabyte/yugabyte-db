@@ -1320,17 +1320,29 @@ AS 'MODULE_PATHNAME','plunit_assert_false_message'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plunit.assert_false(condition boolean, message varchar) IS 'Asserts that the condition is false';
 
-CREATE FUNCTION plunit.assert_null(actual boolean)
+CREATE FUNCTION plunit.assert_null(actual anyelement)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_null'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_null(actual boolean) IS 'Asserts that the actual is null';
+COMMENT ON FUNCTION plunit.assert_null(actual anyelement) IS 'Asserts that the actual is null';
 
-CREATE FUNCTION plunit.assert_null(actual boolean, message varchar)
+CREATE FUNCTION plunit.assert_null(actual anyelement, message varchar)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_null_message'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_null(actual boolean, message varchar) IS 'Asserts that the condition is null';
+COMMENT ON FUNCTION plunit.assert_null(actual anyelement, message varchar) IS 'Asserts that the condition is null';
+
+CREATE FUNCTION plunit.assert_not_null(actual anyelement)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_not_null'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_not_null(actual anyelement) IS 'Asserts that the actual is not null';
+
+CREATE FUNCTION plunit.assert_not_null(actual anyelement, message varchar)
+RETURNS void
+AS 'MODULE_PATHNAME','plunit_assert_not_null_message'
+LANGUAGE C IMMUTABLE;
+COMMENT ON FUNCTION plunit.assert_not_null(actual anyelement, message varchar) IS 'Asserts that the condition is not null';
 
 CREATE FUNCTION plunit.assert_equals(expected anyelement, actual anyelement)
 RETURNS void

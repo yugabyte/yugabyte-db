@@ -485,9 +485,9 @@ o orafce.substr(str text, start int, len int) - Oracle compatible substring
 o orafce.substr(str text, start int)          - Oracle compatible substring
 
 ToDo:
-  o better documentation                                             v3
-  o better seralization in dbms_pipe (via _send and _recv functions) v3
-  o alter shared memory structures by temporary tables		     v3
+  o better documentation                                             
+  o better seralization in dbms_pipe (via _send and _recv functions) 
+  o alter shared memory structures by temporary tables		     
       only locks are in shmem, (bitmaps), data in tmp tbl
 
 This module is released under BSD licence. 
@@ -495,7 +495,7 @@ This module is released under BSD licence.
 Pavel Stehule
 stehule@kix.fsv.cvut.cz
 
-Prague 2007
+Prague 2008
 
 p.s.
 If use this library, please, send me mail about it.
