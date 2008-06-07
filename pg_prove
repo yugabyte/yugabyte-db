@@ -1,0 +1,197 @@
+#!/usr/bin/perl -w
+
+use strict;
+use warnings;
+use TAP::Harness;
+use Getopt::Long;
+our $VERSION = '0.01';
+
+Getopt::Long::Configure (qw(bundling));
+
+my $opts = { psql => 'psql' };
+
+Getopt::Long::GetOptions(
+    'psql-bin|b=s'        => \$opts->{psql},
+    'dbname|d=s'          => \$opts->{dbname},
+    'username|U=s'        => \$opts->{username},
+    'host|h=s'            => \$opts->{host},
+    'port|p=s'            => \$opts->{port},
+    'timer|t'             => \$opts->{timer},
+    'verbose|v+'          => \$opts->{verbose},
+    'help|H'              => \$opts->{help},
+    'man|m'               => \$opts->{man},
+    'version|V'           => \$opts->{version},
+) or require Pod::Usage && Pod::Usage::pod2usage(2);
+
+if ( $opts->{help} or $opts->{man} ) {
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+        '-sections' => $opts->{man} ? '.+' : '(?i:(Usage|Options))',
+        '-verbose'  => 99,
+        '-exitval' => 0,
+    )
+}
+
+if ($opts->{version}) {
+    print 'pg_prove ', main->VERSION, $/;
+    exit;
+}
+
+my @command = ($opts->{psql});
+
+for (qw(username host port dbname)) {
+    push @command, "--$_" => $opts->{$_} if defined $opts->{$_}
+}
+
+push @command, qw(
+    --no-align
+    --tuples-only
+    --pset pager=
+    --pset null=[NULL]
+    --set ON_ERROR_STOP=1
+    --file
+);
+
+print join ' ', @command, $/;
+
+TAP::Harness->new({
+    verbosity => $opts->{verbose},
+    timer     => $opts->{timer},
+    exec      => \@command,
+})->runtests( @ARGV );
+
+__END__
+
+=head1 Name
+
+pg_prove - A command-line tool for running pgTAP tests against TAP::Harness
+
+=head1 Usage
+
+  pg_prove -d template1 test.sql
+
+=head1 Description
+
+C<pg_prove> is a command-line interface to the test-running functionality of
+L<TAP::Harness|TAP::Harness>. Shell metacharacters may be used with command
+lines options and will be exanded via "glob".
+
+The test scripts should be a series of SQL statements
+
+=head1 Options
+
+  -b --psql-bin PSQL       Location of the psql program.
+  -d --dbname DBNAME       Database to which to connect.
+  -U --username USERNAME   Username with which to connect.
+  -h --host HOST           Host to which to connect.
+  -p --port PORT           Port to which to connect.
+  -t --timer               Print elapsed time after each test file.
+  -v --verbose             Display output of test scripts while running them.
+  -h --help                Print a usage statement and exit.
+  -m --man                 Print the complete documentation and exit.
+  -v --version             Print the version number and exit.
+
+=head1 Options Details
+
+=over
+
+=item C<-b>
+
+=item C<--psql-bin>
+
+  pg_prove --psql-bin /usr/local/pgsql/bin/psql
+  pg_prove -b /usr/local/bin/psql
+
+Path to the C<psql> program, which will be used to actually run the tests.
+Defaults to "psql", which should work fine it if happens to be in your path.
+
+=item C<-d>
+
+=item C<--dbname>
+
+  pg_prove --dbname try
+  pg_prove -d postgres
+
+The name of database to which to connect. Defaults to be the same as the user
+name.
+
+=item C<-U>
+
+=item C<--username>
+
+  pg_prove --username foo
+  pg_prove -U postgres
+
+PostgreSQL user name to connect as. Defaults to be the same as the operating
+system name of the user running the application.
+
+=item C<-h>
+
+=item C<--host>
+
+  pg_prove --host pg.example.com
+  pg_prove -h dev.local
+
+Specifies the host name of the machine on which the server is running. If the
+value begins with a slash, it is used as the directory for the Unix-domain
+socket.
+
+=item C<-p>
+
+=item C<--port>
+
+  pg_prove --port 1234
+  pg_prove -p 666
+
+Specifies the TCP port or the local Unix-domain socket file extension on which
+the server is listening for connections. Defaults to the value of the
+C<$PGPORT> environment variable or, if not set, to the port specified at
+compile time, usually 5432.
+
+=item C<-t>
+
+=item C<--timer>
+
+  pg_prove --timer
+  pg_prove -t
+
+Print elapsed time after each test file.
+
+=item C<-H>
+
+=item C<--help>
+
+  pg_prove --help
+  pg_prove -h
+
+Outputs a brief description of the options supported by C<pg_prove> and exits.
+
+=item C<-m>
+
+=item C<--man>
+
+  pg_prove --man
+  pg_prove -m
+
+Outputs this documentation and exits.
+
+=item C<-v>
+
+=item C<--version>
+
+  pg_prove --version
+  pg_prove -v
+
+Outputs the program name and version and exits.
+
+=back
+
+=head1 Author
+
+David E. Wheeler <david@kineticode.com>
+
+=head1 Copyright
+
+Copyright (c) 2008 Kineticode, Inc. Some Rights Reserved.
+
+=cut

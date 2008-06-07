@@ -32,42 +32,42 @@ end. Here's an example:
     -- Load the TAP functions.
     \i pgtap.sql
 
-	 -- Plan the tests.
-	 SELECT plan(1);
+     -- Plan the tests.
+     SELECT plan(1);
 
-	 -- Run the tests.
-	 SELECT pass( 'My test passed, w00t!' );
+     -- Run the tests.
+     SELECT pass( 'My test passed, w00t!' );
 
-	 -- Finish the tests and clean up.
-	 SELECT * FROM finish();
-	 \i drop_pgtap.sql
+     -- Finish the tests and clean up.
+     SELECT * FROM finish();
+     \i drop_pgtap.sql
 
-Note that pgtap.sql sets up some variables to make things output from psql in
-a that a TAP parser can parse. If you're not using pgtap.sql, perhaps because
-you've installed pgTAP and can just use its functions, you'll still need to
-set up your test script to properly output TAP. Don't worry, this is easy.
-Just write your test script like so:
+Of course, if you already have the pgTAP functions in your testing database,
+you should skip running `pgtap.sql` at the beginning and `drop_pgtap.sql` at
+the end of the script.
 
-	  \set ON_ERROR_STOP 1
-	  \pset format unaligned
-	  \pset tuples_only
-	  \pset pager
-	  \pset null '[NULL]'
+Now you're ready to run your test script!
 
-	  -- Plan the tests.
-	  SELECT plan(1);
+    % psql -d try -AtP pager= -v ON_ERROR_STOP=1 -f test.sql
+    1..1
+    ok 1 - My test passed, w00t!
 
-	  -- Run the tests.
-	  SELECT pass( 'My test passed, w00t!' );
+You'll need to have all of those switches there to ensure that the output is
+proper TAP. Or you can specify them in the test file, like so:
 
-	  -- Finish the tests.
-	  SELECT * FROM finish();
+    \set ON_ERROR_STOP 1
+    \pset format unaligned
+    \pset tuples_only
+    \pset pager
 
-In either case, now you're ready to run your test script!
+Or save yourself some effort -- and run a batch of tests scripts at once -- by
+useing pg_prove:
 
-	  % psql try < test.sql
-	  1..1
-	  ok 1 - My test passed, w00t!
+    % ./pg_prove -d try test_*.sql
+    test........ok     
+    All tests successful.
+    Files=1, Tests=1,  0 wallclock secs ( 0.03 usr  0.00 sys +  0.02 cusr  0.01 csys =  0.06 CPU)
+    Result: PASS
 
 Yep, that's all there is to it.
 
@@ -96,7 +96,7 @@ There are rare cases when you will not know beforehand how many tests your
 script is going to run. In this case, you can declare that you have no plan.
 (Try to avoid using this as it weakens your test.)
 
-  SELECT no_plan();
+  SELECT * FROM no_plan();
 
 Often, though, you'll be able to calculate the number of tests, like so:
 
@@ -116,15 +116,15 @@ By convention, each test is assigned a number in order. This is largely done
 automatically for you. However, it's often very useful to assign a name to
 each test. Would you rather see this?
 
-	  ok 4
-	  not ok 5
-	  ok 6
+      ok 4
+      not ok 5
+      ok 6
 
 Or this?
 
-	  ok 4 - basic multi-variable
-	  not ok 5 - simple exponential
-	  ok 6 - force == mass * acceleration
+      ok 4 - basic multi-variable
+      not ok 5 - simple exponential
+      ok 6 - force == mass * acceleration
 
 The later gives you some idea of what failed. It also makes it easier to find
 the test in your script, simply search for "simple exponential".

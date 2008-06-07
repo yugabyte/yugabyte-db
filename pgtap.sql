@@ -1,11 +1,3 @@
-SET client_min_messages = warning;
-\set ON_ERROR_STOP 1
-\set AUTOCOMMIT off
-\pset format unaligned
-\pset tuples_only
-\pset pager
-\pset null '[NULL]'
-
 CREATE TEMP TABLE __tcache__ (
     label TEXT    NOT NULL,
     value integer NOT NULL
@@ -49,17 +41,25 @@ $$ LANGUAGE SQL strict;
 
 CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
 BEGIN
-    UPDATE __tcache__ SET value = $1 WHERE label = 'plan';
-    IF NOT FOUND THEN
-        INSERT INTO __tcache__ VALUES ( 'plan', $1 );
+    PERFORM TRUE FROM __tcache__ WHERE label = 'plan';
+    IF FOUND THEN
+        RAISE EXCEPTION 'You tried to plan twice!';
     END IF;
+    INSERT INTO __tcache__ VALUES ( 'plan', $1 );
     RETURN '1..' || $1;
 END;
 $$ LANGUAGE plpgsql strict;
 
-CREATE OR REPLACE FUNCTION no_plan( ) RETURNS TEXT AS $$
-    SELECT plan(0);
-$$ LANGUAGE SQL strict;
+CREATE OR REPLACE FUNCTION no_plan( ) RETURNS SETOF boolean AS $$
+BEGIN
+    PERFORM TRUE FROM __tcache__ WHERE label = 'plan';
+    IF FOUND THEN
+        RAISE EXCEPTION 'You tried to plan twice!';
+    END IF;
+    INSERT INTO __tcache__ VALUES ( 'plan', 0 );
+    RETURN;
+END;
+$$ LANGUAGE plpgsql strict;
 
 CREATE OR REPLACE FUNCTION finish () RETURNS SETOF TEXT AS $$
 DECLARE

@@ -3,12 +3,18 @@
 --
 --
 
+-- Keep things quiet.
+SET client_min_messages = warning;
+
 -- Load the TAP functions.
 \i pgtap.sql
-\set numb_tests 0
+\set numb_tests 78
 
--- Plan the tests.
+-- Set the test plan.
 SELECT plan(:numb_tests);
+
+-- Replace the internal record of the plan for a few tests.
+UPDATE  __tcache__ SET value = 3 WHERE label = 'plan';
 
 /****************************************************************************/
 -- Test pass().
@@ -38,15 +44,18 @@ SELECT is( num_failed(), 0, 'We should now have no failures' );
 -- Check diag.
 SELECT is( diag('foo'), '# foo', 'diag() should work properly' );
 SELECT is( diag(E'foo\nbar'), E'# foo\n# bar', 'multiline diag() should work properly' );
+SELECT is( diag(E'foo\n# bar'), E'# foo\n# # bar', 'multiline diag() should work properly with existing comments' );
 
 /****************************************************************************/
 -- Check no_plan.
-SELECT is ( no_plan(), '1..0', 'no_plan() should plan 0 tests' );
+DELETE FROM __tcache__ WHERE label = 'plan';
+SELECT * FROM no_plan();
 SELECT is( value, 0, 'no_plan() should have stored a plan of 0' )
   FROM __tcache__
  WHERE label = 'plan';
 
 -- Set the plan to a high number.
+DELETE FROM __tcache__ WHERE label = 'plan';
 SELECT is( plan(4000), '1..4000', 'Set the plan to 4000' );
 SELECT is(
     (SELECT * FROM finish() LIMIT 1),
@@ -55,6 +64,7 @@ SELECT is(
 );
 
 -- Set the plan to a low number.
+DELETE FROM __tcache__ WHERE label = 'plan';
 SELECT is( plan(4), '1..4', 'Set the plan to 4' );
 SELECT is(
     (SELECT * FROM finish() LIMIT 1),
@@ -63,6 +73,7 @@ SELECT is(
 );
 
 -- Reset the original plan.
+DELETE FROM __tcache__ WHERE label = 'plan';
 SELECT is( plan(:numb_tests), '1..' || :numb_tests, 'Reset the plan' );
 SELECT is( value, :numb_tests, 'plan() should have stored the test count' )
   FROM __tcache__
