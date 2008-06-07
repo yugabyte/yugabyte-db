@@ -10,16 +10,16 @@ Installation
 
 To install pgTAP into a PostgreSQL database, just do this:
 
-  psql dbname -f pgtap.sql
+    psql dbname -f pgtap.sql
 
 If you want pgTAP to be available to all new databases, install it into the
 template1 dtabase:
 
-  psql template1 -f pgtap.sql
+    psql template1 -f pgtap.sql
 
 If you want to remove pgTAP from a database, run the drop_pgtap.sql script:
 
-  psql dbname -f drop_pgtap.sql
+    psql dbname -f drop_pgtap.sql
 
 Running pgTAP Tests
 ===================
@@ -29,18 +29,18 @@ as a custom data type. For such a case, if your users want to run your test
 suite, just load the functions in your test.sql file and then drop them at the
 end. Here's an example:
 
-  -- Load the TAP functions.
-  \i pgtap.sql
+    -- Load the TAP functions.
+    \i pgtap.sql
 
-  -- Plan the tests.
-  SELECT plan(1);
+	 -- Plan the tests.
+	 SELECT plan(1);
 
-  -- Run the tests.
-  SELECT pass( 'My test passed, w00t!' );
+	 -- Run the tests.
+	 SELECT pass( 'My test passed, w00t!' );
 
-  -- Finish the tests and clean up.
-  SELECT * FROM finish();
-  \i drop_pgtap.sql
+	 -- Finish the tests and clean up.
+	 SELECT * FROM finish();
+	 \i drop_pgtap.sql
 
 Note that pgtap.sql sets up some variables to make things output from psql in
 a that a TAP parser can parse. If you're not using pgtap.sql, perhaps because
@@ -48,26 +48,26 @@ you've installed pgTAP and can just use its functions, you'll still need to
 set up your test script to properly output TAP. Don't worry, this is easy.
 Just write your test script like so:
 
-  \set ON_ERROR_STOP 1
-  \pset format unaligned
-  \pset tuples_only
-  \pset pager
-  \pset null '[NULL]'
+	  \set ON_ERROR_STOP 1
+	  \pset format unaligned
+	  \pset tuples_only
+	  \pset pager
+	  \pset null '[NULL]'
 
-  -- Plan the tests.
-  SELECT plan(1);
+	  -- Plan the tests.
+	  SELECT plan(1);
 
-  -- Run the tests.
-  SELECT pass( 'My test passed, w00t!' );
+	  -- Run the tests.
+	  SELECT pass( 'My test passed, w00t!' );
 
-  -- Finish the tests.
-  SELECT * FROM finish();
+	  -- Finish the tests.
+	  SELECT * FROM finish();
 
 In either case, now you're ready to run your test script!
 
-  % psql try < test.sql
-  1..1
-  ok 1 - My test passed, w00t!
+	  % psql try < test.sql
+	  1..1
+	  ok 1 - My test passed, w00t!
 
 Yep, that's all there is to it.
 
@@ -90,7 +90,7 @@ many tests your script is going to run to protect against premature failure.
 
 The preferred way to do this is to declare a plan by calling the plan() function:
 
-  SELECT plan( 42 );
+    SELECT plan( 42 );
 
 There are rare cases when you will not know beforehand how many tests your
 script is going to run. In this case, you can declare that you have no plan.
@@ -100,14 +100,14 @@ script is going to run. In this case, you can declare that you have no plan.
 
 Often, though, you'll be able to calculate the number of tests, like so:
 
-  SELECT plan( COUNT(*) )
-    FROM foo;
+    SELECT plan( COUNT(*) )
+      FROM foo;
 
 At the end of your script, you should always tell pgTAP that the tests have
 completed, so that it can output any diagnostics about failures or a
 discrepancy between the planned number of tests and the number actually run:
 
- SELECT * FROM finish ( );
+    SELECT * FROM finish ( );
 
 Test names
 ----------
@@ -116,15 +116,15 @@ By convention, each test is assigned a number in order. This is largely done
 automatically for you. However, it's often very useful to assign a name to
 each test. Would you rather see this?
 
-  ok 4
-  not ok 5
-  ok 6
+	  ok 4
+	  not ok 5
+	  ok 6
 
 Or this?
 
-  ok 4 - basic multi-variable
-  not ok 5 - simple exponential
-  ok 6 - force == mass * acceleration
+	  ok 4 - basic multi-variable
+	  not ok 5 - simple exponential
+	  ok 6 - force == mass * acceleration
 
 The later gives you some idea of what failed. It also makes it easier to find
 the test in your script, simply search for "simple exponential".
@@ -142,227 +142,225 @@ given test succeeded or failed. Everything else is just gravy.
 All of the following functions return "ok" or "not ok" depending on whether
 the test succeeded or failed.
 
-* ok ( boolean, text )
-* ok ( boolean )
+### ok ( boolean, text ) ###
+### ok ( boolean ) ###
 
-      SELECT ok( :this = :that, :test_name );
+    SELECT ok( :this = :that, :test_name );
   
-    This function simply evaluates any expression `:this = :that` is just a
-    simple example) and uses that to determine if the test succeeded or
-    failed. A true expression passes, a false one fails. Very simple.
+This function simply evaluates any expression `:this = :that` is just a
+simple example) and uses that to determine if the test succeeded or
+failed. A true expression passes, a false one fails. Very simple.
 
-    For example:
+For example:
 
-      SELECT ok( 9 ^ 2 = 81,   'simple exponential' );
-      SELECT ok( 9 < 10,       'simple comparison' );
-      SELECT ok( 'foo' ~ '^f', 'simple regex' );
-      SELECT ok( active = 1,   'widget active' )
-        FROM widgets;
+    SELECT ok( 9 ^ 2 = 81,   'simple exponential' );
+    SELECT ok( 9 < 10,       'simple comparison' );
+    SELECT ok( 'foo' ~ '^f', 'simple regex' );
+    SELECT ok( active = 1,   'widget active' )
+      FROM widgets;
 
-    (Mnemonic:  "This is ok.")
+(Mnemonic:  "This is ok.")
 
-    :test_name is a very short description of the test that will be printed
-    out. It makes it very easy to find a test in your script when it fails and
-    gives others an idea of your intentions. :test_name is optional, but we
-    *very* strongly encourage its use.
+:test_name is a very short description of the test that will be printed
+out. It makes it very easy to find a test in your script when it fails and
+gives others an idea of your intentions. :test_name is optional, but we
+*very* strongly encourage its use.
 
-    Should an ok() fail, it will produce some diagnostics:
+Should an ok() fail, it will produce some diagnostics:
 
-      not ok 18 - sufficient mucus
-      #     Failed test 18: "sufficient mucus"
+    not ok 18 - sufficient mucus
+    #     Failed test 18: "sufficient mucus"
 
-* is (anyelement, anyelement, text)
-* is (anyelement, anyelement )
-* isnt (anyelement, anyelement, text)
-* isnt (anyelement, anyelement )
+### is (anyelement, anyelement, text) ###
+### is (anyelement, anyelement ) ###
+### isnt (anyelement, anyelement, text) ###
+### isnt (anyelement, anyelement ) ###
 
-      SELECT is  ( :this, :that, $test_name );
-      SELECT isnt( :this, :that, $test_name );
+    SELECT is  ( :this, :that, $test_name );
+    SELECT isnt( :this, :that, $test_name );
 
-    Similar to ok(), is() and isnt() compare their two arguments with `=` and
-    `<>` respectively and use the result of that to determine if the test
-    succeeded or failed. So these:
+Similar to ok(), is() and isnt() compare their two arguments with `=` and
+`<>` respectively and use the result of that to determine if the test
+succeeded or failed. So these:
 
-      -- Is the ultimate answer 42?
-      SELECT is( ultimate_answer(), 42, 'Meaning of Life' );
+    -- Is the ultimate answer 42?
+    SELECT is( ultimate_answer(), 42, 'Meaning of Life' );
 
-      -- foo() doesn't return empty
-      SELECT isnt( foo(), '', 'Got some foo' );
+    -- foo() doesn't return empty
+    SELECT isnt( foo(), '', 'Got some foo' );
 
-    are similar to these:
+are similar to these:
 
-      SELECT ok(   ultimate_answer() =  42, 'Meaning of Life' );
-      SELECT isnt( foo()             <> '', 'Got some foo'    );
+    SELECT ok(   ultimate_answer() =  42, 'Meaning of Life' );
+    SELECT isnt( foo()             <> '', 'Got some foo'    );
 
-    (Mnemonic: "This is that." "This isn't that.")
+(Mnemonic: "This is that." "This isn't that.")
 
-    So why use these? They produce better diagnostics on failure. ok() cannot
-    know what you are testing for (beyond the name), but is() and isnt() know
-    what the test was and why it failed. For example this test:
+So why use these? They produce better diagnostics on failure. ok() cannot
+know what you are testing for (beyond the name), but is() and isnt() know
+what the test was and why it failed. For example this test:
 
-      \set foo '\'' waffle '\''
-      \set bar '\'' yarblokos '\''
-      SELECT is( :foo::text, :bar::text,   'Is foo the same as bar?' );
+    \set foo '\'' waffle '\''
+    \set bar '\'' yarblokos '\''
+    SELECT is( :foo::text, :bar::text,   'Is foo the same as bar?' );
 
-    Will produce something like this:
+Will produce something like this:
 
-      # Failed test 17:  "Is foo the same as bar?"
-      #          got: waffle
-      #     expected: yarblokos
+    # Failed test 17:  "Is foo the same as bar?"
+    #          got: waffle
+    #     expected: yarblokos
 
-    So you can figure out what went wrong without re-running the test.
+So you can figure out what went wrong without re-running the test.
 
-    You are encouraged to use is() and isnt() over ok() where possible,
-    however do not be tempted to use them to find out if something is true or
-    false!
+You are encouraged to use is() and isnt() over ok() where possible,
+however do not be tempted to use them to find out if something is true or
+false!
 
-      -- XXX BAD!
-      SELECT is( is_valid(9), TRUE, 'A tree grows in Brooklyn' );
+    -- XXX BAD!
+    SELECT is( is_valid(9), TRUE, 'A tree grows in Brooklyn' );
 
-    This does not check if `is_valid(9)` is true, it checks if it *returns*
-    TRUE. Very different. Similar caveats exist for FALSE. In these cases, use
-    ok().
+This does not check if `is_valid(9)` is true, it checks if it *returns*
+TRUE. Very different. Similar caveats exist for FALSE. In these cases, use
+ok().
 
-      SELECT ok( is_valid(9),       'A tree grows in Brooklyn' );
+    SELECT ok( is_valid(9),       'A tree grows in Brooklyn' );
 
-* matches ( anyelement, text, text )
-* matches ( anyelement, text )
+### matches ( anyelement, text, text ) ###
+### matches ( anyelement, text ) ###
 
-      SELECT matches( :this, '^that', :test_name );
+    SELECT matches( :this, '^that', :test_name );
 
-    Similar to ok(), matches() matches :this against the regex `/^that/`.
+Similar to ok(), matches() matches :this against the regex `/^that/`.
 
-    So this:
+So this:
 
-      SELECT matches( :this, '^that', 'this is like that' );
+    SELECT matches( :this, '^that', 'this is like that' );
 
-    is similar to:
+is similar to:
 
-      SELECT ok( :this ~ '^that', 'this is like that' );
+    SELECT ok( :this ~ '^that', 'this is like that' );
 
-    (Mnemonic "This matches that".)
+(Mnemonic "This matches that".)
 
-    Its advantages over ok() are similar to that of is() and isnt(): Better
-    diagnostics on failure.
+Its advantages over ok() are similar to that of is() and isnt(): Better
+diagnostics on failure.
 
-* imatches ( anyelement, text, text )
-* imatches ( anyelement, text )
+### imatches ( anyelement, text, text ) ###
+### imatches ( anyelement, text ) ###
 
-      SELECT imatches( :this, '^that', :test_name );
+    SELECT imatches( :this, '^that', :test_name );
 
-    These are just like matches() except that the regular expression is
-    case-insensitive.
+These are just like matches() except that the regular expression is
+case-insensitive.
 
-* doesnt_match ( anyelement, text, text )
-* doesnt_match ( anyelement, text )
-* doesnt_imatch ( anyelement, text, text )
-* doesnt_imatch ( anyelement, text )
+### doesnt_match ( anyelement, text, text ) ###
+### doesnt_match ( anyelement, text ) ###
+### doesnt_imatch ( anyelement, text, text ) ###
+### doesnt_imatch ( anyelement, text ) ###
 
-     SELECT doesnt_match( :this, '^that', :test_name );
+    SELECT doesnt_match( :this, '^that', :test_name );
 
-    These functions work exactly as matches() and imataches() do, only they
-    check if :this *does not* match the given pattern.
+These functions work exactly as matches() and imataches() do, only they
+check if :this *does not* match the given pattern.
 
-* alike ( anyelement, text, text )
-* alike ( anyelement, text )
-* ialike ( anyelement, text, text )
-* ialike ( anyelement, text )
+### alike ( anyelement, text, text ) ###
+### alike ( anyelement, text ) ###
+### ialike ( anyelement, text, text ) ###
+### ialike ( anyelement, text ) ###
 
-      SELECT alike( :this, 'that%', :test_name );
+    SELECT alike( :this, 'that%', :test_name );
 
-    Similar to ok(), alike() matches :this against the SQL LIKE pattern
-    'that%'. ialike() matches case-insensitively.
+Similar to ok(), alike() matches :this against the SQL LIKE pattern
+'that%'. ialike() matches case-insensitively.
 
-    So this:
+So this:
 
-      SELECT ialike( :this, 'that%', 'this is alike that' );
+    SELECT ialike( :this, 'that%', 'this is alike that' );
 
-    is similar to:
+is similar to:
 
-      SELECT ok( :this ILIKE 'that%', 'this is like that' );
+    SELECT ok( :this ILIKE 'that%', 'this is like that' );
 
-    (Mnemonic "This is like that".)
+(Mnemonic "This is like that".)
 
-    Its advantages over ok() are similar to that of is() and isnt(): Better
-    diagnostics on failure.
+Its advantages over ok() are similar to that of is() and isnt(): Better
+diagnostics on failure.
 
-* unalike ( anyelement, text, text )
-* unalike ( anyelement, text )
-* unialike ( anyelement, text, text )
-* unialike ( anyelement, text )
+### unalike ( anyelement, text, text ) ###
+### unalike ( anyelement, text ) ###
+### unialike ( anyelement, text, text ) ###
+### unialike ( anyelement, text ) ###
 
-      SELECT unalike( :this, 'that%', :test_name );
+    SELECT unalike( :this, 'that%', :test_name );
 
-    Works exactly as alike(), only it checks if :this *does not* match the
-    given pattern.
+Works exactly as alike(), only it checks if :this *does not* match the
+given pattern.
 
-* pass ( text )
-* pass ( )
-* fail ( text )
-* fail ( )
+### pass ( text ) ###
+### pass ( ) ###
+### fail ( text ) ###
+### fail ( ) ###
 
-      SELECT pass( :test_name );
-      SELECT fail( :test_name );
+    SELECT pass( :test_name );
+    SELECT fail( :test_name );
 
-    Sometimes you just want to say that the tests have passed. Usually the
-    case is you've got some complicated condition that is difficult to wedge
-    into an ok(). In this case, you can simply use pass() (to declare the test
-    ok) or fail() (for not ok). They are synonyms for ok(1) and ok(0).
+Sometimes you just want to say that the tests have passed. Usually the
+case is you've got some complicated condition that is difficult to wedge
+into an ok(). In this case, you can simply use pass() (to declare the test
+ok) or fail() (for not ok). They are synonyms for ok(1) and ok(0).
 
-    Use these functions very, very, very sparingly.
+Use these functions very, very, very sparingly.
 
-* throws_ok ( text, char(5), text )
-* throws_ok ( text, char(5) )
-* throws_ok ( text )
+### throws_ok ( text, char(5), text ) ###
+### throws_ok ( text, char(5) ) ###
+### throws_ok ( text ) ###
 
-      SELECT throws_ok(
-          'INSERT INTO try (id) VALUES (1)',
-          '23505',
-          'We should get a unique violation for a duplicate PK'
-      );
+    SELECT throws_ok(
+        'INSERT INTO try (id) VALUES (1)',
+        '23505',
+        'We should get a unique violation for a duplicate PK'
+    );
 
-    When you want to make sure that an exception is thrown by PostgreSQL under
-    certain circumstances, use throws_ok() to test for those circumstances.
+When you want to make sure that an exception is thrown by PostgreSQL under
+certain circumstances, use throws_ok() to test for those circumstances.
 
-    The first argument should be a string representing the query to be
-    executed. throws_ok() will use the PL/pgSQL `EXECUTE` statement to execute
-    it and catch any exception.
+The first argument should be a string representing the query to be
+executed. throws_ok() will use the PL/pgSQL `EXECUTE` statement to execute
+it and catch any exception.
 
-    The second argument should be an exception error code. If this value is
-    not NULL, throws_ok() will check the thrown exception to ensure that it is
-    the expected exception. For a complete list of error codes, see:
+The second argument should be an exception error code. If this value is
+not NULL, throws_ok() will check the thrown exception to ensure that it is
+the expected exception. For a complete list of error codes, see [Appendix A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html) in the [PostgreSQL documentation](http://www.postgresql.org/docs/current/static/).
 
-      http://www.postgresql.org/docs/current/static/errcodes-appendix.html
+The third argument is of course a brief test name.
 
-    The third argument is of course a brief test name.
+Should a throws_ok() test fail it produces appropriate diagnostic
+messages. For example:
 
-    Should a throws_ok() test fail it produces appropriate diagnostic
-    messages. For example:
+    not ok 81 - simple error
+    # Failed test "simple error"
+    #       caught: 23505: duplicate key value violates unique constraint "try_pkey"
+    #     expected: 23506
 
-      not ok 81 - simple error
-      # Failed test "simple error"
-      #       caught: 23505: duplicate key value violates unique constraint "try_pkey"
-      #     expected: 23506
+Idea borrowed from the Test::Exception Perl module.
 
-    Idea borrowed from the Test::Exception Perl module.
+### lives_ok ( text, text ) ###
+### lives_ok ( text ) ###
 
-* lives_ok ( text, text )
-* lives_ok ( text )
+    SELECT lives_ok(
+        'INSERT INTO try (id) VALUES (1)',
+        'We should not get a unique violation for a new PK'
+    );
 
-      SELECT lives_ok(
-          'INSERT INTO try (id) VALUES (1)',
-          'We should not get a unique violation for a new PK'
-      );
+The inverse of throws_ok(), these functions test to ensure that a SQL
+statement does *not* throw an exception. Should a lives_ok() test faile,
+it produces appropriate diagnostic messages. For example:
 
-    The inverse of throws_ok(), these functions test to ensure that a SQL
-    statement does *not* throw an exception. Should a lives_ok() test faile,
-    it produces appropriate diagnostic messages. For example:
+    not ok 85 - simple success
+    # Failed test "simple success"
+    #         died: 23505: duplicate key value violates unique constraint "try_pkey"
 
-      not ok 85 - simple success
-      # Failed test "simple success"
-      #         died: 23505: duplicate key value violates unique constraint "try_pkey"
-
-    Idea borrowed from the Test::Exception Perl module.
+Idea borrowed from the Test::Exception Perl module.
 
 Diagnostics
 -----------
@@ -372,26 +370,26 @@ went wrong when it failed. But sometimes it doesn't work out that way. So here
 we have ways for you to write your own diagnostic messages which are safer
 than just \echo.
 
-* diag ( text )
+### diag ( text ) ###
 
-    Returns a diagnostic message which is guaranteed not to interfere with
-    test output. Handy for this sort of thing:
+Returns a diagnostic message which is guaranteed not to interfere with
+test output. Handy for this sort of thing:
 
-      -- Output a diagnostic message if the collation is not en_US.UTF-8.
-      SELECT diag(
-           E'These tests expect LC_COLLATE to be en_US.UTF-8,\n'
-        || 'but yours is set to ' || setting || E'.\n'
-        || 'As a result, some tests may fail. YMMV.'
-      )
-        FROM pg_settings
-       WHERE name = 'lc_collate'
-         AND setting <> 'en_US.UTF-8';
+    -- Output a diagnostic message if the collation is not en_US.UTF-8.
+    SELECT diag(
+         E'These tests expect LC_COLLATE to be en_US.UTF-8,\n'
+      || 'but yours is set to ' || setting || E'.\n'
+      || 'As a result, some tests may fail. YMMV.'
+    )
+      FROM pg_settings
+     WHERE name = 'lc_collate'
+       AND setting <> 'en_US.UTF-8';
 
-    Which would produce:
+Which would produce:
 
-      # These tests expect LC_COLLATE to be en_US.UTF-8,
-      # but yours is set to en_US.UTF-8.
-      # As a result, some tests may fail. YMMV.
+    # These tests expect LC_COLLATE to be en_US.UTF-8,
+    # but yours is set to en_US.UTF-8.
+    # As a result, some tests may fail. YMMV.
 
 Suported Versions
 -----------------
@@ -401,7 +399,7 @@ pgTAP has been tested on the following builds of PostgreSQL:
 * PostgreSQL 8.3.1 on i386-apple-darwin9.2.2
 
 If you know of others, please submit them! Use
-psql template1 -c 'SELECT VERSION()' to get the formal build version and OS.
+`psql template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
 
 Author
 ------
@@ -423,7 +421,7 @@ documentation for any purpose, without fee, and without a written agreement is
 hereby granted, provided that the above copyright notice and this paragraph
 and the following two paragraphs appear in all copies.
 
-IN NO EVENT SHALL KINETICODE BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT,
+IN NO EVENT SHALL DAVID WHEELER BE LIABLE TO ANY PARTY FOR DIRECT, INDIRECT,
 SPECIAL, INCIDENTAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST PROFITS, ARISING
 OUT OF THE USE OF THIS SOFTWARE AND ITS DOCUMENTATION, EVEN IF KINETICODE HAS
 BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
@@ -433,4 +431,3 @@ TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
 PURPOSE. THE SOFTWARE PROVIDED HEREUNDER IS ON AN "AS IS" BASIS, AND
 KINETICODE HAS NO OBLIGATIONS TO PROVIDE MAINTENANCE, SUPPORT, UPDATES,
 ENHANCEMENTS, OR MODIFICATIONS.
-
