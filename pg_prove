@@ -55,7 +55,7 @@ push @command, qw(
 print join ' ', @command, $/;
 
 TAP::Harness->new({
-    verbosity => $opts->{verbose},
+    verbosity => $opts->{verbose} || $ENV{TEST_VERBOSE},
     timer     => $opts->{timer},
     exec      => \@command,
 })->runtests( @ARGV );
@@ -147,6 +147,14 @@ Specifies the TCP port or the local Unix-domain socket file extension on which
 the server is listening for connections. Defaults to the value of the
 C<$PGPORT> environment variable or, if not set, to the port specified at
 compile time, usually 5432.
+
+=item C<-v>
+
+=item C<--verbose>
+
+Display standard output of test scripts while running them. This behavior can
+also be triggered by setting the C<$TEST_VERBOSE> environment variable to a
+true value.
 
 =item C<-t>
 
