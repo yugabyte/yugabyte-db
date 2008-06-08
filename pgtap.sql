@@ -1,26 +1,57 @@
-CREATE TEMP TABLE __tcache__ (
-    label TEXT    NOT NULL,
-    value integer NOT NULL
-);
+CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
+BEGIN
+    BEGIN
+    EXECUTE '
+    CREATE TEMP TABLE __tcache__ (
+        label TEXT    NOT NULL,
+        value integer NOT NULL
+    );
 
-CREATE TEMP TABLE __tresults__ (
-    numb   SERIAL           PRIMARY KEY,
-    ok     BOOLEAN NOT NULL DEFAULT TRUE,
-    aok    BOOLEAN NOT NULL DEFAULT TRUE,
-    descr  TEXT    NOT NULL DEFAULT '',
-    type   TEXT    NOT NULL DEFAULT '',
-    reason TEXT    NOT NULL DEFAULT ''
-);
+    CREATE TEMP TABLE __tresults__ (
+        numb   SERIAL           PRIMARY KEY,
+        ok     BOOLEAN NOT NULL DEFAULT TRUE,
+        aok    BOOLEAN NOT NULL DEFAULT TRUE,
+        descr  TEXT    NOT NULL DEFAULT '''',
+        type   TEXT    NOT NULL DEFAULT '''',
+        reason TEXT    NOT NULL DEFAULT ''''
+    );
+    ';
+
+    EXCEPTION WHEN duplicate_table THEN
+        -- Raise an exception if there's already a plan.
+        EXECUTE 'SELECT TRUE FROM __tcache__ WHERE label = ''plan''';
+        IF FOUND THEN
+           RAISE EXCEPTION 'You tried to plan twice!';
+        END IF;
+    END;
+
+    -- Save the plan and return.
+    EXECUTE 'INSERT INTO __tcache__ VALUES ( ''plan'', ' || $1 || ' )';
+    RETURN '1..' || $1;
+END;
+$$ LANGUAGE plpgsql strict;
+
+CREATE OR REPLACE FUNCTION no_plan( ) RETURNS SETOF boolean AS $$
+BEGIN
+    PERFORM plan(0);
+    RETURN;
+END;
+$$ LANGUAGE plpgsql strict;
 
 CREATE OR REPLACE FUNCTION _get ( text ) RETURNS integer AS $$
-    SELECT value FROM __tcache__ WHERE label = $1 LIMIT 1;
-$$ LANGUAGE SQL strict;
+DECLARE
+    ret integer;
+BEGIN
+    EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
+    RETURN ret;
+END;
+$$ LANGUAGE plpgsql strict;
 
 CREATE OR REPLACE FUNCTION _set ( text, integer ) RETURNS integer AS $$
 BEGIN
-    UPDATE __tcache__ SET value = $2 WHERE label = $1;
+    EXECUTE 'UPDATE __tcache__ SET value = ' || $2  || ' WHERE label = ' || quote_literal($1);
     IF NOT FOUND THEN
-        INSERT INTO __tcache__ values ($1, $2);
+        EXECUTE 'INSERT INTO __tcache__ values (' || quote_literal($1) || ', ' || $2 || ')';
     END IF;
     RETURN $2;
 END;
@@ -29,35 +60,19 @@ $$ LANGUAGE plpgsql strict;
 CREATE OR REPLACE FUNCTION add_result ( boolean, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
-    INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
-    VALUES( $1, $2, COALESCE($3, ''), $4, $5 );
+    EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
+    VALUES( ' || $1 || ', ' || $2 || ', ' || COALESCE(quote_literal($3), '''''') || ', '
+          || quote_literal($4) || ', ' || quote_literal($5) || ' )';
     RETURN lastval();
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION num_failed () RETURNS INTEGER AS $$
-    SELECT COUNT(*)::INTEGER FROM __tresults__ WHERE ok = FALSE;
-$$ LANGUAGE SQL strict;
-
-CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
+DECLARE
+    ret integer;
 BEGIN
-    PERFORM TRUE FROM __tcache__ WHERE label = 'plan';
-    IF FOUND THEN
-        RAISE EXCEPTION 'You tried to plan twice!';
-    END IF;
-    INSERT INTO __tcache__ VALUES ( 'plan', $1 );
-    RETURN '1..' || $1;
-END;
-$$ LANGUAGE plpgsql strict;
-
-CREATE OR REPLACE FUNCTION no_plan( ) RETURNS SETOF boolean AS $$
-BEGIN
-    PERFORM TRUE FROM __tcache__ WHERE label = 'plan';
-    IF FOUND THEN
-        RAISE EXCEPTION 'You tried to plan twice!';
-    END IF;
-    INSERT INTO __tcache__ VALUES ( 'plan', 0 );
-    RETURN;
+    EXECUTE 'SELECT COUNT(*)::INTEGER FROM __tresults__ WHERE ok = FALSE' INTO ret;
+    RETURN ret;
 END;
 $$ LANGUAGE plpgsql strict;
 
