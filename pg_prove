@@ -37,6 +37,16 @@ if ($opts->{version}) {
     exit;
 }
 
+unless (@ARGV) {
+    require Pod::Usage;
+    Pod::Usage::pod2usage(
+        '-message'  => "\nOops! You didn't say what test scripts to run.\n",
+        '-sections' => '(?i:(Usage|Options))',
+        '-verbose'  => 99,
+        '-exitval' => 1,
+    )
+}
+
 my @command = ($opts->{psql});
 
 for (qw(username host port dbname)) {
@@ -68,7 +78,7 @@ pg_prove - A command-line tool for running pgTAP tests against TAP::Harness
 
 =head1 Usage
 
-  pg_prove -d template1 test.sql
+  pg_prove -d template1 test*.sql
 
 =head1 Description
 
