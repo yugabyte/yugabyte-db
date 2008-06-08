@@ -7,6 +7,7 @@
 SET client_min_messages = warning;
 
 -- Load the TAP functions.
+BEGIN;
 \i pgtap.sql
 \set numb_tests 78
 
@@ -223,4 +224,5 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 77 );
 
 -- Finish the tests and clean up.
 SELECT * FROM finish();
-\i drop_pgtap.sql
+ROLLBACK;
+

@@ -48,7 +48,7 @@ push @command, qw(
     --tuples-only
     --pset pager=
     --pset null=[NULL]
-    --set ON_ERROR_STOP=1
+    --set ON_ERROR_ROLLBACK=1
     --file
 );
 

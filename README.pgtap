@@ -24,12 +24,13 @@ If you want to remove pgTAP from a database, run the drop_pgtap.sql script:
 Running pgTAP Tests
 ===================
 
-You can also distribute these two files with any PostgreSQL distribution, such
-as a custom data type. For such a case, if your users want to run your test
-suite, just load the functions in your test.sql file and then drop them at the
-end. Here's an example:
+You can also distribute pgtap.sql with any PostgreSQL distribution, such as a
+custom data type. For such a case, if your users want to run your test suite,
+just be sure to start a transaction, load the functions in your test.sql file,
+and then rollback the transaction at the end of the script. Here's an example:
 
     -- Load the TAP functions.
+    BEGIN;
     \i pgtap.sql
 
      -- Plan the tests.
@@ -40,7 +41,7 @@ end. Here's an example:
 
      -- Finish the tests and clean up.
      SELECT * FROM finish();
-     \i drop_pgtap.sql
+     ROLLBACK;
 
 Of course, if you already have the pgTAP functions in your testing database,
 you should skip running `pgtap.sql` at the beginning and `drop_pgtap.sql` at
@@ -48,14 +49,16 @@ the end of the script.
 
 Now you're ready to run your test script!
 
-    % psql -d try -AtP pager= -v ON_ERROR_STOP=1 -f test.sql
+    % psql -d try -AtP pager= -v ON_ERROR_ROLLBACK=1 -f test.sql
     1..1
     ok 1 - My test passed, w00t!
 
 You'll need to have all of those switches there to ensure that the output is
-proper TAP. Or you can specify them in the test file, like so:
+proper TAP and that all changed are reversed -- including the loading of the
+test functions -- in the event of an uncaught exception. Or you can specify
+them in the test file, like so:
 
-    \set ON_ERROR_STOP 1
+    \set ON_ERROR_ROLBACK 1
     \pset format unaligned
     \pset tuples_only
     \pset pager
