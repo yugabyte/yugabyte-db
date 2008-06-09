@@ -92,8 +92,7 @@ and then rollback the transaction at the end of the script. Here's an example:
      ROLLBACK;
 
 Of course, if you already have the pgTAP functions in your testing database,
-you should skip running `pgtap.sql` at the beginning and `drop_pgtap.sql` at
-the end of the script.
+you should skip `\i pgtap.sql` at the beginning of the script.
 
 Now you're ready to run your test script!
 
@@ -102,7 +101,7 @@ Now you're ready to run your test script!
     ok 1 - My test passed, w00t!
 
 You'll need to have all of those switches there to ensure that the output is
-proper TAP and that all changed are reversed -- including the loading of the
+proper TAP and that all changes are reversed -- including the loading of the
 test functions -- in the event of an uncaught exception. Or you can specify
 them in the test file, like so:
 
@@ -112,7 +111,7 @@ them in the test file, like so:
     \pset pager
 
 Or save yourself some effort -- and run a batch of tests scripts at once -- by
-useing pg_prove:
+using pg_prove:
 
     % ./pg_prove -d try test_*.sql
     test........ok     
