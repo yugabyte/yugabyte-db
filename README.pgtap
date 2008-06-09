@@ -8,7 +8,28 @@ Perl 5. You could even consider it a port of sorts.
 Installation
 ============
 
-To install pgTAP into a PostgreSQL database, just do this:
+For the impatient, to install pgTAP into a PostgreSQL database, just do this:
+
+    make
+    make test
+    make install
+
+If you want to schema-qualify pgTAP (that is, install all of its functions
+into their own schema), set the $TAPSCHEMA environment variable to the name
+of the schema you'd like, for example:
+
+    make TAPSCHEMA=tap
+
+The test target uses the included pg_prove script to do its testing. It
+supports a number of environment variables that you might need to use,
+including all the usual PostgreSQL client environment varibles:
+
+* PGDATABASE
+* PGHOST
+* PGPORT
+* PGUSER
+
+Once pgTAP habe been built and tested, you can install it into a database:
 
     psql dbname -f pgtap.sql
 
