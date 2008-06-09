@@ -1,8 +1,9 @@
 DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = pg_prove
-TAPTEST = test.sql
-EXTRA_CLEAN = $(TAPTEST) sql
+TAPTEST = sql/taptest.sql
+REGRESS = pgtap
+EXTRA_CLEAN = sql/$(REGRESS).sql
 
 top_builddir = ../..
 in_contrib = $(wildcard $(top_builddir)/src/Makefile.global);
@@ -18,7 +19,7 @@ else
 	include $(PGXS)
 endif
 
-all: $(DATA_built) $(TAPTEST) $(SCRIPTS)
+all: $(DATA_built) $(TAPTEST) $(SCRIPTS) cptest
 
 # Override how .sql targets are processed to add the schema info, if
 # necessary. Otherwise just copy the files.
@@ -28,6 +29,9 @@ ifdef TAPSCHEMA
 else
 	cp $< $@
 endif
+
+cptest:
+	sed -e 's/^-- !! //g' $(TAPTEST) > sql/$(REGRESS).sql
 
 test:
 	./pg_prove $(TAPTEST)

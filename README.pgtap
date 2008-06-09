@@ -13,6 +13,33 @@ For the impatient, to install pgTAP into a PostgreSQL database, just do this:
     make
     make test
     make install
+    make installcheck
+
+If you encounter an error such as:
+
+  "Makefile", line 8: Need an operator
+
+You need to use GNU make, which may well be installed on your system as
+'gmake':
+
+    gmake
+    gmake test
+    gmake install
+    gmake installcheck
+
+If you encounter an error such as:
+
+  make: pg_config: Command not found
+
+Be sure that you have pg_config installed and in your path. If you used a
+package management system such as RPM to install PostgreSQL, be sure that the
+-devel package is also installed. If necessary, add the path to pg_config to
+your $PATH environment variable:
+
+  env PATH=$PATH:/path/to/pgsql/bin make && make test && make install
+
+And finally, if all that fails, copy the entire distribution directory to the
+'contrib' subdirectory of the PostgreSQL source code and try it there.
 
 If you want to schema-qualify pgTAP (that is, install all of its functions
 into their own schema), set the $TAPSCHEMA environment variable to the name

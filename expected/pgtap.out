@@ -1,0 +1,81 @@
+-- These are here for the usual PostgreSQL regression tests to use.
+\set ECHO
+1..78
+ok 1 - My pass() passed, w00t!
+ok 2 - Testing fail()
+ok 3 - We should get the proper output from fail()
+ok 4 - The output of finish() should reflect the test failure
+ok 5 - We should have one failure
+ok 6 - We should now have no failures
+ok 7 - diag() should work properly
+ok 8 - multiline diag() should work properly
+ok 9 - multiline diag() should work properly with existing comments
+ok 10 - no_plan() should have stored a plan of 0
+ok 11 - Set the plan to 4000
+ok 12 - The output of finish() should reflect a high test plan
+ok 13 - Set the plan to 4
+ok 14 - The output of finish() should reflect a low test plan
+ok 15 - Reset the plan
+ok 16 - plan() should have stored the test count
+ok 17 - ok() success
+ok 18 - ok(true) should work
+ok 19 - ok() success 2
+ok 20 - ok(true, '') should work
+ok 21 - ok() success 3
+ok 22 - ok(true, 'foo') should work
+ok 23 - ok() failure
+ok 24 - ok(false) should work
+ok 25 - ok() failure 2
+ok 26 - ok(false, '') should work
+ok 27 - ok() failure 3
+ok 28 - ok(false, 'foo') should work
+ok 29 - is() success
+ok 30 - isa(1, 1) should work
+ok 31 - is() success 2
+ok 32 - is('x', 'x') should work
+ok 33 - is() success 3
+ok 34 - is(1.1, 1.10) should work
+ok 35 - is() success 4
+ok 36 - is(1.1, 1.10) should work
+ok 37 - is() success 5
+ok 38 - is(true, true) should work
+ok 39 - is() success 6
+ok 40 - is(false, false) should work
+ok 41 - is() success 7
+ok 42 - is(1, 1, 'foo') should work
+ok 43 - is() failure
+ok 44 - is(1, 2) should work
+ok 45 - isnt() success
+ok 46 - isnt(1, 2) should work
+ok 47 - isnt() failure
+ok 48 - is(1, 2) should work
+ok 49 - is() should work with psql variables
+ok 50 - matches() should work
+ok 51 - matches() should work with a regex
+ok 52 - imatches() should work with a regex
+ok 53 - matches() failure
+ok 54 - Check matches diagnostics
+ok 55 - doesnt_match() should work
+ok 56 - doesnt_match() should work with a regex
+ok 57 - doesnt_imatch() should work with a regex
+ok 58 - doesnt_match() failure
+ok 59 - doesnt_match() should work
+ok 60 - alike() should work
+ok 61 - alike() should work with a regex
+ok 62 - ialike() should work with a regex
+ok 63 - alike() failure
+ok 64 - Check alike diagnostics
+ok 65 - unalike() should work
+ok 66 - unalike() should work with a regex
+ok 67 - iunalike() should work with a regex
+ok 68 - unalike() failure
+ok 69 - Check unalike diagnostics
+ok 70 - throws_ok(1/0) should work
+ok 71 - throws_ok failure diagnostics
+ok 72 - We should get the proper diagnostics from throws_ok()
+ok 73 - throws_ok(1/0, NULL) should work
+ok 74 - throws_ok failure diagnostics
+ok 75 - We should get the proper diagnostics from throws_ok() with a NULL error code
+ok 76 - lives_ok() should work
+ok 77 - lives_ok failure diagnostics
+ok 78 - We should get the proper diagnostics for a lives_ok() failure
