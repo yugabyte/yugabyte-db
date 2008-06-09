@@ -21,6 +21,8 @@ endif
 # I would really prefer to just add TAPTEST to the default...
 all: $(PROGRAM) $(DATA_built) $(TAPTEST) $(SCRIPTS_built) $(addsuffix $(DLSUFFIX), $(MODULES))
 
+# Override how .sql targets are processed to add the schema info, if
+# necessary. Otherwise just copy the files.
 %.sql: %.sql.in
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
