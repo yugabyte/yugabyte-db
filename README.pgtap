@@ -69,6 +69,12 @@ If you want to remove pgTAP from a database, run the drop_pgtap.sql script:
 
     psql dbname -f drop_pgtap.sql
 
+Both scripts will also be installed in the "contrib" directory under the
+directory output by `pg_config --sharedir`. So you can always do this,
+as well:
+
+    psql template1 -f `pg_config --sharedir`/contrib/pgtap.sql
+
 Running pgTAP Tests
 ===================
 
