@@ -1,4 +1,4 @@
-pgTAP 0.01
+pgTAP 0.02
 ==========
 
 pgTAP is a collection of TAP-emitting unit testing functions written in
@@ -34,15 +34,15 @@ If you encounter an error such as:
 Be sure that you have pg_config installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
 -devel package is also installed. If necessary, add the path to pg_config to
-your $PATH environment variable:
+your `$PATH` environment variable:
 
   env PATH=$PATH:/path/to/pgsql/bin make && make test && make install
 
 And finally, if all that fails, copy the entire distribution directory to the
-'contrib' subdirectory of the PostgreSQL source code and try it there.
+`contrib/` subdirectory of the PostgreSQL source code and try it there.
 
 If you want to schema-qualify pgTAP (that is, install all of its functions
-into their own schema), set the $TAPSCHEMA environment variable to the name
+into their own schema), set the `$TAPSCHEMA` environment variable to the name
 of the schema you'd like, for example:
 
     make TAPSCHEMA=tap
@@ -74,6 +74,9 @@ directory output by `pg_config --sharedir`. So you can always do this,
 as well:
 
     psql template1 -f `pg_config --sharedir`/contrib/pgtap.sql
+
+But do be aware that, if you've specified a schema using `$TAPSCHEMA`, it will
+always be created and the functions placed in it.
 
 Running pgTAP Tests
 ===================
@@ -446,6 +449,13 @@ Which would produce:
     # These tests expect LC_COLLATE to be en_US.UTF-8,
     # but yours is set to en_US.UTF-8.
     # As a result, some tests may fail. YMMV.
+
+To Do
+-----
+
+* Update the Makefile to process pg_prove and set the proper path to Perl on
+  the shebang line. Will likely require a `$(PERL)` environment variable.
+* Add a test function to test test functions.
 
 Suported Versions
 -----------------
