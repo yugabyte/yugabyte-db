@@ -455,7 +455,9 @@ To Do
 
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
-* Add a test function to test test functions.
+* Update Makefile to require TAP::Harness.
+* Add a test function to test test functions and update the test script to
+  use it.
 
 Suported Versions
 -----------------

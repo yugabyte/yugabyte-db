@@ -1,4 +1,37 @@
 Revision history for pgTAP
 
-0.01  
-      - Initial public release.
+0.02
+      - Converted the documentation to Markdown.
+      - Added pg_prove, a Perl script that use TAP::Harness to run tests and
+        report the results, juse like the Perl program `prove`.
+      - Fixed `no_plan()` so that it no longer emits a plan, which apparently
+        was wrong.
+      - Fixed the test script so that it now emits a proper plan.
+      - Removed all of the configuration settings from `pgtap.sql`, as they're
+        now handled by `pg_prove`. I've mengioned them in the README for
+        reference.
+      - Added `lives_ok()`.
+      - Moved the creation of temporary tables into `plan()`, so that
+        everything is properly self-contained.
+      - Improved the handling of transactions. Test scripts are now assumed to
+        be single transactions with a ROLLBACK at the end. This makes it so
+        that test scripts don't have to include `drop_pgtap.sql`.
+      - Updated `pg_prove` to rollback on an error, rather than just stop.
+        This allows all test functions to be properly rolled back, too, in a
+        test script that includes them but then encounters an unhandled
+        exception.
+      - Updated `pg_prove` to emit an appropriate error message if no test
+        scripts are specified.
+      - Added a Makefile. It uses the typical PostgreSQL installation
+        procedures to install pgTAP. The SQL files have now been turned into
+        `.in` templates that are processed by `make`.
+      - Added support for schema qualification of test functions. Just set the
+        `$TAPSCHEMA` environment variable when running `make`.
+      - Added support for standard PostgreSQL-type regression testing by just
+        copying the test script, setting some variables inside it, and
+        providing an `expected/` directory. The test now lives in the `sql/`
+        directory.
+
+0.01  2008-06-07T05:24:27
+      - Initial public release. Announcement at
+        http://justatheory.com/computers/databases/postgresql/introducing_pgtap.html
