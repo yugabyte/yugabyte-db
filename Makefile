@@ -1,6 +1,8 @@
 DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = pg_prove
+TAPTEST = test.sql
+EXTRA_CLEAN = $(TAPTEST)
 
 top_builddir = ../..
 in_contrib = $(wildcard $(top_builddir)/src/Makefile.global);
@@ -16,8 +18,15 @@ else
 	include $(PGXS)
 endif
 
+# I would really prefer to just add TAPTEST to the default...
+all: $(PROGRAM) $(DATA_built) $(TAPTEST) $(SCRIPTS_built) $(addsuffix $(DLSUFFIX), $(MODULES))
+
 %.sql: %.sql.in
-	sed 's,MODULE_PATHNAME,$$libdir/$*,g' $< >$@
+ifdef TAPSCHEMA
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
+else
+	cp $< $@
+endif
 
 test:
-	./pg_prove *test.sql
+	./pg_prove $(TAPTEST)

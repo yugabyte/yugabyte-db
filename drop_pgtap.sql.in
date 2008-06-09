@@ -38,3 +38,4 @@ DROP FUNCTION num_failed ();
 DROP FUNCTION add_result ( boolean, bool, text, text, text );
 DROP FUNCTION _set ( text, integer );
 DROP FUNCTION _get ( text );
+-- ## DROP SCHEMA TAPSCHEMA;

@@ -1,5 +1,5 @@
--- CREATE SCHEMA tap;
--- SET search_path TO tap,public;
+-- ## CREATE SCHEMA TAPSCHEMA;
+-- ## SET search_path TO TAPSCHEMA,public;
 
 CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
 BEGIN
