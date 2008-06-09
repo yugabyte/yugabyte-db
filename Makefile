@@ -2,7 +2,7 @@ DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = pg_prove
 TAPTEST = test.sql
-EXTRA_CLEAN = $(TAPTEST)
+EXTRA_CLEAN = $(TAPTEST) sql
 
 top_builddir = ../..
 in_contrib = $(wildcard $(top_builddir)/src/Makefile.global);
@@ -18,8 +18,7 @@ else
 	include $(PGXS)
 endif
 
-# I would really prefer to just add TAPTEST to the default...
-all: $(PROGRAM) $(DATA_built) $(TAPTEST) $(SCRIPTS_built) $(addsuffix $(DLSUFFIX), $(MODULES))
+all: $(DATA_built) $(TAPTEST) $(SCRIPTS)
 
 # Override how .sql targets are processed to add the schema info, if
 # necessary. Otherwise just copy the files.
