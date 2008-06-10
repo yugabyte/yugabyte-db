@@ -1,17 +1,24 @@
 \set ECHO
-\set ON_ERROR_ROLBACK 1
-\pset format unaligned
-\pset tuples_only true
-\pset pager
--- !! CREATE LANGUAGE plpgsql;
 
 --
 -- Tests for pgTAP.
 --
 --
 
+-- Format the output for nice TAP.
+\pset format unaligned
+\pset tuples_only true
+\pset pager
+
+-- Create plpgsql if it's not already there.
+SET client_min_messages = fatal;
+CREATE LANGUAGE plpgsql;
+
 -- Keep things quiet.
 SET client_min_messages = warning;
+
+-- Revert all changes on failure.
+\set ON_ERROR_ROLBACK 1
 
 -- Load the TAP functions.
 BEGIN;
