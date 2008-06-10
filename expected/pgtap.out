@@ -1,4 +1,3 @@
--- These are here for the usual PostgreSQL regression tests to use.
 \set ECHO
 1..78
 ok 1 - My pass() passed, w00t!

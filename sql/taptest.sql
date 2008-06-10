@@ -1,10 +1,10 @@
--- These are here for the usual PostgreSQL regression tests to use.
--- !! \set ECHO
--- !! \set ON_ERROR_ROLBACK 1
--- !! \pset format unaligned
--- !! \pset tuples_only
--- !! \pset pager
+\set ECHO
+\set ON_ERROR_ROLBACK 1
+\pset format unaligned
+\pset tuples_only true
+\pset pager
 -- !! CREATE LANGUAGE plpgsql;
+
 --
 -- Tests for pgTAP.
 --
