@@ -31,6 +31,9 @@ Revision history for pgTAP
         copying the test script, setting some variables inside it, and
         providing an `expected/` directory. The test now lives in the `sql/`
         directory.
+      - Changed all instances of `RETURN QUERY SELECT` to `RETURN NEXT`, which
+        should allow pgtap to run on versions of PostgreSQL earlier than 8.3.
+        Thanks to Niel Conway for the suggestion.
 
 0.01  2008-06-07T05:24:27
       - Initial public release. Announcement at
