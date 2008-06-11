@@ -8,7 +8,7 @@ our $VERSION = '0.02';
 
 Getopt::Long::Configure (qw(bundling));
 
-my $opts = { psql => 'psql' };
+my $opts = { psql => 'psql', color => 1 };
 
 Getopt::Long::GetOptions(
     'psql-bin|b=s'        => \$opts->{psql},
@@ -17,6 +17,7 @@ Getopt::Long::GetOptions(
     'host|h=s'            => \$opts->{host},
     'port|p=s'            => \$opts->{port},
     'timer|t'             => \$opts->{timer},
+    'color|c!'            => \$opts->{color},
     'verbose|v+'          => \$opts->{verbose},
     'help|H'              => \$opts->{help},
     'man|m'               => \$opts->{man},
@@ -67,6 +68,7 @@ print join ' ', @command, $/;
 TAP::Harness->new({
     verbosity => $opts->{verbose} || $ENV{TEST_VERBOSE},
     timer     => $opts->{timer},
+    color     => $opts->{color},
     exec      => \@command,
 })->runtests( @ARGV );
 
@@ -96,6 +98,8 @@ The test scripts should be a series of SQL statements
   -h --host HOST           Host to which to connect.
   -p --port PORT           Port to which to connect.
   -t --timer               Print elapsed time after each test file.
+  -c --color               Display colored test ouput.
+     --nocolor             Do not display colored test ouput.
   -v --verbose             Display output of test scripts while running them.
   -h --help                Print a usage statement and exit.
   -m --man                 Print the complete documentation and exit.
@@ -174,6 +178,24 @@ true value.
   pg_prove -t
 
 Print elapsed time after each test file.
+
+=item C<-t>
+
+=item C<--color>
+
+  pg_prove --color
+  pg_prove -c
+
+Display test results in color. Colored test output is the default, but if
+output is not to a terminal, color is disabled.
+
+Requires L<Term::ANSIColor|Term::ANSIColor> on Unix‐like platforms and
+L<Win32::Console|Win32::Console> on Windows. If the necessary module is not
+installed colored output will not be available.
+
+=item C<--nocolor>
+
+Do not display test results in color.
 
 =item C<-H>
 
