@@ -5,7 +5,7 @@ Revision history for pgTAP
       - Added pg_prove, a Perl script that use TAP::Harness to run tests and
         report the results, juse like the Perl program `prove`.
       - Fixed `no_plan()` so that it no longer emits a plan, which apparently
-        was wrong.
+        was wrong. Now `finish()` outputs it when there's no plan.
       - Fixed the test script so that it now emits a proper plan.
       - Removed all of the configuration settings from `pgtap.sql`, as they're
         now handled by `pg_prove`. I've mengioned them in the README for

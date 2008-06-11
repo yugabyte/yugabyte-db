@@ -92,8 +92,9 @@ BEGIN
    END IF;
 
    IF exp_tests = 0 THEN
-        -- No plan.
+        -- No plan. Output one now.
        exp_tests = curr_test;
+       RETURN NEXT '1..' || exp_tests;
    END IF;
 
    IF curr_test < exp_tests THEN
