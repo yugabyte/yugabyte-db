@@ -55,6 +55,7 @@ for (qw(username host port dbname)) {
 }
 
 push @command, qw(
+    --no-psqlrc
     --no-align
     --tuples-only
     --pset pager=
