@@ -1,5 +1,7 @@
 Revision history for pgTAP
 
+0.03
+
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
       - Added pg_prove, a Perl script that use TAP::Harness to run tests and
