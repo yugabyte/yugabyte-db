@@ -61,6 +61,7 @@ push @command, qw(
     --pset pager=
     --pset null=[NULL]
     --set ON_ERROR_ROLLBACK=1
+    --set QUIET=1
     --file
 );
 

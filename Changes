@@ -1,6 +1,8 @@
 Revision history for pgTAP
 
 0.03
+      - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
+        output of extraneous stuff.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
