@@ -1,7 +1,7 @@
 -- ## CREATE SCHEMA TAPSCHEMA;
 -- ## SET search_path TO TAPSCHEMA,public;
 
-CREATE OR REPLACE FUNCTION pgtap.plan( integer ) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
 BEGIN
     BEGIN
     EXECUTE '
