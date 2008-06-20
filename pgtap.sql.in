@@ -1,7 +1,7 @@
 -- ## CREATE SCHEMA TAPSCHEMA;
 -- ## SET search_path TO TAPSCHEMA,public;
 
-CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION pgtap.plan( integer ) RETURNS TEXT AS $$
 BEGIN
     BEGIN
     EXECUTE '
@@ -9,6 +9,7 @@ BEGIN
         label TEXT    NOT NULL,
         value integer NOT NULL
     );
+    GRANT ALL ON TABLE __tcache__ TO PUBLIC;
 
     CREATE TEMP TABLE __tresults__ (
         numb   SERIAL           PRIMARY KEY,
@@ -18,6 +19,8 @@ BEGIN
         type   TEXT    NOT NULL DEFAULT '''',
         reason TEXT    NOT NULL DEFAULT ''''
     );
+    GRANT ALL ON TABLE __tresults__ TO PUBLIC;
+    GRANT ALL ON SEQUENCE __tresults___numb_seq TO PUBLIC;
     ';
 
     EXCEPTION WHEN duplicate_table THEN
