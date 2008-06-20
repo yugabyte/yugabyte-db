@@ -166,7 +166,7 @@ At the end of your script, you should always tell pgTAP that the tests have
 completed, so that it can output any diagnostics about failures or a
 discrepancy between the planned number of tests and the number actually run:
 
-    SELECT * FROM finish ( );
+    SELECT * FROM finish();
 
 Test names
 ----------
@@ -201,8 +201,8 @@ given test succeeded or failed. Everything else is just gravy.
 All of the following functions return "ok" or "not ok" depending on whether
 the test succeeded or failed.
 
-### ok ( boolean, text ) ###
-### ok ( boolean ) ###
+### ok( boolean, text ) ###
+### ok( boolean ) ###
 
     SELECT ok( :this = :that, :test_name );
   
@@ -230,12 +230,12 @@ Should an ok() fail, it will produce some diagnostics:
     not ok 18 - sufficient mucus
     #     Failed test 18: "sufficient mucus"
 
-### is (anyelement, anyelement, text) ###
-### is (anyelement, anyelement ) ###
-### isnt (anyelement, anyelement, text) ###
-### isnt (anyelement, anyelement ) ###
+### is( anyelement, anyelement, text ) ###
+### is( anyelement, anyelement ) ###
+### isnt( anyelement, anyelement, text ) ###
+### isnt( anyelement, anyelement ) ###
 
-    SELECT is  ( :this, :that, $test_name );
+    SELECT is(   :this, :that, $test_name );
     SELECT isnt( :this, :that, $test_name );
 
 Similar to ok(), is() and isnt() compare their two arguments with `=` and
@@ -284,8 +284,8 @@ ok().
 
     SELECT ok( is_valid(9),       'A tree grows in Brooklyn' );
 
-### matches ( anyelement, text, text ) ###
-### matches ( anyelement, text ) ###
+### matches( anyelement, text, text ) ###
+### matches( anyelement, text ) ###
 
     SELECT matches( :this, '^that', :test_name );
 
@@ -304,28 +304,28 @@ is similar to:
 Its advantages over ok() are similar to that of is() and isnt(): Better
 diagnostics on failure.
 
-### imatches ( anyelement, text, text ) ###
-### imatches ( anyelement, text ) ###
+### imatches( anyelement, text, text ) ###
+### imatches( anyelement, text ) ###
 
     SELECT imatches( :this, '^that', :test_name );
 
 These are just like matches() except that the regular expression is
 case-insensitive.
 
-### doesnt_match ( anyelement, text, text ) ###
-### doesnt_match ( anyelement, text ) ###
-### doesnt_imatch ( anyelement, text, text ) ###
-### doesnt_imatch ( anyelement, text ) ###
+### doesnt_match( anyelement, text, text ) ###
+### doesnt_match( anyelement, text ) ###
+### doesnt_imatch( anyelement, text, text ) ###
+### doesnt_imatch( anyelement, text ) ###
 
     SELECT doesnt_match( :this, '^that', :test_name );
 
 These functions work exactly as matches() and imataches() do, only they
 check if :this *does not* match the given pattern.
 
-### alike ( anyelement, text, text ) ###
-### alike ( anyelement, text ) ###
-### ialike ( anyelement, text, text ) ###
-### ialike ( anyelement, text ) ###
+### alike( anyelement, text, text ) ###
+### alike( anyelement, text ) ###
+### ialike( anyelement, text, text ) ###
+### ialike( anyelement, text ) ###
 
     SELECT alike( :this, 'that%', :test_name );
 
@@ -345,20 +345,20 @@ is similar to:
 Its advantages over ok() are similar to that of is() and isnt(): Better
 diagnostics on failure.
 
-### unalike ( anyelement, text, text ) ###
-### unalike ( anyelement, text ) ###
-### unialike ( anyelement, text, text ) ###
-### unialike ( anyelement, text ) ###
+### unalike( anyelement, text, text ) ###
+### unalike( anyelement, text ) ###
+### unialike( anyelement, text, text ) ###
+### unialike( anyelement, text ) ###
 
     SELECT unalike( :this, 'that%', :test_name );
 
 Works exactly as alike(), only it checks if :this *does not* match the
 given pattern.
 
-### pass ( text ) ###
-### pass ( ) ###
-### fail ( text ) ###
-### fail ( ) ###
+### pass( text ) ###
+### pass() ###
+### fail( text ) ###
+### fail() ###
 
     SELECT pass( :test_name );
     SELECT fail( :test_name );
@@ -370,9 +370,9 @@ ok) or fail() (for not ok). They are synonyms for ok(1) and ok(0).
 
 Use these functions very, very, very sparingly.
 
-### throws_ok ( text, char(5), text ) ###
-### throws_ok ( text, char(5) ) ###
-### throws_ok ( text ) ###
+### throws_ok( text, char(5), text ) ###
+### throws_ok( text, char(5) ) ###
+### throws_ok( text ) ###
 
     SELECT throws_ok(
         'INSERT INTO try (id) VALUES (1)',
@@ -403,8 +403,8 @@ messages. For example:
 
 Idea borrowed from the Test::Exception Perl module.
 
-### lives_ok ( text, text ) ###
-### lives_ok ( text ) ###
+### lives_ok( text, text ) ###
+### lives_ok( text ) ###
 
     SELECT lives_ok(
         'INSERT INTO try (id) VALUES (1)',
@@ -429,7 +429,7 @@ went wrong when it failed. But sometimes it doesn't work out that way. So here
 we have ways for you to write your own diagnostic messages which are safer
 than just \echo.
 
-### diag ( text ) ###
+### diag( text ) ###
 
 Returns a diagnostic message which is guaranteed not to interfere with
 test output. Handy for this sort of thing:
