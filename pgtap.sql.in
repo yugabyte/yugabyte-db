@@ -69,7 +69,7 @@ BEGIN
     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
     VALUES( ' || $1 || ', ' || $2 || ', ' || COALESCE(quote_literal($3), '''''') || ', '
           || quote_literal($4) || ', ' || quote_literal($5) || ' )';
-    RETURN lastval();
+    RETURN currval('__tresults___numb_seq');
 END;
 $$ LANGUAGE plpgsql;
 
