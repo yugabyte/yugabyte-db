@@ -157,11 +157,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql strict;
 
-CREATE OR REPLACE FUNCTION ok ( aok boolean, descr text ) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION ok ( boolean, text ) RETURNS TEXT AS $$
 DECLARE
-   test_num integer;
+   aok      ALIAS FOR $1;
+   descr    ALIAS FOR $2;
+   test_num INTEGER;
    todo_why TEXT := _todo();
-   ok       bool := CASE WHEN aok = TRUE THEN aok WHEN todo_why IS NULL THEN aok ELSE TRUE END;
+   ok       bOOL := CASE WHEN aok = TRUE THEN aok WHEN todo_why IS NULL THEN aok ELSE TRUE END;
 BEGIN
     IF _get('plan') IS NULL THEN
         RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
@@ -226,13 +228,17 @@ CREATE OR REPLACE FUNCTION isnt (anyelement, anyelement) RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _alike (
-   result boolean,
-   got    anyelement,
-   rx     text,
-   descr  text
+   BOOLEAN,
+   ANYELEMENT,
+   TEXT,
+   TEXT
 ) RETURNS TEXT AS $$
 DECLARE
-  output text    := ok( result, descr);
+  result ALIAS FOR $1;
+  got    ALIAS FOR $2;
+  rx     ALIAS FOR $3;
+  descr  ALIAS FOR $4;
+  output TEXT  := ok( result, descr);
 BEGIN
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
@@ -274,13 +280,17 @@ CREATE OR REPLACE FUNCTION ialike ( anyelement, text ) RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _unalike (
-   result boolean,
-   got    anyelement,
-   rx     text,
-   descr  text
+    BOOLEAN,
+    ANYELEMENT,
+    TEXT,
+    TEXT
 ) RETURNS TEXT AS $$
 DECLARE
-  output text    := ok( result, descr);
+    result ALIAS FOR $1;
+    got    ALIAS FOR $2;
+    rx     ALIAS FOR $3;
+    descr  ALIAS FOR $4;
+    output TEXT  := ok( result, descr);
 BEGIN
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
@@ -359,12 +369,15 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION throws_ok (
-    code   TEXT,
-    err    CHAR(5),
-    msg    TEXT
+    TEXT,
+    CHAR(5),
+    TEXT
 ) RETURNS TEXT AS $$
 DECLARE
-    descr TEXT := COALESCE( msg, 'threw ' || COALESCE( err, 'an exception' )  );
+    code  ALIAS FOR $1;
+    err   ALIAS FOR $2;
+    msg   ALIAS FOR $3;
+    descr TEXT  := COALESCE( msg, 'threw ' || COALESCE( err, 'an exception' )  );
 BEGIN
     EXECUTE code;
     RETURN ok( FALSE, descr ) || E'\n' || diag(
@@ -394,9 +407,12 @@ CREATE OR REPLACE FUNCTION throws_ok ( TEXT ) RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION lives_ok (
-    code   TEXT,
-    descr  TEXT
+    TEXT,
+    TEXT
 ) RETURNS TEXT AS $$
+DECLARE
+    code  ALIAS FOR $1;
+    descr ALIAS FOR $2;
 BEGIN
     EXECUTE code;
     RETURN ok( TRUE, descr );
