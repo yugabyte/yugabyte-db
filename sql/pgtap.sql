@@ -24,7 +24,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 78
+\set numb_tests 83
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -238,8 +238,30 @@ SELECT is(
 );
 
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 77 );
+\echo ok 79 - lives_ok is ok
+
+/****************************************************************************/
+-- test multiline description.
+SELECT is(
+    ok( true, E'foo\nbar' ),
+    E'ok 79 - foo\n# bar',
+    'multiline desriptions should have subsequent lines escaped'
+);
+
+/****************************************************************************/
+-- Test todo tests.
+\echo ok 81 todo fail
+\echo ok 82 todo pass
+SELECT * FROM todo('just because', 2 );
+SELECT is(
+    fail('This is a todo test' )
+    || pass('This is a todo test that unexpectedly passes' ),
+    'not ok 81 - This is a todo test # TODO just because
+# Failed (TODO) test 81: "This is a todo test"ok 82 - This is a todo test that unexpectedly passes # TODO just because',
+   'TODO tests should display properly'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 81 );
 
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-

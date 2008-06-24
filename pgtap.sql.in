@@ -7,7 +7,8 @@ BEGIN
     EXECUTE '
     CREATE TEMP TABLE __tcache__ (
         label TEXT    NOT NULL,
-        value integer NOT NULL
+        value INTEGER NOT NULL,
+        note  TEXT    NOT NULL DEFAULT ''''
     );
     GRANT ALL ON TABLE __tcache__ TO PUBLIC;
 
@@ -32,7 +33,7 @@ BEGIN
     END;
 
     -- Save the plan and return.
-    EXECUTE 'INSERT INTO __tcache__ VALUES ( ''plan'', ' || $1 || ' )';
+    PERFORM _set('plan', $1 );
     RETURN '1..' || $1;
 END;
 $$ LANGUAGE plpgsql strict;
@@ -53,17 +54,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql strict;
 
-CREATE OR REPLACE FUNCTION _set ( text, integer ) RETURNS integer AS $$
+CREATE OR REPLACE FUNCTION _get_note ( text ) RETURNS text AS $$
+DECLARE
+    ret text;
 BEGIN
-    EXECUTE 'UPDATE __tcache__ SET value = ' || $2  || ' WHERE label = ' || quote_literal($1);
+    EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
+    RETURN ret;
+END;
+$$ LANGUAGE plpgsql strict;
+
+CREATE OR REPLACE FUNCTION _set ( text, integer, text ) RETURNS integer AS $$
+DECLARE
+BEGIN
+    EXECUTE 'UPDATE __tcache__ SET value = ' || $2
+        || CASE $3 WHEN '' THEN '' ELSE ', note = ' || quote_literal($3) END
+        || ' WHERE label = ' || quote_literal($1);
     IF NOT FOUND THEN
-        EXECUTE 'INSERT INTO __tcache__ values (' || quote_literal($1) || ', ' || $2 || ')';
+        EXECUTE 'INSERT INTO __tcache__ values (' || quote_literal($1) || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ')';
     END IF;
     RETURN $2;
 END;
 $$ LANGUAGE plpgsql strict;
 
-CREATE OR REPLACE FUNCTION add_result ( boolean, bool, text, text, text )
+CREATE OR REPLACE FUNCTION _set ( text, integer ) RETURNS integer AS $$
+    SELECT _set($1, $2, '')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
@@ -129,21 +146,32 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql strict;
 
-CREATE OR REPLACE FUNCTION ok ( ok boolean, descr text ) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION ok ( aok boolean, descr text ) RETURNS TEXT AS $$
 DECLARE
    test_num integer;
+   todo_why TEXT := _todo();
+   ok       bool := CASE WHEN aok = TRUE THEN aok WHEN todo_why IS NULL THEN aok ELSE TRUE END;
 BEGIN
     IF _get('plan') IS NULL THEN
         RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
     END IF;
 
-    test_num := add_result( ok, ok, descr, '', '' );
+    test_num := add_result(
+        ok,
+        aok,
+        descr,
+        CASE WHEN todo_why IS NULL THEN '' ELSE 'todo' END,
+        COALESCE(todo_why, '')
+    );
 
-    RETURN (CASE ok WHEN TRUE THEN '' ELSE 'not ' END)
+    RETURN (CASE aok WHEN TRUE THEN '' ELSE 'not ' END)
            || 'ok ' || _set( 'curr_test', test_num )
-           || CASE descr WHEN '' THEN '' ELSE COALESCE( ' - ' || descr, '' ) END
-           || CASE ok WHEN TRUE THEN '' ELSE E'\n' ||
-                diag('Failed test ' || test_num ||
+           || CASE descr WHEN '' THEN '' ELSE COALESCE( ' - ' || substr(regexp_replace( descr, '^', '# ', 'gn' ), 3), '' ) END
+           || COALESCE( ' ' || regexp_replace( 'TODO ' || todo_why, '^', '# ', 'gn' ), '')
+           || CASE aok WHEN TRUE THEN '' ELSE E'\n' ||
+                diag('Failed ' || 
+                CASE WHEN todo_why IS NULL THEN '' ELSE '(TODO) ' END ||
+                'test ' || test_num ||
                 CASE descr WHEN '' THEN '' ELSE COALESCE(': "' || descr || '"', '') END )
            END;
 END;
@@ -297,6 +325,27 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION fail ( ) RETURNS TEXT AS $$
     SELECT ok( FALSE, NULL );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION todo ( why text, how_many int )
+RETURNS SETOF BOOLEAN AS $$
+BEGIN
+    PERFORM _set('todo', COALESCE( _get('todo'), 0) + how_many, why );
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _todo() RETURNS TEXT AS $$
+DECLARE
+    todos int := _get('todo');
+BEGIN
+    IF todos IS NULL OR todos = 0 THEN
+        RETURN NULL;
+    END IF;
+    -- Decrement the count of todos and return the reason.
+    PERFORM _set('todo', todos - 1);
+    RETURN _get_note('todo');
+END;
+$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION throws_ok (
     code   TEXT,

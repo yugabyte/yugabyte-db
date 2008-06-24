@@ -450,6 +450,39 @@ Which would produce:
     # but yours is set to en_US.UTF-8.
     # As a result, some tests may fail. YMMV.
 
+Conditional Tests
+-----------------
+
+Sometimes you might have tests that you want to pass, but you haven't gotten
+'round to implementing the logic required to make them pass. pgTAP allows you
+to declare that such tests are supposed to fail but will work in the future.
+This is known as a "todo test."
+
+### todo ###
+
+    todo(:why, :howMany);
+    -- ...normal testing code goes here...
+
+Declares a series of tests that you expect to fail and why. Perhaps it's
+because you haven't fixed a bug or haven't finished a new feature:
+
+    todo('URIGeller not finished', 2);
+
+    \set card '\'' Eight of clubs '\''
+    SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
+    SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
+
+With `todo()`, `:howMany` specifies how many tests are expected to fail. pgTAP
+will run the tests normally, but print out special flags indicating they are
+"todo" tests. The test harness will interpret these failures as ok. Should any
+todo test pass, the harness will report it as an unexpected success. You then
+know the thing you had todo is done and can remove the call to `todo()`.
+
+The nice part about todo tests, as opposed to simply commenting out a block of
+tests, is that they're like a programmatic todo list. You know how much work
+is left to be done, you're aware of what bugs there are, and you'll know
+immediately when they're fixed.
+
 To Do
 -----
 
