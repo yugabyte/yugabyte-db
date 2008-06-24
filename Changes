@@ -12,6 +12,12 @@ Revision history for pgTAP
       - Removed the few uses of named parameters and added alias names instead.
         This improves compatibility for versions of PostgreSQL prior to 8.0.
         Reported by David Westbrook.
+      - Fixed the plural of "test" in the output from `finish()`. It was
+        plural when there was one test and singular otherwise. So I reversed
+        that.
+      - Moved assignment to declared variables from the `DECLARE` block to the
+        body of the functions. Improves compatibility with versions of
+        PostgreSQL prior to 8.0. Reported by David Westbrook.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.

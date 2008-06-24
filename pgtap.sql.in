@@ -75,7 +75,6 @@ END;
 $$ LANGUAGE plpgsql strict;
 
 CREATE OR REPLACE FUNCTION _set ( text, integer, text ) RETURNS integer AS $$
-DECLARE
 BEGIN
     EXECUTE 'UPDATE __tcache__ SET value = ' || $2
         || CASE $3 WHEN '' THEN '' ELSE ', note = ' || quote_literal($3) END
@@ -112,41 +111,46 @@ $$ LANGUAGE plpgsql strict;
 
 CREATE OR REPLACE FUNCTION finish () RETURNS SETOF TEXT AS $$
 DECLARE
-    curr_test  integer = _get('curr_test');
-    exp_tests  integer = _get('plan');
-    num_failed integer = num_failed();
-    plural     char    = CASE exp_tests WHEN 1 THEN 's' ELSE '' END;
+    curr_test INTEGER;
+    exp_tests INTEGER;
+    num_faild INTEGER;
+    plural    CHAR;
 BEGIN
+    curr_test := _get('curr_test');
+    exp_tests := _get('plan');
+    num_faild := num_failed();
+    plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
 
-   IF curr_test IS NULL THEN
-       RAISE EXCEPTION '%', diag( 'No tests run!' );
-   END IF;
+    IF curr_test IS NULL THEN
+        RAISE EXCEPTION '%', diag( 'No tests run!' );
+    END IF;
 
-   IF exp_tests = 0 THEN
-        -- No plan. Output one now.
-       exp_tests = curr_test;
-       RETURN NEXT '1..' || exp_tests;
-   END IF;
+    IF exp_tests = 0 OR exp_tests IS NULL THEN
+         -- No plan. Output one now.
+        exp_tests = curr_test;
+        RETURN NEXT '1..' || exp_tests;
+    END IF;
 
-   IF curr_test < exp_tests THEN
-       RETURN NEXT diag(
-           'Looks like you planned ' || exp_tests || ' test' ||
-           plural || ' but only ran ' || curr_test
-       );
-   ELSIF curr_test > exp_tests THEN
-       RETURN NEXT diag(
-           'Looks like you planned ' || exp_tests || ' test' ||
-           plural || ' but ran ' || curr_test - exp_tests || ' extra'
-       );
-   ELSIF num_failed > 0 THEN
-       RETURN NEXT diag(
-           'Looks like you failed ' || num_failed || ' test' ||
-           plural || ' of ' || exp_tests
-       );
-   ELSE
+    IF curr_test < exp_tests THEN
+        RETURN NEXT diag(
+            'Looks like you planned ' || exp_tests || ' test' ||
+            plural || ' but only ran ' || curr_test
+        );
+    ELSIF curr_test > exp_tests THEN
+        RETURN NEXT diag(
+            'Looks like you planned ' || exp_tests || ' test' ||
+            plural || ' but ran ' || curr_test - exp_tests || ' extra'
+        );
+    ELSIF num_faild > 0 THEN
+        RETURN NEXT diag(
+            'Looks like you failed ' || num_faild || ' test' ||
+            CASE num_faild WHEN 1 THEN '' ELSE 's' END
+            || ' of ' || exp_tests
+        );
+    ELSE
        
-   END IF;
-   RETURN;
+    END IF;
+    RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -162,9 +166,11 @@ DECLARE
    aok      ALIAS FOR $1;
    descr    ALIAS FOR $2;
    test_num INTEGER;
-   todo_why TEXT := _todo();
-   ok       bOOL := CASE WHEN aok = TRUE THEN aok WHEN todo_why IS NULL THEN aok ELSE TRUE END;
+   todo_why TEXT;
+   ok       BOOL;
 BEGIN
+   todo_why := _todo();
+   ok       := CASE WHEN aok = TRUE THEN aok WHEN todo_why IS NULL THEN aok ELSE TRUE END;
     IF _get('plan') IS NULL THEN
         RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
     END IF;
@@ -196,9 +202,11 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION is (anyelement, anyelement, text) RETURNS TEXT AS $$
 DECLARE
-  result boolean := $1 = $2;
-  output text    := ok( result, $3);
+    result BOOLEAN;
+    output TEXT;
 BEGIN
+    result := $1 = $2;
+    output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '         got: ' || COALESCE( $1::text, 'NULL' ) ||
         E'\n    expected: ' || COALESCE( $2::text, 'NULL' )
@@ -212,9 +220,11 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION isnt (anyelement, anyelement, text) RETURNS TEXT AS $$
 DECLARE
-  result boolean := $1 <> $2;
-  output text    := ok( result, $3 );
+    result BOOLEAN;
+    output TEXT;
 BEGIN
+    result := $1 <> $2;
+    output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '    ' || COALESCE( $1::text, 'NULL' ) ||
         E'\n      <>' ||
@@ -234,12 +244,13 @@ CREATE OR REPLACE FUNCTION _alike (
    TEXT
 ) RETURNS TEXT AS $$
 DECLARE
-  result ALIAS FOR $1;
-  got    ALIAS FOR $2;
-  rx     ALIAS FOR $3;
-  descr  ALIAS FOR $4;
-  output TEXT  := ok( result, descr);
+    result ALIAS FOR $1;
+    got    ALIAS FOR $2;
+    rx     ALIAS FOR $3;
+    descr  ALIAS FOR $4;
+    output TEXT;
 BEGIN
+    output := ok( result, descr );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
         E'\n   doesn''t match: ' || COALESCE( quote_literal(rx), 'NULL' )
@@ -290,8 +301,9 @@ DECLARE
     got    ALIAS FOR $2;
     rx     ALIAS FOR $3;
     descr  ALIAS FOR $4;
-    output TEXT  := ok( result, descr);
+    output TEXT;
 BEGIN
+    output := ok( result, descr );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
         E'\n         matches: ' || COALESCE( quote_literal(rx), 'NULL' )
@@ -357,8 +369,9 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION _todo() RETURNS TEXT AS $$
 DECLARE
-    todos int := _get('todo');
+    todos INT;
 BEGIN
+    todos := _get('todo');
     IF todos IS NULL OR todos = 0 THEN
         RETURN NULL;
     END IF;
@@ -377,8 +390,9 @@ DECLARE
     code  ALIAS FOR $1;
     err   ALIAS FOR $2;
     msg   ALIAS FOR $3;
-    descr TEXT  := COALESCE( msg, 'threw ' || COALESCE( err, 'an exception' )  );
+    descr TEXT;
 BEGIN
+    descr := COALESCE( msg, 'threw ' || COALESCE( err, 'an exception' )  );
     EXECUTE code;
     RETURN ok( FALSE, descr ) || E'\n' || diag(
            '      caught: no exception' ||
