@@ -18,6 +18,9 @@ Revision history for pgTAP
       - Moved assignment to declared variables from the `DECLARE` block to the
         body of the functions. Improves compatibility with versions of
         PostgreSQL prior to 8.0. Reported by David Westbrook.
+      - Eliminated passing the result of a function call to `RAISE` in order
+        to better support older versions of PostgreSQL. Reported by David
+        Westbrook.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.

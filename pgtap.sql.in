@@ -122,7 +122,7 @@ BEGIN
     plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
 
     IF curr_test IS NULL THEN
-        RAISE EXCEPTION '%', diag( 'No tests run!' );
+        RAISE EXCEPTION '%', '# No tests run!';
     END IF;
 
     IF exp_tests = 0 OR exp_tests IS NULL THEN
