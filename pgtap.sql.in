@@ -13,6 +13,8 @@
 -- ## SET search_path TO TAPSCHEMA,public;
 
 CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
+DECLARE
+    rcount INTEGER;
 BEGIN
     BEGIN
     EXECUTE '
@@ -38,7 +40,8 @@ BEGIN
     EXCEPTION WHEN duplicate_table THEN
         -- Raise an exception if there's already a plan.
         EXECUTE 'SELECT TRUE FROM __tcache__ WHERE label = ''plan''';
-        IF FOUND THEN
+      GET DIAGNOSTICS rcount = ROW_COUNT;
+        IF rcount > 0 THEN
            RAISE EXCEPTION 'You tried to plan twice!';
         END IF;
     END;
@@ -75,11 +78,14 @@ END;
 $$ LANGUAGE plpgsql strict;
 
 CREATE OR REPLACE FUNCTION _set ( text, integer, text ) RETURNS integer AS $$
+DECLARE
+    rcount integer;
 BEGIN
     EXECUTE 'UPDATE __tcache__ SET value = ' || $2
         || CASE $3 WHEN '' THEN '' ELSE ', note = ' || quote_literal($3) END
         || ' WHERE label = ' || quote_literal($1);
-    IF NOT FOUND THEN
+    GET DIAGNOSTICS rcount = ROW_COUNT;
+    IF rcount = 0 THEN
         EXECUTE 'INSERT INTO __tcache__ values (' || quote_literal($1) || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ')';
     END IF;
     RETURN $2;
