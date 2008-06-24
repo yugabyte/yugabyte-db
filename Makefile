@@ -1,3 +1,4 @@
+# $Id$
 DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = pg_prove

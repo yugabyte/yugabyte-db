@@ -1,3 +1,4 @@
+-- $Id$
 DROP FUNCTION lives_ok ( TEXT );
 DROP FUNCTION lives_ok ( TEXT, TEXT );
 DROP FUNCTION throws_ok ( TEXT, CHAR(5) );

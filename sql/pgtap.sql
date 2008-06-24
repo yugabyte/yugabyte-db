@@ -4,6 +4,7 @@
 -- Tests for pgTAP.
 --
 --
+-- $Id$
 
 -- Format the output for nice TAP.
 \pset format unaligned
