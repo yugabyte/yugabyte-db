@@ -23,6 +23,3 @@ ifdef TAPSCHEMA
 else
 	cp $< $@
 endif
-
-test:
-	./pg_prove sql/$(REGRESS).sql
