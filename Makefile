@@ -2,20 +2,17 @@
 DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = pg_prove
-REGRESS = pgtap
+REGRESS = pgtap pg73
 
-top_builddir = ../..
-in_contrib = $(wildcard $(top_builddir)/src/Makefile.global);
-
-ifdef $(in_contrib)
-	# Just include the local makefiles
-	subdir = contrib/pgtap
-	include $(top_builddir)/src/Makefile.global
-	include $(top_srcdir)/contrib/contrib-global.mk
+ifdef USE_PGXS
+PG_CONFIG = pg_config
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
 else
-	# Use pg_config to find PGXS and include it.
-	PGXS := $(shell pg_config --pgxs)
-	include $(PGXS)
+subdir = contrib/citext
+top_builddir = ../..
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
 # Override how .sql targets are processed to add the schema info, if

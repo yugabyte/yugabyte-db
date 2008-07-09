@@ -24,6 +24,8 @@ Revision history for pgTAP
       - Switched from using `FOUND` to `GET DIAGNOSTICS ROW_COUNT` because the
         former does not seem to b set for `EXECUTE`d SQL in older versions of
         PostgreSQL. Reported by David Westbrook.
+      - Added tests specifically targeting PostgreSQL 7.3. From David
+        Westbrook.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
