@@ -4,7 +4,7 @@
 -- Tests for pgTAP on PostgreSQL 7.3.
 --
 --
--- $Id: pgtap.sql 4057 2008-06-24 17:00:17Z david $
+-- $Id$
 
 -- Format the output for nice TAP.
 \pset format unaligned
