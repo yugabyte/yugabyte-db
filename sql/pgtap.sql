@@ -135,7 +135,7 @@ SELECT is( is(false, false), 'ok 39', 'is(false, false) should work' );
 \echo ok 41 - is() success 7
 SELECT is( is(1, 1, 'foo'), 'ok 41 - foo', 'is(1, 1, ''foo'') should work' );
 \echo ok 43 - is() failure
-SELECT is( is( 1, 2 ), E'not ok 43\n# Failed test 43\n#          got: 1\n#     expected: 2', 'is(1, 2) should work' );
+SELECT is( is( 1, 2 ), E'not ok 43\n# Failed test 43\n#         have: 1\n#         want: 2', 'is(1, 2) should work' );
 
 /****************************************************************************/
 -- Test isnt().
@@ -209,7 +209,7 @@ SELECT throws_ok( 'SELECT 1 / 0', '22012', 'throws_ok(1/0) should work' );
 \echo ok 71 - throws_ok failure diagnostics
 SELECT is(
     throws_ok( 'SELECT 1 / 0', '97212' ),
-    E'not ok 71 - threw 97212\n# Failed test 71: "threw 97212"\n#       caught: 22012: division by zero\n#     expected: 97212',
+    E'not ok 71 - threw 97212\n# Failed test 71: "threw 97212"\n#       caught: 22012: division by zero\n#       wanted: 97212',
     'We should get the proper diagnostics from throws_ok()'
 );
 
@@ -219,7 +219,7 @@ SELECT throws_ok( 'SELECT 1 / 0', NULL, 'throws_ok(1/0, NULL) should work' );
 \echo ok 74 - throws_ok failure diagnostics
 SELECT is(
     throws_ok( 'SELECT 1', NULL ),
-    E'not ok 74 - threw an exception\n# Failed test 74: "threw an exception"\n#       caught: no exception\n#     expected: an exception',
+    E'not ok 74 - threw an exception\n# Failed test 74: "threw an exception"\n#       caught: no exception\n#       wanted: an exception',
     'We should get the proper diagnostics from throws_ok() with a NULL error code'
 );
 

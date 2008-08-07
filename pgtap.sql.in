@@ -214,8 +214,8 @@ BEGIN
     result := $1 = $2;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '         got: ' || COALESCE( $1::text, 'NULL' ) ||
-        E'\n    expected: ' || COALESCE( $2::text, 'NULL' )
+           '        have: ' || COALESCE( $1::text, 'NULL' ) ||
+        E'\n        want: ' || COALESCE( $2::text, 'NULL' )
     ) END;
 END;
 $$ LANGUAGE plpgsql;
@@ -402,7 +402,7 @@ BEGIN
     EXECUTE code;
     RETURN ok( FALSE, descr ) || E'\n' || diag(
            '      caught: no exception' ||
-        E'\n    expected: ' || COALESCE( err, 'an exception' )
+        E'\n      wanted: ' || COALESCE( err, 'an exception' )
     );
 EXCEPTION WHEN OTHERS THEN
     IF err IS NULL OR SQLSTATE = err THEN
@@ -412,7 +412,7 @@ EXCEPTION WHEN OTHERS THEN
         -- This was not the expected error.
         RETURN ok( FALSE, descr ) || E'\n' || diag(
                '      caught: ' || SQLSTATE || ': ' || SQLERRM ||
-            E'\n    expected: ' || COALESCE( err, 'an exception')
+            E'\n      wanted: ' || COALESCE( err, 'an exception')
         );
     END IF;
 END;
