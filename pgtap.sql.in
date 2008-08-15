@@ -447,3 +447,20 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION lives_ok ( TEXT ) RETURNS TEXT AS $$
     SELECT lives_ok( $1, NULL );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM information_schema.tables
+             WHERE table_schema = $1 AND table_name = $2
+        ), $3
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION table_exists ( TEXT ) RETURNS TEXT AS $$
+    SELECT table_exists( 'public', $1, 'Table public.' || $1 || ' should exist' );
+$$ LANGUAGE SQL;
+CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT table_exists( 'public', $1, 'Table ' || $1 || '.' || $2 || ' should exist' );
+$$ LANGUAGE SQL;
