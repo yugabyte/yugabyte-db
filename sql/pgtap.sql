@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 83
+\set numb_tests 91
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -262,6 +262,39 @@ SELECT is(
    'TODO tests should display properly'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 81 );
+
+
+/****************************************************************************/
+-- Test table_exists().
+
+\echo ok 84 table_exists(table) fail
+
+SELECT is(
+    table_exists( '__SDFSDFD__' ),
+    E'not ok 84 - Table public.__SDFSDFD__ should exist\n# Failed test 84: "Table public.__SDFSDFD__ should exist"',
+    'table_exists(table) should fail for non-existent table'
+);
+\echo ok 86 table_exists(schema, table) fail
+SELECT is(
+    table_exists( 'foo', '__SDFSDFD__' ),
+    E'not ok 86 - Table foo.__SDFSDFD__ should exist\n# Failed test 86: "Table foo.__SDFSDFD__ should exist"',
+    'table_exists(schema, table) should fail for non-existent table'
+);
+
+\echo ok 88 table_exists(schema, table, desc) fail
+SELECT is(
+    table_exists( 'foo', '__SDFSDFD__', 'desc' ),
+    E'not ok 88 - desc\n# Failed test 88: "desc"',
+    'table_exists(schema, table, desc) should fail for non-existent table'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 84, 86, 88 );
+
+\echo ok 90 table_exists(schema, table) pass
+SELECT is(
+    table_exists( 'pg_catalog', 'pg_type', 'desc' ),
+    'ok 90 - desc',
+    'table_exists(schema, type, desc) should pass for an existing table'
+);
 
 -- Finish the tests and clean up.
 SELECT * FROM finish();

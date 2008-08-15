@@ -370,6 +370,14 @@ ok) or fail() (for not ok). They are synonyms for ok(1) and ok(0).
 
 Use these functions very, very, very sparingly.
 
+To Error is Human
+-----------------
+
+Sometimes you just want to know that a particular query will trigger an error.
+Or maybe you want to make sure a query *does not* trigger an error. For such
+cases, we provide a couple of test functions to make sure your queries are as
+error-prone as you think they should be.
+
 ### throws_ok( text, char(5), text ) ###
 ### throws_ok( text, char(5) ) ###
 ### throws_ok( text ) ###
@@ -420,6 +428,28 @@ it produces appropriate diagnostic messages. For example:
     #         died: 23505: duplicate key value violates unique constraint "try_pkey"
 
 Idea borrowed from the Test::Exception Perl module.
+
+A Wicked Schema
+---------------
+
+Need to make sure that your database is designed just the way you think it
+should be? Use these test functions and rest easy.
+
+### table_exists( text, text, text ) ###
+### table_exists( text, text ) ###
+### table_exists( text ) ###
+
+    SELECT table_exists(
+        'myschema',
+        'sometable',
+        'I got myschema.sometable'
+    );
+
+This function tests whether or not a table exist in the database. The first
+argument is a schema name, the second is a table name, and the third is the
+test description. If you omit the test description, it will be set to "Table
+$schema.$table should exist". If you pass just a single argument, it is
+assumed to be the table name and the schema is assumed to be "public".
 
 Diagnostics
 -----------

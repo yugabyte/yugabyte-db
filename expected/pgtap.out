@@ -1,5 +1,5 @@
 \set ECHO
-1..83
+1..91
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -83,3 +83,11 @@ ok 80 - multiline desriptions should have subsequent lines escaped
 ok 81 todo fail
 ok 82 todo pass
 ok 83 - TODO tests should display properly
+ok 84 table_exists(table) fail
+ok 85 - table_exists(table) should fail for non-existent table
+ok 86 table_exists(schema, table) fail
+ok 87 - table_exists(schema, table) should fail for non-existent table
+ok 88 table_exists(schema, table, desc) fail
+ok 89 - table_exists(schema, table, desc) should fail for non-existent table
+ok 90 table_exists(schema, table) pass
+ok 91 - table_exists(schema, type, desc) should pass for an existing table
