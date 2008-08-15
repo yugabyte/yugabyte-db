@@ -29,7 +29,7 @@ Revision history for pgTAP
       - Changed "got/expected" to "have/want", following Schwern's plans for
         Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
         nice parity when outputting diagnostics for exception testing.
-      - Added `table_exists()` test function.
+      - Added the `table_exists()` and `view_exists()` test functions.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.

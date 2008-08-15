@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 91
+\set numb_tests 99
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -294,6 +294,38 @@ SELECT is(
     table_exists( 'pg_catalog', 'pg_type', 'desc' ),
     'ok 90 - desc',
     'table_exists(schema, type, desc) should pass for an existing table'
+);
+
+/****************************************************************************/
+-- Test view_exists().
+
+\echo ok 92 view_exists(view) fail
+
+SELECT is(
+    view_exists( '__SDFSDFD__' ),
+    E'not ok 92 - View public.__SDFSDFD__ should exist\n# Failed test 92: "View public.__SDFSDFD__ should exist"',
+    'view_exists(view) should fail for non-existent view'
+);
+\echo ok 94 view_exists(schema, view) fail
+SELECT is(
+    view_exists( 'foo', '__SDFSDFD__' ),
+    E'not ok 94 - View foo.__SDFSDFD__ should exist\n# Failed test 94: "View foo.__SDFSDFD__ should exist"',
+    'view_exists(schema, view) should fail for non-existent view'
+);
+
+\echo ok 96 view_exists(schema, view, desc) fail
+SELECT is(
+    view_exists( 'foo', '__SDFSDFD__', 'desc' ),
+    E'not ok 96 - desc\n# Failed test 96: "desc"',
+    'view_exists(schema, view, desc) should fail for non-existent view'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 92, 94, 96 );
+
+\echo ok 98 view_exists(schema, view) pass
+SELECT is(
+    view_exists( 'information_schema', 'tables', 'desc' ),
+    'ok 98 - desc',
+    'view_exists(schema, type, desc) should pass for an existing view'
 );
 
 -- Finish the tests and clean up.
