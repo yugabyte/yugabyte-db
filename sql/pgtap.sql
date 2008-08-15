@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 99
+\set numb_tests 113
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -251,8 +251,8 @@ SELECT is(
 
 /****************************************************************************/
 -- Test todo tests.
-\echo ok 81 todo fail
-\echo ok 82 todo pass
+\echo ok 81 - todo fail
+\echo ok 82 - todo pass
 SELECT * FROM todo('just because', 2 );
 SELECT is(
     fail('This is a todo test' )
@@ -267,21 +267,22 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 81 );
 /****************************************************************************/
 -- Test table_exists().
 
-\echo ok 84 table_exists(table) fail
+\echo ok 84 - table_exists(table) fail
 
 SELECT is(
     table_exists( '__SDFSDFD__' ),
     E'not ok 84 - Table public.__SDFSDFD__ should exist\n# Failed test 84: "Table public.__SDFSDFD__ should exist"',
     'table_exists(table) should fail for non-existent table'
 );
-\echo ok 86 table_exists(schema, table) fail
+
+\echo ok 86 - table_exists(schema, table) fail
 SELECT is(
     table_exists( 'foo', '__SDFSDFD__' ),
     E'not ok 86 - Table foo.__SDFSDFD__ should exist\n# Failed test 86: "Table foo.__SDFSDFD__ should exist"',
     'table_exists(schema, table) should fail for non-existent table'
 );
 
-\echo ok 88 table_exists(schema, table, desc) fail
+\echo ok 88 - table_exists(schema, table, desc) fail
 SELECT is(
     table_exists( 'foo', '__SDFSDFD__', 'desc' ),
     E'not ok 88 - desc\n# Failed test 88: "desc"',
@@ -289,43 +290,100 @@ SELECT is(
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 84, 86, 88 );
 
-\echo ok 90 table_exists(schema, table) pass
+\echo ok 90 - table_exists(schema, table) pass
+SELECT is(
+    table_exists( 'pg_catalog', 'pg_type' ),
+    'ok 90 - Table pg_catalog.pg_type should exist',
+    'table_exists(schema, table) should pass for an existing table'
+);
+
+\echo ok 92 - table_exists(schema, table, desc) pass
 SELECT is(
     table_exists( 'pg_catalog', 'pg_type', 'desc' ),
-    'ok 90 - desc',
-    'table_exists(schema, type, desc) should pass for an existing table'
+    'ok 92 - desc',
+    'table_exists(schema, table, desc) should pass for an existing table'
 );
 
 /****************************************************************************/
 -- Test view_exists().
 
-\echo ok 92 view_exists(view) fail
+\echo ok 94 - view_exists(view) fail
 
 SELECT is(
     view_exists( '__SDFSDFD__' ),
-    E'not ok 92 - View public.__SDFSDFD__ should exist\n# Failed test 92: "View public.__SDFSDFD__ should exist"',
+    E'not ok 94 - View public.__SDFSDFD__ should exist\n# Failed test 94: "View public.__SDFSDFD__ should exist"',
     'view_exists(view) should fail for non-existent view'
 );
-\echo ok 94 view_exists(schema, view) fail
+
+\echo ok 96 - view_exists(schema, view) fail
 SELECT is(
     view_exists( 'foo', '__SDFSDFD__' ),
-    E'not ok 94 - View foo.__SDFSDFD__ should exist\n# Failed test 94: "View foo.__SDFSDFD__ should exist"',
+    E'not ok 96 - View foo.__SDFSDFD__ should exist\n# Failed test 96: "View foo.__SDFSDFD__ should exist"',
     'view_exists(schema, view) should fail for non-existent view'
 );
 
-\echo ok 96 view_exists(schema, view, desc) fail
+\echo ok 98 - view_exists(schema, view, desc) fail
 SELECT is(
     view_exists( 'foo', '__SDFSDFD__', 'desc' ),
-    E'not ok 96 - desc\n# Failed test 96: "desc"',
+    E'not ok 98 - desc\n# Failed test 98: "desc"',
     'view_exists(schema, view, desc) should fail for non-existent view'
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 92, 94, 96 );
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 94, 96, 98 );
 
-\echo ok 98 view_exists(schema, view) pass
+\echo ok 100 - view_exists(schema, view) pass
+SELECT is(
+    view_exists( 'information_schema', 'tables' ),
+    'ok 100 - View information_schema.tables should exist',
+    'view_exists(schema, view) should pass for an existing view'
+);
+
+\echo ok 102 - view_exists(schema, view, desc) pass
 SELECT is(
     view_exists( 'information_schema', 'tables', 'desc' ),
-    'ok 98 - desc',
-    'view_exists(schema, type, desc) should pass for an existing view'
+    'ok 102 - desc',
+    'view_exists(schema, view, desc) should pass for an existing view'
+);
+
+/****************************************************************************/
+-- Test column_exists().
+
+\echo ok 104 - column_exists(table, column) fail
+SELECT is(
+    column_exists( '__SDFSDFD__', 'foo' ),
+    E'not ok 104 - Column public.__SDFSDFD__.foo should exist\n# Failed test 104: "Column public.__SDFSDFD__.foo should exist"',
+    'column_exists(table, column) should fail for non-existent table'
+);
+
+\echo ok 106 - column_exists(schema, table, column) fail
+SELECT is(
+    column_exists( 'foo', '__SDFSDFD__', 'bar' ),
+    E'not ok 106 - Column foo.__SDFSDFD__.bar should exist\n# Failed test 106: "Column foo.__SDFSDFD__.bar should exist"',
+    'column_exists(schema, table, column) should fail for non-existent table'
+);
+
+\echo ok 108 - column_exists(schema, table, column, desc) fail
+SELECT is(
+    column_exists( 'foo', '__SDFSDFD__', 'bar', 'desc' ),
+    E'not ok 108 - desc\n# Failed test 108: "desc"',
+    'column_exists(schema, table, column, desc) should fail for non-existent table'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 104, 106, 108 );
+
+-- This will be rolled back. :-)
+CREATE TABLE sometab (id int);
+
+\echo ok 110 - column_exists(table, column) pass
+SELECT is(
+    column_exists( 'sometab', 'id' ),
+    'ok 110 - Column public.sometab.id should exist',
+    'column_exists(table, column) should pass for an existing column'
+);
+
+\echo ok 112 - column_exists(schema, column, desc) pass
+SELECT is(
+    column_exists( 'information_schema', 'tables', 'table_name', 'desc' ),
+    'ok 112 - desc',
+    'column_exists(schema, table, column, desc) should pass for an existing view column'
 );
 
 -- Finish the tests and clean up.

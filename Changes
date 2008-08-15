@@ -29,7 +29,8 @@ Revision history for pgTAP
       - Changed "got/expected" to "have/want", following Schwern's plans for
         Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
         nice parity when outputting diagnostics for exception testing.
-      - Added the `table_exists()` and `view_exists()` test functions.
+      - Added the `table_exists()`, `view_exists()`, and `column_exists()`      
+        test functions.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
@@ -64,7 +65,7 @@ Revision history for pgTAP
         directory.
       - Changed all instances of `RETURN QUERY SELECT` to `RETURN NEXT`, which
         should allow pgtap to run on versions of PostgreSQL earlier than 8.3.
-        Thanks to Niel Conway for the suggestion.
+        Thanks to Neil Conway for the suggestion.
 
 0.01  2008-06-07T05:24:27
       - Initial public release. Announcement at

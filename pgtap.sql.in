@@ -448,6 +448,7 @@ CREATE OR REPLACE FUNCTION lives_ok ( TEXT ) RETURNS TEXT AS $$
     SELECT lives_ok( $1, NULL );
 $$ LANGUAGE SQL;
 
+-- table_exists( schema, table, description )
 CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -458,13 +459,17 @@ CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+-- table_exists( table )
 CREATE OR REPLACE FUNCTION table_exists ( TEXT ) RETURNS TEXT AS $$
     SELECT table_exists( 'public', $1, 'Table public.' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
+
+-- table_exists( schema, table )
 CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT table_exists( 'public', $1, 'Table ' || $1 || '.' || $2 || ' should exist' );
+    SELECT table_exists( $1, $2, 'Table ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
+-- view_exists( schema, table, description )
 CREATE OR REPLACE FUNCTION view_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -475,9 +480,34 @@ CREATE OR REPLACE FUNCTION view_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+-- view_exists( table )
 CREATE OR REPLACE FUNCTION view_exists ( TEXT ) RETURNS TEXT AS $$
     SELECT view_exists( 'public', $1, 'View public.' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
+
+-- view_exists( schema, table )
 CREATE OR REPLACE FUNCTION view_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT view_exists( 'public', $1, 'View ' || $1 || '.' || $2 || ' should exist' );
+    SELECT view_exists( $1, $2, 'View ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
+
+-- column_exists( schema, table, column, description )
+CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM information_schema.columns
+             WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+        ), $4
+    );
+$$ LANGUAGE SQL;
+
+-- column_exists( table, column )
+CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT column_exists( 'public', $1, $2, 'Column ' || 'public.' || $1 || '.' || $2 || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- column_exists( schema, table, column )
+CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT column_exists( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should exist' );
+$$ LANGUAGE SQL;
+

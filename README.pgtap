@@ -467,6 +467,26 @@ assumed to be the table name and the schema is assumed to be "public".
 
 Just like `table_exists()`, only it tests for the existence of a view.
 
+### column_exists( text, text, text, text ) ###
+### column_exists( text, text, text ) ###
+### column_exists( text, text ) ###
+
+    SELECT column_exists(
+        'myschema',
+        'somecolumn',
+        'somecolumn',
+        'I got myschema.sometable.somecolumn'
+    );
+
+Tests whether or not a column exists in a given table or view. The first
+argument is the schema name, the second the table name, the third the column
+name, and the fourth is the test description. If the test description is
+omitted, it will be set to "Column $schema.$table.$column should exist". If
+only two arguments are passed, they are assumed to be the table and column
+names, and the schema will default to "public".
+
+Just like `table_exists()`, only it tests for the existence of a column.
+
 Diagnostics
 -----------
 
