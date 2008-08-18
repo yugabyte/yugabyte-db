@@ -1,4 +1,20 @@
 -- $Id$
+DROP FUNCTION col_is_null ( TEXT, TEXT );
+DROP FUNCTION col_is_null ( TEXT, TEXT, TEXT );
+DROP FUNCTION col_is_null ( TEXT, TEXT, TEXT, TEXT );
+DROP FUNCTION col_not_null ( TEXT, TEXT );
+DROP FUNCTION col_not_null ( TEXT, TEXT, TEXT );
+DROP FUNCTION col_not_null ( TEXT, TEXT, TEXT, TEXT );
+DROP FUNCTION _col_is_null ( TEXT, TEXT, TEXT, TEXT, bool );
+DROP FUNCTION has_column ( TEXT, TEXT, TEXT );
+DROP FUNCTION has_column ( TEXT, TEXT );
+DROP FUNCTION has_column ( TEXT, TEXT, TEXT, TEXT );
+DROP FUNCTION has_view ( TEXT, TEXT );
+DROP FUNCTION has_view ( TEXT );
+DROP FUNCTION has_view ( TEXT, TEXT, TEXT );
+DROP FUNCTION has_table ( TEXT, TEXT );
+DROP FUNCTION has_table ( TEXT );
+DROP FUNCTION has_table ( TEXT, TEXT, TEXT );
 DROP FUNCTION lives_ok ( TEXT );
 DROP FUNCTION lives_ok ( TEXT, TEXT );
 DROP FUNCTION throws_ok ( TEXT, CHAR(5) );
