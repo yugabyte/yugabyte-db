@@ -570,11 +570,16 @@ DECLARE
     actual_type TEXT;
 BEGIN
     -- Get the data type.
-    SELECT data_type into actual_type
-      FROM information_schema.columns
-             WHERE table_schema = $1
-               AND table_name   = $2
-               AND column_name  = $3;
+    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
+      FROM pg_attribute a, pg_class c, pg_tables t
+     WHERE a.attrelid = c.oid
+       AND pg_table_is_visible(c.oid)
+       AND c.relname = $2
+       AND t.tablename = $2
+       AND t.schemaname = $1 
+       AND attnum > 0
+       AND NOT attisdropped
+       AND a.attname = $3;
 
     IF actual_type = LOWER($4) THEN
         -- We're good to go.
@@ -599,24 +604,5 @@ CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT col_type_is( 'public', $1, $2, $3, 'Column public.' || $1 || '.' || $2 || ' should be type ' || $3 );
 $$ LANGUAGE SQL;
 
-/*
-
-CREATE OR REPLACE FUNCTION column_is ( TEXT, TEXT, TEXT, TEXT, bool, TEXT, bool, bool, TEXT ) RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM information_schema.columns
-             WHERE table_schema = $1
-               AND table_name   = $2
-               AND column_name  = $3
-               AND data_type    = LOWER($4)
-               AND is_nullable  = CASE $5 WHEN TRUE THEN 'YES' ELSE 'NO' END,
-               AND COALESCE(column_default, '[_NULL_]') = COALESCE($6, '[_NULL_]'),
-               -- PK?
-               AND EXISTS( select 
-        ), $4
-    );
-$$ LANGUAGE SQL;
-
-*/
-       
+-- Test PK?
+-- Test unique?

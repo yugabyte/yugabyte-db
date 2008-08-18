@@ -1,5 +1,5 @@
 \set ECHO
-1..139
+1..143
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -139,3 +139,7 @@ ok 136 - testing col_type_is( table, column, type ) case-insensitively
 ok 137 - col_type_is( table, column, type ) should work case-insensitively
 ok 138 - testing col_type_is( table, column, type ) failure
 ok 139 - col_type_is( table, column, type ) should fail with proper diagnostics
+ok 140 - testing col_type_is( schema, table, column, type(precision,scale), description )
+ok 141 - col_type_is( schema, table, column, type, precision(scale,description) should work
+ok 142 - col_type_is( schema, table, column, type, precision ) fail
+ok 143 - col_type_is with precision should have nice diagnostics

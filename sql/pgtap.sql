@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 139
+\set numb_tests 143
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -370,7 +370,7 @@ SELECT is(
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 104, 106, 108 );
 
 -- This will be rolled back. :-)
-CREATE TABLE sometab (id int NOT NULL, name text);
+CREATE TABLE sometab (id int NOT NULL, name text, numb numeric(10, 2), myint numeric(8));
 
 \echo ok 110 - has_column(table, column) pass
 SELECT is(
@@ -484,6 +484,25 @@ SELECT is(
     'col_type_is( table, column, type ) should fail with proper diagnostics'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 138 );
+
+/****************************************************************************/
+-- Try col_type_is() with precision.
+\echo ok 140 - testing col_type_is( schema, table, column, type(precision,scale), description )
+SELECT is(
+    col_type_is( 'public', 'sometab', 'numb', 'numeric(10,2)', 'lol' ),
+    'ok 140 - lol',
+    'col_type_is( schema, table, column, type, precision(scale,description) should work'
+);
+
+-- Check its diagnostics.
+\echo ok 142 - col_type_is( schema, table, column, type, precision ) fail
+SELECT is(
+    col_type_is( 'public', 'sometab', 'myint', 'numeric(7)' ),
+    E'not ok 142 - Column public.sometab.myint should be type numeric(7)\n# Failed test 142: "Column public.sometab.myint should be type numeric(7)"\n#         have: numeric(8,0)\n#         want: numeric(7)',
+    'col_type_is with precision should have nice diagnostics'
+);
+
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 142, 158 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

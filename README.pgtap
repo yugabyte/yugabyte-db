@@ -475,7 +475,7 @@ Just like `has_table()`, only it tests for the existence of a view.
 
     SELECT has_column(
         'myschema',
-        'somecolumn',
+        'sometable',
         'somecolumn',
         'I got myschema.sometable.somecolumn'
     );
@@ -495,7 +495,7 @@ Just like `has_table()`, only it tests for the existence of a column.
 
     SELECT col_not_null(
         'myschema',
-        'somecolumn',
+        'sometable',
         'somecolumn',
         'Column myschema.sometable.somecolumn should be NOT NULL'
     );
@@ -514,7 +514,7 @@ if the column in question does not exist.
 
     SELECT col_is_null(
         'myschema',
-        'somecolumn',
+        'sometable',
         'somecolumn',
         'Column myschema.sometable.somecolumn should allow NULL'
     );
@@ -534,9 +534,9 @@ does not exist.
 
     SELECT col_type_is(
         'myschema',
+        'sometable',
         'somecolumn',
-        'somecolumn',
-        'text',
+        'numeric(10,2)',
         'Column myschema.sometable.somecolumn should be type text'
     );
 
@@ -548,6 +548,12 @@ description is omitted, it will be set to "Column $schema.$table.$column
 should be type $type". If only three arguments are passed, they are assumed to
 be the table, column names, and type, and the schema will default to "public".
 Note that this test will fail if the column in question does not exist.
+
+The type argument should be formatted as it would be displayed in the view of
+a table usin the `\d` command in `psql`. For example, if you have a numeric
+column with a precision of 8, you should specify "numeric(8,0)". If you
+created a `varchar(64)` column, you should pass the type as "character
+varying(64)".
 
 If the test fails, it will output useful diagnostics. For example this test:
 
