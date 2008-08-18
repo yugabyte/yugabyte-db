@@ -83,33 +83,33 @@ ok 80 - multiline desriptions should have subsequent lines escaped
 ok 81 - todo fail
 ok 82 - todo pass
 ok 83 - TODO tests should display properly
-ok 84 - table_exists(table) fail
-ok 85 - table_exists(table) should fail for non-existent table
-ok 86 - table_exists(schema, table) fail
-ok 87 - table_exists(schema, table) should fail for non-existent table
-ok 88 - table_exists(schema, table, desc) fail
-ok 89 - table_exists(schema, table, desc) should fail for non-existent table
-ok 90 - table_exists(schema, table) pass
-ok 91 - table_exists(schema, table) should pass for an existing table
-ok 92 - table_exists(schema, table, desc) pass
-ok 93 - table_exists(schema, table, desc) should pass for an existing table
-ok 94 - view_exists(view) fail
-ok 95 - view_exists(view) should fail for non-existent view
-ok 96 - view_exists(schema, view) fail
-ok 97 - view_exists(schema, view) should fail for non-existent view
-ok 98 - view_exists(schema, view, desc) fail
-ok 99 - view_exists(schema, view, desc) should fail for non-existent view
-ok 100 - view_exists(schema, view) pass
-ok 101 - view_exists(schema, view) should pass for an existing view
-ok 102 - view_exists(schema, view, desc) pass
-ok 103 - view_exists(schema, view, desc) should pass for an existing view
-ok 104 - column_exists(table, column) fail
-ok 105 - column_exists(table, column) should fail for non-existent table
-ok 106 - column_exists(schema, table, column) fail
-ok 107 - column_exists(schema, table, column) should fail for non-existent table
-ok 108 - column_exists(schema, table, column, desc) fail
-ok 109 - column_exists(schema, table, column, desc) should fail for non-existent table
-ok 110 - column_exists(table, column) pass
-ok 111 - column_exists(table, column) should pass for an existing column
-ok 112 - column_exists(schema, column, desc) pass
-ok 113 - column_exists(schema, table, column, desc) should pass for an existing view column
+ok 84 - has_table(table) fail
+ok 85 - has_table(table) should fail for non-existent table
+ok 86 - has_table(schema, table) fail
+ok 87 - has_table(schema, table) should fail for non-existent table
+ok 88 - has_table(schema, table, desc) fail
+ok 89 - has_table(schema, table, desc) should fail for non-existent table
+ok 90 - has_table(schema, table) pass
+ok 91 - has_table(schema, table) should pass for an existing table
+ok 92 - has_table(schema, table, desc) pass
+ok 93 - has_table(schema, table, desc) should pass for an existing table
+ok 94 - has_view(view) fail
+ok 95 - has_view(view) should fail for non-existent view
+ok 96 - has_view(schema, view) fail
+ok 97 - has_view(schema, view) should fail for non-existent view
+ok 98 - has_view(schema, view, desc) fail
+ok 99 - has_view(schema, view, desc) should fail for non-existent view
+ok 100 - has_view(schema, view) pass
+ok 101 - has_view(schema, view) should pass for an existing view
+ok 102 - has_view(schema, view, desc) pass
+ok 103 - has_view(schema, view, desc) should pass for an existing view
+ok 104 - has_column(table, column) fail
+ok 105 - has_column(table, column) should fail for non-existent table
+ok 106 - has_column(schema, table, column) fail
+ok 107 - has_column(schema, table, column) should fail for non-existent table
+ok 108 - has_column(schema, table, column, desc) fail
+ok 109 - has_column(schema, table, column, desc) should fail for non-existent table
+ok 110 - has_column(table, column) pass
+ok 111 - has_column(table, column) should pass for an existing column
+ok 112 - has_column(schema, column, desc) pass
+ok 113 - has_column(schema, table, column, desc) should pass for an existing view column

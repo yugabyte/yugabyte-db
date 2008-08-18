@@ -448,8 +448,8 @@ CREATE OR REPLACE FUNCTION lives_ok ( TEXT ) RETURNS TEXT AS $$
     SELECT lives_ok( $1, NULL );
 $$ LANGUAGE SQL;
 
--- table_exists( schema, table, description )
-CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+-- has_table( schema, table, description )
+CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
             SELECT true
@@ -459,18 +459,18 @@ CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- table_exists( table )
-CREATE OR REPLACE FUNCTION table_exists ( TEXT ) RETURNS TEXT AS $$
-    SELECT table_exists( 'public', $1, 'Table public.' || $1 || ' should exist' );
+-- has_table( table )
+CREATE OR REPLACE FUNCTION has_table ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_table( 'public', $1, 'Table public.' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
--- table_exists( schema, table )
-CREATE OR REPLACE FUNCTION table_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT table_exists( $1, $2, 'Table ' || $1 || '.' || $2 || ' should exist' );
+-- has_table( schema, table )
+CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT has_table( $1, $2, 'Table ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
--- view_exists( schema, table, description )
-CREATE OR REPLACE FUNCTION view_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+-- has_view( schema, table, description )
+CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
             SELECT true
@@ -480,18 +480,18 @@ CREATE OR REPLACE FUNCTION view_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- view_exists( table )
-CREATE OR REPLACE FUNCTION view_exists ( TEXT ) RETURNS TEXT AS $$
-    SELECT view_exists( 'public', $1, 'View public.' || $1 || ' should exist' );
+-- has_view( table )
+CREATE OR REPLACE FUNCTION has_view ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_view( 'public', $1, 'View public.' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
--- view_exists( schema, table )
-CREATE OR REPLACE FUNCTION view_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT view_exists( $1, $2, 'View ' || $1 || '.' || $2 || ' should exist' );
+-- has_view( schema, table )
+CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT has_view( $1, $2, 'View ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
--- column_exists( schema, table, column, description )
-CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+-- has_column( schema, table, column, description )
+CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
             SELECT true
@@ -501,13 +501,12 @@ CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT
     );
 $$ LANGUAGE SQL;
 
--- column_exists( table, column )
-CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT column_exists( 'public', $1, $2, 'Column ' || 'public.' || $1 || '.' || $2 || ' should exist' );
+-- has_column( table, column )
+CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT has_column( 'public', $1, $2, 'Column ' || 'public.' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
--- column_exists( schema, table, column )
-CREATE OR REPLACE FUNCTION column_exists ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT column_exists( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should exist' );
+-- has_column( schema, table, column )
+CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT has_column( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should exist' );
 $$ LANGUAGE SQL;
-
