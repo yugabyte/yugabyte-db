@@ -567,7 +567,7 @@ BEGIN
                AND table_name   = $2
                AND column_name  = $3;
 
-    IF actual_type = $4 THEN
+    IF actual_type = LOWER($4) THEN
         -- We're good to go.
         RETURN ok( true, $5 );
     END IF;
@@ -610,3 +610,4 @@ CREATE OR REPLACE FUNCTION column_is ( TEXT, TEXT, TEXT, TEXT, bool, TEXT, bool,
 $$ LANGUAGE SQL;
 
 */
+       

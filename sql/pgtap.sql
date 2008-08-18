@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 135
+\set numb_tests 139
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -468,6 +468,22 @@ SELECT is(
     'ok 134 - Column public.sometab.name should be type text',
     'col_type_is( table, column, type ) should work'
 );
+
+\echo ok 136 - testing col_type_is( table, column, type ) case-insensitively
+SELECT is(
+    col_type_is( 'sometab', 'name', 'TEXT' ),
+    'ok 136 - Column public.sometab.name should be type TEXT',
+    'col_type_is( table, column, type ) should work case-insensitively'
+);
+
+-- Make sure failure is correct.
+\echo ok 138 - testing col_type_is( table, column, type ) failure
+SELECT is(
+    col_type_is( 'sometab', 'name', 'int4' ),
+    E'not ok 138 - Column public.sometab.name should be type int4\n# Failed test 138: "Column public.sometab.name should be type int4"\n#         have: text\n#         want: int4',
+    'col_type_is( table, column, type ) should fail with proper diagnostics'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 138 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

@@ -1,4 +1,7 @@
 -- $Id$
+DROP FUNCTION col_type_is ( TEXT, TEXT, TEXT );
+DROP FUNCTION col_type_is ( TEXT, TEXT, TEXT, TEXT );
+DROP FUNCTION col_type_is ( TEXT, TEXT, TEXT, TEXT, TEXT );
 DROP FUNCTION col_is_null ( TEXT, TEXT );
 DROP FUNCTION col_is_null ( TEXT, TEXT, TEXT );
 DROP FUNCTION col_is_null ( TEXT, TEXT, TEXT, TEXT );

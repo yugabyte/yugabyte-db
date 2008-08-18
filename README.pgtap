@@ -439,11 +439,11 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
-### table_exists( text, text, text ) ###
-### table_exists( text, text ) ###
-### table_exists( text ) ###
+### has_table( text, text, text ) ###
+### has_table( text, text ) ###
+### has_table( text ) ###
 
-    SELECT table_exists(
+    SELECT has_table(
         'myschema',
         'sometable',
         'I got myschema.sometable'
@@ -455,23 +455,23 @@ test description. If you omit the test description, it will be set to "Table
 $schema.$table should exist". If you pass just a single argument, it is
 assumed to be the table name and the schema is assumed to be "public".
 
-### view_exists( text, text, text ) ###
-### view_exists( text, text ) ###
-### view_exists( text ) ###
+### has_view( text, text, text ) ###
+### has_view( text, text ) ###
+### has_view( text ) ###
 
-    SELECT view_exists(
+    SELECT has_view(
         'myschema',
         'someview',
         'I got myschema.someview'
     );
 
-Just like `table_exists()`, only it tests for the existence of a view.
+Just like `has_table()`, only it tests for the existence of a view.
 
-### column_exists( text, text, text, text ) ###
-### column_exists( text, text, text ) ###
-### column_exists( text, text ) ###
+### has_column( text, text, text, text ) ###
+### has_column( text, text, text ) ###
+### has_column( text, text ) ###
 
-    SELECT column_exists(
+    SELECT has_column(
         'myschema',
         'somecolumn',
         'somecolumn',
@@ -485,7 +485,67 @@ omitted, it will be set to "Column $schema.$table.$column should exist". If
 only two arguments are passed, they are assumed to be the table and column
 names, and the schema will default to "public".
 
-Just like `table_exists()`, only it tests for the existence of a column.
+Just like `has_table()`, only it tests for the existence of a column.
+
+### col_not_null ( text, text, text, text ) ###
+### col_not_null ( text, text, text ) ###
+### col_not_null ( text, text ) ###
+
+    SELECT col_not_null(
+        'myschema',
+        'somecolumn',
+        'somecolumn',
+        'Column myschema.sometable.somecolumn should be NOT NULL'
+    );
+
+Tests whether the specified column has a `NOT NULL` constraint. The first
+argument is the schema name, the second the table name, the third the column
+name, and the fourth is the test description. If the test description is
+omitted, it will be set to "Column $schema.$table.$column should be NOT NULL".
+If only two arguments are passed, they are assumed to be the table and column
+names, and the schema will default to "public". Note that this test will fail
+if the column in question does not exist.
+
+### col_is_null ( text, text, text, text ) ###
+### col_is_null ( text, text, text ) ###
+### col_is_null ( text, text ) ###
+
+    SELECT col_is_null(
+        'myschema',
+        'somecolumn',
+        'somecolumn',
+        'Column myschema.sometable.somecolumn should allow NULL'
+    );
+
+This function is the inverse of `col_not_null()`: the test passes if the
+column does not have a `NOT NULL` constraint. The first argument is the schema
+name, the second the table name, the third the column name, and the fourth is
+the test description. If the test description is omitted, it will be set to
+"Column $schema.$table.$column should allow NULL". If only two arguments are
+passed, they are assumed to be the table and column names, and the schema will
+default to "public". Note that this test will fail if the column in question
+does not exist.
+
+### col_type_is ( text, text, text, text, text ) ###
+### col_type_is ( text, text, text, text ) ###
+### col_type_is ( text, text, text ) ###
+
+    SELECT col_is_null(
+        'myschema',
+        'somecolumn',
+        'somecolumn',
+        'text',
+        'Column myschema.sometable.somecolumn be type text'
+    );
+
+This function tests that the specified column is of a particular type. If it
+fails, it will emit diagnostics naming the actual type. The first argument is
+the schema name, the second the table name, the third the column name, the
+fourth the type, and the fifth is the test description. If the test
+description is omitted, it will be set to "Column $schema.$table.$column
+should be type $type". If only three arguments are passed, they are assumed to
+be the table, column names, and type, and the schema will default to "public".
+Note that this test will fail if the column in question does not exist.
 
 Diagnostics
 -----------
