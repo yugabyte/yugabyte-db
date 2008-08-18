@@ -1,5 +1,5 @@
 \set ECHO
-1..129
+1..135
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -129,3 +129,9 @@ ok 126 - testing col_is_null( schema, table, column, desc )
 ok 127 - col_is_null( table, column ) should work
 ok 128 - testing col_is_null( schema, table, column, desc )
 ok 129 - col_is_null( table, column ) should properly fail
+ok 130 - testing col_type_is( schema, table, column, type, desc )
+ok 131 - col_type_is( schema, table, column, type, desc ) should work
+ok 132 - testing col_type_is( schema, table, column, type )
+ok 133 - col_type_is( schema, table, column, type ) should work
+ok 134 - testing col_type_is( table, column, type )
+ok 135 - col_type_is( table, column, type ) should work

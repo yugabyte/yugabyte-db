@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 129
+\set numb_tests 135
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -446,6 +446,30 @@ SELECT is(
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 128 );
 
+/****************************************************************************/
+-- Test col_type_is().
+\echo ok 130 - testing col_type_is( schema, table, column, type, desc )
+SELECT is(
+    col_type_is( 'public', 'sometab', 'name', 'text', 'name is text' ),
+    'ok 130 - name is text',
+    'col_type_is( schema, table, column, type, desc ) should work'
+);
+
+\echo ok 132 - testing col_type_is( schema, table, column, type )
+SELECT is(
+    col_type_is( 'public', 'sometab', 'name', 'text' ),
+    'ok 132 - Column public.sometab.name should be type text',
+    'col_type_is( schema, table, column, type ) should work'
+);
+
+\echo ok 134 - testing col_type_is( table, column, type )
+SELECT is(
+    col_type_is( 'sometab', 'name', 'text' ),
+    'ok 134 - Column public.sometab.name should be type text',
+    'col_type_is( table, column, type ) should work'
+);
+
+/****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
