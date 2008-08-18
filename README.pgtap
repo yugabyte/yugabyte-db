@@ -202,14 +202,14 @@ given test succeeded or failed. Everything else is just gravy.
 All of the following functions return "ok" or "not ok" depending on whether
 the test succeeded or failed.
 
-### ok( boolean, text ) ###
+### ok( boolean, description ) ###
 ### ok( boolean ) ###
 
-    SELECT ok( :this = :that, :test_name );
+    SELECT ok( :this = :that, :description );
   
-This function simply evaluates any expression `:this = :that` is just a
-simple example) and uses that to determine if the test succeeded or
-failed. A true expression passes, a false one fails. Very simple.
+This function simply evaluates any expression (`:this = :that` is just a
+simple example) and uses that to determine if the test succeeded or failed. A
+true expression passes, a false one fails. Very simple.
 
 For example:
 
@@ -221,9 +221,9 @@ For example:
 
 (Mnemonic:  "This is ok.")
 
-:test_name is a very short description of the test that will be printed
+The `description` is a very short description of the test that will be printed
 out. It makes it very easy to find a test in your script when it fails and
-gives others an idea of your intentions. :test_name is optional, but we
+gives others an idea of your intentions. The description is optional, but we
 *very* strongly encourage its use.
 
 Should an `ok()` fail, it will produce some diagnostics:
@@ -231,15 +231,15 @@ Should an `ok()` fail, it will produce some diagnostics:
     not ok 18 - sufficient mucus
     #     Failed test 18: "sufficient mucus"
 
-### is( anyelement, anyelement, text ) ###
+### is( anyelement, anyelement, description ) ###
 ### is( anyelement, anyelement ) ###
-### isnt( anyelement, anyelement, text ) ###
+### isnt( anyelement, anyelement, description ) ###
 ### isnt( anyelement, anyelement ) ###
 
-    SELECT is(   :this, :that, $test_name );
-    SELECT isnt( :this, :that, $test_name );
+    SELECT is(   :this, :that, :description );
+    SELECT isnt( :this, :that, :description );
 
-Similar to o`k()`, `is()` and `isnt()` compare their two arguments with `=`
+Similar to `ok()`, `is()` and `isnt()` compare their two arguments with `=`
 and `<>` respectively and use the result of that to determine if the test
 succeeded or failed. So these:
 
@@ -257,18 +257,18 @@ are similar to these:
 (Mnemonic: "This is that." "This isn't that.")
 
 So why use these? They produce better diagnostics on failure. `ok()` cannot
-know what you are testing for (beyond the name), but `is()` and `isnt()` know
-what the test was and why it failed. For example this test:
+know what you are testing for (beyond the description), but `is()` and
+`isnt()` know what the test was and why it failed. For example this test:
 
     \set foo '\'' waffle '\''
     \set bar '\'' yarblokos '\''
-    SELECT is( :foo::text, :bar::text,   'Is foo the same as bar?' );
+    SELECT is( :foo::text, :bar::text, 'Is foo the same as bar?' );
 
 Will produce something like this:
 
     # Failed test 17:  "Is foo the same as bar?"
-    #          got: waffle
-    #     expected: yarblokos
+    #         have: waffle
+    #         want: yarblokos
 
 So you can figure out what went wrong without re-running the test.
 
@@ -280,17 +280,17 @@ false!
     SELECT is( is_valid(9), TRUE, 'A tree grows in Brooklyn' );
 
 This does not check if `is_valid(9)` is true, it checks if it *returns*
-TRUE. Very different. Similar caveats exist for FALSE. In these cases, use
+`TRUE`. Very different. Similar caveats exist for `FALSE`. In these cases, use
 `ok()`.
 
-    SELECT ok( is_valid(9),       'A tree grows in Brooklyn' );
+    SELECT ok( is_valid(9), 'A tree grows in Brooklyn' );
 
-### matches( anyelement, text, text ) ###
-### matches( anyelement, text ) ###
+### matches( anyelement, regex, description ) ###
+### matches( anyelement, regex ) ###
 
-    SELECT matches( :this, '^that', :test_name );
+    SELECT matches( :this, '^that', :description );
 
-Similar to `ok()`, `matches()` matches :this against the regex `/^that/`.
+Similar to `ok()`, `matches()` matches `:this` against the regex `/^that/`.
 
 So this:
 
@@ -305,32 +305,32 @@ is similar to:
 Its advantages over `ok()` are similar to that of `is()` and `isnt()`: Better
 diagnostics on failure.
 
-### imatches( anyelement, text, text ) ###
-### imatches( anyelement, text ) ###
+### imatches( anyelement, regex, description ) ###
+### imatches( anyelement, regex ) ###
 
-    SELECT imatches( :this, '^that', :test_name );
+    SELECT imatches( :this, '^that', :description );
 
 These are just like `matches()` except that the regular expression is
 case-insensitive.
 
-### doesnt_match( anyelement, text, text ) ###
-### doesnt_match( anyelement, text ) ###
-### doesnt_imatch( anyelement, text, text ) ###
-### doesnt_imatch( anyelement, text ) ###
+### doesnt_match( anyelement, regex, description ) ###
+### doesnt_match( anyelement, regex ) ###
+### doesnt_imatch( anyelement, regex, description ) ###
+### doesnt_imatch( anyelement, regex ) ###
 
-    SELECT doesnt_match( :this, '^that', :test_name );
+    SELECT doesnt_match( :this, '^that', :description );
 
 These functions work exactly as `matches()` and `imataches()` do, only they
-check if :this *does not* match the given pattern.
+check if `:this` *does not* match the given pattern.
 
-### alike( anyelement, text, text ) ###
-### alike( anyelement, text ) ###
-### ialike( anyelement, text, text ) ###
-### ialike( anyelement, text ) ###
+### alike( anyelement, pattern, description ) ###
+### alike( anyelement, pattern ) ###
+### ialike( anyelement, pattern, description ) ###
+### ialike( anyelement, pattern ) ###
 
-    SELECT alike( :this, 'that%', :test_name );
+    SELECT alike( :this, 'that%', :description );
 
-Similar to `ok()`, `alike()` matches `:this` against the SQL LIKE pattern
+Similar to `ok()`, `alike()` matches `:this` against the SQL `LIKE` pattern
 'that%'. `ialike()` matches case-insensitively.
 
 So this:
@@ -346,23 +346,23 @@ is similar to:
 Its advantages over `ok()` are similar to that of `is()` and `isnt()`: Better
 diagnostics on failure.
 
-### unalike( anyelement, text, text ) ###
-### unalike( anyelement, text ) ###
-### unialike( anyelement, text, text ) ###
-### unialike( anyelement, text ) ###
+### unalike( anyelement, pattern, description ) ###
+### unalike( anyelement, pattern ) ###
+### unialike( anyelement, pattern, description ) ###
+### unialike( anyelement, pattern ) ###
 
-    SELECT unalike( :this, 'that%', :test_name );
+    SELECT unalike( :this, 'that%', :description );
 
-Works exactly as `alike()`, only it checks if :this *does not* match the given
-pattern.
+Works exactly as `alike()`, only it checks if `:this` *does not* match the
+given pattern.
 
-### pass( text ) ###
+### pass( description ) ###
 ### pass() ###
-### fail( text ) ###
+### fail( description ) ###
 ### fail() ###
 
-    SELECT pass( :test_name );
-    SELECT fail( :test_name );
+    SELECT pass( :description );
+    SELECT fail( :description );
 
 Sometimes you just want to say that the tests have passed. Usually the case is
 you've got some complicated condition that is difficult to wedge into an
@@ -379,8 +379,8 @@ Or maybe you want to make sure a query *does not* trigger an error. For such
 cases, we provide a couple of test functions to make sure your queries are as
 error-prone as you think they should be.
 
-### throws_ok( text, char(5), text ) ###
-### throws_ok( text, char(5) ) ###
+### throws_ok( text, err_code, description ) ###
+### throws_ok( text, err_code ) ###
 ### throws_ok( text ) ###
 
     SELECT throws_ok(
@@ -396,26 +396,28 @@ The first argument should be a string representing the query to be executed.
 `throws_ok()` will use the PL/pgSQL `EXECUTE` statement to execute it and
 catch any exception.
 
-The second argument should be an exception error code. If this value is not
-NULL, `throws_ok()` will check the thrown exception to ensure that it is the
-expected exception. For a complete list of error codes, see [Appendix
+The second argument should be an exception error code, which is a
+five-character string (it happens to consist only of numbers and you pass it
+as an integer, it will still work). If this value is not `NULL`, `throws_ok()`
+will check the thrown exception to ensure that it is the expected exception.
+For a complete list of error codes, see [Appendix
 A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html) in
 the [PostgreSQL
 documentation](http://www.postgresql.org/docs/current/static/).
 
-The third argument is of course a brief test name.
+The third argument is of course a brief test description.
 
 Should a `throws_ok()` test fail it produces appropriate diagnostic messages.
 For example:
 
     not ok 81 - simple error
-    # Failed test "simple error"
+    # Failed test "This should not die"
     #       caught: 23505: duplicate key value violates unique constraint "try_pkey"
-    #     expected: 23506
+    #       wanted: 23506
 
 Idea borrowed from the Test::Exception Perl module.
 
-### lives_ok( text, text ) ###
+### lives_ok( text, err_code ) ###
 ### lives_ok( text ) ###
 
     SELECT lives_ok(
@@ -424,7 +426,7 @@ Idea borrowed from the Test::Exception Perl module.
     );
 
 The inverse of `throws_ok()`, these functions test to ensure that a SQL
-statement does *not* throw an exception. Should a `lives_ok()` test faile, it
+statement does *not* throw an exception. Should a `lives_ok()` test fail, it
 produces appropriate diagnostic messages. For example:
 
     not ok 85 - simple success
@@ -439,9 +441,9 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
-### has_table( text, text, text ) ###
-### has_table( text, text ) ###
-### has_table( text ) ###
+### has_table( schema, table, description ) ###
+### has_table( schema, table ) ###
+### has_table( table ) ###
 
     SELECT has_table(
         'myschema',
@@ -455,9 +457,9 @@ test description. If you omit the test description, it will be set to "Table
 $schema.$table should exist". If you pass just a single argument, it is
 assumed to be the table name and the schema is assumed to be "public".
 
-### has_view( text, text, text ) ###
-### has_view( text, text ) ###
-### has_view( text ) ###
+### has_view( schema, view, description ) ###
+### has_view( schema, view ) ###
+### has_view( view ) ###
 
     SELECT has_view(
         'myschema',
@@ -467,9 +469,9 @@ assumed to be the table name and the schema is assumed to be "public".
 
 Just like `has_table()`, only it tests for the existence of a view.
 
-### has_column( text, text, text, text ) ###
-### has_column( text, text, text ) ###
-### has_column( text, text ) ###
+### has_column( schema, table, column, description ) ###
+### has_column( schema, table, column ) ###
+### has_column( table, column ) ###
 
     SELECT has_column(
         'myschema',
@@ -487,9 +489,9 @@ names, and the schema will default to "public".
 
 Just like `has_table()`, only it tests for the existence of a column.
 
-### col_not_null ( text, text, text, text ) ###
-### col_not_null ( text, text, text ) ###
-### col_not_null ( text, text ) ###
+### col_not_null( schema, table, column, description ) ###
+### col_not_null( schema, table, column ) ###
+### col_not_null( table, column ) ###
 
     SELECT col_not_null(
         'myschema',
@@ -506,9 +508,9 @@ If only two arguments are passed, they are assumed to be the table and column
 names, and the schema will default to "public". Note that this test will fail
 if the column in question does not exist.
 
-### col_is_null ( text, text, text, text ) ###
-### col_is_null ( text, text, text ) ###
-### col_is_null ( text, text ) ###
+### col_is_null( schema, table, column, description ) ###
+### col_is_null( schema, table, column ) ###
+### col_is_null( table, column ) ###
 
     SELECT col_is_null(
         'myschema',
@@ -526,16 +528,16 @@ passed, they are assumed to be the table and column names, and the schema will
 default to "public". Note that this test will fail if the column in question
 does not exist.
 
-### col_type_is ( text, text, text, text, text ) ###
-### col_type_is ( text, text, text, text ) ###
-### col_type_is ( text, text, text ) ###
+### col_type_is( schema, table, column, type, description ) ###
+### col_type_is( schema, table, column, type ) ###
+### col_type_is( table, column, type ) ###
 
-    SELECT col_is_null(
+    SELECT col_type_is(
         'myschema',
         'somecolumn',
         'somecolumn',
         'text',
-        'Column myschema.sometable.somecolumn be type text'
+        'Column myschema.sometable.somecolumn should be type text'
     );
 
 This function tests that the specified column is of a particular type. If it
@@ -546,6 +548,16 @@ description is omitted, it will be set to "Column $schema.$table.$column
 should be type $type". If only three arguments are passed, they are assumed to
 be the table, column names, and type, and the schema will default to "public".
 Note that this test will fail if the column in question does not exist.
+
+If the test fails, it will output useful diagnostics. For example this test:
+
+    SELECT col_type_is( 'pg_catalog', 'pg_type', 'typname', 'text' );
+
+Will produce something like this:
+
+    # Failed test 138: "Column pg_catalog.pg_type.typname should be type text
+    #         have: name
+    #         want: text
 
 Diagnostics
 -----------
@@ -584,10 +596,7 @@ Sometimes you might have tests that you want to pass, but you haven't gotten
 to declare that such tests are supposed to fail but will work in the future.
 This is known as a "todo test."
 
-### todo ###
-
-    todo(:why, :howMany);
-    -- ...normal testing code goes here...
+### todo( why, how_many ) ###
 
 Declares a series of tests that you expect to fail and why. Perhaps it's
 because you haven't fixed a bug or haven't finished a new feature:
@@ -598,11 +607,11 @@ because you haven't fixed a bug or haven't finished a new feature:
     SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
     SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
 
-With `todo()`, `:howMany` specifies how many tests are expected to fail. pgTAP
+With `todo()`, `how_any` specifies how many tests are expected to fail. pgTAP
 will run the tests normally, but print out special flags indicating they are
 "todo" tests. The test harness will interpret these failures as ok. Should any
 todo test pass, the harness will report it as an unexpected success. You then
-know the thing you had todo is done and can remove the call to `todo()`.
+know that the thing you had todo is done and can remove the call to `todo()`.
 
 The nice part about todo tests, as opposed to simply commenting out a block of
 tests, is that they're like a programmatic todo list. You know how much work

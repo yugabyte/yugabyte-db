@@ -426,6 +426,15 @@ CREATE OR REPLACE FUNCTION throws_ok ( TEXT ) RETURNS TEXT AS $$
     SELECT throws_ok( $1, NULL, NULL );
 $$ LANGUAGE SQL;
 
+-- Magically cast integer error codes.
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT ) RETURNS TEXT AS $$
+    SELECT throws_ok( $1, $2::char(5), $3 );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4 ) RETURNS TEXT AS $$
+    SELECT throws_ok( $1, $2::char(5), NULL );
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION lives_ok (
     TEXT,
     TEXT

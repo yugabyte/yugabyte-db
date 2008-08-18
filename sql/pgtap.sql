@@ -208,7 +208,7 @@ SELECT throws_ok( 'SELECT 1 / 0', '22012', 'throws_ok(1/0) should work' );
 -- Check its diagnostics for an invalid error code.
 \echo ok 71 - throws_ok failure diagnostics
 SELECT is(
-    throws_ok( 'SELECT 1 / 0', '97212' ),
+    throws_ok( 'SELECT 1 / 0', 97212 ),
     E'not ok 71 - threw 97212\n# Failed test 71: "threw 97212"\n#       caught: 22012: division by zero\n#       wanted: 97212',
     'We should get the proper diagnostics from throws_ok()'
 );
