@@ -1,5 +1,5 @@
 \set ECHO
-1..113
+1..129
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -113,3 +113,19 @@ ok 110 - has_column(table, column) pass
 ok 111 - has_column(table, column) should pass for an existing column
 ok 112 - has_column(schema, column, desc) pass
 ok 113 - has_column(schema, table, column, desc) should pass for an existing view column
+ok 114 - testing col_not_null( schema, table, column, desc )
+ok 115 - col_not_null( schema, table, column, desc ) should work
+ok 116 - testing col_not_null( schema, table, column, desc )
+ok 117 - col_not_null( schema, table, column ) should work
+ok 118 - testing col_not_null( schema, table, column, desc )
+ok 119 - col_not_null( table, column ) should work
+ok 120 - testing col_not_null( schema, table, column, desc )
+ok 121 - col_not_null( table, column ) should properly fail
+ok 122 - testing col_is_null( schema, table, column, desc )
+ok 123 - col_is_null( schema, table, column, desc ) should work
+ok 124 - testing col_is_null( schema, table, column, desc )
+ok 125 - col_is_null( schema, table, column ) should work
+ok 126 - testing col_is_null( schema, table, column, desc )
+ok 127 - col_is_null( table, column ) should work
+ok 128 - testing col_is_null( schema, table, column, desc )
+ok 129 - col_is_null( table, column ) should properly fail

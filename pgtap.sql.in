@@ -510,3 +510,47 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT has_column( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should exist' );
 $$ LANGUAGE SQL;
+
+-- _col_is_null( schema, table, column, desc, null )
+CREATE OR REPLACE FUNCTION _col_is_null ( TEXT, TEXT, TEXT, TEXT, bool ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM information_schema.columns
+             WHERE table_schema = $1
+               AND table_name   = $2
+               AND column_name  = $3
+               AND is_nullable  = CASE $5 WHEN TRUE THEN 'YES' ELSE 'NO' END
+        ), $4
+    );
+$$ LANGUAGE SQL;
+
+-- col_not_null( schema, table, column, desc )
+CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT _col_is_null( $1, $2, $3, $4, false );
+$$ LANGUAGE SQL;
+
+-- col_not_null( schema, table, column )
+CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT _col_is_null( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should be NOT NULL', false );
+$$ LANGUAGE SQL;
+
+-- col_not_null( table, column )
+CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT _col_is_null( 'public', $1, $2, 'Column public.' || $1 || '.' || $2 || ' should be NOT NULL', false );
+$$ LANGUAGE SQL;
+
+-- col_is_null( schema, table, column, desc )
+CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT _col_is_null( $1, $2, $3, $4, true );
+$$ LANGUAGE SQL;
+
+-- col_is_null( schema, table, column )
+CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT _col_is_null( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should allow NULL', true );
+$$ LANGUAGE SQL;
+
+-- col_is_null( table, column )
+CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT _col_is_null( 'public', $1, $2, 'Column public.' || $1 || '.' || $2 || ' should allow NULL', true );
+$$ LANGUAGE SQL;

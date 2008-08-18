@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 113
+\set numb_tests 129
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -370,7 +370,7 @@ SELECT is(
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 104, 106, 108 );
 
 -- This will be rolled back. :-)
-CREATE TABLE sometab (id int);
+CREATE TABLE sometab (id int NOT NULL, name text);
 
 \echo ok 110 - has_column(table, column) pass
 SELECT is(
@@ -385,6 +385,66 @@ SELECT is(
     'ok 112 - desc',
     'has_column(schema, table, column, desc) should pass for an existing view column'
 );
+
+/****************************************************************************/
+-- Test col_not_null().
+\echo ok 114 - testing col_not_null( schema, table, column, desc )
+SELECT is(
+    col_not_null( 'pg_catalog', 'pg_type', 'typname', 'typname not null' ),
+    'ok 114 - typname not null',
+    'col_not_null( schema, table, column, desc ) should work'
+);
+\echo ok 116 - testing col_not_null( schema, table, column, desc )
+SELECT is(
+    col_not_null( 'pg_catalog', 'pg_type', 'typname' ),
+    'ok 116 - Column pg_catalog.pg_type.typname should be NOT NULL',
+    'col_not_null( schema, table, column ) should work'
+);
+
+\echo ok 118 - testing col_not_null( schema, table, column, desc )
+SELECT is(
+    col_not_null( 'sometab', 'id' ),
+    'ok 118 - Column public.sometab.id should be NOT NULL',
+    'col_not_null( table, column ) should work'
+);
+-- Make sure failure is correct.
+\echo ok 120 - testing col_not_null( schema, table, column, desc )
+SELECT is(
+    col_not_null( 'sometab', 'name' ),
+    E'not ok 120 - Column public.sometab.name should be NOT NULL\n# Failed test 120: "Column public.sometab.name should be NOT NULL"',
+    'col_not_null( table, column ) should properly fail'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 120 );
+
+/****************************************************************************/
+-- Test col_is_null().
+\echo ok 122 - testing col_is_null( schema, table, column, desc )
+SELECT is(
+    col_is_null( 'public', 'sometab', 'name', 'name is null' ),
+    'ok 122 - name is null',
+    'col_is_null( schema, table, column, desc ) should work'
+);
+\echo ok 124 - testing col_is_null( schema, table, column, desc )
+SELECT is(
+    col_is_null( 'public', 'sometab', 'name' ),
+    'ok 124 - Column public.sometab.name should allow NULL',
+    'col_is_null( schema, table, column ) should work'
+);
+
+\echo ok 126 - testing col_is_null( schema, table, column, desc )
+SELECT is(
+    col_is_null( 'sometab', 'name' ),
+    'ok 126 - Column public.sometab.name should allow NULL',
+    'col_is_null( table, column ) should work'
+);
+-- Make sure failure is correct.
+\echo ok 128 - testing col_is_null( schema, table, column, desc )
+SELECT is(
+    col_is_null( 'sometab', 'id' ),
+    E'not ok 128 - Column public.sometab.id should allow NULL\n# Failed test 128: "Column public.sometab.id should allow NULL"',
+    'col_is_null( table, column ) should properly fail'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 128 );
 
 -- Finish the tests and clean up.
 SELECT * FROM finish();
