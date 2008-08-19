@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 143
+\set numb_tests 151
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -370,7 +370,12 @@ SELECT is(
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 104, 106, 108 );
 
 -- This will be rolled back. :-)
-CREATE TABLE sometab (id int NOT NULL, name text, numb numeric(10, 2), myint numeric(8));
+CREATE TABLE sometab(
+    id    INT NOT NULL,
+    name  TEXT DEFAULT '',
+    numb  NUMERIC(10, 2),
+    myint NUMERIC(8)
+);
 
 \echo ok 110 - has_column(table, column) pass
 SELECT is(
@@ -503,6 +508,38 @@ SELECT is(
 );
 
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 142, 158 );
+
+/****************************************************************************/
+-- Test col_has_default().
+
+\echo ok 144 - col_has_default( schema, table, column, default, description )
+SELECT is(
+    col_has_default( 'public', 'sometab', 'name', ''::text, 'name should default to empty string' ),
+    'ok 144 - name should default to empty string',
+    'col_has_default( schema, table, column, default, description ) should work'
+);
+
+\echo ok 146 - col_has_default( schema, table, column, default, description ) fail
+SELECT is(
+    col_has_default( 'public', 'sometab', 'name', 'foo'::text, 'name should default to ''foo''' ),
+    E'not ok 146 - name should default to ''foo''\n# Failed test 146: "name should default to ''foo''"\n#         have: \n#         want: foo',
+    'ok 146 - Should get proper diagnostics for a default failure'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 146 );
+
+\echo ok 148 - col_has_default( table, column, default, description )
+SELECT is(
+    col_has_default( 'sometab', 'name', ''::text, 'name should default to empty string' ),
+    'ok 148 - name should default to empty string',
+    'col_has_default( table, column, default, description ) should work'
+);
+
+\echo ok 150 - col_has_default( table, column, default )
+SELECT is(
+    col_has_default( 'sometab', 'name', '' ),
+    'ok 150 - Column sometab.name should default to ''''',
+    'col_has_default( table, column, default ) should work'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.

@@ -100,7 +100,7 @@ CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
-    VALUES( ' || $1 || ', ' || $2 || ', ' || COALESCE(quote_literal($3), '''''') || ', '
+    VALUES( ' || $1 || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ', '
           || quote_literal($4) || ', ' || quote_literal($5) || ' )';
     RETURN currval('__tresults___numb_seq');
 END;
@@ -211,7 +211,9 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    result := $1 = $2;
+    result := CASE WHEN $2 IS NULL AND $1 IS NULL THEN TRUE
+                   WHEN $2 IS NULL OR  $1 IS NULL THEN FALSE
+                   ELSE $1 = $2 END;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '        have: ' || COALESCE( $1::text, 'NULL' ) ||
@@ -229,7 +231,9 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    result := $1 <> $2;
+    result := CASE WHEN $2 IS NULL AND $1 IS NULL THEN FALSE
+                   WHEN $2 IS NULL OR  $1 IS NULL THEN TRUE
+                   ELSE $1 <> $2 END;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '    ' || COALESCE( $1::text, 'NULL' ) ||
@@ -667,5 +671,63 @@ CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '.' || $2 || ' should be type ' || $3 );
 $$ LANGUAGE SQL;
 
--- Test PK?
--- Test unique?
+CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
+DECLARE
+    thing text;
+BEGIN
+    IF $1 ~ '^[^'']+[(]' THEN
+        -- It's a functional default.
+        RETURN is( $1, $2, $3 );
+    END IF;
+    EXECUTE 'SELECT is(' || COALESCE($1, 'NULL::text') || ', ' || quote_literal($2) || ', ' || quote_literal($3) || ')'
+      INTO thing;
+    RETURN thing;
+END;
+$$ LANGUAGE plpgsql;
+
+-- col_has_default( schema, table, column, default, description )
+CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
+    SELECT _def_is((
+        SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+          FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+               pg_catalog.pg_attrdef d
+         WHERE n.oid = c.relnamespace
+           AND c.oid = a.attrelid
+           AND a.atthasdef
+           AND a.attrelid = d.adrelid
+           AND a.attnum = d.adnum
+           AND n.nspname = $1
+           AND c.relname = $2
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+           AND a.attname = $3
+     ), $4, $5 );
+$$ LANGUAGE sql;
+
+-- col_has_default( table, column, default, description )
+CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
+    SELECT _def_is((
+        SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
+          FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a, pg_catalog.pg_attrdef d
+         WHERE c.oid = a.attrelid
+           AND pg_table_is_visible(c.oid)
+           AND a.atthasdef
+           AND a.attrelid = d.adrelid
+           AND a.attnum = d.adnum
+           AND c.relname = $1
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+           AND a.attname = $2
+    ), $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_has_default( table, column, default )
+CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_has_default(
+        $1, $2, $3,
+        'Column ' || $1 || '.' || $2 || ' should default to ' || quote_literal($3)
+    );
+$$ LANGUAGE sql;
+
+-- col_is_pk()
+-- col_is_unique()

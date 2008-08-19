@@ -256,6 +256,10 @@ are similar to these:
 
 (Mnemonic: "This is that." "This isn't that.")
 
+`NULL`s are not treated as unknowns by `is()` or `isnt()`. That is, if `:this`
+and `:that` are both `NULL`, the test will pass, and if only one of them is
+`NULL`, the test will fail.
+
 So why use these? They produce better diagnostics on failure. `ok()` cannot
 know what you are testing for (beyond the description), but `is()` and
 `isnt()` know what the test was and why it failed. For example this test:
@@ -560,6 +564,53 @@ Will produce something like this:
     # Failed test 138: "Column pg_catalog.pg_type.typname should be type text
     #         have: name
     #         want: text
+
+### col_default_is( schema, table, column, default, description ) ###
+### col_default_is( table, column, default, description ) ###
+### col_default_is( table, column, type ) ###
+
+    SELECT col_default_is(
+        'myschema',
+        'sometable',
+        'somecolumn',
+        'howdy'::text,
+        'Column myschema.sometable.somecolumn should default to ''howdy'''
+    );
+
+Tests the default value of a column. If it fails, it will emit diagnostics
+showing the actual default value. The first argument is the schema name, the
+second the table name, the third the column name, the fourth the default
+value, and the fifth is the test description. If the schema is omitted, the
+table must be visible in the search path. If the test description is omitted,
+it will be set to "Column :table.:column should default to :default". Note
+that this test will fail if the column in question does not exist.
+
+The default argument must have an unambiguous type in order for the call to
+succeed. If you see an error such as 'ERROR: could not determine polymorphic
+type because input has type "unknown"', it's because you forgot to cast the
+expected value to its proper type. IOW, this will fail:
+
+    SELECT col_is_default( 'tab', 'name', 'foo' );
+
+But this will not:
+
+    SELECT col_is_default( 'tab', 'name', 'foo'::text );
+
+If the test fails, it will output useful diagnostics. For example, this test:
+
+    SELECT col_has_default(
+        'pg_catalog',
+        'pg_type',
+        'typname',
+        'foo'::text,
+        'check typname'
+    );
+
+Will produce something like this:
+
+    # Failed test 152: "check typname"
+    #         have: NULL
+    #         want: foo
 
 Diagnostics
 -----------
