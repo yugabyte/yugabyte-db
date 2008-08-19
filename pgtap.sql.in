@@ -471,14 +471,22 @@ CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_table( table )
-CREATE OR REPLACE FUNCTION has_table ( TEXT ) RETURNS TEXT AS $$
-    SELECT has_table( 'public', $1, 'Table public.' || $1 || ' should exist' );
+-- has_table( table, description )
+CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c
+             WHERE c.relkind = 'r'
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+        ), $2
+    );
 $$ LANGUAGE SQL;
 
--- has_table( schema, table )
-CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT has_table( $1, $2, 'Table ' || $1 || '.' || $2 || ' should exist' );
+-- has_table( table )
+CREATE OR REPLACE FUNCTION has_table ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_table( $1, 'Table ' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- has_view( schema, view, description )
@@ -495,14 +503,22 @@ CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_view( view )
-CREATE OR REPLACE FUNCTION has_view ( TEXT ) RETURNS TEXT AS $$
-    SELECT has_view( 'public', $1, 'View public.' || $1 || ' should exist' );
+-- has_view( view, description )
+CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c
+             WHERE c.relkind = 'v'
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+        ), $2
+    );
 $$ LANGUAGE SQL;
 
--- has_view( schema, view )
-CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT has_view( $1, $2, 'View ' || $1 || '.' || $2 || ' should exist' );
+-- has_view( view )
+CREATE OR REPLACE FUNCTION has_view ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_view( $1, 'View ' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- has_column( schema, table, column, description )
@@ -522,14 +538,25 @@ CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS
     );
 $$ LANGUAGE SQL;
 
--- has_column( table, column )
-CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT has_column( 'public', $1, $2, 'Column ' || 'public.' || $1 || '.' || $2 || ' should exist' );
+-- has_column( table, column, description )
+CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a
+             WHERE c.oid = a.attrelid
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+               AND a.attname = LOWER($2)
+        ), $3
+    );
 $$ LANGUAGE SQL;
 
--- has_column( schema, table, column )
-CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT has_column( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should exist' );
+-- has_column( table, column )
+CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT has_column( $1, $2, 'Column ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- _col_is_null( schema, table, column, desc, null )
@@ -550,52 +577,79 @@ CREATE OR REPLACE FUNCTION _col_is_null ( TEXT, TEXT, TEXT, TEXT, bool ) RETURNS
     );
 $$ LANGUAGE SQL;
 
--- col_not_null( schema, table, column, desc )
+-- _col_is_null( table, column, desc, null )
+CREATE OR REPLACE FUNCTION _col_is_null ( TEXT, TEXT, TEXT, bool ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a
+             WHERE c.oid = a.attrelid
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+               AND a.attname = LOWER($2)
+               AND a.attnotnull = $4
+        ), $3
+    );
+$$ LANGUAGE SQL;
+
+-- col_not_null( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, $4, true );
 $$ LANGUAGE SQL;
 
--- col_not_null( schema, table, column )
+-- col_not_null( table, column, description )
 CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT _col_is_null( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should be NOT NULL', true );
+    SELECT _col_is_null( $1, $2, $3, true );
 $$ LANGUAGE SQL;
 
 -- col_not_null( table, column )
 CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT _col_is_null( 'public', $1, $2, 'Column public.' || $1 || '.' || $2 || ' should be NOT NULL', true );
+    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be NOT NULL', true );
 $$ LANGUAGE SQL;
 
--- col_is_null( schema, table, column, desc )
+-- col_is_null( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, $4, false );
 $$ LANGUAGE SQL;
 
 -- col_is_null( schema, table, column )
 CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT _col_is_null( $1, $2, $3, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should allow NULL', false );
+    SELECT _col_is_null( $1, $2, $3, false );
 $$ LANGUAGE SQL;
 
 -- col_is_null( table, column )
 CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT _col_is_null( 'public', $1, $2, 'Column public.' || $1 || '.' || $2 || ' should allow NULL', false );
+    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should allow NULL', false );
 $$ LANGUAGE SQL;
 
--- col_type_is( schema, table, column, type, desc )
+-- col_type_is( schema, table, column, type, description )
 CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
 DECLARE
     actual_type TEXT;
 BEGIN
     -- Get the data type.
-    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
-      FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c, pg_catalog.pg_tables t
-     WHERE a.attrelid = c.oid
-       AND pg_table_is_visible(c.oid)
-       AND c.relname = $2
-       AND t.tablename = $2
-       AND t.schemaname = $1 
-       AND attnum > 0
-       AND NOT attisdropped
-       AND a.attname = $3;
+    IF $1 IS NULL THEN
+        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
+          FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c
+         WHERE a.attrelid = c.oid
+           AND pg_table_is_visible(c.oid)
+           AND c.relname = $2
+           AND attnum > 0
+           AND NOT attisdropped
+           AND a.attname = $3;
+    ELSE
+        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
+          FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
+         WHERE n.oid = c.relnamespace
+           AND c.oid = a.attrelid
+           AND n.nspname = $1
+           AND c.relname = $2
+           AND attnum > 0
+           AND NOT attisdropped
+           AND a.attname = $3;
+    END IF;
 
     IF actual_type = LOWER($4) THEN
         -- We're good to go.
@@ -610,14 +664,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- col_type_is( schema, table, column, type )
+-- col_type_is( table, column, type, description )
 CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT col_type_is( $1, $2, $3, $4, 'Column ' || $1 || '.' || $2 || '.' || $3 || ' should be type ' || $4 );
+    SELECT col_type_is( NULL, $1, $2, $3, $4 );
 $$ LANGUAGE SQL;
 
 -- col_type_is( table, column, type )
 CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT col_type_is( 'public', $1, $2, $3, 'Column public.' || $1 || '.' || $2 || ' should be type ' || $3 );
+    SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '.' || $2 || ' should be type ' || $3 );
 $$ LANGUAGE SQL;
 
 -- Test PK?

@@ -85,28 +85,28 @@ ok 82 - todo pass
 ok 83 - TODO tests should display properly
 ok 84 - has_table(table) fail
 ok 85 - has_table(table) should fail for non-existent table
-ok 86 - has_table(schema, table) fail
-ok 87 - has_table(schema, table) should fail for non-existent table
+ok 86 - has_table(table, desc) fail
+ok 87 - has_table(table, dessc) should fail for non-existent table
 ok 88 - has_table(schema, table, desc) fail
 ok 89 - has_table(schema, table, desc) should fail for non-existent table
-ok 90 - has_table(schema, table) pass
-ok 91 - has_table(schema, table) should pass for an existing table
+ok 90 - has_table(table, desc) pass
+ok 91 - has_table(table, desc) should pass for an existing table
 ok 92 - has_table(schema, table, desc) pass
 ok 93 - has_table(schema, table, desc) should pass for an existing table
 ok 94 - has_view(view) fail
 ok 95 - has_view(view) should fail for non-existent view
-ok 96 - has_view(schema, view) fail
-ok 97 - has_view(schema, view) should fail for non-existent view
+ok 96 - has_view(view, desc) fail
+ok 97 - has_view(view, desc) should fail for non-existent view
 ok 98 - has_view(schema, view, desc) fail
 ok 99 - has_view(schema, view, desc) should fail for non-existent view
-ok 100 - has_view(schema, view) pass
-ok 101 - has_view(schema, view) should pass for an existing view
+ok 100 - has_view(view, desc) pass
+ok 101 - has_view(view, desc) should pass for an existing view
 ok 102 - has_view(schema, view, desc) pass
 ok 103 - has_view(schema, view, desc) should pass for an existing view
 ok 104 - has_column(table, column) fail
 ok 105 - has_column(table, column) should fail for non-existent table
-ok 106 - has_column(schema, table, column) fail
-ok 107 - has_column(schema, table, column) should fail for non-existent table
+ok 106 - has_column(table, column, desc) fail
+ok 107 - has_column(table, column, desc) should fail for non-existent table
 ok 108 - has_column(schema, table, column, desc) fail
 ok 109 - has_column(schema, table, column, desc) should fail for non-existent table
 ok 110 - has_column(table, column) pass
@@ -115,24 +115,24 @@ ok 112 - has_column(schema, column, desc) pass
 ok 113 - has_column(schema, table, column, desc) should pass for an existing view column
 ok 114 - testing col_not_null( schema, table, column, desc )
 ok 115 - col_not_null( schema, table, column, desc ) should work
-ok 116 - testing col_not_null( schema, table, column, desc )
-ok 117 - col_not_null( schema, table, column ) should work
+ok 116 - testing col_not_null( table, column, desc )
+ok 117 - col_not_null( table, column, desc ) should work
 ok 118 - testing col_not_null( schema, table, column, desc )
 ok 119 - col_not_null( table, column ) should work
 ok 120 - testing col_not_null( schema, table, column, desc )
 ok 121 - col_not_null( table, column ) should properly fail
 ok 122 - testing col_is_null( schema, table, column, desc )
 ok 123 - col_is_null( schema, table, column, desc ) should work
-ok 124 - testing col_is_null( schema, table, column, desc )
-ok 125 - col_is_null( schema, table, column ) should work
+ok 124 - testing col_is_null( table, column, desc )
+ok 125 - col_is_null( table, column, desc ) should work
 ok 126 - testing col_is_null( schema, table, column, desc )
 ok 127 - col_is_null( table, column ) should work
 ok 128 - testing col_is_null( schema, table, column, desc )
 ok 129 - col_is_null( table, column ) should properly fail
 ok 130 - testing col_type_is( schema, table, column, type, desc )
 ok 131 - col_type_is( schema, table, column, type, desc ) should work
-ok 132 - testing col_type_is( schema, table, column, type )
-ok 133 - col_type_is( schema, table, column, type ) should work
+ok 132 - testing col_type_is( table, column, type, desc )
+ok 133 - col_type_is( table, column, type, desc ) should work
 ok 134 - testing col_type_is( table, column, type )
 ok 135 - col_type_is( table, column, type ) should work
 ok 136 - testing col_type_is( table, column, type ) case-insensitively
@@ -141,5 +141,5 @@ ok 138 - testing col_type_is( table, column, type ) failure
 ok 139 - col_type_is( table, column, type ) should fail with proper diagnostics
 ok 140 - testing col_type_is( schema, table, column, type(precision,scale), description )
 ok 141 - col_type_is( schema, table, column, type, precision(scale,description) should work
-ok 142 - col_type_is( schema, table, column, type, precision ) fail
+ok 142 - col_type_is( table, column, type, precision, desc ) fail
 ok 143 - col_type_is with precision should have nice diagnostics

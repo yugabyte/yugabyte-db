@@ -49,19 +49,19 @@ of the schema you'd like, for example:
 
 The test target uses the included pg_prove script to do its testing. It
 supports a number of environment variables that you might need to use,
-including all the usual PostgreSQL client environment varibles:
+including all the usual PostgreSQL client environment variables:
 
 * PGDATABASE
 * PGHOST
 * PGPORT
 * PGUSER
 
-Once pgTAP habe been built and tested, you can install it into a database:
+Once pgTAP has been built and tested, you can install it into a database:
 
     psql dbname -f pgtap.sql
 
 If you want pgTAP to be available to all new databases, install it into the
-template1 dtabase:
+template1 database:
 
     psql template1 -f pgtap.sql
 
@@ -69,7 +69,7 @@ If you want to remove pgTAP from a database, run the drop_pgtap.sql script:
 
     psql dbname -f drop_pgtap.sql
 
-Both scripts will also be installed in the "contrib" directory under the
+Both scripts will also be installed in the `contrib` directory under the
 directory output by `pg_config --sharedir`. So you can always do this,
 as well:
 
@@ -442,7 +442,7 @@ Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
 ### has_table( schema, table, description ) ###
-### has_table( schema, table ) ###
+### has_table( table, description ) ###
 ### has_table( table ) ###
 
     SELECT has_table(
@@ -453,12 +453,12 @@ should be? Use these test functions and rest easy.
 
 This function tests whether or not a table exist in the database. The first
 argument is a schema name, the second is a table name, and the third is the
-test description. If you omit the test description, it will be set to "Table
-$schema.$table should exist". If you pass just a single argument, it is
-assumed to be the table name and the schema is assumed to be "public".
+test description. If you omit the schema, the table must be visible in the
+search path. If you omit the test description, it will be set to "Table :table
+should exist".
 
 ### has_view( schema, view, description ) ###
-### has_view( schema, view ) ###
+### has_view( view, description ) ###
 ### has_view( view ) ###
 
     SELECT has_view(
@@ -470,7 +470,7 @@ assumed to be the table name and the schema is assumed to be "public".
 Just like `has_table()`, only it tests for the existence of a view.
 
 ### has_column( schema, table, column, description ) ###
-### has_column( schema, table, column ) ###
+### has_column( table, column, description ) ###
 ### has_column( table, column ) ###
 
     SELECT has_column(
@@ -482,15 +482,14 @@ Just like `has_table()`, only it tests for the existence of a view.
 
 Tests whether or not a column exists in a given table or view. The first
 argument is the schema name, the second the table name, the third the column
-name, and the fourth is the test description. If the test description is
-omitted, it will be set to "Column $schema.$table.$column should exist". If
-only two arguments are passed, they are assumed to be the table and column
-names, and the schema will default to "public".
+name, and the fourth is the test description. If the schema is omitted, the
+table must be visible in the search path. If the test description is omitted,
+it will be set to "Column :table.:column should exist".
 
 Just like `has_table()`, only it tests for the existence of a column.
 
 ### col_not_null( schema, table, column, description ) ###
-### col_not_null( schema, table, column ) ###
+### col_not_null( table, column, description ) ###
 ### col_not_null( table, column ) ###
 
     SELECT col_not_null(
@@ -502,14 +501,13 @@ Just like `has_table()`, only it tests for the existence of a column.
 
 Tests whether the specified column has a `NOT NULL` constraint. The first
 argument is the schema name, the second the table name, the third the column
-name, and the fourth is the test description. If the test description is
-omitted, it will be set to "Column $schema.$table.$column should be NOT NULL".
-If only two arguments are passed, they are assumed to be the table and column
-names, and the schema will default to "public". Note that this test will fail
-if the column in question does not exist.
+name, and the fourth is the test description. If the schema is omitted, the
+table must be visible in the search path. If the test description is omitted,
+it will be set to "Column :table.:column should be NOT NULL". Note that this
+test will fail if the column in question does not exist.
 
 ### col_is_null( schema, table, column, description ) ###
-### col_is_null( schema, table, column ) ###
+### col_is_null( table, column, description ) ###
 ### col_is_null( table, column ) ###
 
     SELECT col_is_null(
@@ -522,14 +520,13 @@ if the column in question does not exist.
 This function is the inverse of `col_not_null()`: the test passes if the
 column does not have a `NOT NULL` constraint. The first argument is the schema
 name, the second the table name, the third the column name, and the fourth is
-the test description. If the test description is omitted, it will be set to
-"Column $schema.$table.$column should allow NULL". If only two arguments are
-passed, they are assumed to be the table and column names, and the schema will
-default to "public". Note that this test will fail if the column in question
-does not exist.
+the test description. If the schema is omitted, the table must be visible in
+the search path. If the test description is omitted, it will be set to "Column
+:table.:column should allow NULL". Note that this test will fail if the column
+in question does not exist.
 
 ### col_type_is( schema, table, column, type, description ) ###
-### col_type_is( schema, table, column, type ) ###
+### col_type_is( table, column, type, description ) ###
 ### col_type_is( table, column, type ) ###
 
     SELECT col_type_is(
@@ -543,10 +540,9 @@ does not exist.
 This function tests that the specified column is of a particular type. If it
 fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
-fourth the type, and the fifth is the test description. If the test
-description is omitted, it will be set to "Column $schema.$table.$column
-should be type $type". If only three arguments are passed, they are assumed to
-be the table, column names, and type, and the schema will default to "public".
+fourth the type, and the fifth is the test description. If the schema is
+omitted, the table must be visible in the search path. If the test description
+is omitted, it will be set to "Column :table.:column should be type $type".
 Note that this test will fail if the column in question does not exist.
 
 The type argument should be formatted as it would be displayed in the view of

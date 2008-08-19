@@ -271,15 +271,15 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 81 );
 
 SELECT is(
     has_table( '__SDFSDFD__' ),
-    E'not ok 84 - Table public.__SDFSDFD__ should exist\n# Failed test 84: "Table public.__SDFSDFD__ should exist"',
+    E'not ok 84 - Table __SDFSDFD__ should exist\n# Failed test 84: "Table __SDFSDFD__ should exist"',
     'has_table(table) should fail for non-existent table'
 );
 
-\echo ok 86 - has_table(schema, table) fail
+\echo ok 86 - has_table(table, desc) fail
 SELECT is(
-    has_table( 'foo', '__SDFSDFD__' ),
-    E'not ok 86 - Table foo.__SDFSDFD__ should exist\n# Failed test 86: "Table foo.__SDFSDFD__ should exist"',
-    'has_table(schema, table) should fail for non-existent table'
+    has_table( '__SDFSDFD__', 'lol' ),
+    E'not ok 86 - lol\n# Failed test 86: "lol"',
+    'has_table(table, dessc) should fail for non-existent table'
 );
 
 \echo ok 88 - has_table(schema, table, desc) fail
@@ -290,11 +290,11 @@ SELECT is(
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 84, 86, 88 );
 
-\echo ok 90 - has_table(schema, table) pass
+\echo ok 90 - has_table(table, desc) pass
 SELECT is(
-    has_table( 'pg_catalog', 'pg_type' ),
-    'ok 90 - Table pg_catalog.pg_type should exist',
-    'has_table(schema, table) should pass for an existing table'
+    has_table( 'pg_type', 'lol' ),
+    'ok 90 - lol',
+    'has_table(table, desc) should pass for an existing table'
 );
 
 \echo ok 92 - has_table(schema, table, desc) pass
@@ -311,15 +311,15 @@ SELECT is(
 
 SELECT is(
     has_view( '__SDFSDFD__' ),
-    E'not ok 94 - View public.__SDFSDFD__ should exist\n# Failed test 94: "View public.__SDFSDFD__ should exist"',
+    E'not ok 94 - View __SDFSDFD__ should exist\n# Failed test 94: "View __SDFSDFD__ should exist"',
     'has_view(view) should fail for non-existent view'
 );
 
-\echo ok 96 - has_view(schema, view) fail
+\echo ok 96 - has_view(view, desc) fail
 SELECT is(
-    has_view( 'foo', '__SDFSDFD__' ),
-    E'not ok 96 - View foo.__SDFSDFD__ should exist\n# Failed test 96: "View foo.__SDFSDFD__ should exist"',
-    'has_view(schema, view) should fail for non-existent view'
+    has_view( '__SDFSDFD__', 'howdy' ),
+    E'not ok 96 - howdy\n# Failed test 96: "howdy"',
+    'has_view(view, desc) should fail for non-existent view'
 );
 
 \echo ok 98 - has_view(schema, view, desc) fail
@@ -330,11 +330,11 @@ SELECT is(
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 94, 96, 98 );
 
-\echo ok 100 - has_view(schema, view) pass
+\echo ok 100 - has_view(view, desc) pass
 SELECT is(
-    has_view( 'information_schema', 'tables' ),
-    'ok 100 - View information_schema.tables should exist',
-    'has_view(schema, view) should pass for an existing view'
+    has_view( 'pg_tables', 'yowza' ),
+    'ok 100 - yowza',
+    'has_view(view, desc) should pass for an existing view'
 );
 
 \echo ok 102 - has_view(schema, view, desc) pass
@@ -350,15 +350,15 @@ SELECT is(
 \echo ok 104 - has_column(table, column) fail
 SELECT is(
     has_column( '__SDFSDFD__', 'foo' ),
-    E'not ok 104 - Column public.__SDFSDFD__.foo should exist\n# Failed test 104: "Column public.__SDFSDFD__.foo should exist"',
+    E'not ok 104 - Column __SDFSDFD__.foo should exist\n# Failed test 104: "Column __SDFSDFD__.foo should exist"',
     'has_column(table, column) should fail for non-existent table'
 );
 
-\echo ok 106 - has_column(schema, table, column) fail
+\echo ok 106 - has_column(table, column, desc) fail
 SELECT is(
-    has_column( 'foo', '__SDFSDFD__', 'bar' ),
-    E'not ok 106 - Column foo.__SDFSDFD__.bar should exist\n# Failed test 106: "Column foo.__SDFSDFD__.bar should exist"',
-    'has_column(schema, table, column) should fail for non-existent table'
+    has_column( '__SDFSDFD__', 'bar', 'whatever' ),
+    E'not ok 106 - whatever\n# Failed test 106: "whatever"',
+    'has_column(table, column, desc) should fail for non-existent table'
 );
 
 \echo ok 108 - has_column(schema, table, column, desc) fail
@@ -375,7 +375,7 @@ CREATE TABLE sometab (id int NOT NULL, name text, numb numeric(10, 2), myint num
 \echo ok 110 - has_column(table, column) pass
 SELECT is(
     has_column( 'sometab', 'id' ),
-    'ok 110 - Column public.sometab.id should exist',
+    'ok 110 - Column sometab.id should exist',
     'has_column(table, column) should pass for an existing column'
 );
 
@@ -394,24 +394,24 @@ SELECT is(
     'ok 114 - typname not null',
     'col_not_null( schema, table, column, desc ) should work'
 );
-\echo ok 116 - testing col_not_null( schema, table, column, desc )
+\echo ok 116 - testing col_not_null( table, column, desc )
 SELECT is(
-    col_not_null( 'pg_catalog', 'pg_type', 'typname' ),
-    'ok 116 - Column pg_catalog.pg_type.typname should be NOT NULL',
-    'col_not_null( schema, table, column ) should work'
+    col_not_null( 'sometab', 'id', 'blah blah blah' ),
+    'ok 116 - blah blah blah',
+    'col_not_null( table, column, desc ) should work'
 );
 
 \echo ok 118 - testing col_not_null( schema, table, column, desc )
 SELECT is(
     col_not_null( 'sometab', 'id' ),
-    'ok 118 - Column public.sometab.id should be NOT NULL',
+    'ok 118 - Column sometab.id should be NOT NULL',
     'col_not_null( table, column ) should work'
 );
 -- Make sure failure is correct.
 \echo ok 120 - testing col_not_null( schema, table, column, desc )
 SELECT is(
     col_not_null( 'sometab', 'name' ),
-    E'not ok 120 - Column public.sometab.name should be NOT NULL\n# Failed test 120: "Column public.sometab.name should be NOT NULL"',
+    E'not ok 120 - Column sometab.name should be NOT NULL\n# Failed test 120: "Column sometab.name should be NOT NULL"',
     'col_not_null( table, column ) should properly fail'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 120 );
@@ -424,24 +424,24 @@ SELECT is(
     'ok 122 - name is null',
     'col_is_null( schema, table, column, desc ) should work'
 );
-\echo ok 124 - testing col_is_null( schema, table, column, desc )
+\echo ok 124 - testing col_is_null( table, column, desc )
 SELECT is(
-    col_is_null( 'public', 'sometab', 'name' ),
-    'ok 124 - Column public.sometab.name should allow NULL',
-    'col_is_null( schema, table, column ) should work'
+    col_is_null( 'sometab', 'name', 'my desc' ),
+    'ok 124 - my desc',
+    'col_is_null( table, column, desc ) should work'
 );
 
 \echo ok 126 - testing col_is_null( schema, table, column, desc )
 SELECT is(
     col_is_null( 'sometab', 'name' ),
-    'ok 126 - Column public.sometab.name should allow NULL',
+    'ok 126 - Column sometab.name should allow NULL',
     'col_is_null( table, column ) should work'
 );
 -- Make sure failure is correct.
 \echo ok 128 - testing col_is_null( schema, table, column, desc )
 SELECT is(
     col_is_null( 'sometab', 'id' ),
-    E'not ok 128 - Column public.sometab.id should allow NULL\n# Failed test 128: "Column public.sometab.id should allow NULL"',
+    E'not ok 128 - Column sometab.id should allow NULL\n# Failed test 128: "Column sometab.id should allow NULL"',
     'col_is_null( table, column ) should properly fail'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 128 );
@@ -455,24 +455,24 @@ SELECT is(
     'col_type_is( schema, table, column, type, desc ) should work'
 );
 
-\echo ok 132 - testing col_type_is( schema, table, column, type )
+\echo ok 132 - testing col_type_is( table, column, type, desc )
 SELECT is(
-    col_type_is( 'public', 'sometab', 'name', 'text' ),
-    'ok 132 - Column public.sometab.name should be type text',
-    'col_type_is( schema, table, column, type ) should work'
+    col_type_is( 'sometab', 'name', 'text', 'yadda yadda yadda' ),
+    'ok 132 - yadda yadda yadda',
+    'col_type_is( table, column, type, desc ) should work'
 );
 
 \echo ok 134 - testing col_type_is( table, column, type )
 SELECT is(
     col_type_is( 'sometab', 'name', 'text' ),
-    'ok 134 - Column public.sometab.name should be type text',
+    'ok 134 - Column sometab.name should be type text',
     'col_type_is( table, column, type ) should work'
 );
 
 \echo ok 136 - testing col_type_is( table, column, type ) case-insensitively
 SELECT is(
     col_type_is( 'sometab', 'name', 'TEXT' ),
-    'ok 136 - Column public.sometab.name should be type TEXT',
+    'ok 136 - Column sometab.name should be type TEXT',
     'col_type_is( table, column, type ) should work case-insensitively'
 );
 
@@ -480,7 +480,7 @@ SELECT is(
 \echo ok 138 - testing col_type_is( table, column, type ) failure
 SELECT is(
     col_type_is( 'sometab', 'name', 'int4' ),
-    E'not ok 138 - Column public.sometab.name should be type int4\n# Failed test 138: "Column public.sometab.name should be type int4"\n#         have: text\n#         want: int4',
+    E'not ok 138 - Column sometab.name should be type int4\n# Failed test 138: "Column sometab.name should be type int4"\n#         have: text\n#         want: int4',
     'col_type_is( table, column, type ) should fail with proper diagnostics'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 138 );
@@ -495,10 +495,10 @@ SELECT is(
 );
 
 -- Check its diagnostics.
-\echo ok 142 - col_type_is( schema, table, column, type, precision ) fail
+\echo ok 142 - col_type_is( table, column, type, precision, desc ) fail
 SELECT is(
-    col_type_is( 'public', 'sometab', 'myint', 'numeric(7)' ),
-    E'not ok 142 - Column public.sometab.myint should be type numeric(7)\n# Failed test 142: "Column public.sometab.myint should be type numeric(7)"\n#         have: numeric(8,0)\n#         want: numeric(7)',
+    col_type_is( 'sometab', 'myint', 'numeric(7)', 'should be numeric(7)' ),
+    E'not ok 142 - should be numeric(7)\n# Failed test 142: "should be numeric(7)"\n#         have: numeric(8,0)\n#         want: numeric(7)',
     'col_type_is with precision should have nice diagnostics'
 );
 
