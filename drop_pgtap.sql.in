@@ -20,17 +20,17 @@ DROP FUNCTION has_table ( TEXT );
 DROP FUNCTION has_table ( TEXT, TEXT );
 DROP FUNCTION has_table ( TEXT, TEXT, TEXT );
 DROP FUNCTION lives_ok ( TEXT );
-DROP FUNCTION lives_ok (
+DROP FUNCTION lives_ok ( TEXT, TEXT );
 DROP FUNCTION throws_ok ( TEXT, int4 );
 DROP FUNCTION throws_ok ( TEXT, int4, TEXT );
 DROP FUNCTION throws_ok ( TEXT );
 DROP FUNCTION throws_ok ( TEXT, CHAR(5) );
-DROP FUNCTION throws_ok (
+DROP FUNCTION throws_ok ( TEXT, CHAR(5), TEXT );
 DROP FUNCTION _todo();
 DROP FUNCTION todo ( why text, how_many int )
-DROP FUNCTION fail ( );
+DROP FUNCTION fail ();
 DROP FUNCTION fail ( text );
-DROP FUNCTION pass ( );
+DROP FUNCTION pass ();
 DROP FUNCTION pass ( text );
 DROP FUNCTION unialike ( anyelement, text );
 DROP FUNCTION unialike ( anyelement, text, text );
@@ -64,6 +64,6 @@ DROP FUNCTION _set ( text, integer );
 DROP FUNCTION _set ( text, integer, text );
 DROP FUNCTION _get_note ( text );
 DROP FUNCTION _get ( text );
-DROP FUNCTION no_plan( );
+DROP FUNCTION no_plan();
 DROP FUNCTION plan( integer );
 -- ## DROP SCHEMA TAPSCHEMA;
