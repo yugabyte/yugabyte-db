@@ -29,8 +29,8 @@ Revision history for pgTAP
       - Changed "got/expected" to "have/want", following Schwern's plans for
         Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
         nice parity when outputting diagnostics for exception testing.
-      - Added the `has_table()`, `has_view()`, and `has_column()` test
-        functions.
+      - Added the `has_table()`, `has_view()`, `has_column()` and `has_pk()`
+        test functions.
       - Added the `col_not_null()` and `col_is_null()` test functions.
       - Added the `col_type_is()` and `col_default_is()` test functions.
       - Fixed `is()` and `isnt()` to better handle NULLs.

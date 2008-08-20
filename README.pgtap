@@ -612,6 +612,23 @@ Will produce something like this:
     #         have: NULL
     #         want: foo
 
+### has_pk( schema, table, description ) ###
+### has_pk( table, description ) ###
+### has_pk( table ) ###
+
+    SELECT has_pk(
+        'myschema',
+        'sometable',
+        'Table myschema.sometable.somecolumn should have a primary key'
+    );
+
+Tests whether or not a table has a primary key. The first argument is the
+schema name, the second the table name, the the third is the test description.
+If the schema is omitted, the table must be visible in the search path. If the
+test description is omitted, it will be set to "Table :table should have a
+primary key". Note that this test will fail if the table in question does not
+exist.
+
 Diagnostics
 -----------
 

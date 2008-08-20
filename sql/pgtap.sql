@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 151
+\set numb_tests 161
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -371,7 +371,7 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 104, 106, 108 );
 
 -- This will be rolled back. :-)
 CREATE TABLE sometab(
-    id    INT NOT NULL,
+    id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
@@ -540,6 +540,45 @@ SELECT is(
     'ok 150 - Column sometab.name should default to ''''',
     'col_default_is( table, column, default ) should work'
 );
+
+/****************************************************************************/
+-- Test has_pk().
+
+\echo ok 152 - test has_pk( schema, table, description )
+SELECT is(
+    has_pk( 'public', 'sometab', 'public.sometab should have a pk' ),
+    'ok 152 - public.sometab should have a pk',
+    'has_pk( schema, table, description ) should work'
+);
+
+\echo ok 154 - test has_pk( table, description )
+SELECT is(
+    has_pk( 'sometab', 'sometab should have a pk' ),
+    'ok 154 - sometab should have a pk',
+    'has_pk( table, description ) should work'
+);
+
+\echo ok 156 - test has_pk( table )
+SELECT is(
+    has_pk( 'sometab' ),
+    'ok 156 - Table sometab should have a primary key',
+    'has_pk( table ) should work'
+);
+
+\echo ok 158 - test has_pk( schema, table, description ) fail
+SELECT is(
+    has_pk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a pk' ),
+    E'not ok 158 - pg_catalog.pg_class should have a pk\n# Failed test 158: "pg_catalog.pg_class should have a pk"',
+    'has_pk( schema, table, description ) should fail properly'
+);
+
+\echo ok 160 - test has_pk( table, description ) fail
+SELECT is(
+    has_pk( 'pg_class', 'pg_class should have a pk' ),
+    E'not ok 160 - pg_class should have a pk\n# Failed test 160: "pg_class should have a pk"',
+    'has_pk( table, description ) should fail properly'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 158, 160 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

@@ -729,5 +729,45 @@ CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $
     );
 $$ LANGUAGE sql;
 
+-- has_pk( schema, table, description )
+CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
+                   pg_catalog.pg_constraint x
+             WHERE n.oid = c.relnamespace
+               AND c.oid = x.conrelid
+               AND c.relkind = 'r'
+               AND n.nspname = $1
+               AND c.relname = $2
+               AND c.relhaspkey = true
+               AND x.contype = 'p'
+        ), $3
+    );
+$$ LANGUAGE sql;
+
+
+-- has_pk( table, description )
+CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c, pg_catalog.pg_constraint x
+             WHERE c.oid = x.conrelid
+               AND c.relkind = 'r'
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND c.relhaspkey = true
+               AND x.contype = 'p'
+        ), $2
+    );
+$$ LANGUAGE sql;
+
+-- has_pk( table )
+CREATE OR REPLACE FUNCTION has_pk ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_pk( $1, 'Table ' || $1 || ' should have a primary key' );
+$$ LANGUAGE sql;
+
 -- col_is_pk()
 -- col_is_unique()
