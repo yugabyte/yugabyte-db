@@ -598,7 +598,7 @@ But this will not:
 
 If the test fails, it will output useful diagnostics. For example, this test:
 
-    SELECT col_has_default(
+    SELECT col_default_is(
         'pg_catalog',
         'pg_type',
         'typname',

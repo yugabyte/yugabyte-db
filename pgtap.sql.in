@@ -685,8 +685,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- col_has_default( schema, table, column, default, description )
-CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
+-- col_default_is( schema, table, column, default, description )
+CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
     SELECT _def_is((
         SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
           FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
@@ -704,8 +704,8 @@ CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, TEXT, anyelement, TEXT 
      ), $4, $5 );
 $$ LANGUAGE sql;
 
--- col_has_default( table, column, default, description )
-CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
+-- col_default_is( table, column, default, description )
+CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, anyelement, TEXT ) RETURNS TEXT AS $$
     SELECT _def_is((
         SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
           FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a, pg_catalog.pg_attrdef d
@@ -721,9 +721,9 @@ CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, anyelement, TEXT ) RETU
     ), $3, $4 );
 $$ LANGUAGE sql;
 
--- col_has_default( table, column, default )
-CREATE OR REPLACE FUNCTION col_has_default ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT col_has_default(
+-- col_default_is( table, column, default )
+CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_default_is(
         $1, $2, $3,
         'Column ' || $1 || '.' || $2 || ' should default to ' || quote_literal($3)
     );

@@ -510,35 +510,35 @@ SELECT is(
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 142, 158 );
 
 /****************************************************************************/
--- Test col_has_default().
+-- Test col_default_is().
 
-\echo ok 144 - col_has_default( schema, table, column, default, description )
+\echo ok 144 - col_default_is( schema, table, column, default, description )
 SELECT is(
-    col_has_default( 'public', 'sometab', 'name', ''::text, 'name should default to empty string' ),
+    col_default_is( 'public', 'sometab', 'name', ''::text, 'name should default to empty string' ),
     'ok 144 - name should default to empty string',
-    'col_has_default( schema, table, column, default, description ) should work'
+    'col_default_is( schema, table, column, default, description ) should work'
 );
 
-\echo ok 146 - col_has_default( schema, table, column, default, description ) fail
+\echo ok 146 - col_default_is( schema, table, column, default, description ) fail
 SELECT is(
-    col_has_default( 'public', 'sometab', 'name', 'foo'::text, 'name should default to ''foo''' ),
+    col_default_is( 'public', 'sometab', 'name', 'foo'::text, 'name should default to ''foo''' ),
     E'not ok 146 - name should default to ''foo''\n# Failed test 146: "name should default to ''foo''"\n#         have: \n#         want: foo',
     'ok 146 - Should get proper diagnostics for a default failure'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 146 );
 
-\echo ok 148 - col_has_default( table, column, default, description )
+\echo ok 148 - col_default_is( table, column, default, description )
 SELECT is(
-    col_has_default( 'sometab', 'name', ''::text, 'name should default to empty string' ),
+    col_default_is( 'sometab', 'name', ''::text, 'name should default to empty string' ),
     'ok 148 - name should default to empty string',
-    'col_has_default( table, column, default, description ) should work'
+    'col_default_is( table, column, default, description ) should work'
 );
 
-\echo ok 150 - col_has_default( table, column, default )
+\echo ok 150 - col_default_is( table, column, default )
 SELECT is(
-    col_has_default( 'sometab', 'name', '' ),
+    col_default_is( 'sometab', 'name', '' ),
     'ok 150 - Column sometab.name should default to ''''',
-    'col_has_default( table, column, default ) should work'
+    'col_default_is( table, column, default ) should work'
 );
 
 /****************************************************************************/
