@@ -1,5 +1,5 @@
 \set ECHO
-1..151
+1..113
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -113,41 +113,3 @@ ok 110 - has_column(table, column) pass
 ok 111 - has_column(table, column) should pass for an existing column
 ok 112 - has_column(schema, column, desc) pass
 ok 113 - has_column(schema, table, column, desc) should pass for an existing view column
-ok 114 - testing col_not_null( schema, table, column, desc )
-ok 115 - col_not_null( schema, table, column, desc ) should work
-ok 116 - testing col_not_null( table, column, desc )
-ok 117 - col_not_null( table, column, desc ) should work
-ok 118 - testing col_not_null( schema, table, column, desc )
-ok 119 - col_not_null( table, column ) should work
-ok 120 - testing col_not_null( schema, table, column, desc )
-ok 121 - col_not_null( table, column ) should properly fail
-ok 122 - testing col_is_null( schema, table, column, desc )
-ok 123 - col_is_null( schema, table, column, desc ) should work
-ok 124 - testing col_is_null( table, column, desc )
-ok 125 - col_is_null( table, column, desc ) should work
-ok 126 - testing col_is_null( schema, table, column, desc )
-ok 127 - col_is_null( table, column ) should work
-ok 128 - testing col_is_null( schema, table, column, desc )
-ok 129 - col_is_null( table, column ) should properly fail
-ok 130 - testing col_type_is( schema, table, column, type, desc )
-ok 131 - col_type_is( schema, table, column, type, desc ) should work
-ok 132 - testing col_type_is( table, column, type, desc )
-ok 133 - col_type_is( table, column, type, desc ) should work
-ok 134 - testing col_type_is( table, column, type )
-ok 135 - col_type_is( table, column, type ) should work
-ok 136 - testing col_type_is( table, column, type ) case-insensitively
-ok 137 - col_type_is( table, column, type ) should work case-insensitively
-ok 138 - testing col_type_is( table, column, type ) failure
-ok 139 - col_type_is( table, column, type ) should fail with proper diagnostics
-ok 140 - testing col_type_is( schema, table, column, type(precision,scale), description )
-ok 141 - col_type_is( schema, table, column, type, precision(scale,description) should work
-ok 142 - col_type_is( table, column, type, precision, desc ) fail
-ok 143 - col_type_is with precision should have nice diagnostics
-ok 144 - col_default_is( schema, table, column, default, description )
-ok 145 - col_default_is( schema, table, column, default, description ) should work
-ok 146 - col_default_is( schema, table, column, default, description ) fail
-ok 147 - ok 146 - Should get proper diagnostics for a default failure
-ok 148 - col_default_is( table, column, default, description )
-ok 149 - col_default_is( table, column, default, description ) should work
-ok 150 - col_default_is( table, column, default )
-ok 151 - col_default_is( table, column, default ) should work
