@@ -35,7 +35,8 @@ Revision history for pgTAP
       - Added the `col_type_is()`, `col_default_is()`, and `col_is_pk()` test
         functions.
       - Fixed `is()` and `isnt()` to better handle NULLs.
-      - Added `--set ON_ERROR_STOP=1` to `pg_prove`.
+      - Added the `--set ON_ERROR_STOP=1` option to the call to `psql` in
+        `pg_prove`.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
