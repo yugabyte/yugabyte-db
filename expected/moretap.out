@@ -1,5 +1,5 @@
 \set ECHO
-1..71
+1..51
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -49,25 +49,5 @@ ok 46 - isnt(1, 2) should work
 ok 47 - isnt() failure
 ok 48 - is(1, 2) should work
 ok 49 - is() should work with psql variables
-ok 50 - matches() should work
-ok 51 - matches() should work with a regex
-ok 52 - imatches() should work with a regex
-ok 53 - matches() failure
-ok 54 - Check matches diagnostics
-ok 55 - doesnt_match() should work
-ok 56 - doesnt_match() should work with a regex
-ok 57 - doesnt_imatch() should work with a regex
-ok 58 - doesnt_match() failure
-ok 59 - doesnt_match() should work
-ok 60 - alike() should work
-ok 61 - alike() should work with a regex
-ok 62 - ialike() should work with a regex
-ok 63 - alike() failure
-ok 64 - Check alike diagnostics
-ok 65 - unalike() should work
-ok 66 - unalike() should work with a regex
-ok 67 - iunalike() should work with a regex
-ok 68 - unalike() failure
-ok 69 - Check unalike diagnostics
-ok 70 - Multline diagnostics
-ok 71 - multiline desriptions should have subsequent lines escaped
+ok 50 - Multline diagnostics
+ok 51 - multiline desriptions should have subsequent lines escaped

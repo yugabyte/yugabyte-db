@@ -27,7 +27,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 71
+\set numb_tests 51
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -156,59 +156,11 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 43, 47 );
 SELECT is( :foo::text, :bar::text, 'is() should work with psql variables' );
 
 /****************************************************************************/
--- Test matches().
-SELECT matches( 'foo'::text, 'o', 'matches() should work' );
-SELECT matches( 'foo'::text, '^fo', 'matches() should work with a regex' );
-SELECT imatches( 'FOO'::text, '^fo', 'imatches() should work with a regex' );
-
--- Check matches() diagnostics.
-\echo ok 53 - matches() failure
-SELECT is( matches( 'foo'::text, '^a' ), E'not ok 53\n# Failed test 53\n#                   ''foo''\n#    doesn''t match: ''^a''', 'Check matches diagnostics' );
-
--- Check doesnt_match.
-SELECT doesnt_match( 'foo'::text, 'a', 'doesnt_match() should work' );
-SELECT doesnt_match( 'foo'::text, '^o', 'doesnt_match() should work with a regex' );
-SELECT doesnt_imatch( 'foo'::text, '^o', 'doesnt_imatch() should work with a regex' );
-
--- Check doesnt_match diagnostics.
-\echo ok 58 - doesnt_match() failure
-SELECT is(
-    doesnt_match( 'foo'::text, 'o' ),
-    E'not ok 58\n# Failed test 58\n#                   ''foo''\n#          matches: ''o''',
-    'doesnt_match() should work'
-);
-
--- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 53, 58 );
-
-/****************************************************************************/
--- Test alike().
-SELECT alike( 'foo'::text, 'foo', 'alike() should work' );
-SELECT alike( 'foo'::text, 'fo%', 'alike() should work with a regex' );
-SELECT ialike( 'FOO'::text, 'fo%', 'ialike() should work with a regex' );
-
--- Check alike() diagnostics.
-\echo ok 63 - alike() failure
-SELECT is( alike( 'foo'::text, 'a%'::text ), E'not ok 63\n# Failed test 63\n#                   ''foo''\n#    doesn''t match: ''a%''', 'Check alike diagnostics' );
-
--- Test unalike().
-SELECT unalike( 'foo'::text, 'f', 'unalike() should work' );
-SELECT unalike( 'foo'::text, 'f%i', 'unalike() should work with a regex' );
-SELECT unialike( 'FOO'::text, 'f%i', 'iunalike() should work with a regex' );
-
--- Check unalike() diagnostics.
-\echo ok 68 - unalike() failure
-SELECT is( unalike( 'foo'::text, 'f%'::text ), E'not ok 68\n# Failed test 68\n#                   ''foo''\n#          matches: ''f%''', 'Check unalike diagnostics' );
-
--- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 63, 68 );
-
-/****************************************************************************/
 -- test multiline description.
-\echo ok 70 - Multline diagnostics
+\echo ok 50 - Multline diagnostics
 SELECT is(
     ok( true, E'foo\nbar' ),
-    E'ok 70 - foo\n# bar',
+    E'ok 50 - foo\n# bar',
     'multiline desriptions should have subsequent lines escaped'
 );
 
