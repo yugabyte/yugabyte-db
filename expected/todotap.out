@@ -1,0 +1,5 @@
+\set ECHO
+1..3
+ok 1 - todo fail
+ok 2 - todo pass
+ok 3 - TODO tests should display properly
