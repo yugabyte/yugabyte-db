@@ -11,32 +11,32 @@ Installation
 For the impatient, to install pgTAP into a PostgreSQL database, just do this:
 
     make
-    make test
+    make test PGDATABASE=template1
     make install
     make installcheck
 
 If you encounter an error such as:
 
-  "Makefile", line 8: Need an operator
+    "Makefile", line 8: Need an operator
 
 You need to use GNU make, which may well be installed on your system as
 'gmake':
 
     gmake
-    gmake test
+    gmake test PGDATABASE=template1
     gmake install
     gmake installcheck
 
 If you encounter an error such as:
 
-  make: pg_config: Command not found
+    make: pg_config: Command not found
 
-Be sure that you have pg_config installed and in your path. If you used a
+Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
--devel package is also installed. If necessary, add the path to pg_config to
-your `$PATH` environment variable:
+`-devel` package is also installed. If necessary, add the path to `pg_config`
+to your `$PATH` environment variable:
 
-  env PATH=$PATH:/path/to/pgsql/bin make && make test && make install
+    env PATH=$PATH:/path/to/pgsql/bin make && make test && make install
 
 And finally, if all that fails, copy the entire distribution directory to the
 `contrib/` subdirectory of the PostgreSQL source code and try it there.
@@ -47,85 +47,128 @@ of the schema you'd like, for example:
 
     make TAPSCHEMA=tap
 
-The test target uses the included pg_prove script to do its testing. It
-supports a number of environment variables that you might need to use,
-including all the usual PostgreSQL client environment variables:
+The `test` target uses the included `pg_prove` Perl program to do its testing,
+which requires that TAP::Harness, included in
+[Test::Harness](http://search.cpan.org/dist/Test-Harness/ "Test::Harness on CPAN") 3.x. `pg_prove` supports a number of environment variables that you
+might need to use, including all the usual PostgreSQL client environment
+variables:
 
-* PGDATABASE
-* PGHOST
-* PGPORT
-* PGUSER
+* `$PGDATABASE`
+* `$PGHOST`
+* `$PGPORT`
+* `$PGUSER`
 
 Once pgTAP has been built and tested, you can install it into a database:
 
-    psql dbname -f pgtap.sql
+    psql -d dbname -f pgtap.sql
 
 If you want pgTAP to be available to all new databases, install it into the
-template1 database:
+"template1" database:
 
-    psql template1 -f pgtap.sql
+    psql -d template1 -f pgtap.sql
 
-If you want to remove pgTAP from a database, run the drop_pgtap.sql script:
+If you want to remove pgTAP from a database, run the `uninstall_pgtap.sql`
+script:
 
-    psql dbname -f drop_pgtap.sql
+    psql -d dbname -f uninstall_pgtap.sql
 
 Both scripts will also be installed in the `contrib` directory under the
-directory output by `pg_config --sharedir`. So you can always do this,
-as well:
+directory output by `pg_config --sharedir`. So you can always do this:
 
-    psql template1 -f `pg_config --sharedir`/contrib/pgtap.sql
+    psql -d template1 -f `pg_config --sharedir`/contrib/pgtap.sql
 
 But do be aware that, if you've specified a schema using `$TAPSCHEMA`, it will
-always be created and the functions placed in it.
+always be created and the pgTAP functions placed in it.
 
 Running pgTAP Tests
 ===================
 
-You can also distribute pgtap.sql with any PostgreSQL distribution, such as a
-custom data type. For such a case, if your users want to run your test suite,
-just be sure to start a transaction, load the functions in your test.sql file,
-and then rollback the transaction at the end of the script. Here's an example:
+You can also distribute `pgtap.sql` with any PostgreSQL distribution, such as
+a custom data type. For such a case, if your users want to run your test suite
+using PostgreSQL's standard `installcheck` make target, just be sure to set
+varibles to keep the tests quiet, start a transaction, load the functions in
+your test script, and then rollback the transaction at the end of the script.
+Here's an example:
+
+    \set ECHO
+    \set QUIET 1
+    -- Turn off echo and keep things quiet.
+
+    -- Format the output for nice TAP.
+    \pset format unaligned
+    \pset tuples_only true
+    \pset pager
+
+    -- Revert all changes on failure.
+    \set ON_ERROR_ROLBACK 1
+    \set ON_ERROR_STOP true
+    \set QUIET 1
 
     -- Load the TAP functions.
     BEGIN;
+    SET client_min_messages = warning;
     \i pgtap.sql
 
-     -- Plan the tests.
-     SELECT plan(1);
+    -- Plan the tests.
+    SELECT plan(1);
 
-     -- Run the tests.
-     SELECT pass( 'My test passed, w00t!' );
+    -- Run the tests.
+    SELECT pass( 'My test passed, w00t!' );
 
-     -- Finish the tests and clean up.
-     SELECT * FROM finish();
-     ROLLBACK;
+    -- Finish the tests and clean up.
+    SELECT * FROM finish();
+    ROLLBACK;
 
 Of course, if you already have the pgTAP functions in your testing database,
-you should skip `\i pgtap.sql` at the beginning of the script.
+you should skip `\i pgtap.sql` at the beginning of the script. If your
+database does not already have PL/pgSQL installed, you'll need to add it to
+the database before you load pgTAP. Just add these lines after the `\pset`
+section and before the `\set` section:
+
+    -- Create plpgsql if it's not already there.
+    SET client_min_messages = fatal;
+    \set ON_ERROR_STOP off
+    CREATE LANGUAGE plpgsql;
 
 Now you're ready to run your test script!
 
-    % psql -d try -AtP pager= -v ON_ERROR_ROLLBACK=1 -f test.sql
+    % psql -d try -Xf test.sql
     1..1
     ok 1 - My test passed, w00t!
 
-You'll need to have all of those switches there to ensure that the output is
-proper TAP and that all changes are reversed -- including the loading of the
-test functions -- in the event of an uncaught exception. Or you can specify
-them in the test file, like so:
-
-    \set ON_ERROR_ROLBACK 1
-    \pset format unaligned
-    \pset tuples_only
-    \pset pager
+You'll need to have all of those variables in the script to ensure that the
+output is proper TAP and that all changes are rolled back -- including the
+loading of the test functions -- in the event of an uncaught exception.
 
 Or save yourself some effort -- and run a batch of tests scripts at once -- by
-using pg_prove:
+using `pg_prove`. If you're not relying on `installcheck`, your test scripts
+can be a lot less verbose; you don't need to set all the extra variables,
+because `pg_prove` takes care of that for you:
 
-    % ./pg_prove -d try test_*.sql
-    test........ok     
+    BEGIN;
+    SET client_min_messages = warning;
+
+    -- Plan the tests.
+    SELECT plan(1);
+
+    -- Run the tests.
+    SELECT pass( 'My test passed, w00t!' );
+
+    -- Finish the tests and clean up.
+    SELECT * FROM finish();
+    ROLLBACK;
+
+Now run the tests. Here's what it looks like when the pgTAP tests are run with
+`pg_prove`:
+
+    % pg_prove -d try sql/*.sql
+    sql/coltap.....ok     
+    sql/hastap.....ok     
+    sql/moretap....ok     
+    sql/pg73.......ok     
+    sql/pktap......ok     
     All tests successful.
-    Files=1, Tests=1,  0 wallclock secs ( 0.03 usr  0.00 sys +  0.02 cusr  0.01 csys =  0.06 CPU)
+    Files=5, Tests=216,  1 wallclock secs ( 0.06 usr  0.02 sys +  0.08 cusr  0.07 csys =  0.23 CPU)
     Result: PASS
 
 Yep, that's all there is to it.
@@ -156,7 +199,7 @@ There are rare cases when you will not know beforehand how many tests your
 script is going to run. In this case, you can declare that you have no plan.
 (Try to avoid using this as it weakens your test.)
 
-  SELECT * FROM no_plan();
+    SELECT * FROM no_plan();
 
 Often, though, you'll be able to calculate the number of tests, like so:
 
@@ -195,15 +238,15 @@ that you use it.
 I'm ok, you're not ok
 ---------------------
 
-The basic purpose of pgTAP -- and of any TAP-emitting test framework, for that
-matter -- is to print out either "ok #" or "not ok #", depending on whether a
+The basic purpose of pgTAP--and of any TAP-emitting test framework, for that
+matter--is to print out either "ok #" or "not ok #", depending on whether a
 given test succeeded or failed. Everything else is just gravy.
 
 All of the following functions return "ok" or "not ok" depending on whether
 the test succeeded or failed.
 
-### ok( boolean, description ) ###
-### ok( boolean ) ###
+### `ok( boolean, description )` ###
+### `ok( boolean )` ###
 
     SELECT ok( :this = :that, :description );
   
@@ -213,10 +256,10 @@ true expression passes, a false one fails. Very simple.
 
 For example:
 
-    SELECT ok( 9 ^ 2 = 81,   'simple exponential' );
-    SELECT ok( 9 < 10,       'simple comparison' );
-    SELECT ok( 'foo' ~ '^f', 'simple regex' );
-    SELECT ok( active = 1,   'widget active' )
+    SELECT ok( 9 ^ 2 = 81,    'simple exponential' );
+    SELECT ok( 9 < 10,        'simple comparison' );
+    SELECT ok( 'foo' ~ '^f',  'simple regex' );
+    SELECT ok( active = true, name ||  widget active' )
       FROM widgets;
 
 (Mnemonic:  "This is ok.")
@@ -231,10 +274,10 @@ Should an `ok()` fail, it will produce some diagnostics:
     not ok 18 - sufficient mucus
     #     Failed test 18: "sufficient mucus"
 
-### is( anyelement, anyelement, description ) ###
-### is( anyelement, anyelement ) ###
-### isnt( anyelement, anyelement, description ) ###
-### isnt( anyelement, anyelement ) ###
+### `is( anyelement, anyelement, description )` ###
+### `is( anyelement, anyelement )` ###
+### `isnt( anyelement, anyelement, description )` ###
+### `isnt( anyelement, anyelement )` ###
 
     SELECT is(   :this, :that, :description );
     SELECT isnt( :this, :that, :description );
@@ -256,9 +299,9 @@ are similar to these:
 
 (Mnemonic: "This is that." "This isn't that.")
 
-`NULL`s are not treated as unknowns by `is()` or `isnt()`. That is, if `:this`
-and `:that` are both `NULL`, the test will pass, and if only one of them is
-`NULL`, the test will fail.
+*Note:* `NULL`s are not treated as unknowns by `is()` or `isnt()`. That is, if
+`:this` and `:that` are both `NULL`, the test will pass, and if only one of
+them is `NULL`, the test will fail.
 
 So why use these? They produce better diagnostics on failure. `ok()` cannot
 know what you are testing for (beyond the description), but `is()` and
@@ -276,21 +319,10 @@ Will produce something like this:
 
 So you can figure out what went wrong without re-running the test.
 
-You are encouraged to use `is()` and `isnt()` over `ok()` where possible,
-however do not be tempted to use them to find out if something is true or
-false!
+You are encouraged to use `is()` and `isnt()` over `ok()` where possible.
 
-    -- XXX BAD!
-    SELECT is( is_valid(9), TRUE, 'A tree grows in Brooklyn' );
-
-This does not check if `is_valid(9)` is true, it checks if it *returns*
-`TRUE`. Very different. Similar caveats exist for `FALSE`. In these cases, use
-`ok()`.
-
-    SELECT ok( is_valid(9), 'A tree grows in Brooklyn' );
-
-### matches( anyelement, regex, description ) ###
-### matches( anyelement, regex ) ###
+### `matches( anyelement, regex, description )` ###
+### `matches( anyelement, regex )` ###
 
     SELECT matches( :this, '^that', :description );
 
@@ -309,33 +341,33 @@ is similar to:
 Its advantages over `ok()` are similar to that of `is()` and `isnt()`: Better
 diagnostics on failure.
 
-### imatches( anyelement, regex, description ) ###
-### imatches( anyelement, regex ) ###
+### `imatches( anyelement, regex, description )` ###
+### `imatches( anyelement, regex )` ###
 
     SELECT imatches( :this, '^that', :description );
 
-These are just like `matches()` except that the regular expression is
-case-insensitive.
+These are just like `matches()` except that the regular expression is compared
+to `:this` case-insensitively.
 
-### doesnt_match( anyelement, regex, description ) ###
-### doesnt_match( anyelement, regex ) ###
-### doesnt_imatch( anyelement, regex, description ) ###
-### doesnt_imatch( anyelement, regex ) ###
+### `doesnt_match( anyelement, regex, description )` ###
+### `doesnt_match( anyelement, regex )` ###
+### `doesnt_imatch( anyelement, regex, description )` ###
+### `doesnt_imatch( anyelement, regex )` ###
 
     SELECT doesnt_match( :this, '^that', :description );
 
-These functions work exactly as `matches()` and `imataches()` do, only they
+These functions work exactly as `matches()` and `imatches()` do, only they
 check if `:this` *does not* match the given pattern.
 
-### alike( anyelement, pattern, description ) ###
-### alike( anyelement, pattern ) ###
-### ialike( anyelement, pattern, description ) ###
-### ialike( anyelement, pattern ) ###
+### `alike( anyelement, pattern, description )` ###
+### `alike( anyelement, pattern )` ###
+### `ialike( anyelement, pattern, description )` ###
+### `ialike( anyelement, pattern )` ###
 
     SELECT alike( :this, 'that%', :description );
 
-Similar to `ok()`, `alike()` matches `:this` against the SQL `LIKE` pattern
-'that%'. `ialike()` matches case-insensitively.
+Similar to `matches()`, `alike()` matches `:this` against the SQL `LIKE`
+pattern 'that%'. `ialike()` matches case-insensitively.
 
 So this:
 
@@ -350,20 +382,20 @@ is similar to:
 Its advantages over `ok()` are similar to that of `is()` and `isnt()`: Better
 diagnostics on failure.
 
-### unalike( anyelement, pattern, description ) ###
-### unalike( anyelement, pattern ) ###
-### unialike( anyelement, pattern, description ) ###
-### unialike( anyelement, pattern ) ###
+### `unalike( anyelement, pattern, description )` ###
+### `unalike( anyelement, pattern )` ###
+### `unialike( anyelement, pattern, description )` ###
+### `unialike( anyelement, pattern )` ###
 
     SELECT unalike( :this, 'that%', :description );
 
 Works exactly as `alike()`, only it checks if `:this` *does not* match the
 given pattern.
 
-### pass( description ) ###
-### pass() ###
-### fail( description ) ###
-### fail() ###
+### `pass( description )` ###
+### `pass()` ###
+### `fail( description )` ###
+### `fail()` ###
 
     SELECT pass( :description );
     SELECT fail( :description );
@@ -383,9 +415,9 @@ Or maybe you want to make sure a query *does not* trigger an error. For such
 cases, we provide a couple of test functions to make sure your queries are as
 error-prone as you think they should be.
 
-### throws_ok( text, err_code, description ) ###
-### throws_ok( text, err_code ) ###
-### throws_ok( text ) ###
+### `throws_ok( text, errcode, description )` ###
+### `throws_ok( text, errcode )` ###
+### `throws_ok( text )` ###
 
     SELECT throws_ok(
         'INSERT INTO try (id) VALUES (1)',
@@ -401,12 +433,12 @@ The first argument should be a string representing the query to be executed.
 catch any exception.
 
 The second argument should be an exception error code, which is a
-five-character string (it happens to consist only of numbers and you pass it
-as an integer, it will still work). If this value is not `NULL`, `throws_ok()`
-will check the thrown exception to ensure that it is the expected exception.
-For a complete list of error codes, see [Appendix
-A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html) in
-the [PostgreSQL
+five-character string (if it happens to consist only of numbers and you pass
+it as an integer, it will still work). If this value is not `NULL`,
+`throws_ok()` will check the thrown exception to ensure that it is the
+expected exception. For a complete list of error codes, see [Appendix
+A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html
+"Appendix A. PostgreSQL Error Codes") in the [PostgreSQL
 documentation](http://www.postgresql.org/docs/current/static/).
 
 The third argument is of course a brief test description.
@@ -421,8 +453,8 @@ For example:
 
 Idea borrowed from the Test::Exception Perl module.
 
-### lives_ok( text, err_code ) ###
-### lives_ok( text ) ###
+### `lives_ok( text, description )` ###
+### `lives_ok( text )` ###
 
     SELECT lives_ok(
         'INSERT INTO try (id) VALUES (1)',
@@ -445,9 +477,9 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
-### has_table( schema, table, description ) ###
-### has_table( table, description ) ###
-### has_table( table ) ###
+### `has_table( schema, table, description )` ###
+### `has_table( table, description )` ###
+### `has_table( table )` ###
 
     SELECT has_table(
         'myschema',
@@ -455,15 +487,15 @@ should be? Use these test functions and rest easy.
         'I got myschema.sometable'
     );
 
-This function tests whether or not a table exist in the database. The first
+This function tests whether or not a table exists in the database. The first
 argument is a schema name, the second is a table name, and the third is the
 test description. If you omit the schema, the table must be visible in the
-search path. If you omit the test description, it will be set to "Table :table
-should exist".
+search path. If you omit the test description, it will be set to "Table
+`:table` should exist".
 
-### has_view( schema, view, description ) ###
-### has_view( view, description ) ###
-### has_view( view ) ###
+### `has_view( schema, view, description )` ###
+### `has_view( view, description )` ###
+### `has_view( view )` ###
 
     SELECT has_view(
         'myschema',
@@ -473,9 +505,9 @@ should exist".
 
 Just like `has_table()`, only it tests for the existence of a view.
 
-### has_column( schema, table, column, description ) ###
-### has_column( table, column, description ) ###
-### has_column( table, column ) ###
+### `has_column( schema, table, column, description )` ###
+### `has_column( table, column, description )` ###
+### `has_column( table, column )` ###
 
     SELECT has_column(
         'myschema',
@@ -488,13 +520,11 @@ Tests whether or not a column exists in a given table or view. The first
 argument is the schema name, the second the table name, the third the column
 name, and the fourth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
-it will be set to "Column :table.:column should exist".
+it will be set to "Column `:table`.`:column` should exist".
 
-Just like `has_table()`, only it tests for the existence of a column.
-
-### col_not_null( schema, table, column, description ) ###
-### col_not_null( table, column, description ) ###
-### col_not_null( table, column ) ###
+### `col_not_null( schema, table, column, description )` ###
+### `col_not_null( table, column, description )` ###
+### `col_not_null( table, column )` ###
 
     SELECT col_not_null(
         'myschema',
@@ -507,12 +537,12 @@ Tests whether the specified column has a `NOT NULL` constraint. The first
 argument is the schema name, the second the table name, the third the column
 name, and the fourth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
-it will be set to "Column :table.:column should be NOT NULL". Note that this
-test will fail if the column in question does not exist.
+it will be set to "Column `:table`.`:column` should be NOT NULL". Note that
+this test will fail if the table or column in question does not exist.
 
-### col_is_null( schema, table, column, description ) ###
-### col_is_null( table, column, description ) ###
-### col_is_null( table, column ) ###
+### `col_is_null( schema, table, column, description )` ###
+### `col_is_null( table, column, description )` ###
+### `col_is_null( table, column )` ###
 
     SELECT col_is_null(
         'myschema',
@@ -526,12 +556,12 @@ column does not have a `NOT NULL` constraint. The first argument is the schema
 name, the second the table name, the third the column name, and the fourth is
 the test description. If the schema is omitted, the table must be visible in
 the search path. If the test description is omitted, it will be set to "Column
-:table.:column should allow NULL". Note that this test will fail if the column
-in question does not exist.
+`:table`.`:column` should allow NULL". Note that this test will fail if the
+table or column in question does not exist.
 
-### col_type_is( schema, table, column, type, description ) ###
-### col_type_is( table, column, type, description ) ###
-### col_type_is( table, column, type ) ###
+### `col_type_is( schema, table, column, type, description )` ###
+### `col_type_is( table, column, type, description )` ###
+### `col_type_is( table, column, type )` ###
 
     SELECT col_type_is(
         'myschema',
@@ -546,8 +576,9 @@ fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
 fourth the type, and the fifth is the test description. If the schema is
 omitted, the table must be visible in the search path. If the test description
-is omitted, it will be set to "Column :table.:column should be type $type".
-Note that this test will fail if the column in question does not exist.
+is omitted, it will be set to "Column `:table`.`:column` should be type
+`:type`". Note that this test will fail if the table or column in question
+does not exist.
 
 The type argument should be formatted as it would be displayed in the view of
 a table usin the `\d` command in `psql`. For example, if you have a numeric
@@ -565,9 +596,9 @@ Will produce something like this:
     #         have: name
     #         want: text
 
-### col_default_is( schema, table, column, default, description ) ###
-### col_default_is( table, column, default, description ) ###
-### col_default_is( table, column, type ) ###
+### `col_default_is( schema, table, column, default, description )` ###
+### `col_default_is( table, column, default, description )` ###
+### `col_default_is( table, column, type )` ###
 
     SELECT col_default_is(
         'myschema',
@@ -582,19 +613,25 @@ showing the actual default value. The first argument is the schema name, the
 second the table name, the third the column name, the fourth the default
 value, and the fifth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
-it will be set to "Column :table.:column should default to :default". Note
-that this test will fail if the column in question does not exist.
+it will be set to "Column `:table`.`:column` should default to `:default`".
+Note that this test will fail if the table or column in question does not
+exist.
 
 The default argument must have an unambiguous type in order for the call to
 succeed. If you see an error such as 'ERROR: could not determine polymorphic
 type because input has type "unknown"', it's because you forgot to cast the
 expected value to its proper type. IOW, this will fail:
 
-    SELECT col_is_default( 'tab', 'name', 'foo' );
+    SELECT col_default_is( 'tab', 'name', 'foo' );
 
 But this will not:
 
-    SELECT col_is_default( 'tab', 'name', 'foo'::text );
+    SELECT col_default_is( 'tab', 'name', 'foo'::text );
+
+You can also test for functional defaults. Just specify the function call as a
+string:
+
+    SELECT col_default_is( 'user', 'created_at', 'now()' );
 
 If the test fails, it will output useful diagnostics. For example, this test:
 
@@ -612,9 +649,9 @@ Will produce something like this:
     #         have: NULL
     #         want: foo
 
-### has_pk( schema, table, description ) ###
-### has_pk( table, description ) ###
-### has_pk( table ) ###
+### `has_pk( schema, table, description )` ###
+### `has_pk( table, description )` ###
+### `has_pk( table )` ###
 
     SELECT has_pk(
         'myschema',
@@ -625,16 +662,16 @@ Will produce something like this:
 Tests whether or not a table has a primary key. The first argument is the
 schema name, the second the table name, the the third is the test description.
 If the schema is omitted, the table must be visible in the search path. If the
-test description is omitted, it will be set to "Table :table should have a
+test description is omitted, it will be set to "Table `:table` should have a
 primary key". Note that this test will fail if the table in question does not
 exist.
 
-### col_is_pk( schema, table, column, description ) ###
-### col_is_pk( schema, table, column[], description ) ###
-### col_is_pk( table, column, description ) ###
-### col_is_pk( table, column[], description ) ###
-### col_is_pk( table, column ) ###
-### col_is_pk( table, column[] ) ###
+### `col_is_pk( schema, table, column, description )` ###
+### `col_is_pk( schema, table, column[], description )` ###
+### `col_is_pk( table, column, description )` ###
+### `col_is_pk( table, column[], description )` ###
+### `col_is_pk( table, column )` ###
+### `col_is_pk( table, column[] )` ###
 
     SELECT col_is_pk(
         'myschema',
@@ -654,8 +691,8 @@ primary key columns, if any. The first argument is the schema name, the second
 the table name, the third the column name or an array of column names, and the
 fourth is the test description. If the schema is omitted, the table must be
 visible in the search path. If the test description is omitted, it will be set
-to "Column :table.:column should be a primary key". Note that this test will
-fail if the column in question does not exist.
+to "Column `:table`.`:column` should be a primary key". Note that this test
+will fail if the table or column in question does not exist.
 
 If the test fails, it will output useful diagnostics. For example this test:
 
@@ -673,9 +710,9 @@ Diagnostics
 If you pick the right test function, you'll usually get a good idea of what
 went wrong when it failed. But sometimes it doesn't work out that way. So here
 we have ways for you to write your own diagnostic messages which are safer
-than just \echo.
+than just `\echo` or `SELECT foo`.
 
-### diag( text ) ###
+### `diag( text )` ###
 
 Returns a diagnostic message which is guaranteed not to interfere with
 test output. Handy for this sort of thing:
@@ -693,18 +730,18 @@ test output. Handy for this sort of thing:
 Which would produce:
 
     # These tests expect LC_COLLATE to be en_US.UTF-8,
-    # but yours is set to en_US.UTF-8.
+    # but yours is set to en_US.ISO8859-1.
     # As a result, some tests may fail. YMMV.
 
 Conditional Tests
 -----------------
 
 Sometimes you might have tests that you want to pass, but you haven't gotten
-'round to implementing the logic required to make them pass. pgTAP allows you
+around to implementing the logic required to make them pass. pgTAP allows you
 to declare that such tests are supposed to fail but will work in the future.
 This is known as a "todo test."
 
-### todo( why, how_many ) ###
+### `todo( why, how_many )` ###
 
 Declares a series of tests that you expect to fail and why. Perhaps it's
 because you haven't fixed a bug or haven't finished a new feature:
@@ -715,11 +752,12 @@ because you haven't fixed a bug or haven't finished a new feature:
     SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
     SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
 
-With `todo()`, `how_any` specifies how many tests are expected to fail. pgTAP
-will run the tests normally, but print out special flags indicating they are
-"todo" tests. The test harness will interpret these failures as ok. Should any
-todo test pass, the harness will report it as an unexpected success. You then
-know that the thing you had todo is done and can remove the call to `todo()`.
+With `todo()`, `:how_many` specifies how many tests are expected to fail.
+pgTAP will run the tests normally, but print out special flags indicating they
+are "todo" tests. The test harness will interpret these failures as ok. Should
+any todo test pass, the harness will report it as an unexpected success. You
+then know that the thing you had todo is done and can remove the call to
+`todo()`.
 
 The nice part about todo tests, as opposed to simply commenting out a block of
 tests, is that they're like a programmatic todo list. You know how much work
@@ -729,11 +767,13 @@ immediately when they're fixed.
 To Do
 -----
 
-* Update the Makefile to process pg_prove and set the proper path to Perl on
-  the shebang line. Will likely require a `$(PERL)` environment variable.
-* Update Makefile to require TAP::Harness.
 * Add a test function to test test functions and update the test script to
   use it.
+* Update the Makefile to process pg_prove and set the proper path to Perl on
+  the shebang line. Will likely require a `$(PERL)` environment variable.
+* Update the Makefile to require TAP::Harness.
+* Update the Makefile to alter the source as appropriate for older versions
+  of PostgreSQL.
 
 Suported Versions
 -----------------
@@ -743,11 +783,11 @@ pgTAP has been tested on the following builds of PostgreSQL:
 * PostgreSQL 8.3.1 on i386-apple-darwin9.2.2
 
 If you know of others, please submit them! Use
-`psql template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
+`psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
 
 Author
 ------
-David E. Wheeler <david@kineticode.com>
+[David E. Wheeler](http://justatheory.com/)
 
 Credits
 -------

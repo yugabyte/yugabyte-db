@@ -1,5 +1,5 @@
 # $Id$
-DATA_built = pgtap.sql drop_pgtap.sql
+DATA_built = pgtap.sql uninstall_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
 REGRESS = moretap pg73 hastap coltap pktap
@@ -23,3 +23,7 @@ ifdef TAPSCHEMA
 else
 	cp $< $@
 endif
+
+# In addition to installcheck, one can also run the tests through pg_prove.
+test:
+	./bin/pg_prove sql/*.sql

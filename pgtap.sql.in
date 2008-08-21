@@ -738,7 +738,6 @@ CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
                    pg_catalog.pg_constraint x
              WHERE n.oid = c.relnamespace
                AND c.oid = x.conrelid
-               AND c.relkind = 'r'
                AND n.nspname = $1
                AND c.relname = $2
                AND c.relhaspkey = true
@@ -755,7 +754,6 @@ CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT ) RETURNS TEXT AS $$
             SELECT true
               FROM pg_catalog.pg_class c, pg_catalog.pg_constraint x
              WHERE c.oid = x.conrelid
-               AND c.relkind = 'r'
                AND pg_catalog.pg_table_is_visible(c.oid)
                AND c.relname = $1
                AND c.relhaspkey = true

@@ -37,6 +37,8 @@ Revision history for pgTAP
       - Fixed `is()` and `isnt()` to better handle NULLs.
       - Added the `--set ON_ERROR_STOP=1` option to the call to `psql` in
         `pg_prove`.
+      - Renamed `drop_pgtap.sql.in` to `uninstall_pgtap.sql.in`, which is more
+        in line with typical PostgreSQL contrib modules.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.

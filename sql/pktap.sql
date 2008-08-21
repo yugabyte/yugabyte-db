@@ -1,4 +1,5 @@
 \set ECHO
+\set QUIET 1
 
 --
 -- Tests for pgTAP.
