@@ -666,6 +666,23 @@ test description is omitted, it will be set to "Table `:table` should have a
 primary key". Note that this test will fail if the table in question does not
 exist.
 
+### `has_fk( schema, table, description )` ###
+### `has_fk( table, description )` ###
+### `has_fk( table )` ###
+
+    SELECT has_fk(
+        'myschema',
+        'sometable',
+        'Table myschema.sometable should have a foreign key constraint'
+    );
+
+Tests whether or not a table has a foreign key constraint. The first argument
+is the schema name, the second the table name, the the third is the test
+description. If the schema is omitted, the table must be visible in the search
+path. If the test description is omitted, it will be set to "Table `:table`
+should have a foreign key constraint". Note that this test will fail if the
+table in question does not exist.
+
 ### `col_is_pk( schema, table, column, description )` ###
 ### `col_is_pk( schema, table, column[], description )` ###
 ### `col_is_pk( table, column, description )` ###
@@ -703,6 +720,28 @@ Will produce something like this:
     # Failed test 178: "Column pg_type.id should be a primary key"
     #         have: {}
     #         want: {id}
+
+### `col_is_fk( schema, table, column, description )` ###
+### `col_is_fk( schema, table, column[], description )` ###
+### `col_is_fk( table, column, description )` ###
+### `col_is_fk( table, column[], description )` ###
+### `col_is_fk( table, column )` ###
+### `col_is_fk( table, column[] )` ###
+
+    SELECT col_is_fk(
+        'myschema',
+        'sometable',
+        'other_id',
+        'Column myschema.sometable.other_id should be a foreign key'
+    );
+
+    SELECT col_is_fk(
+        'contacts',
+        ARRAY['first', 'last'],
+    );
+
+Just like `col_is_fk()`, except that it test that the column or array of
+columns are a primary key.
 
 Diagnostics
 -----------
