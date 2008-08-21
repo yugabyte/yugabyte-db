@@ -1,0 +1,32 @@
+\set ECHO
+1..30
+ok 1 - has_table(table) fail
+ok 2 - has_table(table) should fail for non-existent table
+ok 3 - has_table(table, desc) fail
+ok 4 - has_table(table, dessc) should fail for non-existent table
+ok 5 - has_table(schema, table, desc) fail
+ok 6 - has_table(schema, table, desc) should fail for non-existent table
+ok 7 - has_table(table, desc) pass
+ok 8 - has_table(table, desc) should pass for an existing table
+ok 9 - has_table(schema, table, desc) pass
+ok 10 - has_table(schema, table, desc) should pass for an existing table
+ok 11 - has_view(view) fail
+ok 12 - has_view(view) should fail for non-existent view
+ok 13 - has_view(view, desc) fail
+ok 14 - has_view(view, desc) should fail for non-existent view
+ok 15 - has_view(schema, view, desc) fail
+ok 16 - has_view(schema, view, desc) should fail for non-existent view
+ok 17 - has_view(view, desc) pass
+ok 18 - has_view(view, desc) should pass for an existing view
+ok 19 - has_view(schema, view, desc) pass
+ok 20 - has_view(schema, view, desc) should pass for an existing view
+ok 21 - has_column(table, column) fail
+ok 22 - has_column(table, column) should fail for non-existent table
+ok 23 - has_column(table, column, desc) fail
+ok 24 - has_column(table, column, desc) should fail for non-existent table
+ok 25 - has_column(schema, table, column, desc) fail
+ok 26 - has_column(schema, table, column, desc) should fail for non-existent table
+ok 27 - has_column(table, column) pass
+ok 28 - has_column(table, column) should pass for an existing column
+ok 29 - has_column(schema, column, desc) pass
+ok 30 - has_column(schema, table, column, desc) should pass for an existing view column
