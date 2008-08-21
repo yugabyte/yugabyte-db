@@ -257,10 +257,9 @@ SELECT is(
 \echo ok 82 - todo pass
 SELECT * FROM todo('just because', 2 );
 SELECT is(
-    fail('This is a todo test' )
-    || pass('This is a todo test that unexpectedly passes' ),
-    'not ok 81 - This is a todo test # TODO just because
-# Failed (TODO) test 81: "This is a todo test"ok 82 - This is a todo test that unexpectedly passes # TODO just because',
+    fail('This is a todo test' ) || E'\n'
+      || pass('This is a todo test that unexpectedly passes' ),
+    E'not ok 81 - This is a todo test # TODO just because\n# Failed (TODO) test 81: "This is a todo test"\nok 82 - This is a todo test that unexpectedly passes # TODO just because',
    'TODO tests should display properly'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 81 );
