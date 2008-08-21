@@ -68,8 +68,6 @@ push @command, qw(
     --file
 );
 
-print join ' ', @command, $/;
-
 TAP::Harness->new({
     verbosity => $opts->{verbose} || $ENV{TEST_VERBOSE},
     timer     => $opts->{timer},
