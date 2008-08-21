@@ -1,5 +1,5 @@
 \set ECHO
-1..177
+1..151
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -151,29 +151,3 @@ ok 148 - col_default_is( table, column, default, description )
 ok 149 - col_default_is( table, column, default, description ) should work
 ok 150 - col_default_is( table, column, default )
 ok 151 - col_default_is( table, column, default ) should work
-ok 152 - test has_pk( schema, table, description )
-ok 153 - has_pk( schema, table, description ) should work
-ok 154 - test has_pk( table, description )
-ok 155 - has_pk( table, description ) should work
-ok 156 - test has_pk( table )
-ok 157 - has_pk( table ) should work
-ok 158 - test has_pk( schema, table, description ) fail
-ok 159 - has_pk( schema, table, description ) should fail properly
-ok 160 - test has_pk( table, description ) fail
-ok 161 - has_pk( table, description ) should fail properly
-ok 162 - test col_is_pk( schema, table, column, description )
-ok 163 - col_is_pk( schema, table, column, description ) should work
-ok 164 - test col_is_pk( table, column, description )
-ok 165 - col_is_pk( table, column, description ) should work
-ok 166 - test col_is_pk( table, column )
-ok 167 - col_is_pk( table, column ) should work
-ok 168 - test col_is_pk( schema, table, column, description ) fail
-ok 169 - col_is_pk( schema, table, column, description ) should fail properly
-ok 170 - test col_is_pk( table, column, description ) fail
-ok 171 - col_is_pk( table, column, description ) should fail properly
-ok 172 - test col_is_pk( schema, table, column[], description )
-ok 173 - col_is_pk( schema, table, column[], description ) should work
-ok 174 - test col_is_pk( table, column[], description )
-ok 175 - col_is_pk( table, column[], description ) should work
-ok 176 - test col_is_pk( table, column[], description )
-ok 177 - col_is_pk( table, column[] ) should work

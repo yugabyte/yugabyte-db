@@ -2,7 +2,7 @@
 DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = pg_prove
-REGRESS = pgtap pg73
+REGRESS = pgtap pg73 pktap
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

@@ -1,0 +1,28 @@
+\set ECHO
+1..26
+ok 1 - test has_pk( schema, table, description )
+ok 2 - has_pk( schema, table, description ) should work
+ok 3 - test has_pk( table, description )
+ok 4 - has_pk( table, description ) should work
+ok 5 - test has_pk( table )
+ok 6 - has_pk( table ) should work
+ok 7 - test has_pk( schema, table, description ) fail
+ok 8 - has_pk( schema, table, description ) should fail properly
+ok 9 - test has_pk( table, description ) fail
+ok 10 - has_pk( table, description ) should fail properly
+ok 11 - test col_is_pk( schema, table, column, description )
+ok 12 - col_is_pk( schema, table, column, description ) should work
+ok 13 - test col_is_pk( table, column, description )
+ok 14 - col_is_pk( table, column, description ) should work
+ok 15 - test col_is_pk( table, column )
+ok 16 - col_is_pk( table, column ) should work
+ok 17 - test col_is_pk( schema, table, column, description ) fail
+ok 18 - col_is_pk( schema, table, column, description ) should fail properly
+ok 19 - test col_is_pk( table, column, description ) fail
+ok 20 - col_is_pk( table, column, description ) should fail properly
+ok 21 - test col_is_pk( schema, table, column[], description )
+ok 22 - col_is_pk( schema, table, column[], description ) should work
+ok 23 - test col_is_pk( table, column[], description )
+ok 24 - col_is_pk( table, column[], description ) should work
+ok 25 - test col_is_pk( table, column[], description )
+ok 26 - col_is_pk( table, column[] ) should work
