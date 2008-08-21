@@ -12,6 +12,7 @@
 \pset pager
 -- Create plpgsql if it's not already there.
 SET client_min_messages = fatal;
+\set ON_ERROR_STOP off
 CREATE LANGUAGE plpgsql;
 
 -- Keep things quiet.

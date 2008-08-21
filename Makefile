@@ -1,7 +1,7 @@
 # $Id$
 DATA_built = pgtap.sql drop_pgtap.sql
 DOCS = README.pgtap
-SCRIPTS = pg_prove
+SCRIPTS = bin/pg_prove
 REGRESS = pgtap pg73 pktap coltap
 
 ifdef USE_PGXS
