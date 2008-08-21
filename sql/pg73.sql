@@ -73,4 +73,4 @@ select is(3.2::float8, 3.2::float8, '3.2=3.2 float8');
 select isnt(3.2::float8, 4.5::float8, '3.2!=4.5 float8');
 
 select * from finish();
-
+ROLLBACK;
