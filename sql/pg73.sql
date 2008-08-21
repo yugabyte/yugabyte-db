@@ -27,6 +27,8 @@ SET client_min_messages = warning;
 BEGIN;
 \i pgtap.sql
 
+-- ## SET search_path TO TAPSCHEMA,public;
+
 select plan(39);
 
 select ok(true);
