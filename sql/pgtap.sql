@@ -25,7 +25,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 161
+\set numb_tests 177
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -579,6 +579,71 @@ SELECT is(
     'has_pk( table, description ) should fail properly'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 158, 160 );
+
+/****************************************************************************/
+-- Test col_is_pk().
+
+\echo ok 162 - test col_is_pk( schema, table, column, description )
+SELECT is(
+    col_is_pk( 'public', 'sometab', 'id', 'public.sometab.id should be a pk' ),
+    'ok 162 - public.sometab.id should be a pk',
+    'col_is_pk( schema, table, column, description ) should work'
+);
+
+\echo ok 164 - test col_is_pk( table, column, description )
+SELECT is(
+    col_is_pk( 'sometab', 'id', 'sometab.id should be a pk' ),
+    'ok 164 - sometab.id should be a pk',
+    'col_is_pk( table, column, description ) should work'
+);
+
+\echo ok 166 - test col_is_pk( table, column )
+SELECT is(
+    col_is_pk( 'sometab', 'id' ),
+    'ok 166 - Column sometab.id should be a primary key',
+    'col_is_pk( table, column ) should work'
+);
+
+\echo ok 168 - test col_is_pk( schema, table, column, description ) fail
+SELECT is(
+    col_is_pk( 'public', 'sometab', 'name', 'public.sometab.name should be a pk' ),
+    E'not ok 168 - public.sometab.name should be a pk\n# Failed test 168: "public.sometab.name should be a pk"\n#         have: {id}\n#         want: {name}',
+    'col_is_pk( schema, table, column, description ) should fail properly'
+);
+
+\echo ok 170 - test col_is_pk( table, column, description ) fail
+SELECT is(
+    col_is_pk( 'sometab', 'name', 'sometab.name should be a pk' ),
+    E'not ok 170 - sometab.name should be a pk\n# Failed test 170: "sometab.name should be a pk"\n#         have: {id}\n#         want: {name}',
+    'col_is_pk( table, column, description ) should fail properly'
+);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 168, 170 );
+
+/****************************************************************************/
+-- Test col_is_pk() with an array of columns.
+
+CREATE TABLE argh (id int not null, name text not null, primary key (id, name));
+
+\echo ok 172 - test col_is_pk( schema, table, column[], description )
+SELECT is(
+    col_is_pk( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
+    'ok 172 - id + name should be a pk',
+    'col_is_pk( schema, table, column[], description ) should work'
+);
+
+\echo ok 174 - test col_is_pk( table, column[], description )
+SELECT is(
+    col_is_pk( 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
+    'ok 174 - id + name should be a pk',
+    'col_is_pk( table, column[], description ) should work'
+);
+
+\echo ok 176 - test col_is_pk( table, column[], description )
+SELECT is(
+    col_is_pk( 'argh', ARRAY['id', 'name'] ),
+    'ok 176 - Column argh.{id,name} should be a primary key',
+    'col_is_pk( table, column[] ) should work'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.

@@ -769,5 +769,57 @@ CREATE OR REPLACE FUNCTION has_pk ( TEXT ) RETURNS TEXT AS $$
     SELECT has_pk( $1, 'Table ' || $1 || ' should have a primary key' );
 $$ LANGUAGE sql;
 
--- col_is_pk()
+-- col_is_pk( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is(ARRAY (SELECT a.attname::text
+      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+           pg_catalog.pg_constraint x
+     WHERE n.oid = c.relnamespace
+       AND c.oid = a.attrelid
+       AND c.oid = x.conrelid
+       AND a.attnum = ANY(x.conkey)
+       AND n.nspname = $1
+       AND c.relname = $2
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+     ORDER BY a.attnum
+    ), $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_is_pk( table, column, description )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is(ARRAY (SELECT a.attname::text
+      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+           pg_catalog.pg_constraint x
+     WHERE c.oid = a.attrelid
+       AND c.oid = x.conrelid
+       AND pg_table_is_visible(c.oid)
+       AND a.attnum = ANY(x.conkey)
+       AND c.relname = $1
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+     ORDER BY a.attnum
+    ), $2, $3 );
+$$ LANGUAGE sql;
+
+-- col_is_pk( table, column[] )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[] ) RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, 'Column ' || $1 || '.' || $2::text || ' should be a primary key' );
+$$ LANGUAGE sql;
+
+-- col_is_pk( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, ARRAY[$3], $4 );
+$$ LANGUAGE sql;
+
+-- col_is_pk( table, column, description )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, ARRAY[$2], $3 );
+$$ LANGUAGE sql;
+
+-- col_is_pk( table, column )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_is_pk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a primary key' );
+$$ LANGUAGE sql;
+
 -- col_is_unique()

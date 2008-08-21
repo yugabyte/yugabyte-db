@@ -32,7 +32,8 @@ Revision history for pgTAP
       - Added the `has_table()`, `has_view()`, `has_column()` and `has_pk()`
         test functions.
       - Added the `col_not_null()` and `col_is_null()` test functions.
-      - Added the `col_type_is()` and `col_default_is()` test functions.
+      - Added the `col_type_is()`, `col_default_is()`, and `col_is_pk()` test
+        functions.
       - Fixed `is()` and `isnt()` to better handle NULLs.
 
 0.02  2008-06-17T16:26:41

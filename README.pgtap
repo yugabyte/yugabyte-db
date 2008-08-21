@@ -619,7 +619,7 @@ Will produce something like this:
     SELECT has_pk(
         'myschema',
         'sometable',
-        'Table myschema.sometable.somecolumn should have a primary key'
+        'Table myschema.sometable should have a primary key'
     );
 
 Tests whether or not a table has a primary key. The first argument is the
@@ -628,6 +628,44 @@ If the schema is omitted, the table must be visible in the search path. If the
 test description is omitted, it will be set to "Table :table should have a
 primary key". Note that this test will fail if the table in question does not
 exist.
+
+### col_is_pk( schema, table, column, description ) ###
+### col_is_pk( schema, table, column[], description ) ###
+### col_is_pk( table, column, description ) ###
+### col_is_pk( table, column[], description ) ###
+### col_is_pk( table, column ) ###
+### col_is_pk( table, column[] ) ###
+
+    SELECT col_is_pk(
+        'myschema',
+        'sometable',
+        'id',
+        'Column myschema.sometable.id should be a primary key'
+    );
+
+    SELECT col_is_pk(
+        'persons',
+        ARRAY['first', 'last'],
+    );
+
+Tests whether the specified column or columns in a table is/are the primary
+key for that table. If it fails, it will emit diagnostics showing the actual
+primary key columns, if any. The first argument is the schema name, the second
+the table name, the third the column name or an array of column names, and the
+fourth is the test description. If the schema is omitted, the table must be
+visible in the search path. If the test description is omitted, it will be set
+to "Column :table.:column should be a primary key". Note that this test will
+fail if the column in question does not exist.
+
+If the test fails, it will output useful diagnostics. For example this test:
+
+    SELECT col_is_pk( 'pg_type', 'id' );
+
+Will produce something like this:
+
+    # Failed test 178: "Column pg_type.id should be a primary key"
+    #         have: {}
+    #         want: {id}
 
 Diagnostics
 -----------
