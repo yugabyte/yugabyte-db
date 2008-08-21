@@ -41,6 +41,8 @@ Revision history for pgTAP
         in line with typical PostgreSQL contrib modules.
       - Removed verbose output of the `psql` command from `pg_prove`. Thanks
         to Andy Armstrong for the spot.
+      - Divided the tests up into many separate test script files, so that
+        things are a bit better organized and easier to maintain.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
