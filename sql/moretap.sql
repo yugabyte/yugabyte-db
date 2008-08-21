@@ -27,7 +27,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 80
+\set numb_tests 71
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -204,50 +204,11 @@ SELECT is( unalike( 'foo'::text, 'f%'::text ), E'not ok 68\n# Failed test 68\n# 
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 63, 68 );
 
 /****************************************************************************/
--- test throws_ok().
-SELECT throws_ok( 'SELECT 1 / 0', '22012', 'throws_ok(1/0) should work' );
-
--- Check its diagnostics for an invalid error code.
-\echo ok 71 - throws_ok failure diagnostics
-SELECT is(
-    throws_ok( 'SELECT 1 / 0', 97212 ),
-    E'not ok 71 - threw 97212\n# Failed test 71: "threw 97212"\n#       caught: 22012: division by zero\n#       wanted: 97212',
-    'We should get the proper diagnostics from throws_ok()'
-);
-
-SELECT throws_ok( 'SELECT 1 / 0', NULL, 'throws_ok(1/0, NULL) should work' );
-
--- Check its diagnostics no error.
-\echo ok 74 - throws_ok failure diagnostics
-SELECT is(
-    throws_ok( 'SELECT 1', NULL ),
-    E'not ok 74 - threw an exception\n# Failed test 74: "threw an exception"\n#       caught: no exception\n#       wanted: an exception',
-    'We should get the proper diagnostics from throws_ok() with a NULL error code'
-);
-
--- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 71, 74 );
-
-/****************************************************************************/
--- test lives_ok().
-SELECT lives_ok( 'SELECT 1', 'lives_ok() should work' );
-
--- Check its diagnostics when there is an exception.
-\echo ok 77 - lives_ok failure diagnostics
-SELECT is(
-    lives_ok( 'SELECT 1 / 0' ),
-    E'not ok 77\n# Failed test 77\n#         died: 22012: division by zero',
-    'We should get the proper diagnostics for a lives_ok() failure'
-);
-
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 77 );
-\echo ok 79 - lives_ok is ok
-
-/****************************************************************************/
 -- test multiline description.
+\echo ok 70 - Multline diagnostics
 SELECT is(
     ok( true, E'foo\nbar' ),
-    E'ok 79 - foo\n# bar',
+    E'ok 70 - foo\n# bar',
     'multiline desriptions should have subsequent lines escaped'
 );
 
