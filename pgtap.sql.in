@@ -822,4 +822,9 @@ CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT col_is_pk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a primary key' );
 $$ LANGUAGE sql;
 
--- col_is_unique()
+-- has_fk( schema, table, description )
+-- has_unique( schema, table, description )
+-- has_check( schema, table, constraint, description )
+
+-- col_has_fk( schema, table, column[], description )
+-- col_is_unique( schema, table, column[], description )
