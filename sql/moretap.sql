@@ -27,7 +27,7 @@ SET client_min_messages = warning;
 -- Load the TAP functions.
 BEGIN;
 \i pgtap.sql
-\set numb_tests 51
+\set numb_tests 30
 
 -- ## SET search_path TO TAPSCHEMA,public;
 
@@ -120,47 +120,11 @@ SELECT is( ok(false, 'foo'), E'not ok 27 - foo\n# Failed test 27: "foo"', 'ok(fa
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 23, 25, 27);
 
 /****************************************************************************/
--- Test is().
-\echo ok 29 - is() success
-SELECT is( is(1, 1), 'ok 29', 'isa(1, 1) should work' );
-\echo ok 31 - is() success 2
-SELECT is( is('x'::text, 'x'::text), 'ok 31', 'is(''x'', ''x'') should work' );
-\echo ok 33 - is() success 3
-SELECT is( is(1.1, 1.10), 'ok 33', 'is(1.1, 1.10) should work' );
-\echo ok 35 - is() success 4
-SELECT is( is(1.1, 1.10), 'ok 35', 'is(1.1, 1.10) should work' );
-\echo ok 37 - is() success 5
-SELECT is( is(true, true), 'ok 37', 'is(true, true) should work' );
-\echo ok 39 - is() success 6
-SELECT is( is(false, false), 'ok 39', 'is(false, false) should work' );
---SELECT is( '12:45'::time, '12:45'::time, 'ok 41', 'is(time, time) should work' );
-\echo ok 41 - is() success 7
-SELECT is( is(1, 1, 'foo'), 'ok 41 - foo', 'is(1, 1, ''foo'') should work' );
-\echo ok 43 - is() failure
-SELECT is( is( 1, 2 ), E'not ok 43\n# Failed test 43\n#         have: 1\n#         want: 2', 'is(1, 2) should work' );
-
-/****************************************************************************/
--- Test isnt().
-\echo ok 45 - isnt() success
-SELECT is( isnt(1, 2), 'ok 45', 'isnt(1, 2) should work' );
-\echo ok 47 - isnt() failure
-SELECT is( isnt( 1, 1 ), E'not ok 47\n# Failed test 47\n#     1\n#       <>\n#     1', 'is(1, 2) should work' );
-
--- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 43, 47 );
-
-/****************************************************************************/
--- Try using variables.
-\set foo '\'' waffle '\''
-\set bar '\'' waffle '\''
-SELECT is( :foo::text, :bar::text, 'is() should work with psql variables' );
-
-/****************************************************************************/
 -- test multiline description.
-\echo ok 50 - Multline diagnostics
+\echo ok 29 - Multline diagnostics
 SELECT is(
     ok( true, E'foo\nbar' ),
-    E'ok 50 - foo\n# bar',
+    E'ok 29 - foo\n# bar',
     'multiline desriptions should have subsequent lines escaped'
 );
 

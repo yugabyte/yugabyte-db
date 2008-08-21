@@ -2,7 +2,7 @@
 DATA_built = pgtap.sql uninstall_pgtap.sql
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
-REGRESS = moretap pg73 todotap matching throwtap hastap coltap pktap
+REGRESS = moretap istap pg73 todotap matching throwtap hastap coltap pktap
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

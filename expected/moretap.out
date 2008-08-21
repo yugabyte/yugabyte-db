@@ -1,5 +1,5 @@
 \set ECHO
-1..51
+1..30
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -28,26 +28,5 @@ ok 25 - ok() failure 2
 ok 26 - ok(false, '') should work
 ok 27 - ok() failure 3
 ok 28 - ok(false, 'foo') should work
-ok 29 - is() success
-ok 30 - isa(1, 1) should work
-ok 31 - is() success 2
-ok 32 - is('x', 'x') should work
-ok 33 - is() success 3
-ok 34 - is(1.1, 1.10) should work
-ok 35 - is() success 4
-ok 36 - is(1.1, 1.10) should work
-ok 37 - is() success 5
-ok 38 - is(true, true) should work
-ok 39 - is() success 6
-ok 40 - is(false, false) should work
-ok 41 - is() success 7
-ok 42 - is(1, 1, 'foo') should work
-ok 43 - is() failure
-ok 44 - is(1, 2) should work
-ok 45 - isnt() success
-ok 46 - isnt(1, 2) should work
-ok 47 - isnt() failure
-ok 48 - is(1, 2) should work
-ok 49 - is() should work with psql variables
-ok 50 - Multline diagnostics
-ok 51 - multiline desriptions should have subsequent lines escaped
+ok 29 - Multline diagnostics
+ok 30 - multiline desriptions should have subsequent lines escaped

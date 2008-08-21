@@ -1,0 +1,23 @@
+\set ECHO
+1..21
+ok 1 - is() success
+ok 2 - isa(1, 1) should work
+ok 3 - is() success 2
+ok 4 - is('x', 'x') should work
+ok 5 - is() success 3
+ok 6 - is(1.1, 1.10) should work
+ok 7 - is() success 4
+ok 8 - is(1.1, 1.10) should work
+ok 9 - is() success 5
+ok 10 - is(true, true) should work
+ok 11 - is() success 6
+ok 12 - is(false, false) should work
+ok 13 - is() success 7
+ok 14 - is(1, 1, 'foo') should work
+ok 15 - is() failure
+ok 16 - is(1, 2) should work
+ok 17 - isnt() success
+ok 18 - isnt(1, 2) should work
+ok 19 - isnt() failure
+ok 20 - is(1, 2) should work
+ok 21 - is() should work with psql variables
