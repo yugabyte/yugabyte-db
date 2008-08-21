@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(21);
+SELECT plan(27);
 
 /****************************************************************************/
 -- Test is().
@@ -67,6 +67,32 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 15, 19 );
 \set foo '\'' waffle '\''
 \set bar '\'' waffle '\''
 SELECT is( :foo::text, :bar::text, 'is() should work with psql variables' );
+
+/****************************************************************************/
+-- Try using NULLs.
+\echo ok 22 - is(NULL, NULL) success
+SELECT is(
+    is( NULL::text, NULL::text, 'NULLs' ),
+    'ok 22 - NULLs',
+    'is(NULL, NULL) should pass'
+);
+
+\echo ok 24 - is(NULL, foo) failure
+SELECT is(
+    is( NULL::text, 'foo' ),
+    E'not ok 24\n# Failed test 24\n#         have: NULL\n#         want: foo',
+    'is(NULL, foo) should fail'
+);
+
+\echo ok 26 - is(foo, NULL) failure
+SELECT is(
+    is( 'foo', NULL::text ),
+    E'not ok 26\n# Failed test 26\n#         have: foo\n#         want: NULL',
+    'is(foo, NULL) should fail'
+);
+
+-- Clean up the failed test results.
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 24, 26 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.
