@@ -729,36 +729,43 @@ CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $
     );
 $$ LANGUAGE sql;
 
--- has_pk( schema, table, description )
-CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
+-- _hasc( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _hasc ( TEXT, TEXT, CHAR ) RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
             SELECT true
               FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
                    pg_catalog.pg_constraint x
              WHERE n.oid = c.relnamespace
                AND c.oid = x.conrelid
+               AND pg_table_is_visible(c.oid)
+               AND c.relhaspkey = true
                AND n.nspname = $1
                AND c.relname = $2
-               AND c.relhaspkey = true
-               AND x.contype = 'p'
-        ), $3
+               AND x.contype = $3
     );
+$$ LANGUAGE sql;
+
+-- _hasc( table, constraint_type )
+CREATE OR REPLACE FUNCTION _hasc ( TEXT, CHAR ) RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_class c,
+                   pg_catalog.pg_constraint x
+             WHERE c.oid = x.conrelid
+               AND c.relhaspkey = true
+               AND c.relname = $1
+               AND x.contype = $2
+    );
+$$ LANGUAGE sql;
+
+-- has_pk( schema, table, description )
+CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok( _hasc( $1, $2, 'p' ), $3 );
 $$ LANGUAGE sql;
 
 -- has_pk( table, description )
 CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_class c, pg_catalog.pg_constraint x
-             WHERE c.oid = x.conrelid
-               AND pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
-               AND c.relhaspkey = true
-               AND x.contype = 'p'
-        ), $2
-    );
+    SELECT ok( _hasc( $1, 'p' ), $2 );
 $$ LANGUAGE sql;
 
 -- has_pk( table )
@@ -766,39 +773,47 @@ CREATE OR REPLACE FUNCTION has_pk ( TEXT ) RETURNS TEXT AS $$
     SELECT has_pk( $1, 'Table ' || $1 || ' should have a primary key' );
 $$ LANGUAGE sql;
 
--- col_is_pk( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
-    SELECT is(ARRAY (SELECT a.attname::text
+-- _ckeys( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _ckeys ( TEXT, TEXT, CHAR ) RETURNS TEXT[] AS $$
+    SELECT ARRAY (SELECT a.attname::text
       FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
            pg_catalog.pg_constraint x
      WHERE n.oid = c.relnamespace
        AND c.oid = a.attrelid
        AND c.oid = x.conrelid
-       AND x.contype = 'p'
        AND a.attnum = ANY(x.conkey)
        AND n.nspname = $1
        AND c.relname = $2
+       AND x.contype = $3
        AND a.attnum > 0
        AND NOT a.attisdropped
-     ORDER BY a.attnum
-    ), $3, $4 );
+    );
 $$ LANGUAGE sql;
 
--- col_is_pk( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
-    SELECT is(ARRAY (SELECT a.attname::text
+-- _ckeys( table, constraint_type )
+CREATE OR REPLACE FUNCTION _ckeys ( TEXT, CHAR ) RETURNS TEXT[] AS $$
+    SELECT ARRAY (SELECT a.attname::text
       FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
            pg_catalog.pg_constraint x
      WHERE c.oid = a.attrelid
        AND c.oid = x.conrelid
-       AND x.contype = 'p'
        AND pg_table_is_visible(c.oid)
-       AND a.attnum = ANY(x.conkey)
        AND c.relname = $1
+       AND x.contype = $2
+       AND a.attnum = ANY(x.conkey)
        AND a.attnum > 0
        AND NOT a.attisdropped
-     ORDER BY a.attnum
-    ), $2, $3 );
+    );
+$$ LANGUAGE sql;
+
+-- col_is_pk( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is( _ckeys( $1, $2, 'p' ), $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_is_pk( table, column, description )
+CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is( _ckeys( $1, 'p' ), $2, $3 );
 $$ LANGUAGE sql;
 
 -- col_is_pk( table, column[] )
@@ -823,34 +838,12 @@ $$ LANGUAGE sql;
 
 -- has_fk( schema, table, description )
 CREATE OR REPLACE FUNCTION has_fk ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
-                   pg_catalog.pg_constraint x
-             WHERE n.oid = c.relnamespace
-               AND c.oid = x.conrelid
-               AND n.nspname = $1
-               AND c.relname = $2
-               AND c.relhaspkey = true
-               AND x.contype = 'f'
-        ), $3
-    );
+    SELECT ok( _hasc( $1, $2, 'f' ), $3 );
 $$ LANGUAGE sql;
 
 -- has_fk( table, description )
 CREATE OR REPLACE FUNCTION has_fk ( TEXT, TEXT ) RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_class c, pg_catalog.pg_constraint x
-             WHERE c.oid = x.conrelid
-               AND pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
-               AND c.relhaspkey = true
-               AND x.contype = 'f'
-        ), $2
-    );
+    SELECT ok( _hasc( $1, 'f' ), $2 );
 $$ LANGUAGE sql;
 
 -- has_fk( table )
@@ -860,37 +853,12 @@ $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
-    SELECT is(ARRAY (SELECT a.attname::text
-      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-           pg_catalog.pg_constraint x
-     WHERE n.oid = c.relnamespace
-       AND c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND x.contype = 'f'
-       AND a.attnum = ANY(x.conkey)
-       AND n.nspname = $1
-       AND c.relname = $2
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-     ORDER BY a.attnum
-    ), $3, $4 );
+    SELECT is( _ckeys( $1, $2, 'f' ), $3, $4 );
 $$ LANGUAGE sql;
 
 -- col_is_fk( table, column, description )
 CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
-    SELECT is(ARRAY (SELECT a.attname::text
-      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-           pg_catalog.pg_constraint x
-     WHERE c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND x.contype = 'f'
-       AND pg_table_is_visible(c.oid)
-       AND a.attnum = ANY(x.conkey)
-       AND c.relname = $1
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-     ORDER BY a.attnum
-    ), $2, $3 );
+    SELECT is( _ckeys( $1, 'f' ), $2, $3 );
 $$ LANGUAGE sql;
 
 -- col_is_fk( table, column[] )
