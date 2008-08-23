@@ -926,6 +926,51 @@ CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT col_is_unique( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a unique constraint' );
 $$ LANGUAGE sql;
 
+-- has_check( schema, table, description )
+CREATE OR REPLACE FUNCTION has_check ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok( _hasc( $1, $2, 'c' ), $3 );
+$$ LANGUAGE sql;
+
+-- has_check( table, description )
+CREATE OR REPLACE FUNCTION has_check ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok( _hasc( $1, 'c' ), $2 );
+$$ LANGUAGE sql;
+
+-- has_check( table )
+CREATE OR REPLACE FUNCTION has_check ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_check( $1, 'Table ' || $1 || ' should have a check constraint' );
+$$ LANGUAGE sql;
+
+-- col_has_check( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is( _ckeys( $1, $2, 'c' ), $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_has_check( table, column, description )
+CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is( _ckeys( $1, 'c' ), $2, $3 );
+$$ LANGUAGE sql;
+
+-- col_has_check( table, column[] )
+CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT[] ) RETURNS TEXT AS $$
+    SELECT col_has_check( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should have a check constraint' );
+$$ LANGUAGE sql;
+
+-- col_has_check( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_has_check( $1, $2, ARRAY[$3], $4 );
+$$ LANGUAGE sql;
+
+-- col_has_check( table, column, description )
+CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_has_check( $1, ARRAY[$2], $3 );
+$$ LANGUAGE sql;
+
+-- col_has_check( table, column )
+CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_has_check( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a check constraint' );
+$$ LANGUAGE sql;
+
 -- fk_ok( schema, table, column[], schema, table, column[], description )
 -- fk_ok( table, column[], table, column[] description )
 -- fk_ok( table, column[], table, column[] )
@@ -933,5 +978,4 @@ $$ LANGUAGE sql;
 -- fk_ok( table, column, table, column description )
 -- fk_ok( table, column, table, column )
 
--- has_check( schema, table, constraint, description )
 -- cmp_ok( $val, $op, $val, $description )

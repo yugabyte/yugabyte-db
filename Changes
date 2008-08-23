@@ -30,10 +30,11 @@ Revision history for pgTAP
         Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
         nice parity when outputting diagnostics for exception testing.
       - Added the `has_table()`, `has_view()`, `has_column()`, `has_pk()`,
-        `has_fk()`, and `has_unique()` test functions.
+        `has_fk()`, `has_unique()` and `has_check()` test functions.
       - Added the `col_not_null()` and `col_is_null()` test functions.
       - Added the `col_type_is()`, `col_default_is()`, `col_is_pk()`,
-        `col_is_fk()`, and `col_is_unique()` test functions.
+        `col_is_fk()`, `col_is_unique()`, and `col_has_check()` test
+        functions.
       - Fixed `is()` and `isnt()` to better handle NULLs.
       - Added the `--set ON_ERROR_STOP=1` option to the call to `psql` in
         `pg_prove`.

@@ -753,34 +753,73 @@ columns are a primary key.
         'Table myschema.sometable should have a unique constraint'
     );
 
-Tests whether or not a table has a unique key constraint. The first argument
-is the schema name, the second the table name, the the third is the test
+Tests whether or not a table has a unique constraint. The first argument is
+the schema name, the second the table name, the the third is the test
 description. If the schema is omitted, the table must be visible in the search
 path. If the test description is omitted, it will be set to "Table `:table`
 should have a unique constraint". Note that this test will fail if the table
 in question does not exist.
 
-### `col_is_uqique( schema, table, column, description )` ###
-### `col_is_uqique( schema, table, column[], description )` ###
-### `col_is_uqique( table, column, description )` ###
-### `col_is_uqique( table, column[], description )` ###
-### `col_is_uqique( table, column )` ###
-### `col_is_uqique( table, column[] )` ###
+### `col_is_unique( schema, table, column, description )` ###
+### `col_is_unique( schema, table, column[], description )` ###
+### `col_is_unique( table, column, description )` ###
+### `col_is_unique( table, column[], description )` ###
+### `col_is_unique( table, column )` ###
+### `col_is_unique( table, column[] )` ###
 
-    SELECT col_is_uqique(
+    SELECT col_is_unique(
         'myschema',
         'sometable',
         'other_id',
         'Column myschema.sometable.other_id should have a unique constraint'
     );
 
-    SELECT col_is_uqique(
+    SELECT col_is_unique(
         'contacts',
         ARRAY['first', 'last'],
     );
 
 Just like `col_is_pk()`, except that it test that the column or array of
 columns have a unique constraint on them.
+
+### `has_check( schema, table, description )` ###
+### `has_check( table, description )` ###
+### `has_check( table )` ###
+
+    SELECT has_check(
+        'myschema',
+        'sometable',
+        'Table myschema.sometable should have a check constraint'
+    );
+
+Tests whether or not a table has a check constraint. The first argument is the
+schema name, the second the table name, the the third is the test description.
+If the schema is omitted, the table must be visible in the search path. If the
+test description is omitted, it will be set to "Table `:table` should have a
+check constraint". Note that this test will fail if the table in question does
+not exist.
+
+### `col_has_check( schema, table, column, description )` ###
+### `col_has_check( schema, table, column[], description )` ###
+### `col_has_check( table, column, description )` ###
+### `col_has_check( table, column[], description )` ###
+### `col_has_check( table, column )` ###
+### `col_has_check( table, column[] )` ###
+
+    SELECT col_has_check(
+        'myschema',
+        'sometable',
+        'other_id',
+        'Column myschema.sometable.other_id should have a check constraint'
+    );
+
+    SELECT col_has_check(
+        'contacts',
+        ARRAY['first', 'last'],
+    );
+
+Just like `col_is_pk()`, except that it test that the column or array of
+columns have a check constraint on them.
 
 Diagnostics
 -----------
