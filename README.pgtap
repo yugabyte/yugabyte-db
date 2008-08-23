@@ -743,6 +743,45 @@ Will produce something like this:
 Just like `col_is_fk()`, except that it test that the column or array of
 columns are a primary key.
 
+### `has_unique( schema, table, description )` ###
+### `has_unique( table, description )` ###
+### `has_unique( table )` ###
+
+    SELECT has_unique(
+        'myschema',
+        'sometable',
+        'Table myschema.sometable should have a unique constraint'
+    );
+
+Tests whether or not a table has a unique key constraint. The first argument
+is the schema name, the second the table name, the the third is the test
+description. If the schema is omitted, the table must be visible in the search
+path. If the test description is omitted, it will be set to "Table `:table`
+should have a unique constraint". Note that this test will fail if the table
+in question does not exist.
+
+### `col_is_uqique( schema, table, column, description )` ###
+### `col_is_uqique( schema, table, column[], description )` ###
+### `col_is_uqique( table, column, description )` ###
+### `col_is_uqique( table, column[], description )` ###
+### `col_is_uqique( table, column )` ###
+### `col_is_uqique( table, column[] )` ###
+
+    SELECT col_is_uqique(
+        'myschema',
+        'sometable',
+        'other_id',
+        'Column myschema.sometable.other_id should have a unique constraint'
+    );
+
+    SELECT col_is_uqique(
+        'contacts',
+        ARRAY['first', 'last'],
+    );
+
+Just like `col_is_pk()`, except that it test that the column or array of
+columns have a unique constraint on them.
+
 Diagnostics
 -----------
 

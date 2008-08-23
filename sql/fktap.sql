@@ -154,7 +154,7 @@ SELECT is(
 \echo ok 25 - test col_is_fk( table, column[], description )
 SELECT is(
     col_is_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'] ),
-    'ok 25 - Column fk2.{pk2_num,pk2_dot} should be a foreign key',
+    'ok 25 - Columns fk2.{pk2_num,pk2_dot} should be a foreign key',
     'col_is_fk( table, column[] ) should work'
 );
 

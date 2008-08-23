@@ -818,7 +818,7 @@ $$ LANGUAGE sql;
 
 -- col_is_pk( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[] ) RETURNS TEXT AS $$
-    SELECT col_is_pk( $1, $2, 'Column ' || $1 || '.' || $2::text || ' should be a primary key' );
+    SELECT col_is_pk( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should be a primary key' );
 $$ LANGUAGE sql;
 
 -- col_is_pk( schema, table, column, description )
@@ -863,7 +863,7 @@ $$ LANGUAGE sql;
 
 -- col_is_fk( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT[] ) RETURNS TEXT AS $$
-    SELECT col_is_fk( $1, $2, 'Column ' || $1 || '.' || $2::text || ' should be a foreign key' );
+    SELECT col_is_fk( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should be a foreign key' );
 $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )
@@ -881,6 +881,51 @@ CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT col_is_fk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a foreign key' );
 $$ LANGUAGE sql;
 
+-- has_unique( schema, table, description )
+CREATE OR REPLACE FUNCTION has_unique ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok( _hasc( $1, $2, 'u' ), $3 );
+$$ LANGUAGE sql;
+
+-- has_unique( table, description )
+CREATE OR REPLACE FUNCTION has_unique ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT ok( _hasc( $1, 'u' ), $2 );
+$$ LANGUAGE sql;
+
+-- has_unique( table )
+CREATE OR REPLACE FUNCTION has_unique ( TEXT ) RETURNS TEXT AS $$
+    SELECT has_unique( $1, 'Table ' || $1 || ' should have a unique constraint' );
+$$ LANGUAGE sql;
+
+-- col_is_unique( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is( _ckeys( $1, $2, 'u' ), $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_is_unique( table, column, description )
+CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT[], TEXT ) RETURNS TEXT AS $$
+    SELECT is( _ckeys( $1, 'u' ), $2, $3 );
+$$ LANGUAGE sql;
+
+-- col_is_unique( table, column[] )
+CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT[] ) RETURNS TEXT AS $$
+    SELECT col_is_unique( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should have a unique constraint' );
+$$ LANGUAGE sql;
+
+-- col_is_unique( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_is_unique( $1, $2, ARRAY[$3], $4 );
+$$ LANGUAGE sql;
+
+-- col_is_unique( table, column, description )
+CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_is_unique( $1, ARRAY[$2], $3 );
+$$ LANGUAGE sql;
+
+-- col_is_unique( table, column )
+CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT ) RETURNS TEXT AS $$
+    SELECT col_is_unique( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a unique constraint' );
+$$ LANGUAGE sql;
+
 -- fk_ok( schema, table, column[], schema, table, column[], description )
 -- fk_ok( table, column[], table, column[] description )
 -- fk_ok( table, column[], table, column[] )
@@ -888,7 +933,5 @@ $$ LANGUAGE sql;
 -- fk_ok( table, column, table, column description )
 -- fk_ok( table, column, table, column )
 
--- has_unique( schema, table, description )
--- col_is_unique( schema, table, column[], description )
-
 -- has_check( schema, table, constraint, description )
+-- cmp_ok( $val, $op, $val, $description )
