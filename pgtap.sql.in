@@ -13,7 +13,7 @@
 -- ## SET search_path TO TAPSCHEMA,public;
 
 CREATE OR REPLACE FUNCTION pg_typeof("any")
-RETURNS text
+RETURNS regtype
 AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE;
 

@@ -22,19 +22,5 @@ PG_FUNCTION_INFO_V1(pg_typeof);
 Datum
 pg_typeof(PG_FUNCTION_ARGS)
 {
-    Oid    typeoid;
-
-    typeoid = get_fn_expr_argtype(fcinfo->flinfo, 0);
-    if (typeoid == InvalidOid) {
-        ereport(
-            ERROR, (
-                errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                errmsg("could not determine data type of argument to pg_typeof()")
-            )
-        );
-    }
-
-	PG_RETURN_DATUM(
-        DirectFunctionCall1(textin, CStringGetDatum(format_type_be(typeoid)))
-    );
+    PG_RETURN_OID( get_fn_expr_argtype(fcinfo->flinfo, 0) );
 }
