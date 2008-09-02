@@ -14,7 +14,8 @@ extern Datum pg_typeof (PG_FUNCTION_ARGS);
 
 /*
  * pg_typeof()
- * Returns a string for the data type of an anyelement argument.
+ * Returns the OID for the data type of its first argument. The SQL function
+ * returns regtype, which magically makes it return text.
  */
 
 PG_FUNCTION_INFO_V1(pg_typeof);
