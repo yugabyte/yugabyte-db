@@ -17,7 +17,7 @@ extern Datum pg_typeof (PG_FUNCTION_ARGS);
  * Returns a string for the data type of an anyelement argument.
  */
 
-PG_FUNCTION_INFO_V1(pg_regtypeof);
+PG_FUNCTION_INFO_V1(pg_typeof);
 
 Datum
 pg_typeof(PG_FUNCTION_ARGS)
