@@ -1,5 +1,5 @@
 \set ECHO
-1..12
+1..14
 ok 1 - test cmp_ok( int, =, int, description )
 ok 2 - cmp_ok( int, =, int, description ) should work
 ok 3 - test cmp_ok( int, <>, int, description )
@@ -12,3 +12,5 @@ ok 9 - test cmp_ok( inet[], =, inet[] )
 ok 10 - cmp_ok( inet[], =, inet[] ) should work
 ok 11 - Test cmp_ok() failure output
 ok 12 - cmp_ok() failure output should be correct
+ok 13 - Test cmp_ok() failure output
+ok 14 - cmp_ok() failure output should be correct

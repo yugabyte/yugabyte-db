@@ -401,13 +401,13 @@ Halfway between `ok()` and `is()` lies `cmp_ok()`. This function allows you to
 compare two arguments using any binary operator.
 
     -- ok( :this = :that );
-    cmp_ok( :this, '=', :that, 'this = that' );
+    SELECT cmp_ok( :this, '=', :that, 'this = that' );
 
     -- ok( :this >= :that );
-    cmp_ok( :this, '>=, 'this >= that' );
+    SELECT cmp_ok( :this, '>=, 'this >= that' );
 
     -- ok( :this && :that );
-    cmp_ok( :this, '&&', :that, 'this && that' );
+    SELECT cmp_ok( :this, '&&', :that, 'this && that' );
 
 Its advantage over `ok()` is that when the test fails you'll know what `:this`
 and `:that` were:
@@ -417,6 +417,14 @@ and `:that` were:
     #     '23'
     #         &&
     #     NULL
+
+Note that if the value returned by the operation is `NULL`, the test will
+be considered to have failed. This may not be what you expect if your test
+was, for example:
+
+    SELECT cmp_ok( NULL, '=', NULL );
+
+But in that case, you should probably use `is()`, instead.
 
 ### `pass( description )` ###
 ### `pass()` ###

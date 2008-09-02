@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(12);
+SELECT plan(14);
 
 /****************************************************************************/
 -- Test cmp_ok().
@@ -81,8 +81,19 @@ SELECT is(
     'cmp_ok() failure output should be correct'
 );
 
+\echo ok 13 - Test cmp_ok() failure output
+SELECT is(
+    cmp_ok( 1, '=', NULL, '1 should = NULL' ),
+    'not ok 13 - 1 should = NULL
+# Failed test 13: "1 should = NULL"
+#     ''1''
+#         =
+#     NULL',
+    'cmp_ok() failure output should be correct'
+);
+
 -- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 11);
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 11, 13 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

@@ -992,9 +992,12 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    EXECUTE 'SELECT ' || quote_literal( have ) || '::' || pg_typeof(have) || ' '
-         || op || ' ' || quote_literal( want ) || '::' || pg_typeof(want) INTO result;
-    output := ok( result, descr );
+    EXECUTE 'SELECT ' ||
+            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
+            || op || ' ' ||
+            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
+       INTO result;
+    output := ok( COALESCE(result, FALSE), descr );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '    ' || COALESCE( quote_literal(have::text), 'NULL' ) ||
            E'\n        ' || op ||
