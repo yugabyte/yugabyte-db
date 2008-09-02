@@ -1,0 +1,8 @@
+\set ECHO
+1..6
+ok 1 - test cmp_ok( int, =, int, description )
+ok 2 - test cmp_ok( int, =, int, description ) should work
+ok 3 - test cmp_ok( int, <>, int, description )
+ok 4 - test cmp_ok( int, <>, int ) should work
+ok 5 - test cmp_ok( polygon, ~=, polygon )
+ok 6 - test test cmp_ok( polygon, ~=, polygon ) should work

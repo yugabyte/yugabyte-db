@@ -1,8 +1,9 @@
 # $Id$
 DATA_built = pgtap.sql uninstall_pgtap.sql
+MODULES = pgtap
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
-REGRESS = moretap istap pg73 todotap matching throwtap hastap coltap pktap fktap unique check
+REGRESS = moretap istap pg73 todotap matching throwtap hastap coltap pktap fktap unique check cmpok
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
@@ -19,9 +20,9 @@ endif
 # necessary. Otherwise just copy the files.
 %.sql: %.sql.in
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/$*,g' $< >$@
 else
-	cp $< $@
+	sed -e 's,MODULE_PATHNAME,$$libdir/$*,g' $< >$@
 endif
 
 # In addition to installcheck, one can also run the tests through pg_prove.

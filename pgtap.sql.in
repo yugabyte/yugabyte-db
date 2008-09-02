@@ -12,6 +12,11 @@
 -- ## CREATE SCHEMA TAPSCHEMA;
 -- ## SET search_path TO TAPSCHEMA,public;
 
+CREATE OR REPLACE FUNCTION type_of(anyelement)
+RETURNS text
+AS 'MODULE_PATHNAME'
+LANGUAGE C STRICT IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
 DECLARE
     rcount INTEGER;
@@ -978,4 +983,27 @@ $$ LANGUAGE sql;
 -- fk_ok( table, column, table, column description )
 -- fk_ok( table, column, table, column )
 
--- cmp_ok( $val, $op, $val, $description )
+CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement, text) RETURNS TEXT AS $$
+DECLARE
+    have   ALIAS FOR $1;
+    op     ALIAS FOR $2;
+    want   ALIAS FOR $3;
+    descr  ALIAS FOR $4;
+    result BOOLEAN;
+    output TEXT;
+BEGIN
+    EXECUTE 'SELECT ' || quote_literal( have ) || '::' || type_of(have) || ' '
+         || op || ' ' || quote_literal( want ) || '::' || type_of(want) INTO result;
+    output := ok( result, descr );
+    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
+           '    ' || COALESCE( quote_literal(have::text), 'NULL' ) ||
+           E'\n      ' || op ||
+           E'\n    ' || COALESCE( quote_literal(want::text), 'NULL' )
+    ) END;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement ) RETURNS TEXT AS $$
+    SELECT cmp_ok( $1, $2, $3, NULL );
+$$ LANGUAGE sql;
+
