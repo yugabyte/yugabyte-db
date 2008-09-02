@@ -36,6 +36,7 @@ Revision history for pgTAP
         `col_is_fk()`, `col_is_unique()`, and `col_has_check()` test
         functions.
       - Fixed `is()` and `isnt()` to better handle NULLs.
+      - Added `cmp_ok()`.
       - Added the `--set ON_ERROR_STOP=1` option to the call to `psql` in
         `pg_prove`.
       - Renamed `drop_pgtap.sql.in` to `uninstall_pgtap.sql.in`, which is more

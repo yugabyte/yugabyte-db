@@ -392,6 +392,32 @@ diagnostics on failure.
 Works exactly as `alike()`, only it checks if `:this` *does not* match the
 given pattern.
 
+### `cmp_ok( anyelement, operator, anyelement, description )` ###
+### `cmp_ok( anyelement, operator, anyelement )` ###
+
+    SELECT cmp_ok( :this, :op, :that, :description );
+
+Halfway between `ok()` and `is()` lies `cmp_ok()`. This function allows you to
+compare two arguments using any binary operator.
+
+    -- ok( :this = :that );
+    cmp_ok( :this, '=', :that, 'this = that' );
+
+    -- ok( :this >= :that );
+    cmp_ok( :this, '>=, 'this >= that' );
+
+    -- ok( :this && :that );
+    cmp_ok( :this, '&&', :that, 'this && that' );
+
+Its advantage over `ok()` is that when the test fails you'll know what `:this`
+and `:that` were:
+
+    not ok 1
+    #     Failed test
+    #     '23'
+    #         &&
+    #     NULL
+
 ### `pass( description )` ###
 ### `pass()` ###
 ### `fail( description )` ###

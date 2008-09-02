@@ -12,10 +12,10 @@
 -- ## CREATE SCHEMA TAPSCHEMA;
 -- ## SET search_path TO TAPSCHEMA,public;
 
-CREATE OR REPLACE FUNCTION type_of(anyelement)
+CREATE OR REPLACE FUNCTION pg_typeof("any")
 RETURNS text
 AS 'MODULE_PATHNAME'
-LANGUAGE C STRICT IMMUTABLE;
+LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION plan( integer ) RETURNS TEXT AS $$
 DECLARE
@@ -992,18 +992,18 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    EXECUTE 'SELECT ' || quote_literal( have ) || '::' || type_of(have) || ' '
-         || op || ' ' || quote_literal( want ) || '::' || type_of(want) INTO result;
+    EXECUTE 'SELECT ' || quote_literal( have ) || '::' || pg_typeof(have) || ' '
+         || op || ' ' || quote_literal( want ) || '::' || pg_typeof(want) INTO result;
     output := ok( result, descr );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '    ' || COALESCE( quote_literal(have::text), 'NULL' ) ||
-           E'\n      ' || op ||
+           E'\n        ' || op ||
            E'\n    ' || COALESCE( quote_literal(want::text), 'NULL' )
     ) END;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement ) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement) RETURNS TEXT AS $$
     SELECT cmp_ok( $1, $2, $3, NULL );
 $$ LANGUAGE sql;
 

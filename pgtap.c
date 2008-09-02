@@ -10,33 +10,31 @@
 PG_MODULE_MAGIC;
 #endif
 
-extern Datum type_of (PG_FUNCTION_ARGS);
+extern Datum pg_typeof (PG_FUNCTION_ARGS);
 
 /*
- * type_of()
+ * pg_typeof()
  * Returns a string for the data type of an anyelement argument.
  */
 
-PG_FUNCTION_INFO_V1(type_of);
+PG_FUNCTION_INFO_V1(pg_regtypeof);
 
 Datum
-type_of(PG_FUNCTION_ARGS)
+pg_typeof(PG_FUNCTION_ARGS)
 {
     Oid    typeoid;
-    Datum  result;
-    char   *typename;
 
     typeoid = get_fn_expr_argtype(fcinfo->flinfo, 0);
     if (typeoid == InvalidOid) {
         ereport(
             ERROR, (
                 errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-                errmsg("could not determine data type of argument to type_of()")
+                errmsg("could not determine data type of argument to pg_typeof()")
             )
         );
     }
 
-    typename = format_type_be(typeoid);
-    result = DirectFunctionCall1(textin, CStringGetDatum(typename));
-	PG_RETURN_DATUM(result);
+	PG_RETURN_DATUM(
+        DirectFunctionCall1(textin, CStringGetDatum(format_type_be(typeoid)))
+    );
 }
