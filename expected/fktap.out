@@ -1,5 +1,5 @@
 \set ECHO
-1..26
+1..45
 ok 1 - test has_fk( schema, table, description )
 ok 2 - has_fk( schema, table, description ) should work
 ok 3 - test has_fk( table, description )
@@ -26,3 +26,22 @@ ok 23 - test col_is_fk( table, column[], description )
 ok 24 - col_is_fk( table, column[], description ) should work
 ok 25 - test col_is_fk( table, column[], description )
 ok 26 - col_is_fk( table, column[] ) should work
+ok 27 - full fk_ok array should pass
+ok 28 - full fk_ok array should have the proper description
+ok 29 - fk_ok array desc should pass
+ok 30 - fk_ok array desc should have the proper description
+ok 31 - fk_ok array noschema desc should pass
+ok 32 - fk_ok array noschema desc should have the proper description
+ok 33 - fk_ok array noschema should pass
+ok 34 - fk_ok array noschema should have the proper description
+ok 35 - basic fk_ok should pass
+ok 36 - basic fk_ok should have the proper description
+ok 37 - basic fk_ok desc should pass
+ok 38 - basic fk_ok desc should have the proper description
+ok 39 - basic fk_ok noschema should pass
+ok 40 - basic fk_ok noschema should have the proper description
+ok 41 - basic fk_ok noschema desc should pass
+ok 42 - basic fk_ok noschema desc should have the proper description
+ok 43 - fk_ok fail should fail
+ok 44 - fk_ok fail should have the proper description
+ok 45 - fk_ok fail should have the proper diagnostics
