@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(26);
+SELECT plan(45);
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -156,6 +156,73 @@ SELECT is(
     col_is_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'] ),
     'ok 25 - Columns fk2.{pk2_num,pk2_dot} should be a foreign key',
     'col_is_fk( table, column[] ) should work'
+);
+
+/****************************************************************************/
+-- Test fk_ok().
+SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['id'], 'WHATEVER' ),
+    true,
+    'full fk_ok array',
+    'WHATEVER'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['id'] ),
+    true,
+    'fk_ok array desc',
+    'public.fk(pk_id) should reference public.pk(id)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['id'] ),
+    true,
+    'fk_ok array noschema desc',
+    'fk(pk_id) should reference pk(id)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['id'], 'WHATEVER' ),
+    true,
+    'fk_ok array noschema',
+    'WHATEVER'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk', 'pk_id', 'public', 'pk', 'id', 'WHATEVER' ),
+    true,
+    'basic fk_ok',
+    'WHATEVER'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk', 'pk_id', 'public', 'pk', 'id' ),
+    true,
+    'basic fk_ok desc',
+    'public.fk(pk_id) should reference public.pk(id)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk', 'pk_id', 'pk', 'id', 'WHATEVER' ),
+    true,
+    'basic fk_ok noschema',
+    'WHATEVER'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk', 'pk_id', 'pk', 'id' ),
+    true,
+    'basic fk_ok noschema desc',
+    'fk(pk_id) should reference pk(id)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['fid'], 'WHATEVER' ),
+    false,
+    'fk_ok fail',
+    'WHATEVER',
+    '        have: public.fk(pk_id) REFERENCES public.pk(id)
+        want: public.fk(pk_id) REFERENCES public.pk(fid)'
 );
 
 /****************************************************************************/
