@@ -358,6 +358,33 @@ CREATE OR REPLACE FUNCTION unialike ( anyelement, text ) RETURNS TEXT AS $$
     SELECT _unalike( $1 !~~* $2, $1, $2, NULL );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement, text) RETURNS TEXT AS $$
+DECLARE
+    have   ALIAS FOR $1;
+    op     ALIAS FOR $2;
+    want   ALIAS FOR $3;
+    descr  ALIAS FOR $4;
+    result BOOLEAN;
+    output TEXT;
+BEGIN
+    EXECUTE 'SELECT ' ||
+            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
+            || op || ' ' ||
+            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
+       INTO result;
+    output := ok( COALESCE(result, FALSE), descr );
+    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
+           '    ' || COALESCE( quote_literal(have::text), 'NULL' ) ||
+           E'\n        ' || op ||
+           E'\n    ' || COALESCE( quote_literal(want::text), 'NULL' )
+    ) END;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement) RETURNS TEXT AS $$
+    SELECT cmp_ok( $1, $2, $3, NULL );
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION pass ( text ) RETURNS TEXT AS $$
     SELECT ok( TRUE, $1 );
 $$ LANGUAGE SQL;
@@ -982,31 +1009,3 @@ $$ LANGUAGE sql;
 -- fk_ok( schema, table, column, schema, table, column, description )
 -- fk_ok( table, column, table, column description )
 -- fk_ok( table, column, table, column )
-
-CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement, text) RETURNS TEXT AS $$
-DECLARE
-    have   ALIAS FOR $1;
-    op     ALIAS FOR $2;
-    want   ALIAS FOR $3;
-    descr  ALIAS FOR $4;
-    result BOOLEAN;
-    output TEXT;
-BEGIN
-    EXECUTE 'SELECT ' ||
-            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
-            || op || ' ' ||
-            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
-       INTO result;
-    output := ok( COALESCE(result, FALSE), descr );
-    RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '    ' || COALESCE( quote_literal(have::text), 'NULL' ) ||
-           E'\n        ' || op ||
-           E'\n    ' || COALESCE( quote_literal(want::text), 'NULL' )
-    ) END;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION cmp_ok (anyelement, text, anyelement) RETURNS TEXT AS $$
-    SELECT cmp_ok( $1, $2, $3, NULL );
-$$ LANGUAGE sql;
-
