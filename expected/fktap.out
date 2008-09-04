@@ -1,5 +1,5 @@
 \set ECHO
-1..45
+1..58
 ok 1 - test has_fk( schema, table, description )
 ok 2 - has_fk( schema, table, description ) should work
 ok 3 - test has_fk( table, description )
@@ -28,20 +28,33 @@ ok 25 - test col_is_fk( table, column[], description )
 ok 26 - col_is_fk( table, column[] ) should work
 ok 27 - full fk_ok array should pass
 ok 28 - full fk_ok array should have the proper description
-ok 29 - fk_ok array desc should pass
-ok 30 - fk_ok array desc should have the proper description
-ok 31 - fk_ok array noschema desc should pass
-ok 32 - fk_ok array noschema desc should have the proper description
-ok 33 - fk_ok array noschema should pass
-ok 34 - fk_ok array noschema should have the proper description
-ok 35 - basic fk_ok should pass
-ok 36 - basic fk_ok should have the proper description
-ok 37 - basic fk_ok desc should pass
-ok 38 - basic fk_ok desc should have the proper description
-ok 39 - basic fk_ok noschema should pass
-ok 40 - basic fk_ok noschema should have the proper description
-ok 41 - basic fk_ok noschema desc should pass
-ok 42 - basic fk_ok noschema desc should have the proper description
-ok 43 - fk_ok fail should fail
-ok 44 - fk_ok fail should have the proper description
-ok 45 - fk_ok fail should have the proper diagnostics
+ok 29 - multiple fk fk_ok desc should pass
+ok 30 - multiple fk fk_ok desc should have the proper description
+ok 31 - fk_ok array desc should pass
+ok 32 - fk_ok array desc should have the proper description
+ok 33 - fk_ok array noschema desc should pass
+ok 34 - fk_ok array noschema desc should have the proper description
+ok 35 - multiple fk fk_ok noschema desc should pass
+ok 36 - multiple fk fk_ok noschema desc should have the proper description
+ok 37 - fk_ok array noschema should pass
+ok 38 - fk_ok array noschema should have the proper description
+ok 39 - basic fk_ok should pass
+ok 40 - basic fk_ok should have the proper description
+ok 41 - basic fk_ok desc should pass
+ok 42 - basic fk_ok desc should have the proper description
+ok 43 - basic fk_ok noschema should pass
+ok 44 - basic fk_ok noschema should have the proper description
+ok 45 - basic fk_ok noschema desc should pass
+ok 46 - basic fk_ok noschema desc should have the proper description
+ok 47 - fk_ok fail should fail
+ok 48 - fk_ok fail should have the proper description
+ok 49 - fk_ok fail should have the proper diagnostics
+ok 50 - fk_ok fail desc should fail
+ok 51 - fk_ok fail desc should have the proper description
+ok 52 - fk_ok fail desc should have the proper diagnostics
+ok 53 - fk_ok fail no schema should fail
+ok 54 - fk_ok fail no schema should have the proper description
+ok 55 - fk_ok fail no schema should have the proper diagnostics
+ok 56 - fk_ok fail no schema desc should fail
+ok 57 - fk_ok fail no schema desc should have the proper description
+ok 58 - fk_ok fail no schema desc should have the proper diagnostics

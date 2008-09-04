@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(45);
+SELECT plan(58);
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -168,6 +168,13 @@ SELECT * FROM test_ok(
 );
 
 SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'public', 'pk2', ARRAY['num', 'dot'] ),
+    true,
+    'multiple fk fk_ok desc',
+    'public.fk2(pk2_num, pk2_dot) should reference public.pk2(num, dot)'
+);
+
+SELECT * FROM test_ok(
     fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['id'] ),
     true,
     'fk_ok array desc',
@@ -179,6 +186,13 @@ SELECT * FROM test_ok(
     true,
     'fk_ok array noschema desc',
     'fk(pk_id) should reference pk(id)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'pk2', ARRAY['num', 'dot'] ),
+    true,
+    'multiple fk fk_ok noschema desc',
+    'fk2(pk2_num, pk2_dot) should reference pk2(num, dot)'
 );
 
 SELECT * FROM test_ok(
@@ -223,6 +237,33 @@ SELECT * FROM test_ok(
     'WHATEVER',
     '        have: public.fk(pk_id) REFERENCES public.pk(id)
         want: public.fk(pk_id) REFERENCES public.pk(fid)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['fid'] ),
+    false,
+    'fk_ok fail desc',
+    'public.fk(pk_id) should reference public.pk(fid)',
+    '        have: public.fk(pk_id) REFERENCES public.pk(id)
+        want: public.fk(pk_id) REFERENCES public.pk(fid)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['fid'], 'WHATEVER' ),
+    false,
+    'fk_ok fail no schema',
+    'WHATEVER',
+    '        have: fk(pk_id) REFERENCES pk(id)
+        want: fk(pk_id) REFERENCES pk(fid)'
+);
+
+SELECT * FROM test_ok(
+    fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['fid'] ),
+    false,
+    'fk_ok fail no schema desc',
+    'fk(pk_id) should reference pk(fid)',
+    '        have: fk(pk_id) REFERENCES pk(id)
+        want: fk(pk_id) REFERENCES pk(fid)'
 );
 
 /****************************************************************************/
