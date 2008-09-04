@@ -777,6 +777,58 @@ Will produce something like this:
 Just like `col_is_fk()`, except that it test that the column or array of
 columns are a primary key.
 
+### fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description ) ###
+### fk_ok( fk_table, fk_column[], pk_table, pk_column[], description ) ###
+### fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] ) ###
+### fk_ok( fk_table, fk_column[], pk_table, pk_column[] ) ###
+### fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column, description ) ###
+### fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column ) ###
+### fk_ok( fk_table, fk_column, pk_table, pk_column, description ) ###
+### fk_ok( fk_table, fk_column, pk_table, pk_column ) ###
+
+    SELECT fk_ok(
+        'myschema',
+        'sometable',
+        'big_id',
+        'myschema',
+        'bigtable',
+        'id',
+        'myschema.sometable(big_id) should reference myschema.bigtable(id)'
+    );
+
+    SELECT fk_ok(
+        'contacts',
+        ARRAY['person_first', 'person_last'],
+        'persons',
+        ARRAY['first', 'last'],
+    );
+
+This function combines `col_is_fk()` and `col_is_pk()` into a single test that
+also happens to determine that there is in fact a foreign key relationship
+between the foreign and primary key tables. To properly test your
+relationships, this should be your main test function of choice.
+
+The first three arguments are the schema, table, and column or array of
+columns that constitue the foreign key constraint. The schema name is
+optional, and the columns can be specified as a string for a single column or
+an array of strings for multiple columns. The next three arguments are the
+schema, table, and column or columns that constitute the corresponding primary
+key. Again, the schema is optional and the columns may be a string or array of
+strings (though of course it should have the same number of elements as the
+foreign key column argument). The seventh argument is an optional description
+If it's not included, it will be set to ":fk_schema.:fk_table(:fk_column)
+should reference :pk_column.pk_table(:pk_column).
+
+If the test fails, it will output useful diagnostics. For example this test:
+
+    SELECT fk_ok( 'contacts', 'person_id', 'persons', 'id' );
+
+Will produce something like this:
+
+    # Failed test 178: "Column contacts(person_id) should reference persons(id)"
+    #         have: contacts(person_id) REFERENCES persons(id)"
+    #         want: contacts(person_nick) REFERENCES persons(nick)"
+
 ### `has_unique( schema, table, description )` ###
 ### `has_unique( table, description )` ###
 ### `has_unique( table )` ###
