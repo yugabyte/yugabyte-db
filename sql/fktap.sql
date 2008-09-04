@@ -160,77 +160,77 @@ SELECT is(
 
 /****************************************************************************/
 -- Test fk_ok().
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['id'], 'WHATEVER' ),
     true,
     'full fk_ok array',
     'WHATEVER'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'public', 'pk2', ARRAY['num', 'dot'] ),
     true,
     'multiple fk fk_ok desc',
     'public.fk2(pk2_num, pk2_dot) should reference public.pk2(num, dot)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['id'] ),
     true,
     'fk_ok array desc',
     'public.fk(pk_id) should reference public.pk(id)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['id'] ),
     true,
     'fk_ok array noschema desc',
     'fk(pk_id) should reference pk(id)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'pk2', ARRAY['num', 'dot'] ),
     true,
     'multiple fk fk_ok noschema desc',
     'fk2(pk2_num, pk2_dot) should reference pk2(num, dot)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['id'], 'WHATEVER' ),
     true,
     'fk_ok array noschema',
     'WHATEVER'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk', 'pk_id', 'public', 'pk', 'id', 'WHATEVER' ),
     true,
     'basic fk_ok',
     'WHATEVER'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk', 'pk_id', 'public', 'pk', 'id' ),
     true,
     'basic fk_ok desc',
     'public.fk(pk_id) should reference public.pk(id)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk', 'pk_id', 'pk', 'id', 'WHATEVER' ),
     true,
     'basic fk_ok noschema',
     'WHATEVER'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk', 'pk_id', 'pk', 'id' ),
     true,
     'basic fk_ok noschema desc',
     'fk(pk_id) should reference pk(id)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['fid'], 'WHATEVER' ),
     false,
     'fk_ok fail',
@@ -239,7 +239,7 @@ SELECT * FROM test_ok(
         want: public.fk(pk_id) REFERENCES public.pk(fid)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'public', 'fk', ARRAY['pk_id'], 'public', 'pk', ARRAY['fid'] ),
     false,
     'fk_ok fail desc',
@@ -248,7 +248,7 @@ SELECT * FROM test_ok(
         want: public.fk(pk_id) REFERENCES public.pk(fid)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['fid'], 'WHATEVER' ),
     false,
     'fk_ok fail no schema',
@@ -257,7 +257,7 @@ SELECT * FROM test_ok(
         want: fk(pk_id) REFERENCES pk(fid)'
 );
 
-SELECT * FROM test_ok(
+SELECT * FROM check_test(
     fk_ok( 'fk', ARRAY['pk_id'], 'pk', ARRAY['fid'] ),
     false,
     'fk_ok fail no schema desc',

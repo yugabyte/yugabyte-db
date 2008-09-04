@@ -1066,8 +1066,8 @@ CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT, TEXT ) RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;
 
--- test_ok( test_output, pass, name, description, diag )
-CREATE OR REPLACE FUNCTION test_ok( TEXT, BOOLEAN, TEXT, TEXT, TEXT ) RETURNS SETOF TEXT AS $$
+-- check_test( test_output, pass, name, description, diag )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT ) RETURNS SETOF TEXT AS $$
 DECLARE
     tnumb  INTEGER;
     aok    BOOLEAN;
@@ -1146,17 +1146,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- test_ok( test_output, pass, name, description )
-CREATE OR REPLACE FUNCTION test_ok( TEXT, BOOLEAN, TEXT, TEXT ) RETURNS SETOF TEXT AS $$
-    SELECT * FROM test_ok( $1, $2, $3, $4, NULL );
+-- check_test( test_output, pass, name, description )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT ) RETURNS SETOF TEXT AS $$
+    SELECT * FROM check_test( $1, $2, $3, $4, NULL );
 $$ LANGUAGE sql;
 
--- test_ok( test_output, pass, name )
-CREATE OR REPLACE FUNCTION test_ok( TEXT, BOOLEAN, TEXT ) RETURNS SETOF TEXT AS $$
-    SELECT * FROM test_ok( $1, $2, $3, NULL, NULL );
+-- check_test( test_output, pass, name )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT ) RETURNS SETOF TEXT AS $$
+    SELECT * FROM check_test( $1, $2, $3, NULL, NULL );
 $$ LANGUAGE sql;
 
--- test_ok( test_output, pass )
-CREATE OR REPLACE FUNCTION test_ok( TEXT, BOOLEAN ) RETURNS SETOF TEXT AS $$
-    SELECT * FROM test_ok( $1, $2, NULL, NULL, NULL );
+-- check_test( test_output, pass )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN ) RETURNS SETOF TEXT AS $$
+    SELECT * FROM check_test( $1, $2, NULL, NULL, NULL );
 $$ LANGUAGE sql;
