@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(58);
+SELECT plan(60);
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -58,104 +58,103 @@ CREATE TABLE fk2 (
 
 /****************************************************************************/
 -- Test has_fk().
-
-\echo ok 1 - test has_fk( schema, table, description )
-SELECT is(
+SELECT * FROM check_test(
     has_fk( 'public', 'fk', 'public.fk should have an fk' ),
-    'ok 1 - public.fk should have an fk',
-    'has_fk( schema, table, description ) should work'
+    true,
+    'has_fk( schema, table, description )',
+    'public.fk should have an fk'
 );
 
-\echo ok 3 - test has_fk( table, description )
-SELECT is(
+SELECT * FROM check_test(
     has_fk( 'fk', 'fk should have a pk' ),
-    'ok 3 - fk should have a pk',
-    'has_fk( table, description ) should work'
+    'true',
+    'has_fk( table, description )',
+    'fk should have a pk'
 );
 
-\echo ok 5 - test has_fk( table )
-SELECT is(
+SELECT * FROM check_test(
     has_fk( 'fk' ),
-    'ok 5 - Table fk should have a foreign key constraint',
-    'has_fk( table ) should work'
+    true,
+    'has_fk( table )',
+    'Table fk should have a foreign key constraint'
 );
 
-\echo ok 7 - test has_fk( schema, table, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     has_fk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a pk' ),
-    E'not ok 7 - pg_catalog.pg_class should have a pk\n# Failed test 7: "pg_catalog.pg_class should have a pk"',
-    'has_fk( schema, table, description ) should fail properly'
+    false,
+    'has_fk( schema, table, description ) fail',
+    'pg_catalog.pg_class should have a pk'
 );
 
-\echo ok 9 - test has_fk( table, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     has_fk( 'pg_class', 'pg_class should have a pk' ),
-    E'not ok 9 - pg_class should have a pk\n# Failed test 9: "pg_class should have a pk"',
-    'has_fk( table, description ) should fail properly'
+    false,
+    'has_fk( table, description ) fail',
+    'pg_class should have a pk'
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 7, 9 );
 
 /****************************************************************************/
 -- Test col_is_fk().
 
-\echo ok 11 - test col_is_fk( schema, table, column, description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'public', 'fk', 'pk_id', 'public.fk.pk_id should be an fk' ),
-    'ok 11 - public.fk.pk_id should be an fk',
-    'col_is_fk( schema, table, column, description ) should work'
+    true,
+    'col_is_fk( schema, table, column, description )',
+    'public.fk.pk_id should be an fk'
 );
 
-\echo ok 13 - test col_is_fk( table, column, description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'fk', 'pk_id', 'fk.pk_id should be an fk' ),
-    'ok 13 - fk.pk_id should be an fk',
-    'col_is_fk( table, column, description ) should work'
+    true,
+    'col_is_fk( table, column, description )',
+    'fk.pk_id should be an fk'
 );
 
-\echo ok 15 - test col_is_fk( table, column )
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'fk', 'pk_id' ),
-    'ok 15 - Column fk.pk_id should be a foreign key',
-    'col_is_fk( table, column ) should work'
+    true,
+    'col_is_fk( table, column )',
+    'Column fk.pk_id should be a foreign key'
 );
 
-\echo ok 17 - test col_is_fk( schema, table, column, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'public', 'fk', 'name', 'public.fk.name should be an fk' ),
-    E'not ok 17 - public.fk.name should be an fk\n# Failed test 17: "public.fk.name should be an fk"\n#         have: {pk_id}\n#         want: {name}',
-    'col_is_fk( schema, table, column, description ) should fail properly'
+    false,
+    'col_is_fk( schema, table, column, description )',
+    'public.fk.name should be an fk',
+    E'        have: {pk_id}\n        want: {name}'
 );
 
-\echo ok 19 - test col_is_fk( table, column, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'fk', 'name', 'fk.name should be an fk' ),
-    E'not ok 19 - fk.name should be an fk\n# Failed test 19: "fk.name should be an fk"\n#         have: {pk_id}\n#         want: {name}',
-    'col_is_fk( table, column, description ) should fail properly'
+    false,
+    'col_is_fk( table, column, description )',
+    'fk.name should be an fk',
+    E'        have: {pk_id}\n        want: {name}'
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 17, 19 );
 
 /****************************************************************************/
 -- Test col_is_fk() with an array of columns.
 
-\echo ok 21 - test col_is_fk( schema, table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'public', 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'id + pk2_dot should be an fk' ),
-    'ok 21 - id + pk2_dot should be an fk',
-    'col_is_fk( schema, table, column[], description ) should work'
+    true,
+    'col_is_fk( schema, table, column[], description )',
+    'id + pk2_dot should be an fk'
 );
 
-\echo ok 23 - test col_is_fk( table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'id + pk2_dot should be an fk' ),
-    'ok 23 - id + pk2_dot should be an fk',
-    'col_is_fk( table, column[], description ) should work'
+    true,
+    'col_is_fk( table, column[], description )',
+    'id + pk2_dot should be an fk'
 );
 
-\echo ok 25 - test col_is_fk( table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'] ),
-    'ok 25 - Columns fk2.{pk2_num,pk2_dot} should be a foreign key',
-    'col_is_fk( table, column[] ) should work'
+    true,
+    'col_is_fk( table, column[] )',
+    'Columns fk2.{pk2_num,pk2_dot} should be a foreign key'
 );
 
 /****************************************************************************/
