@@ -1213,7 +1213,7 @@ BEGIN
     EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb;
 
     -- Set up the description.
-    descr := coalesce( name || ' ', '' ) || 'should ';
+    descr := coalesce( name || ' ', 'Test ' ) || 'should ';
 
     -- So, did the test pass?
     RETURN NEXT is(

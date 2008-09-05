@@ -30,7 +30,8 @@ Revision history for pgTAP
         Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
         nice parity when outputting diagnostics for exception testing.
       - Added the `has_table()`, `has_view()`, `has_column()`, `has_pk()`,
-        `has_fk()`, `has_unique()` and `has_check()` test functions.
+        `has_fk()`, `fk_ok()`, `has_unique()` and `has_check()` test
+        functions.
       - Added the `col_not_null()` and `col_is_null()` test functions.
       - Added the `col_type_is()`, `col_default_is()`, `col_is_pk()`,
         `col_is_fk()`, `col_is_unique()`, and `col_has_check()` test
@@ -45,6 +46,8 @@ Revision history for pgTAP
         to Andy Armstrong for the spot.
       - Divided the tests up into many separate test script files, so that
         things are a bit better organized and easier to maintain.
+      - Added the `check_test()` function and started converting internal
+        tests to use it instead of the hacked stuff they were doing before.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.

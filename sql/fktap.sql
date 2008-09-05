@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(60);
+SELECT plan(61);
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -227,6 +227,12 @@ SELECT * FROM check_test(
     true,
     'basic fk_ok noschema desc',
     'fk(pk_id) should reference pk(id)'
+);
+
+-- Make sure check_test() works properly with no name argument.
+SELECT * FROM check_test(
+    fk_ok( 'fk', 'pk_id', 'pk', 'id' ),
+    true
 );
 
 SELECT * FROM check_test(

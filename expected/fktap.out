@@ -1,5 +1,5 @@
 \set ECHO
-1..60
+1..61
 ok 1 - has_fk( schema, table, description ) should pass
 ok 2 - has_fk( schema, table, description ) should have the proper description
 ok 3 - has_fk( table, description ) should pass
@@ -48,15 +48,16 @@ ok 45 - basic fk_ok noschema should pass
 ok 46 - basic fk_ok noschema should have the proper description
 ok 47 - basic fk_ok noschema desc should pass
 ok 48 - basic fk_ok noschema desc should have the proper description
-ok 49 - fk_ok fail should fail
-ok 50 - fk_ok fail should have the proper description
-ok 51 - fk_ok fail should have the proper diagnostics
-ok 52 - fk_ok fail desc should fail
-ok 53 - fk_ok fail desc should have the proper description
-ok 54 - fk_ok fail desc should have the proper diagnostics
-ok 55 - fk_ok fail no schema should fail
-ok 56 - fk_ok fail no schema should have the proper description
-ok 57 - fk_ok fail no schema should have the proper diagnostics
-ok 58 - fk_ok fail no schema desc should fail
-ok 59 - fk_ok fail no schema desc should have the proper description
-ok 60 - fk_ok fail no schema desc should have the proper diagnostics
+ok 49 - Test should pass
+ok 50 - fk_ok fail should fail
+ok 51 - fk_ok fail should have the proper description
+ok 52 - fk_ok fail should have the proper diagnostics
+ok 53 - fk_ok fail desc should fail
+ok 54 - fk_ok fail desc should have the proper description
+ok 55 - fk_ok fail desc should have the proper diagnostics
+ok 56 - fk_ok fail no schema should fail
+ok 57 - fk_ok fail no schema should have the proper description
+ok 58 - fk_ok fail no schema should have the proper diagnostics
+ok 59 - fk_ok fail no schema desc should fail
+ok 60 - fk_ok fail no schema desc should have the proper description
+ok 61 - fk_ok fail no schema desc should have the proper diagnostics

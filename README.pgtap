@@ -967,11 +967,196 @@ tests, is that they're like a programmatic todo list. You know how much work
 is left to be done, you're aware of what bugs there are, and you'll know
 immediately when they're fixed.
 
+Writing Test Functions
+======================
+
+So, you've been using pgTAP for a while, and now you want to write your own
+test functions. Go ahead; I don't mind. In fact, I encourage it. How? Why,
+by providing a function you can use to test your tests, of course!
+
+But first, a brief primer on writing your own test functions. There isn't much
+to it, really. Just write your function to do whatever comparison you want. As
+long as you have a boolean value indicating whether or not the test passed,
+you're golden. Just then use `ok()` to ensure that everything is tracked
+appropriately by a test script.
+
+For example, say that you wanted to create a function to ensure that two text
+values always compare case-insensitively. Sure you could do this with `is()`
+and the `LOWER()` function, but if you're doing this all the time, you might
+want to simplify things. Here's how to go about it:
+
+    CREATE OR REPLACE FUNCTION is (text, text, text)
+    RETURNS TEXT AS $$
+    DECLARE
+        result BOOLEAN;
+    BEGIN
+        result := LOWER($1) = LOWER($2);
+        RETURN ok( result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
+               '    Have: ' || $1 ||
+            E'\n    Want: ' || $2;
+    ) END;
+END;
+$$ LANGUAGE plpgsql;
+
+Yep, that's it. The key is to always use pgTAP's `ok()` function to guarantee
+that the output is properly formatted, uses the next number in the sequence,
+and the results are properly recorded in the database for summarization at
+the end of the test script. You can also provide diagnostics as appropriate;
+just append them to the output of `ok()` as we've done here.
+
+Of course, you don't have to directly use `ok()`; you can also use another
+pgTAP function that ultimately calls `ok()`. IOW, while the above example
+is instructive, this version is easier on the eyes:
+
+    CREATE OR REPLACE FUNCTION lc_is ( TEXT, TEXT, TEXT )
+    RETURNS TEXT AS $$
+         SELECT is( LOWER($1), LOWER(2), $3);
+    $$ LANGUAGE sql;
+
+But either way, let pgTAP handle recording the test results and formatting the
+output.
+
+Testing Test Functions
+----------------------
+
+Now you've written your test function. So how do you test it? Why, with this
+handy-dandy test function!
+
+### check_test( test_output, is_ok, name, want_description, want_diag ) ###
+### check_test( test_output, is_ok, name, want_description ) ###
+### check_test( test_output, is_ok, name ) ###
+### check_test( test_output, is_ok ) ###
+
+    SELECT * FROM check_test(
+        lc_eq('This', 'THAT', 'not eq'),
+        false,
+        'lc_eq fail',
+        'not eq',
+        E'    Want: this\n    Have: that'
+    );
+
+    SELECT * FROM check_test(
+        lc_eq('This', 'THIS', 'eq'),
+        true
+    );
+
+This function runs anywhere between one and three tests against a test
+function. For the impatient, the arguments are:
+
+* `:test_output` - The output from your test. Usually it's just returned by a
+  call to the test function itself. Required.
+* `:is_ok` - Boolean indicating whether or not the test is expected to pass.
+  Required.
+* `:name` - A brief name for your test, to make it easier to find failures in
+  your test script. Optional.
+* `:want_description` - Expected test description to be output by the test.
+  Optional.
+* `:want_diag` - Expected diagnostic message output during the execution of
+  a test. Must always follow whatever is output by the call to `ok()`.
+
+Now, on with the detailed documentation. At its simplest, you just pass it the
+output of your test (and it must be one and **only one** test function's
+output, or you'll screw up the count, so don't do that!) and a boolean value
+indicating whether or not you expect the test to have passed. That looks
+something like the second example above.
+
+All other arguments are optional, but I recommend that you *always* include a
+short test name to make it easier to track down failures in your test script.
+`check_test()` uses this name to construct descriptions of all of the tests it
+runs. For example, without a short name, the above example will yield output
+like so:
+
+    not ok 14 - Test should pass
+
+Yeah, but which test? So give it a very succinct name and you'll know what
+test. If you have a lot of these, it won't be much help. So give each call
+to `check_test()` a name:
+
+    SELECT * FROM check_test(
+        lc_eq('This', 'THIS', 'eq'),
+        true,
+        'Simple lc_eq test',
+    );
+
+Then you'll get output more like this:
+
+    not ok 14 - Simple lc_test should pass
+
+Which will make it much easier to find the failing test in your test script.
+
+The optional fourth argument is the description you expect to be output. This
+is especially important if your test function generates a description when
+none is passed to it. You want to make sure that your function generates the
+test description you think it should! This will cause a second test to be run
+on your test function. So for something like this:
+
+    SELECT * FROM check_test(
+        lc_eq( ''this'', ''THIS'' ),
+        true,
+        'lc_eq() test',
+        'this is THIS'
+    );
+
+The output then would look something like this, assuming that the `lc_eq()`
+function generated the proper description (the above example does not):
+
+    ok 42 - lc_eq() test should pass
+    ok 43 - lc_eq() test should have the proper description
+
+See how there are two tests run for a single call to `check_test()`? Be sure
+to adjust your plan accordingly. Also note how the test name was used in the
+descriptions for both tests.
+
+If the test had failed, it would output a nice diagnostics (internally it just
+uses `is()` to compare the strings):
+
+    not ok 43 - lc_eq() test should have the proper description
+    # Failed test 43:  "lc_eq() test should have the proper description"
+    #         have: 'this is this'
+    #         want: 'this is THIS'
+
+The fifth argument, also optional, of course, compares the diagnostics
+generated during the test to an expected string. Such diagnostics **must**
+follow whatever is output by the call to `ok()` in your test. Your test
+fuction should not call `diag()` until after it calls `ok()` or things will
+get truly funky.
+
+Assumign you've followed that rule in your `lc_eq()` tset function, to see
+what happens when a `lc_eq()` fails. Write your test to test the diagnostics
+like so:
+
+    SELECT * FROM check_test(
+        lc_eq( ''this'', ''THat'' ),
+        false,
+        'lc_eq() failing test',
+        'this is THat',
+        E'    Want: this\n    Have: THat
+    );
+
+This of course triggers a third test to run. The output will look like so:
+
+    ok 44 - lc_eq() failing test should fail
+    ok 45 - lc_eq() failing test should have the proper description
+    ok 46 - lc_eq() failing test should have the proper diagnostics
+
+And of course, it the diagnostic test fails, it will output diagnostics just
+like a description failure would, something like this:
+
+    not ok 46 - lc_eq() failing test should have the proper diagnostics
+    # Failed test 46:  "lc_eq() failing test should have the proper diagnostics"
+    #         have:     Have: this
+    #     Want: that
+    #         want:     Have: this
+    #     Want: THat
+
+I realize that can be a bit confusing, given the various haves and wants, but
+it gets the job done. Of course, if your diagnostics use something other than
+indented "have" and "want", such failures will be easier to read. But either
+way, do test your diagnostics!
+
 To Do
 -----
 
-* Add a test function to test test functions and update the test script to
-  use it.
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to require TAP::Harness.
