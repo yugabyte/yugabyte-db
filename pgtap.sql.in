@@ -1199,44 +1199,30 @@ $$ LANGUAGE sql;
 -- fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
-DECLARE
-    pk_table TEXT;
-    pk_cols  TEXT[];
-BEGIN
-    pk_table = _pk_tab_for_fk( $1, $2, $3, 'f' );
-    pk_cols  = _pk_cols_for_fk( $1, $2, $3, 'f' );
-    RETURN is(
+    SELECT is(
         $1 || '.' || $2 || '(' || array_to_string( _ckeys( $1, $2, 'f' ), ', ' )
         || ') REFERENCES ' ||
-        pk_table || '(' || array_to_string( pk_cols, ', ' ) || ')',
+        _pk_tab_for_fk( $1, $2, $3, 'f' ) || '(' || array_to_string( _pk_cols_for_fk( $1, $2, $3, 'f' ), ', ' ) || ')',
         $1 || '.' || $2 || '(' || array_to_string( $3, ', ' )
         || ') REFERENCES ' ||
         $4 || '.' || $5 || '(' || array_to_string( $6, ', ' ) || ')',
         $7
     );
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 -- fk_ok( fk_table, fk_column[], pk_table, pk_column[], description )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT[], TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
-DECLARE
-    pk_table TEXT;
-    pk_cols  TEXT[];
-BEGIN
-    pk_table = _pk_tab_for_fk( $1, $2, 'f' );
-    pk_cols  = _pk_cols_for_fk( $1, $2, 'f' );
-    RETURN is(
+    SELECT is(
         $1 || '(' || array_to_string( _ckeys( $1, 'f' ), ', ' )
         || ') REFERENCES ' ||
-        pk_table || '(' || array_to_string( pk_cols, ', ' ) || ')',
+        _pk_tab_for_fk( $1, $2, 'f' ) || '(' || array_to_string( _pk_cols_for_fk( $1, $2, 'f' ), ', ' ) || ')',
         $1 || '(' || array_to_string( $2, ', ' )
         || ') REFERENCES ' ||
         $3 || '(' || array_to_string( $4, ', ' ) || ')',
         $5
     );
-END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE sql;
 
 -- fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[] )
