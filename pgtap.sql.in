@@ -895,6 +895,7 @@ RETURNS TEXT[] AS $$
        AND x.contype = $3
        AND a.attnum > 0
        AND NOT a.attisdropped
+     ORDER BY a.attnum 
     );
 $$ LANGUAGE sql;
 
@@ -912,7 +913,89 @@ RETURNS TEXT[] AS $$
        AND a.attnum = ANY(x.conkey)
        AND a.attnum > 0
        AND NOT a.attisdropped
+     ORDER BY a.attnum 
     );
+$$ LANGUAGE sql;
+
+-- _pk_cols_for_fk( schema, table, cols[], constraint_type )
+CREATE OR REPLACE FUNCTION _pk_cols_for_fk ( TEXT, TEXT, TEXT[], CHAR )
+RETURNS TEXT[] AS $$
+    SELECT ARRAY( SELECT col::text FROM (
+        SELECT DISTINCT a2.attnum AS num, a2.attname AS col
+          FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
+               pg_catalog.pg_attribute a, pg_catalog.pg_constraint x,
+               pg_catalog.pg_attribute a2
+         WHERE n.oid = c.relnamespace
+           AND c.oid = a.attrelid
+           AND c.oid = x.conrelid
+           AND x.confrelid = a2.attrelid
+           AND a2.attnum = ANY(x.confkey)
+           AND n.nspname = $1
+           AND c.relname = $2
+           AND a.attname = ANY($3)
+           AND x.contype = $4
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+         ORDER BY a2.attnum
+    ) AS foo);
+$$ LANGUAGE sql;
+
+-- _pk_cols_for_fk( table, cols[], constraint_type )
+CREATE OR REPLACE FUNCTION _pk_cols_for_fk ( TEXT, TEXT[], CHAR )
+RETURNS TEXT[] AS $$
+    SELECT ARRAY( SELECT col::text FROM (
+        SELECT DISTINCT a2.attnum AS num, a2.attname AS col
+          FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+               pg_catalog.pg_constraint x, pg_catalog.pg_attribute a2
+         WHERE c.oid = a.attrelid
+           AND c.oid = x.conrelid
+           AND x.confrelid = a2.attrelid
+           AND a2.attnum = ANY(x.confkey)
+           AND c.relname = $1
+           AND a.attname = ANY($2)
+           AND x.contype = $3
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+         ORDER BY a2.attnum
+    ) AS foo);
+$$ LANGUAGE sql;
+
+-- _pk_tab_for_fk( schema, table, cols[], constraint_type )
+CREATE OR REPLACE FUNCTION _pk_tab_for_fk ( TEXT, TEXT, TEXT[], CHAR )
+RETURNS TEXT AS $$
+    SELECT n2.nspname || '.' || c2.relname
+      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
+           pg_catalog.pg_attribute a, pg_catalog.pg_constraint x,
+           pg_catalog.pg_namespace n2, pg_catalog.pg_class c2
+     WHERE n.oid = c.relnamespace
+       AND c.oid = a.attrelid
+       AND c.oid = x.conrelid
+       AND x.confrelid = c2.oid
+       AND c2.relnamespace = n2.oid
+       AND n.nspname = $1
+       AND c.relname = $2
+       AND a.attname = ANY($3)
+       AND x.contype = $4
+       AND a.attnum  > 0
+       AND NOT a.attisdropped
+    LIMIT 1
+$$ LANGUAGE sql;
+
+-- _pk_tab_for_fk( table, cols[], constraint_type )
+CREATE OR REPLACE FUNCTION _pk_tab_for_fk ( TEXT, TEXT[], CHAR )
+RETURNS TEXT AS $$
+    SELECT c2.relname::text
+      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+           pg_catalog.pg_constraint x, pg_catalog.pg_class c2
+     WHERE c.oid = a.attrelid
+       AND c.oid = x.conrelid
+       AND x.confrelid = c2.oid
+       AND c.relname = $1
+       AND a.attname = ANY($2)
+       AND x.contype = $3
+       AND a.attnum  > 0
+       AND NOT a.attisdropped
+    LIMIT 1
 $$ LANGUAGE sql;
 
 -- col_is_pk( schema, table, column, description )
@@ -1113,55 +1196,19 @@ RETURNS TEXT AS $$
     SELECT col_has_check( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a check constraint' );
 $$ LANGUAGE sql;
 
--- _pk_table_for( fk_schema, fk_table )
-CREATE OR REPLACE FUNCTION _pk_table_for ( TEXT, TEXT )
-RETURNS NAME[] AS $$
-    SELECT ARRAY [n2.nspname,  c2.relname]
-      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
-           pg_catalog.pg_attribute a, pg_catalog.pg_constraint x,
-           pg_catalog.pg_namespace n2, pg_catalog.pg_class c2
-     WHERE n.oid = c.relnamespace
-       AND c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND x.confrelid = c2.oid
-       AND c2.relnamespace = n2.oid
-       AND a.attnum = ANY(x.conkey)
-       AND n.nspname = $1
-       AND c.relname = $2
-       AND x.contype = 'f'
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-     LIMIT 1;
-$$ LANGUAGE sql;
-
--- _pk_table_for( fk_table )
-CREATE OR REPLACE FUNCTION _pk_table_for ( TEXT )
-RETURNS NAME AS $$
-    SELECT c2.relname
-      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-           pg_catalog.pg_constraint x, pg_catalog.pg_class c2
-     WHERE c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND x.confrelid = c2.oid
-       AND a.attnum = ANY(x.conkey)
-       AND c.relname = $1
-       AND x.contype = 'f'
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-     LIMIT 1;
-$$ LANGUAGE sql;
-
 -- fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    pk_table NAME[];
+    pk_table TEXT;
+    pk_cols  TEXT[];
 BEGIN
-    pk_table = COALESCE(_pk_table_for( $1, $2 ), '{}'::name[]);
+    pk_table = _pk_tab_for_fk( $1, $2, $3, 'f' );
+    pk_cols  = _pk_cols_for_fk( $1, $2, $3, 'f' );
     RETURN is(
         $1 || '.' || $2 || '(' || array_to_string( _ckeys( $1, $2, 'f' ), ', ' )
         || ') REFERENCES ' ||
-        array_to_string(pk_table, '.') || '(' || array_to_string( _ckeys( pk_table[1], pk_table[2], 'p' ), ', ' ) || ')',
+        pk_table || '(' || array_to_string( pk_cols, ', ' ) || ')',
         $1 || '.' || $2 || '(' || array_to_string( $3, ', ' )
         || ') REFERENCES ' ||
         $4 || '.' || $5 || '(' || array_to_string( $6, ', ' ) || ')',
@@ -1174,13 +1221,15 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT[], TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    pk_table NAME;
+    pk_table TEXT;
+    pk_cols  TEXT[];
 BEGIN
-    pk_table = COALESCE(_pk_table_for( $1 ), ''::name);
+    pk_table = _pk_tab_for_fk( $1, $2, 'f' );
+    pk_cols  = _pk_cols_for_fk( $1, $2, 'f' );
     RETURN is(
         $1 || '(' || array_to_string( _ckeys( $1, 'f' ), ', ' )
         || ') REFERENCES ' ||
-        pk_table || '(' || array_to_string( _ckeys( pk_table, 'p' ), ', ' ) || ')',
+        pk_table || '(' || array_to_string( pk_cols, ', ' ) || ')',
         $1 || '(' || array_to_string( $2, ', ' )
         || ') REFERENCES ' ||
         $3 || '(' || array_to_string( $4, ', ' ) || ')',
