@@ -778,8 +778,8 @@ Just like `col_is_fk()`, except that it test that the column or array of
 columns are a primary key.
 
 ### fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description ) ###
-### fk_ok( fk_table, fk_column[], pk_table, pk_column[], description ) ###
 ### fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] ) ###
+### fk_ok( fk_table, fk_column[], pk_table, pk_column[], description ) ###
 ### fk_ok( fk_table, fk_column[], pk_table, pk_column[] ) ###
 ### fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column, description ) ###
 ### fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column ) ###
