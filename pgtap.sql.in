@@ -1116,6 +1116,8 @@ $$ LANGUAGE sql;
 -- fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
+-- XXX Need to fix the check for the fk to make sure that it actually
+-- references the pk table.
     SELECT is(
         $1 || '.' || $2 || '(' || array_to_string( _ckeys( $1, $2, 'f' ), ', ' )
         || ') REFERENCES ' ||
