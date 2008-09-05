@@ -1157,8 +1157,6 @@ way, do test your diagnostics!
 To Do
 -----
 
-* Fix the check for the fk in `fk_ok() to make sure that it actually
-  references the pk table.
 * Handle multiple FK constraints in `fk_ok()` and the other FK test functions.
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.

@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(61);
+SELECT plan(64);
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -269,6 +269,15 @@ SELECT * FROM check_test(
     'fk(pk_id) should reference pk(fid)',
     '        have: fk(pk_id) REFERENCES pk(id)
         want: fk(pk_id) REFERENCES pk(fid)'
+);
+
+SELECT * FROM check_test(
+    fk_ok( 'fk', ARRAY['pk_id'], 'ok', ARRAY['fid'], 'WHATEVER' ),
+    false,
+    'fk_ok bad PK test',
+    'WHATEVER',
+    '        have: fk(pk_id) REFERENCES pk(id)
+        want: fk(pk_id) REFERENCES ok(fid)'
 );
 
 /****************************************************************************/

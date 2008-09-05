@@ -1113,35 +1113,81 @@ RETURNS TEXT AS $$
     SELECT col_has_check( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a check constraint' );
 $$ LANGUAGE sql;
 
+-- _pk_table_for( fk_schema, fk_table )
+CREATE OR REPLACE FUNCTION _pk_table_for ( TEXT, TEXT )
+RETURNS NAME[] AS $$
+    SELECT ARRAY [n2.nspname,  c2.relname]
+      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
+           pg_catalog.pg_attribute a, pg_catalog.pg_constraint x,
+           pg_catalog.pg_namespace n2, pg_catalog.pg_class c2
+     WHERE n.oid = c.relnamespace
+       AND c.oid = a.attrelid
+       AND c.oid = x.conrelid
+       AND x.confrelid = c2.oid
+       AND c2.relnamespace = n2.oid
+       AND a.attnum = ANY(x.conkey)
+       AND n.nspname = $1
+       AND c.relname = $2
+       AND x.contype = 'f'
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+     LIMIT 1;
+$$ LANGUAGE sql;
+
+-- _pk_table_for( fk_table )
+CREATE OR REPLACE FUNCTION _pk_table_for ( TEXT )
+RETURNS NAME AS $$
+    SELECT c2.relname
+      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+           pg_catalog.pg_constraint x, pg_catalog.pg_class c2
+     WHERE c.oid = a.attrelid
+       AND c.oid = x.conrelid
+       AND x.confrelid = c2.oid
+       AND a.attnum = ANY(x.conkey)
+       AND c.relname = $1
+       AND x.contype = 'f'
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+     LIMIT 1;
+$$ LANGUAGE sql;
+
 -- fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
--- XXX Need to fix the check for the fk to make sure that it actually
--- references the pk table.
-    SELECT is(
+DECLARE
+    pk_table NAME[];
+BEGIN
+    pk_table = COALESCE(_pk_table_for( $1, $2 ), '{}'::name[]);
+    RETURN is(
         $1 || '.' || $2 || '(' || array_to_string( _ckeys( $1, $2, 'f' ), ', ' )
         || ') REFERENCES ' ||
-        $4 || '.' || $5 || '(' || array_to_string( _ckeys( $4, $5, 'p' ), ', ' ) || ')',
+        array_to_string(pk_table, '.') || '(' || array_to_string( _ckeys( pk_table[1], pk_table[2], 'p' ), ', ' ) || ')',
         $1 || '.' || $2 || '(' || array_to_string( $3, ', ' )
         || ') REFERENCES ' ||
         $4 || '.' || $5 || '(' || array_to_string( $6, ', ' ) || ')',
         $7
     );
-$$ LANGUAGE sql;
+END;
+$$ LANGUAGE plpgsql;
 
 -- fk_ok( fk_table, fk_column[], pk_table, pk_column[], description )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT[], TEXT, TEXT[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is(
+DECLARE
+    pk_table NAME;
+BEGIN
+    pk_table = COALESCE(_pk_table_for( $1 ), ''::name);
+    RETURN is(
         $1 || '(' || array_to_string( _ckeys( $1, 'f' ), ', ' )
         || ') REFERENCES ' ||
-        $3 || '(' || array_to_string( _ckeys( $3, 'p' ), ', ' ) || ')',
+        pk_table || '(' || array_to_string( _ckeys( pk_table, 'p' ), ', ' ) || ')',
         $1 || '(' || array_to_string( $2, ', ' )
         || ') REFERENCES ' ||
         $3 || '(' || array_to_string( $4, ', ' ) || ')',
         $5
     );
-$$ LANGUAGE sql;
+END;
+$$ LANGUAGE plpgsql;
 
 -- fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] )
 CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[] )

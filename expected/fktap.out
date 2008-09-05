@@ -1,5 +1,5 @@
 \set ECHO
-1..61
+1..64
 ok 1 - has_fk( schema, table, description ) should pass
 ok 2 - has_fk( schema, table, description ) should have the proper description
 ok 3 - has_fk( table, description ) should pass
@@ -61,3 +61,6 @@ ok 58 - fk_ok fail no schema should have the proper diagnostics
 ok 59 - fk_ok fail no schema desc should fail
 ok 60 - fk_ok fail no schema desc should have the proper description
 ok 61 - fk_ok fail no schema desc should have the proper diagnostics
+ok 62 - fk_ok bad PK test should fail
+ok 63 - fk_ok bad PK test should have the proper description
+ok 64 - fk_ok bad PK test should have the proper diagnostics
