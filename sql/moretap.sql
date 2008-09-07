@@ -80,7 +80,7 @@ DELETE FROM __tcache__ WHERE label = 'plan';
 SELECT is( plan(4000), '1..4000', 'Set the plan to 4000' );
 SELECT is(
     (SELECT * FROM finish() LIMIT 1),
-    '# Looks like you planned 4000 tests but only ran 11',
+    '# Looks like you planned 4000 tests but ran 11',
     'The output of finish() should reflect a high test plan'
 );
 
@@ -89,7 +89,7 @@ DELETE FROM __tcache__ WHERE label = 'plan';
 SELECT is( plan(4), '1..4', 'Set the plan to 4' );
 SELECT is(
     (SELECT * FROM finish() LIMIT 1),
-    '# Looks like you planned 4 tests but ran 9 extra',
+    '# Looks like you planned 4 tests but ran 13',
     'The output of finish() should reflect a low test plan'
 );
 

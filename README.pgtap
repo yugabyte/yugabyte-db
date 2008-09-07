@@ -1163,6 +1163,10 @@ To Do
 * Update the Makefile to require TAP::Harness.
 * Update the Makefile to alter the source as appropriate for older versions
   of PostgreSQL.
+* Add `todo_start()` and `todo_end()` (and `in_todo()`).
+* Add `note()`?
+* Add `can_ok()`.
+
 
 Suported Versions
 -----------------

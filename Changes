@@ -48,6 +48,9 @@ Revision history for pgTAP
         things are a bit better organized and easier to maintain.
       - Added the `check_test()` function and started converting internal
         tests to use it instead of the hacked stuff they were doing before.
+      - As in Test::Builder 0.81_01, changed the message for extra tests run
+        to show the number of tests run rather than the number extra to avoid
+        the user having to do mental math.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.

@@ -150,15 +150,10 @@ BEGIN
         RETURN NEXT '1..' || exp_tests;
     END IF;
 
-    IF curr_test < exp_tests THEN
+    IF curr_test <> exp_tests THEN
         RETURN NEXT diag(
             'Looks like you planned ' || exp_tests || ' test' ||
-            plural || ' but only ran ' || curr_test
-        );
-    ELSIF curr_test > exp_tests THEN
-        RETURN NEXT diag(
-            'Looks like you planned ' || exp_tests || ' test' ||
-            plural || ' but ran ' || curr_test - exp_tests || ' extra'
+            plural || ' but ran ' || curr_test
         );
     ELSIF num_faild > 0 THEN
         RETURN NEXT diag(
