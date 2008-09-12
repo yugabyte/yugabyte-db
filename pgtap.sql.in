@@ -915,6 +915,7 @@ RETURNS TEXT[] AS $$
            AND c.oid = x.conrelid
            AND x.confrelid = a2.attrelid
            AND a2.attnum = ANY(x.confkey)
+           AND a.attnum  = ANY(x.conkey)
            AND n.nspname = $1
            AND c.relname = $2
            AND a.attname = ANY($3)
@@ -936,6 +937,7 @@ RETURNS TEXT[] AS $$
            AND c.oid = x.conrelid
            AND x.confrelid = a2.attrelid
            AND a2.attnum = ANY(x.confkey)
+           AND a.attnum  = ANY(x.conkey)
            AND c.relname = $1
            AND a.attname = ANY($2)
            AND x.contype = $3

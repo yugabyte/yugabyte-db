@@ -31,7 +31,8 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(64);
+--SELECT plan(64);
+select * from no_plan();
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -51,6 +52,14 @@ CREATE TABLE pk2 (
 );
 
 CREATE TABLE fk2 (
+    pk2_num int NOT NULL,
+    pk2_dot int NOT NULL,
+    FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
+);
+
+CREATE TABLE fk3(
+    id    INT NOT NULL PRIMARY KEY,
+    pk_id INT NOT NULL REFERENCES pk(id),
     pk2_num int NOT NULL,
     pk2_dot int NOT NULL,
     FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
@@ -226,7 +235,8 @@ SELECT * FROM check_test(
     fk_ok( 'fk', 'pk_id', 'pk', 'id' ),
     true,
     'basic fk_ok noschema desc',
-    'fk(pk_id) should reference pk(id)'
+    'fk(pk_id) should reference pk(id)',
+    ''
 );
 
 -- Make sure check_test() works properly with no name argument.
@@ -278,6 +288,22 @@ SELECT * FROM check_test(
     'WHATEVER',
     '        have: fk(pk_id) REFERENCES pk(id)
         want: fk(pk_id) REFERENCES ok(fid)'
+);
+
+SELECT * FROM check_test(
+    fk_ok( 'public', 'fk3', 'pk_id', 'public', 'pk', 'id' ),
+    true,
+    'double fk schema test',
+    'public.fk3(pk_id) should reference public.pk(id)',
+    ''    
+);
+
+SELECT * FROM check_test(
+    fk_ok( 'fk3', 'pk_id', 'pk', 'id' ),
+    true,
+    'double fk test',
+    'fk3(pk_id) should reference pk(id)',
+    ''    
 );
 
 /****************************************************************************/
