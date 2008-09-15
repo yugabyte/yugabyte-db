@@ -1064,7 +1064,7 @@ BEGIN
 
     IF NAMES[1] IS NOT NULL THEN
         RETURN fail($4) || E'\n' || diag(
-            '    Table ' || $1 || '.' || $2 || E' has these foreign key columns:\n        '
+            '    Table ' || $1 || '.' || $2 || E' has foreign key constraints on these columns:\n        '
             || array_to_string( names, E'\n        ' )
         );
     END IF;
@@ -1099,7 +1099,7 @@ BEGIN
 
     IF NAMES[1] IS NOT NULL THEN
         RETURN fail($3) || E'\n' || diag(
-            '    Table ' || $1 || E' has these foreign key columns:\n        '
+            '    Table ' || $1 || E' has foreign key constraints on these columns:\n        '
             || array_to_string( names, E'\n        ' )
         );
     END IF;
