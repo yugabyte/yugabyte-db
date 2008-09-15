@@ -31,7 +31,7 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(80);
+SELECT plan(82);
 --select * from no_plan();
 
 -- These will be rolled back. :-)
@@ -132,7 +132,8 @@ SELECT * FROM check_test(
     false,
     'col_is_fk( schema, table, column, description )',
     'public.fk.name should be an fk',
-    E'        have: {pk_id}\n        want: {name}'
+    '    Table public.fk has these foreign key columns:
+        {pk_id}'
 );
 
 SELECT * FROM check_test(
@@ -140,8 +141,18 @@ SELECT * FROM check_test(
     false,
     'col_is_fk( table, column, description )',
     'fk.name should be an fk',
-    E'        have: {pk_id}\n        want: {name}'
+    '    Table fk has these foreign key columns:
+        {pk_id}'
 );
+
+-- Check table with multiple FKs.
+SELECT * FROM check_test(
+    col_is_fk( 'fk3', 'pk_id' ),
+    true,
+    'multi-fk col_is_fk test',
+    'Column fk3.pk_id should be a foreign key'
+);
+
 
 /****************************************************************************/
 -- Test col_is_fk() with an array of columns.

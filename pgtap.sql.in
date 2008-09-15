@@ -1040,37 +1040,97 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is( _ckeys( $1, $2, 'f' ), $3, $4 );
-$$ LANGUAGE sql;
+DECLARE
+    names text[][];
+BEGIN
+    PERFORM TRUE
+       FROM pg_all_foreign_keys
+      WHERE fk_schema_name = $1
+        AND fk_table_name  = $2
+        AND fk_columns     = $3;
+    IF FOUND THEN
+        RETURN pass( $4 );
+    END IF;
+
+    -- Try to show the columns.
+    SELECT ARRAY(
+        SELECT fk_columns::text
+          FROM pg_all_foreign_keys
+         WHERE fk_schema_name = $1
+           AND fk_table_name  = $2
+    ) INTO names;
+
+    IF FOUND THEN
+        RETURN fail($4) || E'\n' || diag(
+            '    Table ' || $1 || '.' || $2 || E' has these foreign key columns:\n        '
+            || array_to_string( names, E'\n        ' )
+        );
+    END IF;
+
+    -- No FKs in this table.
+    RETURN fail($4) || E'\n' || diag(
+        '    No foreign key columns exist in table ' || $1 || '.' || $2
+    );
+END;
+$$ LANGUAGE plpgsql;
 
 -- col_is_fk( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is( _ckeys( $1, 'f' ), $2, $3 );
-$$ LANGUAGE sql;
+DECLARE
+    names text[][];
+BEGIN
+    PERFORM TRUE
+       FROM pg_all_foreign_keys
+      WHERE fk_table_name  = $1
+        AND fk_columns     = $2;
+    IF FOUND THEN
+        RETURN pass( $3 );
+    END IF;
+
+    -- Try to show the columns.
+    SELECT ARRAY(
+        SELECT fk_columns::text
+          FROM pg_all_foreign_keys
+         WHERE fk_table_name  = $1
+    ) INTO names;
+
+    IF FOUND THEN
+        RETURN fail($3) || E'\n' || diag(
+            '    Table ' || $1 || E' has these foreign key columns:\n        '
+            || array_to_string( names, E'\n        ' )
+        );
+    END IF;
+
+    -- No FKs in this table.
+    RETURN fail($3) || E'\n' || diag(
+        '    No foreign key columns exist in table ' || $1 ||
+    );
+END;
+$$ LANGUAGE plpgsql;
 
 -- col_is_fk( table, column[] )
-CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT[] )
+CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT col_is_fk( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should be a foreign key' );
 $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_fk( $1, $2, ARRAY[$3], $4 );
 $$ LANGUAGE sql;
 
 -- col_is_fk( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_fk( $1, ARRAY[$2], $3 );
 $$ LANGUAGE sql;
 
 -- col_is_fk( table, column )
-CREATE OR REPLACE FUNCTION col_is_fk ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT col_is_fk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a foreign key' );
 $$ LANGUAGE sql;
