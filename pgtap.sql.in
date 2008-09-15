@@ -868,122 +868,122 @@ $$ LANGUAGE sql;
 -- _ckeys( schema, table, constraint_type )
 CREATE OR REPLACE FUNCTION _ckeys ( TEXT, TEXT, CHAR )
 RETURNS TEXT[] AS $$
-    SELECT ARRAY (SELECT a.attname::text
-      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-           pg_catalog.pg_constraint x
-     WHERE n.oid = c.relnamespace
-       AND c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND a.attnum = ANY(x.conkey)
-       AND n.nspname = $1
-       AND c.relname = $2
-       AND x.contype = $3
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-     ORDER BY a.attnum 
+    SELECT ARRAY (
+      SELECT a.attname::text
+        FROM pg_catalog.pg_namespace n
+        JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
+        JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
+        JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
+       WHERE n.nspname = $1
+         AND c.relname = $2
+         AND x.contype = $3
     );
 $$ LANGUAGE sql;
 
 -- _ckeys( table, constraint_type )
 CREATE OR REPLACE FUNCTION _ckeys ( TEXT, CHAR )
 RETURNS TEXT[] AS $$
-    SELECT ARRAY (SELECT a.attname::text
-      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-           pg_catalog.pg_constraint x
-     WHERE c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND pg_table_is_visible(c.oid)
-       AND c.relname = $1
-       AND x.contype = $2
-       AND a.attnum = ANY(x.conkey)
-       AND a.attnum > 0
-       AND NOT a.attisdropped
-     ORDER BY a.attnum 
+    SELECT ARRAY (
+      SELECT a.attname::text
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
+        JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
+         AND c.relname = $1
+         AND x.contype = $2
     );
 $$ LANGUAGE sql;
 
--- _pk_cols_for_fk( schema, table, cols[], constraint_type )
-CREATE OR REPLACE FUNCTION _pk_cols_for_fk ( TEXT, TEXT, TEXT[], CHAR )
-RETURNS TEXT[] AS $$
-    SELECT ARRAY( SELECT col::text FROM (
-        SELECT DISTINCT a2.attnum AS num, a2.attname AS col
-          FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
-               pg_catalog.pg_attribute a, pg_catalog.pg_constraint x,
-               pg_catalog.pg_attribute a2
-         WHERE n.oid = c.relnamespace
-           AND c.oid = a.attrelid
-           AND c.oid = x.conrelid
-           AND x.confrelid = a2.attrelid
-           AND a2.attnum = ANY(x.confkey)
-           AND a.attnum  = ANY(x.conkey)
-           AND n.nspname = $1
-           AND c.relname = $2
-           AND a.attname = ANY($3)
-           AND x.contype = $4
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-         ORDER BY a2.attnum
-    ) AS foo);
-$$ LANGUAGE sql;
+-- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
+CREATE OR REPLACE FUNCTION _pg_sv_column_array(oid, smallint[]) RETURNS NAME[]
+AS $$
+    SELECT ARRAY(
+        SELECT a.attname
+          FROM pg_catalog.pg_attribute a
+          JOIN generate_series(1, 32) s(i) ON (a.attnum = $2[i])
+         WHERE attrelid = $1
+         ORDER BY i
+    )
+$$ LANGUAGE SQL stable;
 
--- _pk_cols_for_fk( table, cols[], constraint_type )
-CREATE OR REPLACE FUNCTION _pk_cols_for_fk ( TEXT, TEXT[], CHAR )
-RETURNS TEXT[] AS $$
-    SELECT ARRAY( SELECT col::text FROM (
-        SELECT DISTINCT a2.attnum AS num, a2.attname AS col
-          FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-               pg_catalog.pg_constraint x, pg_catalog.pg_attribute a2
-         WHERE c.oid = a.attrelid
-           AND c.oid = x.conrelid
-           AND x.confrelid = a2.attrelid
-           AND a2.attnum = ANY(x.confkey)
-           AND a.attnum  = ANY(x.conkey)
-           AND c.relname = $1
-           AND a.attname = ANY($2)
-           AND x.contype = $3
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-         ORDER BY a2.attnum
-    ) AS foo);
-$$ LANGUAGE sql;
+-- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
+CREATE OR REPLACE FUNCTION _pg_sv_table_accessible(oid,oid) RETURNS BOOLEAN
+as $$
+    SELECT CASE WHEN has_schema_privilege($1, 'USAGE') THEN (
+                  has_table_privilege($2, 'SELECT')
+               OR has_table_privilege($2, 'INSERT')
+               or has_table_privilege($2, 'UPDATE')
+               OR has_table_privilege($2, 'DELETE')
+               OR has_table_privilege($2, 'RULE')
+               OR has_table_privilege($2, 'REFERENCES')
+               OR has_table_privilege($2, 'TRIGGER')
+           ) ELSE FALSE
+    END;
+$$ LANGUAGE SQL immutable strict;
 
--- _pk_tab_for_fk( schema, table, cols[], constraint_type )
-CREATE OR REPLACE FUNCTION _pk_tab_for_fk ( TEXT, TEXT, TEXT[], CHAR )
-RETURNS TEXT AS $$
-    SELECT n2.nspname || '.' || c2.relname
-      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
-           pg_catalog.pg_attribute a, pg_catalog.pg_constraint x,
-           pg_catalog.pg_namespace n2, pg_catalog.pg_class c2
-     WHERE n.oid = c.relnamespace
-       AND c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND x.confrelid = c2.oid
-       AND c2.relnamespace = n2.oid
-       AND n.nspname = $1
-       AND c.relname = $2
-       AND a.attname = ANY($3)
-       AND x.contype = $4
-       AND a.attnum  > 0
-       AND NOT a.attisdropped
-    LIMIT 1
-$$ LANGUAGE sql;
-
--- _pk_tab_for_fk( table, cols[], constraint_type )
-CREATE OR REPLACE FUNCTION _pk_tab_for_fk ( TEXT, TEXT[], CHAR )
-RETURNS TEXT AS $$
-    SELECT c2.relname::text
-      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-           pg_catalog.pg_constraint x, pg_catalog.pg_class c2
-     WHERE c.oid = a.attrelid
-       AND c.oid = x.conrelid
-       AND x.confrelid = c2.oid
-       AND c.relname = $1
-       AND a.attname = ANY($2)
-       AND x.contype = $3
-       AND a.attnum  > 0
-       AND NOT a.attisdropped
-    LIMIT 1
-$$ LANGUAGE sql;
+-- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
+CREATE OR REPLACE VIEW pg_all_foreign_keys AS
+  SELECT n1.nspname                                   AS fk_schema_name,
+         c1.relname                                   AS fk_table_name,
+         k1.conname                                   AS fk_constraint_name,
+         c1.oid                                       AS fk_table_oid,
+         _pg_sv_column_array(k1.conrelid,k1.conkey)   AS fk_columns,
+         n2.nspname                                   AS pk_schema_name,
+         c2.relname                                   AS pk_table_name,
+         k2.conname                                   AS pk_constraint_name,
+         c2.oid                                       AS pk_table_oid,
+         ci.relname                                   AS pk_index_name,
+         _pg_sv_column_array(k1.confrelid,k1.confkey) AS pk_columns,
+         CASE k1.confmatchtype WHEN 'f' THEN 'FULL'
+                               WHEN 'p' THEN 'PARTIAL'
+                               WHEN 'u' THEN 'NONE'
+                               else null
+         END AS match_type,
+         CASE k1.confdeltype WHEN 'a' THEN 'NO ACTION'
+                             WHEN 'c' THEN 'CASCADE'
+                             WHEN 'd' THEN 'SET DEFAULT'
+                             WHEN 'n' THEN 'SET NULL'
+                             WHEN 'r' THEN 'RESTRICT'
+                             else null
+         END AS on_delete,
+         CASE k1.confupdtype WHEN 'a' THEN 'NO ACTION'
+                             WHEN 'c' THEN 'CASCADE'
+                             WHEN 'd' THEN 'SET DEFAULT'
+                             WHEN 'n' THEN 'SET NULL'
+                             WHEN 'r' THEN 'RESTRICT'
+                             ELSE NULL
+         END AS on_update,
+         k1.condeferrable AS is_deferrable,
+         k1.condeferred   AS is_deferred
+    FROM pg_catalog.pg_constraint k1
+    JOIN pg_catalog.pg_namespace n1 ON (n1.oid = k1.connamespace)
+    JOIN pg_catalog.pg_class c1     ON (c1.oid = k1.conrelid)
+    JOIN pg_catalog.pg_class c2     ON (c2.oid = k1.confrelid)
+    JOIN pg_catalog.pg_namespace n2 ON (n2.oid = c2.relnamespace)
+    JOIN pg_catalog.pg_depend d    ON (
+                 d.classid = 'pg_constraint'::regclass
+             AND d.objid = k1.oid
+             AND d.objsubid = 0
+             AND d.deptype = 'n'
+             AND d.refclassid = 'pg_class'::regclass
+             AND d.refobjsubid=0
+         )
+    JOIN pg_catalog.pg_class ci ON (ci.oid = d.refobjid AND ci.relkind = 'i')
+    LEFT JOIN pg_depend d2 ON (
+                 d2.classid = 'pg_class'::regclass
+             AND d2.objid = ci.oid
+             AND d2.objsubid = 0
+             AND d2.deptype = 'i'
+             AND d2.refclassid = 'pg_constraint'::regclass
+             AND d2.refobjsubid = 0
+         )
+    LEFT JOIN pg_catalog.pg_constraint k2 ON (
+                 k2.oid = d2.refobjid
+             AND k2.contype IN ('p', 'u')
+         )
+   WHERE k1.conrelid != 0
+     AND k1.confrelid != 0
+     AND k1.contype = 'f'
+     AND _pg_sv_table_accessible(n1.oid, c1.oid);
 
 -- col_is_pk( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT[], TEXT )
@@ -1184,35 +1184,61 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME[], NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is(
-        $1 || '.' || $2 || '(' || array_to_string( _ckeys( $1, $2, 'f' ), ', ' )
-        || ') REFERENCES ' ||
-        _pk_tab_for_fk( $1, $2, $3, 'f' ) || '(' || array_to_string( _pk_cols_for_fk( $1, $2, $3, 'f' ), ', ' ) || ')',
+DECLARE
+    sch  name;
+    tab  name;
+    cols name[];
+BEGIN
+    SELECT pk_schema_name, pk_table_name, pk_columns
+      FROM pg_all_foreign_keys
+     WHERE fk_schema_name = $1
+       AND fk_table_name  = $2
+       AND fk_columns     = $3
+      INTO sch, tab, cols;
+
+    RETURN is(
+        -- have
+        $1 || '.' || $2 || '(' || array_to_string( $3, ', ' )
+        || ') REFERENCES ' || COALESCE ( sch || '.' || tab || '(' || array_to_string( cols, ', ' ) || ')', 'NOTHING' ),
+        -- want
         $1 || '.' || $2 || '(' || array_to_string( $3, ', ' )
         || ') REFERENCES ' ||
         $4 || '.' || $5 || '(' || array_to_string( $6, ', ' ) || ')',
         $7
     );
-$$ LANGUAGE sql;
+END;
+$$ LANGUAGE plpgsql;
 
 -- fk_ok( fk_table, fk_column[], pk_table, pk_column[], description )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT[], TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME[], NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is(
-        $1 || '(' || array_to_string( _ckeys( $1, 'f' ), ', ' )
-        || ') REFERENCES ' ||
-        _pk_tab_for_fk( $1, $2, 'f' ) || '(' || array_to_string( _pk_cols_for_fk( $1, $2, 'f' ), ', ' ) || ')',
+DECLARE
+    tab  name;
+    cols name[];
+BEGIN
+    SELECT pk_table_name, pk_columns
+      FROM pg_all_foreign_keys
+     WHERE fk_table_name  = $1
+       AND fk_columns     = $2
+      INTO tab, cols;
+
+    RETURN is(
+        -- have
+        $1 || '(' || array_to_string( $2, ', ' )
+        || ') REFERENCES ' || COALESCE( tab || '(' || array_to_string( cols, ', ' ) || ')', 'NOTHING'),
+        -- want
         $1 || '(' || array_to_string( $2, ', ' )
         || ') REFERENCES ' ||
         $3 || '(' || array_to_string( $4, ', ' ) || ')',
         $5
     );
-$$ LANGUAGE sql;
+END;
+$$ LANGUAGE plpgsql;
 
 -- fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT[], TEXT, TEXT, TEXT[] )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME[], NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, $2, $3, $4, $5, $6,
         $1 || '.' || $2 || '(' || array_to_string( $3, ', ' )
@@ -1222,7 +1248,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_table, fk_column[], pk_table, pk_column[] )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT[], TEXT, TEXT[] )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME[], NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, $2, $3, $4,
         $1 || '(' || array_to_string( $2, ', ' )
@@ -1232,25 +1258,25 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column, description )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, $2, ARRAY[$3], $4, $5, ARRAY[$6], $7 );
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, $2, ARRAY[$3], $4, $5, ARRAY[$6] );
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_table, fk_column, pk_table, pk_column, description )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4], $5 );
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_table, fk_column, pk_table, pk_column )
-CREATE OR REPLACE FUNCTION fk_ok ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;

@@ -1,5 +1,5 @@
 \set ECHO
-1..64
+1..80
 ok 1 - has_fk( schema, table, description ) should pass
 ok 2 - has_fk( schema, table, description ) should have the proper description
 ok 3 - has_fk( table, description ) should pass
@@ -48,19 +48,35 @@ ok 45 - basic fk_ok noschema should pass
 ok 46 - basic fk_ok noschema should have the proper description
 ok 47 - basic fk_ok noschema desc should pass
 ok 48 - basic fk_ok noschema desc should have the proper description
-ok 49 - Test should pass
-ok 50 - fk_ok fail should fail
-ok 51 - fk_ok fail should have the proper description
-ok 52 - fk_ok fail should have the proper diagnostics
-ok 53 - fk_ok fail desc should fail
-ok 54 - fk_ok fail desc should have the proper description
-ok 55 - fk_ok fail desc should have the proper diagnostics
-ok 56 - fk_ok fail no schema should fail
-ok 57 - fk_ok fail no schema should have the proper description
-ok 58 - fk_ok fail no schema should have the proper diagnostics
-ok 59 - fk_ok fail no schema desc should fail
-ok 60 - fk_ok fail no schema desc should have the proper description
-ok 61 - fk_ok fail no schema desc should have the proper diagnostics
-ok 62 - fk_ok bad PK test should fail
-ok 63 - fk_ok bad PK test should have the proper description
-ok 64 - fk_ok bad PK test should have the proper diagnostics
+ok 49 - basic fk_ok noschema desc should have the proper diagnostics
+ok 50 - Test should pass
+ok 51 - fk_ok fail should fail
+ok 52 - fk_ok fail should have the proper description
+ok 53 - fk_ok fail should have the proper diagnostics
+ok 54 - fk_ok fail desc should fail
+ok 55 - fk_ok fail desc should have the proper description
+ok 56 - fk_ok fail desc should have the proper diagnostics
+ok 57 - fk_ok fail no schema should fail
+ok 58 - fk_ok fail no schema should have the proper description
+ok 59 - fk_ok fail no schema should have the proper diagnostics
+ok 60 - fk_ok fail no schema desc should fail
+ok 61 - fk_ok fail no schema desc should have the proper description
+ok 62 - fk_ok fail no schema desc should have the proper diagnostics
+ok 63 - fk_ok bad PK test should fail
+ok 64 - fk_ok bad PK test should have the proper description
+ok 65 - fk_ok bad PK test should have the proper diagnostics
+ok 66 - double fk schema test should pass
+ok 67 - double fk schema test should have the proper description
+ok 68 - double fk schema test should have the proper diagnostics
+ok 69 - double fk test should pass
+ok 70 - double fk test should have the proper description
+ok 71 - double fk test should have the proper diagnostics
+ok 72 - double fk and col schema test should pass
+ok 73 - double fk and col schema test should have the proper description
+ok 74 - double fk and col schema test should have the proper diagnostics
+ok 75 - missing fk test should fail
+ok 76 - missing fk test should have the proper description
+ok 77 - missing fk test should have the proper diagnostics
+ok 78 - bad FK column test should fail
+ok 79 - bad FK column test should have the proper description
+ok 80 - bad FK column test should have the proper diagnostics

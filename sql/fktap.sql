@@ -31,8 +31,8 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
---SELECT plan(64);
-select * from no_plan();
+SELECT plan(80);
+--select * from no_plan();
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -62,6 +62,7 @@ CREATE TABLE fk3(
     pk_id INT NOT NULL REFERENCES pk(id),
     pk2_num int NOT NULL,
     pk2_dot int NOT NULL,
+    foo_id INT NOT NULL,
     FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
 );
 
@@ -290,12 +291,13 @@ SELECT * FROM check_test(
         want: fk(pk_id) REFERENCES ok(fid)'
 );
 
+-- Try a table with multiple FKs.
 SELECT * FROM check_test(
     fk_ok( 'public', 'fk3', 'pk_id', 'public', 'pk', 'id' ),
     true,
     'double fk schema test',
     'public.fk3(pk_id) should reference public.pk(id)',
-    ''    
+    ''
 );
 
 SELECT * FROM check_test(
@@ -303,7 +305,42 @@ SELECT * FROM check_test(
     true,
     'double fk test',
     'fk3(pk_id) should reference pk(id)',
-    ''    
+    ''
+);
+
+-- Try the second FK on that table, which happens to be a multicolumn FK.
+SELECT * FROM check_test(
+    fk_ok(
+        'public', 'fk3', ARRAY['pk2_num', 'pk2_dot'],
+        'public', 'pk2', ARRAY['num', 'dot']
+    ),
+    true,
+    'double fk and col schema test',
+    'public.fk3(pk2_num, pk2_dot) should reference public.pk2(num, dot)',
+    ''
+);
+
+-- Try FK columns that reference nothing.
+SELECT * FROM check_test(
+    fk_ok( 'public', 'fk3', 'id', 'public', 'foo', 'id' ),
+    false,
+    'missing fk test',
+    'public.fk3(id) should reference public.foo(id)',
+    '        have: public.fk3(id) REFERENCES NOTHING
+        want: public.fk3(id) REFERENCES public.foo(id)'
+);
+
+-- Try non-existent FK colums.
+SELECT * FROM check_test(
+    fk_ok(
+        'fk3', ARRAY['pk2_blah', 'pk2_dot'],
+        'pk2', ARRAY['num', 'dot']
+    ),
+    false,
+    'bad FK column test',
+    'fk3(pk2_blah, pk2_dot) should reference pk2(num, dot)',
+    '        have: fk3(pk2_blah, pk2_dot) REFERENCES NOTHING
+        want: fk3(pk2_blah, pk2_dot) REFERENCES pk2(num, dot)'
 );
 
 /****************************************************************************/
