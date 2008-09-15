@@ -733,7 +733,7 @@ table in question does not exist.
 
     SELECT col_is_pk(
         'persons',
-        ARRAY['first', 'last'],
+        ARRAY['given_name', 'surname'],
     );
 
 Tests whether the specified column or columns in a table is/are the primary
@@ -771,7 +771,7 @@ Will produce something like this:
 
     SELECT col_is_fk(
         'contacts',
-        ARRAY['first', 'last'],
+        ARRAY['given_name', 'surname'],
     );
 
 Just like `col_is_fk()`, except that it test that the column or array of
@@ -804,9 +804,9 @@ simply list all of the foreign key constraint columns, like so:
 
     SELECT fk_ok(
         'contacts',
-        ARRAY['person_first', 'person_last'],
+        ARRAY['person_given_name', 'person_surname'],
         'persons',
-        ARRAY['first', 'last'],
+        ARRAY['given_name', 'surname'],
     );
 
 This function combines `col_is_fk()` and `col_is_pk()` into a single test that
@@ -868,7 +868,7 @@ in question does not exist.
 
     SELECT col_is_unique(
         'contacts',
-        ARRAY['first', 'last'],
+        ARRAY['given_name', 'surname'],
     );
 
 Just like `col_is_pk()`, except that it test that the column or array of
@@ -907,7 +907,7 @@ not exist.
 
     SELECT col_has_check(
         'contacts',
-        ARRAY['first', 'last'],
+        ARRAY['given_name', 'surname'],
     );
 
 Just like `col_is_pk()`, except that it test that the column or array of
