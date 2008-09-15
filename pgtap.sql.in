@@ -518,7 +518,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_table( schema, table, description )
-CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_table ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -533,7 +533,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_table( table, description )
-CREATE OR REPLACE FUNCTION has_table ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_table ( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -547,13 +547,13 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_table( table )
-CREATE OR REPLACE FUNCTION has_table ( TEXT )
+CREATE OR REPLACE FUNCTION has_table ( NAME )
 RETURNS TEXT AS $$
     SELECT has_table( $1, 'Table ' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- has_view( schema, view, description )
-CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_view ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -568,7 +568,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_view( view, description )
-CREATE OR REPLACE FUNCTION has_view ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_view ( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -582,13 +582,13 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_view( view )
-CREATE OR REPLACE FUNCTION has_view ( TEXT )
+CREATE OR REPLACE FUNCTION has_view ( NAME )
 RETURNS TEXT AS $$
     SELECT has_view( $1, 'View ' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- has_column( schema, table, column, description )
-CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_column ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -606,7 +606,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_column( table, column, description )
-CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_column ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -623,13 +623,13 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- has_column( table, column )
-CREATE OR REPLACE FUNCTION has_column ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_column ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT has_column( $1, $2, 'Column ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- _col_is_null( schema, table, column, desc, null )
-CREATE OR REPLACE FUNCTION _col_is_null ( TEXT, TEXT, TEXT, TEXT, bool )
+CREATE OR REPLACE FUNCTION _col_is_null ( NAME, NAME, NAME, TEXT, bool )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -648,7 +648,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- _col_is_null( table, column, desc, null )
-CREATE OR REPLACE FUNCTION _col_is_null ( TEXT, TEXT, TEXT, bool )
+CREATE OR REPLACE FUNCTION _col_is_null ( NAME, NAME, TEXT, bool )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -666,43 +666,43 @@ RETURNS TEXT AS $$
 $$ LANGUAGE SQL;
 
 -- col_not_null( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_not_null ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, $4, true );
 $$ LANGUAGE SQL;
 
 -- col_not_null( table, column, description )
-CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_not_null ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, true );
 $$ LANGUAGE SQL;
 
 -- col_not_null( table, column )
-CREATE OR REPLACE FUNCTION col_not_null ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_not_null ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be NOT NULL', true );
 $$ LANGUAGE SQL;
 
 -- col_is_null( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_null ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, $4, false );
 $$ LANGUAGE SQL;
 
 -- col_is_null( schema, table, column )
-CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_null ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, $3, false );
 $$ LANGUAGE SQL;
 
 -- col_is_null( table, column )
-CREATE OR REPLACE FUNCTION col_is_null ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_null ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should allow NULL', false );
 $$ LANGUAGE SQL;
 
 -- col_type_is( schema, table, column, type, description )
-CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     actual_type TEXT;
@@ -743,13 +743,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- col_type_is( table, column, type, description )
-CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
     SELECT col_type_is( NULL, $1, $2, $3, $4 );
 $$ LANGUAGE SQL;
 
 -- col_type_is( table, column, type )
-CREATE OR REPLACE FUNCTION col_type_is ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '.' || $2 || ' should be type ' || $3 );
 $$ LANGUAGE SQL;
@@ -770,7 +770,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- col_default_is( schema, table, column, default, description )
-CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, TEXT, anyelement, TEXT )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, NAME, anyelement, TEXT )
 RETURNS TEXT AS $$
     SELECT _def_is((
         SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
@@ -790,7 +790,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- col_default_is( table, column, default, description )
-CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, anyelement, TEXT )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement, TEXT )
 RETURNS TEXT AS $$
     SELECT _def_is((
         SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
@@ -808,7 +808,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- col_default_is( table, column, default )
-CREATE OR REPLACE FUNCTION col_default_is ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_default_is(
         $1, $2, $3,
@@ -817,7 +817,7 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- _hasc( schema, table, constraint_type )
-CREATE OR REPLACE FUNCTION _hasc ( TEXT, TEXT, CHAR )
+CREATE OR REPLACE FUNCTION _hasc ( NAME, NAME, CHAR )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
             SELECT true
@@ -834,7 +834,7 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE sql;
 
 -- _hasc( table, constraint_type )
-CREATE OR REPLACE FUNCTION _hasc ( TEXT, CHAR )
+CREATE OR REPLACE FUNCTION _hasc ( NAME, CHAR )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
             SELECT true
@@ -848,28 +848,28 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE sql;
 
 -- has_pk( schema, table, description )
-CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_pk ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, $2, 'p' ), $3 );
 $$ LANGUAGE sql;
 
 -- has_pk( table, description )
-CREATE OR REPLACE FUNCTION has_pk ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_pk ( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, 'p' ), $2 );
 $$ LANGUAGE sql;
 
 -- has_pk( table )
-CREATE OR REPLACE FUNCTION has_pk ( TEXT )
+CREATE OR REPLACE FUNCTION has_pk ( NAME )
 RETURNS TEXT AS $$
     SELECT has_pk( $1, 'Table ' || $1 || ' should have a primary key' );
 $$ LANGUAGE sql;
 
 -- _ckeys( schema, table, constraint_type )
-CREATE OR REPLACE FUNCTION _ckeys ( TEXT, TEXT, CHAR )
-RETURNS TEXT[] AS $$
+CREATE OR REPLACE FUNCTION _ckeys ( NAME, NAME, CHAR )
+RETURNS NAME[] AS $$
     SELECT ARRAY (
-      SELECT a.attname::text
+      SELECT a.attname
         FROM pg_catalog.pg_namespace n
         JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
         JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
@@ -881,10 +881,10 @@ RETURNS TEXT[] AS $$
 $$ LANGUAGE sql;
 
 -- _ckeys( table, constraint_type )
-CREATE OR REPLACE FUNCTION _ckeys ( TEXT, CHAR )
-RETURNS TEXT[] AS $$
+CREATE OR REPLACE FUNCTION _ckeys ( NAME, CHAR )
+RETURNS NAME[] AS $$
     SELECT ARRAY (
-      SELECT a.attname::text
+      SELECT a.attname
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
         JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
@@ -986,55 +986,55 @@ CREATE OR REPLACE VIEW pg_all_foreign_keys AS
      AND _pg_sv_table_accessible(n1.oid, c1.oid);
 
 -- col_is_pk( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, $2, 'p' ), $3, $4 );
 $$ LANGUAGE sql;
 
 -- col_is_pk( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, 'p' ), $2, $3 );
 $$ LANGUAGE sql;
 
 -- col_is_pk( table, column[] )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT[] )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT col_is_pk( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should be a primary key' );
 $$ LANGUAGE sql;
 
 -- col_is_pk( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_pk( $1, $2, ARRAY[$3], $4 );
 $$ LANGUAGE sql;
 
 -- col_is_pk( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_pk( $1, ARRAY[$2], $3 );
 $$ LANGUAGE sql;
 
 -- col_is_pk( table, column )
-CREATE OR REPLACE FUNCTION col_is_pk ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT col_is_pk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a primary key' );
 $$ LANGUAGE sql;
 
 -- has_fk( schema, table, description )
-CREATE OR REPLACE FUNCTION has_fk ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_fk ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, $2, 'f' ), $3 );
 $$ LANGUAGE sql;
 
 -- has_fk( table, description )
-CREATE OR REPLACE FUNCTION has_fk ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_fk ( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, 'f' ), $2 );
 $$ LANGUAGE sql;
 
 -- has_fk( table )
-CREATE OR REPLACE FUNCTION has_fk ( TEXT )
+CREATE OR REPLACE FUNCTION has_fk ( NAME )
 RETURNS TEXT AS $$
     SELECT has_fk( $1, 'Table ' || $1 || ' should have a foreign key constraint' );
 $$ LANGUAGE sql;
@@ -1154,91 +1154,91 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- col_is_unique( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, $2, 'u' ), $3, $4 );
 $$ LANGUAGE sql;
 
 -- col_is_unique( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, 'u' ), $2, $3 );
 $$ LANGUAGE sql;
 
 -- col_is_unique( table, column[] )
-CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT[] )
+CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT col_is_unique( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should have a unique constraint' );
 $$ LANGUAGE sql;
 
 -- col_is_unique( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_unique( $1, $2, ARRAY[$3], $4 );
 $$ LANGUAGE sql;
 
 -- col_is_unique( table, column, description )
-CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_is_unique( $1, ARRAY[$2], $3 );
 $$ LANGUAGE sql;
 
 -- col_is_unique( table, column )
-CREATE OR REPLACE FUNCTION col_is_unique ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT col_is_unique( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a unique constraint' );
 $$ LANGUAGE sql;
 
 -- has_check( schema, table, description )
-CREATE OR REPLACE FUNCTION has_check ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_check ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, $2, 'c' ), $3 );
 $$ LANGUAGE sql;
 
 -- has_check( table, description )
-CREATE OR REPLACE FUNCTION has_check ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION has_check ( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _hasc( $1, 'c' ), $2 );
 $$ LANGUAGE sql;
 
 -- has_check( table )
-CREATE OR REPLACE FUNCTION has_check ( TEXT )
+CREATE OR REPLACE FUNCTION has_check ( NAME )
 RETURNS TEXT AS $$
     SELECT has_check( $1, 'Table ' || $1 || ' should have a check constraint' );
 $$ LANGUAGE sql;
 
 -- col_has_check( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, $2, 'c' ), $3, $4 );
 $$ LANGUAGE sql;
 
 -- col_has_check( table, column, description )
-CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT[], TEXT )
+CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is( _ckeys( $1, 'c' ), $2, $3 );
 $$ LANGUAGE sql;
 
 -- col_has_check( table, column[] )
-CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT[] )
+CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT col_has_check( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should have a check constraint' );
 $$ LANGUAGE sql;
 
 -- col_has_check( schema, table, column, description )
-CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_has_check( $1, $2, ARRAY[$3], $4 );
 $$ LANGUAGE sql;
 
 -- col_has_check( table, column, description )
-CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_has_check( $1, ARRAY[$2], $3 );
 $$ LANGUAGE sql;
 
 -- col_has_check( table, column )
-CREATE OR REPLACE FUNCTION col_has_check ( TEXT, TEXT )
+CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT col_has_check( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a check constraint' );
 $$ LANGUAGE sql;
