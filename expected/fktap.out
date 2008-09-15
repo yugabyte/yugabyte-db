@@ -1,5 +1,5 @@
 \set ECHO
-1..82
+1..88
 ok 1 - has_fk( schema, table, description ) should pass
 ok 2 - has_fk( schema, table, description ) should have the proper description
 ok 3 - has_fk( table, description ) should pass
@@ -24,61 +24,67 @@ ok 21 - col_is_fk( table, column, description ) should have the proper descripti
 ok 22 - col_is_fk( table, column, description ) should have the proper diagnostics
 ok 23 - multi-fk col_is_fk test should pass
 ok 24 - multi-fk col_is_fk test should have the proper description
-ok 25 - col_is_fk( schema, table, column[], description ) should pass
-ok 26 - col_is_fk( schema, table, column[], description ) should have the proper description
-ok 27 - col_is_fk( table, column[], description ) should pass
-ok 28 - col_is_fk( table, column[], description ) should have the proper description
-ok 29 - col_is_fk( table, column[] ) should pass
-ok 30 - col_is_fk( table, column[] ) should have the proper description
-ok 31 - full fk_ok array should pass
-ok 32 - full fk_ok array should have the proper description
-ok 33 - multiple fk fk_ok desc should pass
-ok 34 - multiple fk fk_ok desc should have the proper description
-ok 35 - fk_ok array desc should pass
-ok 36 - fk_ok array desc should have the proper description
-ok 37 - fk_ok array noschema desc should pass
-ok 38 - fk_ok array noschema desc should have the proper description
-ok 39 - multiple fk fk_ok noschema desc should pass
-ok 40 - multiple fk fk_ok noschema desc should have the proper description
-ok 41 - fk_ok array noschema should pass
-ok 42 - fk_ok array noschema should have the proper description
-ok 43 - basic fk_ok should pass
-ok 44 - basic fk_ok should have the proper description
-ok 45 - basic fk_ok desc should pass
-ok 46 - basic fk_ok desc should have the proper description
-ok 47 - basic fk_ok noschema should pass
-ok 48 - basic fk_ok noschema should have the proper description
-ok 49 - basic fk_ok noschema desc should pass
-ok 50 - basic fk_ok noschema desc should have the proper description
-ok 51 - basic fk_ok noschema desc should have the proper diagnostics
-ok 52 - Test should pass
-ok 53 - fk_ok fail should fail
-ok 54 - fk_ok fail should have the proper description
-ok 55 - fk_ok fail should have the proper diagnostics
-ok 56 - fk_ok fail desc should fail
-ok 57 - fk_ok fail desc should have the proper description
-ok 58 - fk_ok fail desc should have the proper diagnostics
-ok 59 - fk_ok fail no schema should fail
-ok 60 - fk_ok fail no schema should have the proper description
-ok 61 - fk_ok fail no schema should have the proper diagnostics
-ok 62 - fk_ok fail no schema desc should fail
-ok 63 - fk_ok fail no schema desc should have the proper description
-ok 64 - fk_ok fail no schema desc should have the proper diagnostics
-ok 65 - fk_ok bad PK test should fail
-ok 66 - fk_ok bad PK test should have the proper description
-ok 67 - fk_ok bad PK test should have the proper diagnostics
-ok 68 - double fk schema test should pass
-ok 69 - double fk schema test should have the proper description
-ok 70 - double fk schema test should have the proper diagnostics
-ok 71 - double fk test should pass
-ok 72 - double fk test should have the proper description
-ok 73 - double fk test should have the proper diagnostics
-ok 74 - double fk and col schema test should pass
-ok 75 - double fk and col schema test should have the proper description
-ok 76 - double fk and col schema test should have the proper diagnostics
-ok 77 - missing fk test should fail
-ok 78 - missing fk test should have the proper description
-ok 79 - missing fk test should have the proper diagnostics
-ok 80 - bad FK column test should fail
-ok 81 - bad FK column test should have the proper description
-ok 82 - bad FK column test should have the proper diagnostics
+ok 25 - col_is_fk with no FKs should fail
+ok 26 - col_is_fk with no FKs should have the proper description
+ok 27 - col_is_fk with no FKs should have the proper diagnostics
+ok 28 - col_is_fk with no FKs should fail
+ok 29 - col_is_fk with no FKs should have the proper description
+ok 30 - col_is_fk with no FKs should have the proper diagnostics
+ok 31 - col_is_fk( schema, table, column[], description ) should pass
+ok 32 - col_is_fk( schema, table, column[], description ) should have the proper description
+ok 33 - col_is_fk( table, column[], description ) should pass
+ok 34 - col_is_fk( table, column[], description ) should have the proper description
+ok 35 - col_is_fk( table, column[] ) should pass
+ok 36 - col_is_fk( table, column[] ) should have the proper description
+ok 37 - full fk_ok array should pass
+ok 38 - full fk_ok array should have the proper description
+ok 39 - multiple fk fk_ok desc should pass
+ok 40 - multiple fk fk_ok desc should have the proper description
+ok 41 - fk_ok array desc should pass
+ok 42 - fk_ok array desc should have the proper description
+ok 43 - fk_ok array noschema desc should pass
+ok 44 - fk_ok array noschema desc should have the proper description
+ok 45 - multiple fk fk_ok noschema desc should pass
+ok 46 - multiple fk fk_ok noschema desc should have the proper description
+ok 47 - fk_ok array noschema should pass
+ok 48 - fk_ok array noschema should have the proper description
+ok 49 - basic fk_ok should pass
+ok 50 - basic fk_ok should have the proper description
+ok 51 - basic fk_ok desc should pass
+ok 52 - basic fk_ok desc should have the proper description
+ok 53 - basic fk_ok noschema should pass
+ok 54 - basic fk_ok noschema should have the proper description
+ok 55 - basic fk_ok noschema desc should pass
+ok 56 - basic fk_ok noschema desc should have the proper description
+ok 57 - basic fk_ok noschema desc should have the proper diagnostics
+ok 58 - Test should pass
+ok 59 - fk_ok fail should fail
+ok 60 - fk_ok fail should have the proper description
+ok 61 - fk_ok fail should have the proper diagnostics
+ok 62 - fk_ok fail desc should fail
+ok 63 - fk_ok fail desc should have the proper description
+ok 64 - fk_ok fail desc should have the proper diagnostics
+ok 65 - fk_ok fail no schema should fail
+ok 66 - fk_ok fail no schema should have the proper description
+ok 67 - fk_ok fail no schema should have the proper diagnostics
+ok 68 - fk_ok fail no schema desc should fail
+ok 69 - fk_ok fail no schema desc should have the proper description
+ok 70 - fk_ok fail no schema desc should have the proper diagnostics
+ok 71 - fk_ok bad PK test should fail
+ok 72 - fk_ok bad PK test should have the proper description
+ok 73 - fk_ok bad PK test should have the proper diagnostics
+ok 74 - double fk schema test should pass
+ok 75 - double fk schema test should have the proper description
+ok 76 - double fk schema test should have the proper diagnostics
+ok 77 - double fk test should pass
+ok 78 - double fk test should have the proper description
+ok 79 - double fk test should have the proper diagnostics
+ok 80 - double fk and col schema test should pass
+ok 81 - double fk and col schema test should have the proper description
+ok 82 - double fk and col schema test should have the proper diagnostics
+ok 83 - missing fk test should fail
+ok 84 - missing fk test should have the proper description
+ok 85 - missing fk test should have the proper diagnostics
+ok 86 - bad FK column test should fail
+ok 87 - bad FK column test should have the proper description
+ok 88 - bad FK column test should have the proper diagnostics

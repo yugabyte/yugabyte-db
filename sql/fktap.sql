@@ -31,8 +31,8 @@ BEGIN;
 -- ## SET search_path TO TAPSCHEMA,public;
 
 -- Set the test plan.
-SELECT plan(82);
---select * from no_plan();
+SELECT plan(88);
+--SELECT * from no_plan();
 
 -- These will be rolled back. :-)
 CREATE TABLE pk (
@@ -151,6 +151,23 @@ SELECT * FROM check_test(
     true,
     'multi-fk col_is_fk test',
     'Column fk3.pk_id should be a foreign key'
+);
+
+-- Check failure for table with no FKs.
+SELECT * FROM check_test(
+    col_is_fk( 'public', 'pk', 'name', 'pk.name should be an fk' ),
+    false,
+    'col_is_fk with no FKs',
+    'pk.name should be an fk',
+    '    Table public.pk has no foreign key columns'
+);
+
+SELECT * FROM check_test(
+    col_is_fk( 'pk', 'name' ),
+    false,
+    'col_is_fk with no FKs',
+    'Column pk.name should be a foreign key',
+    '    Table pk has no foreign key columns'
 );
 
 

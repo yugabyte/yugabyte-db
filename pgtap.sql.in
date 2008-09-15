@@ -1062,7 +1062,7 @@ BEGIN
            AND fk_table_name  = $2
     ) INTO names;
 
-    IF FOUND THEN
+    IF NAMES[1] IS NOT NULL THEN
         RETURN fail($4) || E'\n' || diag(
             '    Table ' || $1 || '.' || $2 || E' has these foreign key columns:\n        '
             || array_to_string( names, E'\n        ' )
@@ -1071,7 +1071,7 @@ BEGIN
 
     -- No FKs in this table.
     RETURN fail($4) || E'\n' || diag(
-        '    No foreign key columns exist in table ' || $1 || '.' || $2
+        '    Table ' || $1 || '.' || $2 || ' has no foreign key columns'
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -1097,7 +1097,7 @@ BEGIN
          WHERE fk_table_name  = $1
     ) INTO names;
 
-    IF FOUND THEN
+    IF NAMES[1] IS NOT NULL THEN
         RETURN fail($3) || E'\n' || diag(
             '    Table ' || $1 || E' has these foreign key columns:\n        '
             || array_to_string( names, E'\n        ' )
@@ -1106,7 +1106,7 @@ BEGIN
 
     -- No FKs in this table.
     RETURN fail($3) || E'\n' || diag(
-        '    No foreign key columns exist in table ' || $1 ||
+        '    Table ' || $1 || ' has no foreign key columns'
     );
 END;
 $$ LANGUAGE plpgsql;
