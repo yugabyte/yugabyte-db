@@ -780,8 +780,8 @@ too. Since the table might have more than one foreign key, the diagnostics
 simply list all of the foreign key constraint columns, like so:
 
     #    Table widget has foreign key constraints on these columns:
-    #        {pk_id}
-    #        {pk2_num,pk2_dot}
+    #        {thingy_id}
+    #        {surname,given_name}
 
 ### fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description ) ###
 ### fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] ) ###
