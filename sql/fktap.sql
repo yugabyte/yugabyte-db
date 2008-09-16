@@ -124,7 +124,7 @@ SELECT * FROM check_test(
     col_is_fk( 'fk', 'pk_id' ),
     true,
     'col_is_fk( table, column )',
-    'Column fk.pk_id should be a foreign key'
+    'Column fk(pk_id) should be a foreign key'
 );
 
 SELECT * FROM check_test(
@@ -151,7 +151,7 @@ SELECT * FROM check_test(
     col_is_fk( 'fk3', 'pk_id' ),
     true,
     'multi-fk col_is_fk test',
-    'Column fk3.pk_id should be a foreign key'
+    'Column fk3(pk_id) should be a foreign key'
 );
 
 -- Check failure for table with no FKs.
@@ -167,7 +167,7 @@ SELECT * FROM check_test(
     col_is_fk( 'pk', 'name' ),
     false,
     'col_is_fk with no FKs',
-    'Column pk.name should be a foreign key',
+    'Column pk(name) should be a foreign key',
     '    Table pk has no foreign key columns'
 );
 
@@ -193,7 +193,7 @@ SELECT * FROM check_test(
     col_is_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'] ),
     true,
     'col_is_fk( table, column[] )',
-    'Columns fk2.{pk2_num,pk2_dot} should be a foreign key'
+    'Columns fk2(pk2_num, pk2_dot) should be a foreign key'
 );
 
 /****************************************************************************/

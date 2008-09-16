@@ -100,7 +100,7 @@ SELECT is(
 \echo ok 15 - test col_is_unique( table, column )
 SELECT is(
     col_is_unique( 'sometab', 'name' ),
-    'ok 15 - Column sometab.name should have a unique constraint',
+    'ok 15 - Column sometab(name) should have a unique constraint',
     'col_is_unique( table, column ) should work'
 );
 
@@ -141,7 +141,7 @@ SELECT is(
 \echo ok 25 - test col_is_unique( table, column[], description )
 SELECT is(
     col_is_unique( 'argh', ARRAY['id', 'name'] ),
-    'ok 25 - Columns argh.{id,name} should have a unique constraint',
+    'ok 25 - Columns argh(id, name) should have a unique constraint',
     'col_is_unique( table, column[] ) should work'
 );
 

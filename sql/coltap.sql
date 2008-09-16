@@ -59,14 +59,14 @@ SELECT is(
 \echo ok 5 - testing col_not_null( schema, table, column, desc )
 SELECT is(
     col_not_null( 'sometab', 'id' ),
-    'ok 5 - Column sometab.id should be NOT NULL',
+    'ok 5 - Column sometab(id) should be NOT NULL',
     'col_not_null( table, column ) should work'
 );
 -- Make sure failure is correct.
 \echo ok 7 - testing col_not_null( schema, table, column, desc )
 SELECT is(
     col_not_null( 'sometab', 'name' ),
-    E'not ok 7 - Column sometab.name should be NOT NULL\n# Failed test 7: "Column sometab.name should be NOT NULL"',
+    E'not ok 7 - Column sometab(name) should be NOT NULL\n# Failed test 7: "Column sometab(name) should be NOT NULL"',
     'col_not_null( table, column ) should properly fail'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 7 );
@@ -89,14 +89,14 @@ SELECT is(
 \echo ok 13 - testing col_is_null( schema, table, column, desc )
 SELECT is(
     col_is_null( 'sometab', 'name' ),
-    'ok 13 - Column sometab.name should allow NULL',
+    'ok 13 - Column sometab(name) should allow NULL',
     'col_is_null( table, column ) should work'
 );
 -- Make sure failure is correct.
 \echo ok 15 - testing col_is_null( schema, table, column, desc )
 SELECT is(
     col_is_null( 'sometab', 'id' ),
-    E'not ok 15 - Column sometab.id should allow NULL\n# Failed test 15: "Column sometab.id should allow NULL"',
+    E'not ok 15 - Column sometab(id) should allow NULL\n# Failed test 15: "Column sometab(id) should allow NULL"',
     'col_is_null( table, column ) should properly fail'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 15 );
@@ -120,14 +120,14 @@ SELECT is(
 \echo ok 21 - testing col_type_is( table, column, type )
 SELECT is(
     col_type_is( 'sometab', 'name', 'text' ),
-    'ok 21 - Column sometab.name should be type text',
+    'ok 21 - Column sometab(name) should be type text',
     'col_type_is( table, column, type ) should work'
 );
 
 \echo ok 23 - testing col_type_is( table, column, type ) case-insensitively
 SELECT is(
     col_type_is( 'sometab', 'name', 'TEXT' ),
-    'ok 23 - Column sometab.name should be type TEXT',
+    'ok 23 - Column sometab(name) should be type TEXT',
     'col_type_is( table, column, type ) should work case-insensitively'
 );
 
@@ -135,7 +135,7 @@ SELECT is(
 \echo ok 25 - testing col_type_is( table, column, type ) failure
 SELECT is(
     col_type_is( 'sometab', 'name', 'int4' ),
-    E'not ok 25 - Column sometab.name should be type int4\n# Failed test 25: "Column sometab.name should be type int4"\n#         have: text\n#         want: int4',
+    E'not ok 25 - Column sometab(name) should be type int4\n# Failed test 25: "Column sometab(name) should be type int4"\n#         have: text\n#         want: int4',
     'col_type_is( table, column, type ) should fail with proper diagnostics'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 25 );
@@ -187,7 +187,7 @@ SELECT is(
 \echo ok 37 - col_default_is( table, column, default )
 SELECT is(
     col_default_is( 'sometab', 'name', '' ),
-    'ok 37 - Column sometab.name should default to ''''',
+    'ok 37 - Column sometab(name) should default to ''''',
     'col_default_is( table, column, default ) should work'
 );
 

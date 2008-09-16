@@ -69,10 +69,12 @@ $$ LANGUAGE plpgsql strict;
 CREATE OR REPLACE FUNCTION _get ( text )
 RETURNS integer AS $$
 DECLARE
-    ret integer;
+    rec RECORD;
 BEGIN
-    EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
-    RETURN ret;
+    FOR rec IN EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' LOOP
+        RETURN rec.value;
+    END LOOP;
+    RETURN NULL;
 END;
 $$ LANGUAGE plpgsql strict;
 
@@ -111,8 +113,11 @@ CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
-    VALUES( ' || $1 || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ', '
-          || quote_literal($4) || ', ' || quote_literal($5) || ' )';
+    VALUES( ' || quote_literal(CASE WHEN $1 THEN 't' ELSE 'f' END) || ', '
+              || quote_literal(CASE WHEN $2 THEN 't' ELSE 'f' END) || ', '
+              || quote_literal(COALESCE($3, '')) || ', '
+              || quote_literal($4) || ', '
+              || quote_literal($5) || ' )';
     RETURN currval('__tresults___numb_seq');
 END;
 $$ LANGUAGE plpgsql;
@@ -141,7 +146,7 @@ BEGIN
     plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
 
     IF curr_test IS NULL THEN
-        RAISE EXCEPTION '%', '# No tests run!';
+        RAISE EXCEPTION '# No tests run!';
     END IF;
 
     IF exp_tests = 0 OR exp_tests IS NULL THEN
@@ -171,7 +176,8 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION diag ( msg text )
 RETURNS TEXT AS $$
 BEGIN
-    RETURN regexp_replace( msg, '^', '# ', 'gn' );
+--    RETURN regexp_replace( msg, '^', '# ', 'gn' );
+    RETURN '# ' || replace( replace( replace( msg, E'\r\n', E'\n# ' ), E'\n', E'\n# ' ), E'\r', E'\n# ');
 END;
 $$ LANGUAGE plpgsql strict;
 
@@ -200,8 +206,8 @@ BEGIN
 
     RETURN (CASE aok WHEN TRUE THEN '' ELSE 'not ' END)
            || 'ok ' || _set( 'curr_test', test_num )
-           || CASE descr WHEN '' THEN '' ELSE COALESCE( ' - ' || substr(regexp_replace( descr, '^', '# ', 'gn' ), 3), '' ) END
-           || COALESCE( ' ' || regexp_replace( 'TODO ' || todo_why, '^', '# ', 'gn' ), '')
+           || CASE descr WHEN '' THEN '' ELSE COALESCE( ' - ' || substr(diag( descr ), 3), '' ) END
+           || COALESCE( ' ' || diag( 'TODO ' || todo_why ), '')
            || CASE aok WHEN TRUE THEN '' ELSE E'\n' ||
                 diag('Failed ' ||
                 CASE WHEN todo_why IS NULL THEN '' ELSE '(TODO) ' END ||
@@ -625,7 +631,7 @@ $$ LANGUAGE SQL;
 -- has_column( table, column )
 CREATE OR REPLACE FUNCTION has_column ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT has_column( $1, $2, 'Column ' || $1 || '.' || $2 || ' should exist' );
+    SELECT has_column( $1, $2, 'Column ' || $1 || '(' || $2 || ') should exist' );
 $$ LANGUAGE SQL;
 
 -- _col_is_null( schema, table, column, desc, null )
@@ -680,7 +686,7 @@ $$ LANGUAGE SQL;
 -- col_not_null( table, column )
 CREATE OR REPLACE FUNCTION col_not_null ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be NOT NULL', true );
+    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '(' || $2 || ') should be NOT NULL', true );
 $$ LANGUAGE SQL;
 
 -- col_is_null( schema, table, column, description )
@@ -698,7 +704,7 @@ $$ LANGUAGE SQL;
 -- col_is_null( table, column )
 CREATE OR REPLACE FUNCTION col_is_null ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should allow NULL', false );
+    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '(' || $2 || ') should allow NULL', false );
 $$ LANGUAGE SQL;
 
 -- col_type_is( schema, table, column, type, description )
@@ -751,7 +757,7 @@ $$ LANGUAGE SQL;
 -- col_type_is( table, column, type )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '.' || $2 || ' should be type ' || $3 );
+    SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '(' || $2 || ') should be type ' || $3 );
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
@@ -812,7 +818,7 @@ CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_default_is(
         $1, $2, $3,
-        'Column ' || $1 || '.' || $2 || ' should default to ' || quote_literal($3)
+        'Column ' || $1 || '(' || $2 || ') should default to ' || quote_literal($3)
     );
 $$ LANGUAGE sql;
 
@@ -1000,7 +1006,7 @@ $$ LANGUAGE sql;
 -- col_is_pk( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_is_pk( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should be a primary key' );
+    SELECT col_is_pk( $1, $2, 'Columns ' || $1 || '(' || array_to_string($2, ', ') || ') should be a primary key' );
 $$ LANGUAGE sql;
 
 -- col_is_pk( schema, table, column, description )
@@ -1018,7 +1024,7 @@ $$ LANGUAGE sql;
 -- col_is_pk( table, column )
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT col_is_pk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a primary key' );
+    SELECT col_is_pk( $1, $2, 'Column ' || $1 || '(' || $2 || ') should be a primary key' );
 $$ LANGUAGE sql;
 
 -- has_fk( schema, table, description )
@@ -1114,7 +1120,7 @@ $$ LANGUAGE plpgsql;
 -- col_is_fk( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_is_fk( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should be a foreign key' );
+    SELECT col_is_fk( $1, $2, 'Columns ' || $1 || '(' || array_to_string($2, ', ') || ') should be a foreign key' );
 $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )
@@ -1132,7 +1138,7 @@ $$ LANGUAGE sql;
 -- col_is_fk( table, column )
 CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT col_is_fk( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be a foreign key' );
+    SELECT col_is_fk( $1, $2, 'Column ' || $1 || '(' || $2 || ') should be a foreign key' );
 $$ LANGUAGE sql;
 
 -- has_unique( schema, table, description )
@@ -1168,7 +1174,7 @@ $$ LANGUAGE sql;
 -- col_is_unique( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_is_unique( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should have a unique constraint' );
+    SELECT col_is_unique( $1, $2, 'Columns ' || $1 || '(' || array_to_string($2, ', ') || ') should have a unique constraint' );
 $$ LANGUAGE sql;
 
 -- col_is_unique( schema, table, column, description )
@@ -1186,7 +1192,7 @@ $$ LANGUAGE sql;
 -- col_is_unique( table, column )
 CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT col_is_unique( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a unique constraint' );
+    SELECT col_is_unique( $1, $2, 'Column ' || $1 || '(' || $2 || ') should have a unique constraint' );
 $$ LANGUAGE sql;
 
 -- has_check( schema, table, description )
@@ -1222,7 +1228,7 @@ $$ LANGUAGE sql;
 -- col_has_check( table, column[] )
 CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_has_check( $1, $2, 'Columns ' || $1 || '.' || $2::text || ' should have a check constraint' );
+    SELECT col_has_check( $1, $2, 'Columns ' || $1 || '(' || array_to_string($2, ', ') || ') should have a check constraint' );
 $$ LANGUAGE sql;
 
 -- col_has_check( schema, table, column, description )
@@ -1240,7 +1246,7 @@ $$ LANGUAGE sql;
 -- col_has_check( table, column )
 CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT col_has_check( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a check constraint' );
+    SELECT col_has_check( $1, $2, 'Column ' || $1 || '(' || $2 || ') should have a check constraint' );
 $$ LANGUAGE sql;
 
 -- fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )

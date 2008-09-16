@@ -126,7 +126,7 @@ SELECT is(
 \echo ok 21 - has_column(table, column) fail
 SELECT is(
     has_column( '__SDFSDFD__', 'foo' ),
-    E'not ok 21 - Column __SDFSDFD__.foo should exist\n# Failed test 21: "Column __SDFSDFD__.foo should exist"',
+    E'not ok 21 - Column __SDFSDFD__(foo) should exist\n# Failed test 21: "Column __SDFSDFD__(foo) should exist"',
     'has_column(table, column) should fail for non-existent table'
 );
 
@@ -148,7 +148,7 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 21, 23, 25 );
 \echo ok 27 - has_column(table, column) pass
 SELECT is(
     has_column( 'sometab', 'id' ),
-    'ok 27 - Column sometab.id should exist',
+    'ok 27 - Column sometab(id) should exist',
     'has_column(table, column) should pass for an existing column'
 );
 

@@ -100,7 +100,7 @@ SELECT is(
 \echo ok 15 - test col_is_pk( table, column )
 SELECT is(
     col_is_pk( 'sometab', 'id' ),
-    'ok 15 - Column sometab.id should be a primary key',
+    'ok 15 - Column sometab(id) should be a primary key',
     'col_is_pk( table, column ) should work'
 );
 
@@ -141,7 +141,7 @@ SELECT is(
 \echo ok 25 - test col_is_pk( table, column[], description )
 SELECT is(
     col_is_pk( 'argh', ARRAY['id', 'name'] ),
-    'ok 25 - Columns argh.{id,name} should be a primary key',
+    'ok 25 - Columns argh(id, name) should be a primary key',
     'col_is_pk( table, column[] ) should work'
 );
 

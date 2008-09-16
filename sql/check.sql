@@ -100,7 +100,7 @@ SELECT is(
 \echo ok 15 - test col_has_check( table, column )
 SELECT is(
     col_has_check( 'sometab', 'name' ),
-    'ok 15 - Column sometab.name should have a check constraint',
+    'ok 15 - Column sometab(name) should have a check constraint',
     'col_has_check( table, column ) should work'
 );
 
@@ -141,7 +141,7 @@ SELECT is(
 \echo ok 25 - test col_has_check( table, column[], description )
 SELECT is(
     col_has_check( 'argh', ARRAY['id', 'name'] ),
-    'ok 25 - Columns argh.{id,name} should have a check constraint',
+    'ok 25 - Columns argh(id, name) should have a check constraint',
     'col_has_check( table, column[] ) should work'
 );
 
