@@ -1,5 +1,15 @@
 \set ECHO
-1..3
+1..13
 ok 1 - todo fail
 ok 2 - todo pass
 ok 3 - TODO tests should display properly
+ok 4 - simple skip should pass
+ok 5 - simple skip should have the proper description
+ok 6 - simple skip should have the proper diagnostics
+ok 7 - skip with num should pass
+ok 8 - skip with num should have the proper description
+ok 9 - skip with num should have the proper diagnostics
+ok 10 Skip multiple
+ok 11 Skip multiple
+ok 12 Skip multiple
+ok 13 - We should get the proper output for multiple skips

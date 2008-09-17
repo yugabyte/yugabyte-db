@@ -462,11 +462,16 @@ DECLARE
     output TEXT[];
 BEGIN
     FOR i IN 1..how_many LOOP
-        output = array_append(output, pass( 'SKIP: ' || why ) );
+        output = array_append(output, ok( TRUE, 'SKIP: ' || why ) );
     END LOOP;
     RETURN array_to_string(output, E'\n');
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION skip ( text )
+RETURNS TEXT AS $$
+    SELECT ok( TRUE, 'SKIP: ' || $1 );
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT )
 RETURNS TEXT AS $$
