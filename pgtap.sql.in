@@ -69,12 +69,10 @@ $$ LANGUAGE plpgsql strict;
 CREATE OR REPLACE FUNCTION _get ( text )
 RETURNS integer AS $$
 DECLARE
-    rec RECORD;
+    ret integer;
 BEGIN
-    FOR rec IN EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' LOOP
-        RETURN rec.value;
-    END LOOP;
-    RETURN NULL;
+    EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
+    RETURN ret;
 END;
 $$ LANGUAGE plpgsql strict;
 
@@ -113,8 +111,8 @@ CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
-    VALUES( ' || quote_literal(CASE WHEN $1 THEN 't' ELSE 'f' END) || ', '
-              || quote_literal(CASE WHEN $2 THEN 't' ELSE 'f' END) || ', '
+    VALUES( ' || $1 || ', '
+              || $2 || ', '
               || quote_literal(COALESCE($3, '')) || ', '
               || quote_literal($4) || ', '
               || quote_literal($5) || ' )';
@@ -175,11 +173,16 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION diag ( msg text )
 RETURNS TEXT AS $$
-BEGIN
---    RETURN regexp_replace( msg, '^', '# ', 'gn' );
-    RETURN '# ' || replace( replace( replace( msg, E'\r\n', E'\n# ' ), E'\n', E'\n# ' ), E'\r', E'\n# ');
-END;
-$$ LANGUAGE plpgsql strict;
+    SELECT '# ' || replace(
+       replace(
+            replace( $1, E'\r\n', E'\n# ' ),
+            E'\n',
+            E'\n# '
+        ),
+        E'\r',
+        E'\n# '
+    );
+$$ LANGUAGE sql strict;
 
 CREATE OR REPLACE FUNCTION ok ( boolean, text )
 RETURNS TEXT AS $$
@@ -1413,7 +1416,7 @@ BEGIN
         END IF;
 
         -- Remove the #s.
-        adiag := regexp_replace( adiag, '^# ', '', 'gn' );
+        adiag := replace( substring(adiag from 3), E'\n# ', E'\n' );
 
         -- Now compare the diagnostics.
         RETURN NEXT is(
