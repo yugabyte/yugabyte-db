@@ -18,6 +18,7 @@ Getopt::Long::GetOptions(
     'username|U=s'        => \$opts->{username},
     'host|h=s'            => \$opts->{host},
     'port|p=s'            => \$opts->{port},
+    'pset|P=s%'           => \$opts->{pset},
     'timer|t'             => \$opts->{timer},
     'color|c!'            => \$opts->{color},
     'verbose|v+'          => \$opts->{verbose},
@@ -56,17 +57,25 @@ for (qw(username host port dbname)) {
     push @command, "--$_" => $opts->{$_} if defined $opts->{$_}
 }
 
+# We can't use --tuples-only because then it doesn't allow --pset to toggle it
+# properly. :-(
 push @command, qw(
     --no-psqlrc
     --no-align
-    --tuples-only
     --quiet
     --pset pager=
-    --pset null=[NULL]
+    --pset tuples_only=true
     --set ON_ERROR_ROLLBACK=1
     --set ON_ERROR_STOP=1
-    --file
 );
+
+if (my $pset = $opts->{pset}) {
+    while (my ($k, $v) = each %{ $pset }) {
+        push @command, '--pset', "$k=$v";
+    }
+}
+
+push @command, '--file';
 
 TAP::Harness->new({
     verbosity => $opts->{verbose} || $ENV{TEST_VERBOSE},
@@ -107,6 +116,7 @@ The test scripts should be a series of SQL statements
   -h --help                Print a usage statement and exit.
   -m --man                 Print the complete documentation and exit.
   -v --version             Print the version number and exit.
+  -P --pset OPTION=VALUE   Set psql printing option.
 
 =head1 Options Details
 
@@ -164,6 +174,17 @@ Specifies the TCP port or the local Unix-domain socket file extension on which
 the server is listening for connections. Defaults to the value of the
 C<$PGPORT> environment variable or, if not set, to the port specified at
 compile time, usually 5432.
+
+=item C<-P>
+
+=item C<--pset>
+
+  pg_prove --pset tuples_only=0
+  pg_prove -P null=[NULL]
+
+Specifies printing options in the style of C<\pset> in the C<psql> program.
+See L<http://www.postgresql.org/docs/current/static/app-psql.html> for details
+on the supported options.
 
 =item C<-v>
 

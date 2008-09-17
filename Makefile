@@ -88,4 +88,4 @@ endif
 
 # In addition to installcheck, one can also run the tests through pg_prove.
 test:
-	./bin/pg_prove $(TESTS)
+	./bin/pg_prove --pset tuples_only=1 $(TESTS)

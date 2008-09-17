@@ -2,7 +2,7 @@
 \set QUIET 1
 
 --
--- Tests for pgTAP on PostgreSQL 7.3.
+-- Tests for pgTAP.
 --
 --
 -- $Id$
@@ -11,6 +11,7 @@
 \pset format unaligned
 \pset tuples_only true
 \pset pager
+
 -- Create plpgsql if it's not already there.
 SET client_min_messages = fatal;
 \set ON_ERROR_STOP off
