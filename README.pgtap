@@ -10,9 +10,9 @@ Installation
 
 For the impatient, to install pgTAP into a PostgreSQL database, just do this:
 
-    env USE_PGXS=1 make
-    env USE_PGXS=1 make install
-    env USE_PGXS=1 make installcheck
+    make USE_PGXS=1
+    make install USE_PGXS=1
+    make installcheck USE_PGXS=1
 
 If you encounter an error such as:
 
@@ -21,9 +21,9 @@ If you encounter an error such as:
 You need to use GNU make, which may well be installed on your system as
 'gmake':
 
-    env USE_PGXS=1 gmake
-    env USE_PGXS=1 gmake install
-    env USE_PGXS=1 gmake installcheck
+    gmake USE_PGXS=1
+    gmake install USE_PGXS=1
+    gmake installcheck USE_PGXS=1
 
 If you encounter an error such as:
 
@@ -38,17 +38,22 @@ to your `$PATH` environment variable:
 
 And finally, if all that fails, copy the entire distribution directory to the
 `contrib/` subdirectory of the PostgreSQL source code and try it there without
-the `USE_PGXS` environment variable:
+the `$USE_PGXS` variable:
 
     make
     make install
     make installcheck
 
 If you want to schema-qualify pgTAP (that is, install all of its functions
-into their own schema), set the `$TAPSCHEMA` environment variable to the name
-of the schema you'd like, for example:
+into their own schema), set the `$TAPSCHEMA` variable to the name of the
+schema you'd like, for example:
 
     make TAPSCHEMA=tap
+    make install
+    make installcheck TAPSCHEMA=tap
+
+Testing pgTAP with pgTAP
+------------------------
 
 In addition to the PostgreSQL-standared `installcheck` target, the `test`
 target uses the included `pg_prove` Perl program to do its testing, which
@@ -63,6 +68,16 @@ PostgreSQL client environment variables:
 * `$PGHOST`
 * `$PGPORT`
 * `$PGUSER`
+
+You can use it to run the test suite like so:
+
+    make test USE_PGXS=1 TAPSCHEMA=tap PGUSER=postgres
+
+Of course, if you're running the tests from the `contrib/` directory, you
+should omit the `USE_PGXS` variable.
+
+Adding pgTAP to a Database
+--------------------------
 
 Once pgTAP has been built and tested, you can install it into a
 PL/pgSQL-enabled database:
@@ -84,14 +99,14 @@ directory output by `pg_config --sharedir`. So you can always do this:
 
     psql -d template1 -f `pg_config --sharedir`/contrib/pgtap.sql
 
-But do be aware that, if you've specified a schema using `$TAPSCHEMA`, it will
-always be created and the pgTAP functions placed in it.
+But do be aware that, if you've specified a schema using `$TAPSCHEMA`, that
+schema will always be created and the pgTAP functions placed in it.
 
-Running pgTAP Tests
-===================
+pgTAP Test Scripts
+==================
 
-You can also distribute `pgtap.sql` with any PostgreSQL distribution, such as
-a custom data type. For such a case, if your users want to run your test suite
+You can distribute `pgtap.sql` with any PostgreSQL distribution, such as a
+custom data type. For such a case, if your users want to run your test suite
 using PostgreSQL's standard `installcheck` make target, just be sure to set
 varibles to keep the tests quiet, start a transaction, load the functions in
 your test script, and then rollback the transaction at the end of the script.
@@ -176,7 +191,7 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
 Yep, that's all there is to it. Call `pg_prove --help` to see other supported
 options, and `pg_prove --man` to see its entire documentation.
 
-Description
+Using pgTAP
 ===========
 
 The purpose of pgTAP is to provide a wide range of testing utilities that
@@ -1250,14 +1265,13 @@ To Do
 * Add `todo_start()` and `todo_end()` (and `in_todo()`).
 * Add `note()`?
 * Add `can_ok()`.
-* Don't install test scripts.
 
 Suported Versions
 -----------------
 
 pgTAP has been tested on the following builds of PostgreSQL:
 
-* PostgreSQL 8.3.1 on i386-apple-darwin9.2.2
+* PostgreSQL 8.3.3 on i386-apple-darwin9.4.0
 * PostgreSQL 8.0.17 on i686-apple-darwin9.4.0
 
 If you know of others, please submit them! Use

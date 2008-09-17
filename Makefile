@@ -1,6 +1,7 @@
 # $Id$
 TESTS = $(patsubst %.sql.in,%.sql,$(wildcard sql/*.sql.in))
-DATA_built = pgtap.sql uninstall_pgtap.sql $(TESTS)
+EXTRA_CLEAN = $(TESTS)
+DATA_built = pgtap.sql uninstall_pgtap.sql
 MODULES = pgtap
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
@@ -87,6 +88,9 @@ ifneq ($(PGVER_MINOR), 3)
 endif
 endif
 
+# Make sure that we build the regression tests.
+installcheck: $(TESTS)
+
 # In addition to installcheck, one can also run the tests through pg_prove.
-test:
+test: $(TESTS)
 	./bin/pg_prove --pset tuples_only=1 $(TESTS)
