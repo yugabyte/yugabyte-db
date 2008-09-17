@@ -35,7 +35,7 @@ else
 	cp $< $@
 endif
 
-pgtap.sql:
+pgtap.sql: pgtap.sql.in
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' pgtap.sql.in > pgtap.sql
 else
@@ -47,7 +47,7 @@ ifneq ($(PGVER_MINOR), 3)
 endif
 endif
 
-uninstall_pgtap.sql:
+uninstall_pgtap.sql: uninstall_pgtap.sql.in
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' uninstall_pgtap.sql.in > uninstall_pgtap.sql
 else
