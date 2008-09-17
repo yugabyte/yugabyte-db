@@ -1,5 +1,5 @@
 # $Id$
-DATA_built = pgtap.sql uninstall_pgtap.sql
+DATA_built = pgtap.sql uninstall_pgtap.sql $(patsubst %.sql.in,%.sql,$(wildcard sql/*.sql.in))
 MODULES = pgtap
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
