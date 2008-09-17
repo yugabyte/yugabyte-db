@@ -464,6 +464,7 @@ error-prone as you think they should be.
 
 When you want to make sure that an exception is thrown by PostgreSQL under
 certain circumstances, use `throws_ok()` to test for those circumstances.
+Supported by 8.1 or higher.
 
 The first argument should be a string representing the query to be executed.
 `throws_ok()` will use the PL/pgSQL `EXECUTE` statement to execute it and
@@ -499,8 +500,11 @@ Idea borrowed from the Test::Exception Perl module.
     );
 
 The inverse of `throws_ok()`, these functions test to ensure that a SQL
-statement does *not* throw an exception. Should a `lives_ok()` test fail, it
-produces appropriate diagnostic messages. For example:
+statement does *not* throw an exception.
+Supported by 8.1 or higher.
+
+Should a `lives_ok()` test fail, it produces appropriate diagnostic messages.
+For example:
 
     not ok 85 - simple success
     # Failed test "simple success"
@@ -1229,6 +1233,13 @@ A number of casts are added to increase compatibility. The casts are:
 * `regtype` to `text`
 
 An `=` operator is also added that compares `name[]` values.
+
+8.0 and Lower
+-------------
+
+A patch is applied that changes how some of the test functions are written;
+otherwise, all is the same as for 8.2 Do note, however, that the `throws_ok()`
+and `lives_ok()` functions do not work under 8.0. Don't even use them there.
 
 To Do
 -----
