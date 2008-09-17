@@ -40,7 +40,7 @@ BEGIN
         reason TEXT    NOT NULL DEFAULT ''''
     );
     GRANT ALL ON TABLE __tresults__ TO PUBLIC;
-    GRANT ALL ON SEQUENCE __tresults___numb_seq TO PUBLIC;
+    GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
     ';
 
     EXCEPTION WHEN duplicate_table THEN
@@ -461,6 +461,7 @@ RETURNS TEXT AS $$
 DECLARE
     output TEXT[];
 BEGIN
+    output := '{}';
     FOR i IN 1..how_many LOOP
         output = array_append(output, ok( TRUE, 'SKIP: ' || why ) );
     END LOOP;
