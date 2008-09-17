@@ -1272,6 +1272,8 @@ Suported Versions
 pgTAP has been tested on the following builds of PostgreSQL:
 
 * PostgreSQL 8.3.3 on i386-apple-darwin9.4.0
+* PostgreSQL 8.2.9 on i386-apple-darwin9.4.0
+* PostgreSQL 8.1.13 on i386-apple-darwin9.4.0
 * PostgreSQL 8.0.17 on i686-apple-darwin9.4.0
 
 If you know of others, please submit them! Use
