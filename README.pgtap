@@ -1236,7 +1236,6 @@ To Do
 * Add `todo_start()` and `todo_end()` (and `in_todo()`).
 * Add `note()`?
 * Add `can_ok()`.
-* Remove creation of plpgsql in the tests. Require it in template 1, instead.
 
 Suported Versions
 -----------------
