@@ -34,7 +34,7 @@ BEGIN;
 SELECT plan(38);
 
 -- This will be rolled back. :-)
-CREATE TABLE sometab(
+CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),

@@ -35,29 +35,29 @@ SELECT plan(88);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
-CREATE TABLE pk (
+CREATE TABLE public.pk (
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT ''
 );
 
-CREATE TABLE fk (
+CREATE TABLE public.fk (
     id    INT NOT NULL PRIMARY KEY,
     pk_id INT NOT NULL REFERENCES pk(id)
 );
 
-CREATE TABLE pk2 (
+CREATE TABLE public.pk2 (
     num int NOT NULL,
     dot int NOT NULL,
     PRIMARY KEY (num, dot)
 );
 
-CREATE TABLE fk2 (
+CREATE TABLE public.fk2 (
     pk2_num int NOT NULL,
     pk2_dot int NOT NULL,
     FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
 );
 
-CREATE TABLE fk3(
+CREATE TABLE public.fk3(
     id    INT NOT NULL PRIMARY KEY,
     pk_id INT NOT NULL REFERENCES pk(id),
     pk2_num int NOT NULL,

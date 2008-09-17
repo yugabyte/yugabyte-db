@@ -34,7 +34,7 @@ BEGIN;
 SELECT plan(26);
 
 -- This will be rolled back. :-)
-CREATE TABLE sometab(
+CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '' UNIQUE,
     numb  NUMERIC(10, 2),
@@ -122,7 +122,7 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 17, 19 );
 /****************************************************************************/
 -- Test col_is_unique() with an array of columns.
 
-CREATE TABLE argh (id int not null, name text not null, unique (id, name));
+CREATE TABLE public.argh (id int not null, name text not null, unique (id, name));
 
 \echo ok 21 - test col_is_unique( schema, table, column[], description )
 SELECT is(
