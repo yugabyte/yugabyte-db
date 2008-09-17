@@ -64,8 +64,8 @@ SELECT is( num_failed(), 0, 'We should now have no failures' );
 /****************************************************************************/
 -- Check diag.
 SELECT is( diag('foo'), '# foo', 'diag() should work properly' );
-SELECT is( diag(E'foo\nbar'), E'# foo\n# bar', 'multiline diag() should work properly' );
-SELECT is( diag(E'foo\n# bar'), E'# foo\n# # bar', 'multiline diag() should work properly with existing comments' );
+SELECT is( diag( E'foo\nbar'), E'# foo\n# bar', 'multiline diag() should work properly' );
+SELECT is( diag( E'foo\n# bar'), E'# foo\n# # bar', 'multiline diag() should work properly with existing comments' );
 
 /****************************************************************************/
 -- Check no_plan.

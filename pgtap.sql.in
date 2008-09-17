@@ -1087,6 +1087,7 @@ BEGIN
           FROM pg_all_foreign_keys
          WHERE fk_schema_name = $1
            AND fk_table_name  = $2
+         ORDER BY fk_columns
     ) INTO names;
 
     IF NAMES[1] IS NOT NULL THEN
@@ -1122,6 +1123,7 @@ BEGIN
         SELECT fk_columns::text
           FROM pg_all_foreign_keys
          WHERE fk_table_name  = $1
+         ORDER BY fk_columns
     ) INTO names;
 
     IF NAMES[1] IS NOT NULL THEN

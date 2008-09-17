@@ -1,0 +1,113 @@
+Index: pgtap.sql
+===================================================================
+--- pgtap.sql	(revision 4280)
++++ pgtap.sql	(working copy)
+@@ -69,20 +69,24 @@
+ CREATE OR REPLACE FUNCTION _get ( text )
+ RETURNS integer AS $$
+ DECLARE
+-    ret integer;
++    rec RECORD;
+ BEGIN
+-    EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
+-    RETURN ret;
++    FOR rec IN EXECUTE 'SELECT value FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' LOOP
++        RETURN rec.value;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql strict;
+ 
+ CREATE OR REPLACE FUNCTION _get_note ( text )
+ RETURNS text AS $$
+ DECLARE
+-    ret text;
++    rec RECORD;
+ BEGIN
+-    EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
+-    RETURN ret;
++    FOR rec IN EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' LOOP
++        RETURN rec.NOTE;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql strict;
+ 
+@@ -123,10 +127,12 @@
+ CREATE OR REPLACE FUNCTION num_failed ()
+ RETURNS INTEGER AS $$
+ DECLARE
+-    ret integer;
++    rec RECORD;
+ BEGIN
+-    EXECUTE 'SELECT COUNT(*)::INTEGER FROM __tresults__ WHERE ok = FALSE' INTO ret;
+-    RETURN ret;
++    FOR rec IN EXECUTE 'SELECT COUNT(*)::INTEGER AS cnt FROM __tresults__ WHERE ok = FALSE' LOOP
++        RETURN rec.cnt;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql strict;
+ 
+@@ -392,13 +398,16 @@
+     want   ALIAS FOR $3;
+     descr  ALIAS FOR $4;
+     result BOOLEAN;
++    rec    RECORD;
+     output TEXT;
+ BEGIN
+-    EXECUTE 'SELECT ' ||
++    FOR rec IN EXECUTE 'SELECT ' ||
+             COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
+             || op || ' ' ||
+-            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
+-       INTO result;
++            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want) || ' AS res'
++    LOOP
++        result := rec.res;
++    END LOOP;
+     output := ok( COALESCE(result, FALSE), descr );
+     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
+            '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
+@@ -784,15 +793,16 @@
+ CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
+ RETURNS TEXT AS $$
+ DECLARE
+-    thing text;
++    rec RECORD;
+ BEGIN
+     IF $1 ~ '^[^'']+[(]' THEN
+         -- It's a functional default.
+         RETURN is( $1, $2, $3 );
+     END IF;
+-    EXECUTE 'SELECT is(' || COALESCE($1, 'NULL::text') || ', ' || quote_literal($2) || ', ' || quote_literal($3) || ')'
+-      INTO thing;
+-    RETURN thing;
++    FOR rec IN EXECUTE 'SELECT is(' || COALESCE($1, 'NULL::text') || ', ' || quote_literal($2) || ', ' || quote_literal($3) || ')' || 'AS is' LOOP
++        RETURN rec.is;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql;
+ 
+@@ -1378,6 +1390,7 @@
+     res    BOOLEAN;
+     descr  TEXT;
+     adiag  TEXT;
++    rec    RECORD;
+     have   ALIAS FOR $1;
+     eok    ALIAS FOR $2;
+     name   ALIAS FOR $3;
+@@ -1388,8 +1401,10 @@
+     tnumb := currval('__tresults___numb_seq');
+ 
+     -- Fetch the results.
+-    EXECUTE 'SELECT aok, descr FROM __tresults__ WHERE numb = ' || tnumb
+-       INTO aok, adescr;
++    FOR rec IN EXECUTE 'SELECT aok, descr FROM __tresults__ WHERE numb = ' || tnumb LOOP
++        aok := rec.aok;
++        adescr := rec.descr;
++    END LOOP;
+ 
+     -- Now delete those results.
+     EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
