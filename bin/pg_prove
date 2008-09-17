@@ -60,11 +60,11 @@ push @command, qw(
     --no-psqlrc
     --no-align
     --tuples-only
+    --quiet
     --pset pager=
     --pset null=[NULL]
     --set ON_ERROR_ROLLBACK=1
     --set ON_ERROR_STOP=1
-    --set QUIET=1
     --file
 );
 
