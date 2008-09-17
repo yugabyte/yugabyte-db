@@ -42,7 +42,11 @@ CREATE OR REPLACE FUNCTION quote_literal(polygon)
 RETURNS TEXT AS 'SELECT '''''''' || textin(poly_out($1)) || '''''''''
 LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION quote_literal(anyarray)
+CREATE OR REPLACE FUNCTION quote_literal(integer[])
+RETURNS TEXT AS 'SELECT '''''''' || textin(array_out($1)) || '''''''''
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION quote_literal(inet[])
 RETURNS TEXT AS 'SELECT '''''''' || textin(array_out($1)) || '''''''''
 LANGUAGE SQL IMMUTABLE STRICT;
 
