@@ -973,6 +973,44 @@ tests, is that they're like a programmatic todo list. You know how much work
 is left to be done, you're aware of what bugs there are, and you'll know
 immediately when they're fixed.
 
+### `skip( why, how_many )` ###
+### `skip( why )` ###
+
+Outputs SKIP test results. Use it in a conditional expression within a
+`SELECT` statement to replace the output of a test that you otherwise would
+have run.
+
+    SELECT CASE current_schema()
+        WHEN 'public' THEN is( :this, :that ) || E'\n' || is( :foo, :bar )
+        ELSE skip( 'Tests not running in the "public" schema', 2 )
+        END;
+
+Note how use of the conditional `CASE` statement has been used to determine
+whether or not to run a couple of tests. If they are to be run, they are
+concatenated with newlines, so that we can run a few tests in the same query.
+If we don't want to run them, we call `skip()` and tell it how many tests
+we're skipping.
+
+If you don't specify how many tests to skip, `skip()` will assume that you're
+skipping only one. This is useful for the simple case, of course:
+
+    SELECT CASE current_schema()
+        WHEN 'public' THEN is( :this, :that )
+        ELSE skip( 'Tests not running in the "public" schema' )
+        END;
+
+But you can also use it in a `SELECT` statement that would otherwise return
+multiple rows:
+
+    SELECT CASE current_schema()
+        WHEN 'public' THEN is( nspname, 'public' )
+        ELSE skip( 'Cannot see the public schema' )
+        END
+      FROM pg_namespace;
+
+This will cause it to skip the same number of rows as would have been tested
+had the `WHEN` condition been true.
+
 Writing Test Functions
 ======================
 
@@ -1160,19 +1198,44 @@ it gets the job done. Of course, if your diagnostics use something other than
 indented "have" and "want", such failures will be easier to read. But either
 way, do test your diagnostics!
 
+Compatibility
+=============
+
+Here are some notes on how pgTAP is built for particular versions of
+PostgreSQL. This helps you to understand any side-effects. If you'd rather not
+have these changes in your schema, build `pgTAP` with a schema just for it,
+instead:
+
+    make TAPSCHEMA=tap
+
+To see the specifics for each version of PostgreSQL, consult the files in the
+`compat/` directory in the pgTAP distribution.
+
+8.3 and Higher
+--------------
+
+No changes. Everything should just work.
+
+8.2 and Lower
+-------------
+
+A number of casts are added to increase compatibility. The casts are:
+
+* `boolean` to `text`
+* `name[]` to `text`
+* `regtype` to `text`
+
+An `=` operator is also added that compares `name[]` values.
+
 To Do
 -----
 
-* Handle multiple FK constraints in `fk_ok()` and the other FK test functions.
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to require TAP::Harness.
-* Update the Makefile to alter the source as appropriate for older versions
-  of PostgreSQL.
 * Add `todo_start()` and `todo_end()` (and `in_todo()`).
 * Add `note()`?
 * Add `can_ok()`.
-
 
 Suported Versions
 -----------------

@@ -8,7 +8,7 @@ Revision history for pgTAP
         Patch from Rod Taylor.
       - Replaced a call to `lastval()` with a call to `currvall()` in order to
         improve compatibility with PostgreSQL 8.0. Reported by David Westbrook.
-      - Added support for TODO tests.
+      - Added support for TODO and SKIP tests.
       - Removed the few uses of named parameters and added alias names instead.
         This improves compatibility for versions of PostgreSQL prior to 8.0.
         Reported by David Westbrook.

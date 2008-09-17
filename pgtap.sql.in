@@ -401,9 +401,9 @@ BEGIN
        INTO result;
     output := ok( COALESCE(result, FALSE), descr );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '    ' || COALESCE( quote_literal(have::text), 'NULL' ) ||
+           '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
            E'\n        ' || op ||
-           E'\n    ' || COALESCE( quote_literal(want::text), 'NULL' )
+           E'\n    ' || COALESCE( quote_literal(want), 'NULL' )
     ) END;
 END;
 $$ LANGUAGE plpgsql;
@@ -453,6 +453,18 @@ BEGIN
     -- Decrement the count of todos and return the reason.
     PERFORM _set('todo', todos - 1);
     RETURN _get_note('todo');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION skip ( why text, how_many int )
+RETURNS TEXT AS $$
+DECLARE
+    output TEXT[];
+BEGIN
+    FOR i IN 1..how_many LOOP
+        output = array_append(output, pass( 'SKIP: ' || why ) );
+    END LOOP;
+    RETURN array_to_string(output, E'\n');
 END;
 $$ LANGUAGE plpgsql;
 

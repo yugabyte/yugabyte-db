@@ -34,6 +34,19 @@ BEGIN;
 SELECT plan(14);
 
 /****************************************************************************/
+
+-- Set up some functions that are used only by this test, and aren't available
+-- in PostgreSQL 8.2 or older
+
+CREATE OR REPLACE FUNCTION quote_literal(polygon)
+RETURNS TEXT AS 'SELECT '''''''' || textin(poly_out($1)) || '''''''''
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION quote_literal(anyarray)
+RETURNS TEXT AS 'SELECT '''''''' || textin(array_out($1)) || '''''''''
+LANGUAGE SQL IMMUTABLE STRICT;
+
+/****************************************************************************/
 -- Test cmp_ok().
 \echo ok 1 - test cmp_ok( int, =, int, description )
 SELECT is(
