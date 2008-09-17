@@ -10,10 +10,9 @@ Installation
 
 For the impatient, to install pgTAP into a PostgreSQL database, just do this:
 
-    make
-    make test PGDATABASE=template1
-    make install
-    make installcheck
+    env USE_PGXS=1 make
+    env USE_PGXS=1 make install
+    env USE_PGXS=1 make installcheck
 
 If you encounter an error such as:
 
@@ -22,10 +21,9 @@ If you encounter an error such as:
 You need to use GNU make, which may well be installed on your system as
 'gmake':
 
-    gmake
-    gmake test PGDATABASE=template1
-    gmake install
-    gmake installcheck
+    env USE_PGXS=1 gmake
+    env USE_PGXS=1 gmake install
+    env USE_PGXS=1 gmake installcheck
 
 If you encounter an error such as:
 
@@ -36,10 +34,15 @@ package management system such as RPM to install PostgreSQL, be sure that the
 `-devel` package is also installed. If necessary, add the path to `pg_config`
 to your `$PATH` environment variable:
 
-    env PATH=$PATH:/path/to/pgsql/bin make && make test && make install
+    env PATH=$PATH:/path/to/pgsql/bin USE_PGXS=1 make && make test && make install
 
 And finally, if all that fails, copy the entire distribution directory to the
-`contrib/` subdirectory of the PostgreSQL source code and try it there.
+`contrib/` subdirectory of the PostgreSQL source code and try it there without
+the `USE_PGXS` environment variable:
+
+    make
+    make install
+    make installcheck
 
 If you want to schema-qualify pgTAP (that is, install all of its functions
 into their own schema), set the `$TAPSCHEMA` environment variable to the name
@@ -47,18 +50,22 @@ of the schema you'd like, for example:
 
     make TAPSCHEMA=tap
 
-The `test` target uses the included `pg_prove` Perl program to do its testing,
-which requires that TAP::Harness, included in
-[Test::Harness](http://search.cpan.org/dist/Test-Harness/ "Test::Harness on CPAN") 3.x. `pg_prove` supports a number of environment variables that you
-might need to use, including all the usual PostgreSQL client environment
-variables:
+In addition to the PostgreSQL-standared `installcheck` target, the `test`
+target uses the included `pg_prove` Perl program to do its testing, which
+requires that TAP::Harness, included in
+[Test::Harness](http://search.cpan.org/dist/Test-Harness/ "Test::Harness on
+CPAN") 3.x. You'll need to make sure that you use a database with PL/pgSQL
+loaded, or else the tests wont't work. `pg_prove` supports a number of
+environment variables that you might need to use, including all the usual
+PostgreSQL client environment variables:
 
 * `$PGDATABASE`
 * `$PGHOST`
 * `$PGPORT`
 * `$PGUSER`
 
-Once pgTAP has been built and tested, you can install it into a database:
+Once pgTAP has been built and tested, you can install it into a
+PL/pgSQL-enabled database:
 
     psql -d dbname -f pgtap.sql
 
@@ -120,15 +127,7 @@ Here's an example:
     ROLLBACK;
 
 Of course, if you already have the pgTAP functions in your testing database,
-you should skip `\i pgtap.sql` at the beginning of the script. If your
-database does not already have PL/pgSQL installed, you'll need to add it to
-the database before you load pgTAP. Just add these lines after the `\pset`
-section and before the `\set` section:
-
-    -- Create plpgsql if it's not already there.
-    SET client_min_messages = fatal;
-    \set ON_ERROR_STOP off
-    CREATE LANGUAGE plpgsql;
+you should skip `\i pgtap.sql` at the beginning of the script.
 
 Now you're ready to run your test script!
 
@@ -139,6 +138,9 @@ Now you're ready to run your test script!
 You'll need to have all of those variables in the script to ensure that the
 output is proper TAP and that all changes are rolled back -- including the
 loading of the test functions -- in the event of an uncaught exception.
+
+Using `pg_prove`
+----------------
 
 Or save yourself some effort -- and run a batch of tests scripts at once -- by
 using `pg_prove`. If you're not relying on `installcheck`, your test scripts
@@ -161,7 +163,7 @@ because `pg_prove` takes care of that for you:
 Now run the tests. Here's what it looks like when the pgTAP tests are run with
 `pg_prove`:
 
-    % pg_prove -d try sql/*.sql
+    % pg_prove -U postgres sql/*.sql
     sql/coltap.....ok     
     sql/hastap.....ok     
     sql/moretap....ok     
@@ -171,7 +173,8 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
     Files=5, Tests=216,  1 wallclock secs ( 0.06 usr  0.02 sys +  0.08 cusr  0.07 csys =  0.23 CPU)
     Result: PASS
 
-Yep, that's all there is to it.
+Yep, that's all there is to it. Call `pg_prove --help` to see other supported
+options, and `pg_prove --man` to see its entire documentation.
 
 Description
 ===========
@@ -1236,6 +1239,7 @@ To Do
 * Add `todo_start()` and `todo_end()` (and `in_todo()`).
 * Add `note()`?
 * Add `can_ok()`.
+* Don't install test scripts.
 
 Suported Versions
 -----------------
@@ -1243,6 +1247,7 @@ Suported Versions
 pgTAP has been tested on the following builds of PostgreSQL:
 
 * PostgreSQL 8.3.1 on i386-apple-darwin9.2.2
+* PostgreSQL 8.0.17 on i686-apple-darwin9.4.0
 
 If you know of others, please submit them! Use
 `psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
