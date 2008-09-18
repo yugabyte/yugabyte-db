@@ -1,4 +1,4 @@
-pgTAP 0.03
+pgTAP 0.10
 ==========
 
 pgTAP is a collection of TAP-emitting unit testing functions written in
@@ -1265,6 +1265,7 @@ To Do
 * Add `todo_start()` and `todo_end()` (and `in_todo()`).
 * Add `note()`?
 * Add `can_ok()`.
+* Finish porting tests to use `check_test()`.
 
 Suported Versions
 -----------------

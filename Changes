@@ -1,12 +1,12 @@
 Revision history for pgTAP
 
-0.03
+0.10
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
         output of extraneous stuff.
       - Added some `GRANT` statements to `plan()` in order to make it easier
         to run tests using roles other than the one that called `plan()`.
         Patch from Rod Taylor.
-      - Replaced a call to `lastval()` with a call to `currvall()` in order to
+      - Replaced a call to `lastval()` with a call to `currval()` in order to
         improve compatibility with PostgreSQL 8.0. Reported by David Westbrook.
       - Added support for TODO and SKIP tests.
       - Removed the few uses of named parameters and added alias names instead.
@@ -22,10 +22,16 @@ Revision history for pgTAP
         to better support older versions of PostgreSQL. Reported by David
         Westbrook.
       - Switched from using `FOUND` to `GET DIAGNOSTICS ROW_COUNT` because the
-        former does not seem to b set for `EXECUTE`d SQL in older versions of
+        former does not seem to be set for `EXECUTE` SQL in older versions of
         PostgreSQL. Reported by David Westbrook.
       - Added tests specifically targeting PostgreSQL 7.3. From David
         Westbrook.
+      - Ported all the way back to PostgreSQL 8.0, thanks to some Makefile
+        hackery and a patch file. All tests pass on 8.0, 8.1, 8.2, and 8.3.
+        The only exception is `throws_ok()` and `lives_ok()`, which are not
+        supported on 8.0. Versions of PostgreSQL lower than 8.0 are not yet
+        supported, even though we have made some changes to simplify getting
+        things to work in earlier versions.
       - Changed "got/expected" to "have/want", following Schwern's plans for
         Test::Builder 2. Also changed "caught/expected" to "caught/wanted" for
         nice parity when outputting diagnostics for exception testing.
@@ -51,6 +57,9 @@ Revision history for pgTAP
       - As in Test::Builder 0.81_01, changed the message for extra tests run
         to show the number of tests run rather than the number extra to avoid
         the user having to do mental math.
+      - The regression test files are now processed by `make installcheck` and
+        `make test` so that the schema can be properly set, if pgTAP is built
+        with a schema.
 
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
