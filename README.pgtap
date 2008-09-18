@@ -805,14 +805,14 @@ simply list all of the foreign key constraint columns, like so:
     #        {thingy_id}
     #        {surname,given_name}
 
-### fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description ) ###
-### fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] ) ###
-### fk_ok( fk_table, fk_column[], pk_table, pk_column[], description ) ###
-### fk_ok( fk_table, fk_column[], pk_table, pk_column[] ) ###
-### fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column, description ) ###
-### fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column ) ###
-### fk_ok( fk_table, fk_column, pk_table, pk_column, description ) ###
-### fk_ok( fk_table, fk_column, pk_table, pk_column ) ###
+### `fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )` ###
+### `fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] )` ###
+### `fk_ok( fk_table, fk_column[], pk_table, pk_column[], description )` ###
+### `fk_ok( fk_table, fk_column[], pk_table, pk_column[] )` ###
+### `fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column, description )` ###
+### `fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column )` ###
+### `fk_ok( fk_table, fk_column, pk_table, pk_column, description )` ###
+### `fk_ok( fk_table, fk_column, pk_table, pk_column )` ###
 
     SELECT fk_ok(
         'myschema',
@@ -1088,10 +1088,10 @@ Testing Test Functions
 Now you've written your test function. So how do you test it? Why, with this
 handy-dandy test function!
 
-### check_test( test_output, is_ok, name, want_description, want_diag ) ###
-### check_test( test_output, is_ok, name, want_description ) ###
-### check_test( test_output, is_ok, name ) ###
-### check_test( test_output, is_ok ) ###
+### `check_test( test_output, is_ok, name, want_description, want_diag )` ###
+### `check_test( test_output, is_ok, name, want_description )` ###
+### `check_test( test_output, is_ok, name )` ###
+### `check_test( test_output, is_ok )` ###
 
     SELECT * FROM check_test(
         lc_eq('This', 'THAT', 'not eq'),
