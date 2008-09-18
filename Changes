@@ -1,7 +1,8 @@
 Revision history for pgTAP
 
 0.11
-g0.10  2008-09-18T22:59:31
+
+0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
         output of extraneous stuff.
       - Added some `GRANT` statements to `plan()` in order to make it easier
