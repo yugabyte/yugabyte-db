@@ -648,7 +648,7 @@ If the test fails, it will output useful diagnostics. For example this test:
 
 Will produce something like this:
 
-    # Failed test 138: "Column pg_catalog.pg_type.typname should be type text
+    # Failed test 138: "Column pg_catalog.pg_type.typname should be type text"
     #         have: name
     #         want: text
 
