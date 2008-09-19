@@ -1,31 +1,8 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
 -- $Id$
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(27);
 
 /****************************************************************************/
@@ -45,14 +22,21 @@ SELECT is( is(false, false), 'ok 11', 'is(false, false) should work' );
 \echo ok 13 - is() success 7
 SELECT is( is(1, 1, 'foo'), 'ok 13 - foo', 'is(1, 1, ''foo'') should work' );
 \echo ok 15 - is() failure
-SELECT is( is( 1, 2 ), E'not ok 15\n# Failed test 15\n#         have: 1\n#         want: 2', 'is(1, 2) should work' );
+SELECT is( is( 1, 2 ), 'not ok 15
+# Failed test 15
+#         have: 1
+#         want: 2', 'is(1, 2) should work' );
 
 /****************************************************************************/
 -- Test isnt().
 \echo ok 17 - isnt() success
 SELECT is( isnt(1, 2), 'ok 17', 'isnt(1, 2) should work' );
 \echo ok 19 - isnt() failure
-SELECT is( isnt( 1, 1 ), E'not ok 19\n# Failed test 19\n#     1\n#       <>\n#     1', 'is(1, 2) should work' );
+SELECT is( isnt( 1, 1 ), 'not ok 19
+# Failed test 19
+#     1
+#       <>
+#     1', 'is(1, 2) should work' );
 
 -- Clean up the failed test results.
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 15, 19 );
@@ -75,14 +59,20 @@ SELECT is(
 \echo ok 24 - is(NULL, foo) failure
 SELECT is(
     is( NULL::text, 'foo' ),
-    E'not ok 24\n# Failed test 24\n#         have: NULL\n#         want: foo',
+    'not ok 24
+# Failed test 24
+#         have: NULL
+#         want: foo',
     'is(NULL, foo) should fail'
 );
 
 \echo ok 26 - is(foo, NULL) failure
 SELECT is(
     is( 'foo', NULL::text ),
-    E'not ok 26\n# Failed test 26\n#         have: foo\n#         want: NULL',
+    'not ok 26
+# Failed test 26
+#         have: foo
+#         want: NULL',
     'is(foo, NULL) should fail'
 );
 

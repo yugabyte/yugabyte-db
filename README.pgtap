@@ -46,11 +46,11 @@ the `$USE_PGXS` variable:
 
 If you want to schema-qualify pgTAP (that is, install all of its functions
 into their own schema), set the `$TAPSCHEMA` variable to the name of the
-schema you'd like, for example:
+schema you'd like to be created, for example:
 
     make TAPSCHEMA=tap
     make install
-    make installcheck TAPSCHEMA=tap
+    make installcheck
 
 Testing pgTAP with pgTAP
 ------------------------
@@ -71,7 +71,7 @@ PostgreSQL client environment variables:
 
 You can use it to run the test suite like so:
 
-    make test USE_PGXS=1 TAPSCHEMA=tap PGUSER=postgres
+    make test USE_PGXS=1 PGUSER=postgres
 
 Of course, if you're running the tests from the `contrib/` directory, you
 should omit the `USE_PGXS` variable.

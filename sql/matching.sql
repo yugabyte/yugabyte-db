@@ -1,31 +1,8 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
 -- $Id$
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(20);
 
 /****************************************************************************/
@@ -36,7 +13,10 @@ SELECT imatches( 'FOO'::text, '^fo', 'imatches() should work with a regex' );
 
 -- Check matches() diagnostics.
 \echo ok 4 - matches() failure
-SELECT is( matches( 'foo'::text, '^a' ), E'not ok 4\n# Failed test 4\n#                   ''foo''\n#    doesn''t match: ''^a''', 'Check matches diagnostics' );
+SELECT is( matches( 'foo'::text, '^a' ), 'not ok 4
+# Failed test 4
+#                   ''foo''
+#    doesn''t match: ''^a''', 'Check matches diagnostics' );
 
 -- Check doesnt_match.
 SELECT doesnt_match( 'foo'::text, 'a', 'doesnt_match() should work' );
@@ -47,7 +27,10 @@ SELECT doesnt_imatch( 'foo'::text, '^o', 'doesnt_imatch() should work with a reg
 \echo ok 9 - doesnt_match() failure
 SELECT is(
     doesnt_match( 'foo'::text, 'o' ),
-    E'not ok 9\n# Failed test 9\n#                   ''foo''\n#          matches: ''o''',
+    'not ok 9
+# Failed test 9
+#                   ''foo''
+#          matches: ''o''',
     'doesnt_match() should work'
 );
 
@@ -62,7 +45,10 @@ SELECT ialike( 'FOO'::text, 'fo%', 'ialike() should work with a regex' );
 
 -- Check alike() diagnostics.
 \echo ok 14 - alike() failure
-SELECT is( alike( 'foo'::text, 'a%'::text ), E'not ok 14\n# Failed test 14\n#                   ''foo''\n#    doesn''t match: ''a%''', 'Check alike diagnostics' );
+SELECT is( alike( 'foo'::text, 'a%'::text ), 'not ok 14
+# Failed test 14
+#                   ''foo''
+#    doesn''t match: ''a%''', 'Check alike diagnostics' );
 
 -- Test unalike().
 SELECT unalike( 'foo'::text, 'f', 'unalike() should work' );
@@ -71,7 +57,10 @@ SELECT unialike( 'FOO'::text, 'f%i', 'iunalike() should work with a regex' );
 
 -- Check unalike() diagnostics.
 \echo ok 19 - unalike() failure
-SELECT is( unalike( 'foo'::text, 'f%'::text ), E'not ok 19\n# Failed test 19\n#                   ''foo''\n#          matches: ''f%''', 'Check unalike diagnostics' );
+SELECT is( unalike( 'foo'::text, 'f%'::text ), 'not ok 19
+# Failed test 19
+#                   ''foo''
+#          matches: ''f%''', 'Check unalike diagnostics' );
 
 -- Clean up the failed test results.
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 14, 19 );

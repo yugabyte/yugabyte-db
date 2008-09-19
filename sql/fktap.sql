@@ -1,31 +1,8 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
 -- $Id$
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(88);
 --SELECT * from no_plan();
 

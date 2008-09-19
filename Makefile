@@ -1,6 +1,6 @@
 # $Id$
-TESTS = $(patsubst %.sql.in,%.sql,$(wildcard sql/*.sql.in))
-EXTRA_CLEAN = $(TESTS)
+TESTS = $(wildcard sql/*.sql)
+EXTRA_CLEAN = test_setup.sql
 DATA_built = pgtap.sql uninstall_pgtap.sql
 MODULES = pgtap
 DOCS = README.pgtap
@@ -42,18 +42,13 @@ endif
 
 # Override how .sql targets are processed to add the schema info, if
 # necessary. Otherwise just copy the files.
-%.sql: %.sql.in
+test_setup.sql: test_setup.sql.in
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $(EXTRAS) $< >$@
-else
-ifdef EXTRAS
-	sed $(EXTRAS) $< >$@
-else
 	cp $< $@
 endif
-endif
 
-pgtap.sql: pgtap.sql.in
+pgtap.sql: pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' $(EXTRAS) pgtap.sql.in > pgtap.sql
 else
@@ -70,7 +65,7 @@ endif
 endif
 endif
 
-uninstall_pgtap.sql: uninstall_pgtap.sql.in
+uninstall_pgtap.sql: uninstall_pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $(EXTRAS) uninstall_pgtap.sql.in > uninstall_pgtap.sql
 else
@@ -89,8 +84,8 @@ endif
 endif
 
 # Make sure that we build the regression tests.
-installcheck: $(TESTS)
+installcheck: test_setup.sql
 
 # In addition to installcheck, one can also run the tests through pg_prove.
-test: $(TESTS)
+test: test_setup.sql
 	./bin/pg_prove --pset tuples_only=1 $(TESTS)

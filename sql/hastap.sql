@@ -1,31 +1,8 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
 -- $Id$
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(30);
 
 -- This will be rolled back. :-)
@@ -43,21 +20,24 @@ CREATE TABLE sometab(
 
 SELECT is(
     has_table( '__SDFSDFD__' ),
-    E'not ok 1 - Table __SDFSDFD__ should exist\n# Failed test 1: "Table __SDFSDFD__ should exist"',
+    'not ok 1 - Table __SDFSDFD__ should exist
+# Failed test 1: "Table __SDFSDFD__ should exist"',
     'has_table(table) should fail for non-existent table'
 );
 
 \echo ok 3 - has_table(table, desc) fail
 SELECT is(
     has_table( '__SDFSDFD__', 'lol' ),
-    E'not ok 3 - lol\n# Failed test 3: "lol"',
+    'not ok 3 - lol
+# Failed test 3: "lol"',
     'has_table(table, dessc) should fail for non-existent table'
 );
 
 \echo ok 5 - has_table(schema, table, desc) fail
 SELECT is(
     has_table( 'foo', '__SDFSDFD__', 'desc' ),
-    E'not ok 5 - desc\n# Failed test 5: "desc"',
+    'not ok 5 - desc
+# Failed test 5: "desc"',
     'has_table(schema, table, desc) should fail for non-existent table'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 1, 3, 5 );
@@ -82,21 +62,24 @@ SELECT is(
 \echo ok 11 - has_view(view) fail
 SELECT is(
     has_view( '__SDFSDFD__' ),
-    E'not ok 11 - View __SDFSDFD__ should exist\n# Failed test 11: "View __SDFSDFD__ should exist"',
+    'not ok 11 - View __SDFSDFD__ should exist
+# Failed test 11: "View __SDFSDFD__ should exist"',
     'has_view(view) should fail for non-existent view'
 );
 
 \echo ok 13 - has_view(view, desc) fail
 SELECT is(
     has_view( '__SDFSDFD__', 'howdy' ),
-    E'not ok 13 - howdy\n# Failed test 13: "howdy"',
+    'not ok 13 - howdy
+# Failed test 13: "howdy"',
     'has_view(view, desc) should fail for non-existent view'
 );
 
 \echo ok 15 - has_view(schema, view, desc) fail
 SELECT is(
     has_view( 'foo', '__SDFSDFD__', 'desc' ),
-    E'not ok 15 - desc\n# Failed test 15: "desc"',
+    'not ok 15 - desc
+# Failed test 15: "desc"',
     'has_view(schema, view, desc) should fail for non-existent view'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 11, 13, 15 );
@@ -121,21 +104,24 @@ SELECT is(
 \echo ok 21 - has_column(table, column) fail
 SELECT is(
     has_column( '__SDFSDFD__', 'foo' ),
-    E'not ok 21 - Column __SDFSDFD__(foo) should exist\n# Failed test 21: "Column __SDFSDFD__(foo) should exist"',
+    'not ok 21 - Column __SDFSDFD__(foo) should exist
+# Failed test 21: "Column __SDFSDFD__(foo) should exist"',
     'has_column(table, column) should fail for non-existent table'
 );
 
 \echo ok 23 - has_column(table, column, desc) fail
 SELECT is(
     has_column( '__SDFSDFD__', 'bar', 'whatever' ),
-    E'not ok 23 - whatever\n# Failed test 23: "whatever"',
+    'not ok 23 - whatever
+# Failed test 23: "whatever"',
     'has_column(table, column, desc) should fail for non-existent table'
 );
 
 \echo ok 25 - has_column(schema, table, column, desc) fail
 SELECT is(
     has_column( 'foo', '__SDFSDFD__', 'bar', 'desc' ),
-    E'not ok 25 - desc\n# Failed test 25: "desc"',
+    'not ok 25 - desc
+# Failed test 25: "desc"',
     'has_column(schema, table, column, desc) should fail for non-existent table'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 21, 23, 25 );

@@ -1,31 +1,8 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
--- $Id$
+-- $Id: pg73.sql.in 4285 2008-09-17 21:47:16Z david $
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(26);
 
 -- This will be rolled back. :-)
@@ -63,14 +40,16 @@ SELECT is(
 \echo ok 7 - test has_check( schema, table, description ) fail
 SELECT is(
     has_check( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a check constraint' ),
-    E'not ok 7 - pg_catalog.pg_class should have a check constraint\n# Failed test 7: "pg_catalog.pg_class should have a check constraint"',
+    'not ok 7 - pg_catalog.pg_class should have a check constraint
+# Failed test 7: "pg_catalog.pg_class should have a check constraint"',
     'has_check( schema, table, description ) should fail properly'
 );
 
 \echo ok 9 - test has_check( table, description ) fail
 SELECT is(
     has_check( 'pg_class', 'pg_class should have a check constraint' ),
-    E'not ok 9 - pg_class should have a check constraint\n# Failed test 9: "pg_class should have a check constraint"',
+    'not ok 9 - pg_class should have a check constraint
+# Failed test 9: "pg_class should have a check constraint"',
     'has_check( table, description ) should fail properly'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 7, 9 );
@@ -102,14 +81,20 @@ SELECT is(
 \echo ok 17 - test col_has_check( schema, table, column, description ) fail
 SELECT is(
     col_has_check( 'public', 'sometab', 'id', 'public.sometab.id should be a pk' ),
-    E'not ok 17 - public.sometab.id should be a pk\n# Failed test 17: "public.sometab.id should be a pk"\n#         have: {name}\n#         want: {id}',
+    'not ok 17 - public.sometab.id should be a pk
+# Failed test 17: "public.sometab.id should be a pk"
+#         have: {name}
+#         want: {id}',
     'col_has_check( schema, table, column, description ) should fail properly'
 );
 
 \echo ok 19 - test col_has_check( table, column, description ) fail
 SELECT is(
     col_has_check( 'sometab', 'id', 'sometab.id should be a pk' ),
-    E'not ok 19 - sometab.id should be a pk\n# Failed test 19: "sometab.id should be a pk"\n#         have: {name}\n#         want: {id}',
+    'not ok 19 - sometab.id should be a pk
+# Failed test 19: "sometab.id should be a pk"
+#         have: {name}
+#         want: {id}',
     'col_has_check( table, column, description ) should fail properly'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 17, 19 );

@@ -1,32 +1,9 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
 -- $Id$
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
 \set numb_tests 30
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(:numb_tests);
 
 -- Replace the internal record of the plan for a few tests.
@@ -41,7 +18,8 @@ SELECT pass( 'My pass() passed, w00t!' );
 \echo ok :fail_numb - Testing fail()
 SELECT is(
        fail('oops'),
-       E'not ok 2 - oops\n# Failed test 2: "oops"', 'We should get the proper output from fail()');
+       'not ok 2 - oops
+# Failed test 2: "oops"', 'We should get the proper output from fail()');
 
 -- Check the finish() output.
 SELECT is(
@@ -59,8 +37,12 @@ SELECT is( num_failed(), 0, 'We should now have no failures' );
 /****************************************************************************/
 -- Check diag.
 SELECT is( diag('foo'), '# foo', 'diag() should work properly' );
-SELECT is( diag( E'foo\nbar'), E'# foo\n# bar', 'multiline diag() should work properly' );
-SELECT is( diag( E'foo\n# bar'), E'# foo\n# # bar', 'multiline diag() should work properly with existing comments' );
+SELECT is( diag( 'foo
+bar'), '# foo
+# bar', 'multiline diag() should work properly' );
+SELECT is( diag( 'foo
+# bar'), '# foo
+# # bar', 'multiline diag() should work properly with existing comments' );
 
 /****************************************************************************/
 -- Check no_plan.
@@ -105,11 +87,14 @@ SELECT is( ok(true, ''), 'ok 19', 'ok(true, '''') should work' );
 SELECT is( ok(true, 'foo'), 'ok 21 - foo', 'ok(true, ''foo'') should work' );
 
 \echo ok 23 - ok() failure
-SELECT is( ok(false), E'not ok 23\n# Failed test 23', 'ok(false) should work' );
+SELECT is( ok(false), 'not ok 23
+# Failed test 23', 'ok(false) should work' );
 \echo ok 25 - ok() failure 2
-SELECT is( ok(false, ''), E'not ok 25\n# Failed test 25', 'ok(false, '''') should work' );
+SELECT is( ok(false, ''), 'not ok 25
+# Failed test 25', 'ok(false, '''') should work' );
 \echo ok 27 - ok() failure 3
-SELECT is( ok(false, 'foo'), E'not ok 27 - foo\n# Failed test 27: "foo"', 'ok(false, ''foo'') should work' );
+SELECT is( ok(false, 'foo'), 'not ok 27 - foo
+# Failed test 27: "foo"', 'ok(false, ''foo'') should work' );
 
 -- Clean up the failed test results.
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 23, 25, 27);
@@ -118,8 +103,10 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 23, 25, 27);
 -- test multiline description.
 \echo ok 29 - Multline diagnostics
 SELECT is(
-    ok( true, E'foo\nbar' ),
-    E'ok 29 - foo\n# bar',
+    ok( true, 'foo
+bar' ),
+    'ok 29 - foo
+# bar',
     'multiline desriptions should have subsequent lines escaped'
 );
 

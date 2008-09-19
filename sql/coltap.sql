@@ -1,31 +1,8 @@
 \set ECHO
-\set QUIET 1
+\i test_setup.sql
 
---
--- Tests for pgTAP.
---
---
 -- $Id$
 
--- Format the output for nice TAP.
-\pset format unaligned
-\pset tuples_only true
-\pset pager
-
--- Keep things quiet.
-SET client_min_messages = warning;
-
--- Revert all changes on failure.
-\set ON_ERROR_ROLBACK 1
-\set ON_ERROR_STOP true
-
--- Load the TAP functions.
-BEGIN;
-\i pgtap.sql
-
--- ## SET search_path TO TAPSCHEMA,public;
-
--- Set the test plan.
 SELECT plan(38);
 
 -- This will be rolled back. :-)
@@ -61,7 +38,8 @@ SELECT is(
 \echo ok 7 - testing col_not_null( schema, table, column, desc )
 SELECT is(
     col_not_null( 'sometab', 'name' ),
-    E'not ok 7 - Column sometab(name) should be NOT NULL\n# Failed test 7: "Column sometab(name) should be NOT NULL"',
+    'not ok 7 - Column sometab(name) should be NOT NULL
+# Failed test 7: "Column sometab(name) should be NOT NULL"',
     'col_not_null( table, column ) should properly fail'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 7 );
@@ -91,7 +69,8 @@ SELECT is(
 \echo ok 15 - testing col_is_null( schema, table, column, desc )
 SELECT is(
     col_is_null( 'sometab', 'id' ),
-    E'not ok 15 - Column sometab(id) should allow NULL\n# Failed test 15: "Column sometab(id) should allow NULL"',
+    'not ok 15 - Column sometab(id) should allow NULL
+# Failed test 15: "Column sometab(id) should allow NULL"',
     'col_is_null( table, column ) should properly fail'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 15 );
@@ -130,7 +109,10 @@ SELECT is(
 \echo ok 25 - testing col_type_is( table, column, type ) failure
 SELECT is(
     col_type_is( 'sometab', 'name', 'int4' ),
-    E'not ok 25 - Column sometab(name) should be type int4\n# Failed test 25: "Column sometab(name) should be type int4"\n#         have: text\n#         want: int4',
+    'not ok 25 - Column sometab(name) should be type int4
+# Failed test 25: "Column sometab(name) should be type int4"
+#         have: text
+#         want: int4',
     'col_type_is( table, column, type ) should fail with proper diagnostics'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 25 );
@@ -148,7 +130,10 @@ SELECT is(
 \echo ok 29 - col_type_is( table, column, type, precision, desc ) fail
 SELECT is(
     col_type_is( 'sometab', 'myint', 'numeric(7)', 'should be numeric(7)' ),
-    E'not ok 29 - should be numeric(7)\n# Failed test 29: "should be numeric(7)"\n#         have: numeric(8,0)\n#         want: numeric(7)',
+    'not ok 29 - should be numeric(7)
+# Failed test 29: "should be numeric(7)"
+#         have: numeric(8,0)
+#         want: numeric(7)',
     'col_type_is with precision should have nice diagnostics'
 );
 
@@ -167,7 +152,10 @@ SELECT is(
 \echo ok 33 - col_default_is( schema, table, column, default, description ) fail
 SELECT is(
     col_default_is( 'public', 'sometab', 'name', 'foo'::text, 'name should default to ''foo''' ),
-    E'not ok 33 - name should default to ''foo''\n# Failed test 33: "name should default to ''foo''"\n#         have: \n#         want: foo',
+    'not ok 33 - name should default to ''foo''
+# Failed test 33: "name should default to ''foo''"
+#         have: 
+#         want: foo',
     'ok 33 - Should get proper diagnostics for a default failure'
 );
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 33 );

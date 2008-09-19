@@ -1,6 +1,13 @@
 Revision history for pgTAP
 
 0.11
+      - Simplified the tests so that they now load `test_setup.sql` instead of
+        setting a bunch of stuff themselves. Now only `test_setup.sql` needs
+        to be created from `test_setup.sql.in`, and the other `.sql` files
+        depend on it, meaning that one no longer has to specify `TAPSCHEMA`
+        for any `make` target other than the default.
+      - Eliminated all uses of `E''` in the tests, so that we don't have to
+        process them for testing on 8.0.
 
 0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
