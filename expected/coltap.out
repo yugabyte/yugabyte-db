@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..38
 ok 1 - testing col_not_null( schema, table, column, desc )
 ok 2 - col_not_null( schema, table, column, desc ) should work

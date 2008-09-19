@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 \i test_setup.sql
 
 -- $Id$

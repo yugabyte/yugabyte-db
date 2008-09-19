@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..11
 ok 1 - throws_ok(1/0) should work
 ok 2 - throws_ok failure diagnostics

@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..30
 ok 1 - has_table(table) fail
 ok 2 - has_table(table) should fail for non-existent table

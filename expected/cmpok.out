@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..14
 ok 1 - test cmp_ok( int, =, int, description )
 ok 2 - cmp_ok( int, =, int, description ) should work

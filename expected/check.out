@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..26
 ok 1 - test has_check( schema, table, description )
 ok 2 - has_check( schema, table, description ) should work

@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..30
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()

@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..20
 ok 1 - matches() should work
 ok 2 - matches() should work with a regex

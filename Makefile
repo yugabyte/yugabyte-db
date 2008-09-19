@@ -33,7 +33,7 @@ endif
 ifeq ($(PGVER_MAJOR), 8)
 ifeq ($(PGVER_MINOR), 0)
 # Hack for E'' syntax (<= PG8.0)
-EXTRAS := -e "s/ E'/ '/g"
+REMOVE_E := -e "s/ E'/ '/g"
 # Throw isn't supported in 8.0.
 TESTS := $(filter-out sql/throwtap.sql,$(TESTS))
 REGRESS := $(filter-out throwtap,$(REGRESS))
@@ -44,15 +44,15 @@ endif
 # necessary. Otherwise just copy the files.
 test_setup.sql: test_setup.sql.in
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $(EXTRAS) $< >$@
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
 	cp $< $@
 endif
 
 pgtap.sql: pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' $(EXTRAS) pgtap.sql.in > pgtap.sql
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
 else
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' $(EXTRAS) pgtap.sql.in > pgtap.sql
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 3)
@@ -67,13 +67,9 @@ endif
 
 uninstall_pgtap.sql: uninstall_pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $(EXTRAS) uninstall_pgtap.sql.in > uninstall_pgtap.sql
-else
-ifdef EXTRAS
-	sed $(EXTRAS) uninstall_pgtap.sql.in > uninstall_pgtap.sql
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' uninstall_pgtap.sql.in > uninstall_pgtap.sql
 else
 	cp uninstall_pgtap.sql.in uninstall_pgtap.sql
-endif
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 3)

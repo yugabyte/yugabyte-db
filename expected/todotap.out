@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..13
 ok 1 - todo fail
 ok 2 - todo pass

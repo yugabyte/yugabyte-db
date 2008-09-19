@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..88
 ok 1 - has_fk( schema, table, description ) should pass
 ok 2 - has_fk( schema, table, description ) should have the proper description

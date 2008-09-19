@@ -1,4 +1,4 @@
-\set ECHO
+\unset ECHO
 1..27
 ok 1 - is() success
 ok 2 - isa(1, 1) should work
