@@ -1,8 +1,6 @@
-Index: pgtap.sql
-===================================================================
---- pgtap.sql	(revision 4280)
-+++ pgtap.sql	(working copy)
-@@ -69,20 +69,24 @@
+--- pgtap.sql.saf	2008-09-21 15:38:31.000000000 -0700
++++ pgtap.sql	2008-09-21 15:44:50.000000000 -0700
+@@ -69,53 +69,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -18,6 +16,41 @@ Index: pgtap.sql
  END;
  $$ LANGUAGE plpgsql strict;
  
+ CREATE OR REPLACE FUNCTION _get_latest ( text )
+ RETURNS integer[] AS $$
+ DECLARE
+-    ret integer[];
++    rec RECORD;
+ BEGIN
+-    EXECUTE 'SELECT ARRAY[ id, value] FROM __tcache__ WHERE label = ' ||
++    FOR rec IN EXECUTE 'SELECT ARRAY[ id, value] AS a FROM __tcache__ WHERE label = ' ||
+     quote_literal($1) || ' AND id = (SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
+-    quote_literal($1) || ') LIMIT 1' INTO ret;
+-    RETURN ret;
++    quote_literal($1) || ') LIMIT 1' LOOP
++        RETURN rec.a;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql strict;
+ 
+ CREATE OR REPLACE FUNCTION _get_latest ( text, integer )
+ RETURNS integer AS $$
+ DECLARE
+-    ret integer;
++    rec RECORD;
+ BEGIN
+-    EXECUTE 'SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
+-    quote_literal($1) || ' AND value = ' || $2 INTO ret;
+-    RETURN ret;
++    FOR rec IN EXECUTE 'SELECT MAX(id) AS id FROM __tcache__ WHERE label = ' ||
++    quote_literal($1) || ' AND value = ' || $2 LOOP
++        RETURN rec.id;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql strict;
+ 
  CREATE OR REPLACE FUNCTION _get_note ( text )
  RETURNS text AS $$
  DECLARE
@@ -27,13 +60,28 @@ Index: pgtap.sql
 -    EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
 -    RETURN ret;
 +    FOR rec IN EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' LOOP
-+        RETURN rec.NOTE;
++        RETURN rec.note;
 +    END LOOP;
 +    RETURN NULL;
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -123,10 +127,12 @@
+ CREATE OR REPLACE FUNCTION _get_note ( integer )
+ RETURNS text AS $$
+ DECLARE
+-    ret text;
++    rec RECORD;
+ BEGIN
+-    EXECUTE 'SELECT note FROM __tcache__ WHERE id = ' || $1 || ' LIMIT 1' INTO ret;
+-    RETURN ret;
++    FOR rec IN EXECUTE 'SELECT note FROM __tcache__ WHERE id = ' || $1 || ' LIMIT 1' LOOP
++        RETURN rec.note;
++    END LOOP;
++    RETURN NULL;
+ END;
+ $$ LANGUAGE plpgsql strict;
+ 
+@@ -179,10 +189,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -49,7 +97,7 @@ Index: pgtap.sql
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -392,13 +398,16 @@
+@@ -448,13 +460,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -67,9 +115,9 @@ Index: pgtap.sql
 +        result := rec.res;
 +    END LOOP;
      output := ok( COALESCE(result, FALSE), descr );
-     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
+     RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -784,15 +793,16 @@
+@@ -923,15 +938,16 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -90,7 +138,7 @@ Index: pgtap.sql
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -1378,6 +1390,7 @@
+@@ -1520,6 +1536,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -98,7 +146,7 @@ Index: pgtap.sql
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -1388,8 +1401,10 @@
+@@ -1530,8 +1547,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.

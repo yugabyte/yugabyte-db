@@ -99,8 +99,9 @@ SELECT * FROM check_test(
 \echo ok 26 - todo fail
 \echo ok 27 - todo fail
 SELECT * FROM todo('just because', 2 );
+-- We have to use textin(array_out()) to get around a missing cast to text in 8.0.
 SELECT is(
-    ARRAY(
+    textin(array_out(ARRAY(
         SELECT fail('This is a todo test 1')
         UNION
         SELECT todo::text FROM todo('inside')
@@ -108,15 +109,15 @@ SELECT is(
         SELECT fail('This is a todo test 2')
         UNION
         SELECT fail('This is a todo test 3')
-    ),
-    ARRAY[
+    ))),
+    textin(array_out(ARRAY[
         'not ok 25 - This is a todo test 1 # TODO just because
 # Failed (TODO) test 25: "This is a todo test 1"',
         'not ok 26 - This is a todo test 2 # TODO inside
 # Failed (TODO) test 26: "This is a todo test 2"',
         'not ok 27 - This is a todo test 3 # TODO just because
 # Failed (TODO) test 27: "This is a todo test 3"'
-    ],
+    ])),
     'Nested todos should work properly'
 );
 
@@ -128,8 +129,9 @@ UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 25, 26, 27 );
 \echo ok 30 - todo fail
 \echo ok 31 - todo fail
 SELECT * FROM todo_start('some todos');
+-- We have to use textin(array_out()) to get around a missing cast to text in 8.0.
 SELECT is(
-    ARRAY(
+    textin(array_out(ARRAY(
         SELECT fail('This is a todo test 1') AS stuff
         UNION
         SELECT in_todo()::text
@@ -144,8 +146,8 @@ SELECT is(
         UNION
         SELECT in_todo()::text
         ORDER BY stuff
-    ),
-    ARRAY[
+    ))),
+    textin(array_out(ARRAY[
         'false',
         'not ok 29 - This is a todo test 1 # TODO some todos
 # Failed (TODO) test 29: "This is a todo test 1"',
@@ -154,17 +156,21 @@ SELECT is(
         'not ok 31 - This is a todo test 3 # TODO some todos
 # Failed (TODO) test 31: "This is a todo test 3"',
         'true'
-    ],
+    ])),
     'todo_start() and todo_end() should work properly with in_todo()'
 );
 
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 29, 30, 31 );
 
-SELECT throws_ok(
-    'SELECT todo_end()',
-    'P0001',
-    'Should get an exception when todo_end() is called without todo_start()'
-);
+-- Test the exception when throws_ok() is available.
+SELECT CASE WHEN substring(version() from '[[:digit:]]+[.][[:digit:]]')::numeric < 8.1
+     then 'ok 33 - Should get an exception when todo_end() is called without todo_start()'
+     ELSE throws_ok(
+        'SELECT todo_end()',
+        'P0001',
+        'Should get an exception when todo_end() is called without todo_start()'
+     )
+     END;
 
 /****************************************************************************/
 -- Finish the tests and clean up.
