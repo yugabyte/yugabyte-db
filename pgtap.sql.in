@@ -6,7 +6,7 @@
 --
 -- The home page for the pgTAP project is:
 --
--- http://pgfoundry.org/projects/pgtap/
+-- http://pgtap.projects.postgresql.org/
 
 -- $Id$
 -- ## CREATE SCHEMA TAPSCHEMA;
@@ -25,6 +25,7 @@ BEGIN
     BEGIN
     EXECUTE '
     CREATE TEMP TABLE __tcache__ (
+        id    SERIAL           PRIMARY KEY,
         label TEXT    NOT NULL,
         value INTEGER NOT NULL,
         note  TEXT    NOT NULL DEFAULT ''''
@@ -40,8 +41,7 @@ BEGIN
         reason TEXT    NOT NULL DEFAULT ''''
     );
     GRANT ALL ON TABLE __tresults__ TO PUBLIC;
-    GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
-    ';
+    GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;';
 
     EXCEPTION WHEN duplicate_table THEN
         -- Raise an exception if there's already a plan.
@@ -76,12 +76,34 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql strict;
 
+CREATE OR REPLACE FUNCTION _get_latest ( text )
+RETURNS integer[] AS $$
+DECLARE
+    ret integer[];
+BEGIN
+    EXECUTE 'SELECT ARRAY[ id, value] FROM __tcache__ WHERE label = ' ||
+    quote_literal($1) || ' AND id = (SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
+    quote_literal($1) || ') LIMIT 1' INTO ret;
+    RETURN ret;
+END;
+$$ LANGUAGE plpgsql strict;
+
 CREATE OR REPLACE FUNCTION _get_note ( text )
 RETURNS text AS $$
 DECLARE
     ret text;
 BEGIN
     EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' INTO ret;
+    RETURN ret;
+END;
+$$ LANGUAGE plpgsql strict;
+
+CREATE OR REPLACE FUNCTION _get_note ( integer )
+RETURNS text AS $$
+DECLARE
+    ret text;
+BEGIN
+    EXECUTE 'SELECT note FROM __tcache__ WHERE id = ' || $1 || ' LIMIT 1' INTO ret;
     RETURN ret;
 END;
 $$ LANGUAGE plpgsql strict;
@@ -96,7 +118,7 @@ BEGIN
         || ' WHERE label = ' || quote_literal($1);
     GET DIAGNOSTICS rcount = ROW_COUNT;
     IF rcount = 0 THEN
-        EXECUTE 'INSERT INTO __tcache__ values (' || quote_literal($1) || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ')';
+       RETURN _add( $1, $2, $3 );
     END IF;
     RETURN $2;
 END;
@@ -105,6 +127,29 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION _set ( text, integer )
 RETURNS integer AS $$
     SELECT _set($1, $2, '')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _set ( integer, integer )
+RETURNS integer AS $$
+BEGIN
+    EXECUTE 'UPDATE __tcache__ SET value = ' || $2
+        || ' WHERE id = ' || $1;
+    RETURN $2;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _add ( text, integer, text )
+RETURNS integer AS $$
+BEGIN
+    EXECUTE 'INSERT INTO __tcache__ (label, value, note) values (' ||
+    quote_literal($1) || ', ' || $2 || ', ' || quote_literal(COALESCE($3, '')) || ')';
+    RETURN $2;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _add ( text, integer )
+RETURNS integer AS $$
+    SELECT _add($1, $2, '')
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
@@ -436,7 +481,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION todo ( why text, how_many int )
 RETURNS SETOF BOOLEAN AS $$
 BEGIN
-    PERFORM _set('todo', COALESCE( _get('todo'), 0) + how_many, COALESCE(why, '') );
+    PERFORM _add('todo', COALESCE(how_many, 1), COALESCE(why, ''));
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
@@ -444,7 +489,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION todo ( why text )
 RETURNS SETOF BOOLEAN AS $$
 BEGIN
-    PERFORM _set('todo', COALESCE( _get('todo'), 0) + 1, COALESCE(why, '') );
+    PERFORM _add('todo', 1, COALESCE(why, ''));
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
@@ -452,7 +497,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION todo ( how_many int )
 RETURNS SETOF BOOLEAN AS $$
 BEGIN
-    PERFORM _set('todo', COALESCE( _get('todo'), 0) + how_many, '' );
+    PERFORM _add('todo', COALESCE(how_many, 1), '');
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
@@ -460,15 +505,32 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION _todo()
 RETURNS TEXT AS $$
 DECLARE
-    todos INT;
+    todos INT[];
+    note text;
 BEGIN
-    todos := _get('todo');
-    IF todos IS NULL OR todos = 0 THEN
+    -- Get the latest id and value, because todo() might have been called
+    -- again before the todos ran out for the first call to todo(). This
+    -- allows them to nest.
+    todos := _get_latest('todo');
+    IF todos IS NULL THEN
+        -- No todos.
+        RETURN NULL;
+    END IF;
+    IF todos[2] = 0 THEN
+        -- Todos depleted. Clean up.
+        EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || todos[1];
         RETURN NULL;
     END IF;
     -- Decrement the count of todos and return the reason.
-    PERFORM _set('todo', todos - 1, NULL);
-    RETURN _get_note('todo');
+    PERFORM _set(todos[1], todos[2] - 1);
+    note := _get_note(todos[1]);
+
+    IF todos[2] = 1 THEN
+        -- This was the last todo, so delete the record.
+        EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || todos[1];
+    END IF;
+
+    RETURN note;
 END;
 $$ LANGUAGE plpgsql;
 

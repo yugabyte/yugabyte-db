@@ -3,7 +3,8 @@
 
 -- $Id$
 
-SELECT plan(24);
+SELECT plan(28);
+--SELECT * FROM no_plan();
 
 /****************************************************************************/
 -- Test todo tests.
@@ -44,7 +45,6 @@ SELECT is(
 ok 7 - This is a todo test that unexpectedly passes # TODO ',
    'TODO tests should display properly'
 );
-
 
 /****************************************************************************/
 -- Test skipping tests.
@@ -93,6 +93,34 @@ SELECT * FROM check_test(
     ''
 );
 
+/****************************************************************************/
+-- Try nesting todo tests.
+\echo ok 25 - todo fail
+\echo ok 26 - todo fail
+\echo ok 27 - todo fail
+SELECT * FROM todo('just because', 2 );
+SELECT is(
+    ARRAY(
+        SELECT fail('This is a todo test 1')
+        UNION
+        SELECT todo::text FROM todo('inside')
+        UNION
+        SELECT fail('This is a todo test 2')
+        UNION
+        SELECT fail('This is a todo test 3')
+    ),
+    ARRAY[
+        'not ok 25 - This is a todo test 1 # TODO just because
+# Failed (TODO) test 25: "This is a todo test 1"',
+        'not ok 26 - This is a todo test 2 # TODO inside
+# Failed (TODO) test 26: "This is a todo test 2"',
+        'not ok 27 - This is a todo test 3 # TODO just because
+# Failed (TODO) test 27: "This is a todo test 3"'
+    ],
+    'Nested todos should work properly'
+);
+
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 25, 26, 27 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

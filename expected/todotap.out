@@ -1,5 +1,5 @@
 \unset ECHO
-1..24
+1..28
 ok 1 - todo fail
 ok 2 - todo pass
 ok 3 - TODO tests should display properly
@@ -24,3 +24,7 @@ ok 21 - inverted skip should have the proper diagnostics
 ok 22 - num only should pass
 ok 23 - num only should have the proper description
 ok 24 - num only should have the proper diagnostics
+ok 25 - todo fail
+ok 26 - todo fail
+ok 27 - todo fail
+ok 28 - Nested todos should work properly

@@ -967,35 +967,18 @@ Which would produce:
 Conditional Tests
 -----------------
 
+Sometimes running a test under certain conditions will cause the test script
+to die. A certain function or method isn't implemented (such as fork() on
+MacOS), some resource isn't available (like a net connection) or a module
+isn't available. In these cases it's necessary to skip tests, or declare that
+they are supposed to fail but will work in the future (a todo test).
+
 Sometimes you might have tests that you want to pass, but you haven't gotten
-around to implementing the logic required to make them pass. pgTAP allows you
-to declare that such tests are supposed to fail but will work in the future.
-This is known as a "todo test."
-
-### `todo( why, how_many )` ###
-### `todo( how_many )` ###
-### `todo( why )` ###
-
-Declares a series of tests that you expect to fail and why. Perhaps it's
-because you haven't fixed a bug or haven't finished a new feature:
-
-    todo('URIGeller not finished', 2);
-
-    \set card '\'' Eight of clubs '\''
-    SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
-    SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
-
-With `todo()`, `:how_many` specifies how many tests are expected to fail. If
-`:how_many` is omitted, it defaults to 1. pgTAP will run the tests normally,
-but print out special flags indicating they are "todo" tests. The test harness
-will interpret these failures as ok. Should any todo test pass, the harness
-will report it as an unexpected success. You then know that the thing you had
-todo is done and can remove the call to `todo()`.
-
-The nice part about todo tests, as opposed to simply commenting out a block of
-tests, is that they're like a programmatic todo list. You know how much work
-is left to be done, you're aware of what bugs there are, and you'll know
-immediately when they're fixed.
+around to implementing the logic required to make them pass Other times, you
+might have tests that pass only under certain circumstances, such as with
+particular versions of PostgreSQL. In these cases it's necessary to skip
+tests, or to declare that they are supposed to fail but will work in the
+future (a todo test).
 
 ### `skip( why, how_many )` ###
 ### `skip( how_many, why )` ###
@@ -1036,6 +1019,31 @@ multiple rows:
 
 This will cause it to skip the same number of rows as would have been tested
 had the `WHEN` condition been true.
+
+### `todo( why, how_many )` ###
+### `todo( how_many )` ###
+### `todo( why )` ###
+
+Declares a series of tests that you expect to fail and why. Perhaps it's
+because you haven't fixed a bug or haven't finished a new feature:
+
+    todo('URIGeller not finished', 2);
+
+    \set card '\'' Eight of clubs '\''
+    SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
+    SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
+
+With `todo()`, `:how_many` specifies how many tests are expected to fail. If
+`:how_many` is omitted, it defaults to 1. pgTAP will run the tests normally,
+but print out special flags indicating they are "todo" tests. The test harness
+will interpret these failures as ok. Should any todo test pass, the harness
+will report it as an unexpected success. You then know that the thing you had
+todo is done and can remove the call to `todo()`.
+
+The nice part about todo tests, as opposed to simply commenting out a block of
+tests, is that they're like a programmatic todo list. You know how much work
+is left to be done, you're aware of what bugs there are, and you'll know
+immediately when they're fixed.
 
 Writing Test Functions
 ======================
