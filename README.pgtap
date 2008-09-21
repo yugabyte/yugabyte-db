@@ -973,6 +973,8 @@ to declare that such tests are supposed to fail but will work in the future.
 This is known as a "todo test."
 
 ### `todo( why, how_many )` ###
+### `todo( how_many )` ###
+### `todo( why )` ###
 
 Declares a series of tests that you expect to fail and why. Perhaps it's
 because you haven't fixed a bug or haven't finished a new feature:
@@ -983,12 +985,12 @@ because you haven't fixed a bug or haven't finished a new feature:
     SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
     SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
 
-With `todo()`, `:how_many` specifies how many tests are expected to fail.
-pgTAP will run the tests normally, but print out special flags indicating they
-are "todo" tests. The test harness will interpret these failures as ok. Should
-any todo test pass, the harness will report it as an unexpected success. You
-then know that the thing you had todo is done and can remove the call to
-`todo()`.
+With `todo()`, `:how_many` specifies how many tests are expected to fail. If
+`:how_many` is omitted, it defaults to 1. pgTAP will run the tests normally,
+but print out special flags indicating they are "todo" tests. The test harness
+will interpret these failures as ok. Should any todo test pass, the harness
+will report it as an unexpected success. You then know that the thing you had
+todo is done and can remove the call to `todo()`.
 
 The nice part about todo tests, as opposed to simply commenting out a block of
 tests, is that they're like a programmatic todo list. You know how much work
@@ -996,7 +998,9 @@ is left to be done, you're aware of what bugs there are, and you'll know
 immediately when they're fixed.
 
 ### `skip( why, how_many )` ###
+### `skip( how_many, why )` ###
 ### `skip( why )` ###
+### `skip( how_many )` ###
 
 Outputs SKIP test results. Use it in a conditional expression within a
 `SELECT` statement to replace the output of a test that you otherwise would

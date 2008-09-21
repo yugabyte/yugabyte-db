@@ -92,7 +92,7 @@ DECLARE
     rcount integer;
 BEGIN
     EXECUTE 'UPDATE __tcache__ SET value = ' || $2
-        || CASE $3 WHEN '' THEN '' ELSE ', note = ' || quote_literal($3) END
+        || CASE WHEN $3 IS NULL THEN '' ELSE ', note = ' || quote_literal($3) END
         || ' WHERE label = ' || quote_literal($1);
     GET DIAGNOSTICS rcount = ROW_COUNT;
     IF rcount = 0 THEN
@@ -100,7 +100,7 @@ BEGIN
     END IF;
     RETURN $2;
 END;
-$$ LANGUAGE plpgsql strict;
+$$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION _set ( text, integer )
 RETURNS integer AS $$
@@ -436,7 +436,23 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION todo ( why text, how_many int )
 RETURNS SETOF BOOLEAN AS $$
 BEGIN
-    PERFORM _set('todo', COALESCE( _get('todo'), 0) + how_many, why );
+    PERFORM _set('todo', COALESCE( _get('todo'), 0) + how_many, COALESCE(why, '') );
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION todo ( why text )
+RETURNS SETOF BOOLEAN AS $$
+BEGIN
+    PERFORM _set('todo', COALESCE( _get('todo'), 0) + 1, COALESCE(why, '') );
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION todo ( how_many int )
+RETURNS SETOF BOOLEAN AS $$
+BEGIN
+    PERFORM _set('todo', COALESCE( _get('todo'), 0) + how_many, '' );
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
@@ -451,7 +467,7 @@ BEGIN
         RETURN NULL;
     END IF;
     -- Decrement the count of todos and return the reason.
-    PERFORM _set('todo', todos - 1);
+    PERFORM _set('todo', todos - 1, NULL);
     RETURN _get_note('todo');
 END;
 $$ LANGUAGE plpgsql;
@@ -463,7 +479,7 @@ DECLARE
 BEGIN
     output := '{}';
     FOR i IN 1..how_many LOOP
-        output = array_append(output, ok( TRUE, 'SKIP: ' || why ) );
+        output = array_append(output, ok( TRUE, 'SKIP: ' || COALESCE( why, '') ) );
     END LOOP;
     RETURN array_to_string(output, E'\n');
 END;
@@ -473,6 +489,14 @@ CREATE OR REPLACE FUNCTION skip ( text )
 RETURNS TEXT AS $$
     SELECT ok( TRUE, 'SKIP: ' || $1 );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION skip( int, text )
+RETURNS TEXT AS 'SELECT skip($2, $1)'
+LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION skip( int )
+RETURNS TEXT AS 'SELECT skip(NULL, $1)'
+LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT )
 RETURNS TEXT AS $$

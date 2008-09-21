@@ -1,15 +1,26 @@
 \unset ECHO
-1..13
+1..24
 ok 1 - todo fail
 ok 2 - todo pass
 ok 3 - TODO tests should display properly
-ok 4 - simple skip should pass
-ok 5 - simple skip should have the proper description
-ok 6 - simple skip should have the proper diagnostics
-ok 7 - skip with num should pass
-ok 8 - skip with num should have the proper description
-ok 9 - skip with num should have the proper diagnostics
-ok 10 Skip multiple
-ok 11 Skip multiple
-ok 12 Skip multiple
-ok 13 - We should get the proper output for multiple skips
+ok 4 - todo fail
+ok 5 - Single default todo test should display properly
+ok 6 - todo fail
+ok 7 - todo pass
+ok 8 - TODO tests should display properly
+ok 9 - simple skip should pass
+ok 10 - simple skip should have the proper description
+ok 11 - simple skip should have the proper diagnostics
+ok 12 - skip with num should pass
+ok 13 - skip with num should have the proper description
+ok 14 - skip with num should have the proper diagnostics
+ok 15 - Skip multiple
+ok 16 - Skip multiple
+ok 17 - Skip multiple
+ok 18 - We should get the proper output for multiple skips
+ok 19 - inverted skip should pass
+ok 20 - inverted skip should have the proper description
+ok 21 - inverted skip should have the proper diagnostics
+ok 22 - num only should pass
+ok 23 - num only should have the proper description
+ok 24 - num only should have the proper diagnostics

@@ -11,6 +11,10 @@ Revision history for pgTAP
       - Fixed the spelling of `ON_ROLLBACK` in the test setup. Can't believe I
         had it with one L in all of the test files before! Thanks to Curtis
         "Ovid" Poe for the spot.
+      - Added a couple of variants of `todo()` and `skip()`, since I can never
+        remember whether the numeric argument comes first or second. Thanks to
+        PostgreSQL's functional polymorphism, I don't have to. Also, there are
+        variants where the numeric value, if not passed, defaults to 1.
 
 0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
