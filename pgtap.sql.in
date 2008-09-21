@@ -1060,7 +1060,7 @@ RETURNS NAME[] AS $$
 $$ LANGUAGE sql;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
-CREATE OR REPLACE FUNCTION _pg_sv_column_array(oid, smallint[])
+CREATE OR REPLACE FUNCTION _pg_sv_column_array( OID, SMALLINT[] )
 RETURNS NAME[] AS $$
     SELECT ARRAY(
         SELECT a.attname
@@ -1072,7 +1072,7 @@ RETURNS NAME[] AS $$
 $$ LANGUAGE SQL stable;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
-CREATE OR REPLACE FUNCTION _pg_sv_table_accessible(oid,oid)
+CREATE OR REPLACE FUNCTION _pg_sv_table_accessible( OID, OID )
 RETURNS BOOLEAN AS $$
     SELECT CASE WHEN has_schema_privilege($1, 'USAGE') THEN (
                   has_table_privilege($2, 'SELECT')
