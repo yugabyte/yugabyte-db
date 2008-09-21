@@ -17,6 +17,7 @@ Revision history for pgTAP
         variants where the numeric value, if not passed, defaults to 1.
       - Updated the link to the pgTAP home page in `pgtap.sql.in`.
       - TODO tests can now nest.
+      - Added `todo_start()`, `todo_end()`, and `in_todo()`.
 
 0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the

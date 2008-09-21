@@ -1045,6 +1045,54 @@ tests, is that they're like a programmatic todo list. You know how much work
 is left to be done, you're aware of what bugs there are, and you'll know
 immediately when they're fixed.
 
+### `todo_start( :why ) ###
+### `todo_start( ) ###
+
+This function allows you declare all subsequent tests as TODO tests, up until
+the `todo_end()` function is called.
+
+The `todo()` syntax is generally pretty good about figuring out whether or not
+we're in a TODO test. However, often we find it difficult to specify the
+*number* of tests that are TODO tests. Thus, you can instead use
+`todo_start()` and `todo_end()` to more easily define the scope of your TODO
+tests.
+
+Note that you can nest TODO tests, too:
+
+    SELECT todo_start('working on this');
+    -- lots of code
+    SELECT todo_start('working on that');
+    -- more code
+    SELECT todo_end();
+    SELECT todo_end();
+
+This is generally not recommended, but large testing systems often have weird
+internal needs.
+
+The `todo_start()` and `todo_end()` function should also work with the
+`todo()` function, although it's not guaranteed and its use is also
+discouraged:
+
+
+    SELECT todo_start('working on this');
+    -- lots of code
+    SELECT todo('working on that', 2);
+    -- Two tests for which the above line applies
+    -- Followed by more tests scoped till the following line.
+    SELECT todo_end();
+
+We recommend that you pick one style or another of TODO to be on the safe
+side.
+
+### todo_end() ###
+
+Stops running tests as TODO tests. This function is fatal if called without a
+preceding `todo_start()` method call.
+
+### in_todo() ###
+
+Returns true if the test is currently inside a TODO block.
+
 Writing Test Functions
 ======================
 
@@ -1274,10 +1322,10 @@ To Do
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to require TAP::Harness.
-* Add `todo_start()` and `todo_end()` (and `in_todo()`).
 * Add `note()`?
 * Add `can_ok()`.
 * Finish porting tests to use `check_test()`.
+* Add throws_ok() version that tests the message.
 
 Suported Versions
 -----------------

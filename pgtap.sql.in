@@ -88,6 +88,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql strict;
 
+CREATE OR REPLACE FUNCTION _get_latest ( text, integer )
+RETURNS integer AS $$
+DECLARE
+    ret integer;
+BEGIN
+    EXECUTE 'SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
+    quote_literal($1) || ' AND value = ' || $2 INTO ret;
+    RETURN ret;
+END;
+$$ LANGUAGE plpgsql strict;
+
 CREATE OR REPLACE FUNCTION _get_note ( text )
 RETURNS text AS $$
 DECLARE
@@ -502,6 +513,46 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION todo_start (text)
+RETURNS SETOF BOOLEAN AS $$
+BEGIN
+    PERFORM _add('todo', -1, COALESCE($1, ''));
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION todo_start ()
+RETURNS SETOF BOOLEAN AS $$
+BEGIN
+    PERFORM _add('todo', -1, '');
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION in_todo ()
+RETURNS BOOLEAN AS $$
+DECLARE
+    todos integer;
+BEGIN
+    todos := _get('todo');
+    RETURN CASE WHEN todos IS NULL THEN FALSE ELSE TRUE END;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION todo_end ()
+RETURNS SETOF BOOLEAN AS $$
+DECLARE
+    id integer;
+BEGIN
+    id := _get_latest( 'todo', -1 );
+    IF id IS NULL THEN
+        RAISE EXCEPTION 'todo_end() called without todo_start()';
+    END IF;
+    EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || id;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION _todo()
 RETURNS TEXT AS $$
 DECLARE
@@ -521,8 +572,10 @@ BEGIN
         EXECUTE 'DELETE FROM __tcache__ WHERE id = ' || todos[1];
         RETURN NULL;
     END IF;
-    -- Decrement the count of todos and return the reason.
-    PERFORM _set(todos[1], todos[2] - 1);
+    -- Decrement the count of counted todos and return the reason.
+    IF todos[2] <> -1 THEN
+        PERFORM _set(todos[1], todos[2] - 1);
+    END IF;
     note := _get_note(todos[1]);
 
     IF todos[2] = 1 THEN
@@ -1007,8 +1060,8 @@ RETURNS NAME[] AS $$
 $$ LANGUAGE sql;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
-CREATE OR REPLACE FUNCTION _pg_sv_column_array(oid, smallint[]) RETURNS NAME[]
-AS $$
+CREATE OR REPLACE FUNCTION _pg_sv_column_array(oid, smallint[])
+RETURNS NAME[] AS $$
     SELECT ARRAY(
         SELECT a.attname
           FROM pg_catalog.pg_attribute a
@@ -1019,8 +1072,8 @@ AS $$
 $$ LANGUAGE SQL stable;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
-CREATE OR REPLACE FUNCTION _pg_sv_table_accessible(oid,oid) RETURNS BOOLEAN
-as $$
+CREATE OR REPLACE FUNCTION _pg_sv_table_accessible(oid,oid)
+RETURNS BOOLEAN AS $$
     SELECT CASE WHEN has_schema_privilege($1, 'USAGE') THEN (
                   has_table_privilege($2, 'SELECT')
                OR has_table_privilege($2, 'INSERT')
@@ -1034,7 +1087,8 @@ as $$
 $$ LANGUAGE SQL immutable strict;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
-CREATE OR REPLACE VIEW pg_all_foreign_keys AS
+CREATE OR REPLACE VIEW pg_all_foreign_keys 
+AS
   SELECT n1.nspname                                   AS fk_schema_name,
          c1.relname                                   AS fk_table_name,
          k1.conname                                   AS fk_constraint_name,

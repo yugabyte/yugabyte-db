@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(28);
+SELECT plan(33);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -121,6 +121,50 @@ SELECT is(
 );
 
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 25, 26, 27 );
+
+/****************************************************************************/
+-- Test todo_start() and todo_end().
+\echo ok 29 - todo fail
+\echo ok 30 - todo fail
+\echo ok 31 - todo fail
+SELECT * FROM todo_start('some todos');
+SELECT is(
+    ARRAY(
+        SELECT fail('This is a todo test 1') AS stuff
+        UNION
+        SELECT in_todo()::text
+        UNION
+        SELECT todo::text FROM todo('inside')
+        UNION
+        SELECT fail('This is a todo test 2')
+        UNION
+        SELECT fail('This is a todo test 3')    
+        UNION
+        SELECT todo_end::text FROM todo_end()
+        UNION
+        SELECT in_todo()::text
+        ORDER BY stuff
+    ),
+    ARRAY[
+        'false',
+        'not ok 29 - This is a todo test 1 # TODO some todos
+# Failed (TODO) test 29: "This is a todo test 1"',
+        'not ok 30 - This is a todo test 2 # TODO inside
+# Failed (TODO) test 30: "This is a todo test 2"',
+        'not ok 31 - This is a todo test 3 # TODO some todos
+# Failed (TODO) test 31: "This is a todo test 3"',
+        'true'
+    ],
+    'todo_start() and todo_end() should work properly with in_todo()'
+);
+
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 29, 30, 31 );
+
+SELECT throws_ok(
+    'SELECT todo_end()',
+    'P0001',
+    'Should get an exception when todo_end() is called without todo_start()'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.
