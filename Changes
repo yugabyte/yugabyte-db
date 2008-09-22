@@ -18,6 +18,9 @@ Revision history for pgTAP
       - Updated the link to the pgTAP home page in `pgtap.sql.in`.
       - TODO tests can now nest.
       - Added `todo_start()`, `todo_end()`, and `in_todo()`.
+      - Added variants of `throws_ok()` that test error messages as well as
+        error codes.
+      - Converted some more tests to use `check_test()`.
 
 0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the

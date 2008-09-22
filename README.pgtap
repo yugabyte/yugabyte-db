@@ -467,13 +467,17 @@ Or maybe you want to make sure a query *does not* trigger an error. For such
 cases, we provide a couple of test functions to make sure your queries are as
 error-prone as you think they should be.
 
-### `throws_ok( text, errcode, description )` ###
-### `throws_ok( text, errcode )` ###
-### `throws_ok( text )` ###
+### `throws_ok( query, errcode, errmsg, description )` ###
+### `throws_ok( query, errcode, errmsg )` ###
+### `throws_ok( query, errmsg, description )` ###
+### `throws_ok( query, errcode )` ###
+### `throws_ok( query, errmsg )` ###
+### `throws_ok( query )` ###
 
     SELECT throws_ok(
         'INSERT INTO try (id) VALUES (1)',
         '23505',
+        'duplicate key value violates unique constraint "try_pkey"',
         'We should get a unique violation for a duplicate PK'
     );
 
@@ -494,7 +498,19 @@ A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html
 "Appendix A. PostgreSQL Error Codes") in the [PostgreSQL
 documentation](http://www.postgresql.org/docs/current/static/).
 
-The third argument is of course a brief test description.
+The third argument is an error message. This will be most useful for functions
+you've written that raise exceptions, so that you can test the excption
+message that you've thrown. Otherwise, for core errors, you'll need to be
+careful of localized error messages.
+
+The fourth argument is of course a brief test description.
+
+For the three- and two-argument forms of `throws_ok()`, if the second argument
+is exactly five bytes long, it is assumed to be an error code and the optional
+third argument is the error message. Otherwise, the second argument is assumed
+to be an error message and the third argument is a description. If for some
+reason you need to test an error message that is five bytes long, use the
+four-argument form.
 
 Should a `throws_ok()` test fail it produces appropriate diagnostic messages.
 For example:
@@ -502,12 +518,12 @@ For example:
     not ok 81 - simple error
     # Failed test "This should not die"
     #       caught: 23505: duplicate key value violates unique constraint "try_pkey"
-    #       wanted: 23506
+    #       wanted: 23502: null value in column "id" violates not-null constraint
 
 Idea borrowed from the Test::Exception Perl module.
 
-### `lives_ok( text, description )` ###
-### `lives_ok( text )` ###
+### `lives_ok( query, description )` ###
+### `lives_ok( query )` ###
 
     SELECT lives_ok(
         'INSERT INTO try (id) VALUES (1)',
@@ -1325,7 +1341,6 @@ To Do
 * Add `note()`?
 * Add `can_ok()`.
 * Finish porting tests to use `check_test()`.
-* Add throws_ok() version that tests the message.
 
 Suported Versions
 -----------------

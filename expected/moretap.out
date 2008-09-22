@@ -1,5 +1,5 @@
 \unset ECHO
-1..30
+1..32
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -30,3 +30,5 @@ ok 27 - ok() failure 3
 ok 28 - ok(false, 'foo') should work
 ok 29 - Multline diagnostics
 ok 30 - multiline desriptions should have subsequent lines escaped
+ok 31 - Multiline description
+ok 32 - multiline desriptions should have subsequent lines escaped

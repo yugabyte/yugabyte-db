@@ -613,53 +613,94 @@ CREATE OR REPLACE FUNCTION skip( int )
 RETURNS TEXT AS 'SELECT skip(NULL, $1)'
 LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT )
+--CREATE OR REPLACE FUNCTION throws_ok ( sql, errcode, errmsg, description )
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    code  ALIAS FOR $1;
-    err   ALIAS FOR $2;
-    msg   ALIAS FOR $3;
-    descr TEXT;
+    query     ALIAS FOR $1;
+    errcode   ALIAS FOR $2;
+    errmsg    ALIAS FOR $3;
+    desctext  ALIAS FOR $4;
+    descr     TEXT;
 BEGIN
-    descr := COALESCE( msg, 'threw ' || COALESCE( err, 'an exception' )  );
-    EXECUTE code;
+    descr := COALESCE(
+          desctext,
+          'threw ' || errcode || ': ' || errmsg,
+          'threw ' || errcode,
+          'threw ' || errmsg,
+          'threw an exception'
+    );
+    EXECUTE query;
     RETURN ok( FALSE, descr ) || E'\n' || diag(
            '      caught: no exception' ||
-        E'\n      wanted: ' || COALESCE( err, 'an exception' )
+        E'\n      wanted: ' || COALESCE( errcode, 'an exception' )
     );
 EXCEPTION WHEN OTHERS THEN
-    IF err IS NULL OR SQLSTATE = err THEN
-        -- The expected error was thrown.
+    IF (errcode IS NULL OR SQLSTATE = errcode)
+        AND ( errmsg IS NULL OR SQLERRM = errmsg)
+    THEN
+        -- The expected errcode and/or message was thrown.
         RETURN ok( TRUE, descr );
     ELSE
-        -- This was not the expected error.
+        -- This was not the expected errcodeor.
         RETURN ok( FALSE, descr ) || E'\n' || diag(
                '      caught: ' || SQLSTATE || ': ' || SQLERRM ||
-            E'\n      wanted: ' || COALESCE( err, 'an exception')
+            E'\n      wanted: ' || COALESCE( errcode, 'an exception' ) ||
+            COALESCE( ': ' || errmsg, '')
         );
     END IF;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5) )
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errcode, errmsg )
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errmsg, description )
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
-    SELECT throws_ok( $1, $2, NULL );
-$$ LANGUAGE SQL;
+BEGIN
+    IF octet_length($2) = 5 THEN
+        RETURN throws_ok( $1, $2::char(5), $3, NULL );
+    ELSE
+        RETURN throws_ok( $1, NULL, $2, $3 );
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
 
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errcode )
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errmsg )
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    IF octet_length($2) = 5 THEN
+        RETURN throws_ok( $1, $2::char(5), NULL, NULL );
+    ELSE
+        RETURN throws_ok( $1, NULL, $2, NULL );
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+
+--CREATE OR REPLACE FUNCTION throws_ok ( query )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT )
 RETURNS TEXT AS $$
-    SELECT throws_ok( $1, NULL, NULL );
+    SELECT throws_ok( $1, NULL, NULL, NULL );
 $$ LANGUAGE SQL;
 
 -- Magically cast integer error codes.
-CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT )
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errcode, errmsg, description )
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT, TEXT )
 RETURNS TEXT AS $$
-    SELECT throws_ok( $1, $2::char(5), $3 );
+    SELECT throws_ok( $1, $2::char(5), $3, $4 );
 $$ LANGUAGE SQL;
 
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errcode, errmsg )
+CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT )
+RETURNS TEXT AS $$
+    SELECT throws_ok( $1, $2::char(5), $3, NULL );
+$$ LANGUAGE SQL;
+
+--CREATE OR REPLACE FUNCTION throws_ok ( query, errcode )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4 )
 RETURNS TEXT AS $$
-    SELECT throws_ok( $1, $2::char(5), NULL );
+    SELECT throws_ok( $1, $2::char(5), NULL, NULL );
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION lives_ok ( TEXT, TEXT )

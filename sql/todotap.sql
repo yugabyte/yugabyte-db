@@ -168,6 +168,7 @@ SELECT CASE WHEN substring(version() from '[[:digit:]]+[.][[:digit:]]')::numeric
      ELSE throws_ok(
         'SELECT todo_end()',
         'P0001',
+        'todo_end() called without todo_start()',
         'Should get an exception when todo_end() is called without todo_start()'
      )
      END;

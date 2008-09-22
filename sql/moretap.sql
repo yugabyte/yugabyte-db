@@ -3,7 +3,7 @@
 
 -- $Id$
 
-\set numb_tests 30
+\set numb_tests 32
 SELECT plan(:numb_tests);
 
 -- Replace the internal record of the plan for a few tests.
@@ -106,6 +106,17 @@ SELECT is(
     ok( true, 'foo
 bar' ),
     'ok 29 - foo
+# bar',
+    'multiline desriptions should have subsequent lines escaped'
+);
+
+/****************************************************************************/
+-- test multiline description.
+\echo ok 31 - Multiline description
+SELECT is(
+    ok( true, 'foo
+bar' ),
+    'ok 31 - foo
 # bar',
     'multiline desriptions should have subsequent lines escaped'
 );

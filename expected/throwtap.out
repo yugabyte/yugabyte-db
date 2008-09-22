@@ -1,13 +1,30 @@
 \unset ECHO
-1..11
-ok 1 - throws_ok(1/0) should work
-ok 2 - throws_ok failure diagnostics
-ok 3 - We should get the proper diagnostics from throws_ok()
-ok 4 - throws_ok(1/0, NULL) should work
-ok 5 - throws_ok failure diagnostics
-ok 6 - We should get the proper diagnostics from throws_ok() with a NULL error code
-ok 7 - lives_ok() should work
-ok 8 - lives_ok failure diagnostics
-ok 9 - We should get the proper diagnostics for a lives_ok() failure
-ok 10 - lives_ok is ok
-ok 11 - multiline desriptions should have subsequent lines escaped
+1..28
+ok 1 - four-argument form should pass
+ok 2 - four-argument form should have the proper description
+ok 3 - four-argument form should have the proper diagnostics
+ok 4 - three-argument errcode should pass
+ok 5 - three-argument errcode should have the proper description
+ok 6 - three-argument errcode should have the proper diagnostics
+ok 7 - two-argument errcode should pass
+ok 8 - two-argument errcode should have the proper description
+ok 9 - three argument errmsg should pass
+ok 10 - three argument errmsg should have the proper description
+ok 11 - three argument errmsg should have the proper diagnostics
+ok 12 - two-argument errmsg should pass
+ok 13 - two-argument errmsg should have the proper description
+ok 14 - two-argument errmsg should have the proper diagnostics
+ok 15 - single-argument form should pass
+ok 16 - single-argument form should have the proper description
+ok 17 - single-argument form should have the proper diagnostics
+ok 18 - invalid errcode should fail
+ok 19 - invalid errcode should have the proper description
+ok 20 - invalid errcode should have the proper diagnostics
+ok 21 - throws_ok(1/0, NULL) should work
+ok 22 - throws_ok diagnostics should fail
+ok 23 - throws_ok diagnostics should have the proper description
+ok 24 - throws_ok diagnostics should have the proper diagnostics
+ok 25 - lives_ok() should work
+ok 26 - lives_ok failure diagnostics should fail
+ok 27 - lives_ok failure diagnostics should have the proper description
+ok 28 - lives_ok failure diagnostics should have the proper diagnostics
