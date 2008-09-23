@@ -1551,6 +1551,160 @@ RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;
 
+-- can_ok( schema, func_name, args[], description )
+CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_proc p
+              JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+             WHERE n.nspname = $1
+               AND p.proname = $2
+               AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($3, ',')
+        ), $4
+    );
+$$ LANGUAGE SQL;
+
+-- can_ok( schema, func_name, args[] )
+CREATE OR REPLACE FUNCTION can_ok( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT can_ok( $1, $2, $3, 'Function ' || $1 || '.' || $2 || '(' ||
+    array_to_string($3, ', ') || ') should exist' );
+$$ LANGUAGE sql;
+
+-- can_ok( schema, func_name, description )
+CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_proc p
+              JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+             WHERE n.nspname = $1
+               AND p.proname = $2
+        ), $3
+    );
+$$ LANGUAGE SQL;
+
+-- can_ok( schema, func_name )
+CREATE OR REPLACE FUNCTION can_ok( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT can_ok( $1, $2, 'Function ' || $1 || '.' || $2 || '() should exist' );
+$$ LANGUAGE sql;
+
+-- can_ok( func_name, args[], description )
+CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_proc p
+             WHERE p.proname = $1
+               AND pg_catalog.pg_function_is_visible(p.oid)
+               AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($2, ',')
+        ), $3
+    );
+$$ LANGUAGE SQL;
+
+-- can_ok( func_name, args[] )
+CREATE OR REPLACE FUNCTION can_ok( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT can_ok( $1, $2, 'Function ' || $1 || '(' ||
+    array_to_string($2, ', ') || ') should exist' );
+$$ LANGUAGE sql;
+
+-- can_ok( func_name, description )
+CREATE OR REPLACE FUNCTION can_ok( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_proc p
+             WHERE p.proname = $1
+               AND pg_catalog.pg_function_is_visible(p.oid)
+        ), $2
+    );
+$$ LANGUAGE sql;
+
+-- can_ok( func_name )
+CREATE OR REPLACE FUNCTION can_ok( NAME )
+RETURNS TEXT AS $$
+    SELECT can_ok( $1, 'Function ' || $1 || '() should exist' );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _pg_sv_type_array( OID[] )                                 
+RETURNS NAME[] AS $$
+SELECT ARRAY(
+SELECT t.typname
+FROM pg_catalog.pg_type t
+JOIN generate_series(1, array_upper($1, 1)) s(i) ON (t.oid = $1[i])
+ORDER BY i
+)                                                                                       
+$$ LANGUAGE SQL stable;
+
+-- can( schema, func_names[], description )
+CREATE OR REPLACE FUNCTION can ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    missing name[];
+BEGIN
+    SELECT ARRAY(
+        SELECT $2[i]
+          FROM generate_series(1, array_upper($2, 1)) s(i)
+          LEFT JOIN pg_catalog.pg_proc p
+            ON ($2[i] = p.proname)
+          LEFT JOIN pg_catalog.pg_namespace n
+            ON p.pronamespace = n.oid AND n.nspname = 'pg_catalog'
+          WHERE p.oid IS NULL
+    ) INTO missing;
+    IF missing[1] IS NULL THEN
+        RETURN ok( true, $3 );
+    END IF;
+    RETURN ok( false, $3 ) || E'\n' || diag(
+        '    ' || $1 || '.' ||
+        array_to_string( missing, E'() missing\n    ' || $1 || '.') ||
+        '() missing'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- can( schema, func_names[] )
+CREATE OR REPLACE FUNCTION can ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT can( $1, $2, 'Schema ' || $1 || ' can' );
+$$ LANGUAGE sql;
+
+-- can( func_names[], description )
+CREATE OR REPLACE FUNCTION can ( NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    missing name[];
+BEGIN
+    SELECT ARRAY(
+        SELECT $1[i]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+          LEFT JOIN pg_catalog.pg_proc p
+            ON ($1[i] = p.proname AND pg_catalog.pg_function_is_visible(p.oid))
+          WHERE p.oid IS NULL
+    ) INTO missing;
+    IF missing[1] IS NULL THEN
+        RETURN ok( true, $2 );
+    END IF;
+    RETURN ok( false, $2 ) || E'\n' || diag(
+        '    ' ||
+        array_to_string( missing, E'() missing\n    ') ||
+        '() missing'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- can( func_names[] )
+CREATE OR REPLACE FUNCTION can ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT can( $1, 'Schema ' || array_to_string(current_schemas(true), ' or ') || ' can' );
+$$ LANGUAGE sql;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
--- $Id: pg73.sql.in 4285 2008-09-17 21:47:16Z david $
+-- $Id$
 
 SELECT plan(26);
 

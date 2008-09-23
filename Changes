@@ -21,6 +21,7 @@ Revision history for pgTAP
       - Added variants of `throws_ok()` that test error messages as well as
         error codes.
       - Converted some more tests to use `check_test()`.
+      - Added `can()` and `can_ok()`.
 
 0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the

@@ -4,7 +4,7 @@
 -- Tests for pgTAP.
 --
 --
--- $Id: check.sql.in 4285 2008-09-17 21:47:16Z david $
+-- $Id$
 
 -- Format the output for nice TAP.
 \pset format unaligned
