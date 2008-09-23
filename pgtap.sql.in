@@ -1756,17 +1756,20 @@ BEGIN
         -- Remove ok and the test number.
         adiag := substring(
             have
-            FROM CASE WHEN aok THEN 4 ELSE 8 END + char_length(tnumb::text)
+            FROM CASE WHEN aok THEN 4 ELSE 9 END + char_length(tnumb::text)
         );
 
         -- Remove the description, if there is one.
-        adiag := substring( adiag FROM 3 + char_length( diag( adescr ) ) );
+        IF adescr <> '' THEN
+            adiag := substring( adiag FROM 3 + char_length( diag( adescr ) ) );
+        END IF;
 
         -- Remove failure message from ok().
         IF NOT aok THEN
            adiag := substring(
                adiag
-               FROM 14 + char_length(tnumb::text) + 4 + char_length( diag( adescr ) )
+               FROM 14 + char_length(tnumb::text) 
+                       + CASE adescr WHEN '' THEN 3 ELSE 4 + char_length( diag( adescr ) ) END
            );
         END IF;
 

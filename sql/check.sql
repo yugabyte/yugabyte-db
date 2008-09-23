@@ -88,7 +88,7 @@ SELECT * FROM check_test(
     false,
     'col_has_check( sch, tab, col, desc ) fail',
     'public.sometab.id should be a pk',
-    '        have: {name}
+    '       have: {name}
         want: {id}'
 );
 
@@ -97,7 +97,7 @@ SELECT * FROM check_test(
     false,
     'col_has_check( tab, col, desc ) fail',
     'sometab.id should be a pk',
-    '        have: {name}
+    '       have: {name}
         want: {id}'
 );
 

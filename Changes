@@ -22,6 +22,8 @@ Revision history for pgTAP
         error codes.
       - Converted some more tests to use `check_test()`.
       - Added `can()` and `can_ok()`.
+      - Fixed a bug in `check_test()` where the leading whitespace for
+        diagnostic messages could be off by 1 or more characters.
 
 0.10  2008-09-18T22:59:31
       - Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the

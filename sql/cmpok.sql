@@ -69,7 +69,7 @@ SELECT * FROM check_test(
     false,
     'cmp_ok() fail',
     '1 should = 2',
-    '    ''1''
+    '   ''1''
         =
     ''2'''
 );
@@ -79,7 +79,7 @@ SELECT * FROM check_test(
     false,
     'cmp_ok() NULL fail',
     '1 should = NULL',
-    '    ''1''
+    '   ''1''
         =
     NULL'
 );
