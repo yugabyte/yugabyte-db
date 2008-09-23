@@ -1,40 +1,59 @@
 \unset ECHO
-1..38
-ok 1 - testing col_not_null( schema, table, column, desc )
-ok 2 - col_not_null( schema, table, column, desc ) should work
-ok 3 - testing col_not_null( table, column, desc )
-ok 4 - col_not_null( table, column, desc ) should work
-ok 5 - testing col_not_null( schema, table, column, desc )
-ok 6 - col_not_null( table, column ) should work
-ok 7 - testing col_not_null( schema, table, column, desc )
-ok 8 - col_not_null( table, column ) should properly fail
-ok 9 - testing col_is_null( schema, table, column, desc )
-ok 10 - col_is_null( schema, table, column, desc ) should work
-ok 11 - testing col_is_null( table, column, desc )
-ok 12 - col_is_null( table, column, desc ) should work
-ok 13 - testing col_is_null( schema, table, column, desc )
-ok 14 - col_is_null( table, column ) should work
-ok 15 - testing col_is_null( schema, table, column, desc )
-ok 16 - col_is_null( table, column ) should properly fail
-ok 17 - testing col_type_is( schema, table, column, type, desc )
-ok 18 - col_type_is( schema, table, column, type, desc ) should work
-ok 19 - testing col_type_is( table, column, type, desc )
-ok 20 - col_type_is( table, column, type, desc ) should work
-ok 21 - testing col_type_is( table, column, type )
-ok 22 - col_type_is( table, column, type ) should work
-ok 23 - testing col_type_is( table, column, type ) case-insensitively
-ok 24 - col_type_is( table, column, type ) should work case-insensitively
-ok 25 - testing col_type_is( table, column, type ) failure
-ok 26 - col_type_is( table, column, type ) should fail with proper diagnostics
-ok 27 - testing col_type_is( schema, table, column, type(precision,scale), description )
-ok 28 - col_type_is( schema, table, column, type, precision(scale,description) should work
-ok 29 - col_type_is( table, column, type, precision, desc ) fail
-ok 30 - col_type_is with precision should have nice diagnostics
-ok 31 - col_default_is( schema, table, column, default, description )
-ok 32 - col_default_is( schema, table, column, default, description ) should work
-ok 33 - col_default_is( schema, table, column, default, description ) fail
-ok 34 - ok 33 - Should get proper diagnostics for a default failure
-ok 35 - col_default_is( table, column, default, description )
-ok 36 - col_default_is( table, column, default, description ) should work
-ok 37 - col_default_is( table, column, default )
-ok 38 - col_default_is( table, column, default ) should work
+1..57
+ok 1 - col_not_null( sch, tab, col, desc ) should pass
+ok 2 - col_not_null( sch, tab, col, desc ) should have the proper description
+ok 3 - col_not_null( sch, tab, col, desc ) should have the proper diagnostics
+ok 4 - col_not_null( tab, col, desc ) should pass
+ok 5 - col_not_null( tab, col, desc ) should have the proper description
+ok 6 - col_not_null( tab, col, desc ) should have the proper diagnostics
+ok 7 - col_not_null( table, column ) should pass
+ok 8 - col_not_null( table, column ) should have the proper description
+ok 9 - col_not_null( table, column ) should have the proper diagnostics
+ok 10 - col_not_null( table, column ) fail should fail
+ok 11 - col_not_null( table, column ) fail should have the proper description
+ok 12 - col_not_null( table, column ) fail should have the proper diagnostics
+ok 13 - col_is_null( sch, tab, col, desc ) should pass
+ok 14 - col_is_null( sch, tab, col, desc ) should have the proper description
+ok 15 - col_is_null( sch, tab, col, desc ) should have the proper diagnostics
+ok 16 - col_is_null( tab, col, desc ) should pass
+ok 17 - col_is_null( tab, col, desc ) should have the proper description
+ok 18 - col_is_null( tab, col, desc ) should have the proper diagnostics
+ok 19 - col_is_null( tab, col ) should pass
+ok 20 - col_is_null( tab, col ) should have the proper description
+ok 21 - col_is_null( tab, col ) should have the proper diagnostics
+ok 22 - col_is_null( tab, col ) fail should fail
+ok 23 - col_is_null( tab, col ) fail should have the proper description
+ok 24 - col_is_null( tab, col ) fail should have the proper diagnostics
+ok 25 - col_type_is( sch, tab, col, type, desc ) should pass
+ok 26 - col_type_is( sch, tab, col, type, desc ) should have the proper description
+ok 27 - col_type_is( sch, tab, col, type, desc ) should have the proper diagnostics
+ok 28 - col_type_is( tab, col, type, desc ) should pass
+ok 29 - col_type_is( tab, col, type, desc ) should have the proper description
+ok 30 - col_type_is( tab, col, type, desc ) should have the proper diagnostics
+ok 31 - col_type_is( tab, col, type ) should pass
+ok 32 - col_type_is( tab, col, type ) should have the proper description
+ok 33 - col_type_is( tab, col, type ) should have the proper diagnostics
+ok 34 - col_type_is( tab, col, type ) insensitive should pass
+ok 35 - col_type_is( tab, col, type ) insensitive should have the proper description
+ok 36 - col_type_is( tab, col, type ) insensitive should have the proper diagnostics
+ok 37 - col_type_is( tab, col, type ) fail should fail
+ok 38 - col_type_is( tab, col, type ) fail should have the proper description
+ok 39 - col_type_is( tab, col, type ) fail should have the proper diagnostics
+ok 40 - col_type_is with precision should pass
+ok 41 - col_type_is with precision should have the proper description
+ok 42 - col_type_is with precision should have the proper diagnostics
+ok 43 - col_type_is precision fail should fail
+ok 44 - col_type_is precision fail should have the proper description
+ok 45 - col_type_is precision fail should have the proper diagnostics
+ok 46 - col_default_is( sch, tab, col, def, desc ) should pass
+ok 47 - col_default_is( sch, tab, col, def, desc ) should have the proper description
+ok 48 - col_default_is( sch, tab, col, def, desc ) should have the proper diagnostics
+ok 49 - col_default_is() fail should fail
+ok 50 - col_default_is() fail should have the proper description
+ok 51 - col_default_is() fail should have the proper diagnostics
+ok 52 - col_default_is( tab, col, def, desc ) should pass
+ok 53 - col_default_is( tab, col, def, desc ) should have the proper description
+ok 54 - col_default_is( tab, col, def, desc ) should have the proper diagnostics
+ok 55 - col_default_is( tab, col, def ) should pass
+ok 56 - col_default_is( tab, col, def ) should have the proper description
+ok 57 - col_default_is( tab, col, def ) should have the proper diagnostics
