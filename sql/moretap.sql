@@ -3,7 +3,7 @@
 
 -- $Id$
 
-\set numb_tests 32
+\set numb_tests 37
 SELECT plan(:numb_tests);
 
 -- Replace the internal record of the plan for a few tests.
@@ -79,46 +79,23 @@ SELECT is( value, :numb_tests, 'plan() should have stored the test count' )
 
 /****************************************************************************/
 -- Test ok()
-\echo ok 17 - ok() success
-SELECT is( ok(true), 'ok 17', 'ok(true) should work' );
-\echo ok 19 - ok() success 2
-SELECT is( ok(true, ''), 'ok 19', 'ok(true, '''') should work' );
-\echo ok 21 - ok() success 3
-SELECT is( ok(true, 'foo'), 'ok 21 - foo', 'ok(true, ''foo'') should work' );
+SELECT * FROM check_test( ok(true), true, 'ok(true)', '', '');
+SELECT * FROM check_test( ok(true, ''), true, 'ok(true, '''')', '', '' );
+SELECT * FROM check_test( ok(true, 'foo'), true, 'ok(true, ''foo'')', 'foo', '' );
 
-\echo ok 23 - ok() failure
-SELECT is( ok(false), 'not ok 23
-# Failed test 23', 'ok(false) should work' );
-\echo ok 25 - ok() failure 2
-SELECT is( ok(false, ''), 'not ok 25
-# Failed test 25', 'ok(false, '''') should work' );
-\echo ok 27 - ok() failure 3
-SELECT is( ok(false, 'foo'), 'not ok 27 - foo
-# Failed test 27: "foo"', 'ok(false, ''foo'') should work' );
-
--- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 23, 25, 27);
+SELECT * FROM check_test( ok(false), false, 'ok(false)', '', '' );
+SELECT * FROM check_test( ok(false, ''), false, 'ok(false, '''')', '', '' );
+SELECT * FROM check_test( ok(false, 'foo'), false, 'ok(false, ''foo'')', 'foo', '' );
 
 /****************************************************************************/
 -- test multiline description.
-\echo ok 29 - Multline diagnostics
-SELECT is(
+SELECT * FROM check_test(
     ok( true, 'foo
 bar' ),
-    'ok 29 - foo
-# bar',
-    'multiline desriptions should have subsequent lines escaped'
-);
-
-/****************************************************************************/
--- test multiline description.
-\echo ok 31 - Multiline description
-SELECT is(
-    ok( true, 'foo
-bar' ),
-    'ok 31 - foo
-# bar',
-    'multiline desriptions should have subsequent lines escaped'
+     true,
+     'multiline desc', 'foo
+bar',
+    ''
 );
 
 /****************************************************************************/

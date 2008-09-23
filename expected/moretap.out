@@ -1,5 +1,5 @@
 \unset ECHO
-1..32
+1..37
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -16,19 +16,24 @@ ok 13 - Set the plan to 4
 ok 14 - The output of finish() should reflect a low test plan
 ok 15 - Reset the plan
 ok 16 - plan() should have stored the test count
-ok 17 - ok() success
-ok 18 - ok(true) should work
-ok 19 - ok() success 2
-ok 20 - ok(true, '') should work
-ok 21 - ok() success 3
-ok 22 - ok(true, 'foo') should work
-ok 23 - ok() failure
-ok 24 - ok(false) should work
-ok 25 - ok() failure 2
-ok 26 - ok(false, '') should work
-ok 27 - ok() failure 3
-ok 28 - ok(false, 'foo') should work
-ok 29 - Multline diagnostics
-ok 30 - multiline desriptions should have subsequent lines escaped
-ok 31 - Multiline description
-ok 32 - multiline desriptions should have subsequent lines escaped
+ok 17 - ok(true) should pass
+ok 18 - ok(true) should have the proper description
+ok 19 - ok(true) should have the proper diagnostics
+ok 20 - ok(true, '') should pass
+ok 21 - ok(true, '') should have the proper description
+ok 22 - ok(true, '') should have the proper diagnostics
+ok 23 - ok(true, 'foo') should pass
+ok 24 - ok(true, 'foo') should have the proper description
+ok 25 - ok(true, 'foo') should have the proper diagnostics
+ok 26 - ok(false) should fail
+ok 27 - ok(false) should have the proper description
+ok 28 - ok(false) should have the proper diagnostics
+ok 29 - ok(false, '') should fail
+ok 30 - ok(false, '') should have the proper description
+ok 31 - ok(false, '') should have the proper diagnostics
+ok 32 - ok(false, 'foo') should fail
+ok 33 - ok(false, 'foo') should have the proper description
+ok 34 - ok(false, 'foo') should have the proper diagnostics
+ok 35 - multiline desc should pass
+ok 36 - multiline desc should have the proper description
+ok 37 - multiline desc should have the proper diagnostics
