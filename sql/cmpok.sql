@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(14);
+SELECT plan(20);
 
 /****************************************************************************/
 
@@ -24,65 +24,65 @@ LANGUAGE SQL IMMUTABLE STRICT;
 
 /****************************************************************************/
 -- Test cmp_ok().
-\echo ok 1 - test cmp_ok( int, =, int, description )
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( 1, '=', 1, '1 should = 1' ),
-    'ok 1 - 1 should = 1',
-    'cmp_ok( int, =, int, description ) should work'
+    true,
+    'cmp_ok( int, =, int )',
+    '1 should = 1',
+    ''
 );
 
-\echo ok 3 - test cmp_ok( int, <>, int, description )
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( 1, '<>', 2, '1 should <> 2' ),
-    'ok 3 - 1 should <> 2',
-    'cmp_ok( int, <>, int ) should work'
+    true,
+    'cmp_ok( int, <>, int )',
+    '1 should <> 2',
+    ''
 );
 
-\echo ok 5 - test cmp_ok( polygon, ~=, polygon )
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( '((0,0),(1,1))'::polygon, '~=', '((1,1),(0,0))'::polygon ),
-    'ok 5',
-    'cmp_ok( polygon, ~=, polygon ) should work'
+    true,
+    'cmp_ok( polygon, ~=, polygon )'
+    '',
+    ''
 );
 
-\echo ok 7 - test cmp_ok( int[], =, int[] )
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( ARRAY[1, 2], '=', ARRAY[1, 2]),
-    'ok 7',
-    'cmp_ok( int[], =, int[] ) should work'
+    true,
+    'cmp_ok( int[], =, int[] )',
+    '',
+    ''
 );
 
-\echo ok 9 - test cmp_ok( inet[], =, inet[] )
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( ARRAY['192.168.1.2'::inet], '=', ARRAY['192.168.1.2'::inet] ),
-    'ok 9',
-    'cmp_ok( inet[], =, inet[] ) should work'
+    true,
+    'cmp_ok( inet[], =, inet[] )',
+    '',
+    ''
 );
 
-\echo ok 11 - Test cmp_ok() failure output
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( 1, '=', 2, '1 should = 2' ),
-    'not ok 11 - 1 should = 2
-# Failed test 11: "1 should = 2"
-#     ''1''
-#         =
-#     ''2''',
-    'cmp_ok() failure output should be correct'
+    false,
+    'cmp_ok() fail',
+    '1 should = 2',
+    '    ''1''
+        =
+    ''2'''
 );
 
-\echo ok 13 - Test cmp_ok() failure output
-SELECT is(
+SELECT * FROM check_test(
     cmp_ok( 1, '=', NULL, '1 should = NULL' ),
-    'not ok 13 - 1 should = NULL
-# Failed test 13: "1 should = NULL"
-#     ''1''
-#         =
-#     NULL',
-    'cmp_ok() failure output should be correct'
+    false,
+    'cmp_ok() NULL fail',
+    '1 should = NULL',
+    '    ''1''
+        =
+    NULL'
 );
-
--- Clean up the failed test results.
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 11, 13 );
 
 /****************************************************************************/
 -- Finish the tests and clean up.
