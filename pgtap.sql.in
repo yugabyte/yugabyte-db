@@ -1657,6 +1657,7 @@ BEGIN
           LEFT JOIN pg_catalog.pg_namespace n
             ON p.pronamespace = n.oid AND n.nspname = 'pg_catalog'
           WHERE p.oid IS NULL
+          ORDER BY s.i
     ) INTO missing;
     IF missing[1] IS NULL THEN
         RETURN ok( true, $3 );
@@ -1687,6 +1688,7 @@ BEGIN
           LEFT JOIN pg_catalog.pg_proc p
             ON ($1[i] = p.proname AND pg_catalog.pg_function_is_visible(p.oid))
           WHERE p.oid IS NULL
+          ORDER BY s.i
     ) INTO missing;
     IF missing[1] IS NULL THEN
         RETURN ok( true, $2 );
