@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(26);
+SELECT plan(39);
 
 -- This will be rolled back. :-)
 CREATE TABLE public.sometab(
@@ -16,113 +16,122 @@ CREATE TABLE public.sometab(
 /****************************************************************************/
 -- Test has_unique().
 
-\echo ok 1 - test has_unique( schema, table, description )
-SELECT is(
+SELECT * FROM check_test(
     has_unique( 'public', 'sometab', 'public.sometab should have a unique constraint' ),
-    'ok 1 - public.sometab should have a unique constraint',
-    'has_unique( schema, table, description ) should work'
+    true,
+    'has_unique( schema, table, description )',
+    'public.sometab should have a unique constraint',
+    ''
 );
 
-\echo ok 3 - test has_unique( table, description )
-SELECT is(
+SELECT * FROM check_test(
     has_unique( 'sometab', 'sometab should have a unique constraint' ),
-    'ok 3 - sometab should have a unique constraint',
-    'has_unique( table, description ) should work'
+    true,
+    'has_unique( table, description )',
+    'sometab should have a unique constraint',
+    ''
 );
 
-\echo ok 5 - test has_unique( table )
-SELECT is(
+SELECT * FROM check_test(
     has_unique( 'sometab' ),
-    'ok 5 - Table sometab should have a unique constraint',
-    'has_unique( table ) should work'
+    true,
+    'has_unique( table )',
+    'Table sometab should have a unique constraint',
+    ''
 );
 
-\echo ok 7 - test has_unique( schema, table, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     has_unique( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a unique constraint' ),
-    'not ok 7 - pg_catalog.pg_class should have a unique constraint
-# Failed test 7: "pg_catalog.pg_class should have a unique constraint"',
-    'has_unique( schema, table, description ) should fail properly'
+    false,
+    'has_unique( schema, table, description ) fail',
+    'pg_catalog.pg_class should have a unique constraint',
+    ''
 );
 
-\echo ok 9 - test has_unique( table, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     has_unique( 'pg_class', 'pg_class should have a unique constraint' ),
-    'not ok 9 - pg_class should have a unique constraint
-# Failed test 9: "pg_class should have a unique constraint"',
-    'has_unique( table, description ) should fail properly'
+    false,
+    'has_unique( table, description ) fail',
+    'pg_class should have a unique constraint',
+    ''
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 7, 9 );
 
 /****************************************************************************/
 -- Test col_is_unique().
 
-\echo ok 11 - test col_is_unique( schema, table, column, description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'public', 'sometab', 'name', 'public.sometab.name should be a pk' ),
-    'ok 11 - public.sometab.name should be a pk',
-    'col_is_unique( schema, table, column, description ) should work'
+    true,
+    'col_is_unique( schema, table, column, description )',
+    'public.sometab.name should be a pk',
+    ''
 );
 
-\echo ok 13 - test col_is_unique( table, column, description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'sometab', 'name', 'sometab.name should be a pk' ),
-    'ok 13 - sometab.name should be a pk',
-    'col_is_unique( table, column, description ) should work'
+    true,
+    'col_is_unique( table, column, description )',
+    'sometab.name should be a pk',
+    ''
 );
 
-\echo ok 15 - test col_is_unique( table, column )
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'sometab', 'name' ),
-    'ok 15 - Column sometab(name) should have a unique constraint',
-    'col_is_unique( table, column ) should work'
+    true,
+    'col_is_unique( table, column )',
+    'Column sometab(name) should have a unique constraint',
+    ''
 );
 
-\echo ok 17 - test col_is_unique( schema, table, column, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'public', 'sometab', 'id', 'public.sometab.id should be a pk' ),
-    'not ok 17 - public.sometab.id should be a pk
-# Failed test 17: "public.sometab.id should be a pk"
-#         have: {name}
-#         want: {id}',
-    'col_is_unique( schema, table, column, description ) should fail properly'
+    false,
+    'col_is_unique( schema, table, column, description ) fail',
+    'public.sometab.id should be a pk',
+    '       have: {name}
+        want: {id}'
 );
 
-\echo ok 19 - test col_is_unique( table, column, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'sometab', 'id', 'sometab.id should be a pk' ),
-    'not ok 19 - sometab.id should be a pk
-# Failed test 19: "sometab.id should be a pk"
-#         have: {name}
-#         want: {id}',
-    'col_is_unique( table, column, description ) should fail properly'
+    false,
+    'col_is_unique( table, column, description ) fail',
+    'sometab.id should be a pk',
+    '       have: {name}
+        want: {id}'
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 17, 19 );
 
 /****************************************************************************/
 -- Test col_is_unique() with an array of columns.
 
-CREATE TABLE public.argh (id int not null, name text not null, unique (id, name));
+CREATE TABLE public.argh (
+    id INT NOT NULL,
+    name TEXT NOT NULL,
+    UNIQUE (id, name)
+);
 
-\echo ok 21 - test col_is_unique( schema, table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
-    'ok 21 - id + name should be a pk',
-    'col_is_unique( schema, table, column[], description ) should work'
+    true,
+    'col_is_unique( schema, table, column[], description )',
+    'id + name should be a pk',
+    ''
 );
 
-\echo ok 23 - test col_is_unique( table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
-    'ok 23 - id + name should be a pk',
-    'col_is_unique( table, column[], description ) should work'
+    true,
+    'col_is_unique( table, column[], description )',
+    'id + name should be a pk',
+    ''
 );
 
-\echo ok 25 - test col_is_unique( table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_unique( 'argh', ARRAY['id', 'name'] ),
-    'ok 25 - Columns argh(id, name) should have a unique constraint',
-    'col_is_unique( table, column[] ) should work'
+    true,
+    'col_is_unique( table, column[] )',
+    'Columns argh(id, name) should have a unique constraint',
+    ''
 );
 
 /****************************************************************************/

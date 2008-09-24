@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(26);
+SELECT plan(39);
 
 -- This will be rolled back. :-)
 CREATE TABLE public.sometab(
@@ -16,113 +16,122 @@ CREATE TABLE public.sometab(
 /****************************************************************************/
 -- Test has_pk().
 
-\echo ok 1 - test has_pk( schema, table, description )
-SELECT is(
+SELECT * FROM check_test(
     has_pk( 'public', 'sometab', 'public.sometab should have a pk' ),
-    'ok 1 - public.sometab should have a pk',
-    'has_pk( schema, table, description ) should work'
+    true,
+    'has_pk( schema, table, description )',
+    'public.sometab should have a pk',
+    ''
 );
 
-\echo ok 3 - test has_pk( table, description )
-SELECT is(
+SELECT * FROM check_test(
     has_pk( 'sometab', 'sometab should have a pk' ),
-    'ok 3 - sometab should have a pk',
-    'has_pk( table, description ) should work'
+    true,
+    'has_pk( table, description )',
+    'sometab should have a pk',
+    ''
 );
 
-\echo ok 5 - test has_pk( table )
-SELECT is(
+SELECT * FROM check_test(
     has_pk( 'sometab' ),
-    'ok 5 - Table sometab should have a primary key',
-    'has_pk( table ) should work'
+    true,
+    'has_pk( table )',
+    'Table sometab should have a primary key',
+    ''
 );
 
-\echo ok 7 - test has_pk( schema, table, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     has_pk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a pk' ),
-    'not ok 7 - pg_catalog.pg_class should have a pk
-# Failed test 7: "pg_catalog.pg_class should have a pk"',
-    'has_pk( schema, table, description ) should fail properly'
+    false,
+    'has_pk( schema, table, description ) fail',
+    'pg_catalog.pg_class should have a pk',
+    ''
 );
 
-\echo ok 9 - test has_pk( table, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     has_pk( 'pg_class', 'pg_class should have a pk' ),
-    'not ok 9 - pg_class should have a pk
-# Failed test 9: "pg_class should have a pk"',
-    'has_pk( table, description ) should fail properly'
+    false,
+    'has_pk( table, description ) fail',
+    'pg_class should have a pk',
+    ''
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 7, 9 );
 
 /****************************************************************************/
 -- Test col_is_pk().
 
-\echo ok 11 - test col_is_pk( schema, table, column, description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'public', 'sometab', 'id', 'public.sometab.id should be a pk' ),
-    'ok 11 - public.sometab.id should be a pk',
-    'col_is_pk( schema, table, column, description ) should work'
+    true,
+    'col_is_pk( schema, table, column, description )',
+    'public.sometab.id should be a pk',
+    ''
 );
 
-\echo ok 13 - test col_is_pk( table, column, description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'sometab', 'id', 'sometab.id should be a pk' ),
-    'ok 13 - sometab.id should be a pk',
-    'col_is_pk( table, column, description ) should work'
+    true,
+    'col_is_pk( table, column, description )',
+    'sometab.id should be a pk',
+    ''
 );
 
-\echo ok 15 - test col_is_pk( table, column )
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'sometab', 'id' ),
-    'ok 15 - Column sometab(id) should be a primary key',
-    'col_is_pk( table, column ) should work'
+    true,
+    'col_is_pk( table, column )',
+    'Column sometab(id) should be a primary key',
+    ''
 );
 
-\echo ok 17 - test col_is_pk( schema, table, column, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'public', 'sometab', 'name', 'public.sometab.name should be a pk' ),
-    'not ok 17 - public.sometab.name should be a pk
-# Failed test 17: "public.sometab.name should be a pk"
-#         have: {id}
-#         want: {name}',
-    'col_is_pk( schema, table, column, description ) should fail properly'
+    false,
+    'col_is_pk( schema, table, column, description ) fail',
+    'public.sometab.name should be a pk',
+    '       have: {id}
+        want: {name}'
 );
 
-\echo ok 19 - test col_is_pk( table, column, description ) fail
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'sometab', 'name', 'sometab.name should be a pk' ),
-    'not ok 19 - sometab.name should be a pk
-# Failed test 19: "sometab.name should be a pk"
-#         have: {id}
-#         want: {name}',
-    'col_is_pk( table, column, description ) should fail properly'
+    false,
+    'col_is_pk( table, column, description ) fail',
+    'sometab.name should be a pk',
+    '       have: {id}
+        want: {name}'
 );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 17, 19 );
 
 /****************************************************************************/
 -- Test col_is_pk() with an array of columns.
 
-CREATE TABLE public.argh (id int not null, name text not null, primary key (id, name));
+CREATE TABLE public.argh (
+    id INT NOT NULL,
+    name TEXT NOT NULL,
+    PRIMARY KEY (id, name)
+);
 
-\echo ok 21 - test col_is_pk( schema, table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
-    'ok 21 - id + name should be a pk',
-    'col_is_pk( schema, table, column[], description ) should work'
+    true,
+    'col_is_pk( schema, table, column[], description )',
+    'id + name should be a pk',
+    ''
 );
 
-\echo ok 23 - test col_is_pk( table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
-    'ok 23 - id + name should be a pk',
-    'col_is_pk( table, column[], description ) should work'
+    true,
+    'col_is_pk( table, column[], description )',
+    'id + name should be a pk',
+    ''
 );
 
-\echo ok 25 - test col_is_pk( table, column[], description )
-SELECT is(
+SELECT * FROM check_test(
     col_is_pk( 'argh', ARRAY['id', 'name'] ),
-    'ok 25 - Columns argh(id, name) should be a primary key',
-    'col_is_pk( table, column[] ) should work'
+    true,
+    'col_is_pk( table, column[] )',
+    'Columns argh(id, name) should be a primary key',
+    ''
 );
 
 /****************************************************************************/
