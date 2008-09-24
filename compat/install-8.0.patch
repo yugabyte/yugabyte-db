@@ -1,5 +1,5 @@
---- pgtap.sql.saf	2008-09-21 15:38:31.000000000 -0700
-+++ pgtap.sql	2008-09-21 15:44:50.000000000 -0700
+--- pgtap.sql.saf	2008-09-24 11:22:15.000000000 -0700
++++ pgtap.sql	2008-09-24 11:22:22.000000000 -0700
 @@ -69,53 +69,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
@@ -117,7 +117,7 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -923,15 +938,16 @@
+@@ -964,15 +979,16 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -138,7 +138,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -1520,6 +1536,7 @@
+@@ -1715,6 +1731,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -146,7 +146,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -1530,8 +1547,10 @@
+@@ -1725,8 +1742,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
