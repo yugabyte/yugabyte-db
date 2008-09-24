@@ -1,5 +1,7 @@
 Revision history for pgTAP
 
+0.12
+
 0.11  2008-09-24T20:41:42
       - Simplified the tests so that they now load `test_setup.sql` instead of
         setting a bunch of stuff themselves. Now only `test_setup.sql` needs
