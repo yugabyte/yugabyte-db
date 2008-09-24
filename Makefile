@@ -6,7 +6,7 @@ MODULES = pgtap
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
-REGRESS_OPTS = --load-language plpgsql
+REGRESS_OPTS = --load-language=plpgsql
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
