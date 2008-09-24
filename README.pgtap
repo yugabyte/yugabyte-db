@@ -1391,8 +1391,12 @@ An `=` operator is also added that compares `name[]` values.
 8.0 and Lower
 -------------
 
-A patch is applied that changes how some of the test functions are written;
-otherwise, all is the same as for 8.2 Do note, however, that the `throws_ok()`
+A patch is applied that changes how some of the test functions are written.
+Also, a single cast is added for compatibility:
+
+* `oidvector` to `regtypep[]`.
+
+Otherwise, all is the same as for 8.2 Do note, however, that the `throws_ok()`
 and `lives_ok()` functions do not work under 8.0. Don't even use them there.
 
 To Do

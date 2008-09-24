@@ -77,6 +77,11 @@ ifneq ($(PGVER_MINOR), 3)
 	cat compat/uninstall-8.2.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
 	rm uninstall_pgtap.tmp
 endif
+ifeq ($(PGVER_MINOR), 0)
+	mv uninstall_pgtap.sql uninstall_pgtap.tmp
+	cat compat/uninstall-8.0.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
+	rm uninstall_pgtap.tmp
+endif
 endif
 
 # Make sure that we build the regression tests.
