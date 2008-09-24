@@ -1,5 +1,5 @@
---- pgtap.sql.saf	2008-09-24 11:22:15.000000000 -0700
-+++ pgtap.sql	2008-09-24 11:22:22.000000000 -0700
+--- pgtap.sql.saf	2008-09-24 11:37:05.000000000 -0700
++++ pgtap.sql	2008-09-24 11:37:14.000000000 -0700
 @@ -69,53 +69,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
@@ -138,7 +138,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -1715,6 +1731,7 @@
+@@ -1717,6 +1733,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -146,7 +146,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -1725,8 +1742,10 @@
+@@ -1727,8 +1744,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
