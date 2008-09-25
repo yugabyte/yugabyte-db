@@ -7,6 +7,7 @@ SELECT plan(88);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
+SET LOCAL client_min_messages = warning;
 CREATE TABLE public.pk (
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT ''
@@ -37,6 +38,7 @@ CREATE TABLE public.fk3(
     foo_id INT NOT NULL,
     FOREIGN KEY(pk2_num, pk2_dot) REFERENCES pk2( num, dot)
 );
+RESET client_min_messages;
 
 /****************************************************************************/
 -- Test has_fk().

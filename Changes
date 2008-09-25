@@ -1,6 +1,10 @@
 Revision history for pgTAP
 
 0.12
+      - Updated `plan()` to disable warnings while it creates its tables.
+        This means that `plan()` no longer send NOTICE messages when they run,
+        although tests still might, depending on the setting of
+        `client_min_messages`.
 
 0.11  2008-09-24T20:41:42
       - Simplified the tests so that they now load `test_setup.sql` instead of

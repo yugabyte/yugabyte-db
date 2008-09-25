@@ -6,12 +6,14 @@
 SELECT plan(39);
 
 -- This will be rolled back. :-)
+SET LOCAL client_min_messages = warning;
 CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+RESET client_min_messages;
 
 /****************************************************************************/
 -- Test has_pk().
@@ -104,11 +106,13 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test col_is_pk() with an array of columns.
 
+SET LOCAL client_min_messages = warning;
 CREATE TABLE public.argh (
     id INT NOT NULL,
     name TEXT NOT NULL,
     PRIMARY KEY (id, name)
 );
+RESET client_min_messages;
 
 SELECT * FROM check_test(
     col_is_pk( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),

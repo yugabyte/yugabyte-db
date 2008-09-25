@@ -128,8 +128,7 @@ Here's an example:
 
     -- Load the TAP functions.
     BEGIN;
-    SET client_min_messages = warning;
-    \i pgtap.sql
+        \i pgtap.sql
 
     -- Plan the tests.
     SELECT plan(1);
@@ -162,10 +161,8 @@ using `pg_prove`. If you're not relying on `installcheck`, your test scripts
 can be a lot less verbose; you don't need to set all the extra variables,
 because `pg_prove` takes care of that for you:
 
+    -- Start transaction and plan the tests.
     BEGIN;
-    SET client_min_messages = warning;
-
-    -- Plan the tests.
     SELECT plan(1);
 
     -- Run the tests.

@@ -23,27 +23,30 @@ DECLARE
     rcount INTEGER;
 BEGIN
     BEGIN
-    EXECUTE '
-    CREATE TEMP TABLE __tcache__ (
-        id    SERIAL           PRIMARY KEY,
-        label TEXT    NOT NULL,
-        value INTEGER NOT NULL,
-        note  TEXT    NOT NULL DEFAULT ''''
-    );
-    GRANT ALL ON TABLE __tcache__ TO PUBLIC;
+        SET LOCAL client_min_messages = warning;
+        EXECUTE '
+            CREATE TEMP TABLE __tcache__ (
+                id    SERIAL           PRIMARY KEY,
+                label TEXT    NOT NULL,
+                value INTEGER NOT NULL,
+                note  TEXT    NOT NULL DEFAULT ''''
+            );
+            GRANT ALL ON TABLE __tcache__ TO PUBLIC;
 
-    CREATE TEMP TABLE __tresults__ (
-        numb   SERIAL           PRIMARY KEY,
-        ok     BOOLEAN NOT NULL DEFAULT TRUE,
-        aok    BOOLEAN NOT NULL DEFAULT TRUE,
-        descr  TEXT    NOT NULL DEFAULT '''',
-        type   TEXT    NOT NULL DEFAULT '''',
-        reason TEXT    NOT NULL DEFAULT ''''
-    );
-    GRANT ALL ON TABLE __tresults__ TO PUBLIC;
-    GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;';
+            CREATE TEMP TABLE __tresults__ (
+                numb   SERIAL           PRIMARY KEY,
+                ok     BOOLEAN NOT NULL DEFAULT TRUE,
+                aok    BOOLEAN NOT NULL DEFAULT TRUE,
+                descr  TEXT    NOT NULL DEFAULT '''',
+                type   TEXT    NOT NULL DEFAULT '''',
+                reason TEXT    NOT NULL DEFAULT ''''
+            );
+            GRANT ALL ON TABLE __tresults__ TO PUBLIC;
+            GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
+        ';
 
     EXCEPTION WHEN duplicate_table THEN
+        RESET client_min_messages;
         -- Raise an exception if there's already a plan.
         EXECUTE 'SELECT TRUE FROM __tcache__ WHERE label = ''plan''';
       GET DIAGNOSTICS rcount = ROW_COUNT;
@@ -51,6 +54,8 @@ BEGIN
            RAISE EXCEPTION 'You tried to plan twice!';
         END IF;
     END;
+
+    RESET client_min_messages;
 
     -- Save the plan and return.
     PERFORM _set('plan', $1 );

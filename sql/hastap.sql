@@ -6,12 +6,14 @@
 SELECT plan(45);
 
 -- This will be rolled back. :-)
+SET LOCAL client_min_messages = warning;
 CREATE TABLE sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+RESET client_min_messages;
 
 /****************************************************************************/
 -- Test has_table().

@@ -6,12 +6,14 @@
 SELECT plan(57);
 
 -- This will be rolled back. :-)
+SET LOCAL client_min_messages = warning;
 CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+RESET client_min_messages;
 
 /****************************************************************************/
 -- Test col_not_null().
