@@ -2,6 +2,7 @@ MODULE_big = orafunc
 OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o
 
 DATA_built = orafunc.sql
+DATA = uninstall_orafunc.sql 
 DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
 REGRESS = orafunc dbms_output files
 REGRESS_OPTS = --load-language=plpgsql
