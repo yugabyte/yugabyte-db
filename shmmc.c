@@ -9,6 +9,7 @@
 #include "shmmc.h"
 #include "stdlib.h"
 #include "string.h"
+#include "orafunc.h"
 
 
 #define LIST_ITEMS  512
@@ -84,11 +85,11 @@ ora_scstring(text *str)
 	int len;
 	char *result;
 
-	len = VARSIZE(str) - VARHDRSZ;
+	len = VARSIZE_ANY_EXHDR(str);
 
 	if (NULL != (result = ora_salloc(len+1)))
 	{
-		memcpy(result, VARDATA(str), len);
+		memcpy(result, VARDATA_ANY(str), len);
 		result[len] = '\0';
 	}
 	else

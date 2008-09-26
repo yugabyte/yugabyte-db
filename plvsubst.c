@@ -199,7 +199,6 @@ plvsubst_string_array(PG_FUNCTION_ARGS)
 Datum 
 plvsubst_string_string(PG_FUNCTION_ARGS)
 {
-	
 	ArrayType *array;
 	FunctionCallInfoData locfcinfo;
 
@@ -208,19 +207,19 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 
-        /*                                                                                                                                    
+	/*
 	 * I can't use DirectFunctionCall2
-         */                               
-                                                                                                    
-        InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);                                                                   
-                                                                                                                                              
-        locfcinfo.arg[0] = PG_GETARG_DATUM(1);                                                                                              
-        locfcinfo.arg[1] = PG_ARGISNULL(2)? PointerGetDatum(CStringGetTextP(",")) : PG_GETARG_DATUM(2);              
-        locfcinfo.argnull[0] = false;                                                                                                         
-        locfcinfo.argnull[1] = false;                                                                                                         
-                                                                                                                                              
-        array = DatumGetArrayTypeP(text_to_array(&locfcinfo));                                                                             
-                                                                                                                                              
+	 */
+
+	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);                                                                   
+	                                                                                                                                  
+	locfcinfo.arg[0] = PG_GETARG_DATUM(1);                                                                                              
+	locfcinfo.arg[1] = PG_ARGISNULL(2)? CStringGetTextDatum(",") : PG_GETARG_DATUM(2);              
+	locfcinfo.argnull[0] = false;                                                                                                         
+	locfcinfo.argnull[1] = false;                                                                                                         
+
+	array = DatumGetArrayTypeP(text_to_array(&locfcinfo));                                                                             
+
 	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0), 
 					 array,
 					 PG_ARGISNULL(3) ? c_subst : PG_GETARG_TEXT_P(3), 

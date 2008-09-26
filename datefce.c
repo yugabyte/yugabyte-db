@@ -1,15 +1,62 @@
 #include "postgres.h"
+#include "mb/pg_wchar.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
 #include "utils/nabstime.h"
 #include <sys/time.h>
 #include "orafunc.h"
 
+#define ENABLE_INTERNATIONALIZED_WEEKDAY
+
+#ifdef ENABLE_INTERNATIONALIZED_WEEKDAY
+
+typedef struct WeekDays
+{
+	int			encoding;
+	const char *names[7];
+} WeekDays;
+
+/*
+ * { encoding, { "sun", "mon", "tue", "wed", "thu", "fri", "sat" } },
+ */
+static const WeekDays WEEKDAYS[] =
+{
+	/* Japanese, UTF8 */
+	{ PG_UTF8, { "\346\227\245", "\346\234\210", "\347\201\253", "\346\260\264", "\346\234\250", "\351\207\221", "\345\234\237" } },
+	/* Japanese, EUC_JP */
+	{ PG_EUC_JP, { "\306\374", "\267\356", "\262\320", "\277\345", "\314\332", "\266\342", "\305\332" } },
+#ifdef PG_EUC_JIS_2004
+	/* Japanese, EUC_JIS_2004 (same as EUC_JP) */
+	{ PG_EUC_JIS_2004, { "\306\374", "\267\356", "\262\320", "\277\345", "\314\332", "\266\342", "\305\332" } },
+#endif
+};
+
+static const WeekDays *mru_weekdays = NULL;
+
+static int
+weekday_search(const WeekDays *weekdays, const char *str, int len)
+{
+	int		i;
+
+	for (i = 0; i < 7; i++)
+	{
+		int	n = strlen(weekdays->names[i]);
+		if (n > len)
+			continue;	/* too short */
+		if (pg_strncasecmp(weekdays->names[i], str, n) == 0)
+			return i;
+	}
+	return -1;	/* not found */
+}
+
+#endif	/* ENABLE_INTERNATIONALIZED_WEEKDAY */
+
 /*
  * External (defined in PgSQL datetime.c (timestamp utils))
  */
 
-extern char *days[];
+extern PGDLLIMPORT char *days[];
+extern PGDLLIMPORT pg_tz *session_timezone;
 
 #define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:
 #define CASE_fmt_IYYY	case 7: case 8: case 9: case 10:
@@ -51,6 +98,7 @@ do { \
  */
 
 Datum next_day (PG_FUNCTION_ARGS);
+Datum next_day_by_index (PG_FUNCTION_ARGS);
 Datum last_day (PG_FUNCTION_ARGS);
 Datum months_between (PG_FUNCTION_ARGS);
 Datum add_months (PG_FUNCTION_ARGS);
@@ -60,6 +108,7 @@ Datum ora_timestamptz_trunc (PG_FUNCTION_ARGS);
 Datum ora_timestamptz_round (PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(next_day);
+PG_FUNCTION_INFO_V1(next_day_by_index);
 PG_FUNCTION_INFO_V1(last_day);
 PG_FUNCTION_INFO_V1(months_between);
 PG_FUNCTION_INFO_V1(add_months);
@@ -68,43 +117,39 @@ PG_FUNCTION_INFO_V1(ora_date_round);
 PG_FUNCTION_INFO_V1(ora_timestamptz_trunc);
 PG_FUNCTION_INFO_V1(ora_timestamptz_round);
 
-int ora_seq_search(char *name, char **array, int max);
+int ora_seq_search(const char *name, /*const*/ char **array, int max);
 
 int
-ora_seq_search(char *name, char **array, int max)
+ora_seq_search(const char *name, /*const*/ char **array, int max)
 {
-    char *p, *n, **a;
-    int last, i;
-    
-    if (!*name)
-	return -1;
-    
-    *name = pg_toupper((unsigned char) *name);
-    for (last = 0, a = array; *a != NULL; a++)
-    {	
-    
-		if (*name != **a)
-			continue;
-		
-		for (i = 1, p = *a + 1, n = name + 1;; n++, p++, i++)
-		{
-	    
-			if (i == max && *p == '\0')
-				return a - array;
-			if (*p == '\0')
-				break;
-			if (i > last)
-			{
-				*n = pg_tolower((unsigned char) *n);
-				last = i;
-			}
-			
-			if (*n != *p)
-				break;
-		}
-    }
-    
-    return -1;
+	int		i;
+
+	if (!*name)
+		return -1;
+
+	for (i = 0; array[i]; i++)
+	{
+		if (strlen(array[i]) == max &&
+			pg_strncasecmp(name, array[i], max) == 0)
+			return i;
+	}
+	return -1;	/* not found */
+}
+
+static int
+ora_seq_prefix_search(const char *name, /*const*/ char **array, int max)
+{
+	int		i;
+
+	if (!*name)
+		return -1;
+
+	for (i = 0; array[i]; i++)
+	{
+		if (pg_strncasecmp(name, array[i], max) == 0)
+			return i;
+	}
+	return -1;	/* not found */
 }
 
 /********************************************************************
@@ -125,17 +170,79 @@ ora_seq_search(char *name, char **array, int max)
 Datum 
 next_day (PG_FUNCTION_ARGS)
 {
-	 
-    DateADT day = PG_GETARG_DATEADT(0);
-    text *day_txt = PG_GETARG_TEXT_P(1);
-    int off;
+	DateADT day = PG_GETARG_DATEADT(0);
+	text *day_txt = PG_GETARG_TEXT_PP(1);
+	const char *str = VARDATA_ANY(day_txt);
+	int	len = VARSIZE_ANY_EXHDR(day_txt);
+	int off;
+	int d = -1;
 
-    int d = ora_seq_search(VARDATA(day_txt), days, VARSIZE(day_txt) - VARHDRSZ);
-    CHECK_SEQ_SEARCH(d, "DAY/Day/day");
-    
-    off = d - j2day(day+POSTGRES_EPOCH_JDATE);
+#ifdef ENABLE_INTERNATIONALIZED_WEEKDAY
+	/* Check mru_weekdays first for performance. */
+	if (mru_weekdays)
+	{
+		if ((d = weekday_search(mru_weekdays, str, len)) >= 0)
+			goto found;
+		else
+			mru_weekdays = NULL;
+	}
+#endif
+
+	/*
+	 * Oracle uses only 3 heading characters of the input.
+	 * Ignore all trailing characters.
+	 */
+	if (len >= 3 && (d = ora_seq_prefix_search(str, days, 3)) >= 0)
+		goto found;
+
+#ifdef ENABLE_INTERNATIONALIZED_WEEKDAY
+	do
+	{
+		int		i;
+		int		encoding = GetDatabaseEncoding();
+
+		for (i = 0; i < lengthof(WEEKDAYS); i++)
+		{
+			if (encoding == WEEKDAYS[i].encoding)
+			{
+				if ((d = weekday_search(&WEEKDAYS[i], str, len)) >= 0)
+				{
+					mru_weekdays = &WEEKDAYS[i];
+					goto found;
+				}
+			}
+		}
+	} while(0);
+#endif
+
+	CHECK_SEQ_SEARCH(-1, "DAY/Day/day");
+
+found:
+	off = d - j2day(day+POSTGRES_EPOCH_JDATE);
+
+	PG_RETURN_DATEADT((off <= 0) ? day+off+7 : day + off);
+}
+
+/* next_day(date, integer) is not documented in Oracle manual, but ... */
+Datum
+next_day_by_index (PG_FUNCTION_ARGS)
+{
+	DateADT day = PG_GETARG_DATEADT(0);
+	int		idx = PG_GETARG_INT32(1);
+	int		off;
+
+	/*
+	 * off is 1..7 (Sun..Sat).
+	 *
+	 * TODO: It should be affected by NLS_TERRITORY. For example,
+	 * 1..7 should be interpreted as Mon..Sun in GERMAN.
+	 */
+	CHECK_SEQ_SEARCH((idx < 1 || 7 < idx) ? -1 : 0, "DAY/Day/day");
+
+	/* j2day returns 0..6 as Sun..Sat */
+	off = (idx - 1) - j2day(day+POSTGRES_EPOCH_JDATE);
 	
-    PG_RETURN_DATEADT((off <= 0) ? day+off+7 : day + off);
+	PG_RETURN_DATEADT((off <= 0) ? day+off+7 : day + off);
 }
 
 /********************************************************************
@@ -163,6 +270,26 @@ last_day (PG_FUNCTION_ARGS)
     result = date2j(y, m+1, 1) - POSTGRES_EPOCH_JDATE;
     
     PG_RETURN_DATEADT(result - 1);
+}
+
+static const int month_days[] = {
+	31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31
+};
+
+static int
+days_of_month(int y, int m)
+{
+	int	days;
+
+	if (m < 0 || 12 < m)
+		ereport(ERROR,
+		    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			errmsg("date out of range")));
+
+	days = month_days[m - 1];
+	if (m == 2 && (y % 400 == 0 || (y % 4 == 0 && y % 100 != 0)))
+		days += 1;	/* February 29 in leap year */
+	return days;
 }
 
 /********************************************************************
@@ -195,9 +322,13 @@ months_between (PG_FUNCTION_ARGS)
     
     j2date(date1 + POSTGRES_EPOCH_JDATE, &y1, &m1, &d1);
     j2date(date2 + POSTGRES_EPOCH_JDATE, &y2, &m2, &d2);
-    
-    result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
-    
+
+	/* Ignore day components for last days, or based on a 31-day month. */
+	if (d1 == days_of_month(y1, m1) && d2 == days_of_month(y2, m2))
+		result = (y1 - y2) * 12 + (m1 - m2);
+	else
+		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
+
     PG_RETURN_FLOAT8(result);  
 }
 
@@ -219,27 +350,30 @@ months_between (PG_FUNCTION_ARGS)
 Datum 
 add_months (PG_FUNCTION_ARGS)
 {
-    DateADT day = PG_GETARG_DATEADT(0);
-    int n = PG_GETARG_INT32(1);
-    int y, m, d;
-    DateADT last_day, result;
-    
-    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-    result = date2j(y, m+n, d) - POSTGRES_EPOCH_JDATE;
-    
-    if (d > 28)
-    {
-	m += 2;
-	if (m  > 12)
-	{
-	    ++y; m -= 12;
-	}
-	last_day = date2j(y, m, 1) - POSTGRES_EPOCH_JDATE - 1;
-	if (last_day < result)
-	    result = last_day;
-    }
-    
-    PG_RETURN_DATEADT (result);
+	DateADT day = PG_GETARG_DATEADT(0);
+	int n = PG_GETARG_INT32(1);
+	int y, m, d;
+	int	days;
+	DateADT result;
+	div_t	v;
+	bool	last_day;
+
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	last_day = (d == days_of_month(y, m));
+
+	v = div(y * 12 + m - 1 + n, 12);
+	y = v.quot;
+	if (y < 0)
+		y += 1;	/* offset because of year 0 */
+	m = v.rem + 1;
+
+	days = days_of_month(y, m);
+	if (last_day || d > days)
+		d = days;
+
+	result = date2j(y, m, d) - POSTGRES_EPOCH_JDATE;
+
+	PG_RETURN_DATEADT (result);
 }
 
 /*
@@ -454,11 +588,11 @@ _ora_date_round(DateADT day, int f)
 Datum ora_date_trunc (PG_FUNCTION_ARGS)
 {
     DateADT day = PG_GETARG_DATEADT(0);
-    text *fmt = PG_GETARG_TEXT_P(1);
+    text *fmt = PG_GETARG_TEXT_PP(1);
     
     DateADT result;
     
-    int f = ora_seq_search(VARDATA(fmt), date_fmt, VARSIZE(fmt) - VARHDRSZ);
+    int f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
     
     result = _ora_date_trunc(day, f);
@@ -470,7 +604,7 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
 {
     TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
     TimestampTz result;
-    text *fmt = PG_GETARG_TEXT_P(1);
+    text *fmt = PG_GETARG_TEXT_PP(1);
     int tz;
     fsec_t fsec;
     struct pg_tm tt, *tm = &tt;
@@ -481,7 +615,7 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
     if (TIMESTAMP_NOT_FINITE(timestamp))
 	PG_RETURN_TIMESTAMPTZ(timestamp);
 	
-    f = ora_seq_search(VARDATA(fmt), date_fmt, VARSIZE(fmt) - VARHDRSZ);
+    f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
@@ -550,11 +684,11 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
 Datum ora_date_round (PG_FUNCTION_ARGS)
 {
     DateADT day = PG_GETARG_DATEADT(0);
-    text *fmt = PG_GETARG_TEXT_P(1);
+    text *fmt = PG_GETARG_TEXT_PP(1);
 
     DateADT result;
     
-    int f = ora_seq_search(VARDATA(fmt), date_fmt, VARSIZE(fmt) - VARHDRSZ);
+    int f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     result = _ora_date_round(day, f);
@@ -573,7 +707,7 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
 {
     TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
     TimestampTz result;
-    text *fmt = PG_GETARG_TEXT_P(1);
+    text *fmt = PG_GETARG_TEXT_PP(1);
     int tz;
     fsec_t fsec;
     struct pg_tm tt, *tm = &tt;
@@ -585,7 +719,7 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
     if (TIMESTAMP_NOT_FINITE(timestamp))
 	PG_RETURN_TIMESTAMPTZ(timestamp);
 	
-    f = ora_seq_search(VARDATA(fmt), date_fmt, VARSIZE(fmt) - VARHDRSZ);
+    f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
     CHECK_SEQ_SEARCH(f, "round/trunc format string");
 
     if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)

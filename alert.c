@@ -7,10 +7,10 @@
 
 #include "pipe.h"
 #include "shmmc.h"
-#include "orafunc.h"
 
 #include "executor/spi.h"
 #include "commands/trigger.h"
+#include "orafunc.h"
 
 Datum dbms_alert_register(PG_FUNCTION_ARGS);
 Datum dbms_alert_remove(PG_FUNCTION_ARGS);

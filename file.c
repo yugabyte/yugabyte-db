@@ -1,38 +1,44 @@
 #include "postgres.h"
-#include "fmgr.h"
-#include "stdio.h"
-#include "utils/memutils.h"
 #include "executor/spi.h"
+#include "fmgr.h"
+#include "mb/pg_wchar.h"
+#include "port.h"
+#include "utils/memutils.h"
 #include "orafunc.h"
 
 #define INVALID_OPERATION		"UTL_FILE_INVALID_OPERATION"
-#define WRITE_ERROR			"UTL_FILE_WRITE_ERROR"
-#define READ_ERROR			"UTL_FILE_READ_ERROR"
+#define WRITE_ERROR				"UTL_FILE_WRITE_ERROR"
+#define READ_ERROR				"UTL_FILE_READ_ERROR"
 #define INVALID_FILEHANDLE		"UTL_FILE_INVALID_FILEHANDLE"
 #define INVALID_MAXLINESIZE		"UTL_FILE_INVALID_MAXLINESIZE"
 #define INVALID_MODE			"UTL_FILE_INVALID_MODE"
 #define	INVALID_PATH			"UTL_FILE_INVALID_PATH"
-#define VALUE_ERROR			"UTL_FILE_VALUE_ERROR"
+#define VALUE_ERROR				"UTL_FILE_VALUE_ERROR"
 
 
 Datum utl_file_fopen(PG_FUNCTION_ARGS);
+Datum utl_file_is_open(PG_FUNCTION_ARGS);
 Datum utl_file_get_line(PG_FUNCTION_ARGS);
 Datum utl_file_get_nextline(PG_FUNCTION_ARGS);
-Datum utl_file___put(PG_FUNCTION_ARGS);
+Datum utl_file_put(PG_FUNCTION_ARGS);
+Datum utl_file_put_line(PG_FUNCTION_ARGS);
+Datum utl_file_new_line(PG_FUNCTION_ARGS);
 Datum utl_file_putf(PG_FUNCTION_ARGS);
 Datum utl_file_fflush(PG_FUNCTION_ARGS);
 Datum utl_file_fclose(PG_FUNCTION_ARGS);
 Datum utl_file_fclose_all(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(utl_file_fopen);
+PG_FUNCTION_INFO_V1(utl_file_is_open);
 PG_FUNCTION_INFO_V1(utl_file_get_line);
 PG_FUNCTION_INFO_V1(utl_file_get_nextline);
-PG_FUNCTION_INFO_V1(utl_file___put);
+PG_FUNCTION_INFO_V1(utl_file_put);
+PG_FUNCTION_INFO_V1(utl_file_put_line);
+PG_FUNCTION_INFO_V1(utl_file_new_line);
 PG_FUNCTION_INFO_V1(utl_file_putf);
 PG_FUNCTION_INFO_V1(utl_file_fflush);
 PG_FUNCTION_INFO_V1(utl_file_fclose);
 PG_FUNCTION_INFO_V1(utl_file_fclose_all);
-
 
 #define PARAMETER_ERROR(detail) \
 	ereport(ERROR, \
@@ -45,7 +51,7 @@ PG_FUNCTION_INFO_V1(utl_file_fclose_all);
 		(errcode(ERRCODE_RAISE_EXCEPTION), \
 		 errmsg(msg), \
 		 errdetail(detail)))
-	
+
 #define INVALID_FILEHANDLE_EXCEPTION()	CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "Used file handle isn't valid.")
 
 #define CHECK_FILE_HANDLE() \
@@ -66,25 +72,28 @@ PG_FUNCTION_INFO_V1(utl_file_fclose_all);
 			 errmsg("null value not allowed"), \
 			 errhint("%dth argument is NULL.", n)));
 
-#define GET_FILESTREAM()	get_stream(PG_GETARG_INT32(0), NULL)
-
 #define MAX_LINESIZE		32767
+
+#define CHECK_LINESIZE(max_linesize) \
+	do { \
+		if ((max_linesize) < 1 || (max_linesize) > MAX_LINESIZE) \
+			CUSTOM_EXCEPTION(INVALID_MAXLINESIZE, "maxlinesize is out of range"); \
+	} while(0)
 
 typedef struct FileSlot
 {
-	FILE *file;
-	int	max_linesize;
+	FILE   *file;
+	int		max_linesize;
+	int32	id;
 } FileSlot;
 
-#define MAX_SLOTS		10
-#define TEXT_LEN(d)	(VARSIZE(d) - VARHDRSZ)
+#define MAX_SLOTS		50			/* Oracle 10g supports 50 files */
+#define INVALID_SLOTID	0			/* invalid slot id */
 
-static FileSlot slots[MAX_SLOTS] = {{NULL, 0},{NULL, 0},{NULL, 0},{NULL, 0},{NULL, 0},
-			    	    {NULL, 0},{NULL, 0},{NULL, 0},{NULL, 0},{NULL, 0}};
+static FileSlot	slots[MAX_SLOTS];	/* initilaized with zeros */
+static int32	slotid = 0;			/* next slot id */
 
-static void *plan = NULL;
-
-static void check_secure_locality(text *loc);
+static void check_secure_locality(const char *path);
 
 
 /*
@@ -96,40 +105,44 @@ static int
 get_descriptor(FILE *file, int max_linesize)
 {
 	int i;
-	
+
 	for (i = 0; i < MAX_SLOTS; i++)
 	{
-		if (!slots[i].file)
+		if (slots[i].id == INVALID_SLOTID)
 		{
+			slots[i].id = ++slotid;
+			if (slots[i].id == INVALID_SLOTID)
+				slots[i].id = ++slotid;	/* skip INVALID_SLOTID */
 			slots[i].file = file;
 			slots[i].max_linesize = max_linesize;
-			return i;
+			return slots[i].id;
 		}
 	}
 
-	ereport(ERROR,
-		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-		     errmsg("program limit exceeded"),
-		     errdetail("Too much concurent opened files"),
-		     errhint("You can only open a maximum of ten files for each session")));
-	
-	return i;
+	return INVALID_SLOTID;
 }
 
 /* return stored pointer to FILE */
 static FILE *
 get_stream(int d, int *max_linesize)
 {
-	if (d < 0 || d >= MAX_SLOTS)
+	int i;
+
+	if (d == INVALID_SLOTID)
 		INVALID_FILEHANDLE_EXCEPTION();
 
-	if (!slots[d].file)
-		INVALID_FILEHANDLE_EXCEPTION();
+	for (i = 0; i < MAX_SLOTS; i++)
+	{
+		if (slots[i].id == d)
+		{
+			if (max_linesize)
+				*max_linesize = slots[i].max_linesize;
+			return slots[i].file;
+		}
+	}
 
-	if (max_linesize)
-		*max_linesize = slots[d].max_linesize;
-
-	return slots[d].file;
+	INVALID_FILEHANDLE_EXCEPTION();
+	return NULL;	/* keep compiler quiet */
 }
 
 
@@ -150,16 +163,16 @@ get_stream(int d, int *max_linesize)
 Datum 
 utl_file_fopen(PG_FUNCTION_ARGS)
 {
-	text *loc;
-	text *filename;
-	text *open_mode;
-	int	max_linesize;
+	text	   *loc;
+	text	   *filename;
+	text	   *open_mode;
+	int			max_linesize;
 	const char *mode = NULL;
-	FILE *file;
-	char *fullname;
-	int aux_pos, aux_len;
+	FILE	   *file;
+	char	   *fullname;
+	int			aux_pos, aux_len;
+	int			d;
 	
-
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 	NOT_NULL_ARG(2);
@@ -174,8 +187,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	NON_EMPTY_TEXT(open_mode);
 
 	max_linesize = PG_GETARG_INT32(3);
-	if (max_linesize < 1 || max_linesize > MAX_LINESIZE)
-		CUSTOM_EXCEPTION(INVALID_MAXLINESIZE, "maxlinesize is out of range");
+	CHECK_LINESIZE(max_linesize);
 
 	if (VARSIZE(open_mode) - VARHDRSZ != 1)
 		CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
@@ -201,19 +213,21 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 			CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
 	}
 		
-	aux_pos = TEXT_LEN(loc);
-	aux_len = TEXT_LEN(filename);
+	aux_pos = VARSIZE_ANY_EXHDR(loc);
+	aux_len = VARSIZE_ANY_EXHDR(filename);
 
-	fullname = palloc0(aux_pos + 1 + aux_len + 1);
+	fullname = palloc(aux_pos + 1 + aux_len + 1);
 	memcpy(fullname, VARDATA(loc), aux_pos);
 	fullname[aux_pos] = '/';
 	memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
 	fullname[aux_pos + aux_len + 1] = '\0';
 
-	/* hack for availbility regress test */
-	if (!strcmp(fullname, "/tmp/regress_orafce") == 0)
-		check_secure_locality(loc);		
+	/* check locality in canonizalized form of path */
+	canonicalize_path(fullname);
+	check_secure_locality(fullname);
 
+	/* open file in native form of path */
+	make_native_path(fullname);
 	file = fopen(fullname, mode);
 	if (!file)
 	{
@@ -231,13 +245,41 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 		}
 	}
 
-	PG_RETURN_INT32(get_descriptor(file, max_linesize));
+	d = get_descriptor(file, max_linesize);
+	if (d == INVALID_SLOTID)
+	{
+		fclose(file);
+		ereport(ERROR,
+		    (errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+		     errmsg("program limit exceeded"),
+		     errdetail("Too much concurent opened files"),
+		     errhint("You can only open a maximum of ten files for each session")));
+	}
+
+	PG_RETURN_INT32(d);
 }
 
+Datum
+utl_file_is_open(PG_FUNCTION_ARGS)
+{
+	if (!PG_ARGISNULL(0))
+	{
+		int	i;
+		int	d = PG_GETARG_INT32(0);
+
+		for (i = 0; i < MAX_SLOTS; i++)
+		{
+			if (slots[i].id == d)
+				PG_RETURN_BOOL(slots[i].file != NULL);
+		}
+	}
+
+	PG_RETURN_BOOL(false);
+}
 
 #define CHECK_LENGTH(l) \
 	if (l > max_linesize) \
-		CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too long");
+		CUSTOM_EXCEPTION(VALUE_ERROR, "buffer is too short");
 
 /* read line from file. set eof if is EOF */
 
@@ -257,7 +299,7 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 
 	errno = 0;
 	
-	while ((c = fgetc(f)) != EOF)
+	while (csize < max_linesize && (c = fgetc(f)) != EOF)
 	{
 		eof = false; 	/* I was able read one char */
     
@@ -275,12 +317,13 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 		else if (c == '\n')
 			break;
 
-		CHECK_LENGTH(++csize);
+		++csize;
 		*bpt++ = c;
 	}
 
 	if (!eof)
 	{
+		pg_verifymbstr(buffer, csize, false);
 		result = palloc(csize + VARHDRSZ);
 		memcpy(VARDATA(result), buffer, csize);
 		SET_VARSIZE(result, csize + VARHDRSZ);
@@ -311,7 +354,7 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 
 
 /*
- * FUNCTION UTL_FILE.GET_LINE(file UTL_TYPE.FILE_TYPE)
+ * FUNCTION UTL_FILE.GET_LINE(file UTL_TYPE.FILE_TYPE, line int DEFAULT NULL)
  *          RETURNS text;
  *
  * Reads one line from file.
@@ -329,6 +372,15 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize);
+
+	/* 'len' overwrites max_linesize, but must be smaller than max_linesize */
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+	{
+		int	len = PG_GETARG_INT32(1);
+		CHECK_LINESIZE(len);
+		if (max_linesize > len)
+			max_linesize = len;
+	}
 
 	result = get_line(f, max_linesize, &iseof);
 
@@ -370,13 +422,24 @@ utl_file_get_nextline(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(result);
 }
 
+static void
+do_flush(FILE *f)
+{
+	if (fflush(f) != 0)
+	{
+		if (errno == EBADF)
+			CUSTOM_EXCEPTION(INVALID_OPERATION, "File is not an opened, or is not open for writing");
+		else
+			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+	}
+}
 
 /*
  * FUNCTION UTL_FILE.PUT(file UTL_FILE.FILE_TYPE, buffer text)
  *          RETURNS bool;
  *
  * The PUT function puts data out to specified file. Buffer length allowed is
- * 32K or 1023 (max_linesize); 
+ * 32K or 1024 (max_linesize); 
  *
  * Exceptions:
  *  INVALID_FILEHANDLE, INVALID_OPERATION, WRITE_ERROR, VALUE_ERROR
@@ -394,43 +457,88 @@ utl_file_get_nextline(PG_FUNCTION_ARGS)
 			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno)); \
 	}  
 
-Datum
-utl_file___put(PG_FUNCTION_ARGS)
+static FILE *
+do_put(PG_FUNCTION_ARGS)
 {
-	FILE *f;
-	text *buffer;
-	int max_linesize;
-	long bfsize;
-	char *tbuf;
-	bool new_line = false;
+	FILE   *f;
+	text   *buffer;
+	int		max_linesize;
+	int		len;
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize);
 
 	NOT_NULL_ARG(1);
-	buffer = PG_GETARG_TEXT_P(1);
-
-	if (!PG_ARGISNULL(2))
-		new_line = PG_GETARG_BOOL(2);
+	buffer = PG_GETARG_TEXT_PP(1);
 
 	/* I have to check buffer's size */
-	bfsize = TEXT_LEN(buffer);
-	CHECK_LENGTH(bfsize);
-	
-	tbuf = (char *) palloc(bfsize + 1);
-	memcpy(tbuf, VARDATA(buffer), bfsize);
-	tbuf[bfsize] = '\0';
+	len = VARSIZE_ANY_EXHDR(buffer);
+	CHECK_LENGTH(len);
 
-	if (fputs(tbuf, f) == EOF)
+	if (fwrite(VARDATA_ANY(buffer), 1, len, f) != len)
 		CHECK_ERRNO_PUT();
+	return f;
+}
 
-	if (new_line)
+Datum
+utl_file_put(PG_FUNCTION_ARGS)
+{
+	do_put(fcinfo);
+	PG_RETURN_BOOL(true);
+}
+
+static void
+do_new_line(FILE *f, int lines)
+{
+	int	i;
+	for (i = 0; i < lines; i++)
+	{
+#ifndef WIN32
 		if (fputc('\n', f) == EOF)
 		    CHECK_ERRNO_PUT();
+#else
+		if (fputs("\r\n", f) == EOF)
+		    CHECK_ERRNO_PUT();
+#endif
+	}
+}
+
+Datum
+utl_file_put_line(PG_FUNCTION_ARGS)
+{
+	FILE   *f;
+	bool	autoflush;
+
+	f = do_put(fcinfo);
+
+	autoflush = (PG_NARGS() > 2 && !PG_ARGISNULL(2) && PG_GETARG_BOOL(2));
+
+	do_new_line(f, 1);
+
+	if (autoflush)
+		do_flush(f);
 
 	PG_RETURN_BOOL(true);
 }
 
+Datum
+utl_file_new_line(PG_FUNCTION_ARGS)
+{
+	FILE   *f;
+	int		lines;
+
+	CHECK_FILE_HANDLE();
+	f = get_stream(PG_GETARG_INT32(0), NULL);
+
+	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
+		lines = PG_GETARG_INT32(1);
+	else
+		lines = 1;
+
+	do_new_line(f, lines);
+
+	PG_RETURN_BOOL(true);
+}
 
 /*
  * FUNCTION UTL_FILE.PUTF(file UTL_FILE.FILE_TYPE,
@@ -463,7 +571,7 @@ utl_file_putf(PG_FUNCTION_ARGS)
 
 	NOT_NULL_ARG(1);
 	format = PG_GETARG_TEXT_P(1);
-	format_length = TEXT_LEN(format);
+	format_length = VARSIZE_ANY_EXHDR(format);
 
 	for (fpt = VARDATA(format); format_length > 0; fpt++, format_length--)
 	{
@@ -495,7 +603,7 @@ utl_file_putf(PG_FUNCTION_ARGS)
 			else if (fpt[1] == 's' && ++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
 			{
 				text *buffer = PG_GETARG_TEXT_P(cur_par + 1);
-				int bfsize = TEXT_LEN(buffer);
+				int bfsize = VARSIZE_ANY_EXHDR(buffer);
 				char *tbuf;
 
 				cur_len += bfsize;
@@ -537,15 +645,8 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 	FILE *f;
 
 	CHECK_FILE_HANDLE();
-	f = GET_FILESTREAM();
-
-	if (fflush(f) != 0)
-	{
-		if (errno == EBADF)
-			CUSTOM_EXCEPTION(INVALID_OPERATION, "File is not an opened, or is not open for writing");
-		else
-			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
-	}
+	f = get_stream(PG_GETARG_INT32(0), NULL);
+	do_flush(f);
 
 	PG_RETURN_VOID();
 }
@@ -566,25 +667,27 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 Datum
 utl_file_fclose(PG_FUNCTION_ARGS)
 {
-	FILE *f;
-	int slot;
+	int i;
+	int	d = PG_GETARG_INT32(0);
 
-	CHECK_FILE_HANDLE();
-	
-	slot = PG_GETARG_INT32(0);
-
-	f = get_stream(slot, NULL);
-
-	slots[slot].file = NULL;
-
-	if (fclose(f) != 0)
+	for (i = 0; i < MAX_SLOTS; i++)
 	{
-		if (errno == EBADF)
-			CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File is not an opened");
-		else
-			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+		if (slots[i].id == d)
+		{
+			if (slots[i].file && fclose(slots[i].file) != 0)
+			{
+				if (errno == EBADF)
+					CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File is not an opened");
+				else
+					CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+			}
+			slots[i].file = NULL;
+			slots[i].id = INVALID_SLOTID;
+			PG_RETURN_NULL();
+		}
 	}
 
+	INVALID_FILEHANDLE_EXCEPTION();
 	PG_RETURN_NULL();
 }
 
@@ -601,20 +704,22 @@ Datum
 utl_file_fclose_all(PG_FUNCTION_ARGS)
 {
 	int i;
-	bool any_error = false;
 
-	for(i = 0; i < MAX_SLOTS; i++)
+	for (i = 0; i < MAX_SLOTS; i++)
 	{
-		if (slots[i].file)
-		{	
-			int res = fclose(slots[i].file);
-			any_error = res || any_error;
+		if (slots[i].id != INVALID_SLOTID)
+		{
+			if (slots[i].file && fclose(slots[i].file) != 0)
+			{
+				if (errno == EBADF)
+					CUSTOM_EXCEPTION(INVALID_FILEHANDLE, "File is not an opened");
+				else
+					CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
+			}
 			slots[i].file = NULL;
+			slots[i].id = INVALID_SLOTID;
 		}
 	}
-
-	if (any_error)
-		CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno));
 
 	PG_RETURN_VOID();
 }
@@ -626,39 +731,25 @@ utl_file_fclose_all(PG_FUNCTION_ARGS)
  * Raise exception if don't find string in table.
  */
 static void
-check_secure_locality(text *loc)
+check_secure_locality(const char *path)
 {	
-	int len = TEXT_LEN(loc);
-	char *buf = VARDATA(loc);
-	Oid argtypes[] = {TEXTOID};
-	Datum values[1];
-	char nulls[1] = {' '};
-	
-	/* can currently work only on Unix platform */
-#if defined(WIN32)
-	if (buf[len-1] != '\\')
-#else
-	if (buf[len-1] != '/')
-#endif
-	{
-		text *aux = palloc(len + 1 + VARHDRSZ);
-		memcpy(VARDATA(aux), VARDATA(loc), len);
-		SET_VARSIZE(aux, len + 1 + VARHDRSZ);
-#if defined(WIN32)
-		((char*)VARDATA(aux))[len] = '\\';
-#else
-		((char*)VARDATA(aux))[len] = '/';
-#endif
-		values[0] = PointerGetDatum(aux);
-	}
-	else
-		values[0] = PointerGetDatum(loc);
-	
+	static SPIPlanPtr	plan = NULL;
+
+	Oid		argtypes[] = {TEXTOID};
+	Datum	values[1];
+	char	nulls[1] = {' '};
+
+	/* hack for availbility regress test */
+	if (strcmp(path, "/tmp/regress_orafce") == 0)
+		return;
+
+	values[0] = CStringGetTextDatum(path);
+
 	/*
-         * SELECT 1 FROM utl_file.utl_file_dir
-         *   WHERE loc like dir||'/%'
-         */
-	
+	 * SELECT 1 FROM utl_file.utl_file_dir
+	 *   WHERE substring($1, 1, length(dir) + 1) = dir || '/'
+	 */
+
 	if (SPI_connect() < 0)
 		ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
@@ -666,22 +757,23 @@ check_secure_locality(text *loc)
 
 	if (!plan)
 	{
-		if (!(plan = SPI_prepare(
-			    "SELECT 1 FROM utl_file.utl_file_dir WHERE $1 LIKE dir || '/%'",
-			    1,
-			    argtypes)))
+		/* Don't use LIKE not to escape '_' and '%' */
+		SPIPlanPtr p = SPI_prepare(
+		    "SELECT 1 FROM utl_file.utl_file_dir"
+			" WHERE substring($1, 1, length(dir) + 1) = dir || '/'",
+		    1, argtypes);
+
+		if (p == NULL || (plan = SPI_saveplan(p)) == NULL)
 			ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				errmsg("SPI_prepare_failed")));	 
-
-		plan = SPI_saveplan(plan);
-	}   
+				errmsg("SPI_prepare_failed")));
+	}
 
 	if (SPI_OK_SELECT != SPI_execute_plan(plan, values, nulls, false, 1))	
 		ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("can't execute sql")));
-	
+
 	if (SPI_processed == 0)
 		ereport(ERROR, 
 			(errcode(ERRCODE_RAISE_EXCEPTION), 
@@ -690,5 +782,3 @@ check_secure_locality(text *loc)
 			 errhint("locality is not found in utl_file_dir table")));
 	SPI_finish();
 }
-
-

@@ -104,13 +104,13 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 Datum
 orafce_to_number(PG_FUNCTION_ARGS)
 {
-	text	   *arg0 = PG_GETARG_TEXT_P(0);
+	text	   *arg0 = PG_GETARG_TEXT_PP(0);
 	char	   *buf;
 	struct lconv *lconv = PGLC_localeconv();
 	Numeric		res;
 	char	   *p;
 
-	buf = DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(arg0)));
+	buf = TextPGetCString(arg0);
 
 	for (p = buf; *p; p++)
 		if (*p == lconv->decimal_point[0] && lconv->decimal_point[0])

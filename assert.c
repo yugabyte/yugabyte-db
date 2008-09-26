@@ -1,7 +1,6 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "assert.h"
-#include "orafunc.h"
 #include "miscadmin.h"
 #include "utils/acl.h"	
 #include "utils/builtins.h"
@@ -9,6 +8,7 @@
 #include "catalog/namespace.h"
 #include "ctype.h"
 #include "string.h"
+#include "orafunc.h"
 
 Datum dbms_assert_enquote_literal(PG_FUNCTION_ARGS);
 Datum dbms_assert_enquote_name(PG_FUNCTION_ARGS);

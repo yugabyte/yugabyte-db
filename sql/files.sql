@@ -1,3 +1,9 @@
+\set ECHO none
+SET client_min_messages = notice;
+\set ECHO all
+
+INSERT INTO utl_file.utl_file_dir(dir) VALUES('/tmp');
+
 create or replace function gen_file() returns void as $$
 declare 
   f utl_file.file_type;
@@ -25,9 +31,11 @@ begin
     -- when no_data_found then,  8.1 plpgsql doesn't know no_data_found
     when others then
       raise notice 'finish % ', sqlerrm;
-      raise notice 'kuku';
-      f := utl_file.fclose(f);
-      raise notice 'bbbb';
+      raise notice 'is_open = %', utl_file.is_open(f);
+      perform utl_file.fclose_all();
+      raise notice 'is_open = %', utl_file.is_open(f);
 end;
 $$ language plpgsql;
 select read_file();
+
+DELETE FROM utl_file.utl_file_dir WHERE dir = '/tmp';

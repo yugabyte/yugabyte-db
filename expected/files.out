@@ -1,3 +1,5 @@
+\set ECHO none
+INSERT INTO utl_file.utl_file_dir(dir) VALUES('/tmp');
 create or replace function gen_file() returns void as $$
 declare 
   f utl_file.file_type;
@@ -28,9 +30,9 @@ begin
     -- when no_data_found then,  8.1 plpgsql doesn't know no_data_found
     when others then
       raise notice 'finish % ', sqlerrm;
-      raise notice 'kuku';
-      f := utl_file.fclose(f);
-      raise notice 'bbbb';
+      raise notice 'is_open = %', utl_file.is_open(f);
+      perform utl_file.fclose_all();
+      raise notice 'is_open = %', utl_file.is_open(f);
 end;
 $$ language plpgsql;
 select read_file();
@@ -55,10 +57,11 @@ NOTICE:  >>18<<
 NOTICE:  >>19<<
 NOTICE:  >>20<<
 NOTICE:  finish no data found 
-NOTICE:  kuku
-NOTICE:  bbbb
+NOTICE:  is_open = t
+NOTICE:  is_open = f
  read_file 
 -----------
  
 (1 row)
 
+DELETE FROM utl_file.utl_file_dir WHERE dir = '/tmp';

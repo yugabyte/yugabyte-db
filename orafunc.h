@@ -8,18 +8,49 @@
 #include "utils/datetime.h"
 #include "utils/datum.h"
 
+#if PG_VERSION_NUM >= 80400
+#define TextPGetCString(t)	text_to_cstring((t))
+#define CStringGetTextP(c)	cstring_to_text((c))
+#else
+#define CStringGetTextDatum(c) \
+        DirectFunctionCall1(textin, CStringGetDatum(c))
 #define TextPGetCString(t) \
         DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t))) 
 #define CStringGetTextP(c) \
-        DatumGetTextP(DirectFunctionCall1(textin, CStringGetDatum(c)))
+        DatumGetTextP(CStringGetTextDatum(c))
+#endif
 
 #define TextPCopy(t) \
 	DatumGetTextP(datumCopy(PointerGetDatum(t), false, -1))
 
-text* ora_substr(text *str, int start, int len, bool valid_length);
 text* ora_make_text_fix(char *c, int n);
 int   ora_instr(text *txt, text *pattern, int start, int nth);
 int ora_mb_strlen(text *str, char **sizes, int **positions);
 int ora_mb_strlen1(text *str);
+
+/*
+ * Version compatibility
+ */
+
+#if PG_VERSION_NUM >= 80400
+extern Oid	equality_oper_funcid(Oid argtype);
+#endif
+
+#if PG_VERSION_NUM < 80300
+#define PGDLLIMPORT				DLLIMPORT
+#define session_timezone		global_timezone
+#define DatumGetTextPP(p)		DatumGetTextP(p)
+#define SET_VARSIZE(PTR, len)	(VARATT_SIZEP((PTR)) = (len))
+#define PG_GETARG_TEXT_PP(n)	PG_GETARG_TEXT_P((n))
+#define VARDATA_ANY(PTR)		VARDATA((PTR))
+#define VARSIZE_ANY_EXHDR(PTR)	(VARSIZE((PTR)) - VARHDRSZ)
+#define att_align_nominal(cur_offset, attalign) \
+	att_align((cur_offset), (attalign))
+#define att_addlength_pointer(cur_offset, attlen, attptr) \
+	att_addlength((cur_offset), (attlen), (attptr))
+#define stringToQualifiedNameList(string) \
+	stringToQualifiedNameList((string), "")
+typedef void *SPIPlanPtr;
+#endif
 
 #endif

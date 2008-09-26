@@ -47,6 +47,10 @@ o next_day(date, text) date - Returns the first weekday that is greater
 	
 	next_day(date '2005-05-24', 'monday') -> 2005-05-30
 
+o next_day(date, integer) date - Same as above. The second argument should
+	be 1..7 and interpreted as Sunday..Satday.
+
+	next_day(date '2005-05-24', 1) -> 2005-05-30
 
 o months_between(date, date) float8 - Returns the number of months between 
 	date1 and date2. If a fractional month is calculated, the months_between  
@@ -99,7 +103,7 @@ line size is 32K. This package contains functions:
 * utl_file.fclose(file utl_file.file_type)  - close file
 * utl_file.fclose_all()  - close all files
 * utl_file.fflush(file utl_file.file_type)  - flushes all data from buffers
-* utl_file.fopen(location text, filename text, file_mode text [, maxlinesize int) utl_file.file_type  - open file
+* utl_file.fopen(location text, filename text, file_mode text [, maxlinesize int]) utl_file.file_type  - open file
 * utl_file.get_line(file utl_file.file_type) text  - read one line from file
 * utl_file.get_nextline(file utl_file.file_type) text  - read one line from file or returns NULL
 * utl_file.is_open(file utl_file.file_type) bool  - returns true, if file is opened
@@ -479,10 +483,14 @@ o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns tabl
 
 Others functions
 ================
-This module contains implementation of functions: concat, nvl, nvl2.
+This module contains implementation of functions: concat, nvl, nvl2, lnnvl, decode
+and orafce.substr.
 
-o orafce.substr(str text, start int, len int) - Oracle compatible substring
-o orafce.substr(str text, start int)          - Oracle compatible substring
+o oracle.substr(str text, start int, len int) - Oracle compatible substring
+o oracle.substr(str text, start int)          - Oracle compatible substring
+
+You might need to set search_path to 'oracle, pg_catalog, "$user", public'
+because oracle.substr is installed side-by-side with pg_catalog.substr.
 
 ToDo:
   o better documentation                                             

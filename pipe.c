@@ -8,7 +8,6 @@
 #include "miscadmin.h"
 #include "string.h"
 #include "lib/stringinfo.h"
-#include "orafunc.h"
 #include "catalog/pg_type.h"
 #include "utils/builtins.h"
 #include "utils/date.h"
@@ -16,6 +15,7 @@
 
 #include "shmmc.h"
 #include "pipe.h"
+#include "orafunc.h"
 
 /*
  * @ Pavel Stehule 2006

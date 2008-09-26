@@ -29,7 +29,7 @@
  * External (defined in PgSQL datetime.c (timestamp utils))
  */
 
-extern char *days[];
+extern PGDLLIMPORT char *days[];
 
 Datum plvdate_add_bizdays (PG_FUNCTION_ARGS);
 Datum plvdate_nearest_bizday (PG_FUNCTION_ARGS);
@@ -89,7 +89,7 @@ do { \
               }                                                      \
 } while (0)
 
-extern int ora_seq_search(char *name, char **array, int max);
+extern int ora_seq_search(const char *name, /*const*/ char **array, int max);
 
 #define SUNDAY     (1 << 0)
 #define SATURDAY   (1 << 6)
@@ -508,9 +508,9 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 {
 	unsigned char check;
 
-	text *day_txt = PG_GETARG_TEXT_P(0);
+	text *day_txt = PG_GETARG_TEXT_PP(0);
 	
-	int d = ora_seq_search(VARDATA(day_txt), days, VARSIZE(day_txt) - VARHDRSZ);
+	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
 	check = nonbizdays | (1 << d);
@@ -540,9 +540,9 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 Datum 
 plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS)
 {
-	text *day_txt = PG_GETARG_TEXT_P(0);
+	text *day_txt = PG_GETARG_TEXT_PP(0);
 	
-	int d = ora_seq_search(VARDATA(day_txt), days, VARSIZE(day_txt) - VARHDRSZ);
+	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
     
 	nonbizdays = (nonbizdays | (1 << d)) ^ (1 << d);
@@ -763,9 +763,9 @@ plvdate_including_start (PG_FUNCTION_ARGS)
 Datum
 plvdate_default_holidays (PG_FUNCTION_ARGS)
 {
-    text *country = PG_GETARG_TEXT_P(0);
+    text *country = PG_GETARG_TEXT_PP(0);
 	
-	int c = ora_seq_search(VARDATA(country), states, VARSIZE(country) - VARHDRSZ);
+	int c = ora_seq_search(VARDATA_ANY(country), states, VARSIZE_ANY_EXHDR(country));
 	CHECK_SEQ_SEARCH(c, "STATE/State/state");
 
 	nonbizdays = defaults_ci[c].nonbizdays;

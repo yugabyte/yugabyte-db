@@ -1,9 +1,15 @@
 #include "postgres.h"
-#include "utils/memutils.h"
-#include "fmgr.h"
-#include "orafunc.h"
 #include <stdlib.h>
 #include <locale.h>
+#include "catalog/pg_operator.h"
+#include "catalog/pg_type.h"
+#include "fmgr.h"
+#include "parser/parse_oper.h"
+#include "utils/builtins.h"
+#include "utils/lsyscache.h"
+#include "utils/memutils.h"
+#include "utils/syscache.h"
+#include "orafunc.h"
 
 /*
  * Source code for nlssort is taken from postgresql-nls-string 
@@ -17,6 +23,7 @@ Datum ora_concat(PG_FUNCTION_ARGS);
 Datum ora_nlssort(PG_FUNCTION_ARGS);
 Datum ora_set_nls_sort(PG_FUNCTION_ARGS);
 Datum ora_lnnvl(PG_FUNCTION_ARGS);
+Datum ora_decode(PG_FUNCTION_ARGS);
 
 static char *lc_collate_cache = NULL;
 static int multiplication = 1;
@@ -46,23 +53,23 @@ ora_concat(PG_FUNCTION_ARGS)
     text *result;
     
     if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
-	PG_RETURN_NULL();
+		PG_RETURN_NULL();
 	
     if (PG_ARGISNULL(0))
-		PG_RETURN_TEXT_P(PG_GETARG_TEXT_P(1));
+		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
 	
     if (PG_ARGISNULL(1))
-		PG_RETURN_TEXT_P(PG_GETARG_TEXT_P(0));
+		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 
-    t1 = PG_GETARG_TEXT_P(0);
-    t2 = PG_GETARG_TEXT_P(1);    
+    t1 = PG_GETARG_TEXT_PP(0);
+    t2 = PG_GETARG_TEXT_PP(1);    
     
-    l1 = VARSIZE(t1) - VARHDRSZ;
-    l2 = VARSIZE(t2) - VARHDRSZ;
+	l1 = VARSIZE_ANY_EXHDR(t1);
+    l2 = VARSIZE_ANY_EXHDR(t2);
     
     result = palloc(l1+l2+VARHDRSZ);
-    memcpy(VARDATA(result), VARDATA(t1), l1);
-    memcpy(VARDATA(result) + l1, VARDATA(t2), l2);
+    memcpy(VARDATA(result), VARDATA_ANY(t1), l1);
+    memcpy(VARDATA(result) + l1, VARDATA_ANY(t2), l2);
     SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
     
     PG_RETURN_TEXT_P(result);
@@ -90,15 +97,16 @@ Datum
 ora_nvl2(PG_FUNCTION_ARGS)
 {
     if (!PG_ARGISNULL(0))
-		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
-
-    if (!PG_ARGISNULL(1))
-		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
-
-    if (!PG_ARGISNULL(2))
-		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
-
-    PG_RETURN_NULL();
+	{
+	    if (!PG_ARGISNULL(1))
+			PG_RETURN_DATUM(PG_GETARG_DATUM(1));
+	}
+	else
+	{
+	    if (!PG_ARGISNULL(2))
+			PG_RETURN_DATUM(PG_GETARG_DATUM(2));
+	}
+	PG_RETURN_NULL();
 } 
 
 
@@ -152,27 +160,27 @@ _nls_run_strxfrm(text *string, text *locale)
 	/*
 	 * To run strxfrm, we need a zero-terminated strings.
 	 */
-	string_len = VARSIZE(string) - VARHDRSZ;
+	string_len = VARSIZE_ANY_EXHDR(string);
 	if (string_len < 0)
 		return NULL;
 	string_str = palloc(string_len + 1);
-	memcpy(string_str, VARDATA(string), string_len);
+	memcpy(string_str, VARDATA_ANY(string), string_len);
 
 	*(string_str + string_len) = '\0';
 
 	if (locale)
 	{
-		locale_len = VARSIZE(locale) - VARHDRSZ;
+		locale_len = VARSIZE_ANY_EXHDR(locale);
 	}
 	/*
 	 * If different than default locale is requested, call setlocale.
 	 */
 	if (locale_len > 0
-		&& (strncmp(lc_collate_cache, VARDATA(locale), locale_len)
+		&& (strncmp(lc_collate_cache, VARDATA_ANY(locale), locale_len)
 			|| *(lc_collate_cache + locale_len) != '\0'))
 	{
 		locale_str = palloc(locale_len + 1);
-		memcpy(locale_str, VARDATA(locale), locale_len);
+		memcpy(locale_str, VARDATA_ANY(locale), locale_len);
 		*(locale_str + locale_len) = '\0';
 
 		/*
@@ -273,13 +281,89 @@ ora_nlssort(PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		locale = PG_GETARG_TEXT_P(1);
+		locale = PG_GETARG_TEXT_PP(1);
 	}
 
-	result = _nls_run_strxfrm(PG_GETARG_TEXT_P(0), locale);
+	result = _nls_run_strxfrm(PG_GETARG_TEXT_PP(0), locale);
 
 	if (! result)
 		PG_RETURN_NULL();
 
 	PG_RETURN_BYTEA_P(result);
 }
+
+PG_FUNCTION_INFO_V1(ora_decode);
+
+/*
+ * decode(lhs, [rhs, ret], ..., default)
+ */
+Datum
+ora_decode(PG_FUNCTION_ARGS) 
+{
+	int		nargs;
+	int		i;
+	int		retarg;
+	Oid		eq;
+
+	/*
+	 * On first call, get the input type's operator '=' , and save at
+	 * fn_extra. We assume sizeof(void *) >= sizeof(Oid).
+	 */
+	if (fcinfo->flinfo->fn_extra == NULL)
+	{
+		Oid	type = get_fn_expr_argtype(fcinfo->flinfo, 0);
+		eq = equality_oper_funcid(type);
+		fcinfo->flinfo->fn_extra = (void *) eq;
+	}
+	else
+		eq = (Oid) fcinfo->flinfo->fn_extra;
+
+	/* default value is last arg or NULL. */
+	nargs = PG_NARGS();
+	if (nargs % 2 == 0)
+	{
+        retarg = nargs - 1;
+		nargs -= 1;		/* ignore the last argument */
+	}
+	else
+		retarg = -1;	/* NULL */
+
+	if (PG_ARGISNULL(0))
+	{
+		for (i = 1; i < nargs; i += 2)
+		{
+			if (PG_ARGISNULL(i))
+			{
+				retarg = i + 1;
+				break;
+			}
+		}
+	}
+	else
+	{
+		for (i = 1; i < nargs; i += 2)
+		{
+			if (!PG_ARGISNULL(i) && DatumGetBool(
+				OidFunctionCall2(eq, PG_GETARG_DATUM(0), PG_GETARG_DATUM(i))))
+			{
+				retarg = i + 1;
+				break;
+			}
+		}
+	}
+
+	if (retarg < 0 || PG_ARGISNULL(retarg))
+		PG_RETURN_NULL();
+	else
+        PG_RETURN_DATUM(PG_GETARG_DATUM(retarg));
+}
+
+#if PG_VERSION_NUM >= 80400
+Oid
+equality_oper_funcid(Oid argtype)
+{
+	Oid	eq;
+	get_sort_group_operators(argtype, false, true, false, NULL, &eq, NULL);
+	return get_opcode(eq);
+}
+#endif

@@ -1,31 +1,39 @@
 #include "postgres.h"
 #include "funcapi.h"
 #include "access/heapam.h"
+#include "catalog/pg_type.h"
 #include "lib/stringinfo.h"
 
 #include "libpq/libpq.h"
 #include "libpq/pqformat.h"
 #include "utils/memutils.h"
-#include "catalog/pg_type.h"
 #include "utils/array.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
 #include "orafunc.h"
 
-#define MAX_LINE_BUFFER		2048
+extern PGDLLIMPORT ProtocolVersion FrontendProtocol;
+
+/*
+ * TODO: BUFSIZE_UNLIMITED to be truely unlimited (or INT_MAX),
+ * and allocate buffers on-demand.
+ */
+#define BUFSIZE_DEFAULT		20000
+#define BUFSIZE_MIN			2000
+#define BUFSIZE_MAX			1000000
+#define BUFSIZE_UNLIMITED	BUFSIZE_MAX
 
 static bool is_server_output = false;
-static bool is_enabled = false; 
 static char *buffer = NULL;
-static int   buffer_size = 0;
-static int   buffer_len = 0;
+static int   buffer_size = 0;	/* allocated bytes in buffer */
+static int   buffer_len = 0;	/* used bytes in buffer */
+static int   buffer_get = 0;	/* retrieved bytes in buffer */
 
-static int  line_len = 0;
-static char line[MAX_LINE_BUFFER+1];
-static int  lines = 0;				/* I need to know row count for get_lines() */
-
-static void add_toLine(text *str);
-static void send_buffer();
+static void add_str(const char *str, int len);
+static void add_text(text *str);
+static void add_newline(void);
+static void send_buffer(void);
 
 Datum dbms_output_enable(PG_FUNCTION_ARGS);
 Datum dbms_output_enable_default(PG_FUNCTION_ARGS);
@@ -38,31 +46,43 @@ Datum dbms_output_get_line(PG_FUNCTION_ARGS);
 Datum dbms_output_get_lines(PG_FUNCTION_ARGS);
 
 /*
- * Main purpouse is still notification about events, but with serveroutput(false)
- * you can use this module like clasic queue implementation put_line, get_line.
- * I respect Oracle limits, data 1Mb, line 255 chars.
- */
-
-#define LINE_OVERFLOW_TEXT   "line length overflow, limit of 255 bytes"
-
-/*
  * Aux. buffer functionality
  */
 
-static void 
-add_toLine(text *str)
+static void
+add_str(const char *str, int len)
 {
-	int len = VARSIZE(str) - VARHDRSZ;
-	if (line_len + len > MAX_LINE_BUFFER)
+	/* Discard all buffers if get_line was called. */
+	if (buffer_get > 0)
+	{
+		buffer_get = 0;
+		buffer_len = 0;
+	}
+
+	if (buffer_len + len > buffer_size)
 		ereport(ERROR,
 			(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-			 errmsg("line length overflow"),
-			 errdetail("Line length overflow, limit of %d bytes", MAX_LINE_BUFFER),
-			 errhint("Increase MAX_LINE_BUFFER in 'putline.c' and recompile")));
+			 errmsg("buffer overflow"),
+			 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
+			 errhint("Increase buffer size in dbms_output.enable() next time")));
 
-	memcpy(line+line_len, VARDATA(str), len);
-	line_len += len;
-	line[line_len] = '\0';
+	memcpy(buffer + buffer_len, str, len);
+	buffer_len += len;
+	buffer[buffer_len] = '\0';
+}
+
+static void 
+add_text(text *str)
+{
+	add_str(VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
+}
+
+static void
+add_newline(void)
+{
+	add_str("", 1);	/* add \0 */
+	if (is_server_output)
+		send_buffer();
 }
 
 
@@ -104,7 +124,6 @@ send_buffer()
 
 	pq_endmessage(&msgbuf);
 	pq_flush();
-	lines = 0;
     }
 }
 
@@ -114,21 +133,32 @@ send_buffer()
  *
  */
 
+static void
+dbms_output_enable_internal(int32 n_buf_size)
+{
+	/* We allocate +2 bytes for an end-of-line and a string terminator. */
+	if (buffer == NULL)
+	{
+		buffer = MemoryContextAlloc(TopMemoryContext, n_buf_size + 2);
+		buffer_size = n_buf_size;
+		buffer_len = 0;
+		buffer_get = 0;
+	}
+	else if (n_buf_size > buffer_len)
+	{
+		/* We cannot shrink buffer less than current length. */
+		buffer = repalloc(buffer, n_buf_size + 2);
+		buffer_size = n_buf_size;
+	}
+}
+
 PG_FUNCTION_INFO_V1(dbms_output_enable_default);
 
 Datum
 dbms_output_enable_default(PG_FUNCTION_ARGS)
 {
-    int32 n_buf_size = 20000;
-
-    buffer = MemoryContextAlloc(TopMemoryContext, n_buf_size+1);
-    buffer_size = n_buf_size;
-    buffer_len  = 0;
-    line_len    = 0;
-    lines       = 0;
-    is_enabled  = true;
-
-    PG_RETURN_NULL();
+	dbms_output_enable_internal(BUFSIZE_DEFAULT);
+    PG_RETURN_VOID();
 }
 
 
@@ -137,30 +167,28 @@ PG_FUNCTION_INFO_V1(dbms_output_enable);
 Datum
 dbms_output_enable(PG_FUNCTION_ARGS)
 {
-    int32 n_buf_size = PG_GETARG_INT32(0);
-    
-    if (n_buf_size > 1000000)
-	ereport(ERROR,
-		(errcode(ERRCODE_NUMERIC_VALUE_OUT_OF_RANGE),
-		 errmsg("value is out of range"),
-		 errdetail("Output buffer is limited to 1M bytes.")));
+	int32 n_buf_size;
 
-    if (n_buf_size < 2000)
-    {
-        n_buf_size = 2000;
-        elog(WARNING, "Limit increased to 2000 bytes.");
-    }	     
-    if (buffer != NULL)
-        pfree(buffer);
+	if (PG_ARGISNULL(0))
+		n_buf_size = BUFSIZE_UNLIMITED;
+	else
+	{
+		n_buf_size = PG_GETARG_INT32(0);
 
-    buffer = MemoryContextAlloc(TopMemoryContext, n_buf_size+1);
-    buffer_size = n_buf_size;
-    buffer_len  = 0;
-    line_len    = 0;
-    lines       = 0;
-    is_enabled  = true;
-    
-    PG_RETURN_NULL();
+		if (n_buf_size > BUFSIZE_MAX)
+		{
+			n_buf_size = BUFSIZE_MAX;
+			elog(WARNING, "Limit decreased to %d bytes.", BUFSIZE_MAX);
+		}
+		else if (n_buf_size < BUFSIZE_MIN)
+		{
+			n_buf_size = BUFSIZE_MIN;
+			elog(WARNING, "Limit increased to %d bytes.", BUFSIZE_MIN);
+		}
+	}
+
+	dbms_output_enable_internal(n_buf_size);
+	PG_RETURN_VOID();
 }
 
 PG_FUNCTION_INFO_V1(dbms_output_disable);
@@ -168,17 +196,13 @@ PG_FUNCTION_INFO_V1(dbms_output_disable);
 Datum
 dbms_output_disable(PG_FUNCTION_ARGS)
 {
-    if (buffer != NULL)
+    if (buffer)
         pfree(buffer);
-
-    buffer      = NULL;
+    buffer = NULL;
     buffer_size = 0;
-    buffer_len  = 0;
-    line_len    = 0;
-    lines       = 0;
-    is_enabled  = false;
-    
-    PG_RETURN_NULL();
+    buffer_len = 0;
+    buffer_get = 0;
+    PG_RETURN_VOID();
 }
 
 PG_FUNCTION_INFO_V1(dbms_output_serveroutput);
@@ -186,25 +210,10 @@ PG_FUNCTION_INFO_V1(dbms_output_serveroutput);
 Datum 
 dbms_output_serveroutput(PG_FUNCTION_ARGS)
 {
-    bool flag = PG_GETARG_BOOL(0);
-
-    if (flag == true)
-    {
-    	if (!is_enabled)
-	{	
-	    buffer = MemoryContextAlloc(TopMemoryContext, 20000+1);
-	    buffer_size = 20000;
-	    buffer_len  = 0;
-	    line_len    = 0;
-	    lines       = 0;
-	    is_enabled  = true;
-	}
-    	is_server_output = true;
-    }
-    else
-    	is_server_output = false;
-
-    PG_RETURN_NULL();
+	is_server_output = PG_GETARG_BOOL(0);
+	if (is_server_output && !buffer)
+		dbms_output_enable_internal(BUFSIZE_DEFAULT);
+	PG_RETURN_VOID();
 }
 
 
@@ -217,12 +226,9 @@ PG_FUNCTION_INFO_V1(dbms_output_put);
 Datum
 dbms_output_put(PG_FUNCTION_ARGS)
 {
-    if (is_enabled)
-    {
-		text *str = PG_GETARG_TEXT_P(0);
-		add_toLine(str);
-    }
-    PG_RETURN_NULL();
+    if (buffer)
+		add_text(PG_GETARG_TEXT_PP(0));
+    PG_RETURN_VOID();
 } 
 
 PG_FUNCTION_INFO_V1(dbms_output_put_line);
@@ -230,25 +236,12 @@ PG_FUNCTION_INFO_V1(dbms_output_put_line);
 Datum
 dbms_output_put_line(PG_FUNCTION_ARGS)
 {
-    if (is_enabled)
+    if (buffer)
     {
-		text *str = PG_GETARG_TEXT_P(0);
-		add_toLine(str);
-		if (buffer_len + line_len + 1 > buffer_size)
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("buffer overflow"),
-				 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
-				 errhint("Increase buffer size in dbms_output.enable() next time")));
-
-		memcpy(buffer + buffer_len, line, line_len + 1);
-		buffer_len += line_len + 1;
-		line_len = 0; 
-		lines++;
-		if (is_server_output)
-			send_buffer();
+		add_text(PG_GETARG_TEXT_PP(0));
+		add_newline();
     }
-    PG_RETURN_NULL();
+    PG_RETURN_VOID();
 }
 
 PG_FUNCTION_INFO_V1(dbms_output_new_line);
@@ -256,23 +249,22 @@ PG_FUNCTION_INFO_V1(dbms_output_new_line);
 Datum
 dbms_output_new_line(PG_FUNCTION_ARGS)
 {
-    if (is_enabled)
-    {
-		if (buffer_len + line_len + 1 > buffer_size)
-			ereport(ERROR,
-				(errcode(ERRCODE_INSUFFICIENT_RESOURCES),
-				 errmsg("buffer overflow"),
-				 errdetail("Buffer overflow, limit of %d bytes", buffer_size),
-				 errhint("Increase buffer size in dbms_output.enable() next time")));
+    if (buffer)
+		add_newline();
+    PG_RETURN_VOID();
+}
 
-		memcpy(buffer + buffer_len, line, line_len + 1);
-		buffer_len += line_len + 1;
-		line_len = 0; 
-		lines++;
-		if (is_server_output)
-			send_buffer();
-    }
-    PG_RETURN_NULL();
+static text *
+dbms_output_next(void)
+{
+	if (buffer_get < buffer_len)
+	{
+		text *line = CStringGetTextP(buffer + buffer_get);
+		buffer_get += VARSIZE_ANY_EXHDR(line) + 1;
+		return line;
+	}
+	else
+		return NULL;
 }
 
 PG_FUNCTION_INFO_V1(dbms_output_get_line);
@@ -281,35 +273,32 @@ Datum
 dbms_output_get_line(PG_FUNCTION_ARGS)
 {
 	TupleDesc	tupdesc;
-	AttInMetadata	*attinmeta;    
+	Datum		result;
 	HeapTuple	tuple;
-	Datum 	result;
-        TupleDesc       btupdesc;    
-	char *str[2] = {NULL,"0"};
-	
-	if (lines > 0)
+	Datum		values[2];
+	bool		nulls[2] = { false, false };
+	text	   *line;
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	if ((line = dbms_output_next()) != NULL)
 	{
-		str[0] = buffer;
-		str[1] = "1";
+		values[0] = PointerGetDatum(line);
+		values[1] = Int32GetDatum(0);	/* 0: succeeded */
+	}
+	else
+	{
+		nulls[0] = true;
+		values[1] = Int32GetDatum(1);	/* 1: failed */
 	}
 
-	get_call_result_type(fcinfo, NULL, &tupdesc);
-	btupdesc = BlessTupleDesc(tupdesc);
-	attinmeta = TupleDescGetAttInMetadata(btupdesc);
-	tuple = BuildTupleFromCStrings(attinmeta, str);
+	tuple = heap_form_tuple(tupdesc, values, nulls);
 	result = HeapTupleGetDatum(tuple);
-    
-	if (lines > 0)
-	{
-		int len = strlen(buffer) + 1;
-		memcpy(buffer, buffer + len, buffer_len - len);
-		buffer_len -= len;
-		lines--;
-	}
-    
-	return result;
-}
 
+	PG_RETURN_DATUM(result);
+}
 
 
 PG_FUNCTION_INFO_V1(dbms_output_get_lines);
@@ -317,74 +306,46 @@ PG_FUNCTION_INFO_V1(dbms_output_get_lines);
 Datum
 dbms_output_get_lines(PG_FUNCTION_ARGS)
 {
-    int32 max_lines = PG_GETARG_INT32(0);
-    bool disnull = false;
-	
+	TupleDesc	tupdesc;
+	Datum		result;
+	HeapTuple	tuple;
+	Datum		values[2];
+	bool		nulls[2] = { false, false };
+	text	   *line;
+
+	int32		max_lines = PG_GETARG_INT32(0);
+	int32		n;
     ArrayBuildState *astate = NULL;
-	
-    TupleDesc	tupdesc;
-    HeapTuple	tuple;
-    Datum 	result;
 
-    Datum dvalues[2];
-    bool isnull[2] = {false, false};
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
 
-    int fldnum = 0;
-    char *cursor = buffer;
-    TupleDesc       btupdesc;
+	for (n = 0; n < max_lines && (line = dbms_output_next()) != NULL; n++)
+	{
+		astate = accumArrayResult(astate, PointerGetDatum(line), false,
+					TEXTOID, CurrentMemoryContext);
+	}
 
-    text *line = palloc(255 + VARHDRSZ);
-	
-    if (max_lines == 0)
-	max_lines = lines;
-    
-    
-    if (lines > 0 && max_lines > 0)
-    {
-		while (lines > 0 && max_lines-- > 0)
-		{
-			Datum dvalue;
-			
-			int len = strlen(cursor);
-			memcpy(VARDATA(line), cursor, len);
-			SET_VARSIZE(line, len + VARHDRSZ);
-	    
-			dvalue = PointerGetDatum(line);
-			astate = accumArrayResult(astate, dvalue,
-									  disnull, TEXTOID,  CurrentMemoryContext);
-			cursor += len + 1;
-			fldnum++;    
-			lines--;
-		}
-		dvalues[0] = makeArrayResult(astate, CurrentMemoryContext);
-		
-		if (lines > 0)
-		{
-			memcpy(buffer, cursor, buffer_len - (cursor - buffer));
-			buffer_len -= cursor - buffer;
-		}
-		else
-		{
-			buffer_len = 0;
-		}
-    }
-    else
-    {
+	/* 0: lines as text array */
+	if (n > 0)
+		values[0] = makeArrayResult(astate, CurrentMemoryContext);
+	else
+	{
 		int16		typlen;
 		bool		typbyval;
 		char		typalign;
 
 		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
-		dvalues[0] = (Datum) construct_md_array(NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
-    }
+		values[0] = PointerGetDatum(construct_md_array(
+			NULL, NULL, 0, NULL, NULL, TEXTOID, typlen, typbyval, typalign));
+	}
 
-    dvalues[1] = Int32GetDatum(fldnum);
-    get_call_result_type(fcinfo, NULL, &tupdesc);
-    btupdesc = BlessTupleDesc(tupdesc);
-    tuple = heap_form_tuple(btupdesc, dvalues, isnull);
-    result = HeapTupleGetDatum(tuple);
+	/* 1: # of lines as integer */
+	values[1] = Int32GetDatum(n);
 
-    return result;    
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	result = HeapTupleGetDatum(tuple);
+
+	PG_RETURN_DATUM(result);
 }
-
-

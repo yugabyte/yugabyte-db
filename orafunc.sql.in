@@ -16,6 +16,12 @@ AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greather than a date value';
 
+CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday integer) 
+RETURNS date
+AS 'MODULE_PATHNAME', 'next_day_by_index'
+LANGUAGE 'C' IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.next_day (date, integer) IS 'returns the first weekday that is greather than a date value';
+
 CREATE OR REPLACE FUNCTION pg_catalog.last_day(value date) 
 RETURNS date
 AS 'MODULE_PATHNAME'
@@ -204,7 +210,7 @@ REVOKE ALL ON public.dual FROM PUBLIC;
 GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
 ANALYZE public.dual;
 
--- this packege is emulation of dbms_ouput Oracle packege
+-- this packege is emulation of dbms_output Oracle packege
 -- 
 
 DROP SCHEMA IF EXISTS dbms_output CASCADE;
@@ -214,7 +220,7 @@ CREATE SCHEMA dbms_output;
 CREATE OR REPLACE FUNCTION dbms_output.enable(IN buffer_size int4) 
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_output_enable' 
-LANGUAGE C VOLATILE STRICT;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_output.enable(IN int4) IS 'Enable package functionality';
     
 CREATE OR REPLACE FUNCTION dbms_output.enable()
@@ -284,6 +290,142 @@ RETURNS text
 AS 'MODULE_PATHNAME','ora_concat' 
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION concat(text, text) IS 'Concat two strings';
+
+CREATE OR REPLACE FUNCTION concat(text, anyelement)
+RETURNS text 
+AS 'SELECT concat($1, $2::text)'
+LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION concat(anyelement, text) 
+RETURNS text 
+AS 'SELECT concat($1::text, $2)'
+LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION concat(anyelement, anyelement) 
+RETURNS text 
+AS 'SELECT concat($1::text, $2::text)'
+LANGUAGE sql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(text, text, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(text, text, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(text, text, anyelement, text, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(text, text, anyelement, text, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(text, text, anyelement, text, anyelement, text, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(text, text, anyelement, text, anyelement, text, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement, integer, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement, integer, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement, integer, anyelement, integer, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement, integer, anyelement, integer, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(numeric, numeric, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(numeric, numeric, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(numeric, numeric, anyelement, numeric, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(numeric, numeric, anyelement, numeric, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(numeric, numeric, anyelement, numeric, anyelement, numeric, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(numeric, numeric, anyelement, numeric, anyelement, numeric, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(timestamp, timestamp, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(timestamp, timestamp, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(timestamp, timestamp, anyelement, timestamp, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(timestamp, timestamp, anyelement, timestamp, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(timestamp, timestamp, anyelement, timestamp, anyelement, timestamp, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(timestamp, timestamp, anyelement, timestamp, anyelement, timestamp, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
 
 DROP SCHEMA IF EXISTS dbms_pipe CASCADE;
 
@@ -906,9 +1048,9 @@ COMMENT ON FUNCTION plvstr.right(text, int) IS 'Returns last num_in charaters. Y
 
 CREATE OR REPLACE FUNCTION plvchr.quoted1(str text)
 RETURNS varchar
-AS $$SELECT E'\''||$1||E'\'';$$
+AS $$SELECT ''''||$1||'''';$$
 LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION plvchr.quoted1(text) IS E'Quoted text between \'';
+COMMENT ON FUNCTION plvchr.quoted1(text) IS E'Quoted text between ''';
 
 CREATE OR REPLACE FUNCTION plvchr.quoted2(str text)
 RETURNS varchar
@@ -1071,116 +1213,78 @@ COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN functio
 
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text)
 RETURNS utl_file.file_type
-AS $$SELECT utl_file.fopen($1, $2, $3, 1023); $$
+AS $$SELECT utl_file.fopen($1, $2, $3, 1024); $$
 LANGUAGE SQL VOLATILE;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
 
 CREATE FUNCTION utl_file.is_open(file utl_file.file_type)
 RETURNS bool
-AS $$SELECT $1 IS NOT NULL; $$
-LANGUAGE SQL IMMUTABLE;
+AS 'MODULE_PATHNAME','utl_file_is_open' 
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.is_open(utl_file.file_type) IS 'Functions returns true if handle points to file that is open';
 
-CREATE FUNCTION utl_file.get_line(file utl_file.file_type)
-RETURNS text
+CREATE FUNCTION utl_file.get_line(file utl_file.file_type, OUT buffer text)
 AS 'MODULE_PATHNAME','utl_file_get_line' 
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type) IS 'Returns one line from file';
 
-CREATE FUNCTION utl_file.get_nextline(file utl_file.file_type)
-RETURNS text
+CREATE FUNCTION utl_file.get_line(file utl_file.file_type, OUT buffer text, len integer)
+AS 'MODULE_PATHNAME','utl_file_get_line' 
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type, len integer) IS 'Returns one line from file';
+
+CREATE FUNCTION utl_file.get_nextline(file utl_file.file_type, OUT buffer text)
 AS 'MODULE_PATHNAME','utl_file_get_nextline' 
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_nextline(utl_file.file_type) IS 'Returns one line from file or returns NULL';
 
-CREATE FUNCTION utl_file.__put(file utl_file.file_type, buffer text, new_line bool)
-RETURNS bool
-AS 'MODULE_PATHNAME','utl_file___put' 
-LANGUAGE C VOLATILE;
-
 CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer text)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2, false); $$
-LANGUAGE SQL VOLATILE;
+AS 'MODULE_PATHNAME','utl_file_put' 
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, text) IS 'Puts data to specified file';
 
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer numeric)
+CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer anyelement)
 RETURNS bool
 AS $$SELECT utl_file.put($1, $2::text); $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type, numeric) IS 'Puts data to specified file';
-
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer timestamp)
-RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type, timestamp) IS 'Puts data to specified file';
-
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer date)
-RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type, date) IS 'Puts data to specified file';
-
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer time)
-RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type, time) IS 'Puts data to specified file';
-
-CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer timestamp with time zone)
-RETURNS bool
-AS $$SELECT utl_file.put($1, $2::text); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put(utl_file.file_type,  timestamp with time zone) IS 'Puts data to specified file';
+COMMENT ON FUNCTION utl_file.put(utl_file.file_type, anyelement) IS 'Puts data to specified file';
 
 CREATE FUNCTION utl_file.new_line(file utl_file.file_type)
 RETURNS bool
-AS $$SELECT utl_file.put($1, E'\n'); $$
-LANGUAGE SQL VOLATILE;
+AS 'MODULE_PATHNAME','utl_file_new_line'
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
 
 CREATE FUNCTION utl_file.new_line(file utl_file.file_type, lines int)
 RETURNS bool
-AS $$SELECT utl_file.put($1, repeat(E'\n', $2)); $$
-LANGUAGE SQL VOLATILE;
+AS 'MODULE_PATHNAME','utl_file_new_line'
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.new_line(file utl_file.file_type) IS 'Function inserts one ore more newline characters in specified file';
 
 CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer text)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2, true); $$
-LANGUAGE SQL VOLATILE;
+AS 'MODULE_PATHNAME','utl_file_put_line'
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, text) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer numeric)
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer text, autoflush bool)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, numeric) IS 'Puts data to specified file and append newline character';
+AS 'MODULE_PATHNAME','utl_file_put_line'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, text, bool) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer date)
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer anyelement)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS $$SELECT utl_file.put_line($1, $2::text); $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, date) IS 'Puts data to specified file and append newline character';
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, anyelement) IS 'Puts data to specified file and append newline character';
 
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer time)
+CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer anyelement, autoflush bool)
 RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
+AS $$SELECT utl_file.put_line($1, $2::text, true); $$
 LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, time) IS 'Puts data to specified file and append newline character';
-
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer timestamp)
-RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, timestamp) IS 'Puts data to specified file and append newline character';
-
-CREATE FUNCTION utl_file.put_line(file utl_file.file_type, buffer timestamp with time zone)
-RETURNS bool
-AS $$SELECT utl_file.__put($1, $2::text, true); $$
-LANGUAGE SQL VOLATILE;
-COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, timestamp with time zone) IS 'Puts data to specified file and append newline character';
+COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, anyelement, bool) IS 'Puts data to specified file and append newline character';
 
 CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text, arg5 text)
 RETURNS bool
@@ -1225,7 +1329,7 @@ LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fflush(file utl_file.file_type) IS 'This procedure makes sure that all pending data for specified file is written physically out to a file';
 
 CREATE FUNCTION utl_file.fclose(file utl_file.file_type)
-RETURNS void
+RETURNS utl_file.file_type
 AS 'MODULE_PATHNAME','utl_file_fclose' 
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fclose(utl_file.file_type) IS 'Close file';

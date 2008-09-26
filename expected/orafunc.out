@@ -1,18 +1,4 @@
 \set ECHO none
-psql:orafunc.sql:145: NOTICE:  schema "plvstr" does not exist, skipping
-psql:orafunc.sql:182: NOTICE:  schema "oracle" does not exist, skipping
-psql:orafunc.sql:197: NOTICE:  table "dual" does not exist, skipping
-psql:orafunc.sql:210: NOTICE:  schema "dbms_output" does not exist, skipping
-psql:orafunc.sql:288: NOTICE:  schema "dbms_pipe" does not exist, skipping
-psql:orafunc.sql:467: NOTICE:  schema "plvdate" does not exist, skipping
-psql:orafunc.sql:795: NOTICE:  schema "plvchr" does not exist, skipping
-psql:orafunc.sql:927: NOTICE:  schema "dbms_alert" does not exist, skipping
-psql:orafunc.sql:986: NOTICE:  schema "plvsubst" does not exist, skipping
-psql:orafunc.sql:1037: NOTICE:  schema "dbms_utility" does not exist, skipping
-psql:orafunc.sql:1052: NOTICE:  schema "plvlex" does not exist, skipping
-psql:orafunc.sql:1062: NOTICE:  schema "utl_file" does not exist, skipping
-psql:orafunc.sql:1245: NOTICE:  schema "dbms_assert" does not exist, skipping
-psql:orafunc.sql:1296: NOTICE:  schema "plunit" does not exist, skipping
 --
 -- test built-in date type oracle compatibility functions
 --
@@ -40,6 +26,42 @@ SELECT add_months ('2003-01-31', 1);
  2003-02-28
 (1 row)
 
+SELECT add_months ('2008-02-28', 1);
+ add_months 
+------------
+ 2008-03-28
+(1 row)
+
+SELECT add_months ('2008-02-29', 1);
+ add_months 
+------------
+ 2008-03-31
+(1 row)
+
+SELECT add_months ('2008-01-31', 12);
+ add_months 
+------------
+ 2009-01-31
+(1 row)
+
+SELECT add_months ('2008-01-31', -12);
+ add_months 
+------------
+ 2007-01-31
+(1 row)
+
+SELECT add_months ('2008-01-31', 95903);
+ add_months 
+------------
+ 9999-12-31
+(1 row)
+
+SELECT add_months ('2008-01-31', -80640);
+  add_months   
+---------------
+ 4712-01-31 BC
+(1 row)
+
 SELECT last_day (to_date('2003/03/15', 'yyyy/mm/dd'));
   last_day  
 ------------
@@ -58,6 +80,30 @@ SELECT last_day (to_date('2004/02/03', 'yyyy/mm/dd'));
  2004-02-29
 (1 row)
 
+SELECT last_day('1900-02-01');
+  last_day  
+------------
+ 1900-02-28
+(1 row)
+
+SELECT last_day('2000-02-01');
+  last_day  
+------------
+ 2000-02-29
+(1 row)
+
+SELECT last_day('2007-02-01');
+  last_day  
+------------
+ 2007-02-28
+(1 row)
+
+SELECT last_day('2008-02-01');
+  last_day  
+------------
+ 2008-02-29
+(1 row)
+
 SELECT next_day ('2003-08-01', 'TUESDAY');
   next_day  
 ------------
@@ -74,6 +120,30 @@ SELECT next_day ('2003-08-06', 'SUNDAY');
   next_day  
 ------------
  2003-08-10
+(1 row)
+
+SELECT next_day ('2008-01-01', 'sun');
+  next_day  
+------------
+ 2008-01-06
+(1 row)
+
+SELECT next_day ('2008-01-01', 'sunAAA');
+  next_day  
+------------
+ 2008-01-06
+(1 row)
+
+SELECT next_day ('2008-01-01', 1);
+  next_day  
+------------
+ 2008-01-06
+(1 row)
+
+SELECT next_day ('2008-01-01', 7);
+  next_day  
+------------
+ 2008-01-05
 (1 row)
 
 SELECT months_between (to_date ('2003/01/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
@@ -98,6 +168,30 @@ SELECT months_between (to_date ('2003/08/02', 'yyyy/mm/dd'), to_date ('2003/06/0
  months_between 
 ----------------
               2
+(1 row)
+
+SELECT months_between ('2007-02-28', '2007-04-30');
+ months_between 
+----------------
+             -2
+(1 row)
+
+SELECT months_between ('2008-01-31', '2008-02-29');
+ months_between 
+----------------
+             -1
+(1 row)
+
+SELECT months_between ('2008-02-29', '2008-03-31');
+ months_between 
+----------------
+             -1
+(1 row)
+
+SELECT months_between ('2008-02-29', '2008-04-30');
+ months_between 
+----------------
+             -2
 (1 row)
 
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
@@ -551,24 +645,6 @@ select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Au
  t
 (1 row)
 
-select last_day(to_date('2003/03/15', 'yyyy/mm/dd'))   =  to_date ('Mar 31, 2003', 'Mon DD, YYYY');
- ?column? 
-----------
- t
-(1 row)
-
-select last_day(to_date('2003/02/03', 'yyyy/mm/dd'))  =  to_date ('Feb 28, 2003', 'Mon DD, YYYY');
- ?column? 
-----------
- t
-(1 row)
-
-select last_day(to_date('2004/02/03', 'yyyy/mm/dd'))  =  to_date ('Feb 29, 2004', 'Mon DD, YYYY');
- ?column? 
-----------
- t
-(1 row)
-
 select instr('Tech on the net', 'e') =2;
  ?column? 
 ----------
@@ -594,6 +670,102 @@ select instr('Tech on the net', 'e', 1, 3) = 14;
 (1 row)
 
 select instr('Tech on the net', 'e', -3, 2) = 2;
+ ?column? 
+----------
+ t
+(1 row)
+
+select instr('abc', NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1 = instr('abc', '');
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1 = instr('abc', 'a');
+ ?column? 
+----------
+ t
+(1 row)
+
+select 3 = instr('abc', 'c');
+ ?column? 
+----------
+ t
+(1 row)
+
+select 0 = instr('abc', 'z');
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1 = instr('abcabcabc', 'abca', 1);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 4 = instr('abcabcabc', 'abca', 2);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 0 = instr('abcabcabc', 'abca', 7);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 0 = instr('abcabcabc', 'abca', 9);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 4 = instr('abcabcabc', 'abca', -1);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1 = instr('abcabcabc', 'abca', -8);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1 = instr('abcabcabc', 'abca', -9);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 0 = instr('abcabcabc', 'abca', -10);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 1 = instr('abcabcabc', 'abca', 1, 1);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 4 = instr('abcabcabc', 'abca', 1, 2);
+ ?column? 
+----------
+ t
+(1 row)
+
+select 0 = instr('abcabcabc', 'abca', 1, 3);
  ?column? 
 ----------
  t
@@ -645,6 +817,180 @@ select concat('a', 'b') =  'ab';
  ?column? 
 ----------
  t
+(1 row)
+
+select concat('a', NULL) = 'a';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(NULL, 'b') = 'b';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat('a', 2) = 'a2';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(1, 'b') = '1b';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(1, 2) = '12';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(1, NULL) = '1';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(NULL, 2) = '2';
+ ?column? 
+----------
+ t
+(1 row)
+
+select concat(NULL, NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+select nvl('A'::text, 'B');
+ nvl 
+-----
+ A
+(1 row)
+
+select nvl(NULL::text, 'B');
+ nvl 
+-----
+ B
+(1 row)
+
+select nvl(NULL::text, NULL);
+ nvl 
+-----
+ 
+(1 row)
+
+select nvl(1, 2);
+ nvl 
+-----
+   1
+(1 row)
+
+select nvl(NULL, 2);
+ nvl 
+-----
+   2
+(1 row)
+
+select nvl2('A'::text, 'B', 'C');
+ nvl2 
+------
+ B
+(1 row)
+
+select nvl2(NULL::text, 'B', 'C');
+ nvl2 
+------
+ C
+(1 row)
+
+select nvl2('A'::text, NULL, 'C');
+ nvl2 
+------
+ 
+(1 row)
+
+select nvl2(NULL::text, 'B', NULL);
+ nvl2 
+------
+ 
+(1 row)
+
+select nvl2(1, 2, 3);
+ nvl2 
+------
+    2
+(1 row)
+
+select nvl2(NULL, 2, 3);
+ nvl2 
+------
+    3
+(1 row)
+
+select lnnvl(true);
+ lnnvl 
+-------
+ f
+(1 row)
+
+select lnnvl(false);
+ lnnvl 
+-------
+ t
+(1 row)
+
+select lnnvl(NULL);
+ lnnvl 
+-------
+ t
+(1 row)
+
+select decode(1, 1, 100, 2, 200);
+ decode 
+--------
+    100
+(1 row)
+
+select decode(2, 1, 100, 2, 200);
+ decode 
+--------
+    200
+(1 row)
+
+select decode(3, 1, 100, 2, 200);
+ decode 
+--------
+       
+(1 row)
+
+select decode(3, 1, 100, 2, 200, 300);
+ decode 
+--------
+    300
+(1 row)
+
+select decode(NULL, 1, 100, NULL, 200, 300);
+ decode 
+--------
+    200
+(1 row)
+
+select decode('1', '1', 100, '2', 200);
+ decode 
+--------
+    100
+(1 row)
+
+select decode(2, 1, 'ABC'::text, 2, 'DEF');
+ decode 
+--------
+ DEF
 (1 row)
 
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
@@ -747,19 +1093,19 @@ select to_char(1234567890.12345);
  1234567890.12345
 (1 row)
 
-select dbms_assert.enquote_literal(E'some text \' some text');
+select dbms_assert.enquote_literal('some text '' some text');
      enquote_literal      
 --------------------------
  'some text '' some text'
 (1 row)
 
-select dbms_assert.enquote_name(E'\'"AAA');
+select dbms_assert.enquote_name('''"AAA');
  enquote_name 
 --------------
  "'""aaa"
 (1 row)
 
-select dbms_assert.enquote_name(E'\'"AAA', false);
+select dbms_assert.enquote_name('''"AAA', false);
  enquote_name 
 --------------
  "'""AAA"
