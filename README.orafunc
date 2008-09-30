@@ -480,6 +480,51 @@ postgres=# select * from
 Warning: Keyword's codes can be changed between PostgreSQL versions!
 o plvlex.tokens(str text, skip_spaces bool, qualified_names bool) - Returns table of lexical elements in str. 
 
+DBMS_ASSERT
+===========
+This package protect user input against SQL injection.
+
+o dbms_assert.enquote_literal(varchar) varchar - Add leading and trailing quotes, 
+						verify that all single quotes are paired with 
+						adjacent single quotes.
+
+o dbms_assert.enquote_name(varchar [, boolean]) varchar - Enclose name in double quotes. Optional 
+						second parameter ensure loweralize of name. Attention - 
+						On Oracle is second parameter capitalize!
+
+o dbms_assert.noop(varchar) varchar - Returns value without any checking.
+
+o dbms_assert.qualified_sql_name(varchar) varchar - This function verifies that the input string 
+						is qualified SQL name.
+
+o dbms_assert.schema_name(varchar) varchar - Function verifies that input string is an existing schema name.
+
+o dbms_assert.simple_sql_name(varchar) varchar -This function verifies that the input string is simple SQL name.
+
+o dbms_assert.object_name(varchar) varchar - Verifies that input string is qualified SQL identifier 
+					     of an existing SQL object. 
+
+PLUnit
+======
+This unit contains some assert functions.
+
+o plunit.assert_true(bool [, varchar]) - 		Asserts that the condition is true. 
+
+o plunit.assert_false(bool [, varchar]) - 		Asserts that the condition is false. 
+
+o plunit.assert_null(anyelement [, varchar]) -		Asserts that the actual is null.
+
+o plunit.assert_not_null(anyelement [, varchar]) - 	Asserts that the actual isn't null.
+ 
+o plunit.assert_equals(anyelement, anyelement [, double precision] [, varchar]) - 
+				    Asserts that expected and actual are equal. 
+
+o plunit.assert_not_equals(anyelement, anyelement [, double precision] [, varchar]) - 
+				    Asserts that expected and actual are equal. 
+
+o plunit.fail([varchar]) -				Fail can be used to cause a test procedure to fail immediately using the supplied message. 
+
+
 
 Others functions
 ================
