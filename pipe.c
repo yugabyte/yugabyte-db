@@ -101,7 +101,6 @@ typedef enum {
 	IT_RECORD = 24
 } message_data_type;
 
-
 typedef struct _queue_item {
 	void *ptr;
 	struct _queue_item *next_item;
@@ -122,15 +121,21 @@ typedef struct {
 typedef struct {
 	size_t size;
 	int items_count;
-	char data;
+	vardata data[1]; /* flexible array member */
 } message_buffer;
+
+#define message_buffer_size		(offsetof(message_buffer, data))
 
 typedef struct {
 	size_t size;
 	message_data_type type;
 	Oid tupType;
-	char data;
+	vardata data[1]; /* flexible array member */
 } message_data_item;
+
+#define message_data_item_size	(offsetof(message_data_item, data))
+#define message_data_item_next(ptr, len) \
+	((message_data_item *) MAXALIGN(((long)(ptr)) + (len)))
 
 typedef struct PipesFctx {
 	int pipe_nth;
@@ -145,9 +150,10 @@ typedef struct
 	alert_lock *locks;
 	size_t size;
 	unsigned int sid;
-	char data[1]; /* flexible array member */
+	vardata data[1]; /* flexible array member */
 } sh_memory;
 
+#define sh_memory_size			(offsetof(sh_memory, data))
 
 message_buffer *output_buffer = NULL;
 message_buffer *input_buffer = NULL;
@@ -169,13 +175,13 @@ extern alert_lock  *locks;
 
 static void 
 pack_field(message_buffer *message, message_data_item **writer,
-		   message_data_type type, int size, void *ptr, Oid *tupType)
+		   message_data_type type, int size, const void *ptr, Oid tupType)
 {
-	int l;
+	int len;
 	message_data_item *_wr = *writer;
 
-	l = size + sizeof(message_data_item);
-	if (message->size + l > LOCALMSGSZ-sizeof(message_buffer))
+	len = size + message_data_item_size;
+	if (message->size + len > LOCALMSGSZ - message_buffer_size)
     		ereport(ERROR,             
                             (errcode(ERRCODE_OUT_OF_MEMORY),
                              errmsg("out of memory"),
@@ -183,20 +189,19 @@ pack_field(message_buffer *message, message_data_item **writer,
 			     errhint("Increase LOCALMSGSZ in 'pipe.h' and recompile library.")));                     
 
 	if (_wr == NULL)
-		_wr = (message_data_item*)&message->data;
+		_wr = (message_data_item *) message->data;
 
-	_wr->size = l;
-
+	_wr->size = len;
 	_wr->type = type;
-	if (tupType != NULL)
-	    _wr->tupType = *tupType;
-	
-	memcpy(&_wr->data, ptr, size);
+    _wr->tupType = tupType;
 
-	message->size += l;
-	message->items_count +=1;
+	memcpy(_wr->data, ptr, size);
 
-	_wr = (message_data_item*)((char*)_wr + l);
+	len = MAXALIGN(len);
+	message->size += len;
+	message->items_count += 1;
+
+	_wr = message_data_item_next(_wr, len);
 	*writer = _wr;
 }
 
@@ -208,27 +213,20 @@ unpack_field(message_buffer *message, message_data_item **reader,
 	void *ptr;
 	message_data_item *_rd = *reader;
 
-	if (_rd == NULL)
-	{
-		_rd = (message_data_item*)&message->data;
-	}
-	if ((message->items_count)--)
-	{
-		*size = _rd->size - sizeof(message_data_item);
-		*type = _rd->type;
-		
-		if (tupType)
-			*tupType = _rd->tupType;
+	Assert(message != NULL);
+	Assert(message->items_count > 0);
+	Assert(_rd != NULL);
 
-		ptr  = (void*)&_rd->data;
+	*size = _rd->size - message_data_item_size;
+	*type = _rd->type;
+	*tupType = _rd->tupType;
+	ptr = _rd->data;
 
-		_rd = (message_data_item*)((char*)_rd + _rd->size);
-		*reader = message->items_count > 0 ? _rd : NULL;
+	_rd = message_data_item_next(_rd, _rd->size);
 
-		return ptr;
-	}
+	*reader = (--message->items_count > 0 ? _rd : NULL);
 
-	return NULL;
+	return ptr;
 }
 
 
@@ -258,8 +256,8 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 		{
 			shmem_lock = sh_mem->shmem_lock = LWLockAssign();
 			LWLockAcquire(sh_mem->shmem_lock, LW_EXCLUSIVE);
-			sh_mem->size = size - sizeof(sh_memory);
-			ora_sinit(&sh_mem->data, size, true);
+			sh_mem->size = size - sh_memory_size;
+			ora_sinit(sh_mem->data, size, true);
 			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(pipe));
 			sid = sh_mem->sid = 1;			
 			for(i = 0; i < max_pipes; i++)
@@ -287,7 +285,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			pipes = sh_mem->pipes;
 			shmem_lock = sh_mem->shmem_lock;
 			LWLockAcquire(sh_mem->shmem_lock, LW_EXCLUSIVE);
-			ora_sinit(&sh_mem->data, sh_mem->size, reset);
+			ora_sinit(sh_mem->data, sh_mem->size, reset);
 			sid = ++(sh_mem->sid);
 			events = sh_mem->events;
 			locks = sh_mem->locks;
@@ -560,10 +558,10 @@ check_buffer(message_buffer *buf, size_t size, message_data_item **writer)
 	if (buf == NULL)
 	{
 		buf = (message_buffer*) MemoryContextAlloc(TopMemoryContext, size);
-		buf->size = sizeof(message_buffer);
+		buf->size = message_buffer_size;
 		buf->items_count = 0;
-		*writer = (message_data_item*) &buf->data;
-	}	
+		*writer = (message_data_item *) buf->data;
+	}
 
 	return buf;
 }
@@ -571,12 +569,11 @@ check_buffer(message_buffer *buf, size_t size, message_data_item **writer)
 Datum
 dbms_pipe_pack_message_text(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_P(0);
+	text *str = PG_GETARG_TEXT_PP(0);
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_VARCHAR, 
-			   VARSIZE(str) - VARHDRSZ, VARDATA(str),
-			   NULL); 
+	pack_field(output_buffer, &writer, IT_VARCHAR,
+		VARSIZE_ANY_EXHDR(str), VARDATA_ANY(str), InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -589,8 +586,7 @@ dbms_pipe_pack_message_date(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_DATE,
-			   sizeof(dt), &dt,
-			   NULL); 
+			   sizeof(dt), &dt, InvalidOid);
 
 	PG_RETURN_VOID();
 }
@@ -603,11 +599,9 @@ dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_TIMESTAMPTZ,
-			   sizeof(dt), &dt,
-			   NULL); 
+			   sizeof(dt), &dt, InvalidOid);
 
 	PG_RETURN_VOID();
-
 }
 
 
@@ -618,11 +612,9 @@ dbms_pipe_pack_message_number(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_NUMBER,
-			   VARSIZE(num) - VARHDRSZ, VARDATA(num),
-			   NULL); 
+			   VARSIZE(num) - VARHDRSZ, VARDATA(num), InvalidOid);
 
 	PG_RETURN_VOID();
-
 }
 
 
@@ -633,11 +625,9 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_BYTEA,
-			   VARSIZE(data) - VARHDRSZ, VARDATA(data),
-			   NULL); 
+		VARSIZE_ANY_EXHDR(data), VARDATA_ANY(data), InvalidOid);
 
 	PG_RETURN_VOID();
-
 }
 
 
@@ -651,7 +641,7 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	HeapTupleHeader rec = PG_GETARG_HEAPTUPLEHEADER(0);
 	Oid tupType;
 	bytea *data;
-	FunctionCallInfoData locfcinfo;
+	FunctionCallInfoData info;
 
 	tupType = HeapTupleHeaderGetTypeId(rec);
 	
@@ -661,75 +651,95 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
 	 * flinfo parameter.
 	 */
-	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 3, NULL, NULL);
+	InitFunctionCallInfoData(info, fcinfo->flinfo, 3, NULL, NULL);
 
-	locfcinfo.arg[0] = PointerGetDatum(rec);
-	locfcinfo.arg[1] = ObjectIdGetDatum(tupType);
-	locfcinfo.arg[2] = Int32GetDatum(-1);
-	locfcinfo.argnull[0] = false;
-	locfcinfo.argnull[1] = false;
-	locfcinfo.argnull[2] = false;
+	info.arg[0] = PointerGetDatum(rec);
+	info.arg[1] = ObjectIdGetDatum(tupType);
+	info.arg[2] = Int32GetDatum(-1);
+	info.argnull[0] = false;
+	info.argnull[1] = false;
+	info.argnull[2] = false;
 			
-	data = (bytea*) DatumGetPointer(record_send(&locfcinfo));
+	data = (bytea*) DatumGetPointer(record_send(&info));
 
 	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
 	pack_field(output_buffer, &writer, IT_RECORD,
-			   VARSIZE(data), VARDATA(data),
-			   &tupType); 
+			   VARSIZE(data), VARDATA(data), tupType);
 
 	PG_RETURN_VOID();
 }
 
 
-static int64
-dbms_pipe_unpack_message(message_data_type dtype, bool *is_null, Oid *tupType)
+static Datum
+dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 {
+	Oid		tupType;
 	void *ptr;
 	message_data_type type;
 	size_t size;
-	int64 result = 0;
-	message_data_type next_type;
+	Datum result;
 
-	*is_null = true;
-	if (input_buffer == NULL)
-		return result;
+	if (input_buffer == NULL ||
+		input_buffer->items_count <= 0 ||
+		reader == NULL ||
+		reader->type == IT_NO_MORE_ITEMS)
+		PG_RETURN_NULL();
 
-	next_type =  reader != NULL ? reader->type : IT_NO_MORE_ITEMS;
-	if (next_type == IT_NO_MORE_ITEMS)
-		return result;
-
-	if (next_type != dtype)
+	if (reader->type != dtype)
 		ereport(ERROR,             
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("datatype mismatch"),
-				 errdetail("unpack unexpected type"))); 
-	
-	if (NULL == (ptr = unpack_field(input_buffer, &reader, &type, &size, tupType)))
-		return result;
+				 errdetail("unpack unexpected type: %d", reader->type))); 
+
+	ptr = unpack_field(input_buffer, &reader, &type, &size, &tupType);
+	Assert(ptr != NULL);
 
 	switch (type)
 	{
 		case IT_TIMESTAMPTZ:
-			result = *(int64*)ptr;
+			result = TimestampTzGetDatum(*(TimestampTz*)ptr);
 			break;
-
 		case IT_DATE:
-			result = *(DateADT*)ptr;
+			result = DateADTGetDatum(*(DateADT*)ptr);
 			break;
-
 		case IT_VARCHAR:
 		case IT_NUMBER:
 		case IT_BYTEA:
-		case IT_RECORD:
-			result = (int64)((int32)ora_make_text_fix((char*)ptr, size));
+			result = PointerGetDatum(cstring_to_text_with_len(ptr, size));
 			break;			
-	
-		default:
-			*is_null = true;
-			break;
-	}
+		case IT_RECORD:
+		{
+			FunctionCallInfoData	info;
+			StringInfoData	buf;
+			text		   *data = cstring_to_text_with_len(ptr, size);
 
-	*is_null = false;
+			buf.data = VARDATA(data);
+			buf.len = VARSIZE(data) - VARHDRSZ;
+			buf.maxlen = buf.len;
+			buf.cursor = 0;
+	
+			/*
+			 * Normally one would call record_recv() using DirectFunctionCall3,
+			 * but that does not work since record_recv wants to cache some data
+			 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
+			 * flinfo parameter.
+			 */
+			InitFunctionCallInfoData(info, fcinfo->flinfo, 3, NULL, NULL);
+			
+			info.arg[0] = PointerGetDatum(&buf);
+			info.arg[1] = ObjectIdGetDatum(tupType);
+			info.arg[2] = Int32GetDatum(-1);
+			info.argnull[0] = false;
+			info.argnull[1] = false;
+			info.argnull[2] = false;
+
+			result = record_recv(&info);
+			break;			
+		}
+		default:
+			elog(ERROR, "unexpected type: %d", type);
+			result = (Datum) 0;	/* keep compiler quiet */
+	}
 
 	if (input_buffer->items_count == 0)
 	{
@@ -737,130 +747,48 @@ dbms_pipe_unpack_message(message_data_type dtype, bool *is_null, Oid *tupType)
 		input_buffer = NULL;
 	}
 	
-	return result;
+	PG_RETURN_DATUM(result);
 }
 
 
 Datum
 dbms_pipe_unpack_message_text(PG_FUNCTION_ARGS)
 {
-	bool is_null;
-	text *result;
-	
-	result = (text*)((int32)dbms_pipe_unpack_message(IT_VARCHAR, &is_null,
-													 NULL));
-	if (is_null)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_TEXT_P(result);
+	return dbms_pipe_unpack_message(fcinfo, IT_VARCHAR);
 }
 
 
 Datum
 dbms_pipe_unpack_message_date(PG_FUNCTION_ARGS)
 {
-	bool is_null;
-	DateADT result;
-	
-	result = (DateADT)dbms_pipe_unpack_message(IT_DATE, &is_null,
-											   NULL);
-	if (is_null)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_DATEADT(result);
+	return dbms_pipe_unpack_message(fcinfo, IT_DATE);
 }
 
 Datum
 dbms_pipe_unpack_message_timestamp(PG_FUNCTION_ARGS)
 {
-	bool is_null;
-	TimestampTz result;
-
-	int64 value;
-
-	value = dbms_pipe_unpack_message(IT_TIMESTAMPTZ, &is_null, 
-									 NULL);
-	if (is_null)
-		PG_RETURN_NULL();
-	else
-		result = *((TimestampTz*)&value);
-		PG_RETURN_TIMESTAMPTZ(result);
+	return dbms_pipe_unpack_message(fcinfo, IT_TIMESTAMPTZ);
 }
 
 
 Datum
 dbms_pipe_unpack_message_number(PG_FUNCTION_ARGS)
 {
-	bool is_null;
-	Numeric result;
-
-	result = (Numeric)((int32)dbms_pipe_unpack_message(IT_NUMBER, &is_null,
-													   NULL));
-	if (is_null)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_NUMERIC(result);
+	return dbms_pipe_unpack_message(fcinfo, IT_NUMBER);
 }
 
 
 Datum
 dbms_pipe_unpack_message_bytea(PG_FUNCTION_ARGS)
 {
-	bool is_null;
-	bytea *result;
-
-	result = (bytea*)((int32)dbms_pipe_unpack_message(IT_BYTEA, &is_null,
-													  NULL));
-	if (is_null)
-		PG_RETURN_NULL();
-	else
-		PG_RETURN_BYTEA_P(result);
+	return dbms_pipe_unpack_message(fcinfo, IT_BYTEA);
 }
 
 
 Datum
 dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS)
 {
-	bool is_null;
-	bytea *data;
-	FunctionCallInfoData locfcinfo;
-	Oid tupType;
-	HeapTupleHeader rec; 
-	StringInfoData buf;
-
-	data = (bytea*)((int32)dbms_pipe_unpack_message(IT_RECORD, &is_null, &tupType));
-	
-	if (!is_null)
-	{												
-		buf.data = VARDATA(data);
-		buf.len = VARSIZE(data) - VARHDRSZ;
-		buf.maxlen = buf.len;
-		buf.cursor = 0;
-	
-		/*
-		 * Normally one would call record_recv() using DirectFunctionCall3,
-		 * but that does not work since record_recv wants to cache some data
-		 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
-		 * flinfo parameter.
-		 */
-		InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 3, NULL, NULL);
-		
-		locfcinfo.arg[0] = PointerGetDatum(&buf);
-		locfcinfo.arg[1] = ObjectIdGetDatum(tupType);
-		locfcinfo.arg[2] = Int32GetDatum(-1);
-		locfcinfo.argnull[0] = false;
-		locfcinfo.argnull[1] = false;
-		locfcinfo.argnull[2] = false;
-		
-		rec =  DatumGetHeapTupleHeader(record_recv(&locfcinfo));
-	
-		/* I have to translate rec to tuple */
-	
-		pfree(data);
-		PG_RETURN_HEAPTUPLEHEADER(rec);
-	}
-
-	PG_RETURN_NULL();
+	return dbms_pipe_unpack_message(fcinfo, IT_RECORD);
 }
 
 
@@ -907,7 +835,7 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 	WATCH_PRE(timeout, endtime, cycle);	
 	if (NULL != (input_buffer = get_from_pipe(pipe_name, &found)))
 	{
-		reader = (message_data_item*)&input_buffer->data;
+		reader = (message_data_item *) input_buffer->data;
 		break;
 	}
 /* found empty message */
@@ -941,7 +869,7 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	if (output_buffer == NULL)
 	{
 		output_buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ);
-		output_buffer->size = sizeof(message_buffer);
+		output_buffer->size = message_buffer_size;
 		output_buffer->items_count = 0;
 	}	
 
@@ -969,8 +897,8 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	WATCH_POST(timeout, endtime, cycle);
 		
 	output_buffer->items_count = 0;
-	output_buffer->size = sizeof(message_buffer);
-	writer = (message_data_item*)&output_buffer->data;
+	output_buffer->size = message_buffer_size;
+	writer = (message_data_item *) output_buffer->data;
 
 	PG_RETURN_INT32(RESULT_DATA);
 }
@@ -992,7 +920,7 @@ dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 		initStringInfo(&strbuf);
 		appendStringInfo(&strbuf,"PG$PIPE$%d$%d",sid, MyProcPid);
 		
-		result = ora_make_text_fix(strbuf.data, strbuf.len);
+		result = cstring_to_text_with_len(strbuf.data, strbuf.len);
 		pfree(strbuf.data);
 		LWLockRelease(shmem_lock);
 
@@ -1036,16 +964,16 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 		funcctx = SRF_FIRSTCALL_INIT ();
 		oldcontext = MemoryContextSwitchTo (funcctx->multi_call_memory_ctx);
 
-		fctx = (PipesFctx*) palloc (sizeof (PipesFctx));
-		funcctx->user_fctx = (void *)fctx;
+		fctx = palloc (sizeof (PipesFctx));
+		funcctx->user_fctx = fctx;
 
-		fctx->values = (char **) palloc (4 * sizeof (char *));
-		fctx->values  [0] = (char*) palloc (255 * sizeof (char));
-		fctx->values  [1] = (char*) palloc  (16 * sizeof (char));
-		fctx->values  [2] = (char*) palloc  (16 * sizeof (char));
-		fctx->values  [3] = (char*) palloc  (16 * sizeof (char));
-		fctx->values  [4] = (char*) palloc  (10 * sizeof (char));
-		fctx->values  [5] = (char*) palloc (255 * sizeof (char));
+		fctx->values = palloc (4 * sizeof (char *));
+		fctx->values  [0] = palloc (255 * sizeof (char));
+		fctx->values  [1] = palloc  (16 * sizeof (char));
+		fctx->values  [2] = palloc  (16 * sizeof (char));
+		fctx->values  [3] = palloc  (16 * sizeof (char));
+		fctx->values  [4] = palloc  (10 * sizeof (char));
+		fctx->values  [5] = palloc (255 * sizeof (char));
 		fctx->pipe_nth = 0;
 
 		tupdesc = CreateTemplateTupleDesc (6 , false);

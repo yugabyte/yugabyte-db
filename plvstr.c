@@ -95,8 +95,9 @@ typedef enum
 	LAST
 }  position_mode;
 
+#if PG_VERSION_NUM < 80400
 text *
-ora_make_text_fix(char *c, int n)
+cstring_to_text_with_len(const char *c, int n)
 {
 	text *result;
 	result = palloc(n + VARHDRSZ);
@@ -105,6 +106,7 @@ ora_make_text_fix(char *c, int n)
 
 	return result;
 }
+#endif
 
 /*
  * Make substring, can handle negative start
@@ -777,7 +779,7 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
 		break;
 	}
 	
-	PG_RETURN_TEXT_P(ora_make_text_fix(str_p,len_s));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(str_p,len_s));
 }
 
 
@@ -834,7 +836,7 @@ plvstr_rstrip (PG_FUNCTION_ARGS)
 		break;
 	}
 	
-	PG_RETURN_TEXT_P(ora_make_text_fix(VARDATA_ANY(str),len_s));
+	PG_RETURN_TEXT_P(cstring_to_text_with_len(VARDATA_ANY(str),len_s));
 }
 
 

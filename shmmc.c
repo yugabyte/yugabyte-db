@@ -26,7 +26,7 @@ typedef struct {
 typedef struct {
 	int list_c;
 	int max_size;
-	char *data;
+	vardata data[1];	 /* flexible array member */
 } mem_desc;
 
 #define MAX_SIZE 82688
@@ -173,7 +173,7 @@ ora_sinit(void *ptr, size_t size, bool create)
 	if (list == NULL)
 	{
 		mem_desc *m = (mem_desc*)ptr;
-		list = (list_item*)&m->data;
+		list = (list_item*)m->data;
 		list_c = &m->list_c;
 		max_size = m->max_size = size;
 

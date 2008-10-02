@@ -18,13 +18,25 @@
         DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t))) 
 #define CStringGetTextP(c) \
         DatumGetTextP(CStringGetTextDatum(c))
+text *cstring_to_text_with_len(const char *c, int n);
 #endif
 
 #define TextPCopy(t) \
 	DatumGetTextP(datumCopy(PointerGetDatum(t), false, -1))
 
-text* ora_make_text_fix(char *c, int n);
-int   ora_instr(text *txt, text *pattern, int start, int nth);
+/* alignment of this struct must fit for all types */
+typedef union vardata
+{
+	char	c;
+	short	s;
+	int		i;
+	long	l;
+	float	f;
+	double	d;
+	void   *p;
+} vardata;
+
+int ora_instr(text *txt, text *pattern, int start, int nth);
 int ora_mb_strlen(text *str, char **sizes, int **positions);
 int ora_mb_strlen1(text *str);
 
