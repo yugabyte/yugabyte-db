@@ -1,41 +1,56 @@
 \set ECHO none
-SET client_min_messages = notice;
+SET client_min_messages = NOTICE;
 \set ECHO all
 
 INSERT INTO utl_file.utl_file_dir(dir) VALUES('/tmp');
 
-create or replace function gen_file() returns void as $$
-declare 
+CREATE OR REPLACE FUNCTION gen_file() RETURNS void AS $$
+DECLARE
   f utl_file.file_type;
-  r record;
-begin
+BEGIN
   f := utl_file.fopen('/tmp','regress_orafce','w');
-  for r in select m from generate_series(1,20) m(m) loop
-    perform utl_file.put_line(f, r.m::numeric);
-  end loop;
+  PERFORM utl_file.put_line(f, 'ABC');
+  PERFORM utl_file.put_line(f, '123'::numeric);
+  PERFORM utl_file.put_line(f, '-----');
+  PERFORM utl_file.new_line(f);
+  PERFORM utl_file.put_line(f, '-----');
+  PERFORM utl_file.new_line(f, 0);
+  PERFORM utl_file.put_line(f, '-----');
+  PERFORM utl_file.new_line(f, 2);
+  PERFORM utl_file.put_line(f, '-----');
+  PERFORM utl_file.put(f, 'A');
+  PERFORM utl_file.put(f, 'B');
+  PERFORM utl_file.new_line(f);
+  PERFORM utl_file.putf(f, '[1=%s, 2=%s, 3=%s, 4=%s, 5=%s]', '1', '2', '3', '4', '5');
+  PERFORM utl_file.new_line(f);
+  PERFORM utl_file.put_line(f, '1234567890');
   f := utl_file.fclose(f);
-end;
-$$ language plpgsql;
-select gen_file();
+END;
+$$ LANGUAGE plpgsql;
+SELECT gen_file();
 
 
-create or replace function read_file() returns void as $$
-declare 
+CREATE OR REPLACE FUNCTION read_file() RETURNS void AS $$
+DECLARE
   f utl_file.file_type;
-begin
+BEGIN
   f := utl_file.fopen('/tmp','regress_orafce','r');
-  loop 
-    raise notice '>>%<<', utl_file.get_line(f);
-  end loop;
-  exception
-    -- when no_data_found then,  8.1 plpgsql doesn't know no_data_found
-    when others then
-      raise notice 'finish % ', sqlerrm;
-      raise notice 'is_open = %', utl_file.is_open(f);
-      perform utl_file.fclose_all();
-      raise notice 'is_open = %', utl_file.is_open(f);
-end;
-$$ language plpgsql;
-select read_file();
+  FOR i IN 1..11 LOOP
+    RAISE NOTICE '[%] >>%<<', i, utl_file.get_line(f);
+  END LOOP;
+  RAISE NOTICE '>>%<<', utl_file.get_line(f, 4);
+  RAISE NOTICE '>>%<<', utl_file.get_line(f, 4);
+  RAISE NOTICE '>>%<<', utl_file.get_line(f);
+  RAISE NOTICE '>>%<<', utl_file.get_line(f);
+  EXCEPTION
+    -- WHEN no_data_found THEN,  8.1 plpgsql doesn't know no_data_found
+    WHEN others THEN
+      RAISE NOTICE 'finish % ', sqlerrm;
+      RAISE NOTICE 'is_open = %', utl_file.is_open(f);
+      PERFORM utl_file.fclose_all();
+      RAISE NOTICE 'is_open = %', utl_file.is_open(f);
+END;
+$$ LANGUAGE plpgsql;
+SELECT read_file();
 
 DELETE FROM utl_file.utl_file_dir WHERE dir = '/tmp';
