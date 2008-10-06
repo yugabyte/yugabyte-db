@@ -139,7 +139,6 @@ typedef struct {
 
 typedef struct PipesFctx {
 	int pipe_nth;
-	char **values;
 } PipesFctx;
 
 typedef struct
@@ -932,9 +931,10 @@ dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 	PG_RETURN_NULL();
 }
 
+#define DB_PIPES_COLS		6
 
 Datum
-dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
+dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 {
 	FuncCallContext *funcctx;
 	TupleDesc        tupdesc;
@@ -946,13 +946,14 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 	int cycle = 0;
 	int timeout = 10;	
 
-	if (SRF_IS_FIRSTCALL ())
+	if (SRF_IS_FIRSTCALL())
 	{
+		int		i;
 		MemoryContext  oldcontext;
 		bool has_lock = false;
 
 		WATCH_PRE(timeout, endtime, cycle);	
-		if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
+		if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 		{
 			has_lock = true;
 			break;
@@ -961,85 +962,78 @@ dbms_pipe_list_pipes (PG_FUNCTION_ARGS)
 		if (!has_lock)
 			LOCK_ERROR();
 
-		funcctx = SRF_FIRSTCALL_INIT ();
-		oldcontext = MemoryContextSwitchTo (funcctx->multi_call_memory_ctx);
+		funcctx = SRF_FIRSTCALL_INIT();
+		oldcontext = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
 
-		fctx = palloc (sizeof (PipesFctx));
+		fctx = palloc(sizeof(PipesFctx));
 		funcctx->user_fctx = fctx;
-
-		fctx->values = palloc (4 * sizeof (char *));
-		fctx->values  [0] = palloc (255 * sizeof (char));
-		fctx->values  [1] = palloc  (16 * sizeof (char));
-		fctx->values  [2] = palloc  (16 * sizeof (char));
-		fctx->values  [3] = palloc  (16 * sizeof (char));
-		fctx->values  [4] = palloc  (10 * sizeof (char));
-		fctx->values  [5] = palloc (255 * sizeof (char));
 		fctx->pipe_nth = 0;
 
-		tupdesc = CreateTemplateTupleDesc (6 , false);
+		tupdesc = CreateTemplateTupleDesc(DB_PIPES_COLS , false);
+		i = 0;
+		TupleDescInitEntry(tupdesc, ++i, "name",    VARCHAROID, -1, 0);
+		TupleDescInitEntry(tupdesc, ++i, "items",   INT4OID,    -1, 0);
+		TupleDescInitEntry(tupdesc, ++i, "size",    INT4OID,    -1, 0);
+		TupleDescInitEntry(tupdesc, ++i, "limit",   INT4OID,    -1, 0);
+		TupleDescInitEntry(tupdesc, ++i, "private", BOOLOID,    -1, 0);
+		TupleDescInitEntry(tupdesc, ++i, "owner",   VARCHAROID, -1, 0);
+		Assert(i == DB_PIPES_COLS);
 
-		TupleDescInitEntry (tupdesc,  1, "Name",    VARCHAROID, -1, 0);
-		TupleDescInitEntry (tupdesc,  2, "Items",   INT4OID   , -1, 0);
-		TupleDescInitEntry (tupdesc,  3, "Size",    INT4OID,    -1, 0);
-		TupleDescInitEntry (tupdesc,  4, "Limit",   INT4OID,    -1, 0);
-		TupleDescInitEntry (tupdesc,  5, "Private", BOOLOID,    -1, 0);
-		TupleDescInitEntry (tupdesc,  6, "Owner",   VARCHAROID, -1, 0);
-		
-		slot = TupleDescGetSlot (tupdesc); 
-		funcctx -> slot = slot;
-		
-		attinmeta = TupleDescGetAttInMetadata (tupdesc);
-		funcctx -> attinmeta = attinmeta;
-		
-		MemoryContextSwitchTo (oldcontext);
+		slot = TupleDescGetSlot(tupdesc); 
+		funcctx->slot = slot;
+
+		attinmeta = TupleDescGetAttInMetadata(tupdesc);
+		funcctx->attinmeta = attinmeta;
+
+		MemoryContextSwitchTo(oldcontext);
 	}
 
-	funcctx = SRF_PERCALL_SETUP ();
-	fctx = (PipesFctx*) funcctx->user_fctx;
+	funcctx = SRF_PERCALL_SETUP();
+	fctx = (PipesFctx *) funcctx->user_fctx;
 
 	while (fctx->pipe_nth < MAX_PIPES)
 	{
 		if (pipes[fctx->pipe_nth].is_valid)
 		{
 			Datum    result;
-			char   **values;
 			HeapTuple tuple;
-			char     *aux_3, *aux_5;
+			char	   *values[DB_PIPES_COLS];
+			char		items[16];
+			char		size[16];
+			char		limit[16];
 
-			values = fctx->values;
-			aux_3 = values[3]; aux_5 = values[5];
-			values[3] = NULL; values[5] = NULL;
-
-			snprintf (values[0], 255, "%s", pipes[fctx->pipe_nth].pipe_name);
-			snprintf (values[1],  16, "%d", pipes[fctx->pipe_nth].count);
-			snprintf (values[2],  16, "%d", pipes[fctx->pipe_nth].size);
+			/* name */
+			values[0] = pipes[fctx->pipe_nth].pipe_name;
+			/* items */
+			snprintf(items, lengthof(items), "%d", pipes[fctx->pipe_nth].count);
+			values[1] = items;
+			/* items */
+			snprintf(size, lengthof(size), "%d", pipes[fctx->pipe_nth].size);
+			values[2] = size;
+			/* limit */
 			if (pipes[fctx->pipe_nth].limit != -1)
 			{
-				snprintf (aux_3,  16, "%d", pipes[fctx->pipe_nth].limit);
-				values[3] = aux_3;
+				snprintf(limit, lengthof(limit), "%d", pipes[fctx->pipe_nth].limit);
+				values[3] = limit;
+			}
+			else
+				values[3] = NULL;
+			/* private */
+			values[4] = (pipes[fctx->pipe_nth].creator ? "true" : "false");
+			/* owner */
+			values[5] = pipes[fctx->pipe_nth].creator;
 
-			}
-			snprintf (values[4], 10, "%s", pipes[fctx->pipe_nth].creator != NULL ? "true" : "false");
-			if (pipes[fctx->pipe_nth].creator != NULL)
-			{
-				snprintf (aux_5,  255, "%s", pipes[fctx->pipe_nth].creator);
-				values[5] = aux_5;
-			}
-				
-			tuple = BuildTupleFromCStrings (funcctx -> attinmeta,
-											fctx -> values);
-			result = TupleGetDatum (funcctx -> slot, tuple);
-			
-			values[3] = aux_3; values[5] = aux_5;
+			tuple = BuildTupleFromCStrings(funcctx->attinmeta, values);
+			result = TupleGetDatum(funcctx->slot, tuple);
+
 			fctx->pipe_nth += 1;
-			SRF_RETURN_NEXT (funcctx, result);
+			SRF_RETURN_NEXT(funcctx, result);
 		}
 		fctx->pipe_nth += 1;
-			
 	}
 
 	LWLockRelease(shmem_lock);	
-	SRF_RETURN_DONE (funcctx);
+	SRF_RETURN_DONE(funcctx);
 }
 
 /*

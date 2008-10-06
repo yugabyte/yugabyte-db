@@ -101,6 +101,8 @@ select dbms_pipe.receive_message('test_int');
 select dbms_pipe.next_item_type();
 select dbms_pipe.unpack_message_number();
 
+select * from dbms_pipe.db_pipes order by name;
+
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9);
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9, FALSE);
 select PLVstr.betwn('Harry and Sally are very happy', -3, -1);

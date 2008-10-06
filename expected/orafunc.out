@@ -477,6 +477,13 @@ select dbms_pipe.unpack_message_number();
             6262626262
 (1 row)
 
+select * from dbms_pipe.db_pipes order by name;
+ name | items | size | limit | private | owner 
+------+-------+------+-------+---------+-------
+ bob  |     1 |    8 |    10 | f       | 
+ bob2 |     1 |   48 |    10 | f       | 
+(2 rows)
+
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9);
  betwn 
 -------
