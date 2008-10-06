@@ -120,22 +120,24 @@ typedef struct {
 
 typedef struct {
 	size_t size;
-	int items_count;
-	vardata data[1]; /* flexible array member */
-} message_buffer;
-
-#define message_buffer_size		(offsetof(message_buffer, data))
+	message_data_type type;
+	Oid tupType;
+} message_data_item;
 
 typedef struct {
 	size_t size;
-	message_data_type type;
-	Oid tupType;
-	vardata data[1]; /* flexible array member */
-} message_data_item;
+	int32 items_count;
+	message_data_item *next;
+} message_buffer;
 
-#define message_data_item_size	(offsetof(message_data_item, data))
-#define message_data_item_next(ptr, len) \
-	((message_data_item *) MAXALIGN(((long)(ptr)) + (len)))
+#define message_buffer_size		(MAXALIGN(sizeof(message_buffer)))
+#define message_buffer_get_content(buf)	((message_data_item *) (((char*)buf)+message_buffer_size))
+
+
+#define message_data_item_size	(MAXALIGN(sizeof(message_data_item)))
+#define message_data_get_content(msg) (((char *)msg) + message_data_item_size)
+#define message_data_item_next(msg) \
+	((message_data_item *) (message_data_get_content(msg) + MAXALIGN(msg->size)))
 
 typedef struct PipesFctx {
 	int pipe_nth;
@@ -157,9 +159,6 @@ typedef struct
 message_buffer *output_buffer = NULL;
 message_buffer *input_buffer = NULL;
 
-message_data_item *writer = NULL;
-message_data_item *reader = NULL;
-
 pipe* pipes = NULL;
 LWLockId shmem_lock = NOT_INITIALIZED;
 unsigned int sid;                                 /* session id */
@@ -173,64 +172,64 @@ extern alert_lock  *locks;
  */
 
 static void 
-pack_field(message_buffer *message, message_data_item **writer,
-		   message_data_type type, int size, const void *ptr, Oid tupType)
+pack_field(message_buffer *buffer, message_data_type type, 
+			int size, void *ptr, Oid tupType)
 {
 	int len;
-	message_data_item *_wr = *writer;
+	message_data_item *message;
 
-	len = size + message_data_item_size;
-	if (message->size + len > LOCALMSGSZ - message_buffer_size)
+	len = MAXALIGN(size) + message_data_item_size;
+	if (MAXALIGN(buffer->size) + len > LOCALMSGSZ - message_buffer_size)
     		ereport(ERROR,             
                             (errcode(ERRCODE_OUT_OF_MEMORY),
                              errmsg("out of memory"),
                              errdetail("Packed message is biger than local buffer."),
 			     errhint("Increase LOCALMSGSZ in 'pipe.h' and recompile library.")));                     
 
-	if (_wr == NULL)
-		_wr = (message_data_item *) message->data;
+	if (buffer->next == NULL)
+		buffer->next =  message_buffer_get_content(buffer);
 
-	_wr->size = len;
-	_wr->type = type;
-    _wr->tupType = tupType;
+	message = buffer->next;
 
-	memcpy(_wr->data, ptr, size);
+	message->size = size;
+	message->type = type;
+    message->tupType = tupType;
 
-	len = MAXALIGN(len);
-	message->size += len;
-	message->items_count += 1;
+	/* padding bytes have to be zeroed - buffer creator is responsible to clear memory */
+	
+	memcpy(message_data_get_content(message), ptr, size);
 
-	_wr = message_data_item_next(_wr, len);
-	*writer = _wr;
+	buffer->size += len;
+	buffer->items_count++;
+	buffer->next = message_data_item_next(message);
 }
 
 
 static void*
-unpack_field(message_buffer *message, message_data_item **reader, 
-			 message_data_type *type, size_t *size, Oid *tupType)
+unpack_field(message_buffer *buffer, message_data_type *type,
+				size_t *size, Oid *tupType)
 {
 	void *ptr;
-	message_data_item *_rd = *reader;
+	message_data_item *message;
 
-	Assert(message != NULL);
-	Assert(message->items_count > 0);
-	Assert(_rd != NULL);
+	Assert(buffer != NULL);
+	Assert(buffer->items_count > 0);
+	Assert(buffer->next != NULL);
 
-	*size = _rd->size - message_data_item_size;
-	*type = _rd->type;
-	*tupType = _rd->tupType;
-	ptr = _rd->data;
+	message = buffer->next;
+	*size = message->size;
+	*type = message->type;
+	*tupType = message->tupType;
+	ptr = message_data_get_content(message);
 
-	_rd = message_data_item_next(_rd, _rd->size);
-
-	*reader = (--message->items_count > 0 ? _rd : NULL);
+	buffer->next = --buffer->items_count > 0 ? message_data_item_next(message) : NULL;
 
 	return ptr;
 }
 
 
 /*
- * Add ptr to queue. If pipe doesn't exist, regigister new pipe
+ * Add ptr to queue. If pipe doesn't exist, register new pipe
  */
 
 bool
@@ -546,23 +545,36 @@ remove_pipe(text *pipe_name, bool purge)
 
 Datum
 dbms_pipe_next_item_type (PG_FUNCTION_ARGS)
+{	
+	PG_RETURN_INT32(input_buffer != NULL ? input_buffer->next->type : IT_NO_MORE_ITEMS);
+}
+
+
+static void 
+init_buffer(message_buffer *buffer, size_t size)
 {
-	
-	PG_RETURN_INT32(reader != NULL ? reader->type : IT_NO_MORE_ITEMS);
+	memset(buffer, 0, size);
+	buffer->size = message_buffer_size;
+	buffer->items_count = 0;
+	buffer->next = message_buffer_get_content(buffer);
 }
 
 static message_buffer*
-check_buffer(message_buffer *buf, size_t size, message_data_item **writer)
+check_buffer(message_buffer *buffer, size_t size)
 {
-	if (buf == NULL)
+	if (buffer == NULL)
 	{
-		buf = (message_buffer*) MemoryContextAlloc(TopMemoryContext, size);
-		buf->size = message_buffer_size;
-		buf->items_count = 0;
-		*writer = (message_data_item *) buf->data;
+		buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, size);
+		if( buffer == NULL )
+			ereport(ERROR,             
+	          	(errcode(ERRCODE_OUT_OF_MEMORY),
+					errmsg("out of memory"),
+				errdetail("Failed while allocation block %d bytes in memory.", size))); 
+
+		init_buffer(buffer, size);	
 	}
 
-	return buf;
+	return buffer;
 }
 
 Datum
@@ -570,8 +582,8 @@ dbms_pipe_pack_message_text(PG_FUNCTION_ARGS)
 {
 	text *str = PG_GETARG_TEXT_PP(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_VARCHAR,
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	pack_field(output_buffer, IT_VARCHAR,
 		VARSIZE_ANY_EXHDR(str), VARDATA_ANY(str), InvalidOid);
 
 	PG_RETURN_VOID();
@@ -583,8 +595,8 @@ dbms_pipe_pack_message_date(PG_FUNCTION_ARGS)
 {
 	DateADT dt = PG_GETARG_DATEADT(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_DATE,
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	pack_field(output_buffer, IT_DATE,
 			   sizeof(dt), &dt, InvalidOid);
 
 	PG_RETURN_VOID();
@@ -596,8 +608,8 @@ dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS)
 {
 	TimestampTz dt = PG_GETARG_TIMESTAMPTZ(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_TIMESTAMPTZ,
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	pack_field(output_buffer, IT_TIMESTAMPTZ,
 			   sizeof(dt), &dt, InvalidOid);
 
 	PG_RETURN_VOID();
@@ -609,8 +621,8 @@ dbms_pipe_pack_message_number(PG_FUNCTION_ARGS)
 {
 	Numeric num = PG_GETARG_NUMERIC(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_NUMBER,
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	pack_field(output_buffer, IT_NUMBER,
 			   VARSIZE(num) - VARHDRSZ, VARDATA(num), InvalidOid);
 
 	PG_RETURN_VOID();
@@ -622,8 +634,8 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 {
 	bytea *data = PG_GETARG_BYTEA_P(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_BYTEA,
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	pack_field(output_buffer, IT_BYTEA,
 		VARSIZE_ANY_EXHDR(data), VARDATA_ANY(data), InvalidOid);
 
 	PG_RETURN_VOID();
@@ -661,8 +673,8 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 			
 	data = (bytea*) DatumGetPointer(record_send(&info));
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ, &writer);	
-	pack_field(output_buffer, &writer, IT_RECORD,
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	pack_field(output_buffer, IT_RECORD,
 			   VARSIZE(data), VARDATA(data), tupType);
 
 	PG_RETURN_VOID();
@@ -677,20 +689,22 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 	message_data_type type;
 	size_t size;
 	Datum result;
+	message_data_type next_type;
 
 	if (input_buffer == NULL ||
 		input_buffer->items_count <= 0 ||
-		reader == NULL ||
-		reader->type == IT_NO_MORE_ITEMS)
+		input_buffer->next == NULL ||
+		input_buffer->next->type == IT_NO_MORE_ITEMS)
 		PG_RETURN_NULL();
 
-	if (reader->type != dtype)
+	next_type = input_buffer->next->type;
+	if (next_type != dtype)
 		ereport(ERROR,             
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("datatype mismatch"),
-				 errdetail("unpack unexpected type: %d", reader->type))); 
+				 errdetail("unpack unexpected type: %d", next_type))); 
 
-	ptr = unpack_field(input_buffer, &reader, &type, &size, &tupType);
+	ptr = unpack_field(input_buffer, &type, &size, &tupType);
 	Assert(ptr != NULL);
 
 	switch (type)
@@ -826,15 +840,15 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 		timeout = PG_GETARG_INT32(1);
 
 	if (input_buffer != NULL)
+	{
 		pfree(input_buffer);
-	
-	input_buffer = NULL;
-	reader = NULL;
+		input_buffer = NULL;
+	}
   
 	WATCH_PRE(timeout, endtime, cycle);	
 	if (NULL != (input_buffer = get_from_pipe(pipe_name, &found)))
 	{
-		reader = (message_data_item *) input_buffer->data;
+		input_buffer->next = message_buffer_get_content(input_buffer);
 		break;
 	}
 /* found empty message */
@@ -865,12 +879,7 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	else
 		pipe_name = PG_GETARG_TEXT_P(0);
 
-	if (output_buffer == NULL)
-	{
-		output_buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, LOCALMSGSZ);
-		output_buffer->size = message_buffer_size;
-		output_buffer->items_count = 0;
-	}	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 
 	if (!PG_ARGISNULL(1))
 		timeout = PG_GETARG_INT32(1);
@@ -883,22 +892,20 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 		valid_limit = true;
 	}
 
-	if (input_buffer != NULL)
+	if (input_buffer != NULL) /* XXX Strange? */
+	{
 		pfree(input_buffer);
-
-	input_buffer = NULL;
-	reader = NULL;
+		input_buffer = NULL;
+	}
 
 	WATCH_PRE(timeout, endtime, cycle);	
 	if (add_to_pipe(pipe_name, output_buffer, 
 					limit, valid_limit))
 		break;
 	WATCH_POST(timeout, endtime, cycle);
-		
-	output_buffer->items_count = 0;
-	output_buffer->size = message_buffer_size;
-	writer = (message_data_item *) output_buffer->data;
-
+	
+	init_buffer(output_buffer, LOCALMSGSZ);
+	
 	PG_RETURN_INT32(RESULT_DATA);
 }
 
@@ -1128,9 +1135,6 @@ dbms_pipe_reset_buffer(PG_FUNCTION_ARGS)
 		pfree(input_buffer);
 		input_buffer = NULL;
 	}
-
-	reader = NULL;
-	writer = NULL;
 
 	PG_RETURN_VOID();
 }

@@ -480,7 +480,7 @@ select dbms_pipe.unpack_message_number();
 select * from dbms_pipe.db_pipes order by name;
  name | items | size | limit | private | owner 
 ------+-------+------+-------+---------+-------
- bob  |     1 |    8 |    10 | f       | 
+ bob  |     1 |   16 |    10 | f       | 
  bob2 |     1 |   48 |    10 | f       | 
 (2 rows)
 

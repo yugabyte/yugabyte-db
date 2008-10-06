@@ -39,7 +39,7 @@ static size_t asize[] = {
     19520, 31584, 51104, 82688};
 
 
-int *list_c = 0;
+int *list_c = NULL;
 list_item *list = NULL;
 size_t max_size;
 
