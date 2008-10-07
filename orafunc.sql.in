@@ -148,6 +148,11 @@ AS 'MODULE_PATHNAME','orafce_to_number'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_char(numeric) IS 'Convert string to number';
 
+CREATE OR REPLACE FUNCTION bitand(bigint, bigint) 
+RETURNS bigint
+AS $$ SELECT $1 & $2; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
 DROP SCHEMA IF EXISTS plvstr CASCADE;
 
 CREATE SCHEMA plvstr;

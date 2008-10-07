@@ -101,7 +101,7 @@ select dbms_pipe.receive_message('test_int');
 select dbms_pipe.next_item_type();
 select dbms_pipe.unpack_message_number();
 
-select * from dbms_pipe.db_pipes order by name;
+select * from dbms_pipe.db_pipes where name = 'bob';
 
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9);
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9, FALSE);
@@ -209,6 +209,11 @@ select to_char(123.456::real);
 select to_char(1234.5678::double precision);
 select to_char(12345678901234567890::numeric);
 select to_char(1234567890.12345);
+
+SELECT to_number('123'::text);
+SELECT to_number('123.456'::text);
+
+SELECT bitand(5,1), bitand(5,2), bitand(5,4);
 
 select dbms_assert.enquote_literal('some text '' some text');
 select dbms_assert.enquote_name('''"AAA');

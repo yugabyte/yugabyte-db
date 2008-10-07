@@ -477,12 +477,11 @@ select dbms_pipe.unpack_message_number();
             6262626262
 (1 row)
 
-select * from dbms_pipe.db_pipes order by name;
+select * from dbms_pipe.db_pipes where name = 'bob';
  name | items | size | limit | private | owner 
 ------+-------+------+-------+---------+-------
  bob  |     1 |   16 |    10 | f       | 
- bob2 |     1 |   48 |    10 | f       | 
-(2 rows)
+(1 row)
 
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9);
  betwn 
@@ -1098,6 +1097,24 @@ select to_char(1234567890.12345);
      to_char      
 ------------------
  1234567890.12345
+(1 row)
+
+SELECT to_number('123'::text);
+ to_number 
+-----------
+       123
+(1 row)
+
+SELECT to_number('123.456'::text);
+ to_number 
+-----------
+   123.456
+(1 row)
+
+SELECT bitand(5,1), bitand(5,2), bitand(5,4);
+ bitand | bitand | bitand 
+--------+--------+--------
+      1 |      0 |      4
 (1 row)
 
 select dbms_assert.enquote_literal('some text '' some text');
