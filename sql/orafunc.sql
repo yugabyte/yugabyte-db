@@ -214,6 +214,8 @@ SELECT to_number('123'::text);
 SELECT to_number('123.456'::text);
 
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
+SELECT sinh(1.570796), cosh(1.570796), tanh(4);
+SELECT nanvl(12345, 1), nanvl('NaN', 1);
 
 select dbms_assert.enquote_literal('some text '' some text');
 select dbms_assert.enquote_name('''"AAA');
@@ -246,19 +248,3 @@ select plunit.assert_equals(10.2, 10.3, 0.01, 'attention some diff');
 select plunit.assert_not_equals(current_date, current_date + 1, 'yestarday is today');
 select plunit.fail();
 select plunit.fail('custom exception');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

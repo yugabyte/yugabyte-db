@@ -33,6 +33,12 @@ DROP FUNCTION concat(text, text);
 DROP FUNCTION concat(text, anyelement);
 DROP FUNCTION concat(anyelement, text);
 DROP FUNCTION concat(anyelement, anyelement);
+DROP FUNCTION bitand(bigint, bigint);
+DROP FUNCTION sinh(float8);
+DROP FUNCTION cosh(float8);
+DROP FUNCTION tanh(float8);
+DROP FUNCTION nanvl(float4, float4);
+DROP FUNCTION nanvl(float8, float8);
 
 DROP FUNCTION decode(text, text, anyelement);
 DROP FUNCTION decode(text, text, anyelement, anyelement);

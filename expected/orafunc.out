@@ -1117,6 +1117,18 @@ SELECT bitand(5,1), bitand(5,2), bitand(5,4);
       1 |      0 |      4
 (1 row)
 
+SELECT sinh(1.570796), cosh(1.570796), tanh(4);
+      sinh       |       cosh       |       tanh        
+-----------------+------------------+-------------------
+ 2.3012980823207 | 2.50917772660545 | 0.999329299739067
+(1 row)
+
+SELECT nanvl(12345, 1), nanvl('NaN', 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
 select dbms_assert.enquote_literal('some text '' some text');
      enquote_literal      
 --------------------------

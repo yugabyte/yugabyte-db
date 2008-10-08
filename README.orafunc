@@ -528,8 +528,8 @@ o plunit.fail([varchar]) -				Fail can be used to cause a test procedure to fail
 
 Others functions
 ================
-This module contains implementation of functions: concat, nvl, nvl2, lnnvl, decode, bitand
-and oracle.substr.
+This module contains implementation of functions: concat, nvl, nvl2, lnnvl, decode,
+bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 
 o oracle.substr(str text, start int, len int) - Oracle compatible substring
 o oracle.substr(str text, start int)          - Oracle compatible substring
