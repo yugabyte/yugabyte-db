@@ -480,7 +480,7 @@ select dbms_pipe.unpack_message_number();
 select * from dbms_pipe.db_pipes where name = 'bob';
  name | items | size | limit | private | owner 
 ------+-------+------+-------+---------+-------
- bob  |     1 |   16 |    10 | f       | 
+ bob  |     1 |   12 |    10 | f       | 
 (1 row)
 
 select PLVstr.betwn('Harry and Sally are very happy', 7, 9);

@@ -119,13 +119,13 @@ typedef struct {
 } pipe;
 
 typedef struct {
-	size_t size;
+	int32 size;
 	message_data_type type;
 	Oid tupType;
 } message_data_item;
 
 typedef struct {
-	size_t size;
+	int32 size;
 	int32 items_count;
 	message_data_item *next;
 } message_buffer;
@@ -173,7 +173,7 @@ extern alert_lock  *locks;
 
 static void 
 pack_field(message_buffer *buffer, message_data_type type, 
-			int size, void *ptr, Oid tupType)
+			int32 size, void *ptr, Oid tupType)
 {
 	int len;
 	message_data_item *message;
@@ -207,7 +207,7 @@ pack_field(message_buffer *buffer, message_data_type type,
 
 static void*
 unpack_field(message_buffer *buffer, message_data_type *type,
-				size_t *size, Oid *tupType)
+				int32 *size, Oid *tupType)
 {
 	void *ptr;
 	message_data_item *message;
@@ -551,7 +551,7 @@ dbms_pipe_next_item_type (PG_FUNCTION_ARGS)
 
 
 static void 
-init_buffer(message_buffer *buffer, size_t size)
+init_buffer(message_buffer *buffer, int32 size)
 {
 	memset(buffer, 0, size);
 	buffer->size = message_buffer_size;
@@ -560,7 +560,7 @@ init_buffer(message_buffer *buffer, size_t size)
 }
 
 static message_buffer*
-check_buffer(message_buffer *buffer, size_t size)
+check_buffer(message_buffer *buffer, int32 size)
 {
 	if (buffer == NULL)
 	{
@@ -687,7 +687,7 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 	Oid		tupType;
 	void *ptr;
 	message_data_type type;
-	size_t size;
+	int32 size;
 	Datum result;
 	message_data_type next_type;
 
