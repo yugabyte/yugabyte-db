@@ -1199,7 +1199,7 @@ RETURNS BOOLEAN AS $$
 $$ LANGUAGE SQL immutable strict;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
-CREATE OR REPLACE VIEW pg_all_foreign_keys 
+CREATE OR REPLACE VIEW pg_all_foreign_keys
 AS
   SELECT n1.nspname                                   AS fk_schema_name,
          c1.relname                                   AS fk_table_name,
@@ -1806,14 +1806,14 @@ RETURNS TEXT AS $$
     SELECT can_ok( $1, 'Function ' || $1 || '() should exist' );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _pg_sv_type_array( OID[] )                                 
+CREATE OR REPLACE FUNCTION _pg_sv_type_array( OID[] )
 RETURNS NAME[] AS $$
 SELECT ARRAY(
 SELECT t.typname
 FROM pg_catalog.pg_type t
 JOIN generate_series(1, array_upper($1, 1)) s(i) ON (t.oid = $1[i])
 ORDER BY i
-)                                                                                       
+)
 $$ LANGUAGE SQL stable;
 
 -- can( schema, func_names[], description )
@@ -1943,7 +1943,7 @@ BEGIN
         IF NOT aok THEN
            adiag := substring(
                adiag
-               FROM 14 + char_length(tnumb::text) 
+               FROM 14 + char_length(tnumb::text)
                        + CASE adescr WHEN '' THEN 3 ELSE 4 + char_length( diag( adescr ) ) END
            );
         END IF;
