@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(39);
+SELECT plan(54);
 
 -- This will be rolled back. :-)
 SET LOCAL client_min_messages = warning;
@@ -55,6 +55,49 @@ SELECT * FROM check_test(
     false,
     'has_pk( table, description ) fail',
     'pg_class should have a pk',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_pk().
+
+SELECT * FROM check_test(
+    hasnt_pk( 'public', 'sometab', 'public.sometab should not have a pk' ),
+    false,
+    'hasnt_pk( schema, table, description )',
+    'public.sometab should not have a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_pk( 'sometab', 'sometab should not have a pk' ),
+    false,
+    'hasnt_pk( table, description )',
+    'sometab should not have a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_pk( 'sometab' ),
+    false,
+    'hasnt_pk( table )',
+    'Table sometab should not have a primary key',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_pk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should not have a pk' ),
+    true,
+    'hasnt_pk( schema, table, description ) pass',
+    'pg_catalog.pg_class should not have a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_pk( 'pg_class', 'pg_class should not have a pk' ),
+    true,
+    'hasnt_pk( table, description ) pass',
+    'pg_class should not have a pk',
     ''
 );
 

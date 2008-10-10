@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(45);
+SELECT plan(90);
 
 -- This will be rolled back. :-)
 SET LOCAL client_min_messages = warning;
@@ -59,6 +59,49 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test hasnt_table().
+
+SELECT * FROM check_test(
+    hasnt_table( '__SDFSDFD__' ),
+    true,
+    'hasnt_table(non-existent table)',
+    'Table __SDFSDFD__ should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( '__SDFSDFD__', 'lol' ),
+    true,
+    'hasnt_table(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( 'foo', '__SDFSDFD__', 'desc' ),
+    true,
+    'hasnt_table(sch, non-existent tab, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( 'pg_type', 'lol' ),
+    false,
+    'hasnt_table(tab, desc)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( 'pg_catalog', 'pg_type', 'desc' ),
+    false,
+    'hasnt_table(sch, tab, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
 -- Test has_view().
 
 SELECT * FROM check_test(
@@ -102,6 +145,49 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test hasnt_view().
+
+SELECT * FROM check_test(
+    hasnt_view( '__SDFSDFD__' ),
+    true,
+    'hasnt_view(non-existent view)',
+    'View __SDFSDFD__ should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_view( '__SDFSDFD__', 'howdy' ),
+    true,
+    'hasnt_view(non-existent view, desc)',
+    'howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
+    true,
+    'hasnt_view(sch, non-existtent view, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_view( 'pg_tables', 'yowza' ),
+    false,
+    'hasnt_view(view, desc)',
+    'yowza',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_view( 'information_schema', 'tables', 'desc' ),
+    false,
+    'hasnt_view(sch, view, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
 -- Test has_column().
 
 SELECT * FROM check_test(
@@ -140,6 +226,49 @@ SELECT * FROM check_test(
     has_column( 'information_schema', 'tables', 'table_name', 'desc' ),
     true,
     'has_column(sch, tab, col, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_column().
+
+SELECT * FROM check_test(
+    hasnt_column( '__SDFSDFD__', 'foo' ),
+    true,
+    'hasnt_column(non-existent tab, col)',
+    'Column __SDFSDFD__(foo) should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_column( '__SDFSDFD__', 'bar', 'whatever' ),
+    true,
+    'hasnt_column(non-existent tab, col, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_column( 'foo', '__SDFSDFD__', 'bar', 'desc' ),
+    true,
+    'hasnt_column(non-existent sch, tab, col, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_column( 'sometab', 'id' ),
+    false,
+    'hasnt_column(table, column)',
+    'Column sometab(id) should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_column( 'information_schema', 'tables', 'table_name', 'desc' ),
+    false,
+    'hasnt_column(sch, tab, col, desc)',
     'desc',
     ''
 );

@@ -562,6 +562,19 @@ test description. If you omit the schema, the table must be visible in the
 search path. If you omit the test description, it will be set to "Table
 `:table` should exist".
 
+### `hasnt_table( schema, table, description )` ###
+### `hasnt_table( table, description )` ###
+### `hasnt_table( table )` ###
+
+    SELECT hasnt_table(
+        'myschema',
+        'sometable',
+        'There should be no table myschema.sometable'
+    );
+
+This function is the inversion of `has_table()`. The test passes if the
+specified table does *not* exist.
+
 ### `has_view( schema, view, description )` ###
 ### `has_view( view, description )` ###
 ### `has_view( view )` ###
@@ -573,6 +586,19 @@ search path. If you omit the test description, it will be set to "Table
     );
 
 Just like `has_table()`, only it tests for the existence of a view.
+
+### `hasnt_view( schema, view, description )` ###
+### `hasnt_view( view, description )` ###
+### `hasnt_view( view )` ###
+
+    SELECT hasnt_view(
+        'myschema',
+        'someview',
+        'There should be no myschema.someview'
+    );
+
+This function is the inversion of `has_view()`. The test passes if the
+specified view does *not* exist.
 
 ### `has_column( schema, table, column, description )` ###
 ### `has_column( table, column, description )` ###
@@ -590,6 +616,20 @@ argument is the schema name, the second the table name, the third the column
 name, and the fourth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
 it will be set to "Column `:table`.`:column` should exist".
+
+### `hasnt_column( schema, table, column, description )` ###
+### `hasnt_column( table, column, description )` ###
+### `hasnt_column( table, column )` ###
+
+    SELECT hasnt_column(
+        'myschema',
+        'sometable',
+        'somecolumn',
+        'There should be no myschema.sometable.somecolumn column'
+    );
+
+This function is the inversion of `has_column()`. The test passes if the
+specified column does *not* exist.
 
 ### `col_not_null( schema, table, column, description )` ###
 ### `col_not_null( table, column, description )` ###
@@ -735,6 +775,19 @@ test description is omitted, it will be set to "Table `:table` should have a
 primary key". Note that this test will fail if the table in question does not
 exist.
 
+### `hasnt_pk( schema, table, description )` ###
+### `hasnt_pk( table, description )` ###
+### `hasnt_pk( table )` ###
+
+    SELECT hasnt_pk(
+        'myschema',
+        'sometable',
+        'Table myschema.sometable should not have a primary key'
+    );
+
+This function is the inversion of `has_pk()`. The test passes if the specified
+primary key does *not* exist.
+
 ### `has_fk( schema, table, description )` ###
 ### `has_fk( table, description )` ###
 ### `has_fk( table )` ###
@@ -751,6 +804,19 @@ description. If the schema is omitted, the table must be visible in the search
 path. If the test description is omitted, it will be set to "Table `:table`
 should have a foreign key constraint". Note that this test will fail if the
 table in question does not exist.
+
+### `hasnt_fk( schema, table, description )` ###
+### `hasnt_fk( table, description )` ###
+### `hasnt_fk( table )` ###
+
+    SELECT hasnt_fk(
+        'myschema',
+        'sometable',
+        'Table myschema.sometable should not have a foreign key constraint'
+    );
+
+This function is the inversion of `has_fk()`. The test passes if the specified
+foreign key does *not* exist.
 
 ### `col_is_pk( schema, table, column, description )` ###
 ### `col_is_pk( schema, table, column[], description )` ###

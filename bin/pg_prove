@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use TAP::Harness;
 use Getopt::Long;
-our $VERSION = '0.12;
+our $VERSION = '0.12';
 
 Getopt::Long::Configure (qw(bundling));
 

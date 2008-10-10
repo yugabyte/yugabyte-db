@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(88);
+SELECT plan(98);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
@@ -50,10 +50,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_fk( 'fk', 'fk should have a pk' ),
+    has_fk( 'fk', 'fk should have an fk' ),
     'true',
     'has_fk( table, description )',
-    'fk should have a pk'
+    'fk should have an fk'
 );
 
 SELECT * FROM check_test(
@@ -64,17 +64,54 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_fk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have a pk' ),
+    has_fk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should have an fk' ),
     false,
     'has_fk( schema, table, description ) fail',
-    'pg_catalog.pg_class should have a pk'
+    'pg_catalog.pg_class should have an fk'
 );
 
 SELECT * FROM check_test(
-    has_fk( 'pg_class', 'pg_class should have a pk' ),
+    has_fk( 'pg_class', 'pg_class should have an fk' ),
     false,
     'has_fk( table, description ) fail',
-    'pg_class should have a pk'
+    'pg_class should have an fk'
+);
+
+/****************************************************************************/
+-- Test hasnt_fk().
+SELECT * FROM check_test(
+    hasnt_fk( 'public', 'fk', 'public.fk should not have an fk' ),
+    false,
+    'hasnt_fk( schema, table, description )',
+    'public.fk should not have an fk'
+);
+
+SELECT * FROM check_test(
+    hasnt_fk( 'fk', 'fk should not have an fk' ),
+    'false',
+    'hasnt_fk( table, description )',
+    'fk should not have an fk'
+);
+
+SELECT * FROM check_test(
+    hasnt_fk( 'fk' ),
+    false,
+    'hasnt_fk( table )',
+    'Table fk should not have a foreign key constraint'
+);
+
+SELECT * FROM check_test(
+    hasnt_fk( 'pg_catalog', 'pg_class', 'pg_catalog.pg_class should not have an fk' ),
+    true,
+    'hasnt_fk( schema, table, description ) pass',
+    'pg_catalog.pg_class should not have an fk'
+);
+
+SELECT * FROM check_test(
+    hasnt_fk( 'pg_class', 'pg_class should not have an fk' ),
+    true,
+    'hasnt_fk( table, description ) pass',
+    'pg_class should not have an fk'
 );
 
 /****************************************************************************/

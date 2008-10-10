@@ -618,7 +618,7 @@ CREATE OR REPLACE FUNCTION skip( int )
 RETURNS TEXT AS 'SELECT skip(NULL, $1)'
 LANGUAGE sql;
 
---CREATE OR REPLACE FUNCTION throws_ok ( sql, errcode, errmsg, description )
+-- throws_ok ( sql, errcode, errmsg, description )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -657,8 +657,8 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql;
 
---CREATE OR REPLACE FUNCTION throws_ok ( query, errcode, errmsg )
---CREATE OR REPLACE FUNCTION throws_ok ( query, errmsg, description )
+-- throws_ok ( query, errcode, errmsg )
+-- throws_ok ( query, errmsg, description )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 BEGIN
@@ -670,8 +670,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
---CREATE OR REPLACE FUNCTION throws_ok ( query, errcode )
---CREATE OR REPLACE FUNCTION throws_ok ( query, errmsg )
+-- throws_ok ( query, errcode )
+-- throws_ok ( query, errmsg )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, TEXT )
 RETURNS TEXT AS $$
 BEGIN
@@ -683,26 +683,26 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
---CREATE OR REPLACE FUNCTION throws_ok ( query )
+-- throws_ok ( query )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, NULL, NULL, NULL );
 $$ LANGUAGE SQL;
 
 -- Magically cast integer error codes.
---CREATE OR REPLACE FUNCTION throws_ok ( query, errcode, errmsg, description )
+-- throws_ok ( query, errcode, errmsg, description )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT, TEXT )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), $3, $4 );
 $$ LANGUAGE SQL;
 
---CREATE OR REPLACE FUNCTION throws_ok ( query, errcode, errmsg )
+-- throws_ok ( query, errcode, errmsg )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), $3, NULL );
 $$ LANGUAGE SQL;
 
---CREATE OR REPLACE FUNCTION throws_ok ( query, errcode )
+-- throws_ok ( query, errcode )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4 )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), NULL, NULL );
@@ -729,33 +729,39 @@ RETURNS TEXT AS $$
     SELECT lives_ok( $1, NULL );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _rexists ( CHAR, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE c.relkind = $1
+           AND n.nspname = $2
+           AND c.relname = $3
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _rexists ( CHAR, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_class c
+         WHERE c.relkind = $1
+           AND pg_catalog.pg_table_is_visible(c.oid)
+           AND c.relname = $2
+    );
+$$ LANGUAGE SQL;
+
 -- has_table( schema, table, description )
 CREATE OR REPLACE FUNCTION has_table ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c
-             WHERE n.oid = c.relnamespace
-               AND c.relkind = 'r'
-               AND n.nspname = $1
-               AND c.relname = $2
-        ), $3
-    );
+    SELECT ok( _rexists( 'r', $1, $2 ), $3 );
 $$ LANGUAGE SQL;
 
 -- has_table( table, description )
 CREATE OR REPLACE FUNCTION has_table ( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_class c
-             WHERE c.relkind = 'r'
-               AND pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
-        ), $2
-    );
+    SELECT ok( _rexists( 'r', $1 ), $2 );
 $$ LANGUAGE SQL;
 
 -- has_table( table )
@@ -764,33 +770,34 @@ RETURNS TEXT AS $$
     SELECT has_table( $1, 'Table ' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
+-- hasnt_table( schema, table, description )
+CREATE OR REPLACE FUNCTION hasnt_table ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'r', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_table( table, description )
+CREATE OR REPLACE FUNCTION hasnt_table ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'r', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_table( table )
+CREATE OR REPLACE FUNCTION hasnt_table ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_table( $1, 'Table ' || $1 || ' should not exist' );
+$$ LANGUAGE SQL;
+
 -- has_view( schema, view, description )
 CREATE OR REPLACE FUNCTION has_view ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c
-             WHERE n.oid = c.relnamespace
-               AND c.relkind = 'v'
-               AND n.nspname = $1
-               AND c.relname = $2
-        ), $3
-    );
+    SELECT ok( _rexists( 'v', $1, $2 ), $3 );
 $$ LANGUAGE SQL;
 
 -- has_view( view, description )
 CREATE OR REPLACE FUNCTION has_view ( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_class c
-             WHERE c.relkind = 'v'
-               AND pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
-        ), $2
-    );
+    SELECT ok( _rexists( 'v', $1 ), $2 );
 $$ LANGUAGE SQL;
 
 -- has_view( view )
@@ -799,45 +806,87 @@ RETURNS TEXT AS $$
     SELECT has_view( $1, 'View ' || $1 || ' should exist' );
 $$ LANGUAGE SQL;
 
+-- hasnt_view( schema, view, description )
+CREATE OR REPLACE FUNCTION hasnt_view ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'v', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_view( view, description )
+CREATE OR REPLACE FUNCTION hasnt_view ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'v', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_view( view )
+CREATE OR REPLACE FUNCTION hasnt_view ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_view( $1, 'View ' || $1 || ' should not exist' );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _cexists ( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+         WHERE n.nspname = $1
+           AND c.relname = $2
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+           AND a.attname = LOWER($3)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _cexists ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_class c
+          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+         WHERE c.relname = $1
+           AND pg_catalog.pg_table_is_visible(c.oid)
+           AND a.attnum > 0
+           AND NOT a.attisdropped
+           AND a.attname = LOWER($2)
+    );
+$$ LANGUAGE SQL;
+
 -- has_column( schema, table, column, description )
 CREATE OR REPLACE FUNCTION has_column ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
-             WHERE n.oid = c.relnamespace
-               AND c.oid = a.attrelid
-               AND n.nspname = $1
-               AND c.relname = $2
-               AND a.attnum > 0
-               AND NOT a.attisdropped
-               AND a.attname = LOWER($3)
-        ), $4
-    );
+    SELECT ok( _cexists( $1, $2, $3 ), $4 );
 $$ LANGUAGE SQL;
 
 -- has_column( table, column, description )
 CREATE OR REPLACE FUNCTION has_column ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a
-             WHERE c.oid = a.attrelid
-               AND pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
-               AND a.attnum > 0
-               AND NOT a.attisdropped
-               AND a.attname = LOWER($2)
-        ), $3
-    );
+    SELECT ok( _cexists( $1, $2 ), $3 );
 $$ LANGUAGE SQL;
 
 -- has_column( table, column )
 CREATE OR REPLACE FUNCTION has_column ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT has_column( $1, $2, 'Column ' || $1 || '(' || $2 || ') should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_column( schema, table, column, description )
+CREATE OR REPLACE FUNCTION hasnt_column ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _cexists( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_column( table, column, description )
+CREATE OR REPLACE FUNCTION hasnt_column ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _cexists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_column( table, column )
+CREATE OR REPLACE FUNCTION hasnt_column ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_column( $1, $2, 'Column ' || $1 || '(' || $2 || ') should not exist' );
 $$ LANGUAGE SQL;
 
 -- _col_is_null( schema, table, column, desc, null )
@@ -1050,10 +1099,9 @@ CREATE OR REPLACE FUNCTION _hasc ( NAME, CHAR )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
             SELECT true
-              FROM pg_catalog.pg_class c,
-                   pg_catalog.pg_constraint x
-             WHERE c.oid = x.conrelid
-               AND c.relhaspkey = true
+              FROM pg_catalog.pg_class c
+              JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
+             WHERE c.relhaspkey = true
                AND c.relname = $1
                AND x.contype = $2
     );
@@ -1075,6 +1123,24 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION has_pk ( NAME )
 RETURNS TEXT AS $$
     SELECT has_pk( $1, 'Table ' || $1 || ' should have a primary key' );
+$$ LANGUAGE sql;
+
+-- hasnt_pk( schema, table, description )
+CREATE OR REPLACE FUNCTION hasnt_pk ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _hasc( $1, $2, 'p' ), $3 );
+$$ LANGUAGE sql;
+
+-- hasnt_pk( table, description )
+CREATE OR REPLACE FUNCTION hasnt_pk ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _hasc( $1, 'p' ), $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_pk( table )
+CREATE OR REPLACE FUNCTION hasnt_pk ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_pk( $1, 'Table ' || $1 || ' should not have a primary key' );
 $$ LANGUAGE sql;
 
 -- _ckeys( schema, table, constraint_type )
@@ -1250,6 +1316,24 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION has_fk ( NAME )
 RETURNS TEXT AS $$
     SELECT has_fk( $1, 'Table ' || $1 || ' should have a foreign key constraint' );
+$$ LANGUAGE sql;
+
+-- hasnt_fk( schema, table, description )
+CREATE OR REPLACE FUNCTION hasnt_fk ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _hasc( $1, $2, 'f' ), $3 );
+$$ LANGUAGE sql;
+
+-- hasnt_fk( table, description )
+CREATE OR REPLACE FUNCTION hasnt_fk ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _hasc( $1, 'f' ), $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_fk( table )
+CREATE OR REPLACE FUNCTION hasnt_fk ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_fk( $1, 'Table ' || $1 || ' should not have a foreign key constraint' );
 $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )

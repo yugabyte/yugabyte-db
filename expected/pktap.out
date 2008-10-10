@@ -1,5 +1,5 @@
 \unset ECHO
-1..39
+1..54
 ok 1 - has_pk( schema, table, description ) should pass
 ok 2 - has_pk( schema, table, description ) should have the proper description
 ok 3 - has_pk( schema, table, description ) should have the proper diagnostics
@@ -15,27 +15,42 @@ ok 12 - has_pk( schema, table, description ) fail should have the proper diagnos
 ok 13 - has_pk( table, description ) fail should fail
 ok 14 - has_pk( table, description ) fail should have the proper description
 ok 15 - has_pk( table, description ) fail should have the proper diagnostics
-ok 16 - col_is_pk( schema, table, column, description ) should pass
-ok 17 - col_is_pk( schema, table, column, description ) should have the proper description
-ok 18 - col_is_pk( schema, table, column, description ) should have the proper diagnostics
-ok 19 - col_is_pk( table, column, description ) should pass
-ok 20 - col_is_pk( table, column, description ) should have the proper description
-ok 21 - col_is_pk( table, column, description ) should have the proper diagnostics
-ok 22 - col_is_pk( table, column ) should pass
-ok 23 - col_is_pk( table, column ) should have the proper description
-ok 24 - col_is_pk( table, column ) should have the proper diagnostics
-ok 25 - col_is_pk( schema, table, column, description ) fail should fail
-ok 26 - col_is_pk( schema, table, column, description ) fail should have the proper description
-ok 27 - col_is_pk( schema, table, column, description ) fail should have the proper diagnostics
-ok 28 - col_is_pk( table, column, description ) fail should fail
-ok 29 - col_is_pk( table, column, description ) fail should have the proper description
-ok 30 - col_is_pk( table, column, description ) fail should have the proper diagnostics
-ok 31 - col_is_pk( schema, table, column[], description ) should pass
-ok 32 - col_is_pk( schema, table, column[], description ) should have the proper description
-ok 33 - col_is_pk( schema, table, column[], description ) should have the proper diagnostics
-ok 34 - col_is_pk( table, column[], description ) should pass
-ok 35 - col_is_pk( table, column[], description ) should have the proper description
-ok 36 - col_is_pk( table, column[], description ) should have the proper diagnostics
-ok 37 - col_is_pk( table, column[] ) should pass
-ok 38 - col_is_pk( table, column[] ) should have the proper description
-ok 39 - col_is_pk( table, column[] ) should have the proper diagnostics
+ok 16 - hasnt_pk( schema, table, description ) should fail
+ok 17 - hasnt_pk( schema, table, description ) should have the proper description
+ok 18 - hasnt_pk( schema, table, description ) should have the proper diagnostics
+ok 19 - hasnt_pk( table, description ) should fail
+ok 20 - hasnt_pk( table, description ) should have the proper description
+ok 21 - hasnt_pk( table, description ) should have the proper diagnostics
+ok 22 - hasnt_pk( table ) should fail
+ok 23 - hasnt_pk( table ) should have the proper description
+ok 24 - hasnt_pk( table ) should have the proper diagnostics
+ok 25 - hasnt_pk( schema, table, description ) pass should pass
+ok 26 - hasnt_pk( schema, table, description ) pass should have the proper description
+ok 27 - hasnt_pk( schema, table, description ) pass should have the proper diagnostics
+ok 28 - hasnt_pk( table, description ) pass should pass
+ok 29 - hasnt_pk( table, description ) pass should have the proper description
+ok 30 - hasnt_pk( table, description ) pass should have the proper diagnostics
+ok 31 - col_is_pk( schema, table, column, description ) should pass
+ok 32 - col_is_pk( schema, table, column, description ) should have the proper description
+ok 33 - col_is_pk( schema, table, column, description ) should have the proper diagnostics
+ok 34 - col_is_pk( table, column, description ) should pass
+ok 35 - col_is_pk( table, column, description ) should have the proper description
+ok 36 - col_is_pk( table, column, description ) should have the proper diagnostics
+ok 37 - col_is_pk( table, column ) should pass
+ok 38 - col_is_pk( table, column ) should have the proper description
+ok 39 - col_is_pk( table, column ) should have the proper diagnostics
+ok 40 - col_is_pk( schema, table, column, description ) fail should fail
+ok 41 - col_is_pk( schema, table, column, description ) fail should have the proper description
+ok 42 - col_is_pk( schema, table, column, description ) fail should have the proper diagnostics
+ok 43 - col_is_pk( table, column, description ) fail should fail
+ok 44 - col_is_pk( table, column, description ) fail should have the proper description
+ok 45 - col_is_pk( table, column, description ) fail should have the proper diagnostics
+ok 46 - col_is_pk( schema, table, column[], description ) should pass
+ok 47 - col_is_pk( schema, table, column[], description ) should have the proper description
+ok 48 - col_is_pk( schema, table, column[], description ) should have the proper diagnostics
+ok 49 - col_is_pk( table, column[], description ) should pass
+ok 50 - col_is_pk( table, column[], description ) should have the proper description
+ok 51 - col_is_pk( table, column[], description ) should have the proper diagnostics
+ok 52 - col_is_pk( table, column[] ) should pass
+ok 53 - col_is_pk( table, column[] ) should have the proper description
+ok 54 - col_is_pk( table, column[] ) should have the proper diagnostics
