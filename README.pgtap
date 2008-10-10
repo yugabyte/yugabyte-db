@@ -572,7 +572,7 @@ search path. If you omit the test description, it will be set to "Table
         'There should be no table myschema.sometable'
     );
 
-This function is the inversion of `has_table()`. The test passes if the
+This function is the inverse of `has_table()`. The test passes if the
 specified table does *not* exist.
 
 ### `has_view( schema, view, description )` ###
@@ -597,8 +597,8 @@ Just like `has_table()`, only it tests for the existence of a view.
         'There should be no myschema.someview'
     );
 
-This function is the inversion of `has_view()`. The test passes if the
-specified view does *not* exist.
+This function is the inverse of `has_view()`. The test passes if the specified
+view does *not* exist.
 
 ### `has_column( schema, table, column, description )` ###
 ### `has_column( table, column, description )` ###
@@ -628,7 +628,7 @@ it will be set to "Column `:table`.`:column` should exist".
         'There should be no myschema.sometable.somecolumn column'
     );
 
-This function is the inversion of `has_column()`. The test passes if the
+This function is the inverse of `has_column()`. The test passes if the
 specified column does *not* exist.
 
 ### `col_not_null( schema, table, column, description )` ###
@@ -785,7 +785,7 @@ exist.
         'Table myschema.sometable should not have a primary key'
     );
 
-This function is the inversion of `has_pk()`. The test passes if the specified
+This function is the inverse of `has_pk()`. The test passes if the specified
 primary key does *not* exist.
 
 ### `has_fk( schema, table, description )` ###
@@ -815,7 +815,7 @@ table in question does not exist.
         'Table myschema.sometable should not have a foreign key constraint'
     );
 
-This function is the inversion of `has_fk()`. The test passes if the specified
+This function is the inverse of `has_fk()`. The test passes if the specified
 foreign key does *not* exist.
 
 ### `col_is_pk( schema, table, column, description )` ###
@@ -856,6 +856,28 @@ Will produce something like this:
     #         have: {}
     #         want: {id}
 
+### `col_isnt_pk( schema, table, column, description )` ###
+### `col_isnt_pk( schema, table, column[], description )` ###
+### `col_isnt_pk( table, column, description )` ###
+### `col_isnt_pk( table, column[], description )` ###
+### `col_isnt_pk( table, column )` ###
+### `col_isnt_pk( table, column[] )` ###
+
+    SELECT col_isnt_pk(
+        'myschema',
+        'sometable',
+        'id',
+        'Column myschema.sometable.id should not be a primary key'
+    );
+
+    SELECT col_isnt_pk(
+        'persons',
+        ARRAY['given_name', 'surname'],
+    );
+
+This function is the inverse of `col_is_pk()`. The test passes if the
+specified column or columns are not a primary key.
+
 ### `col_is_fk( schema, table, column, description )` ###
 ### `col_is_fk( schema, table, column[], description )` ###
 ### `col_is_fk( table, column, description )` ###
@@ -883,6 +905,28 @@ simply list all of the foreign key constraint columns, like so:
     #    Table widget has foreign key constraints on these columns:
     #        {thingy_id}
     #        {surname,given_name}
+
+### `col_isnt_fk( schema, table, column, description )` ###
+### `col_isnt_fk( schema, table, column[], description )` ###
+### `col_isnt_fk( table, column, description )` ###
+### `col_isnt_fk( table, column[], description )` ###
+### `col_isnt_fk( table, column )` ###
+### `col_isnt_fk( table, column[] )` ###
+
+    SELECT col_isnt_fk(
+        'myschema',
+        'sometable',
+        'other_id',
+        'Column myschema.sometable.other_id should not be a foreign key'
+    );
+
+    SELECT col_isnt_fk(
+        'contacts',
+        ARRAY['given_name', 'surname'],
+    );
+
+This function is the inverse of `col_is_fk()`. The test passes if the
+specified column or columns are not a foreign key.
 
 ### `fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )` ###
 ### `fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] )` ###

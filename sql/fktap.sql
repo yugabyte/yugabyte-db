@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(98);
+SELECT plan(128);
 --SELECT * from no_plan();
 
 -- These will be rolled back. :-)
@@ -205,6 +205,99 @@ SELECT * FROM check_test(
     true,
     'col_is_fk( table, column[] )',
     'Columns fk2(pk2_num, pk2_dot) should be a foreign key'
+);
+
+/****************************************************************************/
+-- Test col_isnt_fk().
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'public', 'fk', 'pk_id', 'public.fk.pk_id should not be an fk' ),
+    false,
+    'col_isnt_fk( schema, table, column, description )',
+    'public.fk.pk_id should not be an fk',
+    ''    
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'fk', 'pk_id', 'fk.pk_id should not be an fk' ),
+    false,
+    'col_isnt_fk( table, column, description )',
+    'fk.pk_id should not be an fk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'fk', 'pk_id' ),
+    false,
+    'col_isnt_fk( table, column )',
+    'Column fk(pk_id) should not be a foreign key',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'public', 'fk', 'name', 'public.fk.name should not be an fk' ),
+    true,
+    'col_isnt_fk( schema, table, column, description )',
+    'public.fk.name should not be an fk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'fk3', 'name', 'fk3.name should not be an fk' ),
+    true,
+    'col_isnt_fk( table, column, description )',
+    'fk3.name should not be an fk',
+    ''
+);
+
+-- Check table with multiple FKs.
+SELECT * FROM check_test(
+    col_isnt_fk( 'fk3', 'pk_id' ),
+    false,
+    'multi-fk col_isnt_fk test',
+    'Column fk3(pk_id) should not be a foreign key',
+    ''
+);
+
+-- Check failure for table with no FKs.
+SELECT * FROM check_test(
+    col_isnt_fk( 'public', 'pk', 'name', 'pk.name should not be an fk' ),
+    true,
+    'col_isnt_fk with no FKs',
+    'pk.name should not be an fk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'pk', 'name' ),
+    true,
+    'col_isnt_fk with no FKs',
+    'Column pk(name) should not be a foreign key',
+    ''
+);
+
+/****************************************************************************/
+-- Test col_isnt_fk() with an array of columns.
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'public', 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'id + pk2_dot should not be an fk' ),
+    false,
+    'col_isnt_fk( schema, table, column[], description )',
+    'id + pk2_dot should not be an fk'
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'], 'id + pk2_dot should not be an fk' ),
+    false,
+    'col_isnt_fk( table, column[], description )',
+    'id + pk2_dot should not be an fk'
+);
+
+SELECT * FROM check_test(
+    col_isnt_fk( 'fk2', ARRAY['pk2_num', 'pk2_dot'] ),
+    false,
+    'col_isnt_fk( table, column[] )',
+    'Columns fk2(pk2_num, pk2_dot) should not be a foreign key'
 );
 
 /****************************************************************************/

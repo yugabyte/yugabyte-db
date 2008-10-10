@@ -6,7 +6,8 @@ Revision history for pgTAP
         although tests still might, depending on the setting of
         `client_min_messages`.
       - Added `hasnt_table()`, `hasnt_view()`, and `hasnt_column()`.
-      - Added `hasnt_pk()` and `hasnt_fk()`.
+      - Added `hasnt_pk()`, `hasnt_fk()`, `col_isnt_pk()`, and
+        `col_isnt_fk()`.
       - Added missing `DROP` statements to `uninstall_pgtap.sql.in`.
 
 0.11  2008-09-24T20:41:42

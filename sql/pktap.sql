@@ -3,7 +3,8 @@
 
 -- $Id$
 
-SELECT plan(54);
+SELECT plan(78);
+--SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
 SET LOCAL client_min_messages = warning;
@@ -178,6 +179,82 @@ SELECT * FROM check_test(
     true,
     'col_is_pk( table, column[] )',
     'Columns argh(id, name) should be a primary key',
+    ''
+);
+
+/****************************************************************************/
+-- Test col_isnt_pk().
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'public', 'sometab', 'id', 'public.sometab.id should not be a pk' ),
+    false,
+    'col_isnt_pk( schema, table, column, description )',
+    'public.sometab.id should not be a pk',
+    '   {id}
+      <>
+    {id}'
+);
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'sometab', 'id', 'sometab.id should not be a pk' ),
+    false,
+    'col_isnt_pk( table, column, description )',
+    'sometab.id should not be a pk',
+    '   {id}
+      <>
+    {id}'
+);
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'sometab', 'id' ),
+    false,
+    'col_isnt_pk( table, column )',
+    'Column sometab(id) should not be a primary key',
+    '   {id}
+      <>
+    {id}'
+);
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'public', 'sometab', 'name', 'public.sometab.name should not be a pk' ),
+    true,
+    'col_isnt_pk( schema, table, column, description ) pass',
+    'public.sometab.name should not be a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'sometab', 'name', 'sometab.name should not be a pk' ),
+    true,
+    'col_isnt_pk( table, column, description ) pass',
+    'sometab.name should not be a pk',
+    ''
+);
+
+/****************************************************************************/
+-- Test col_isnt_pk() with an array of columns.
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'public', 'argh', ARRAY['id', 'foo'], 'id + foo should not be a pk' ),
+    true,
+    'col_isnt_pk( schema, table, column[], description )',
+    'id + foo should not be a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'argh', ARRAY['id', 'foo'], 'id + foo should not be a pk' ),
+    true,
+    'col_isnt_pk( table, column[], description )',
+    'id + foo should not be a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_isnt_pk( 'argh', ARRAY['id', 'foo'] ),
+    true,
+    'col_isnt_pk( table, column[] )',
+    'Columns argh(id, foo) should not be a primary key',
     ''
 );
 
