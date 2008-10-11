@@ -6,7 +6,7 @@
 SELECT plan(39);
 
 -- This will be rolled back. :-)
-SET LOCAL client_min_messages = warning;
+SET client_min_messages = warning;
 CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '' UNIQUE,
@@ -106,7 +106,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test col_is_unique() with an array of columns.
 
-SET LOCAL client_min_messages = warning;
+SET client_min_messages = warning;
 CREATE TABLE public.argh (
     id INT NOT NULL,
     name TEXT NOT NULL,

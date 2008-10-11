@@ -6,7 +6,7 @@
 SELECT plan(39);
 
 -- This will be rolled back. :-)
-SET LOCAL client_min_messages = warning;
+SET client_min_messages = warning;
 CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '' CHECK ( name IN ('foo', 'bar', 'baz') ),
