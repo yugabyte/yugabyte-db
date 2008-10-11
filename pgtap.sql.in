@@ -292,8 +292,8 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    result := CASE WHEN $2 IS NULL AND $1 IS NULL THEN TRUE
-                   WHEN $2 IS NULL OR  $1 IS NULL THEN FALSE
+    result := CASE WHEN $1 IS NULL AND $2 IS NULL THEN TRUE
+                   WHEN $1 IS NULL OR  $2 IS NULL THEN FALSE
                    ELSE $1 = $2 END;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
@@ -314,9 +314,9 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    result := CASE WHEN $2 IS NULL AND $1 IS NULL THEN FALSE
-                   WHEN $2 IS NULL OR  $1 IS NULL THEN TRUE
-                   ELSE $1 <> $2 END;
+    result := CASE WHEN $1 IS NULL AND $2 IS NULL THEN FALSE
+                   WHEN $1 IS NULL OR  $2 IS NULL THEN TRUE
+                   ELSE NOT $1 = $2 END; -- XXX use of <> sometimes causes an error in 8.2!
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '    ' || COALESCE( $1::text, 'NULL' ) ||
