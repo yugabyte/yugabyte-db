@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2008-10-10 20:36:09.000000000 -0700
-+++ pgtap.sql	2008-10-10 20:36:09.000000000 -0700
+--- pgtap.sql.orig	2008-10-12 15:50:14.000000000 -0700
++++ pgtap.sql	2008-10-12 15:50:14.000000000 -0700
 @@ -12,6 +12,14 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA,public;
@@ -15,7 +15,7 @@
  CREATE OR REPLACE FUNCTION pg_typeof("any")
  RETURNS regtype
  AS '$libdir/pgtap'
-@@ -74,53 +82,63 @@
+@@ -84,53 +92,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -96,7 +96,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -184,10 +202,12 @@
+@@ -194,10 +212,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -112,7 +112,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -453,13 +473,16 @@
+@@ -463,13 +483,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -132,7 +132,7 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1018,15 +1041,16 @@
+@@ -1028,15 +1051,16 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -153,7 +153,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -1890,6 +1914,7 @@
+@@ -1900,6 +1924,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -161,7 +161,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -1900,8 +1925,10 @@
+@@ -1910,8 +1935,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.

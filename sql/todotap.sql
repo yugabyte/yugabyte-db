@@ -163,8 +163,8 @@ SELECT ok(
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 29, 30, 31 );
 
 -- Test the exception when throws_ok() is available.
-SELECT CASE WHEN substring(version() from '[[:digit:]]+[.][[:digit:]]')::numeric < 8.1
-     then pass('Should get an exception when todo_end() is called without todo_start()')
+SELECT CASE WHEN pg_version_num() < 81000
+     THEN pass('Should get an exception when todo_end() is called without todo_start()')
      ELSE throws_ok(
         'SELECT todo_end()',
         'P0001',

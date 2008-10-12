@@ -1,6 +1,8 @@
 Revision history for pgTAP
 
 0.13
+      - Added `pg_version()` and `pg_version_num()`.
+      - Documented `pg_typeof()`.
 
 0.12  2008-10-11T04:02:42
       - Updated `plan()` to disable warnings while it creates its tables.

@@ -1466,6 +1466,56 @@ it gets the job done. Of course, if your diagnostics use something other than
 indented "have" and "want", such failures will be easier to read. But either
 way, do test your diagnostics!
 
+Utility Functions
+=================
+
+Along with the usual array of testing, planning, and diagnostic functions,
+pTAP provides a few extra functions to make the work of testing more pleasant.
+
+### `pg_version()` ###
+
+    SELECT pg_version();
+
+Returns the server version number against which pgTAP was compiled. This is
+the stringified version number displayed in the first part of the core
+`version()` function and stored in the "server_version" setting:
+
+    try=% select current_setting( 'server_version'), pg_version();
+     current_setting | pg_version 
+    -----------------+------------
+     8.3.4           | 8.3.4
+    (1 row)
+
+### `pg_version_num()` ###
+
+    SELECT pg_version_num();
+
+Returns an integer representation of the server version number against which
+pgTAP was compiled. The revision level is in the tens psotion, the minor
+version in the thousands position, and the major version in the ten thousands
+position and above (assuming PostgreSQL 10 is ever released, it will be in the
+hundred thousands position). This value is the same as the "sever_version_num"
+setting available in PostgreSQL 8.2 and higher, but supported by this function
+back to PostgreSQL 8.0:
+
+    try=% select current_setting( 'server_version_num'), pg_version_num();
+     current_setting | pg_version_num 
+    -----------------+----------------
+     80304           |          80304
+
+### `pg_typeof(any)`
+
+    SELECT pg_typeof(:value);
+
+Returns a `regtype` identifying the type of value passed to the function. This
+function is used internally by `cmp_ok()` to properly construct types when
+executing the comparison, but might be generally useful.
+
+    try=% select pg_typeof(12), pg_typeof(100.2);
+     pg_typeof | pg_typeof 
+    -----------+-----------
+     integer   | numeric
+
 Compatibility
 =============
 
