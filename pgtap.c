@@ -27,10 +27,17 @@ pg_typeof(PG_FUNCTION_ARGS)
     PG_RETURN_OID( get_fn_expr_argtype(fcinfo->flinfo, 0) );
 }
 
+/*
+ * pg_version()
+ * Returns the version number as output by version(), but without all the
+ * other crap. Code borrowed from version.c.
+ */
+
+PG_FUNCTION_INFO_V1(pg_version);
+
 Datum
 pg_version(PG_FUNCTION_ARGS)
 {
-    /* Code borrowed from version.c. */
 	int			n = strlen(PG_VERSION);
 	text	   *ret = (text *) palloc(n + VARHDRSZ);
 
@@ -44,13 +51,20 @@ pg_version(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(ret);
 }
 
+/*
+ * pg_version_num()
+ * Returns the version number as an integer. Support for pre-8.2 borrowed from
+ * dumputils.c.
+ */
+
+PG_FUNCTION_INFO_V1(pg_version_num);
+
 Datum
 pg_version_num(PG_FUNCTION_ARGS)
 {
 #ifdef PG_VERSION_NUM
     PG_RETURN_INT32(PG_VERSION_NUM);
 #else
-    /* Code borrowed from dumputils.c. */
 	int			cnt;
 	int			vmaj,
 				vmin,
