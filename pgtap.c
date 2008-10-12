@@ -30,6 +30,7 @@ pg_typeof(PG_FUNCTION_ARGS)
 Datum
 pg_version(PG_FUNCTION_ARGS)
 {
+    /* Code borrowed from version.c. */
 	int			n = strlen(PG_VERSION);
 	text	   *ret = (text *) palloc(n + VARHDRSZ);
 
