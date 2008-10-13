@@ -1,6 +1,6 @@
 Revision history for pgTAP
 
-0.13
+0.13  2008-10-13T19:09:46
       - Added `pg_version()` and `pg_version_num()`.
       - Documented `pg_typeof()`.
 
