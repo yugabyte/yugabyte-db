@@ -10,7 +10,7 @@
 
 -- $Id$
 -- ## CREATE SCHEMA TAPSCHEMA;
--- ## SET search_path TO TAPSCHEMA,public;
+-- ## SET search_path TO TAPSCHEMA, public;
 
 CREATE OR REPLACE FUNCTION pg_typeof("any")
 RETURNS regtype

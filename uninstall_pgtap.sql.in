@@ -1,4 +1,5 @@
 -- $Id$
+-- ## SET search_path TO TAPSCHEMA, public;
 DROP FUNCTION check_test( TEXT, BOOLEAN );
 DROP FUNCTION check_test( TEXT, BOOLEAN, TEXT );
 DROP FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT );
@@ -191,5 +192,8 @@ DROP FUNCTION _get_latest ( text );
 DROP FUNCTION _get ( text );
 DROP FUNCTION no_plan();
 DROP FUNCTION plan( integer );
+DROP FUNCTION pg_version_num();
+DROP FUNCTION pg_version();
 DROP FUNCTION pg_typeof("any");
+-- ## SET search_path TO public;
 -- ## DROP SCHEMA TAPSCHEMA;
