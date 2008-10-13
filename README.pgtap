@@ -1175,10 +1175,12 @@ Outputs SKIP test results. Use it in a conditional expression within a
 `SELECT` statement to replace the output of a test that you otherwise would
 have run.
 
-    SELECT CASE current_schema()
-        WHEN 'public' THEN is( :this, :that ) || E'\n' || is( :foo, :bar )
-        ELSE skip( 'Tests not running in the "public" schema', 2 )
-        END;
+    SELECT CASE WHEN pg_version_num() < 80100   
+        THEN skip('throws_ok() not supported before 8.1', 2 )
+        ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
+             || E'\n'
+             || throws_ok( 'INSERT INTO try (id) VALUES (1)', '23505' )
+        END; 
 
 Note how use of the conditional `CASE` statement has been used to determine
 whether or not to run a couple of tests. If they are to be run, they are
@@ -1491,12 +1493,21 @@ the stringified version number displayed in the first part of the core
     SELECT pg_version_num();
 
 Returns an integer representation of the server version number against which
-pgTAP was compiled. The revision level is in the tens psotion, the minor
-version in the thousands position, and the major version in the ten thousands
-position and above (assuming PostgreSQL 10 is ever released, it will be in the
-hundred thousands position). This value is the same as the "sever_version_num"
-setting available in PostgreSQL 8.2 and higher, but supported by this function
-back to PostgreSQL 8.0:
+pgTAP was compiled. This function is useful for determining whether or not
+certain tests should be run or skipped (using `skip()`) depending on the
+version of PostgreSQL. For example:
+
+    SELECT CASE WHEN pg_version_num() < 80100   
+        THEN skip('throws_ok() not supported before 8.1' )
+        ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
+        END; 
+
+The revision level is in the tens position, the minor version in the thousands
+position, and the major version in the ten thousands position and above
+(assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
+position). This value is the same as the "sever_version_num" setting available
+in PostgreSQL 8.2 and higher, but supported by this function back to
+PostgreSQL 8.0:
 
     try=% select current_setting( 'server_version_num'), pg_version_num();
      current_setting | pg_version_num 

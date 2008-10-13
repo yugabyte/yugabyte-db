@@ -163,7 +163,7 @@ SELECT ok(
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 29, 30, 31 );
 
 -- Test the exception when throws_ok() is available.
-SELECT CASE WHEN pg_version_num() < 81000
+SELECT CASE WHEN pg_version_num() < 80100
      THEN pass('Should get an exception when todo_end() is called without todo_start()')
      ELSE throws_ok(
         'SELECT todo_end()',
