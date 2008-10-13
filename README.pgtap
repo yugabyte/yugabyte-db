@@ -1574,7 +1574,7 @@ To Do
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not
   installed.
-* Finish porting tests to use `check_test()`.
+* Add `has_index()` and `has_trigger()`.
 * Add functions that return standardized version numbers, OS specs, etc.
 
 Suported Versions
