@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(9);
+SELECT plan(10);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -40,6 +40,12 @@ SELECT matches(
     pg_version_num()::text,
     '^8[[:digit:]]{4}$',
     'pg_version_num() should be correct'
+);
+
+SELECT matches(
+   os_name(),
+   '^[[:alpha:]]+$',
+   'os_name() should output something like an OS name'
 );
 
 /****************************************************************************/

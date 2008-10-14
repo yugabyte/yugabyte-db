@@ -1559,7 +1559,23 @@ PostgreSQL 8.0:
     -----------------+----------------
      80304           |          80304
 
-### `pg_typeof(any)`
+### `os_name()` ###
+
+    SELECT os_name();
+
+Returns a string representing the name of the operating system on which pgTAP
+was compiled. This can be useful for determining whether or not to skip tests
+on certain operating systems.
+
+This is usually the same a the ouput of `uname`, but converted to lower case.
+There are some semantics in the pgTAP build process to detect other operating
+systems, though assistance in improving such detection would be greatly
+appreciated.
+
+**NOTE:** The values returned by this function may change in the future,
+depending on how good the pgTAP build process gets at detecting a OS.
+
+### `pg_typeof(any)` ###
 
     SELECT pg_typeof(:value);
 
@@ -1621,7 +1637,6 @@ To Do
   installed.
 * Add `index_is_type()`, `index_is_unique()`, `index_is_pk()`, and
   `has_trigger()`.
-* Add a function to return an OS identifier.
 
 Suported Versions
 -----------------

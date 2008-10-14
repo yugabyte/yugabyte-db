@@ -1,5 +1,5 @@
 \unset ECHO
-1..9
+1..10
 ok 1 - pg_type(int) should work
 ok 2 - pg_type(numeric) should work
 ok 3 - pg_type(text) should work
@@ -9,3 +9,4 @@ ok 6 - pg_version should work
 ok 7 - pg_version() should return same as "sever_version" setting
 ok 8 - pg_version_num() should return integer
 ok 9 - pg_version_num() should be correct
+ok 10 - os_name() should output something like an OS name
