@@ -1621,7 +1621,7 @@ To Do
   installed.
 * Add `index_is_type()`, `index_is_unique()`, `index_is_pk()`, and
   `has_trigger()`.
-* Add functions that return standardized version numbers, OS specs, etc.
+* Add a function to return an OS identifier.
 
 Suported Versions
 -----------------
