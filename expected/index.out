@@ -1,0 +1,65 @@
+\unset ECHO
+1..63
+ok 1 - has_index() single column should pass
+ok 2 - has_index() single column should have the proper description
+ok 3 - has_index() single column should have the proper diagnostics
+ok 4 - has_index() single column no desc should pass
+ok 5 - has_index() single column no desc should have the proper description
+ok 6 - has_index() single column no desc should have the proper diagnostics
+ok 7 - has_index() multi-column should pass
+ok 8 - has_index() multi-column should have the proper description
+ok 9 - has_index() multi-column should have the proper diagnostics
+ok 10 - has_index() multi-column no desc should pass
+ok 11 - has_index() multi-column no desc should have the proper description
+ok 12 - has_index() multi-column no desc should have the proper diagnostics
+ok 13 - has_index() functional should pass
+ok 14 - has_index() functional should have the proper description
+ok 15 - has_index() functional should have the proper diagnostics
+ok 16 - has_index() no cols should pass
+ok 17 - has_index() no cols should have the proper description
+ok 18 - has_index() no cols should have the proper diagnostics
+ok 19 - has_index() no cols no desc should pass
+ok 20 - has_index() no cols no desc should have the proper description
+ok 21 - has_index() no cols no desc should have the proper diagnostics
+ok 22 - has_index() no schema single column should pass
+ok 23 - has_index() no schema single column should have the proper description
+ok 24 - has_index() no schema single column should have the proper diagnostics
+ok 25 - has_index() no schema single column no desc should pass
+ok 26 - has_index() no schema single column no desc should have the proper description
+ok 27 - has_index() no schema single column no desc should have the proper diagnostics
+ok 28 - has_index() no schema multi-column should pass
+ok 29 - has_index() no schema multi-column should have the proper description
+ok 30 - has_index() no schema multi-column should have the proper diagnostics
+ok 31 - has_index() no schema multi-column no desc should pass
+ok 32 - has_index() no schema multi-column no desc should have the proper description
+ok 33 - has_index() no schema multi-column no desc should have the proper diagnostics
+ok 34 - has_index() no schema functional should pass
+ok 35 - has_index() no schema functional should have the proper description
+ok 36 - has_index() no schema functional should have the proper diagnostics
+ok 37 - has_index() no schema functional no desc should pass
+ok 38 - has_index() no schema functional no desc should have the proper description
+ok 39 - has_index() no schema functional no desc should have the proper diagnostics
+ok 40 - has_index() no schema or cols should pass
+ok 41 - has_index() no schema or cols should have the proper description
+ok 42 - has_index() no schema or cols should have the proper diagnostics
+ok 43 - has_index() no schema or cols or desc should pass
+ok 44 - has_index() no schema or cols or desc should have the proper description
+ok 45 - has_index() no schema or cols or desc should have the proper diagnostics
+ok 46 - has_index() missing should fail
+ok 47 - has_index() missing should have the proper description
+ok 48 - has_index() missing should have the proper diagnostics
+ok 49 - has_index() invalid should fail
+ok 50 - has_index() invalid should have the proper description
+ok 51 - has_index() invalid should have the proper diagnostics
+ok 52 - has_index() missing no schema should fail
+ok 53 - has_index() missing no schema should have the proper description
+ok 54 - has_index() missing no schema should have the proper diagnostics
+ok 55 - has_index() invalid no schema should fail
+ok 56 - has_index() invalid no schema should have the proper description
+ok 57 - has_index() invalid no schema should have the proper diagnostics
+ok 58 - has_index() functional fail should fail
+ok 59 - has_index() functional fail should have the proper description
+ok 60 - has_index() functional fail should have the proper diagnostics
+ok 61 - has_index() functional fail no schema should fail
+ok 62 - has_index() functional fail no schema should have the proper description
+ok 63 - has_index() functional fail no schema should have the proper diagnostics
