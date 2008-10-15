@@ -47,7 +47,11 @@ dbms_utility_format_call_stack(char mode)
 	ErrorContextCallback *econtext;
 	StringInfo   sinfo;
 
+#if PG_VERSION_NUM >= 80400
+	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO, TEXTDOMAIN);
+#else
 	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO);
+#endif
 	
 	MemoryContextSwitchTo(oldcontext);
 	
