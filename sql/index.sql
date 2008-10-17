@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(63);
+SELECT plan(75);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -195,6 +195,39 @@ SELECT * FROM check_test(
         want: "idx_baz" ON sometab(lower(wank))'
 );
 
+/****************************************************************************/
+-- Test is_clustered().
+SELECT * FROM check_test(
+    is_clustered( 'public', 'sometab', 'idx_bar', 'whatever' ),
+    false,
+    'is_clustered() fail',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_clustered( 'public', 'sometab', 'idx_bar' ),
+    false,
+    'is_clustered() fail no desc',
+    'Table public.sometab should be clustered on index "idx_bar"',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_clustered( 'sometab', 'idx_bar' ),
+    false,
+    'is_clustered() fail no schema',
+    'Table sometab should be clustered on index "idx_bar"',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_clustered( 'idx_bar' ),
+    false,
+    'is_clustered() fail index only',
+    'Table should be clustered on index "idx_bar"',
+    ''
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.

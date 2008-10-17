@@ -2139,6 +2139,76 @@ RETURNS TEXT AS $$
     SELECT ok( _has_index( $1, $2 ), 'Index "' || $2 || '" should exist' );
 $$ LANGUAGE sql;
 
+-- is_clustered( schema, table, index, description )
+CREATE OR REPLACE FUNCTION is_clustered ( NAME, NAME, NAME, text )
+RETURNS TEXT AS $$
+DECLARE
+    res boolean;
+BEGIN
+    SELECT x.indisclustered
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
+      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+      JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
+     WHERE ct.relname = $2
+       AND ci.relname = $3
+       AND n.nspname  = $1
+      INTO res;
+
+      RETURN ok( COALESCE(res, false), $4 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- is_clustered( schema, table, index )
+CREATE OR REPLACE FUNCTION is_clustered ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT is_clustered(
+        $1, $2, $3,
+        'Table ' || $1 || '.' || $2 ||
+        ' should be clustered on index "' || $3 || '"'
+    );
+$$ LANGUAGE sql;
+
+-- is_clustered( table, index )
+CREATE OR REPLACE FUNCTION is_clustered ( NAME, NAME )
+RETURNS TEXT AS $$
+DECLARE
+    res boolean;
+BEGIN
+    SELECT x.indisclustered
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
+      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+     WHERE ct.relname = $1
+       AND ci.relname = $2
+      INTO res;
+
+      RETURN ok(
+          COALESCE(res, false),
+          'Table ' || $1 || ' should be clustered on index "' || $2 || '"'
+      );
+END;
+$$ LANGUAGE plpgsql;
+
+-- is_clustered( index )
+CREATE OR REPLACE FUNCTION is_clustered ( NAME )
+RETURNS TEXT AS $$
+DECLARE
+    res boolean;
+BEGIN
+    SELECT x.indisclustered
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+     WHERE ci.relname = $1
+      INTO res;
+
+      RETURN ok(
+          COALESCE(res, false),
+          'Table should be clustered on index "' || $1 || '"'
+      );
+END;
+$$ LANGUAGE plpgsql;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$

@@ -1,5 +1,5 @@
 \unset ECHO
-1..63
+1..75
 ok 1 - has_index() single column should pass
 ok 2 - has_index() single column should have the proper description
 ok 3 - has_index() single column should have the proper diagnostics
@@ -63,3 +63,15 @@ ok 60 - has_index() functional fail should have the proper diagnostics
 ok 61 - has_index() functional fail no schema should fail
 ok 62 - has_index() functional fail no schema should have the proper description
 ok 63 - has_index() functional fail no schema should have the proper diagnostics
+ok 64 - is_clustered() fail should fail
+ok 65 - is_clustered() fail should have the proper description
+ok 66 - is_clustered() fail should have the proper diagnostics
+ok 67 - is_clustered() fail no desc should fail
+ok 68 - is_clustered() fail no desc should have the proper description
+ok 69 - is_clustered() fail no desc should have the proper diagnostics
+ok 70 - is_clustered() fail no schema should fail
+ok 71 - is_clustered() fail no schema should have the proper description
+ok 72 - is_clustered() fail no schema should have the proper diagnostics
+ok 73 - is_clustered() fail index only should fail
+ok 74 - is_clustered() fail index only should have the proper description
+ok 75 - is_clustered() fail index only should have the proper diagnostics

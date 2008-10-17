@@ -1111,6 +1111,25 @@ incorrect, the diagnostics will look more like this:
     #       have: "idx_baz" ON public.sometab(lower(name))
     #       want: "idx_baz" ON public.sometab(lower(lname))
 
+### `is_clustered( schema, table, index, description )` ###
+### `is_clustered( schema, table, index )` ###
+### `is_clustered( table, index )` ###
+### `is_clustered( index )` ###
+
+    SELECT is_clustered(
+        'myschema',
+        'sometable',
+        'myindex',
+        'Table sometable should be clustered on "myindex"'
+    );
+
+   SELECT is_clustered( 'sometable', 'myindex' );
+
+Tests whether a table is clustered on the given index. A table is clustered on
+an index when the SQL command `CLUSTER TABLE INDEXNAME` has been executed.
+Clustering reorganizes the table tuples so that they are stored on disk in the
+order defined by the index.
+
 ### `can( schema, functions[], description )` ###
 ### `can( schema, functions[] )` ###
 ### `can( functions[], description )` ###

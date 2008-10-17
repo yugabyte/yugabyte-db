@@ -6,7 +6,7 @@ Revision history for pgTAP
         Ben for the catch!
       - Added commands to drop `pg_version()` and `pg_version_num()`
         to`uninstall_pgtap.sql.in`.
-      - Added `has_index()`.
+      - Added `has_index()` and `is_clustered()`.
       - Added `os_name()`. This is somewhat experimental. If you have `uname`,
         it's probably correct, but assistance in improving OS detection in the
         `Makefile` would be greatly appreciated. Notably, it does not detect
