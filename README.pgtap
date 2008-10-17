@@ -1111,6 +1111,38 @@ incorrect, the diagnostics will look more like this:
     #       have: "idx_baz" ON public.sometab(lower(name))
     #       want: "idx_baz" ON public.sometab(lower(lname))
 
+### `index_is_unique( schema, table, index, description )` ###
+### `index_is_unique( schema, table, index )` ###
+### `index_is_unique( table, index )` ###
+### `index_is_unique( index )` ###
+
+    SELECT index_is_unique(
+        'myschema',
+        'sometable',
+        'myindex',
+        'Index "myindex" should be unique'
+    );
+
+   SELECT index_is_unique( 'sometable', 'myindex' );
+
+Tests whether an index is unique.
+
+### `index_is_primary( schema, table, index, description )` ###
+### `index_is_primary( schema, table, index )` ###
+### `index_is_primary( table, index )` ###
+### `index_is_primary( index )` ###
+
+    SELECT index_is_primary(
+        'myschema',
+        'sometable',
+        'myindex',
+        'Index "myindex" should be on a primary key'
+    );
+
+   SELECT index_is_primary( 'sometable', 'myindex' );
+
+Tests whether an index is on a primary key.
+
 ### `is_clustered( schema, table, index, description )` ###
 ### `is_clustered( schema, table, index )` ###
 ### `is_clustered( table, index )` ###
