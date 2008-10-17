@@ -11,6 +11,11 @@ Revision history for pgTAP
         it's probably correct, but assistance in improving OS detection in the
         `Makefile` would be greatly appreciated. Notably, it does not detect
         Windows.
+      - Made `ok()` smarter when the test result is passed as `NULL`. It was
+        dying, but now it simply fails and attaches a diagnostic message
+        reporting that the test result was `NULL`. Reported by Jason Gordon.
+      - Fixed an issue in `check_test()` where an extra character was removed
+        from the beginning of the diagnostic output before testing it.
 
 0.13  2008-10-13T19:09:46
       - Added `pg_version()` and `pg_version_num()`.

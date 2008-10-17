@@ -156,7 +156,7 @@ SELECT * FROM check_test(
     false,
     'has_index() invalid',
     'whatever',
-    '       have: "idx_bar" ON public.sometab(name, numb)
+    '        have: "idx_bar" ON public.sometab(name, numb)
         want: "idx_bar" ON public.sometab(name, id)'
 );
 
@@ -173,7 +173,7 @@ SELECT * FROM check_test(
     false,
     'has_index() invalid no schema',
     'whatever',
-    '       have: "idx_bar" ON sometab(name, numb)
+    '        have: "idx_bar" ON sometab(name, numb)
         want: "idx_bar" ON sometab(name, id)'
 );
 
@@ -182,7 +182,7 @@ SELECT * FROM check_test(
     false,
     'has_index() functional fail',
     'whatever',
-    '       have: "idx_baz" ON public.sometab(lower(name))
+    '        have: "idx_baz" ON public.sometab(lower(name))
         want: "idx_baz" ON public.sometab(lower(wank))'
 );
 
@@ -191,7 +191,7 @@ SELECT * FROM check_test(
     false,
     'has_index() functional fail no schema',
     'whatever',
-    '       have: "idx_baz" ON sometab(lower(name))
+    '        have: "idx_baz" ON sometab(lower(name))
         want: "idx_baz" ON sometab(lower(wank))'
 );
 

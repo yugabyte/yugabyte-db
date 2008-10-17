@@ -134,7 +134,7 @@ SELECT * FROM check_test(
     false,
     'col_is_pk( schema, table, column, description ) fail',
     'public.sometab.name should be a pk',
-    '       have: {id}
+    '        have: {id}
         want: {name}'
 );
 
@@ -143,7 +143,7 @@ SELECT * FROM check_test(
     false,
     'col_is_pk( table, column, description ) fail',
     'sometab.name should be a pk',
-    '       have: {id}
+    '        have: {id}
         want: {name}'
 );
 
@@ -190,7 +190,7 @@ SELECT * FROM check_test(
     false,
     'col_isnt_pk( schema, table, column, description )',
     'public.sometab.id should not be a pk',
-    '   {id}
+    '    {id}
       <>
     {id}'
 );
@@ -200,7 +200,7 @@ SELECT * FROM check_test(
     false,
     'col_isnt_pk( table, column, description )',
     'sometab.id should not be a pk',
-    '   {id}
+    '    {id}
       <>
     {id}'
 );
@@ -210,7 +210,7 @@ SELECT * FROM check_test(
     false,
     'col_isnt_pk( table, column )',
     'Column sometab(id) should not be a primary key',
-    '   {id}
+    '    {id}
       <>
     {id}'
 );

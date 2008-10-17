@@ -3,7 +3,7 @@
 
 -- $Id$
 
-\set numb_tests 37
+\set numb_tests 40
 SELECT plan(:numb_tests);
 
 -- Replace the internal record of the plan for a few tests.
@@ -86,6 +86,7 @@ SELECT * FROM check_test( ok(true, 'foo'), true, 'ok(true, ''foo'')', 'foo', '' 
 SELECT * FROM check_test( ok(false), false, 'ok(false)', '', '' );
 SELECT * FROM check_test( ok(false, ''), false, 'ok(false, '''')', '', '' );
 SELECT * FROM check_test( ok(false, 'foo'), false, 'ok(false, ''foo'')', 'foo', '' );
+SELECT * FROM check_test( ok(NULL, 'null'), false, 'ok(NULL, ''null'')', 'null', '    (test result was NULL)' );
 
 /****************************************************************************/
 -- test multiline description.

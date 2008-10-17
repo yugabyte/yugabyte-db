@@ -124,7 +124,7 @@ SELECT * FROM check_test(
     false,
     'col_type_is( tab, col, type ) fail',
     'Column sometab(name) should be type int4',
-    '       have: text
+    '        have: text
         want: int4'
 );
 
@@ -144,7 +144,7 @@ SELECT * FROM check_test(
     false,
     'col_type_is precision fail',
     'should be numeric(7)',
-    '       have: numeric(8,0)
+    '        have: numeric(8,0)
         want: numeric(7)'
 );
 
@@ -164,7 +164,7 @@ SELECT * FROM check_test(
     false,
     'col_default_is() fail',
     'name should default to ''foo''',
-    '       have: 
+    '        have: 
         want: foo'
 );
 

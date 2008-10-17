@@ -154,7 +154,7 @@ SELECT * FROM check_test(
     false,
     'fail can(schema) with desc',
     'whatever',
-    '   pg_catalog.foo() missing
+    '    pg_catalog.foo() missing
     pg_catalog.bar() missing'
 );
 
@@ -179,7 +179,7 @@ SELECT * FROM check_test(
     false,
     'fail can() with desc',
     'whatever',
-    '   foo() missing
+    '    foo() missing
     bar() missing'
 );
 

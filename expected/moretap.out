@@ -1,5 +1,5 @@
 \unset ECHO
-1..37
+1..40
 ok 1 - My pass() passed, w00t!
 ok 2 - Testing fail()
 ok 3 - We should get the proper output from fail()
@@ -34,6 +34,9 @@ ok 31 - ok(false, '') should have the proper diagnostics
 ok 32 - ok(false, 'foo') should fail
 ok 33 - ok(false, 'foo') should have the proper description
 ok 34 - ok(false, 'foo') should have the proper diagnostics
-ok 35 - multiline desc should pass
-ok 36 - multiline desc should have the proper description
-ok 37 - multiline desc should have the proper diagnostics
+ok 35 - ok(NULL, 'null') should fail
+ok 36 - ok(NULL, 'null') should have the proper description
+ok 37 - ok(NULL, 'null') should have the proper diagnostics
+ok 38 - multiline desc should pass
+ok 39 - multiline desc should have the proper description
+ok 40 - multiline desc should have the proper diagnostics

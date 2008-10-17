@@ -289,6 +289,14 @@ Should an `ok()` fail, it will produce some diagnostics:
     not ok 18 - sufficient mucus
     #     Failed test 18: "sufficient mucus"
 
+Furthermore, should the boolean test result argument be passed as a `NULL`
+rather than `true` or `false`, `ok()` will assume a test failure and attach an
+additional diagnostic:
+
+    not ok 18 - sufficient mucus
+    #     Failed test 18: "sufficient mucus"
+    #     (test result was NULL)
+
 ### `is( anyelement, anyelement, description )` ###
 ### `is( anyelement, anyelement )` ###
 ### `isnt( anyelement, anyelement, description )` ###

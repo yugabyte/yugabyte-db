@@ -263,20 +263,24 @@ CREATE OR REPLACE FUNCTION ok ( boolean, text )
 RETURNS TEXT AS $$
 DECLARE
    aok      ALIAS FOR $1;
-   descr    ALIAS FOR $2;
+   descr    text := $2;
    test_num INTEGER;
    todo_why TEXT;
    ok       BOOL;
 BEGIN
    todo_why := _todo();
-   ok       := CASE WHEN aok = TRUE THEN aok WHEN todo_why IS NULL THEN aok ELSE TRUE END;
+   ok       := CASE
+       WHEN aok = TRUE THEN aok
+       WHEN todo_why IS NULL THEN COALESCE(aok, false)
+       ELSE TRUE
+    END;
     IF _get('plan') IS NULL THEN
         RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
     END IF;
 
     test_num := add_result(
         ok,
-        aok,
+        COALESCE(aok, false),
         descr,
         CASE WHEN todo_why IS NULL THEN '' ELSE 'todo' END,
         COALESCE(todo_why, '')
@@ -290,7 +294,8 @@ BEGIN
                 diag('Failed ' ||
                 CASE WHEN todo_why IS NULL THEN '' ELSE '(TODO) ' END ||
                 'test ' || test_num ||
-                CASE descr WHEN '' THEN '' ELSE COALESCE(': "' || descr || '"', '') END )
+                CASE descr WHEN '' THEN '' ELSE COALESCE(': "' || descr || '"', '') END ) ||
+                CASE WHEN aok IS NULL THEN E'\n' || diag('    (test result was NULL)') ELSE '' END
            END;
 END;
 $$ LANGUAGE plpgsql;
@@ -1957,7 +1962,7 @@ BEGIN
     index_cols := _ikeys($1, $2, $3 );
 
     IF index_cols = '{}'::name[] THEN
-        RETURN ok( false, $5 ) || E'\\n'
+        RETURN ok( false, $5 ) || E'\n'
             || diag( 'Index "' || $3 || '" ON ' || $1 || '.' || $2 || ' not found');
     END IF;
 
@@ -1990,7 +1995,7 @@ BEGIN
     expr := _iexpr($1, $2, $3);
 
     IF expr IS NULL THEN
-        RETURN ok( false, $5 ) || E'\\n'
+        RETURN ok( false, $5 ) || E'\n'
             || diag( 'Index "' || $3 || '" ON ' || $1 || '.' || $2 || ' not found');
     END IF;
 
@@ -2017,7 +2022,7 @@ BEGIN
     index_cols := _ikeys($1, $2 );
 
     IF index_cols = '{}'::name[] THEN
-        RETURN ok( false, $4 ) || E'\\n'
+        RETURN ok( false, $4 ) || E'\n'
             || diag( 'Index "' || $2 || '" ON ' || $1 || ' not found');
     END IF;
 
@@ -2092,7 +2097,7 @@ BEGIN
     END IF;
 
     IF have_expr IS NULL THEN
-        RETURN ok( false, descr ) || E'\\n'
+        RETURN ok( false, descr ) || E'\n'
             || diag( 'Index "' || idx || '" ON ' || tab || ' not found');
     END IF;
 
@@ -2198,7 +2203,7 @@ BEGIN
            adiag := substring(
                adiag
                FROM 14 + char_length(tnumb::text)
-                       + CASE adescr WHEN '' THEN 3 ELSE 4 + char_length( diag( adescr ) ) END
+                       + CASE adescr WHEN '' THEN 3 ELSE 3 + char_length( diag( adescr ) ) END
            );
         END IF;
 

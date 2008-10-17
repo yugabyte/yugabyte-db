@@ -90,7 +90,7 @@ SELECT * FROM check_test(
     false,
     'col_is_unique( schema, table, column, description ) fail',
     'public.sometab.id should be a pk',
-    '       have: {name}
+    '        have: {name}
         want: {id}'
 );
 
@@ -99,7 +99,7 @@ SELECT * FROM check_test(
     false,
     'col_is_unique( table, column, description ) fail',
     'sometab.id should be a pk',
-    '       have: {name}
+    '        have: {name}
         want: {id}'
 );
 

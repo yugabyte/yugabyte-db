@@ -143,7 +143,7 @@ SELECT * FROM check_test(
     false,
     'col_is_fk( schema, table, column, description )',
     'public.fk.name should be an fk',
-    '   Table public.fk has foreign key constraints on these columns:
+    '    Table public.fk has foreign key constraints on these columns:
         {pk_id}'
 );
 
@@ -152,7 +152,7 @@ SELECT * FROM check_test(
     false,
     'col_is_fk( table, column, description )',
     'fk3.name should be an fk',
-    '   Table fk3 has foreign key constraints on these columns:
+    '    Table fk3 has foreign key constraints on these columns:
         {pk2_num,pk2_dot}
         {pk_id}'
 );
@@ -171,7 +171,7 @@ SELECT * FROM check_test(
     false,
     'col_is_fk with no FKs',
     'pk.name should be an fk',
-    '   Table public.pk has no foreign key columns'
+    '    Table public.pk has no foreign key columns'
 );
 
 SELECT * FROM check_test(
@@ -179,7 +179,7 @@ SELECT * FROM check_test(
     false,
     'col_is_fk with no FKs',
     'Column pk(name) should be a foreign key',
-    '   Table pk has no foreign key columns'
+    '    Table pk has no foreign key columns'
 );
 
 
@@ -384,7 +384,7 @@ SELECT * FROM check_test(
     false,
     'fk_ok fail',
     'WHATEVER',
-    '       have: public.fk(pk_id) REFERENCES public.pk(id)
+    '        have: public.fk(pk_id) REFERENCES public.pk(id)
         want: public.fk(pk_id) REFERENCES public.pk(fid)'
 );
 
@@ -393,7 +393,7 @@ SELECT * FROM check_test(
     false,
     'fk_ok fail desc',
     'public.fk(pk_id) should reference public.pk(fid)',
-    '       have: public.fk(pk_id) REFERENCES public.pk(id)
+    '        have: public.fk(pk_id) REFERENCES public.pk(id)
         want: public.fk(pk_id) REFERENCES public.pk(fid)'
 );
 
@@ -402,7 +402,7 @@ SELECT * FROM check_test(
     false,
     'fk_ok fail no schema',
     'WHATEVER',
-    '       have: fk(pk_id) REFERENCES pk(id)
+    '        have: fk(pk_id) REFERENCES pk(id)
         want: fk(pk_id) REFERENCES pk(fid)'
 );
 
@@ -411,7 +411,7 @@ SELECT * FROM check_test(
     false,
     'fk_ok fail no schema desc',
     'fk(pk_id) should reference pk(fid)',
-    '       have: fk(pk_id) REFERENCES pk(id)
+    '        have: fk(pk_id) REFERENCES pk(id)
         want: fk(pk_id) REFERENCES pk(fid)'
 );
 
@@ -420,7 +420,7 @@ SELECT * FROM check_test(
     false,
     'fk_ok bad PK test',
     'WHATEVER',
-    '       have: fk(pk_id) REFERENCES pk(id)
+    '        have: fk(pk_id) REFERENCES pk(id)
         want: fk(pk_id) REFERENCES ok(fid)'
 );
 
@@ -459,7 +459,7 @@ SELECT * FROM check_test(
     false,
     'missing fk test',
     'public.fk3(id) should reference public.foo(id)',
-    '       have: public.fk3(id) REFERENCES NOTHING
+    '        have: public.fk3(id) REFERENCES NOTHING
         want: public.fk3(id) REFERENCES public.foo(id)'
 );
 
@@ -472,7 +472,7 @@ SELECT * FROM check_test(
     false,
     'bad FK column test',
     'fk3(pk2_blah, pk2_dot) should reference pk2(num, dot)',
-    '       have: fk3(pk2_blah, pk2_dot) REFERENCES NOTHING
+    '        have: fk3(pk2_blah, pk2_dot) REFERENCES NOTHING
         want: fk3(pk2_blah, pk2_dot) REFERENCES pk2(num, dot)'
 );
 

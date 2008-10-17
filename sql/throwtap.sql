@@ -62,7 +62,7 @@ SELECT * FROM check_test(
     false,
     'invalid errcode',
     'threw 97212',
-    '     caught: P0001: todo_end() called without todo_start()
+    '      caught: P0001: todo_end() called without todo_start()
       wanted: 97212'
 );
 
@@ -75,7 +75,7 @@ SELECT * FROM check_test(
     false,
     'throws_ok diagnostics',
     'threw an exception',
-    '     caught: no exception
+    '      caught: no exception
       wanted: an exception'
 );
 
