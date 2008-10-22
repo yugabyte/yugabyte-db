@@ -1961,7 +1961,7 @@ DECLARE
 BEGIN
     index_cols := _ikeys($1, $2, $3 );
 
-    IF index_cols = '{}'::name[] THEN
+    IF index_cols IS NULL OR index_cols = '{}'::name[] THEN
         RETURN ok( false, $5 ) || E'\n'
             || diag( 'Index "' || $3 || '" ON ' || $1 || '.' || $2 || ' not found');
     END IF;
@@ -2021,7 +2021,7 @@ DECLARE
 BEGIN
     index_cols := _ikeys($1, $2 );
 
-    IF index_cols = '{}'::name[] THEN
+    IF index_cols IS NULL OR index_cols = '{}'::name[] THEN
         RETURN ok( false, $4 ) || E'\n'
             || diag( 'Index "' || $2 || '" ON ' || $1 || ' not found');
     END IF;

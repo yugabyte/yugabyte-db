@@ -409,7 +409,7 @@ SELECT * FROM check_test(
     ''
 );
 
-CLUSTER public.sometab using idx_bar;
+CLUSTER idx_bar ON public.sometab;
 SELECT * FROM check_test(
     is_clustered( 'public', 'sometab', 'idx_bar', 'whatever' ),
     true,
