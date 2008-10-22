@@ -22,8 +22,20 @@ LANGUAGE sql IMMUTABLE STRICT;
 CREATE OPERATOR = (
     LEFTARG    = name[],
     RIGHTARG   = name[],
-    COMMUTATOR = <>,
+    NEGATOR    = <>,
     PROCEDURE  = namearray_eq
+);
+
+CREATE OR REPLACE FUNCTION namearray_ne( name[], name[] )
+RETURNS bool
+AS 'SELECT $1::text <> $2::text;'
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE OPERATOR <> (
+    LEFTARG    = name[],
+    RIGHTARG   = name[],
+    NEGATOR    = =,
+    PROCEDURE  = namearray_ne
 );
 
 -- Cast regtypes to text like 8.3 does.

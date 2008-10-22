@@ -1,5 +1,7 @@
 DROP CAST (regtype AS text);
 DROP FUNCTION regtypetext(regtype);
+DROP OPERATOR <> ( name[], name[] );
+DROP FUNCTION namearray_ne( name[], name[] );
 DROP OPERATOR = ( name[], name[] );
 DROP FUNCTION namearray_eq( name[], name[] );
 DROP CAST (name[] AS text);
