@@ -7,11 +7,11 @@ LANGUAGE sql IMMUTABLE STRICT;
 CREATE CAST (boolean AS text) WITH FUNCTION booltext(boolean) AS IMPLICIT;
 
 -- Cast name[]s to text like 8.3 does.
-CREATE OR REPLACE FUNCTION anyarray_text(anyarray)
+CREATE OR REPLACE FUNCTION anyarray_text(name[])
 RETURNS TEXT AS 'SELECT textin(array_out($1));'
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE CAST (name[] AS text) WITH FUNCTION anyrray_text(anyarray) AS IMPLICIT;
+CREATE CAST (name[] AS text) WITH FUNCTION anyarray_text(name[]) AS IMPLICIT;
 
 -- Compare name[]s more or less like 8.3 does.
 CREATE OR REPLACE FUNCTION namearray_eq( name[], name[] )
