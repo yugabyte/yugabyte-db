@@ -1162,6 +1162,36 @@ an index when the SQL command `CLUSTER TABLE INDEXNAME` has been executed.
 Clustering reorganizes the table tuples so that they are stored on disk in the
 order defined by the index.
 
+### `index_is_type( schema, table, index, type, description )` ###
+### `index_is_type( schema, table, index, type )` ###
+### `index_is_type( table, index, type )` ###
+### `index_is_type( index, type )` ###
+
+    SELECT index_is_type(
+        'myschema',
+        'sometable',
+        'myindex',
+        'gist',
+        'Index "myindex" should be a GIST index'
+    );
+
+   SELECT index_is_type( 'myindex', 'gin' );
+
+Tests to ensure that an index is of a particular type. At the time of this
+writing, the supported types are:
+
+* btree
+* hash
+* gist
+* gin
+
+If the test fails, it will emit a diagnostic message with the actual index
+type, like so:
+
+    # Failed test 175: "Index idx_bar should be a hash index"
+    #         have: btree
+    #         want: hash
+
 ### `can( schema, functions[], description )` ###
 ### `can( schema, functions[] )` ###
 ### `can( functions[], description )` ###

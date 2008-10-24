@@ -1,5 +1,5 @@
 \unset ECHO
-1..153
+1..180
 ok 1 - has_index() single column should pass
 ok 2 - has_index() single column should have the proper description
 ok 3 - has_index() single column should have the proper diagnostics
@@ -153,3 +153,30 @@ ok 150 - is_clustered() no schema should have the proper diagnostics
 ok 151 - is_clustered() index only should pass
 ok 152 - is_clustered() index only should have the proper description
 ok 153 - is_clustered() index only should have the proper diagnostics
+ok 154 - index_is_type() should pass
+ok 155 - index_is_type() should have the proper description
+ok 156 - index_is_type() should have the proper diagnostics
+ok 157 - index_is_type() ci should pass
+ok 158 - index_is_type() ci should have the proper description
+ok 159 - index_is_type() ci should have the proper diagnostics
+ok 160 - index_is_type() no desc should pass
+ok 161 - index_is_type() no desc should have the proper description
+ok 162 - index_is_type() no desc should have the proper diagnostics
+ok 163 - index_is_type() fail should fail
+ok 164 - index_is_type() fail should have the proper description
+ok 165 - index_is_type() fail should have the proper diagnostics
+ok 166 - index_is_type() no schema should pass
+ok 167 - index_is_type() no schema should have the proper description
+ok 168 - index_is_type() no schema should have the proper diagnostics
+ok 169 - index_is_type() no schema fail should fail
+ok 170 - index_is_type() no schema fail should have the proper description
+ok 171 - index_is_type() no schema fail should have the proper diagnostics
+ok 172 - index_is_type() no table should pass
+ok 173 - index_is_type() no table should have the proper description
+ok 174 - index_is_type() no table should have the proper diagnostics
+ok 175 - index_is_type() no table fail should fail
+ok 176 - index_is_type() no table fail should have the proper description
+ok 177 - index_is_type() no table fail should have the proper diagnostics
+ok 178 - index_is_type() hash should pass
+ok 179 - index_is_type() hash should have the proper description
+ok 180 - index_is_type() hash should have the proper diagnostics

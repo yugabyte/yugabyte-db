@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(153);
+SELECT plan(180);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -14,7 +14,7 @@ CREATE TABLE public.sometab(
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
-CREATE INDEX idx_foo ON public.sometab(name);
+CREATE INDEX idx_foo ON public.sometab using hash(name);
 CREATE INDEX idx_bar ON public.sometab(name, numb);
 CREATE UNIQUE INDEX idx_baz ON public.sometab(LOWER(name));
 RESET client_min_messages;
@@ -439,6 +439,83 @@ SELECT * FROM check_test(
     true,
     'is_clustered() index only',
     'Table should be clustered on index "idx_bar"',
+    ''
+);
+
+/****************************************************************************/
+-- Test index_is_type().
+SELECT * FROM check_test(
+    index_is_type( 'public', 'sometab', 'idx_bar', 'btree', 'whatever' ),
+    true,
+    'index_is_type()',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'public', 'sometab', 'idx_bar', 'BTREE', 'whatever' ),
+    true,
+    'index_is_type() ci',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'public', 'sometab', 'idx_bar', 'btree' ),
+    true,
+    'index_is_type() no desc',
+    'Index idx_bar should be a btree index',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'public', 'sometab', 'idx_bar', 'hash' ),
+    false,
+    'index_is_type() fail',
+    'Index idx_bar should be a hash index',
+    '        have: btree
+        want: hash'
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'sometab', 'idx_bar', 'btree' ),
+    true,
+    'index_is_type() no schema',
+    'Index idx_bar should be a btree index',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'sometab', 'idx_bar', 'hash' ),
+    false,
+    'index_is_type() no schema fail',
+    'Index idx_bar should be a hash index',
+    '        have: btree
+        want: hash'
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'idx_bar', 'btree' ),
+    true,
+    'index_is_type() no table',
+    'Index idx_bar should be a btree index',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'idx_bar', 'hash' ),
+    false,
+    'index_is_type() no table fail',
+    'Index idx_bar should be a hash index',
+    '        have: btree
+        want: hash'
+);
+
+SELECT * FROM check_test(
+    index_is_type( 'idx_foo', 'hash' ),
+    true,
+    'index_is_type() hash',
+    'Index idx_foo should be a hash index',
     ''
 );
 
