@@ -2427,6 +2427,113 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- has_trigger( schema, table, trigger, description )
+CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+DECLARE
+    res boolean;
+BEGIN
+    SELECT true
+      FROM pg_catalog.pg_trigger t
+      JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
+      JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
+     WHERE n.nspname = $1
+       AND c.relname = $2
+       AND t.tgname  = $3
+      INTO res;
+
+      RETURN ok( COALESCE(res, false), $4 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- has_trigger( schema, table, trigger )
+CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT has_trigger(
+        $1, $2, $3,
+        'Table ' || $1 || '.' || $2 || ' should have trigger ' || $3
+    );
+$$ LANGUAGE sql;
+
+-- has_trigger( table, trigger )
+CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME )
+RETURNS TEXT AS $$
+DECLARE
+    res boolean;
+BEGIN
+    SELECT true
+      FROM pg_catalog.pg_trigger t
+      JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
+     WHERE c.relname = $1
+       AND t.tgname  = $2
+       AND pg_catalog.pg_table_is_visible(c.oid)
+      INTO res;
+
+      RETURN ok(
+          COALESCE(res, false),
+          'Table ' || $1 || ' should have trigger ' || $2
+      );
+END;
+$$ LANGUAGE plpgsql;
+
+-- trigger_is( schema, table, trigger, schema, function, description )
+CREATE OR REPLACE FUNCTION trigger_is ( NAME, NAME, NAME, NAME, NAME, text )
+RETURNS TEXT AS $$
+DECLARE
+    pname text;
+BEGIN
+    SELECT ni.nspname || '.' || p.proname
+      FROM pg_catalog.pg_trigger t
+      JOIN pg_catalog.pg_class ct ON (ct.oid = t.tgrelid)
+      JOIN pg_catalog.pg_namespace nt ON (nt.oid = ct.relnamespace)
+      JOIN pg_catalog.pg_proc p ON (p.oid = t.tgfoid)
+      JOIN pg_catalog.pg_namespace ni ON (ni.oid = p.pronamespace)
+     WHERE nt.nspname = $1
+       AND ct.relname = $2
+       AND t.tgname   = $3
+      INTO pname;
+
+    RETURN is( pname, $4 || '.' || $5, $6 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- trigger_is( schema, table, trigger, schema, function )
+CREATE OR REPLACE FUNCTION trigger_is ( NAME, NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT trigger_is(
+        $1, $2, $3, $4, $5,
+        'Trigger ' || $3 || ' should call ' || $4 || '.' || $5 || '()'
+    );
+$$ LANGUAGE sql;
+
+-- trigger_is( table, trigger, function, description )
+CREATE OR REPLACE FUNCTION trigger_is ( NAME, NAME, NAME, text )
+RETURNS TEXT AS $$
+DECLARE
+    pname text;
+BEGIN
+    SELECT p.proname
+      FROM pg_catalog.pg_trigger t
+      JOIN pg_catalog.pg_class ct ON (ct.oid = t.tgrelid)
+      JOIN pg_catalog.pg_proc p ON (p.oid = t.tgfoid)
+     WHERE ct.relname = $1
+       AND t.tgname   = $2
+       AND pg_catalog.pg_table_is_visible(ct.oid)
+      INTO pname;
+
+    RETURN is( pname, $3::text, $4 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- trigger_is( table, trigger, function )
+CREATE OR REPLACE FUNCTION trigger_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT trigger_is(
+        $1, $2, $3,
+        'Trigger ' || $2 || ' should call ' || $3 || '()'
+    );
+$$ LANGUAGE sql;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$

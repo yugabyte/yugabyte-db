@@ -1,0 +1,35 @@
+\unset ECHO
+1..33
+ok 1 - has_trigger() should pass
+ok 2 - has_trigger() should have the proper description
+ok 3 - has_trigger() should have the proper diagnostics
+ok 4 - has_trigger() no desc should pass
+ok 5 - has_trigger() no desc should have the proper description
+ok 6 - has_trigger() no desc should have the proper diagnostics
+ok 7 - has_trigger() no schema should pass
+ok 8 - has_trigger() no schema should have the proper description
+ok 9 - has_trigger() no schema should have the proper diagnostics
+ok 10 - has_trigger() fail should fail
+ok 11 - has_trigger() fail should have the proper description
+ok 12 - has_trigger() fail should have the proper diagnostics
+ok 13 - has_trigger() no schema fail should fail
+ok 14 - has_trigger() no schema fail should have the proper description
+ok 15 - has_trigger() no schema fail should have the proper diagnostics
+ok 16 - trigger_is() should pass
+ok 17 - trigger_is() should have the proper description
+ok 18 - trigger_is() should have the proper diagnostics
+ok 19 - trigger_is() no desc should pass
+ok 20 - trigger_is() no desc should have the proper description
+ok 21 - trigger_is() no desc should have the proper diagnostics
+ok 22 - trigger_is() no schema should pass
+ok 23 - trigger_is() no schema should have the proper description
+ok 24 - trigger_is() no schema should have the proper diagnostics
+ok 25 - trigger_is() no schema or desc should pass
+ok 26 - trigger_is() no schema or desc should have the proper description
+ok 27 - trigger_is() no schema or desc should have the proper diagnostics
+ok 28 - trigger_is() fail should fail
+ok 29 - trigger_is() fail should have the proper description
+ok 30 - trigger_is() fail should have the proper diagnostics
+ok 31 - trigger_is() no schema fail should fail
+ok 32 - trigger_is() no schema fail should have the proper description
+ok 33 - trigger_is() no schema fail should have the proper diagnostics

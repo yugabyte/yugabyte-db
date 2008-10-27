@@ -19,6 +19,7 @@ Revision history for pgTAP
         from the beginning of the diagnostic output before testing it.
       - Fixed a bug comparing `name[]`s on PostgreSQL 8.2, previously hacked
         around.
+      - Added `has_trigger()` and `trigger_is()`.
 
 0.13  2008-10-13T19:09:46
       - Added `pg_version()` and `pg_version_num()`.

@@ -176,11 +176,11 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
 `pg_prove`:
 
     % pg_prove -U postgres sql/*.sql
-    sql/coltap.....ok     
-    sql/hastap.....ok     
-    sql/moretap....ok     
-    sql/pg73.......ok     
-    sql/pktap......ok     
+    sql/coltap.....ok
+    sql/hastap.....ok
+    sql/moretap....ok
+    sql/pg73.......ok
+    sql/pktap......ok
     All tests successful.
     Files=5, Tests=216,  1 wallclock secs ( 0.06 usr  0.02 sys +  0.08 cusr  0.07 csys =  0.23 CPU)
     Result: PASS
@@ -264,7 +264,7 @@ the test succeeded or failed.
 ### `ok( boolean )` ###
 
     SELECT ok( :this = :that, :description );
-  
+
 This function simply evaluates any expression (`:this = :that` is just a
 simple example) and uses that to determine if the test succeeded or failed. A
 true expression passes, a false one fails. Very simple.
@@ -1192,6 +1192,44 @@ type, like so:
     #         have: btree
     #         want: hash
 
+### `has_trigger( schema, table, trigger, description )` ###
+### `has_trigger( schema, table, trigger )` ###
+### `has_trigger( table, trigger )` ###
+
+    SELECT has_trigger(
+        'myschema',
+        'sometable',
+        'sometrigger',
+        'Trigger "sometrigger" should exist'
+    );
+
+    SELECT has_trigger( 'sometable', 'sometrigger' );
+
+Tests to see if the specified table has the named trigger. The `:description`
+is optional, and if the schema is omitted, the table with which the trigger is
+associated must be visible.
+
+### `trigger_is( schema, table, trigger, schema, function, description )` ###
+### `trigger_is( schema, table, trigger, schema, function )` ###
+### `trigger_is( table, trigger, function, description )` ###
+### `trigger_is( table, trigger, function )` ###
+
+    SELECT trigger_is(
+        'myschema',
+        'sometable',
+        'sometrigger',
+        'myschema',
+        'somefunction',
+        'Trigger "sometrigger" should call somefunction()'
+    );
+
+Tests that the specified trigger calls the named function. If not, it outputs
+a useful diagnostic:
+
+    # Failed test 31: "Trigger set_users_pass should call hash_password()"
+    #         have: hash_pass
+    #         want: hash_password
+
 ### `can( schema, functions[], description )` ###
 ### `can( schema, functions[] )` ###
 ### `can( functions[], description )` ###
@@ -1309,12 +1347,12 @@ Outputs SKIP test results. Use it in a conditional expression within a
 `SELECT` statement to replace the output of a test that you otherwise would
 have run.
 
-    SELECT CASE WHEN pg_version_num() < 80100   
+    SELECT CASE WHEN pg_version_num() < 80100
         THEN skip('throws_ok() not supported before 8.1', 2 )
         ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
              || E'\n'
              || throws_ok( 'INSERT INTO try (id) VALUES (1)', '23505' )
-        END; 
+        END;
 
 Note how use of the conditional `CASE` statement has been used to determine
 whether or not to run a couple of tests. If they are to be run, they are
@@ -1617,7 +1655,7 @@ the stringified version number displayed in the first part of the core
 `version()` function and stored in the "server_version" setting:
 
     try=% select current_setting( 'server_version'), pg_version();
-     current_setting | pg_version 
+     current_setting | pg_version
     -----------------+------------
      8.3.4           | 8.3.4
     (1 row)
@@ -1631,10 +1669,10 @@ pgTAP was compiled. This function is useful for determining whether or not
 certain tests should be run or skipped (using `skip()`) depending on the
 version of PostgreSQL. For example:
 
-    SELECT CASE WHEN pg_version_num() < 80100   
+    SELECT CASE WHEN pg_version_num() < 80100
         THEN skip('throws_ok() not supported before 8.1' )
         ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
-        END; 
+        END;
 
 The revision level is in the tens position, the minor version in the thousands
 position, and the major version in the ten thousands position and above
@@ -1644,7 +1682,7 @@ in PostgreSQL 8.2 and higher, but supported by this function back to
 PostgreSQL 8.0:
 
     try=% select current_setting( 'server_version_num'), pg_version_num();
-     current_setting | pg_version_num 
+     current_setting | pg_version_num
     -----------------+----------------
      80304           |          80304
 
@@ -1673,7 +1711,7 @@ function is used internally by `cmp_ok()` to properly construct types when
 executing the comparison, but might be generally useful.
 
     try=% select pg_typeof(12), pg_typeof(100.2);
-     pg_typeof | pg_typeof 
+     pg_typeof | pg_typeof
     -----------+-----------
      integer   | numeric
 
@@ -1724,7 +1762,6 @@ To Do
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not
   installed.
-* Add `index_is_type()`, and `has_trigger()`.
 
 Suported Versions
 -----------------
