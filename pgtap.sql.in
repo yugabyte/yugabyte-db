@@ -18,14 +18,16 @@ AS 'MODULE_PATHNAME'
 LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION pg_version()
-RETURNS text
-AS 'MODULE_PATHNAME'
-LANGUAGE C IMMUTABLE;
+RETURNS text AS 'SELECT current_setting(''server_version'')'
+LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION pg_version_num()
-RETURNS integer
-AS 'MODULE_PATHNAME'
-LANGUAGE C IMMUTABLE;
+RETURNS integer AS $$
+    SELECT s.a[1]::int * 10000 + s.a[2]::int * 100 + s.a[3]::int
+      FROM (
+          SELECT string_to_array(current_setting('server_version'), '.') AS a
+      ) AS s;
+$$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION os_name()
 RETURNS TEXT AS 'SELECT ''__OS__''::text;'

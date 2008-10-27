@@ -20,6 +20,11 @@ Revision history for pgTAP
       - Fixed a bug comparing `name[]`s on PostgreSQL 8.2, previously hacked
         around.
       - Added `has_trigger()` and `trigger_is()`.
+      - Switched to pure SQL implementations of the `pg_version()` and
+        `pg_version_num()` functions, to simplify including pgTAP in module
+        distributions.
+      - Added a note to `README.pgtap` about the need to avoid `pg_typeof()`
+        and `cmp_ok()` in tests run as part of a distribution.
 
 0.13  2008-10-13T19:09:46
       - Added `pg_version()` and `pg_version_num()`.

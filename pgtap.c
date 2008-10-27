@@ -10,8 +10,10 @@ PG_MODULE_MAGIC;
 #endif
 
 extern Datum pg_typeof (PG_FUNCTION_ARGS);
+/* Switched to pure SQL.
 extern Datum pg_version (PG_FUNCTION_ARGS);
 extern Datum pg_version_num (PG_FUNCTION_ARGS);
+*/
 
 /*
  * pg_typeof()
@@ -33,6 +35,8 @@ pg_typeof(PG_FUNCTION_ARGS)
  * other crap. Code borrowed from version.c.
  */
 
+/* Switched to pure SQL. Kept here for posterity.
+
 PG_FUNCTION_INFO_V1(pg_version);
 
 Datum
@@ -51,12 +55,15 @@ pg_version(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(ret);
 }
 
+*/
+
 /*
  * pg_version_num()
  * Returns the version number as an integer. Support for pre-8.2 borrowed from
  * dumputils.c.
  */
 
+/* Switched to pure SQL. Ketp here for posterity.
 PG_FUNCTION_INFO_V1(pg_version_num);
 
 Datum
@@ -81,3 +88,5 @@ pg_version_num(PG_FUNCTION_ARGS)
 	PG_RETURN_INT32( (100 * vmaj + vmin) * 100 + vrev );
 #endif
 }
+
+*/
