@@ -145,9 +145,10 @@ you should skip `\i pgtap.sql` at the beginning of the script.
 
 The only other limitation is that the `pg_typoeof()` function, which is
 written in C, will not be available. You'll want to comment-out its
-declaration in `pgtap.sql` and then avoid using `cmp_ok()`, since that
-function relies on `pg_typeof()`. Note that `pg_typeof()` might be included in
-PostgreSQL 8.4, in which case you wouldn't need to avoid it.
+declaration in the bundled copy of `pgtap.sql` and then avoid using
+`cmp_ok()`, since that function relies on `pg_typeof()`. Note that
+`pg_typeof()` might be included in PostgreSQL 8.4, in which case you wouldn't
+need to avoid it.
 
 Now you're ready to run your test script!
 
