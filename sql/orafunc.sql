@@ -5,7 +5,6 @@ SET DATESTYLE TO ISO;
 SET client_encoding = utf8;
 \set ECHO all
 
-
 --
 -- test built-in date type oracle compatibility functions
 --

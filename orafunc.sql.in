@@ -1490,17 +1490,17 @@ AS 'MODULE_PATHNAME','plunit_assert_equals_message'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plunit.assert_equals(expected anyelement, actual anyelement, message varchar) IS 'Asserts that expected and actual are equal';
 
-CREATE FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision)
+CREATE FUNCTION plunit.assert_equals(expected double precision, actual double precision, "range" double precision)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_equals_range'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision) IS 'Asserts that expected and actual are equal';
+COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, "range" double precision) IS 'Asserts that expected and actual are equal';
 
-CREATE FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision, message varchar)
+CREATE FUNCTION plunit.assert_equals(expected double precision, actual double precision, "range" double precision, message varchar)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_equals_range_message'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision, message varchar) IS 'Asserts that expected and actual are equal';
+COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, "range" double precision, message varchar) IS 'Asserts that expected and actual are equal';
 
 CREATE FUNCTION plunit.assert_not_equals(expected anyelement, actual anyelement)
 RETURNS void
@@ -1514,17 +1514,17 @@ AS 'MODULE_PATHNAME','plunit_assert_not_equals_message'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plunit.assert_not_equals(expected anyelement, actual anyelement, message varchar) IS 'Asserts that expected and actual are equal';
 
-CREATE FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, range double precision)
+CREATE FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, "range" double precision)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_not_equals_range'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, range double precision) IS 'Asserts that expected and actual are equal';
+COMMENT ON FUNCTION plunit.assert_equals(expected double precision, actual double precision, "range" double precision) IS 'Asserts that expected and actual are equal';
 
-CREATE FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, range double precision, message varchar)
+CREATE FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, "range" double precision, message varchar)
 RETURNS void
 AS 'MODULE_PATHNAME','plunit_assert_not_equals_range_message'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, range double precision, message varchar) IS 'Asserts that expected and actual are equal';
+COMMENT ON FUNCTION plunit.assert_not_equals(expected double precision, actual double precision, "range" double precision, message varchar) IS 'Asserts that expected and actual are equal';
 
 CREATE FUNCTION plunit.fail()
 RETURNS void
@@ -1537,6 +1537,22 @@ RETURNS void
 AS 'MODULE_PATHNAME','plunit_fail_message'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
+
+-- if server_version_num < 80300
+CREATE FUNCTION oracle.drop_concat_overloads() RETURNS VOID AS
+$$
+  DROP FUNCTION concat(text, anyelement);
+  DROP FUNCTION concat(anyelement, text);
+  DROP FUNCTION concat(anyelement, anyelement);
+$$
+LANGUAGE sql;
+
+SELECT CASE WHEN current_setting('server_version_num')::integer < 80300
+  THEN oracle.drop_concat_overloads()
+  ELSE NULL END;
+
+DROP FUNCTION oracle.drop_concat_overloads();
+-- endif
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
