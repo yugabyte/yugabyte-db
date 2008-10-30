@@ -422,19 +422,19 @@ select dbms_pipe.unpack_message_date();
  2006-10-11
 (1 row)
 
-select dbms_pipe.pack_message(current_timestamp);
+select dbms_pipe.pack_message(to_timestamp('2008-10-30 01:23:45', 'YYYY-MM-DD HH24:MI:SS'));
  pack_message 
 --------------
  
 (1 row)
 
-select dbms_pipe.send_message('test_date');
+select dbms_pipe.send_message('test_timestamp');
  send_message 
 --------------
             0
 (1 row)
 
-select dbms_pipe.receive_message('test_date');
+select dbms_pipe.receive_message('test_timestamp');
  receive_message 
 -----------------
                0
@@ -446,10 +446,10 @@ select dbms_pipe.next_item_type();
              13
 (1 row)
 
-select to_char(dbms_pipe.unpack_message_timestamp(),'YYYY-MM-DD::hh24:ss:mm') = to_char(current_timestamp,'YYYY-MM-DD::hh24:ss:mm');
- ?column? 
-----------
- t
+select to_char(dbms_pipe.unpack_message_timestamp(), 'YYYY-MM-DD HH24:MI:SS');
+       to_char       
+---------------------
+ 2008-10-30 01:23:45
 (1 row)
 
 select dbms_pipe.pack_message(6262626262::numeric);

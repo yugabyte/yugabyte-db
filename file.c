@@ -1,4 +1,7 @@
 #include "postgres.h"
+
+#include <unistd.h>
+
 #include "executor/spi.h"
 #include "fmgr.h"
 #include "mb/pg_wchar.h"
@@ -27,6 +30,13 @@ Datum utl_file_putf(PG_FUNCTION_ARGS);
 Datum utl_file_fflush(PG_FUNCTION_ARGS);
 Datum utl_file_fclose(PG_FUNCTION_ARGS);
 Datum utl_file_fclose_all(PG_FUNCTION_ARGS);
+Datum utl_file_fremove(PG_FUNCTION_ARGS);
+/*
+Datum utl_file_frename(PG_FUNCTION_ARGS);
+Datum utl_file_fcopy(PG_FUNCTION_ARGS);
+Datum utl_file_fgetattr(PG_FUNCTION_ARGS);
+*/
+Datum utl_file_tmpdir(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(utl_file_fopen);
 PG_FUNCTION_INFO_V1(utl_file_is_open);
@@ -39,6 +49,13 @@ PG_FUNCTION_INFO_V1(utl_file_putf);
 PG_FUNCTION_INFO_V1(utl_file_fflush);
 PG_FUNCTION_INFO_V1(utl_file_fclose);
 PG_FUNCTION_INFO_V1(utl_file_fclose_all);
+PG_FUNCTION_INFO_V1(utl_file_fremove);
+/*
+PG_FUNCTION_INFO_V1(utl_file_frename);
+PG_FUNCTION_INFO_V1(utl_file_fcopy);
+PG_FUNCTION_INFO_V1(utl_file_fgetattr);
+*/
+PG_FUNCTION_INFO_V1(utl_file_tmpdir);
 
 #define PARAMETER_ERROR(detail) \
 	ereport(ERROR, \
@@ -94,7 +111,7 @@ static FileSlot	slots[MAX_SLOTS];	/* initilaized with zeros */
 static int32	slotid = 0;			/* next slot id */
 
 static void check_secure_locality(const char *path);
-
+static char *get_safe_path(text *location, text *filename);
 
 /*
  * get_descriptor(FILE *file) find any free slot for FILE pointer. 
@@ -163,14 +180,11 @@ get_stream(int d, int *max_linesize)
 Datum 
 utl_file_fopen(PG_FUNCTION_ARGS)
 {
-	text	   *loc;
-	text	   *filename;
 	text	   *open_mode;
 	int			max_linesize;
 	const char *mode = NULL;
 	FILE	   *file;
 	char	   *fullname;
-	int			aux_pos, aux_len;
 	int			d;
 	
 	NOT_NULL_ARG(0);
@@ -178,12 +192,8 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	NOT_NULL_ARG(2);
 	NOT_NULL_ARG(3);
 
-	loc = PG_GETARG_TEXT_P(0);
-	filename = PG_GETARG_TEXT_P(1);
 	open_mode = PG_GETARG_TEXT_P(2);
 
-	NON_EMPTY_TEXT(loc);
-	NON_EMPTY_TEXT(filename);
 	NON_EMPTY_TEXT(open_mode);
 
 	max_linesize = PG_GETARG_INT32(3);
@@ -212,22 +222,9 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 		default:
 			CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
 	}
-		
-	aux_pos = VARSIZE_ANY_EXHDR(loc);
-	aux_len = VARSIZE_ANY_EXHDR(filename);
 
-	fullname = palloc(aux_pos + 1 + aux_len + 1);
-	memcpy(fullname, VARDATA(loc), aux_pos);
-	fullname[aux_pos] = '/';
-	memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
-	fullname[aux_pos + aux_len + 1] = '\0';
-
-	/* check locality in canonizalized form of path */
-	canonicalize_path(fullname);
-	check_secure_locality(fullname);
-
-	/* open file in native form of path */
-	make_native_path(fullname);
+	/* open file */
+	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	file = fopen(fullname, mode);
 	if (!file)
 	{
@@ -781,4 +778,84 @@ check_secure_locality(const char *path)
 			 errdetail("you cannot access locality"),
 			 errhint("locality is not found in utl_file_dir table")));
 	SPI_finish();
+}
+
+/*
+ * get_safe_path - make a fullpath and check security.
+ */
+static char *
+get_safe_path(text *location, text *filename)
+{
+	char   *fullname;
+	int		aux_pos;
+	int		aux_len;
+
+	NON_EMPTY_TEXT(location);
+	NON_EMPTY_TEXT(filename);
+
+	aux_pos = VARSIZE_ANY_EXHDR(location);
+	aux_len = VARSIZE_ANY_EXHDR(filename);
+
+	fullname = palloc(aux_pos + 1 + aux_len + 1);
+	memcpy(fullname, VARDATA(location), aux_pos);
+	fullname[aux_pos] = '/';
+	memcpy(fullname + aux_pos + 1, VARDATA(filename), aux_len);
+	fullname[aux_pos + aux_len + 1] = '\0';
+
+	/* check locality in canonizalized form of path */
+	canonicalize_path(fullname);
+	check_secure_locality(fullname);
+
+	return fullname;
+}
+
+Datum
+utl_file_fremove(PG_FUNCTION_ARGS)
+{
+	char	   *fullname;
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+
+	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+
+	if (unlink(fullname) != 0)
+	{
+		switch (errno)
+		{
+			case EACCES:
+			case ENAMETOOLONG:
+			case ENOENT:
+			case ENOTDIR:
+				CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
+				break;
+			
+			default:
+				CUSTOM_EXCEPTION(INVALID_OPERATION, strerror(errno));
+		}
+	}
+
+	PG_RETURN_VOID();
+}
+
+Datum
+utl_file_tmpdir(PG_FUNCTION_ARGS)
+{
+#ifndef WIN32
+	const char *tmpdir = getenv("TMPDIR");
+
+	if (!tmpdir)
+		tmpdir = "/tmp";
+#else
+	char		tmpdir[MAXPGPATH];
+	int			ret;
+
+	ret = GetTempPath(MAXPGPATH, tmpdir);
+	if (ret == 0 || ret > MAXPGPATH)
+		CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
+
+	canonicalize_path(tmpdir);
+#endif
+
+	PG_RETURN_TEXT_P(CStringGetTextP(tmpdir));
 }

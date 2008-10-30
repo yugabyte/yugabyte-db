@@ -280,13 +280,11 @@ ora_instr(text *txt, text *pattern, int start, int nth)
 	else
 	{
 		dx = -1;
-		beg = Min(len_txt + start + 1, len_txt - len_pat);
+		beg = Min(len_txt + start, len_txt - len_pat);
 		end = -1;
 		if (beg <= end)
 			return 0;	/* out of range */
 	}
-	if (beg < 0 || len_txt <= beg)
-		return 0;	/* out of range */
 
 	for (i = beg; i != end; i += dx)
 	{

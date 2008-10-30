@@ -1147,7 +1147,6 @@ RETURNS trigger
 AS 'MODULE_PATHNAME','dbms_alert_defered_signal'
 LANGUAGE C SECURITY DEFINER;
 REVOKE ALL ON FUNCTION dbms_alert.defered_signal() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION dbms_alert.defered_signal() TO POSTGRES;
 
 CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) 
 RETURNS void 
@@ -1370,9 +1369,41 @@ AS 'MODULE_PATHNAME','utl_file_fclose_all'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 
+CREATE FUNCTION utl_file.fremove(location text, filename text)
+RETURNS void
+AS 'MODULE_PATHNAME','utl_file_fremove'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.fremove(text, text) IS 'Remove file.';
+
+/*
+CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text, overwrite boolean DEFAULT false)
+RETURNS void
+AS 'MODULE_PATHNAME','utl_file_frename'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.frename() IS 'Rename file.';
+
+CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer DEFAULT 1, end_line integer DEFAULT NULL)
+RETURNS void
+AS 'MODULE_PATHNAME','utl_file_fcopy'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.fcopy() IS 'Copy file.';
+
+CREATE FUNCTION utl_file.fgetattr(location text, filename text, OUT fexists boolean, OUT file_length bigint, OUT blocksize integer)
+AS 'MODULE_PATHNAME','utl_file_fgetattr'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.tmpdir() IS 'Get file attributes.';
+*/
+
+CREATE FUNCTION utl_file.tmpdir()
+RETURNS text
+AS 'MODULE_PATHNAME','utl_file_tmpdir'
+LANGUAGE C VOLATILE;
+COMMENT ON FUNCTION utl_file.tmpdir() IS 'Get temp directory path.';
+
 /* carry all safe directories */
 CREATE TABLE utl_file.utl_file_dir(dir text);
 REVOKE ALL ON utl_file.utl_file_dir FROM PUBLIC;
+REVOKE ALL ON FUNCTION utl_file.tmpdir() FROM PUBLIC;
 
 -- dbms_assert
 
@@ -1539,19 +1570,21 @@ LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
 
 -- if server_version_num < 80300
-CREATE FUNCTION oracle.drop_concat_overloads() RETURNS VOID AS
+CREATE FUNCTION oracle.drop_anyelement_overloads() RETURNS VOID AS
 $$
   DROP FUNCTION concat(text, anyelement);
   DROP FUNCTION concat(anyelement, text);
   DROP FUNCTION concat(anyelement, anyelement);
+  DROP FUNCTION utl_file.put_line(utl_file.file_type, anyelement);
+  DROP FUNCTION utl_file.put_line(utl_file.file_type, anyelement, bool);
 $$
 LANGUAGE sql;
 
 SELECT CASE WHEN current_setting('server_version_num')::integer < 80300
-  THEN oracle.drop_concat_overloads()
+  THEN oracle.drop_anyelement_overloads()
   ELSE NULL END;
 
-DROP FUNCTION oracle.drop_concat_overloads();
+DROP FUNCTION oracle.drop_anyelement_overloads();
 -- endif
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;

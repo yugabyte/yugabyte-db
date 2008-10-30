@@ -2,13 +2,13 @@
 SET client_min_messages = NOTICE;
 \set ECHO all
 
-INSERT INTO utl_file.utl_file_dir(dir) VALUES('/tmp');
+INSERT INTO utl_file.utl_file_dir(dir) VALUES(utl_file.tmpdir());
 
-CREATE OR REPLACE FUNCTION gen_file() RETURNS void AS $$
+CREATE OR REPLACE FUNCTION gen_file(dir text) RETURNS void AS $$
 DECLARE
   f utl_file.file_type;
 BEGIN
-  f := utl_file.fopen('/tmp','regress_orafce','w');
+  f := utl_file.fopen(dir, 'regress_orafce.txt', 'w');
   PERFORM utl_file.put_line(f, 'ABC');
   PERFORM utl_file.put_line(f, '123'::numeric);
   PERFORM utl_file.put_line(f, '-----');
@@ -27,14 +27,14 @@ BEGIN
   f := utl_file.fclose(f);
 END;
 $$ LANGUAGE plpgsql;
-SELECT gen_file();
 
+SELECT gen_file(utl_file.tmpdir());
 
-CREATE OR REPLACE FUNCTION read_file() RETURNS void AS $$
+CREATE OR REPLACE FUNCTION read_file(dir text) RETURNS void AS $$
 DECLARE
   f utl_file.file_type;
 BEGIN
-  f := utl_file.fopen('/tmp','regress_orafce','r');
+  f := utl_file.fopen(dir, 'regress_orafce.txt', 'r');
   FOR i IN 1..11 LOOP
     RAISE NOTICE '[%] >>%<<', i, utl_file.get_line(f);
   END LOOP;
@@ -51,6 +51,11 @@ BEGIN
       RAISE NOTICE 'is_open = %', utl_file.is_open(f);
 END;
 $$ LANGUAGE plpgsql;
-SELECT read_file();
 
-DELETE FROM utl_file.utl_file_dir WHERE dir = '/tmp';
+SELECT read_file(utl_file.tmpdir());
+
+SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce.txt');
+DROP FUNCTION gen_file(text);
+DROP FUNCTION read_file(text);
+
+DELETE FROM utl_file.utl_file_dir;

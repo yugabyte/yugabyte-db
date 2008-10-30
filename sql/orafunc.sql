@@ -88,11 +88,11 @@ select dbms_pipe.receive_message('test_date');
 select dbms_pipe.next_item_type();
 select dbms_pipe.unpack_message_date();
 
-select dbms_pipe.pack_message(current_timestamp);
-select dbms_pipe.send_message('test_date');
-select dbms_pipe.receive_message('test_date');
+select dbms_pipe.pack_message(to_timestamp('2008-10-30 01:23:45', 'YYYY-MM-DD HH24:MI:SS'));
+select dbms_pipe.send_message('test_timestamp');
+select dbms_pipe.receive_message('test_timestamp');
 select dbms_pipe.next_item_type();
-select to_char(dbms_pipe.unpack_message_timestamp(),'YYYY-MM-DD::hh24:ss:mm') = to_char(current_timestamp,'YYYY-MM-DD::hh24:ss:mm');
+select to_char(dbms_pipe.unpack_message_timestamp(), 'YYYY-MM-DD HH24:MI:SS');
 
 select dbms_pipe.pack_message(6262626262::numeric);
 select dbms_pipe.send_message('test_int');
