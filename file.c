@@ -4,6 +4,7 @@
 
 #include "executor/spi.h"
 #include "fmgr.h"
+#include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "port.h"
 #include "utils/memutils.h"
@@ -31,11 +32,11 @@ Datum utl_file_fflush(PG_FUNCTION_ARGS);
 Datum utl_file_fclose(PG_FUNCTION_ARGS);
 Datum utl_file_fclose_all(PG_FUNCTION_ARGS);
 Datum utl_file_fremove(PG_FUNCTION_ARGS);
-/*
 Datum utl_file_frename(PG_FUNCTION_ARGS);
+/*
 Datum utl_file_fcopy(PG_FUNCTION_ARGS);
-Datum utl_file_fgetattr(PG_FUNCTION_ARGS);
 */
+Datum utl_file_fgetattr(PG_FUNCTION_ARGS);
 Datum utl_file_tmpdir(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(utl_file_fopen);
@@ -50,11 +51,11 @@ PG_FUNCTION_INFO_V1(utl_file_fflush);
 PG_FUNCTION_INFO_V1(utl_file_fclose);
 PG_FUNCTION_INFO_V1(utl_file_fclose_all);
 PG_FUNCTION_INFO_V1(utl_file_fremove);
-/*
 PG_FUNCTION_INFO_V1(utl_file_frename);
+/*
 PG_FUNCTION_INFO_V1(utl_file_fcopy);
-PG_FUNCTION_INFO_V1(utl_file_fgetattr);
 */
+PG_FUNCTION_INFO_V1(utl_file_fgetattr);
 PG_FUNCTION_INFO_V1(utl_file_tmpdir);
 
 #define PARAMETER_ERROR(detail) \
@@ -162,6 +163,22 @@ get_stream(int d, int *max_linesize)
 	return NULL;	/* keep compiler quiet */
 }
 
+static void
+IO_EXCEPTION(void)
+{
+	switch (errno)
+	{
+		case EACCES:
+		case ENAMETOOLONG:
+		case ENOENT:
+		case ENOTDIR:
+			CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
+			break;
+		
+		default:
+			CUSTOM_EXCEPTION(INVALID_OPERATION, strerror(errno));
+	}
+}
 
 /*
  * FUNCTION UTL_FILE.FOPEN(location text,
@@ -227,20 +244,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	file = fopen(fullname, mode);
 	if (!file)
-	{
-		switch (errno)
-		{
-			case EACCES:
-			case ENAMETOOLONG:
-			case ENOENT:
-			case ENOTDIR:
-				CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
-				break;
-			
-			default:
-				CUSTOM_EXCEPTION(INVALID_OPERATION, strerror(errno));
-		}
-	}
+		IO_EXCEPTION();
 
 	d = get_descriptor(file, max_linesize);
 	if (d == INVALID_SLOTID)
@@ -820,22 +824,84 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 
 	if (unlink(fullname) != 0)
-	{
-		switch (errno)
-		{
-			case EACCES:
-			case ENAMETOOLONG:
-			case ENOENT:
-			case ENOTDIR:
-				CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
-				break;
-			
-			default:
-				CUSTOM_EXCEPTION(INVALID_OPERATION, strerror(errno));
-		}
-	}
+		IO_EXCEPTION();
 
 	PG_RETURN_VOID();
+}
+
+Datum
+utl_file_frename(PG_FUNCTION_ARGS)
+{
+	char	   *srcpath;
+	char	   *dstpath;
+	bool		overwrite;
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+	NOT_NULL_ARG(2);
+	NOT_NULL_ARG(3);
+
+	overwrite = (PG_NARGS() > 4 && !PG_ARGISNULL(4) && PG_GETARG_BOOL(4));
+	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
+
+	if (!overwrite)
+	{
+		struct stat	st;
+		if (stat(dstpath, &st) == 0)
+			CUSTOM_EXCEPTION(WRITE_ERROR, "File exists");
+		else if (errno != ENOENT)
+			IO_EXCEPTION();
+	}
+
+	/* rename() overwrites existing files. */
+	if (rename(srcpath, dstpath) != 0)
+		IO_EXCEPTION();
+
+	PG_RETURN_VOID();
+}
+
+Datum
+utl_file_fgetattr(PG_FUNCTION_ARGS)
+{
+	char	   *fullname;
+	struct stat	st;
+	TupleDesc	tupdesc;
+	Datum		result;
+	HeapTuple	tuple;
+	Datum		values[3];
+	bool		nulls[3] = { 0 };
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+
+	if (stat(fullname, &st) == 0)
+	{
+		values[0] = BoolGetDatum(true);
+		values[1] = Int64GetDatum(st.st_size);
+#ifndef WIN32
+		values[2] = Int32GetDatum(st.st_blksize);
+#else
+		values[2] = 512;	/* NTFS block size */
+#endif
+	}
+	else
+	{
+		values[0] = BoolGetDatum(false);
+		nulls[1] = true;
+		nulls[2] = true;
+	}
+
+	tuple = heap_form_tuple(tupdesc, values, nulls);
+	result = HeapTupleGetDatum(tuple);
+
+	PG_RETURN_DATUM(result);
 }
 
 Datum

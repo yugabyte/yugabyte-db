@@ -73,10 +73,40 @@ NOTICE:  is_open = f
  
 (1 row)
 
-SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce.txt');
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
+ fexists 
+---------
+ t
+(1 row)
+
+SELECT utl_file.frename(utl_file.tmpdir(), 'regress_orafce.txt', utl_file.tmpdir(), 'regress_orafce2.txt', true);
+ frename 
+---------
+ 
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
+ fexists 
+---------
+ f
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
+ fexists 
+---------
+ t
+(1 row)
+
+SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce2.txt');
  fremove 
 ---------
  
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
+ fexists 
+---------
+ f
 (1 row)
 
 DROP FUNCTION gen_file(text);

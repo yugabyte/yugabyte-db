@@ -1375,24 +1375,29 @@ AS 'MODULE_PATHNAME','utl_file_fremove'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fremove(text, text) IS 'Remove file.';
 
-/*
-CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text, overwrite boolean DEFAULT false)
+CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text, overwrite boolean)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_frename'
 LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.frename() IS 'Rename file.';
+COMMENT ON FUNCTION utl_file.frename(text, text, text, text, boolean) IS 'Rename file.';
 
+CREATE FUNCTION utl_file.frename(location text, filename text, dest_dir text, dest_file text)
+RETURNS void
+AS $$SELECT utl_file.frename($1, $2, $3, $4, false);$$
+LANGUAGE SQL VOLATILE;
+COMMENT ON FUNCTION utl_file.frename(text, text, text, text) IS 'Rename file.';
+/*
 CREATE FUNCTION utl_file.fcopy(src_location text, src_filename text, dest_location text, dest_filename text, start_line integer DEFAULT 1, end_line integer DEFAULT NULL)
 RETURNS void
 AS 'MODULE_PATHNAME','utl_file_fcopy'
 LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.fcopy() IS 'Copy file.';
+COMMENT ON FUNCTION utl_file.fcopy(text, text, text, text, integer, integer) IS 'Copy file.';
+*/
 
 CREATE FUNCTION utl_file.fgetattr(location text, filename text, OUT fexists boolean, OUT file_length bigint, OUT blocksize integer)
 AS 'MODULE_PATHNAME','utl_file_fgetattr'
 LANGUAGE C VOLATILE;
-COMMENT ON FUNCTION utl_file.tmpdir() IS 'Get file attributes.';
-*/
+COMMENT ON FUNCTION utl_file.fgetattr(text, text) IS 'Get file attributes.';
 
 CREATE FUNCTION utl_file.tmpdir()
 RETURNS text
