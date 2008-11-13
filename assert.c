@@ -2,7 +2,7 @@
 #include "funcapi.h"
 #include "assert.h"
 #include "miscadmin.h"
-#include "utils/acl.h"	
+#include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/syscache.h"
 #include "catalog/namespace.h"
@@ -50,7 +50,7 @@ PG_FUNCTION_INFO_V1(dbms_assert_object_name);
 static bool check_sql_name(char *cp, int len);
 static bool ParseIdentifierString(char *rawstring);
 
-/* 
+/*
  * Procedure ParseIdentifierString is based on SplitIdentifierString
  * from varlena.c. We need different behave of quote symbol evaluation.
  */
@@ -137,11 +137,11 @@ ParseIdentifierString(char *rawstring)
  *
  * Purpouse:
  *   Add leading and trailing quotes, verify that all single quotes
- *   are paired with adjacent single quotes.   
+ *   are paired with adjacent single quotes.
  *
  ****************************************************************/
 
-Datum 
+Datum
 dbms_assert_enquote_literal(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_DATUM(DirectFunctionCall1(quote_literal, PG_GETARG_DATUM(0)));
@@ -153,16 +153,16 @@ dbms_assert_enquote_literal(PG_FUNCTION_ARGS)
  *
  * Syntax:
  *   FUNCTION ENQUOTE_NAME(str varchar) RETURNS varchar;
- *   FUNCTION ENQUOTE_NAME(str varchar, loweralize boolean := true) 
+ *   FUNCTION ENQUOTE_NAME(str varchar, loweralize boolean := true)
  *      RETURNS varchar;
  * Purpouse:
- *   Enclose name in double quotes.  
+ *   Enclose name in double quotes.
  * Atention!:
  *   On Oracle is second parameter capitalize!
  *
  ****************************************************************/
 
-Datum 
+Datum
 dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 {
 	Datum name  = PG_GETARG_DATUM(0);
@@ -188,7 +188,7 @@ dbms_assert_enquote_name(PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 dbms_assert_noop(PG_FUNCTION_ARGS)
 {
 	text *str = PG_GETARG_TEXT_P(0);
@@ -210,18 +210,18 @@ dbms_assert_noop(PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 dbms_assert_qualified_sql_name(PG_FUNCTION_ARGS)
 {
 	text *qname;
 
 	if (PG_ARGISNULL(0))
 		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
-	
+
 	qname = PG_GETARG_TEXT_P(0);
 	if (EMPTY_STR(qname))
 		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
-	
+
 	if (!ParseIdentifierString(TextPGetCString(qname)))
 		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
 
@@ -242,18 +242,18 @@ dbms_assert_qualified_sql_name(PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 dbms_assert_schema_name(PG_FUNCTION_ARGS)
 {
 	Oid			namespaceId;
 	AclResult	aclresult;
-	text *sname;	
+	text *sname;
 	char *nspname;
 	List	*names;
 
 	if (PG_ARGISNULL(0))
 		INVALID_SCHEMA_NAME_EXCEPTION();
-	
+
 	sname = PG_GETARG_TEXT_P(0);
 	if (EMPTY_STR(sname))
 		INVALID_SCHEMA_NAME_EXCEPTION();
@@ -268,7 +268,7 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 							0, 0, 0);
 	if (!OidIsValid(namespaceId))
 		INVALID_SCHEMA_NAME_EXCEPTION();
-	
+
 	aclresult = pg_namespace_aclcheck(namespaceId, GetUserId(), ACL_USAGE);
 	if (aclresult != ACLCHECK_OK)
 		INVALID_SCHEMA_NAME_EXCEPTION();
@@ -286,7 +286,7 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
  * Purpouse:
  *   This function verifies that the input string is simple SQL
  *   name.
- * Exception: 44003 String is not a simple SQL name  
+ * Exception: 44003 String is not a simple SQL name
  *
  ****************************************************************/
 
@@ -322,16 +322,16 @@ check_sql_name(char *cp, int len)
 	return true;
 }
 
-Datum 
+Datum
 dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
 {
 	text  *sname;
 	int		len;
 	char *cp;
-	
+
 	if (PG_ARGISNULL(0))
 		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
-	
+
 	sname = PG_GETARG_TEXT_P(0);
 	if (EMPTY_STR(sname))
 		ISNOT_SIMPLE_SQL_NAME_EXCEPTION();
@@ -359,7 +359,7 @@ dbms_assert_simple_sql_name(PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 dbms_assert_object_name(PG_FUNCTION_ARGS)
 {
 	List	*names;
@@ -369,7 +369,7 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 		INVALID_OBJECT_NAME_EXCEPTION();
-	
+
 	str = PG_GETARG_TEXT_P(0);
 	if (EMPTY_STR(str))
 		INVALID_OBJECT_NAME_EXCEPTION();

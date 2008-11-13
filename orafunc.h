@@ -15,7 +15,7 @@
 #define CStringGetTextDatum(c) \
         DirectFunctionCall1(textin, CStringGetDatum(c))
 #define TextPGetCString(t) \
-        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t))) 
+        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
 #define CStringGetTextP(c) \
         DatumGetTextP(CStringGetTextDatum(c))
 text *cstring_to_text_with_len(const char *c, int n);

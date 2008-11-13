@@ -71,25 +71,27 @@ extern PGDLLIMPORT pg_tz *session_timezone;
 #define CASE_fmt_HH	case 27: case 28: case 29:
 #define CASE_fmt_MI	case 30:
 
-char *date_fmt[] = 
-    {"Y", "Yy", "Yyy", "Yyyy", "Year", "Syyyy", "syear",
-     "I", "Iy", "Iyy", "Iyyy",
-     "Q", "Ww", "Iw", "W",
-     "Day", "Dy", "D",
-     "Month", "Mon", "Mm", "Rm",
-     "Cc", "Scc",
-     "Ddd", "Dd", "J",
-     "Hh", "Hh12", "Hh24",
-     "Mi",
-     NULL};
-     
+char *date_fmt[] =
+{
+	"Y", "Yy", "Yyy", "Yyyy", "Year", "Syyyy", "syear",
+	"I", "Iy", "Iyy", "Iyyy",
+	"Q", "Ww", "Iw", "W",
+	"Day", "Dy", "D",
+	"Month", "Mon", "Mm", "Rm",
+	"Cc", "Scc",
+	"Ddd", "Dd", "J",
+	"Hh", "Hh12", "Hh24",
+	"Mi",
+	NULL
+};
+
 #define CHECK_SEQ_SEARCH(_l, _s) \
 do { \
-     if ((_l) < 0) {                                                 \
-               ereport(ERROR,                                        \
-                     (errcode(ERRCODE_INVALID_DATETIME_FORMAT),      \
-                      errmsg("invalid value for %s", (_s))));        \
-              }                                                      \
+	if ((_l) < 0) { \
+		ereport(ERROR, \
+				(errcode(ERRCODE_INVALID_DATETIME_FORMAT), \
+				 errmsg("invalid value for %s", (_s)))); \
+	} \
 } while (0)
 
 /*
@@ -97,15 +99,15 @@ do { \
  *
  */
 
-Datum next_day (PG_FUNCTION_ARGS);
-Datum next_day_by_index (PG_FUNCTION_ARGS);
-Datum last_day (PG_FUNCTION_ARGS);
-Datum months_between (PG_FUNCTION_ARGS);
-Datum add_months (PG_FUNCTION_ARGS);
-Datum ora_date_trunc (PG_FUNCTION_ARGS);
-Datum ora_date_round (PG_FUNCTION_ARGS);
-Datum ora_timestamptz_trunc (PG_FUNCTION_ARGS);
-Datum ora_timestamptz_round (PG_FUNCTION_ARGS);
+Datum next_day(PG_FUNCTION_ARGS);
+Datum next_day_by_index(PG_FUNCTION_ARGS);
+Datum last_day(PG_FUNCTION_ARGS);
+Datum months_between(PG_FUNCTION_ARGS);
+Datum add_months(PG_FUNCTION_ARGS);
+Datum ora_date_trunc(PG_FUNCTION_ARGS);
+Datum ora_date_round(PG_FUNCTION_ARGS);
+Datum ora_timestamptz_trunc(PG_FUNCTION_ARGS);
+Datum ora_timestamptz_round(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(next_day);
 PG_FUNCTION_INFO_V1(next_day_by_index);
@@ -167,8 +169,8 @@ ora_seq_prefix_search(const char *name, /*const*/ char **array, int max)
  ********************************************************************/
 
 
-Datum 
-next_day (PG_FUNCTION_ARGS)
+Datum
+next_day(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	text *day_txt = PG_GETARG_TEXT_PP(1);
@@ -225,7 +227,7 @@ found:
 
 /* next_day(date, integer) is not documented in Oracle manual, but ... */
 Datum
-next_day_by_index (PG_FUNCTION_ARGS)
+next_day_by_index(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	int		idx = PG_GETARG_INT32(1);
@@ -241,7 +243,7 @@ next_day_by_index (PG_FUNCTION_ARGS)
 
 	/* j2day returns 0..6 as Sun..Sat */
 	off = (idx - 1) - j2day(day+POSTGRES_EPOCH_JDATE);
-	
+
 	PG_RETURN_DATEADT((off <= 0) ? day+off+7 : day + off);
 }
 
@@ -260,16 +262,16 @@ next_day_by_index (PG_FUNCTION_ARGS)
  ********************************************************************/
 
 
-Datum 
-last_day (PG_FUNCTION_ARGS)
+Datum
+last_day(PG_FUNCTION_ARGS)
 {
-    DateADT day = PG_GETARG_DATEADT(0);
-    DateADT result;
-    int y, m, d;
-    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-    result = date2j(y, m+1, 1) - POSTGRES_EPOCH_JDATE;
-    
-    PG_RETURN_DATEADT(result - 1);
+	DateADT day = PG_GETARG_DATEADT(0);
+	DateADT result;
+	int y, m, d;
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	result = date2j(y, m+1, 1) - POSTGRES_EPOCH_JDATE;
+
+	PG_RETURN_DATEADT(result - 1);
 }
 
 static const int month_days[] = {
@@ -283,8 +285,8 @@ days_of_month(int y, int m)
 
 	if (m < 0 || 12 < m)
 		ereport(ERROR,
-		    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			errmsg("date out of range")));
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("date out of range")));
 
 	days = month_days[m - 1];
 	if (m == 2 && (y % 400 == 0 || (y % 4 == 0 && y % 100 != 0)))
@@ -308,20 +310,19 @@ days_of_month(int y, int m)
  *
  ********************************************************************/
 
-
-Datum 
-months_between (PG_FUNCTION_ARGS)
+Datum
+months_between(PG_FUNCTION_ARGS)
 {
-    DateADT date1 = PG_GETARG_DATEADT(0);
-    DateADT date2 = PG_GETARG_DATEADT(1);
-    
-    int y1, m1, d1;
-    int y2, m2, d2;
-    
-    float8 result;
-    
-    j2date(date1 + POSTGRES_EPOCH_JDATE, &y1, &m1, &d1);
-    j2date(date2 + POSTGRES_EPOCH_JDATE, &y2, &m2, &d2);
+	DateADT date1 = PG_GETARG_DATEADT(0);
+	DateADT date2 = PG_GETARG_DATEADT(1);
+
+	int y1, m1, d1;
+	int y2, m2, d2;
+
+	float8 result;
+
+	j2date(date1 + POSTGRES_EPOCH_JDATE, &y1, &m1, &d1);
+	j2date(date2 + POSTGRES_EPOCH_JDATE, &y2, &m2, &d2);
 
 	/* Ignore day components for last days, or based on a 31-day month. */
 	if (d1 == days_of_month(y1, m1) && d2 == days_of_month(y2, m2))
@@ -329,7 +330,7 @@ months_between (PG_FUNCTION_ARGS)
 	else
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
 
-    PG_RETURN_FLOAT8(result);  
+	PG_RETURN_FLOAT8(result);
 }
 
 /********************************************************************
@@ -347,8 +348,8 @@ months_between (PG_FUNCTION_ARGS)
  ********************************************************************/
 
 
-Datum 
-add_months (PG_FUNCTION_ARGS)
+Datum
+add_months(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	int n = PG_GETARG_INT32(1);
@@ -377,196 +378,196 @@ add_months (PG_FUNCTION_ARGS)
 }
 
 /*
- * ISO year 
- * 
+ * ISO year
+ *
  */
- 
+
 #define DATE2J(y,m,d)	(date2j((y),(m),(d)) - POSTGRES_EPOCH_JDATE)
 #define J2DAY(date)	(j2day(date + POSTGRES_EPOCH_JDATE))
 
 
-static DateADT 
+static DateADT
 iso_year (int y, int m, int d)
 {
-    DateADT result, result2, day;
-    int off;
+	DateADT result, result2, day;
+	int off;
 
-    result = DATE2J(y,1,1);
-    day = DATE2J(y,m,d);
-    off = 4 - J2DAY(result);
-    result += off + ((off >= 0) ? - 3: + 4);  /* to monday */
-
-    if (result > day)
-    {
-	result = DATE2J(y-1,1,1);
+	result = DATE2J(y,1,1);
+	day = DATE2J(y,m,d);
 	off = 4 - J2DAY(result);
 	result += off + ((off >= 0) ? - 3: + 4);  /* to monday */
-    }
-    
-    if (((day - result) / 7 + 1) > 52)
-    {
+
+	if (result > day)
+	{
+		result = DATE2J(y-1,1,1);
+		off = 4 - J2DAY(result);
+		result += off + ((off >= 0) ? - 3: + 4);  /* to monday */
+	}
+
+	if (((day - result) / 7 + 1) > 52)
+	{
 	result2 = DATE2J(y+1,1,1);
 	off = 4 - J2DAY(result2);
 	result2 += off + ((off >= 0) ? - 3: + 4);  /* to monday */
 
 	if (day >= result2)
 		return result2;
-    }
-    
-    return result;
+	}
+
+	return result;
 }
-    
+
 static DateADT
 _ora_date_trunc(DateADT day, int f)
 {
-    int y, m, d;
-    DateADT result;
+	int y, m, d;
+	DateADT result;
 
-    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 
-    switch (f)
-    {
+	switch (f)
+	{
 	CASE_fmt_CC
-	    if (y > 0)
-		result = DATE2J((y/100)*100+1,1,1);
-	    else
-		result = DATE2J(-((99 - (y - 1)) / 100) * 100 + 1,1,1);
-	    break;	
+		if (y > 0)
+			result = DATE2J((y/100)*100+1,1,1);
+		else
+			result = DATE2J(-((99 - (y - 1)) / 100) * 100 + 1,1,1);
+		break;
 	CASE_fmt_YYYY
-	    result = DATE2J(y,1,1);
-	    break;
+		result = DATE2J(y,1,1);
+		break;
 	CASE_fmt_IYYY
-	    result = iso_year(y,m,d);
-	    break;
+		result = iso_year(y,m,d);
+		break;
 	CASE_fmt_MON
-	    result = DATE2J(y,m,1);
-	    break;
+		result = DATE2J(y,m,1);
+		break;
 	CASE_fmt_WW
-	    result = day - (day - DATE2J(y,1,1)) % 7;
-	    break;
+		result = day - (day - DATE2J(y,1,1)) % 7;
+		break;
 	CASE_fmt_IW
-	    result = day - (day - iso_year(y,m,d)) % 7;
-	    break;
+		result = day - (day - iso_year(y,m,d)) % 7;
+		break;
 	CASE_fmt_W
-	    result = day - (day - DATE2J(y,m,1)) % 7;
-	    break;
+		result = day - (day - DATE2J(y,m,1)) % 7;
+		break;
 	CASE_fmt_DAY
-	    result = day - J2DAY(day);
-	    break;
+		result = day - J2DAY(day);
+		break;
 	CASE_fmt_Q
-	    result = DATE2J(y,((m-1)/3)*3+1,1);
-	    break;	    
+		result = DATE2J(y,((m-1)/3)*3+1,1);
+		break;
 	default:
-	    result = day;
-    }
+		result = day;
+	}
 
-    return result;
+	return result;
 }
 
 static DateADT
 _ora_date_round(DateADT day, int f)
 {
-    int y, m, d, z;
-    DateADT result;
+	int y, m, d, z;
+	DateADT result;
 
-    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 
-    switch (f)
-    {
+	switch (f)
+	{
 	CASE_fmt_CC
-	    if (y > 0)
-		result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100+50,1,1) ?1:101),1,1); 
-	    else
-		result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100-50+1,1,1) ?-99:1),1,1);
-	    break;	
+		if (y > 0)
+			result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100+50,1,1) ?1:101),1,1);
+		else
+			result = DATE2J((y/100)*100+(day < DATE2J((y/100)*100-50+1,1,1) ?-99:1),1,1);
+		break;
 	CASE_fmt_YYYY
-	    result = DATE2J(y+(day<DATE2J(y,7,1)?0:1),1,1);
-	    break;
+		result = DATE2J(y+(day<DATE2J(y,7,1)?0:1),1,1);
+		break;
 	CASE_fmt_IYYY
-	    {
+	{
 		if (day < DATE2J(y,7,1))
 		{
-		    result = iso_year(y, m, d);
+			result = iso_year(y, m, d);
 		}
 		else
 		{
-		    DateADT iy1 = iso_year(y+1, 1, 8);
-		    result = iy1;
-		    
-		    if (((day - DATE2J(y,1,1)) / 7 + 1) >= 52) 
-		    {
-			bool overl = ((date2j(y+2,1,1)-date2j(y+1,1,1)) == 366);
-			bool isSaturday = (J2DAY(day) == 6);
+			DateADT iy1 = iso_year(y+1, 1, 8);
+			result = iy1;
 
-			DateADT iy2 = iso_year(y+2, 1, 8);
-			DateADT day1 = DATE2J(y+1,1,1);
-			/* exception saturdays */
-			if (iy1 >= (day1) && day >= day1 - 2 && isSaturday)
+			if (((day - DATE2J(y,1,1)) / 7 + 1) >= 52)
 			{
-			    result = overl?iy2:iy1;
-			} 
-			/* iso year stars in last year and day >= iso year */
-			else if (iy1 <= (day1) && day >= iy1 - 3) 
-			{
-			    DateADT cmp = iy1 - (iy1 < day1?0:1);
-			    int d = J2DAY(day1);
-			    /* some exceptions */
-			    if ((day >= cmp - 2) && (!(d == 3 && overl)))
-			    {			
-				/* if year don't starts in thursday */
-				if ((d < 4 && J2DAY(day) != 5 && !isSaturday)
-				      ||(d == 2 && isSaturday && overl))
+				bool overl = ((date2j(y+2,1,1)-date2j(y+1,1,1)) == 366);
+				bool isSaturday = (J2DAY(day) == 6);
+
+				DateADT iy2 = iso_year(y+2, 1, 8);
+				DateADT day1 = DATE2J(y+1,1,1);
+				/* exception saturdays */
+				if (iy1 >= (day1) && day >= day1 - 2 && isSaturday)
 				{
-				    result = iy2;
+					result = overl?iy2:iy1;
 				}
-			    }
-			}			
-		    }
-		}    
-	    }
-	    break;
+				/* iso year stars in last year and day >= iso year */
+				else if (iy1 <= (day1) && day >= iy1 - 3)
+				{
+					DateADT cmp = iy1 - (iy1 < day1?0:1);
+					int d = J2DAY(day1);
+					/* some exceptions */
+					if ((day >= cmp - 2) && (!(d == 3 && overl)))
+					{
+						/* if year don't starts in thursday */
+						if ((d < 4 && J2DAY(day) != 5 && !isSaturday)
+							||(d == 2 && isSaturday && overl))
+						{
+							result = iy2;
+						}
+					}
+				}
+			}
+		}
+		break;
+	}
 	CASE_fmt_MON
-	    result = DATE2J(y,m+(day<DATE2J(y,m,16)?0:1),1);
-	    break;
+		result = DATE2J(y,m+(day<DATE2J(y,m,16)?0:1),1);
+		break;
 	CASE_fmt_WW
-	    z = (day - DATE2J(y,1,1)) % 7;
-	    result = day - z + (z < 4?0:7);
-	    break;
+		z = (day - DATE2J(y,1,1)) % 7;
+		result = day - z + (z < 4?0:7);
+		break;
 	CASE_fmt_IW
-	    {
+	{
 		z = (day - iso_year(y,m,d)) % 7;
 		result = day - z + (z < 4?0:7);
 		if (((day - DATE2J(y,1,1)) / 7 + 1) >= 52)
 		{
-		    /* only for last iso week */
-		    DateADT isoyear = iso_year(y+1, 1, 8);
-		    if (isoyear > (DATE2J(y+1,1,1)-1))
-			if (day > isoyear - 7)
-			{
-			    int d = J2DAY(day);
-			    result -= (d == 0 || d > 4?7:0);
-			}
+			/* only for last iso week */
+			DateADT isoyear = iso_year(y+1, 1, 8);
+			if (isoyear > (DATE2J(y+1,1,1)-1))
+				if (day > isoyear - 7)
+				{
+					int d = J2DAY(day);
+					result -= (d == 0 || d > 4?7:0);
+				}
 		}
-	    }
-	    break;
+		break;
+	}
 	CASE_fmt_W
-	    z = (day - DATE2J(y,m,1)) % 7;
-	    result = day - z + (z < 4?0:7);
-	    break;
-	CASE_fmt_DAY
-	    z = J2DAY(day);
-	    if (y > 0)
+		z = (day - DATE2J(y,m,1)) % 7;
 		result = day - z + (z < 4?0:7);
-	    else 
-		result = day + (5 - (z>0?(z>1?z:z+7):7));
-	    break;
+		break;
+	CASE_fmt_DAY
+		z = J2DAY(day);
+		if (y > 0)
+			result = day - z + (z < 4?0:7);
+		else
+			result = day + (5 - (z>0?(z>1?z:z+7):7));
+		break;
 	CASE_fmt_Q
-	    result = DATE2J(y,((m-1)/3)*3+(day<(DATE2J(y,((m-1)/3)*3+2,16))?1:4),1);
-	    break;
+		result = DATE2J(y,((m-1)/3)*3+(day<(DATE2J(y,((m-1)/3)*3+2,16))?1:4),1);
+		break;
 	default:
-	    result = day;	 
-    }
-    return result;
+		result = day;
+	}
+	return result;
 }
 
 
@@ -580,89 +581,89 @@ _ora_date_round(DateADT day, int f)
  *
  * Purpose:
  *
- * Returns d with the time portion of the day truncated to the unit 
+ * Returns d with the time portion of the day truncated to the unit
  * specified by the format fmt.
  *
  ********************************************************************/
 
-Datum ora_date_trunc (PG_FUNCTION_ARGS)
+Datum ora_date_trunc(PG_FUNCTION_ARGS)
 {
-    DateADT day = PG_GETARG_DATEADT(0);
-    text *fmt = PG_GETARG_TEXT_PP(1);
-    
-    DateADT result;
-    
-    int f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
-    CHECK_SEQ_SEARCH(f, "round/trunc format string");
-    
-    result = _ora_date_trunc(day, f);
-    PG_RETURN_DATEADT(result);
+	DateADT day = PG_GETARG_DATEADT(0);
+	text *fmt = PG_GETARG_TEXT_PP(1);
+
+	DateADT result;
+
+	int f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
+	CHECK_SEQ_SEARCH(f, "round/trunc format string");
+
+	result = _ora_date_trunc(day, f);
+	PG_RETURN_DATEADT(result);
 }
 
-Datum 
-ora_timestamptz_trunc (PG_FUNCTION_ARGS)
+Datum
+ora_timestamptz_trunc(PG_FUNCTION_ARGS)
 {
-    TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
-    TimestampTz result;
-    text *fmt = PG_GETARG_TEXT_PP(1);
-    int tz;
-    fsec_t fsec;
-    struct pg_tm tt, *tm = &tt;
-    char *tzn;
-    bool redotz = false;
-    int f;
-    
-    if (TIMESTAMP_NOT_FINITE(timestamp))
-	PG_RETURN_TIMESTAMPTZ(timestamp);
-	
-    f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
-    CHECK_SEQ_SEARCH(f, "round/trunc format string");
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz result;
+	text *fmt = PG_GETARG_TEXT_PP(1);
+	int tz;
+	fsec_t fsec;
+	struct pg_tm tt, *tm = &tt;
+	char *tzn;
+	bool redotz = false;
+	int f;
 
-    if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		PG_RETURN_TIMESTAMPTZ(timestamp);
+
+	f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
+	CHECK_SEQ_SEARCH(f, "round/trunc format string");
+
+	if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 	ereport(ERROR,
-	    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-	    errmsg("timestamp out of range")));
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
 
-    tm->tm_sec = 0;
-    fsec = 0;
-    	    
-    switch (f)
-    {
+	tm->tm_sec = 0;
+	fsec = 0;
+
+	switch (f)
+	{
 	CASE_fmt_IYYY
 	CASE_fmt_WW
 	CASE_fmt_W
 	CASE_fmt_IW
 	CASE_fmt_DAY
 	CASE_fmt_CC
-	    j2date(_ora_date_trunc(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday), f) 
-	          + POSTGRES_EPOCH_JDATE,
+		j2date(_ora_date_trunc(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday), f)
+			   + POSTGRES_EPOCH_JDATE,
 		&tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-	    tm->tm_hour = 0;
-	    tm->tm_min = 0;
-	    redotz = true;
-	    break;		
+		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		redotz = true;
+		break;
 	CASE_fmt_YYYY
-	    tm->tm_mon = 1;
+		tm->tm_mon = 1;
 	CASE_fmt_Q
-	    tm->tm_mon = (3*((tm->tm_mon - 1)/3)) + 1;
+		tm->tm_mon = (3*((tm->tm_mon - 1)/3)) + 1;
 	CASE_fmt_MON
-	    tm->tm_mday = 1;
+		tm->tm_mday = 1;
 	CASE_fmt_DDD
-	    tm->tm_hour = 0;
-	    redotz = true; /* for all cases >= DAY */
+		tm->tm_hour = 0;
+		redotz = true; /* for all cases >= DAY */
 	CASE_fmt_HH
-	    tm->tm_min = 0;
-    }
-    
-    if (redotz)
-	tz = DetermineTimeZoneOffset(tm, session_timezone);
-	
-    if (tm2timestamp(tm, fsec, &tz, &result) != 0)
-	ereport(ERROR,
-	    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-	    errmsg("timestamp out of range")));
+		tm->tm_min = 0;
+	}
 
-    PG_RETURN_TIMESTAMPTZ(result);
+	if (redotz)
+		tz = DetermineTimeZoneOffset(tm, session_timezone);
+
+	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
+
+	PG_RETURN_TIMESTAMPTZ(result);
 }
 
 /********************************************************************
@@ -675,106 +676,105 @@ ora_timestamptz_trunc (PG_FUNCTION_ARGS)
  *
  * Purpose:
  *
- * Returns d with the time portion of the day roundeded to the unit 
+ * Returns d with the time portion of the day roundeded to the unit
  * specified by the format fmt.
  *
  ********************************************************************/
 
 
-Datum ora_date_round (PG_FUNCTION_ARGS)
+Datum ora_date_round(PG_FUNCTION_ARGS)
 {
-    DateADT day = PG_GETARG_DATEADT(0);
-    text *fmt = PG_GETARG_TEXT_PP(1);
+	DateADT day = PG_GETARG_DATEADT(0);
+	text *fmt = PG_GETARG_TEXT_PP(1);
 
-    DateADT result;
-    
-    int f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
-    CHECK_SEQ_SEARCH(f, "round/trunc format string");
+	DateADT result;
 
-    result = _ora_date_round(day, f);
-    PG_RETURN_DATEADT(result);    
+	int f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
+	CHECK_SEQ_SEARCH(f, "round/trunc format string");
+
+	result = _ora_date_round(day, f);
+	PG_RETURN_DATEADT(result);
 }
 
 #define NOT_ROUND_MDAY(_p_) \
-    if (_p_) \
-	rounded = false; 
+	do { if (_p_) rounded = false; } while(0)
 #define ROUND_MDAY(_tm_) \
-    if (rounded) _tm_->tm_mday += _tm_->tm_hour >= 12?1:0;
-    	
-    
-Datum 
-ora_timestamptz_round (PG_FUNCTION_ARGS)
+	do { if (rounded) _tm_->tm_mday += _tm_->tm_hour >= 12?1:0; } while(0)
+
+
+Datum
+ora_timestamptz_round(PG_FUNCTION_ARGS)
 {
-    TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
-    TimestampTz result;
-    text *fmt = PG_GETARG_TEXT_PP(1);
-    int tz;
-    fsec_t fsec;
-    struct pg_tm tt, *tm = &tt;
-    char *tzn;
-    bool redotz = false;
-    bool rounded = true;
-    int f;
-    
-    if (TIMESTAMP_NOT_FINITE(timestamp))
-	PG_RETURN_TIMESTAMPTZ(timestamp);
-	
-    f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
-    CHECK_SEQ_SEARCH(f, "round/trunc format string");
+	TimestampTz timestamp = PG_GETARG_TIMESTAMPTZ(0);
+	TimestampTz result;
+	text *fmt = PG_GETARG_TEXT_PP(1);
+	int tz;
+	fsec_t fsec;
+	struct pg_tm tt, *tm = &tt;
+	char *tzn;
+	bool redotz = false;
+	bool rounded = true;
+	int f;
 
-    if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
+	if (TIMESTAMP_NOT_FINITE(timestamp))
+		PG_RETURN_TIMESTAMPTZ(timestamp);
+
+	f = ora_seq_search(VARDATA_ANY(fmt), date_fmt, VARSIZE_ANY_EXHDR(fmt));
+	CHECK_SEQ_SEARCH(f, "round/trunc format string");
+
+	if (timestamp2tm(timestamp, &tz, tm, &fsec, &tzn, NULL) != 0)
 	ereport(ERROR,
-	    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-	    errmsg("timestamp out of range")));
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
 
-    //tm->tm_sec = 0;
-    fsec = 0;
-    
-    /* set rounding rule */	    
-    switch (f)
-    {
+	/* tm->tm_sec = 0; */
+	fsec = 0;
+
+	/* set rounding rule */
+	switch (f)
+	{
 	CASE_fmt_IYYY
-	    NOT_ROUND_MDAY(tm->tm_mday < 8 && tm->tm_mon == 1)
-	    NOT_ROUND_MDAY(tm->tm_mday == 30 && tm->tm_mon == 6)
-	    if (tm->tm_mday >= 28 && tm->tm_mon == 12 && tm->tm_hour >= 12)
-	    {	
-		DateADT isoyear = iso_year(tm->tm_year+1, 1, 8);
-		DateADT day0 = DATE2J(tm->tm_year+1,1,1);
-		DateADT dayc = DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday);
-		
-		if ((isoyear <= day0) || (day0 <= dayc + 2))
+		NOT_ROUND_MDAY(tm->tm_mday < 8 && tm->tm_mon == 1);
+		NOT_ROUND_MDAY(tm->tm_mday == 30 && tm->tm_mon == 6);
+		if (tm->tm_mday >= 28 && tm->tm_mon == 12 && tm->tm_hour >= 12)
 		{
-		    rounded = false;
+			DateADT isoyear = iso_year(tm->tm_year+1, 1, 8);
+			DateADT day0 = DATE2J(tm->tm_year+1,1,1);
+			DateADT dayc = DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday);
+
+			if ((isoyear <= day0) || (day0 <= dayc + 2))
+			{
+				rounded = false;
+			}
 		}
-	    }
-	    break;
+		break;
 	CASE_fmt_YYYY
-	    NOT_ROUND_MDAY(tm->tm_mday == 30 && tm->tm_mon == 6)
-	    break;
+		NOT_ROUND_MDAY(tm->tm_mday == 30 && tm->tm_mon == 6);
+		break;
 	CASE_fmt_MON
-	    NOT_ROUND_MDAY(tm->tm_mday == 15);
-	    break;
+		NOT_ROUND_MDAY(tm->tm_mday == 15);
+		break;
 	CASE_fmt_Q
-	    NOT_ROUND_MDAY(tm->tm_mday == 15 && tm->tm_mon == ((tm->tm_mon-1)/3)*3+2);
-	    break;
+		NOT_ROUND_MDAY(tm->tm_mday == 15 && tm->tm_mon == ((tm->tm_mon-1)/3)*3+2);
+		break;
 	CASE_fmt_WW
 	CASE_fmt_IW
-	    /* last day in year */
-	    NOT_ROUND_MDAY(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday) == 
-		(DATE2J(tm->tm_year+1, 1,1) - 1))
-	    break;
+		/* last day in year */
+		NOT_ROUND_MDAY(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday) ==
+		(DATE2J(tm->tm_year+1, 1,1) - 1));
+		break;
 	CASE_fmt_W
-	    /* last day in month */
-	    NOT_ROUND_MDAY(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday) == 
-		(DATE2J(tm->tm_year, tm->tm_mon+1,1) - 1))
-	    break;
-    }
-    
-    switch (f)
-    {
+		/* last day in month */
+		NOT_ROUND_MDAY(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday) ==
+		(DATE2J(tm->tm_year, tm->tm_mon+1,1) - 1));
+		break;
+	}
+
+	switch (f)
+	{
 	/* easier convert to date */
 	CASE_fmt_IW
-	CASE_fmt_DAY	
+	CASE_fmt_DAY
 	CASE_fmt_IYYY
 	CASE_fmt_WW
 	CASE_fmt_W
@@ -782,39 +782,38 @@ ora_timestamptz_round (PG_FUNCTION_ARGS)
 	CASE_fmt_MON
 	CASE_fmt_YYYY
 	CASE_fmt_Q
-	    ROUND_MDAY(tm);
-	    j2date(_ora_date_round(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday), f) 
-	          + POSTGRES_EPOCH_JDATE,
+		ROUND_MDAY(tm);
+		j2date(_ora_date_round(DATE2J(tm->tm_year, tm->tm_mon, tm->tm_mday), f)
+			   + POSTGRES_EPOCH_JDATE,
 		&tm->tm_year, &tm->tm_mon, &tm->tm_mday);
-	    tm->tm_hour = 0;
-	    tm->tm_min = 0;
-	    redotz = true;
-	    break;		
+		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		redotz = true;
+		break;
 	CASE_fmt_DDD
-	    tm->tm_mday += (tm->tm_hour >= 12)?1:0;
-	    tm->tm_hour = 0;
-	    tm->tm_min = 0;
-	    redotz = true;
-	    break;	    
+		tm->tm_mday += (tm->tm_hour >= 12)?1:0;
+		tm->tm_hour = 0;
+		tm->tm_min = 0;
+		redotz = true;
+		break;
 	CASE_fmt_MI
-	    tm->tm_min += (tm->tm_sec >= 30)?1:0;
-	    break;	    
+		tm->tm_min += (tm->tm_sec >= 30)?1:0;
+		break;
 	CASE_fmt_HH
-	    tm->tm_hour += (tm->tm_min >= 30)?1:0;
-	    tm->tm_min = 0;
-	    break;
-    }
+		tm->tm_hour += (tm->tm_min >= 30)?1:0;
+		tm->tm_min = 0;
+		break;
+	}
 
-    tm->tm_sec = 0;
+	tm->tm_sec = 0;
 
-    if (redotz)
+	if (redotz)
 	tz = DetermineTimeZoneOffset(tm, session_timezone);
-	
-    if (tm2timestamp(tm, fsec, &tz, &result) != 0)
+
+	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 	ereport(ERROR,
-	    (errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-	    errmsg("timestamp out of range")));
+			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+			 errmsg("timestamp out of range")));
 
-    PG_RETURN_TIMESTAMPTZ(result);
+	PG_RETURN_TIMESTAMPTZ(result);
 }
-

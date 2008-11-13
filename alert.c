@@ -50,7 +50,7 @@ extern int context;
 #define TDAYS (1000*24*3600)
 
 
-/* 
+/*
  * There are maximum 30 events and 255 colaborated sessions
  *
  */
@@ -97,7 +97,7 @@ textcmpm(text *txt, char *str)
 		if (0 != (retval = *p++ - *str++))
 			return retval;
 	}
-	
+
 	if (len > 0)
 		return 1;
 
@@ -118,10 +118,10 @@ find_lock(int sid, bool create)
 {
 	int i;
 	int first_free = NOT_FOUND;
-	
+
 	if (session_lock != NULL)
 		return session_lock;
-	
+
 	for (i = 0; i < MAX_LOCKS; i++)
 	{
 		if (locks[i].sid == sid)
@@ -129,7 +129,7 @@ find_lock(int sid, bool create)
 		else if (locks[i].sid == NOT_USED && first_free == NOT_FOUND)
 			first_free = i;
 	}
-	
+
 	if (create)
 	{
 		if (first_free != NOT_FOUND)
@@ -140,11 +140,11 @@ find_lock(int sid, bool create)
 			return &locks[first_free];
 		}
 		else
-			ereport(ERROR,                                                          
+			ereport(ERROR,
     				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
         			 errmsg("lock request error"),
 				 errdetail("Failed to create session lock."),
-        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));   
+        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));
 	}
 
 	return NULL;
@@ -177,24 +177,24 @@ find_event(text *event_name, bool create, int *event_id)
 				events[i].receivers = NULL;
 				events[i].messages = NULL;
 				events[i].receivers_number = 0;
-				
+
 				if (event_id != NULL)
 					*event_id = i;
 				return &events[i];
 			}
 
-			ereport(ERROR,                                                          
+			ereport(ERROR,
     				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
         			 errmsg("event registeration error"),
 				 errdetail("Too much registered events."),
-        			 errhint("There are too much colaborated sessions. Increase MAX_EVENTS in 'pipe.h'.")));            
+        			 errhint("There are too much colaborated sessions. Increase MAX_EVENTS in 'pipe.h'.")));
 	}
 
 	return NULL;
 }
 
 
-static void 
+static void
 register_event(text *event_name)
 {
 	alert_event *ev;
@@ -204,7 +204,7 @@ register_event(text *event_name)
 
 	find_lock(sid, true);
 	ev = find_event(event_name, true, NULL);
-	
+
 	first_free = NOT_FOUND;
 	for(i = 0; i < ev->max_receivers; i++)
 	{
@@ -214,38 +214,38 @@ register_event(text *event_name)
 			first_free = i;
 	}
 
-	/* 
+	/*
 	 * I can have maximalne MAX_LOCKS receivers for one event.
-	 * Array receivers is increased for 16 fields 
+	 * Array receivers is increased for 16 fields
 	 */
 
 	if (first_free == NOT_FOUND)
 	{
 		if (ev->max_receivers + 16 > MAX_LOCKS)
-			ereport(ERROR,                                                          
+			ereport(ERROR,
     				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
         			 errmsg("lock request error"),
 				 errdetail("Failed to create session lock."),
-        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));   
+        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));
 
 		/* increase receiver's array */
 
 		new_receivers = (int*)salloc((ev->max_receivers + 16)*sizeof(int));
-			
+
 		for (i = 0; i < ev->max_receivers + 16; i++)
 		{
 			if (i < ev->max_receivers)
 				new_receivers[i] = ev->receivers[i];
 			else
 				new_receivers[i] = NOT_USED;
-		}		
+		}
 
-		ev->max_receivers += 16;	
+		ev->max_receivers += 16;
 		if (ev->receivers)
 			ora_sfree(ev->receivers);
 
 		ev->receivers = new_receivers;
-		
+
 		first_free = ev->max_receivers - 16;
 	}
 
@@ -258,7 +258,7 @@ register_event(text *event_name)
  * I expect clean all message_items
  */
 
-static void 
+static void
 unregister_event(int event_id, int sid)
 {
 	alert_event *ev;
@@ -285,13 +285,13 @@ unregister_event(int event_id, int sid)
 }
 
 
-/* 
+/*
  * remove receiver from list of receivers.
- * Message has always minimal one receiver 
+ * Message has always minimal one receiver
  * Return true, if exist other receiver
  */
 
-static bool 
+static bool
 remove_receiver(message_item *msg, int sid)
 {
 	int i;
@@ -307,7 +307,7 @@ remove_receiver(message_item *msg, int sid)
 		}
 		else if (msg->receivers[i] != NOT_USED)
 		{
-	   
+
 			find_other = true;
 		}
 		if (found && find_other)
@@ -317,8 +317,8 @@ remove_receiver(message_item *msg, int sid)
 	return find_other;
 }
 
-/* 
- * 
+/*
+ *
  * Reads message message_id for user sid. If arg:all is true,
  * then get any message. If arg:remove_all then remove all
  * signaled messages for sid. If arg:filter_message then
@@ -329,7 +329,7 @@ remove_receiver(message_item *msg, int sid)
 
 
 static char*
-find_and_remove_message_item(int message_id, int sid, 
+find_and_remove_message_item(int message_id, int sid,
 							 bool all, bool remove_all,
 							 bool filter_message,
 							 int *sleep, char **event_name)
@@ -364,7 +364,7 @@ find_and_remove_message_item(int message_id, int sid,
 				last_echo = echo;
 				echo = echo->next_echo;
 				continue;
-			}			
+			}
 
 			message_text = echo->message->message;
 			_message_id = echo->message_id;
@@ -373,13 +373,13 @@ find_and_remove_message_item(int message_id, int sid,
 			{
 				destroy_msg_item = true;
 				if (echo->message->prev_message != NULL)
-					echo->message->prev_message->next_message = 
+					echo->message->prev_message->next_message =
 						echo->message->next_message;
 				else
-					events[echo->message_id].messages = 
+					events[echo->message_id].messages =
 						echo->message->next_message;
 				if (echo->message->next_message != NULL)
-					echo->message->next_message->prev_message = 
+					echo->message->next_message->prev_message =
 						echo->message->prev_message;
 				ora_sfree(echo->message->receivers);
 				ora_sfree(echo->message);
@@ -405,7 +405,7 @@ find_and_remove_message_item(int message_id, int sid,
 			}
 			else if (_message_id == message_id || all)
 			{
-				/* I have to do local copy */				
+				/* I have to do local copy */
 				if (message_text)
 				{
 					result = pstrcpy(message_text);
@@ -415,7 +415,7 @@ find_and_remove_message_item(int message_id, int sid,
 
 				if (event_name != NULL)
 					*event_name = pstrcpy(events[_message_id].event_name);
-				
+
 				break;
 			}
 		}
@@ -424,9 +424,9 @@ find_and_remove_message_item(int message_id, int sid,
 	return result;
 }
 
-/* 
+/*
  * Queue mustn't to contain duplicate messages
- */  
+ */
 
 static void
 create_message(text *event_name, text *message)
@@ -447,19 +447,19 @@ create_message(text *event_name, text *message)
 			while (msg_item != NULL)
 			{
 				if (msg_item->message == NULL && message == NULL)
-				    return;  
+				    return;
 				if (msg_item->message != NULL && message != NULL)
 					if (0 == textcmpm(message,msg_item->message))
 						return;
-				
+
 				msg_item = msg_item->next_message;
 			}
-		
+
 			msg_item = salloc(sizeof(message_item));
-			
+
 			msg_item->receivers = salloc( ev->receivers_number*sizeof(int));
 			msg_item->receivers_number = ev->receivers_number;
-			
+
 
 			if (message != NULL)
 				msg_item->message = ora_scstring(message);
@@ -475,7 +475,7 @@ create_message(text *event_name, text *message)
 						if (locks[k].sid == ev->receivers[j])
 						{
 							/* create echo */
-							
+
 							message_echo *echo = salloc(sizeof(message_echo));
 							echo->message = msg_item;
 							echo->message_id = event_id;
@@ -487,16 +487,16 @@ create_message(text *event_name, text *message)
 							{
 								message_echo *p;
 								p = locks[k].echo;
-								
+
 								while (p->next_echo != NULL)
 									p = p->next_echo;
-								
+
 								p->next_echo = echo;
 							}
 						}
 
 				}
-			
+
 			msg_item->next_message = NULL;
 			if (ev->messages == NULL)
 			{
@@ -509,13 +509,13 @@ create_message(text *event_name, text *message)
 				p = ev->messages;
 				while (p->next_message != NULL)
 					p = p->next_message;
-				
+
 				p->next_message = msg_item;
 				msg_item->prev_message = p;
 			}
-			
+
 		}
-	}	
+	}
 }
 
 
@@ -588,10 +588,10 @@ dbms_alert_remove(PG_FUNCTION_ARGS)
 		ev = find_event(name, false, &ev_id);
 		if (NULL != ev)
 		{
-			find_and_remove_message_item(ev_id, sid, 
+			find_and_remove_message_item(ev_id, sid,
 							 false, true, true, NULL, NULL);
 			unregister_event(ev_id, sid);
-		}	
+		}
 		LWLockRelease(shmem_lock);
 		PG_RETURN_VOID();
 	}
@@ -623,10 +623,10 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 		for(i = 0; i < MAX_EVENTS; i++)
 			if (events[i].event_name != NULL)
 			{
-				find_and_remove_message_item(i, sid, 
+				find_and_remove_message_item(i, sid,
 								 false, true, true, NULL, NULL);
 				unregister_event(i, sid);
-			
+
 			}
 		LWLockRelease(shmem_lock);
 		PG_RETURN_VOID();
@@ -644,9 +644,9 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
  *                              ,status OUT INTEGER
  *                              ,timeout IN NUMBER DEFAULT MAXWAIT);
  *
- *  Waits for up to timeout seconds to be notified of any alerts for which 
- *  the session is registered. If status = 0 then name and message contain 
- *  alert information. If status = 1 then timeout seconds elapsed without 
+ *  Waits for up to timeout seconds to be notified of any alerts for which
+ *  the session is registered. If status = 0 then name and message contain
+ *  alert information. If status = 1 then timeout seconds elapsed without
  *  notification of any alert.
  *
  */
@@ -654,33 +654,33 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 Datum
 dbms_alert_waitany(PG_FUNCTION_ARGS)
 {
-	float8 timeout; 
+	float8 timeout;
 	TupleDesc   tupdesc;
 	AttInMetadata       *attinmeta;
 	HeapTuple   tuple;
-	Datum       result;	
+	Datum       result;
 	char *str[3] = {NULL, NULL, "1"};
 	int cycle = 0;
 	float8 endtime;
 	TupleDesc	btupdesc;
-	
+
 	if (PG_ARGISNULL(0))
 		timeout = TDAYS;
-	else 
+	else
 		timeout = PG_GETARG_FLOAT8(0);
 
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 	{
-		str[1]  = find_and_remove_message_item(-1, sid, 
+		str[1]  = find_and_remove_message_item(-1, sid,
 							   true, false, false, NULL, &str[0]);
-		if (str[0])		
+		if (str[0])
 		{
 			str[2] = "0";
-			LWLockRelease(shmem_lock);	
+			LWLockRelease(shmem_lock);
 			break;
 		}
-		LWLockRelease(shmem_lock);	
+		LWLockRelease(shmem_lock);
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
@@ -689,10 +689,10 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
 	attinmeta = TupleDescGetAttInMetadata(btupdesc);
 	tuple = BuildTupleFromCStrings(attinmeta, str);
 	result = HeapTupleGetDatum(tuple);
-		
+
 	if (str[0])
 		pfree(str[0]);
-	
+
 	if (str[1])
 		pfree(str[1]);
 
@@ -706,8 +706,8 @@ dbms_alert_waitany(PG_FUNCTION_ARGS)
  *                              ,status OUT INTEGER
  *                              ,timeout IN NUMBER DEFAULT MAXWAIT);
  *
- *  Waits for up to timeout seconds for notification of alert name. If status = 0 
- *  then message contains alert information. If status = 1 then timeout 
+ *  Waits for up to timeout seconds for notification of alert name. If status = 0
+ *  then message contains alert information. If status = 1 then timeout
  *  seconds elapsed without notification.
  *
  */
@@ -729,16 +729,16 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	TupleDesc	btupdesc;
 
 	if (PG_ARGISNULL(0))
-		ereport(ERROR,                                                          
-    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
-        		 errmsg("event name is NULL"),
-			 errdetail("Eventname may not be NULL.")));                       
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("event name is NULL"),
+			 errdetail("Eventname may not be NULL.")));
 
 	if (PG_ARGISNULL(1))
 		timeout = TDAYS;
 	else
 		timeout = PG_GETARG_FLOAT8(1);
-		
+
 	name = PG_GETARG_TEXT_P(0);
 
 	WATCH_PRE(timeout, endtime, cycle);
@@ -746,17 +746,17 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 	{
 		if (NULL != find_event(name, false, &message_id))
 		{
-			str[0] = find_and_remove_message_item(message_id, sid, 
+			str[0] = find_and_remove_message_item(message_id, sid,
 								  false, false, false, NULL, &event_name);
 			if (event_name != NULL)
 			{
 				str[1] = "0";
 				pfree(event_name);
-				LWLockRelease(shmem_lock);	
+				LWLockRelease(shmem_lock);
 				break;
 			}
 		}
-		LWLockRelease(shmem_lock);	
+		LWLockRelease(shmem_lock);
 	}
 	WATCH_POST(timeout, endtime, cycle);
 
@@ -776,12 +776,12 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 /*
  *
  *  PROCEDURE DBMS_ALERT.SET_DEFAULTS(sensitivity IN NUMBER);
- * 
- *  The SET_DEFAULTS procedure is used to set session configurable settings 
- *  used by the DBMS_ALERT package. Currently, the polling loop interval sleep time 
- *  is the only session setting that can be modified using this procedure. The 
+ *
+ *  The SET_DEFAULTS procedure is used to set session configurable settings
+ *  used by the DBMS_ALERT package. Currently, the polling loop interval sleep time
+ *  is the only session setting that can be modified using this procedure. The
  *  header for this procedure is,
- * 
+ *
  */
 
 Datum
@@ -800,20 +800,20 @@ dbms_alert_set_defaults(PG_FUNCTION_ARGS)
 /*
  * This code was originally in plpgsql
  *
- */ 
+ */
 
 /*
-CREATE OR REPLACE FUNCTION dbms_alert._defered_signal() RETURNS trigger AS $$                                                         
-BEGIN                                                                                                                                 
-  PERFORM dbms_alert._signal(NEW.event, NEW.message);                                                                                 
-  DELETE FROM ora_alerts WHERE oid=NEW.oid;                                                                                           
-  RETURN NEW;                                                                                                                         
-END;                                                                                                                                  
+CREATE OR REPLACE FUNCTION dbms_alert._defered_signal() RETURNS trigger AS $$
+BEGIN
+  PERFORM dbms_alert._signal(NEW.event, NEW.message);
+  DELETE FROM ora_alerts WHERE oid=NEW.oid;
+  RETURN NEW;
+END;
 $$ LANGUAGE plpgsql SECURITY DEFINER VOLATILE;
 */
 
-#define DatumGetItemPointer(X)   ((ItemPointer) DatumGetPointer(X))                                      
-#define ItemPointerGetDatum(X)   PointerGetDatum(X)                                                      
+#define DatumGetItemPointer(X)   ((ItemPointer) DatumGetPointer(X))
+#define ItemPointerGetDatum(X)   PointerGetDatum(X)
 
 Datum
 dbms_alert_defered_signal(PG_FUNCTION_ARGS)
@@ -824,7 +824,7 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 	char *relname;
 	text *name;
 	text *message;
-	int event_col; 
+	int event_col;
 	int message_col;
 
 	Datum datum;
@@ -868,11 +868,11 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 			 errmsg("attribute message not found")));
 
 	datum = SPI_getbinval(rettuple, tupdesc, event_col, &isnull);
-	if (isnull) 
-		ereport(ERROR,                                                          
-    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                            
+	if (isnull)
+		ereport(ERROR,
+    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
         		 errmsg("event name is NULL"),
-			 errdetail("Eventname may not be NULL.")));                    
+			 errdetail("Eventname may not be NULL.")));
 	name = DatumGetTextP(datum);
 
 	datum = SPI_getbinval(rettuple, tupdesc, message_col, &isnull);
@@ -891,8 +891,8 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 		void *plan;
 
 		create_message(name, message);
-		LWLockRelease(shmem_lock);	
-		
+		LWLockRelease(shmem_lock);
+
 		tid = &rettuple->t_data->t_ctid;
 
 		if (!(plan = SPI_prepare("DELETE FROM ora_alerts WHERE ctid = $1", 1, argtypes)))
@@ -906,7 +906,7 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 				(errcode(ERRCODE_TRIGGERED_ACTION_EXCEPTION),
 				errmsg("can't execute sql")));
-		
+
 		SPI_finish();
 		return PointerGetDatum(rettuple);
 	}
@@ -921,28 +921,28 @@ dbms_alert_defered_signal(PG_FUNCTION_ARGS)
  *
  *  PROCEDURE DBMS_ALERT.SIGNAL(name IN VARCHAR2,message IN VARCHAR2);
  *
- *  Signals the occurrence of alert name and attaches message. (Sessions 
- *  registered for alert name are notified only when the signaling transaction 
+ *  Signals the occurrence of alert name and attaches message. (Sessions
+ *  registered for alert name are notified only when the signaling transaction
  *  commits.)
- * 
+ *
  */
 
 /*
-                                                                                                                                      
-CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) RETURNS void AS $$                                           
-BEGIN                                                                                                                                 
-  PERFORM 1 FROM pg_catalog.pg_class c                                                                                                
-            WHERE pg_catalog.pg_table_is_visible(c.oid)                                                                               
-            AND c.relkind='r' AND c.relname = 'ora_alerts';                                                                           
-  IF NOT FOUND THEN                                                                                                                   
-    CREATE TEMP TABLE ora_alerts(event text, message text) WITH OIDS;                                                                 
-    REVOKE ALL ON TABLE ora_alerts FROM PUBLIC;                                                                                       
-    CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts                                                             
-      INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert._defered_signal();                                                 
-  END IF;                                                                                                                             
-  INSERT INTO ora_alerts(event, message) VALUES(_event, _message);                                                                    
-END;                                                                                                                                  
-$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;                                                                                        
+
+CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) RETURNS void AS $$
+BEGIN
+  PERFORM 1 FROM pg_catalog.pg_class c
+            WHERE pg_catalog.pg_table_is_visible(c.oid)
+            AND c.relkind='r' AND c.relname = 'ora_alerts';
+  IF NOT FOUND THEN
+    CREATE TEMP TABLE ora_alerts(event text, message text) WITH OIDS;
+    REVOKE ALL ON TABLE ora_alerts FROM PUBLIC;
+    CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts
+      INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert._defered_signal();
+  END IF;
+  INSERT INTO ora_alerts(event, message) VALUES(_event, _message);
+END;
+$$ LANGUAGE plpgsql VOLATILE SECURITY DEFINER;
 */
 
 #define SPI_EXEC(cmd,_type_) \
@@ -951,7 +951,7 @@ if (SPI_OK_##_type_ != SPI_exec(cmd, 1)) \
     			(errcode(ERRCODE_INTERNAL_ERROR), \
         		 errmsg("SPI execute error"), \
 			 errdetail("Can't execute %s.", cmd)));
-	
+
 Datum
 dbms_alert_signal(PG_FUNCTION_ARGS)
 {
@@ -961,10 +961,10 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 	char nulls[2] = {' ',' '};
 
 	if (PG_ARGISNULL(0))
-		ereport(ERROR,                                                          
-    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),  
+		ereport(ERROR,
+    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
         		 errmsg("event name is NULL"),
-			 errdetail("Eventname may not be NULL.")));                    
+			 errdetail("Eventname may not be NULL.")));
 
 	if (PG_ARGISNULL(1))
 		nulls[1] = 'n';
@@ -992,7 +992,7 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 
 	if (!(plan = SPI_prepare(
 			"INSERT INTO ora_alerts(event,message) VALUES($1, $2)",
-			2, 
+			2,
 			argtypes)))
 			ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),

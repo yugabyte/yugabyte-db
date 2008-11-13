@@ -115,7 +115,7 @@ static void check_secure_locality(const char *path);
 static char *get_safe_path(text *location, text *filename);
 
 /*
- * get_descriptor(FILE *file) find any free slot for FILE pointer. 
+ * get_descriptor(FILE *file) find any free slot for FILE pointer.
  * If isn't realloc array slots and add 32 new free slots.
  *
  */
@@ -174,7 +174,7 @@ IO_EXCEPTION(void)
 		case ENOTDIR:
 			CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
 			break;
-		
+
 		default:
 			CUSTOM_EXCEPTION(INVALID_OPERATION, strerror(errno));
 	}
@@ -186,7 +186,7 @@ IO_EXCEPTION(void)
  *			   open_mode text,
  *			   max_linesize integer)
  *          RETURNS UTL_FILE.FILE_TYPE;
- * 
+ *
  * The FOPEN function opens specified file and returns file handle.
  *  open_mode: ['R', 'W', 'A']
  *  max_linesize: [1 .. 32767]
@@ -194,7 +194,7 @@ IO_EXCEPTION(void)
  * Exceptions:
  *  INVALID_MODE, INVALID_OPERATION, INVALID_PATH, INVALID_MAXLINESIZE
  */
-Datum 
+Datum
 utl_file_fopen(PG_FUNCTION_ARGS)
 {
 	text	   *open_mode;
@@ -203,7 +203,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	FILE	   *file;
 	char	   *fullname;
 	int			d;
-	
+
 	NOT_NULL_ARG(0);
 	NOT_NULL_ARG(1);
 	NOT_NULL_ARG(2);
@@ -292,24 +292,24 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 	char *bpt;
 	int csize = 0;
 	text *result = NULL;
-	
+
 	bool eof = true;
 
 	buffer = palloc(max_linesize + 2);
 	bpt = buffer;
 
 	errno = 0;
-	
+
 	while (csize < max_linesize && (c = fgetc(f)) != EOF)
 	{
 		eof = false; 	/* I was able read one char */
-    
+
 		if (c == '\r')  /* lookin ahead \n */
 		{
 			c = fgetc(f);
 			if (c == EOF)
 				break;  /* last char */
-				
+
 			if (c != '\n')
 				ungetc(c, f);
 			/* skip \r\n */
@@ -345,7 +345,7 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 				CUSTOM_EXCEPTION(READ_ERROR, strerror(errno));
 				break;
 		}
-	    
+
 		*iseof = true;
 	}
 
@@ -440,11 +440,11 @@ do_flush(FILE *f)
  *          RETURNS bool;
  *
  * The PUT function puts data out to specified file. Buffer length allowed is
- * 32K or 1024 (max_linesize); 
+ * 32K or 1024 (max_linesize);
  *
  * Exceptions:
  *  INVALID_FILEHANDLE, INVALID_OPERATION, WRITE_ERROR, VALUE_ERROR
- * 
+ *
  * Note: returns bool because I cannot do envelope over void function
  */
 
@@ -456,7 +456,7 @@ do_flush(FILE *f)
 			break; \
 		default: \
 			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno)); \
-	}  
+	}
 
 static FILE *
 do_put(PG_FUNCTION_ARGS)
@@ -577,7 +577,7 @@ utl_file_putf(PG_FUNCTION_ARGS)
 	for (fpt = VARDATA(format); format_length > 0; fpt++, format_length--)
 	{
 		if (format_length == 1)
-		{		
+		{
 			/* last char */
 			CHECK_LENGTH(++cur_len);
 			if (fputc(*fpt, f) == EOF)
@@ -616,13 +616,13 @@ utl_file_putf(PG_FUNCTION_ARGS)
 
 				if (fputs(tbuf, f) == EOF)
 					CHECK_ERRNO_PUT();
-				
+
 			}
 			fpt++; format_length--;
 			continue;
 		}
 		CHECK_LENGTH(++cur_len);
-		if (fputc(fpt[0], f) == EOF)	
+		if (fputc(fpt[0], f) == EOF)
 			CHECK_ERRNO_PUT();
 	}
 
@@ -635,7 +635,7 @@ utl_file_putf(PG_FUNCTION_ARGS)
  *          RETURNS void;
  *
  * This function makes sure that all pending data for the specified file is written
- * physically out to file. 
+ * physically out to file.
  *
  * Exceptions:
  *  INVALID_FILEHANDLE, INVALID_OPERATION, WRITE_ERROR
@@ -658,7 +658,7 @@ utl_file_fflush(PG_FUNCTION_ARGS)
  *          RETURNS NULL
  *
  * Close an open file. This function reset file handle to NULL on Oracle platform.
- * It isn't possible in PostgreSQL, and then you have to call fclose function 
+ * It isn't possible in PostgreSQL, and then you have to call fclose function
  * like:
  *        file := utl_file.fclose(file);
  *
@@ -694,7 +694,7 @@ utl_file_fclose(PG_FUNCTION_ARGS)
 
 
 /*
- * FUNCTION UTL_FILE.FCLOSE_ALL() 
+ * FUNCTION UTL_FILE.FCLOSE_ALL()
  *          RETURNS void
  *
  * Close all opened files.
@@ -727,13 +727,13 @@ utl_file_fclose_all(PG_FUNCTION_ARGS)
 
 
 /*
- * utl_file_dir security .. is solved with aux. table. 
+ * utl_file_dir security .. is solved with aux. table.
  *
  * Raise exception if don't find string in table.
  */
 static void
 check_secure_locality(const char *path)
-{	
+{
 	static SPIPlanPtr	plan = NULL;
 
 	Oid		argtypes[] = {TEXTOID};
@@ -770,14 +770,14 @@ check_secure_locality(const char *path)
 				errmsg("SPI_prepare_failed")));
 	}
 
-	if (SPI_OK_SELECT != SPI_execute_plan(plan, values, nulls, false, 1))	
+	if (SPI_OK_SELECT != SPI_execute_plan(plan, values, nulls, false, 1))
 		ereport(ERROR,
 			(errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("can't execute sql")));
 
 	if (SPI_processed == 0)
-		ereport(ERROR, 
-			(errcode(ERRCODE_RAISE_EXCEPTION), 
+		ereport(ERROR,
+			(errcode(ERRCODE_RAISE_EXCEPTION),
 			 errmsg(INVALID_PATH),
 			 errdetail("you cannot access locality"),
 			 errhint("locality is not found in utl_file_dir table")));

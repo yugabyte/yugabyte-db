@@ -1,5 +1,5 @@
 /*
-  This code implements one part of functonality of 
+  This code implements one part of functonality of
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
@@ -9,7 +9,7 @@
 
   History:
     1.0. first public version 22. September 2006
-    
+
 */
 
 #include "postgres.h"
@@ -52,13 +52,13 @@ dbms_utility_format_call_stack(char mode)
 #else
 	errstart(ERROR, __FILE__, __LINE__, PG_FUNCNAME_MACRO);
 #endif
-	
+
 	MemoryContextSwitchTo(oldcontext);
-	
-    	for (econtext = error_context_stack;                                             
-            	econtext != NULL;                                                       
-        	econtext = econtext->previous)                                          
-        	(*econtext->callback) (econtext->arg);                 
+
+	for (econtext = error_context_stack;
+		 econtext != NULL;
+		 econtext = econtext->previous)
+		(*econtext->callback) (econtext->arg);
 
 	edata = CopyErrorData();
 
@@ -67,7 +67,7 @@ dbms_utility_format_call_stack(char mode)
 	/* Now I wont to parse edata->context to more traditional format */
 	/* I am not sure about order */
 
-	sinfo = makeStringInfo(); 
+	sinfo = makeStringInfo();
 
 	switch (mode)
 	{
@@ -91,12 +91,11 @@ dbms_utility_format_call_stack(char mode)
 			/* first, solve multilines */
 			if (eol)
 				*eol = '\0';
-    
+
 			/* first know format */
 			if (strncmp(start, "PL/pgSQL function ",18) == 0)
 			{
-
-		    		char *p1, *p2;
+				char *p1, *p2;
 
 				if ((p1 = strstr(start, "function \"")))
 				{
@@ -112,20 +111,20 @@ dbms_utility_format_call_stack(char mode)
 				else if ((p1 = strstr(start, "function ")))
 				{
 					p1 += strlen("function ");
-				    
+
 					if ((p2 = strchr(p1, ')')))
 					{
 						char c = *++p2;
 						*p2 = '\0';
-						
+
 						oname = pstrdup(p1);
-						fnoid = DatumGetObjectId(DirectFunctionCall1(regprocedurein, 
+						fnoid = DatumGetObjectId(DirectFunctionCall1(regprocedurein,
 							CStringGetDatum(oname)));
 						*p2 = c;
 						start = p2;
 					}
 				}
-		
+
 
 				if ((p1 = strstr(start, "line ")))
 				{
@@ -134,45 +133,45 @@ dbms_utility_format_call_stack(char mode)
 
 					p1 += strlen("line ");
 					p2i = strspn(p1, "0123456789");
-					
+
 					/* safe separator */
-					c = p1[p2i]; 
-										
+					c = p1[p2i];
+
 					p1[p2i] = '\0';
 					line = pstrdup(p1);
 					p1[p2i] = c;
-					
-					start = p1 + p2i;									
-				} 
-			} 
+
+					start = p1 + p2i;
+				}
+			}
 
 			switch (mode)
 			{
 				case 'o':
 					appendStringInfo(sinfo, "%8x    %5s  function %s", (int)fnoid, line, oname);
 					break;
-				
+
 				case 'p':
-    					appendStringInfo(sinfo, "%8d    %5s  function %s", (int)fnoid, line, oname);
+					appendStringInfo(sinfo, "%8d    %5s  function %s", (int)fnoid, line, oname);
 					break;
-				
+
 				case 's':
 					appendStringInfo(sinfo, "%d,%s,%s", (int)fnoid, line, oname);
 					break;
 			}
-	    
+
 			if (eol)
 			{
-				start = eol + 1;							
+				start = eol + 1;
 				appendStringInfoChar(sinfo, '\n');
 			}
 			else
 				break;
 		}
-		    
+
 	}
 
-	return sinfo->data;	
+	return sinfo->data;
 }
 
 
@@ -182,14 +181,14 @@ dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(CStringGetTextP(dbms_utility_format_call_stack('o')));
 };
 
-Datum 
+Datum
 dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 {
 	text *arg = PG_GETARG_TEXT_P(0);
 	char mode;
 
 	if ((1 != VARSIZE(arg) - VARHDRSZ))
-		ereport(ERROR, 
+		ereport(ERROR,
 			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 			 errmsg("invalid parameter"),
 			 errdetail("Allowed only chars [ops].")));
@@ -202,7 +201,7 @@ dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 		case 's':
 			break;
 		default:
-	    		ereport(ERROR, 
+			ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid parameter"),
 				 errdetail("Allowed only chars [ops].")));

@@ -1,5 +1,5 @@
 /*
-  This code implements one part of functonality of 
+  This code implements one part of functonality of
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
@@ -10,7 +10,7 @@
   History:
     1.0. first public version 13. March 2006
 */
-  
+
 #include "postgres.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
@@ -40,10 +40,10 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(plvlex_tokens);
 
 
-extern int      orafce_sql_yyparse();                                                                                                               
-extern void orafce_sql_yyerror(const char *message);                                                                                                
-extern void orafce_sql_scanner_init(const char *str);                                                                                               
-extern void orafce_sql_scanner_finish(void); 
+extern int      orafce_sql_yyparse();
+extern void orafce_sql_yyerror(const char *message);
+extern void orafce_sql_scanner_init(const char *str);
+extern void orafce_sql_scanner_finish(void);
 
 static orafce_lexnode *__node;
 
@@ -51,24 +51,24 @@ static char *__result;
 static int __len;
 
 #define CSTRING(txt) \
-    ( \
+	( \
     __len = VARSIZE(txt) - VARHDRSZ, \
     __result = palloc(__len + 1), \
     memcpy(__result, VARDATA(txt), __len), \
     __result[__len] = '\0', \
-    __result) 
+    __result)
 
 
-#define COPY_TO_S(src,dest,col)	 (dest->col = (src->col ? pstrdup(src->col) : NULL))
-#define COPY_TO(src,dest,col)    (dest->col = src->col)
-                                                                                                                                                            
-#define COPY_FIELDS(src,dest)     \
+#define COPY_TO_S(src,dest,col)	(dest->col = (src->col ? pstrdup(src->col) : NULL))
+#define COPY_TO(src,dest,col)	(dest->col = src->col)
+
+#define COPY_FIELDS(src,dest) \
 	COPY_TO(src, dest, typenode), \
-        COPY_TO_S(src,dest,str), \
-        COPY_TO(src,dest,keycode), \
-        COPY_TO(src,dest,lloc), \
-        COPY_TO_S(src,dest,sep), \
-        COPY_TO(src,dest,modificator), \
+	COPY_TO_S(src,dest,str), \
+	COPY_TO(src,dest,keycode), \
+	COPY_TO(src,dest,lloc), \
+	COPY_TO_S(src,dest,sep), \
+	COPY_TO(src,dest,modificator), \
 	COPY_TO(src,dest,classname)
 
 
@@ -76,24 +76,24 @@ static int __len;
   ( \
     __node = (orafce_lexnode*) palloc(sizeof(orafce_lexnode)),  \
     COPY_FIELDS(src,__node), \
-    __node)                                                                                                                                                 
+    __node)
 
 
 /* Finding triplet a.b --> a */
 
 #define IsType(node, type)	(node->typenode == type)
 #define APPEND_NODE(list,nd)	\
-    if (nd) \
-    { \
-	    list = lappend(list, nd); \
-	    nd = NULL; \
-    }
+	if (nd) \
+	{ \
+		list = lappend(list, nd); \
+		nd = NULL; \
+	}
 
 #define mod(a)  (a->modificator)
-#define SF(a)	(a ? a : "")    
+#define SF(a)	(a ? a : "")
 
 #define NEWNODE(type) \
-    ( \
+	( \
 	__node = (orafce_lexnode *) palloc(sizeof(orafce_lexnode)), \
 	__node->typenode = type, \
 	__node->modificator = NULL, \
@@ -116,38 +116,38 @@ compose(orafce_lexnode *a, orafce_lexnode *b)
 	result->lloc = a->lloc;
 
 	if (strcmp(SF(mod(a)), "dq") == 0)
-	    appendStringInfo(sinfo, "\"%s\".", a->str);
+		appendStringInfo(sinfo, "\"%s\".", a->str);
 	else
 	{
-	    appendStringInfoString(sinfo, a->str);
-	    appendStringInfoChar(sinfo, '.');
+		appendStringInfoString(sinfo, a->str);
+		appendStringInfoChar(sinfo, '.');
 	}
 
 	if (strcmp(SF(mod(b)), "dq") == 0)
-	    appendStringInfo(sinfo, "\"%s\"", b->str);
+		appendStringInfo(sinfo, "\"%s\"", b->str);
 	else
-	    appendStringInfoString(sinfo, b->str);
+		appendStringInfoString(sinfo, b->str);
 
 	result->str = sinfo->data;
-	
+
 	return result;
 }
 
 static List *
-filterList(List *list, bool skip_spaces, bool qnames)                                                                                                                                        
-{                                                                                                                                                           
-        List *result = NIL;                                                                                                                         
-        ListCell *cell;                                    
-	bool isdot = false;                        
+filterList(List *list, bool skip_spaces, bool qnames)
+{
+	List *result = NIL;
+	ListCell *cell;
+	bool isdot = false;
 	orafce_lexnode *a = NULL;
 	orafce_lexnode *dot = NULL;
 
-        foreach(cell, list)                                                                                                                         
-        {                                                                                                                           
-                orafce_lexnode *nd = (orafce_lexnode *) lfirst(cell);
-		
+	foreach(cell, list)
+	{
+		orafce_lexnode *nd = (orafce_lexnode *) lfirst(cell);
+
 		if (qnames)
-		{	
+		{
 			isdot = (IsType(nd,OTHERS) && (nd->str[0] == '.'));
 
 			if (IsType(nd, IDENT) && dot && a)
@@ -160,7 +160,7 @@ filterList(List *list, bool skip_spaces, bool qnames)
 			{
 				dot = COPY_NODE(nd);
 				continue;
-			} 
+			}
 			else if (IsType(nd, IDENT) && !a)
 			{
 				a = COPY_NODE(nd);
@@ -175,23 +175,23 @@ filterList(List *list, bool skip_spaces, bool qnames)
 		if (!(skip_spaces && IsType(nd,WHITESPACE)))
 		{
 			result = lappend(result, COPY_NODE(nd));
-		}                                                                   
-        }       
+		}
+	}
 
 	/* clean buffered values */
 	APPEND_NODE(result,a);
 	APPEND_NODE(result,dot);
 
-	return result;                                                                                                                              
-}                                          
+	return result;
+}
 
 Datum plvlex_tokens(PG_FUNCTION_ARGS)
 {
-	FuncCallContext *funcctx;
-	TupleDesc        tupdesc;
-	TupleTableSlot  *slot;
-	AttInMetadata   *attinmeta;
-	tokensFctx       *fctx;
+	FuncCallContext	   *funcctx;
+	TupleDesc			tupdesc;
+	TupleTableSlot	   *slot;
+	AttInMetadata	   *attinmeta;
+	tokensFctx		   *fctx;
 
 
 	if (SRF_IS_FIRSTCALL ())
@@ -202,11 +202,9 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		bool skip_spaces = PG_GETARG_BOOL(1);
 		bool qnames = PG_GETARG_BOOL(2);
 
-		orafce_sql_scanner_init(CSTRING(src)); 
+		orafce_sql_scanner_init(CSTRING(src));
 		if (orafce_sql_yyparse(&lexems) != 0)
-    		    orafce_sql_yyerror("bogus input");
-
-
+			orafce_sql_yyerror("bogus input");
 
 		orafce_sql_scanner_finish();
 
@@ -215,7 +213,7 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 
 		fctx = (tokensFctx*) palloc (sizeof (tokensFctx));
 		funcctx->user_fctx = (void *)fctx;
-	    
+
 		fctx->nodes = filterList(lexems, skip_spaces, qnames);
 		fctx->nnodes = list_length(fctx->nodes);
 		fctx->cnode = 0;
@@ -236,10 +234,10 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		TupleDescInitEntry (tupdesc,  4, "class",     TEXTOID, -1, 0);
 		TupleDescInitEntry (tupdesc,  5, "separator", TEXTOID, -1, 0);
 		TupleDescInitEntry (tupdesc,  6, "mod",       TEXTOID, -1, 0);
- 		
-		slot = TupleDescGetSlot (tupdesc); 
+
+		slot = TupleDescGetSlot (tupdesc);
 		funcctx -> slot = slot;
-		
+
 		attinmeta = TupleDescGetAttInMetadata (tupdesc);
 		funcctx -> attinmeta = attinmeta;
 
@@ -271,19 +269,19 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 		snprintf(values[4],   255, "%s", SF(nd->sep));
 		snprintf(values[5],    48, "%s", SF(nd->modificator));
 
-		if (nd->keycode == -1) 
+		if (nd->keycode == -1)
 			values[2] = NULL;
 
-		if (!nd->sep) 
+		if (!nd->sep)
 			values[4] = NULL;
 
-		if (!nd->modificator) 
+		if (!nd->modificator)
 			values[5] = NULL;
-				
+
 		tuple = BuildTupleFromCStrings (funcctx -> attinmeta,
 							fctx -> values);
 		result = TupleGetDatum (funcctx -> slot, tuple);
-	
+
 		values[2] = back_vals[2];
 		values[4] = back_vals[4];
 		values[5] = back_vals[5];

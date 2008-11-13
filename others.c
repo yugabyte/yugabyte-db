@@ -12,7 +12,7 @@
 #include "orafunc.h"
 
 /*
- * Source code for nlssort is taken from postgresql-nls-string 
+ * Source code for nlssort is taken from postgresql-nls-string
  * package by Jan Pazdziora
  *
  */
@@ -35,10 +35,10 @@ PG_FUNCTION_INFO_V1(ora_lnnvl);
 Datum
 ora_lnnvl(PG_FUNCTION_ARGS)
 {
-    if (PG_ARGISNULL(0))
-	PG_RETURN_BOOL(true);
+	if (PG_ARGISNULL(0))
+		PG_RETURN_BOOL(true);
 
-    PG_RETURN_BOOL(!PG_GETARG_BOOL(0));
+	PG_RETURN_BOOL(!PG_GETARG_BOOL(0));
 }
 
 PG_FUNCTION_INFO_V1(ora_concat);
@@ -46,33 +46,33 @@ PG_FUNCTION_INFO_V1(ora_concat);
 Datum
 ora_concat(PG_FUNCTION_ARGS)
 {
-    text *t1;
-    text *t2;
-    int l1;
-    int l2;
-    text *result;
-    
-    if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
+	text *t1;
+	text *t2;
+	int l1;
+	int l2;
+	text *result;
+
+	if (PG_ARGISNULL(0) && PG_ARGISNULL(1))
 		PG_RETURN_NULL();
-	
-    if (PG_ARGISNULL(0))
+
+	if (PG_ARGISNULL(0))
 		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
-	
-    if (PG_ARGISNULL(1))
+
+	if (PG_ARGISNULL(1))
 		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 
-    t1 = PG_GETARG_TEXT_PP(0);
-    t2 = PG_GETARG_TEXT_PP(1);    
-    
+	t1 = PG_GETARG_TEXT_PP(0);
+	t2 = PG_GETARG_TEXT_PP(1);
+
 	l1 = VARSIZE_ANY_EXHDR(t1);
-    l2 = VARSIZE_ANY_EXHDR(t2);
-    
-    result = palloc(l1+l2+VARHDRSZ);
-    memcpy(VARDATA(result), VARDATA_ANY(t1), l1);
-    memcpy(VARDATA(result) + l1, VARDATA_ANY(t2), l2);
-    SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
-    
-    PG_RETURN_TEXT_P(result);
+	l2 = VARSIZE_ANY_EXHDR(t2);
+
+	result = palloc(l1+l2+VARHDRSZ);
+	memcpy(VARDATA(result), VARDATA_ANY(t1), l1);
+	memcpy(VARDATA(result) + l1, VARDATA_ANY(t2), l2);
+	SET_VARSIZE(result, l1 + l2 + VARHDRSZ);
+
+	PG_RETURN_TEXT_P(result);
 }
 
 
@@ -81,34 +81,32 @@ PG_FUNCTION_INFO_V1(ora_nvl);
 Datum
 ora_nvl(PG_FUNCTION_ARGS)
 {
-
-    if (!PG_ARGISNULL(0))
+	if (!PG_ARGISNULL(0))
 		PG_RETURN_DATUM(PG_GETARG_DATUM(0));
 
-    if (!PG_ARGISNULL(1))
+	if (!PG_ARGISNULL(1))
 		PG_RETURN_DATUM(PG_GETARG_DATUM(1));
-	
-    PG_RETURN_NULL();
-} 
+
+	PG_RETURN_NULL();
+}
 
 PG_FUNCTION_INFO_V1(ora_nvl2);
 
 Datum
 ora_nvl2(PG_FUNCTION_ARGS)
 {
-    if (!PG_ARGISNULL(0))
+	if (!PG_ARGISNULL(0))
 	{
-	    if (!PG_ARGISNULL(1))
+		if (!PG_ARGISNULL(1))
 			PG_RETURN_DATUM(PG_GETARG_DATUM(1));
 	}
 	else
 	{
-	    if (!PG_ARGISNULL(2))
+		if (!PG_ARGISNULL(2))
 			PG_RETURN_DATUM(PG_GETARG_DATUM(2));
 	}
 	PG_RETURN_NULL();
-} 
-
+}
 
 PG_FUNCTION_INFO_V1(ora_set_nls_sort);
 
@@ -123,10 +121,8 @@ ora_set_nls_sort(PG_FUNCTION_ARGS)
 	def_locale = (text*) MemoryContextAlloc(TopMemoryContext, VARSIZE(arg));
 	memcpy(def_locale, arg, VARSIZE(arg));
 
-    PG_RETURN_VOID();
+	PG_RETURN_VOID();
 }
-
-
 
 static text*
 _nls_run_strxfrm(text *string, text *locale)
@@ -190,14 +186,14 @@ _nls_run_strxfrm(text *string, text *locale)
 		 */
 		if (!setlocale(LC_COLLATE, locale_str))
 			elog(ERROR, "failed to set the requested LC_COLLATE value [%s]", locale_str);
-		
+
 		changed_locale = 1;
 	}
 
 	/*
 	 * We do TRY / CATCH / END_TRY to catch ereport / elog that might
-	 * happen during palloc. Ereport during palloc would not be 
-	 * nice since it would leave the server with changed locales 
+	 * happen during palloc. Ereport during palloc would not be
+	 * nice since it would leave the server with changed locales
 	 * setting, resulting in bad things.
 	 */
 	PG_TRY();
@@ -211,14 +207,14 @@ _nls_run_strxfrm(text *string, text *locale)
 		tmp = palloc(size + VARHDRSZ);
 
 		rest = strxfrm(tmp + VARHDRSZ, string_str, size);
-		while (rest >= size) 
+		while (rest >= size)
 		{
 			pfree(tmp);
 			size = rest + 1;
 			tmp = palloc(size + VARHDRSZ);
 			rest = strxfrm(tmp + VARHDRSZ, string_str, size);
 			/*
-			 * Cache the multiplication factor so that the next 
+			 * Cache the multiplication factor so that the next
 			 * time we start with better value.
 			 */
 			if (string_len)
@@ -262,7 +258,7 @@ _nls_run_strxfrm(text *string, text *locale)
 PG_FUNCTION_INFO_V1(ora_nlssort);
 
 Datum
-ora_nlssort(PG_FUNCTION_ARGS) 
+ora_nlssort(PG_FUNCTION_ARGS)
 {
 	text *locale;
 	text *result;
@@ -298,7 +294,7 @@ PG_FUNCTION_INFO_V1(ora_decode);
  * decode(lhs, [rhs, ret], ..., default)
  */
 Datum
-ora_decode(PG_FUNCTION_ARGS) 
+ora_decode(PG_FUNCTION_ARGS)
 {
 	int		nargs;
 	int		i;
@@ -322,7 +318,7 @@ ora_decode(PG_FUNCTION_ARGS)
 	nargs = PG_NARGS();
 	if (nargs % 2 == 0)
 	{
-        retarg = nargs - 1;
+		retarg = nargs - 1;
 		nargs -= 1;		/* ignore the last argument */
 	}
 	else
@@ -355,7 +351,7 @@ ora_decode(PG_FUNCTION_ARGS)
 	if (retarg < 0 || PG_ARGISNULL(retarg))
 		PG_RETURN_NULL();
 	else
-        PG_RETURN_DATUM(PG_GETARG_DATUM(retarg));
+		PG_RETURN_DATUM(PG_GETARG_DATUM(retarg));
 }
 
 #if PG_VERSION_NUM >= 80400

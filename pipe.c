@@ -93,7 +93,7 @@ PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_bigint);
 
 typedef enum {
 	IT_NO_MORE_ITEMS = 0,
-	IT_NUMBER = 9, 
+	IT_NUMBER = 9,
 	IT_VARCHAR = 11,
 	IT_DATE = 12,
 	IT_TIMESTAMPTZ = 13,
@@ -171,8 +171,8 @@ extern alert_lock  *locks;
  * write on writer size bytes from ptr
  */
 
-static void 
-pack_field(message_buffer *buffer, message_data_type type, 
+static void
+pack_field(message_buffer *buffer, message_data_type type,
 			int32 size, void *ptr, Oid tupType)
 {
 	int len;
@@ -180,11 +180,11 @@ pack_field(message_buffer *buffer, message_data_type type,
 
 	len = MAXALIGN(size) + message_data_item_size;
 	if (MAXALIGN(buffer->size) + len > LOCALMSGSZ - message_buffer_size)
-    		ereport(ERROR,             
-                            (errcode(ERRCODE_OUT_OF_MEMORY),
-                             errmsg("out of memory"),
-                             errdetail("Packed message is biger than local buffer."),
-			     errhint("Increase LOCALMSGSZ in 'pipe.h' and recompile library.")));                     
+		ereport(ERROR,
+				(errcode(ERRCODE_OUT_OF_MEMORY),
+				 errmsg("out of memory"),
+				 errdetail("Packed message is biger than local buffer."),
+				 errhint("Increase LOCALMSGSZ in 'pipe.h' and recompile library.")));
 
 	if (buffer->next == NULL)
 		buffer->next =  message_buffer_get_content(buffer);
@@ -193,10 +193,10 @@ pack_field(message_buffer *buffer, message_data_type type,
 
 	message->size = size;
 	message->type = type;
-    message->tupType = tupType;
+	message->tupType = tupType;
 
 	/* padding bytes have to be zeroed - buffer creator is responsible to clear memory */
-	
+
 	memcpy(message_data_get_content(message), ptr, size);
 
 	buffer->size += len;
@@ -245,10 +245,10 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 		sh_mem = ShmemInitStruct("dbms_pipe", size, &found);
 		uid = GetUserId();
 		if (sh_mem == NULL)
-    			ereport(ERROR,             
-                        	(errcode(ERRCODE_OUT_OF_MEMORY),
-                                 errmsg("out of memory"),
-                                 errdetail("Failed while allocation block %d bytes in shared memory.", size))); 
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory"),
+					 errdetail("Failed while allocation block %d bytes in shared memory.", size)));
 
 		if (!found)
 		{
@@ -257,7 +257,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			sh_mem->size = size - sh_memory_size;
 			ora_sinit(sh_mem->data, size, true);
 			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(pipe));
-			sid = sh_mem->sid = 1;			
+			sid = sh_mem->sid = 1;
 			for(i = 0; i < max_pipes; i++)
 				pipes[i].is_valid = false;
 
@@ -276,7 +276,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 				locks[i].sid = -1;
 				locks[i].echo = NULL;
 			}
-												 
+
 		}
 		else if (sh_mem->shmem_lock != 0)
 		{
@@ -298,7 +298,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 		elog(ERROR, "Can't purge memory");
 */
 
-	return pipes != NULL;	
+	return pipes != NULL;
 }
 
 
@@ -315,7 +315,7 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 	*created = false;
 	for (i = 0; i < MAX_PIPES; i++)
 	{
-		if (pipes[i].is_valid && 
+		if (pipes[i].is_valid &&
 			strncmp((char*)VARDATA(pipe_name), pipes[i].pipe_name, VARSIZE(pipe_name) - VARHDRSZ) == 0
 			&& (strlen(pipes[i].pipe_name) == (VARSIZE(pipe_name) - VARHDRSZ)))
 		{
@@ -324,10 +324,10 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 			if (pipes[i].creator != NULL && pipes[i].uid != uid)
 			{
 				LWLockRelease(shmem_lock);
-    				ereport(ERROR,             
-                        		(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
-                                	 errmsg("insufficient privilege"),
-                                	 errdetail("Insufficient privilege to access pipe"))); 
+				ereport(ERROR,
+						(errcode(ERRCODE_INSUFFICIENT_PRIVILEGE),
+						 errmsg("insufficient privilege"),
+						 errdetail("Insufficient privilege to access pipe")));
 			}
 
 			return &pipes[i];
@@ -355,7 +355,7 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 			break;
 		}
 
-	return result;	
+	return result;
 }
 
 
@@ -379,7 +379,7 @@ new_last(pipe *p, void *ptr)
 	q = p->items;
 	while (q->next_item != NULL)
 		q = q->next_item;
-	
+
 
 	if (NULL == (aux_q = ora_salloc(sizeof(queue_item))))
 		return false;
@@ -470,17 +470,17 @@ add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid
 
 	if (!ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS,false))
 		return false;
-		
+
 	for (;;)
 	{
 		if (NULL != (p = find_pipe(pipe_name, &created, false)))
 		{
 			if (created)
 				p->registered = ptr == NULL;
-		
+
 			if (limit_is_valid && (created || (p->limit < limit)))
 				p->limit = limit;
-		
+
 			if (ptr != NULL)
 			{
 				if (NULL != (sh_ptr = ora_salloc(ptr->size)))
@@ -500,7 +500,7 @@ add_to_pipe(text *pipe_name, message_buffer *ptr, int limit, bool limit_is_valid
 					ora_sfree(p->pipe_name);
 					p->is_valid = false;
 					result = false;
-				}	
+				}
 			}
 			else
 				result = true;
@@ -545,12 +545,12 @@ remove_pipe(text *pipe_name, bool purge)
 
 Datum
 dbms_pipe_next_item_type (PG_FUNCTION_ARGS)
-{	
+{
 	PG_RETURN_INT32(input_buffer != NULL ? input_buffer->next->type : IT_NO_MORE_ITEMS);
 }
 
 
-static void 
+static void
 init_buffer(message_buffer *buffer, int32 size)
 {
 	memset(buffer, 0, size);
@@ -566,12 +566,12 @@ check_buffer(message_buffer *buffer, int32 size)
 	{
 		buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, size);
 		if( buffer == NULL )
-			ereport(ERROR,             
-	          	(errcode(ERRCODE_OUT_OF_MEMORY),
-					errmsg("out of memory"),
-				errdetail("Failed while allocation block %d bytes in memory.", size))); 
+			ereport(ERROR,
+					(errcode(ERRCODE_OUT_OF_MEMORY),
+					 errmsg("out of memory"),
+					 errdetail("Failed while allocation block %d bytes in memory.", size)));
 
-		init_buffer(buffer, size);	
+		init_buffer(buffer, size);
 	}
 
 	return buffer;
@@ -582,7 +582,7 @@ dbms_pipe_pack_message_text(PG_FUNCTION_ARGS)
 {
 	text *str = PG_GETARG_TEXT_PP(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_VARCHAR,
 		VARSIZE_ANY_EXHDR(str), VARDATA_ANY(str), InvalidOid);
 
@@ -595,7 +595,7 @@ dbms_pipe_pack_message_date(PG_FUNCTION_ARGS)
 {
 	DateADT dt = PG_GETARG_DATEADT(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_DATE,
 			   sizeof(dt), &dt, InvalidOid);
 
@@ -608,7 +608,7 @@ dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS)
 {
 	TimestampTz dt = PG_GETARG_TIMESTAMPTZ(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_TIMESTAMPTZ,
 			   sizeof(dt), &dt, InvalidOid);
 
@@ -621,7 +621,7 @@ dbms_pipe_pack_message_number(PG_FUNCTION_ARGS)
 {
 	Numeric num = PG_GETARG_NUMERIC(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_NUMBER,
 			   VARSIZE(num) - VARHDRSZ, VARDATA(num), InvalidOid);
 
@@ -634,7 +634,7 @@ dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS)
 {
 	bytea *data = PG_GETARG_BYTEA_P(0);
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_BYTEA,
 		VARSIZE_ANY_EXHDR(data), VARDATA_ANY(data), InvalidOid);
 
@@ -655,7 +655,7 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	FunctionCallInfoData info;
 
 	tupType = HeapTupleHeaderGetTypeId(rec);
-	
+
 	/*
 	 * Normally one would call record_send() using DirectFunctionCall3,
 	 * but that does not work since record_send wants to cache some data
@@ -670,10 +670,10 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	info.argnull[0] = false;
 	info.argnull[1] = false;
 	info.argnull[2] = false;
-			
+
 	data = (bytea*) DatumGetPointer(record_send(&info));
 
-	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);	
+	output_buffer = check_buffer(output_buffer, LOCALMSGSZ);
 	pack_field(output_buffer, IT_RECORD,
 			   VARSIZE(data), VARDATA(data), tupType);
 
@@ -699,10 +699,10 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 
 	next_type = input_buffer->next->type;
 	if (next_type != dtype)
-		ereport(ERROR,             
+		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("datatype mismatch"),
-				 errdetail("unpack unexpected type: %d", next_type))); 
+				 errdetail("unpack unexpected type: %d", next_type)));
 
 	ptr = unpack_field(input_buffer, &type, &size, &tupType);
 	Assert(ptr != NULL);
@@ -719,7 +719,7 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 		case IT_NUMBER:
 		case IT_BYTEA:
 			result = PointerGetDatum(cstring_to_text_with_len(ptr, size));
-			break;			
+			break;
 		case IT_RECORD:
 		{
 			FunctionCallInfoData	info;
@@ -730,7 +730,7 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			buf.len = VARSIZE(data) - VARHDRSZ;
 			buf.maxlen = buf.len;
 			buf.cursor = 0;
-	
+
 			/*
 			 * Normally one would call record_recv() using DirectFunctionCall3,
 			 * but that does not work since record_recv wants to cache some data
@@ -738,7 +738,7 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			 * flinfo parameter.
 			 */
 			InitFunctionCallInfoData(info, fcinfo->flinfo, 3, NULL, NULL);
-			
+
 			info.arg[0] = PointerGetDatum(&buf);
 			info.arg[1] = ObjectIdGetDatum(tupType);
 			info.arg[2] = Int32GetDatum(-1);
@@ -747,7 +747,7 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			info.argnull[2] = false;
 
 			result = record_recv(&info);
-			break;			
+			break;
 		}
 		default:
 			elog(ERROR, "unexpected type: %d", type);
@@ -759,7 +759,7 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 		pfree(input_buffer);
 		input_buffer = NULL;
 	}
-	
+
 	PG_RETURN_DATUM(result);
 }
 
@@ -822,17 +822,17 @@ pg_usleep(10000L); \
 Datum
 dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 {
-	text *pipe_name = NULL; 
+	text *pipe_name = NULL;
 	int timeout = ONE_YEAR;
 	int cycle = 0;
 	float8 endtime;
 	bool found = false;
 
 	if (PG_ARGISNULL(0))
-    		ereport(ERROR,
-                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-                         errmsg("pipe name is NULL"),
-                         errdetail("Pipename may not be NULL.")));
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("pipe name is NULL"),
+				 errdetail("Pipename may not be NULL.")));
 	else
 		pipe_name = PG_GETARG_TEXT_P(0);
 
@@ -844,8 +844,8 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 		pfree(input_buffer);
 		input_buffer = NULL;
 	}
-  
-	WATCH_PRE(timeout, endtime, cycle);	
+
+	WATCH_PRE(timeout, endtime, cycle);
 	if (NULL != (input_buffer = get_from_pipe(pipe_name, &found)))
 	{
 		input_buffer->next = message_buffer_get_content(input_buffer);
@@ -863,7 +863,7 @@ dbms_pipe_receive_message(PG_FUNCTION_ARGS)
 Datum
 dbms_pipe_send_message(PG_FUNCTION_ARGS)
 {
-	text *pipe_name = NULL; 
+	text *pipe_name = NULL;
 	int timeout = ONE_YEAR;
 	int limit = 0;
 	bool valid_limit;
@@ -872,10 +872,10 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 	float8 endtime;
 
 	if (PG_ARGISNULL(0))
-    		ereport(ERROR,
-                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-                         errmsg("pipe name is NULL"),
-                         errdetail("Pipename may not be NULL.")));
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("pipe name is NULL"),
+				 errdetail("Pipename may not be NULL.")));
 	else
 		pipe_name = PG_GETARG_TEXT_P(0);
 
@@ -898,14 +898,14 @@ dbms_pipe_send_message(PG_FUNCTION_ARGS)
 		input_buffer = NULL;
 	}
 
-	WATCH_PRE(timeout, endtime, cycle);	
-	if (add_to_pipe(pipe_name, output_buffer, 
+	WATCH_PRE(timeout, endtime, cycle);
+	if (add_to_pipe(pipe_name, output_buffer,
 					limit, valid_limit))
 		break;
 	WATCH_POST(timeout, endtime, cycle);
-	
+
 	init_buffer(output_buffer, LOCALMSGSZ);
-	
+
 	PG_RETURN_INT32(RESULT_DATA);
 }
 
@@ -920,12 +920,12 @@ dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 	int cycle = 0;
 	int timeout = 10;
 
-	WATCH_PRE(timeout, endtime, cycle);	
+	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 		initStringInfo(&strbuf);
 		appendStringInfo(&strbuf,"PG$PIPE$%d$%d",sid, MyProcPid);
-		
+
 		result = cstring_to_text_with_len(strbuf.data, strbuf.len);
 		pfree(strbuf.data);
 		LWLockRelease(shmem_lock);
@@ -934,7 +934,7 @@ dbms_pipe_unique_session_name (PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 	LOCK_ERROR();
-	
+
 	PG_RETURN_NULL();
 }
 
@@ -951,7 +951,7 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 
 	float8 endtime;
 	int cycle = 0;
-	int timeout = 10;	
+	int timeout = 10;
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -959,7 +959,7 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 		MemoryContext  oldcontext;
 		bool has_lock = false;
 
-		WATCH_PRE(timeout, endtime, cycle);	
+		WATCH_PRE(timeout, endtime, cycle);
 		if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES, MAX_EVENTS, MAX_LOCKS, false))
 		{
 			has_lock = true;
@@ -986,7 +986,7 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 		TupleDescInitEntry(tupdesc, ++i, "owner",   VARCHAROID, -1, 0);
 		Assert(i == DB_PIPES_COLS);
 
-		slot = TupleDescGetSlot(tupdesc); 
+		slot = TupleDescGetSlot(tupdesc);
 		funcctx->slot = slot;
 
 		attinmeta = TupleDescGetAttInMetadata(tupdesc);
@@ -1002,8 +1002,8 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 	{
 		if (pipes[fctx->pipe_nth].is_valid)
 		{
-			Datum    result;
-			HeapTuple tuple;
+			Datum		result;
+			HeapTuple	tuple;
 			char	   *values[DB_PIPES_COLS];
 			char		items[16];
 			char		size[16];
@@ -1039,12 +1039,12 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
 		fctx->pipe_nth += 1;
 	}
 
-	LWLockRelease(shmem_lock);	
+	LWLockRelease(shmem_lock);
 	SRF_RETURN_DONE(funcctx);
 }
 
 /*
- * secondary functions 
+ * secondary functions
  */
 
 /*
@@ -1052,7 +1052,7 @@ dbms_pipe_list_pipes(PG_FUNCTION_ARGS)
  *   dbms_pipe.create_pipe(pipe_name varchar, limit := -1 int, private := false bool);
  */
 
-Datum 
+Datum
 dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 {
 	text *pipe_name = NULL;
@@ -1065,10 +1065,10 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 	int timeout = 10;
 
 	if (PG_ARGISNULL(0))
-    		ereport(ERROR,
-                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-                         errmsg("pipe name is NULL"),
-                         errdetail("Pipename may not be NULL.")));
+		ereport(ERROR,
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("pipe name is NULL"),
+				 errdetail("Pipename may not be NULL.")));
 	else
 		pipe_name = PG_GETARG_TEXT_P(0);
 
@@ -1080,7 +1080,7 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 
 	is_private = PG_ARGISNULL(2) ? false : PG_GETARG_BOOL(2);
 
-	WATCH_PRE(timeout, endtime, cycle);	
+	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 		pipe *p;
@@ -1089,15 +1089,15 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 			if (!created)
 			{
 				LWLockRelease(shmem_lock);
-                    		ereport(ERROR,                                                                                                        
-                            		(errcode(ERRCODE_DUPLICATE_OBJECT),                                                                           
-                                	 errmsg("pipe creation error"),                                                                     
-                                	 errdetail("Pipe is registered.")));                       
+				ereport(ERROR,
+						(errcode(ERRCODE_DUPLICATE_OBJECT),
+						 errmsg("pipe creation error"),
+						 errdetail("Pipe is registered.")));
 			}
 			if (is_private)
 			{
 				char *user;
-				
+
 				p->uid = GetUserId();
 				user = (char*)DirectFunctionCall1(namein, CStringGetDatum(GetUserNameFromId(p->uid)));
 				p->creator = ora_sstrcpy(user);
@@ -1112,8 +1112,8 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 	LOCK_ERROR();
-	
-	PG_RETURN_VOID();	
+
+	PG_RETURN_VOID();
 }
 
 
@@ -1129,7 +1129,7 @@ dbms_pipe_reset_buffer(PG_FUNCTION_ARGS)
 		pfree(output_buffer);
 		output_buffer = NULL;
 	}
-		
+
 	if (input_buffer != NULL)
 	{
 		pfree(input_buffer);
@@ -1141,11 +1141,11 @@ dbms_pipe_reset_buffer(PG_FUNCTION_ARGS)
 
 
 /*
- * Remove all stored messages in pipe. Remove implicit created 
+ * Remove all stored messages in pipe. Remove implicit created
  * pipe.
  */
 
-Datum 
+Datum
 dbms_pipe_purge (PG_FUNCTION_ARGS)
 {
 	text *pipe_name = PG_GETARG_TEXT_P(0);
@@ -1154,7 +1154,7 @@ dbms_pipe_purge (PG_FUNCTION_ARGS)
 	int cycle = 0;
 	int timeout = 10;
 
-	WATCH_PRE(timeout, endtime, cycle);	
+	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 
@@ -1165,15 +1165,15 @@ dbms_pipe_purge (PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 	LOCK_ERROR();
-	
+
 	PG_RETURN_VOID();
 }
 
 /*
  * Remove pipe if exists
- */ 
+ */
 
-Datum 
+Datum
 dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 {
 	text *pipe_name = PG_GETARG_TEXT_P(0);
@@ -1182,7 +1182,7 @@ dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 	int cycle = 0;
 	int timeout = 10;
 
-	WATCH_PRE(timeout, endtime, cycle);	
+	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
 
@@ -1193,7 +1193,7 @@ dbms_pipe_remove_pipe (PG_FUNCTION_ARGS)
 	}
 	WATCH_POST(timeout, endtime, cycle);
 	LOCK_ERROR();
-	
+
 	PG_RETURN_VOID();
 }
 
@@ -1209,9 +1209,9 @@ dbms_pipe_create_pipe_2 (PG_FUNCTION_ARGS)
 	Datum arg2 = PG_GETARG_DATUM(1);
 
 	DirectFunctionCall3(dbms_pipe_create_pipe,
-						    arg1,
-						    arg2,
-						    BoolGetDatum(false));
+						arg1,
+						arg2,
+						BoolGetDatum(false));
 
 	PG_RETURN_VOID();
 }
@@ -1222,28 +1222,28 @@ dbms_pipe_create_pipe_1 (PG_FUNCTION_ARGS)
 	Datum arg1 = PG_GETARG_DATUM(0);
 
 	DirectFunctionCall3(dbms_pipe_create_pipe,
-						    arg1,
-						    (Datum)0,
-						    BoolGetDatum(false));
+						arg1,
+						(Datum)0,
+						BoolGetDatum(false));
 
 	PG_RETURN_VOID();
 }
 
-Datum 
+Datum
 dbms_pipe_pack_message_integer(PG_FUNCTION_ARGS)
 {
 	/* Casting from int4 to numeric */
-	DirectFunctionCall1(dbms_pipe_pack_message_number, 
+	DirectFunctionCall1(dbms_pipe_pack_message_number,
 				DirectFunctionCall1(int4_numeric, PG_GETARG_DATUM(0)));
 
 	PG_RETURN_VOID();
 }
 
-Datum 
+Datum
 dbms_pipe_pack_message_bigint(PG_FUNCTION_ARGS)
 {
 	/* Casting from int8 to numeric */
-	DirectFunctionCall1(dbms_pipe_pack_message_number, 
+	DirectFunctionCall1(dbms_pipe_pack_message_number,
 				DirectFunctionCall1(int8_numeric, PG_GETARG_DATUM(0)));
 
 	PG_RETURN_VOID();

@@ -71,7 +71,7 @@ add_str(const char *str, int len)
 	buffer[buffer_len] = '\0';
 }
 
-static void 
+static void
 add_text(text *str)
 {
 	add_str(VARDATA_ANY(str), VARSIZE_ANY_EXHDR(str));
@@ -86,14 +86,14 @@ add_newline(void)
 }
 
 
-static void 
+static void
 send_buffer()
 {
     if (buffer_len > 0)
     {
-	StringInfoData msgbuf;	    
+	StringInfoData msgbuf;
 	char *cursor = buffer;
-	
+
 	while (--buffer_len > 0)
 	{
 	    if (*cursor == '\0')
@@ -106,9 +106,9 @@ send_buffer()
 		        (errcode(ERRCODE_INTERNAL_ERROR),
 			 errmsg("internal error"),
 		         errdetail("Wrong message format detected")));
-		    
+
 	pq_beginmessage(&msgbuf, 'N');
-    
+
 	if (PG_PROTOCOL_MAJOR(FrontendProtocol) >= 3)
 	{
 		pq_sendbyte(&msgbuf, PG_DIAG_MESSAGE_PRIMARY);
@@ -207,7 +207,7 @@ dbms_output_disable(PG_FUNCTION_ARGS)
 
 PG_FUNCTION_INFO_V1(dbms_output_serveroutput);
 
-Datum 
+Datum
 dbms_output_serveroutput(PG_FUNCTION_ARGS)
 {
 	is_server_output = PG_GETARG_BOOL(0);
@@ -229,7 +229,7 @@ dbms_output_put(PG_FUNCTION_ARGS)
     if (buffer)
 		add_text(PG_GETARG_TEXT_PP(0));
     PG_RETURN_VOID();
-} 
+}
 
 PG_FUNCTION_INFO_V1(dbms_output_put_line);
 
@@ -245,7 +245,7 @@ dbms_output_put_line(PG_FUNCTION_ARGS)
 }
 
 PG_FUNCTION_INFO_V1(dbms_output_new_line);
-    
+
 Datum
 dbms_output_new_line(PG_FUNCTION_ARGS)
 {

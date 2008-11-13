@@ -1,5 +1,5 @@
 /*
-  This code implements one part of functonality of 
+  This code implements one part of functonality of
   free available library PL/Vision. Please look www.quest.com
 
   This library isn't optimalized for big numbers, for working
@@ -94,7 +94,7 @@ extern int ora_seq_search(const char *name, /*const*/ char **array, int max);
 #define SUNDAY     (1 << 0)
 #define SATURDAY   (1 << 6)
 
-static unsigned char nonbizdays = SUNDAY | SATURDAY; 
+static unsigned char nonbizdays = SUNDAY | SATURDAY;
 static bool use_easter = true;
 static bool include_start = true;
 
@@ -142,7 +142,7 @@ static holiday_desc germany_holidays[] = {
 static holiday_desc poland_holidays[] = {
 	{1,1},{1,5},{3,5},{15,6},{15,8},
 	{1,11},{11,11},{25,12},{26,12}
-};	
+};
 
 static holiday_desc austria_holidays[] = {
 	{1,1},{6,1},{1,5},{25,5},{4,6},
@@ -190,7 +190,7 @@ static char *states[] = {
 	NULL,
 };
 
-static int 
+static int
 dateadt_comp(const void* a, const void* b)
 {
 	DateADT *_a = (DateADT*)a;
@@ -199,18 +199,18 @@ dateadt_comp(const void* a, const void* b)
 	return *_a - *_b;
 }
 
-static int 
+static int
 holiday_desc_comp(const void* a, const void* b)
 {
 	int result;
-	if (0 == (result = ((holiday_desc*)a)->month - ((holiday_desc*)b)->month)) 
+	if (0 == (result = ((holiday_desc*)a)->month - ((holiday_desc*)b)->month))
 		result = ((holiday_desc*)a)->day - ((holiday_desc*)b)->day;
-		
+
 	return result;
 }
 
 
-static void 
+static void
 easter_sunday(int year, int* dd, int* mm)
 {
 	int b, d, e, q;
@@ -220,7 +220,7 @@ easter_sunday(int year, int* dd, int* mm)
 				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
 				 errmsg("date is out of range"),
 				 errdetail("Easter is defined only for years between 1900 and 2099")));
-	
+
 	b = 255 - 11 * (year % 19);
 	d = ((b - 21) % 30) + 21;
 	if (d > 38) d -= 1;
@@ -245,7 +245,7 @@ ora_add_bizdays(DateADT day, int days)
 
 	d = j2day(day+POSTGRES_EPOCH_JDATE);
 	dx = days > 0? 1 : -1;
-	
+
 	while (days != 0)
 	{
 		d = (d+dx) % 7;
@@ -253,8 +253,8 @@ ora_add_bizdays(DateADT day, int days)
 		day += dx;
 		if ((1 << d) & nonbizdays)
 			continue;
-		
-		if (NULL != bsearch(&day, exceptions, exceptions_c, 
+
+		if (NULL != bsearch(&day, exceptions, exceptions_c,
 							sizeof(DateADT), dateadt_comp))
 			continue;
 
@@ -268,7 +268,7 @@ ora_add_bizdays(DateADT day, int days)
 			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
 				continue;
 		}
-		if (NULL != bsearch(&hd, holidays, holidays_c, 
+		if (NULL != bsearch(&hd, holidays, holidays_c,
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
@@ -299,7 +299,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 
 	d = j2day(day1+POSTGRES_EPOCH_JDATE);
 	days = 0;
-	
+
 	while (day1 <= day2)
 	{
 		++ cycle_c;
@@ -308,8 +308,8 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 		day1 += 1;
 		if ((1 << d) & nonbizdays)
 			continue;
-		
-		if (NULL != bsearch(&day1, exceptions, exceptions_c, 
+
+		if (NULL != bsearch(&day1, exceptions, exceptions_c,
 							sizeof(DateADT), dateadt_comp))
 			continue;
 
@@ -323,7 +323,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 			if (m == hd.month && (auxd == hd.day || d+1 == hd.day))
 				continue;
 		}
-		if (NULL != bsearch(&hd, holidays, holidays_c, 
+		if (NULL != bsearch(&hd, holidays, holidays_c,
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
@@ -342,7 +342,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
  * PLVdate.add_bizdays
  *
  * Syntax:
- *   FUNCTION add_bizdays(IN dt DATE, IN days int) RETURNS DATE; 
+ *   FUNCTION add_bizdays(IN dt DATE, IN days int) RETURNS DATE;
  *
  * Purpouse:
  *   Get the date created by adding <n> business days to a date
@@ -350,7 +350,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
  ****************************************************************/
 
 
-Datum 
+Datum
 plvdate_add_bizdays (PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
@@ -371,7 +371,7 @@ plvdate_add_bizdays (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_nearest_bizday (PG_FUNCTION_ARGS)
 {
 	DateADT dt = PG_GETARG_DATEADT(0);
@@ -400,7 +400,7 @@ plvdate_nearest_bizday (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_next_bizday (PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
@@ -414,14 +414,14 @@ plvdate_next_bizday (PG_FUNCTION_ARGS)
  *
  * Syntax:
  *   FUNCTION bizdays_between(IN dt1 DATE, IN dt2 DATE)
- *     RETURNS int; 
+ *     RETURNS int;
  *
  * Purpouse:
  *   Get the number of business days between two dates
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_bizdays_between (PG_FUNCTION_ARGS)
 {
 	DateADT day1 = PG_GETARG_DATEADT(0);
@@ -438,12 +438,12 @@ plvdate_bizdays_between (PG_FUNCTION_ARGS)
  *   FUNCTION prev_bizday(IN dt DATE) RETURNS date;
  *
  * Purpouse:
- *   Get the previous business date from a given date, user 
+ *   Get the previous business date from a given date, user
  * defined
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_prev_bizday (PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
@@ -463,17 +463,17 @@ plvdate_prev_bizday (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_isbizday (PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	int y, m, d;
 	holiday_desc hd;
-	
+
 	if (0 != ((1 << j2day(day+POSTGRES_EPOCH_JDATE)) & nonbizdays))
 		return false;
 
-	if (NULL != bsearch(&day, exceptions, exceptions_c, 
+	if (NULL != bsearch(&day, exceptions, exceptions_c,
 						sizeof(DateADT), dateadt_comp))
 		return false;
 
@@ -487,7 +487,7 @@ plvdate_isbizday (PG_FUNCTION_ARGS)
 			return false;
 	}
 
-	PG_RETURN_BOOL (NULL == bsearch(&hd, holidays, holidays_c, 
+	PG_RETURN_BOOL (NULL == bsearch(&hd, holidays, holidays_c,
 									sizeof(holiday_desc), holiday_desc_comp));
 }
 
@@ -503,13 +503,13 @@ plvdate_isbizday (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 {
 	unsigned char check;
 
 	text *day_txt = PG_GETARG_TEXT_PP(0);
-	
+
 	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
@@ -520,7 +520,7 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
                          errmsg("nonbizday registeration error"),
                          errdetail("Constraint violation."),
                          errhint("One day in week have to be bizday.")));
-    
+
 	nonbizdays = nonbizdays | (1 << d);
 
 	PG_RETURN_VOID();
@@ -537,14 +537,14 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS)
 {
 	text *day_txt = PG_GETARG_TEXT_PP(0);
-	
+
 	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
-    
+
 	nonbizdays = (nonbizdays | (1 << d)) ^ (1 << d);
 
 	PG_RETURN_VOID();
@@ -558,19 +558,19 @@ plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS)
  *   FUNCTION set_nonbizday(IN day DATE, IN repeat := false BOOL) RETURNS void;
  *
  * Purpouse:
- *   Set day as non bussines day, second arg specify year's 
+ *   Set day as non bussines day, second arg specify year's
  * periodicity
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 {
 	DateADT arg1 = PG_GETARG_DATEADT(0);
 	bool arg2 = PG_GETARG_BOOL(1);
 	int y, m, d;
 	holiday_desc hd;
-    
+
 	if (arg2)
 	{
 		if (holidays_c == MAX_holidays)
@@ -593,7 +593,7 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
 		holidays[holidays_c].day = d;
 		holidays_c += 1;
 
-		qsort(holidays, holidays_c, sizeof(holiday_desc), holiday_desc_comp);   
+		qsort(holidays, holidays_c, sizeof(holiday_desc), holiday_desc_comp);
 	}
 	else
 	{
@@ -609,11 +609,11 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
                                 (errcode(ERRCODE_DUPLICATE_OBJECT),
                                  errmsg("nonbizday registeration error"),
                                  errdetail("Date is registered.")));
-		
+
 		exceptions[exceptions_c++] = arg1;
 		qsort(exceptions, exceptions_c, sizeof(DateADT), dateadt_comp);
 	}
-    
+
 	PG_RETURN_VOID();
 }
 
@@ -625,12 +625,12 @@ plvdate_set_nonbizday_day (PG_FUNCTION_ARGS)
  *   FUNCTION unset_nonbizday(IN day DATE, IN repeat := false BOOL) RETURNS void;
  *
  * Purpouse:
- *   Unset day as non bussines day, second arg specify year's 
+ *   Unset day as non bussines day, second arg specify year's
  * periodicity
  *
  ****************************************************************/
-	 
-Datum 
+
+Datum
 plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 {
 	DateADT arg1 = PG_GETARG_DATEADT(0);
@@ -638,7 +638,7 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 	int y, m, d;
 	bool found = false;
 	int i;
-   
+
 	if (arg2)
 	{
 		j2date(arg1 + POSTGRES_EPOCH_JDATE, &y, &m, &d);
@@ -688,7 +688,7 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_use_easter (PG_FUNCTION_ARGS)
 {
 	use_easter = PG_GETARG_BOOL(0);
@@ -728,7 +728,7 @@ plvdate_using_easter (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_include_start (PG_FUNCTION_ARGS)
 {
 	include_start = PG_GETARG_BOOL(0);
@@ -757,14 +757,14 @@ plvdate_including_start (PG_FUNCTION_ARGS)
 
 /*
  * Load some national configurations
- * 
+ *
  */
 
 Datum
 plvdate_default_holidays (PG_FUNCTION_ARGS)
 {
-    text *country = PG_GETARG_TEXT_PP(0);
-	
+	text *country = PG_GETARG_TEXT_PP(0);
+
 	int c = ora_seq_search(VARDATA_ANY(country), states, VARSIZE_ANY_EXHDR(country));
 	CHECK_SEQ_SEARCH(c, "STATE/State/state");
 
@@ -800,18 +800,18 @@ plvdate_version (PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_days_inmonth(PG_FUNCTION_ARGS)
 {
-    DateADT day = PG_GETARG_DATEADT(0);
-    int result;
-    int y, m, d;
-    
-    j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
-    
-    result = date2j(y, m+1, 1) - date2j(y, m, 1);
-                    
-    PG_RETURN_INT32(result);
+	DateADT day = PG_GETARG_DATEADT(0);
+	int result;
+	int y, m, d;
+
+	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
+
+	result = date2j(y, m+1, 1) - date2j(y, m, 1);
+
+	PG_RETURN_INT32(result);
 }
 
 
@@ -826,7 +826,7 @@ plvdate_days_inmonth(PG_FUNCTION_ARGS)
  *
  ****************************************************************/
 
-Datum 
+Datum
 plvdate_isleapyear(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
@@ -835,7 +835,7 @@ plvdate_isleapyear(PG_FUNCTION_ARGS)
 
 	j2date(day + POSTGRES_EPOCH_JDATE, &y, &m, &d);
 	result = ((( y % 4) == 0) && ((y % 100) != 0)) || ((y / 400) == 0);
-	
+
 	PG_RETURN_BOOL(result);
 }
 
@@ -858,7 +858,7 @@ plvdate_isleapyear(PG_FUNCTION_ARGS)
  *   FUNCTION set_nonbizdays(IN days DATE[], IN repeat := false BOOL) RETURNS void;
  *
  * Purpouse:
- *   Set days as non bussines day, second arg specify year's 
+ *   Set days as non bussines day, second arg specify year's
  * periodicity
  *
  ****************************************************************/

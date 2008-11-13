@@ -1,5 +1,5 @@
 /*
-  This code implements one part of functonality of 
+  This code implements one part of functonality of
   free available library PL/Vision. Please look www.quest.com
 
   Original author: Steven Feuerstein, 1996 - 2002
@@ -9,7 +9,7 @@
 
   History:
     1.0. first public version 22. September 2006
-    
+
 */
 
 #include "postgres.h"
@@ -44,17 +44,17 @@ PG_FUNCTION_INFO_V1(plvsubst_setsubst_default);
 PG_FUNCTION_INFO_V1(plvsubst_subst);
 
 #define PARAMETER_ERROR(detail) \
-        ereport(ERROR, \
-                (errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
-                 errmsg("invalid parameter"), \
-                 errdetail(detail)));
+	ereport(ERROR, \
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
+			 errmsg("invalid parameter"), \
+			 errdetail(detail)));
 
 #define C_SUBST  "%s"
 
 
 text *c_subst = NULL;
 
-static void 
+static void
 init_c_subst()
 {
 	if(!c_subst)
@@ -67,7 +67,7 @@ init_c_subst()
 	}
 }
 
-static void 
+static void
 set_c_subst(text *sc)
 {
 	MemoryContext oldctx;
@@ -83,29 +83,29 @@ set_c_subst(text *sc)
 static text*
 plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCallInfo fcinfo)
 {
-	ArrayType    *v = vals_in;
-	int          nitems,
-    		     *dims,
-            	     ndims;
-	char         *p;
-	Oid          element_type;
-	int16          typlen;
-	bool         typbyval;
-	char         typalign;
-	char         typdelim;
-	Oid          typelem;
-	Oid          typiofunc;
-	FmgrInfo     proc;
-	int          i = 0, items = 0;
-	StringInfo   sinfo;
-	int 	template_len;
-	char *sizes;
-	int  *positions;
-	int subst_mb_len;
-	int subst_len;
+	ArrayType	   *v = vals_in;
+	int				nitems,
+				   *dims,
+					ndims;
+	char		   *p;
+	Oid				element_type;
+	int16			typlen;
+	bool			typbyval;
+	char			typalign;
+	char			typdelim;
+	Oid				typelem;
+	Oid				typiofunc;
+	FmgrInfo		proc;
+	int				i = 0, items = 0;
+	StringInfo		sinfo;
+	int				template_len;
+	char		   *sizes;
+	int			   *positions;
+	int				subst_mb_len;
+	int				subst_len;
 
-	bits8 *bitmap;
-	int 	bitmask;
+	bits8		   *bitmap;
+	int				bitmask;
 
 	bitmap = ARR_NULLBITMAP(v);
 	bitmask = 1;
@@ -117,20 +117,20 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 
 	if (ndims != 1)
 		PARAMETER_ERROR("Array of arguments has wrong dimension.");
-	
+
 	element_type = ARR_ELEMTYPE(v);
 
 	get_type_io_data(element_type, IOFunc_output,
-               &typlen, &typbyval,
-               &typalign, &typdelim,
-               &typelem, &typiofunc);
+					 &typlen, &typbyval,
+					 &typalign, &typdelim,
+					 &typelem, &typiofunc);
 
 	fmgr_info_cxt(typiofunc, &proc, fcinfo->flinfo->fn_mcxt);
 	template_len = ora_mb_strlen(template_in, &sizes, &positions);
 
 	sinfo = makeStringInfo();
 	subst_mb_len = ora_mb_strlen1(c_subst);
-	subst_len = VARSIZE(c_subst) - VARHDRSZ; 
+	subst_len = VARSIZE(c_subst) - VARHDRSZ;
 
 	for (i = 0; i < template_len; i++)
 	{
@@ -145,14 +145,14 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 					value = pstrdup("NULL");
 				else
 				{
-				itemvalue = fetch_att(p, typbyval, typlen);
-				value = DatumGetCString(FunctionCall3(&proc,
-                					itemvalue,
-                					ObjectIdGetDatum(typelem),
-                					Int32GetDatum(-1)));
+					itemvalue = fetch_att(p, typbyval, typlen);
+					value = DatumGetCString(FunctionCall3(&proc,
+								itemvalue,
+								ObjectIdGetDatum(typelem),
+								Int32GetDatum(-1)));
 
-				p = att_addlength_pointer(p, typlen, p);
-				p = (char *) att_align_nominal(p, typalign);
+					p = att_addlength_pointer(p, typlen, p);
+					p = (char *) att_align_nominal(p, typalign);
 				}
 				appendStringInfoString(sinfo, value);
 				pfree(value);
@@ -168,9 +168,9 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 				}
 			}
 			else
-                               ereport(ERROR,                                                               
-                                                (errcode(ERRCODE_SYNTAX_ERROR),                                         
-                                                 errmsg("too few parameters specified for template string"))); 
+				ereport(ERROR,
+						(errcode(ERRCODE_SYNTAX_ERROR),
+						 errmsg("too few parameters specified for template string")));
 
 			i += subst_mb_len - 1;
 		}
@@ -190,13 +190,13 @@ plvsubst_string_array(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		PG_RETURN_NULL();
 
-	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0), 
+	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0),
 					 PG_GETARG_ARRAYTYPE_P(1),
 					 PG_ARGISNULL(2) ? c_subst : PG_GETARG_TEXT_P(2),
 					 fcinfo));
 }
 
-Datum 
+Datum
 plvsubst_string_string(PG_FUNCTION_ARGS)
 {
 	ArrayType *array;
@@ -211,18 +211,18 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	 * I can't use DirectFunctionCall2
 	 */
 
-	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);                                                                   
-	                                                                                                                                  
-	locfcinfo.arg[0] = PG_GETARG_DATUM(1);                                                                                              
-	locfcinfo.arg[1] = PG_ARGISNULL(2)? CStringGetTextDatum(",") : PG_GETARG_DATUM(2);              
-	locfcinfo.argnull[0] = false;                                                                                                         
-	locfcinfo.argnull[1] = false;                                                                                                         
+	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);
 
-	array = DatumGetArrayTypeP(text_to_array(&locfcinfo));                                                                             
+	locfcinfo.arg[0] = PG_GETARG_DATUM(1);
+	locfcinfo.arg[1] = PG_ARGISNULL(2)? CStringGetTextDatum(",") : PG_GETARG_DATUM(2);
+	locfcinfo.argnull[0] = false;
+	locfcinfo.argnull[1] = false;
 
-	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0), 
+	array = DatumGetArrayTypeP(text_to_array(&locfcinfo));
+
+	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0),
 					 array,
-					 PG_ARGISNULL(3) ? c_subst : PG_GETARG_TEXT_P(3), 
+					 PG_ARGISNULL(3) ? c_subst : PG_GETARG_TEXT_P(3),
 					 fcinfo));
 }
 
@@ -231,9 +231,9 @@ plvsubst_setsubst(PG_FUNCTION_ARGS)
 {
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
-                        (errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),                                                                             
-                         errmsg("substition is NULL"),                                                                                         
-                         errdetail("Substitution keyword may not be NULL.")));  
+				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+				 errmsg("substition is NULL"),
+				 errdetail("Substitution keyword may not be NULL.")));
 
 	set_c_subst(PG_GETARG_TEXT_P(0));
 	PG_RETURN_VOID();
@@ -247,7 +247,7 @@ plvsubst_setsubst_default(PG_FUNCTION_ARGS)
 }
 
 
-Datum 
+Datum
 plvsubst_subst(PG_FUNCTION_ARGS)
 {
 	init_c_subst();
