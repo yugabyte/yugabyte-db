@@ -14,7 +14,6 @@
 /*
  * Source code for nlssort is taken from postgresql-nls-string
  * package by Jan Pazdziora
- *
  */
 
 Datum ora_nvl(PG_FUNCTION_ARGS);
@@ -291,7 +290,7 @@ ora_nlssort(PG_FUNCTION_ARGS)
 PG_FUNCTION_INFO_V1(ora_decode);
 
 /*
- * decode(lhs, [rhs, ret], ..., default)
+ * decode(lhs, [rhs, ret], ..., [default])
  */
 Datum
 ora_decode(PG_FUNCTION_ARGS)
@@ -299,20 +298,6 @@ ora_decode(PG_FUNCTION_ARGS)
 	int		nargs;
 	int		i;
 	int		retarg;
-	Oid		eq;
-
-	/*
-	 * On first call, get the input type's operator '=' , and save at
-	 * fn_extra. We assume sizeof(void *) >= sizeof(Oid).
-	 */
-	if (fcinfo->flinfo->fn_extra == NULL)
-	{
-		Oid	type = get_fn_expr_argtype(fcinfo->flinfo, 0);
-		eq = equality_oper_funcid(type);
-		fcinfo->flinfo->fn_extra = (void *) eq;
-	}
-	else
-		eq = (Oid) fcinfo->flinfo->fn_extra;
 
 	/* default value is last arg or NULL. */
 	nargs = PG_NARGS();
@@ -337,10 +322,44 @@ ora_decode(PG_FUNCTION_ARGS)
 	}
 	else
 	{
+		FmgrInfo   *eq;
+
+		/*
+		 * On first call, get the input type's operator '=' and save at
+		 * fn_extra.
+		 */
+		if (fcinfo->flinfo->fn_extra == NULL)
+		{
+			MemoryContext	oldctx;
+			Oid				typid = get_fn_expr_argtype(fcinfo->flinfo, 0);
+			Oid				eqoid = equality_oper_funcid(typid);
+
+			oldctx = MemoryContextSwitchTo(fcinfo->flinfo->fn_mcxt);
+			eq = palloc(sizeof(FmgrInfo));
+			fmgr_info(eqoid, eq);
+			MemoryContextSwitchTo(oldctx);
+
+			fcinfo->flinfo->fn_extra = eq;
+		}
+		else
+			eq = fcinfo->flinfo->fn_extra;
+
 		for (i = 1; i < nargs; i += 2)
 		{
-			if (!PG_ARGISNULL(i) && DatumGetBool(
-				OidFunctionCall2(eq, PG_GETARG_DATUM(0), PG_GETARG_DATUM(i))))
+			FunctionCallInfoData	func;
+			Datum					result;
+
+			if (PG_ARGISNULL(i))
+				continue;
+
+			InitFunctionCallInfoData(func, eq, 2, NULL, NULL);
+			func.arg[0] = PG_GETARG_DATUM(0);
+			func.arg[1] = PG_GETARG_DATUM(i);
+			func.argnull[0] = false;
+			func.argnull[1] = false;
+			result = FunctionCallInvoke(&func);
+
+			if (!func.isnull && DatumGetBool(result))
 			{
 				retarg = i + 1;
 				break;

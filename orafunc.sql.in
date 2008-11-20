@@ -366,6 +366,36 @@ RETURNS anyelement
 AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION decode(bpchar, bpchar, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(bpchar, bpchar, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(bpchar, bpchar, anyelement, bpchar, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(bpchar, bpchar, anyelement, bpchar, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(bpchar, bpchar, anyelement, bpchar, anyelement, bpchar, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION decode(bpchar, bpchar, anyelement, bpchar, anyelement, bpchar, anyelement, anyelement)
+RETURNS anyelement
+AS 'MODULE_PATHNAME', 'ora_decode'
+LANGUAGE C IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION decode(integer, integer, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME', 'ora_decode'
