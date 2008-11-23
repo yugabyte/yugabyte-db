@@ -147,7 +147,7 @@ The only other limitation is that the `pg_typoeof()` function, which is
 written in C, will not be available. You'll want to comment-out its
 declaration in the bundled copy of `pgtap.sql` and then avoid using
 `cmp_ok()`, since that function relies on `pg_typeof()`. Note that
-`pg_typeof()` might be included in PostgreSQL 8.4, in which case you wouldn't
+`pg_typeof()` will be included in PostgreSQL 8.4, in which case you wouldn't
 need to avoid it.
 
 Now you're ready to run your test script!
@@ -1735,6 +1735,12 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
+8.4 and Higher
+--------------
+
+The `pg_typeof()` function will not be built, as it is included in PostgreSQL
+8.4.
+
 8.3 and Higher
 --------------
 
@@ -1766,6 +1772,10 @@ and `lives_ok()` functions do not work under 8.0. Don't even use them there.
 To Do
 -----
 
+* Update build for 8.4, where `pg_typeof()` is already included.
+* Add xUnit-style support by adding a function to run test functions that emit
+  TAP. The function should support startup and shutdown and setup and teardown
+  functions, too.
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not
