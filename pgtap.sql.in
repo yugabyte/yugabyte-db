@@ -15,7 +15,7 @@
 CREATE OR REPLACE FUNCTION pg_typeof("any")
 RETURNS regtype
 AS 'MODULE_PATHNAME'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STABLE;
 
 CREATE OR REPLACE FUNCTION pg_version()
 RETURNS text AS 'SELECT current_setting(''server_version'')'

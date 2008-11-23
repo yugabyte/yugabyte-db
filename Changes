@@ -1,6 +1,8 @@
 Revision history for pgTAP
 
 0.15
+      - Changed `pg_typeof()` from immutable to stable, in compliance with its
+        configuration in the forthcoming PostgreSQL 8.4.
 
 0.14  2008-10-27T22:43:36
       - Added `SET search_path` statements to `uninstall_pgtap.sql.in` so that
