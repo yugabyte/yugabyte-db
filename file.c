@@ -1,6 +1,7 @@
 #include "postgres.h"
 
 #include <unistd.h>
+#include <sys/stat.h>
 
 #include "executor/spi.h"
 #include "fmgr.h"

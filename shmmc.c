@@ -1,6 +1,6 @@
 /*
  *
- * Shared memory control - based on alocating chunks alligned on
+ * Shared memory control - based on alocating chunks aligned on
  * asize array (fibonachi), and dividing free bigger block.
  *
  */
@@ -46,7 +46,7 @@ size_t max_size;
 int cycle = 0;
 
 
-/* allign requested size */
+/* align requested size */
 
 static int
 ptr_comp(const void* a, const void* b)
@@ -142,7 +142,7 @@ defragmentation()
 }
 
 static size_t
-allign_size(size_t size)
+align_size(size_t size)
 {
 	int i;
 
@@ -155,7 +155,7 @@ allign_size(size_t size)
 	ereport(ERROR,
 		   (errcode(ERRCODE_OUT_OF_MEMORY),
 		    errmsg("too much large memory block request"),
-		    errdetail("Failed while allocation block %d bytes in shared memory.", size),
+		    errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size),
 		    errhint("Increase MAX_SIZE constant, fill table a_size and recompile package.")));
 
 	return 0;
@@ -191,14 +191,14 @@ ora_sinit(void *ptr, size_t size, bool create)
 void*
 ora_salloc(size_t size)
 {
-	size_t alligned_size;
+	size_t aligned_size;
 	size_t max_min;
 	int select;
 	int i;
 	int repeat_c;
 	void *ptr = NULL;
 
-	alligned_size = allign_size(size);
+	aligned_size = align_size(size);
 
 	max_min = max_size;
 	select = -1;
@@ -210,7 +210,7 @@ ora_salloc(size_t size)
 		for(i = 0; i < *list_c; i++)
 			if (list[i].dispossible)
 			{
-				if (list[i].size == alligned_size)
+				if (list[i].size == aligned_size)
 				{
 					list[i].dispossible = false;
 					ptr = list[i].first_byte_ptr;
@@ -219,7 +219,7 @@ ora_salloc(size_t size)
 					return ptr;
 				}
 
-				if (list[i].size > alligned_size && list[i].size < max_min)
+				if (list[i].size > aligned_size && list[i].size < max_min)
 				{
 					max_min = list[i].size;
 					select = i;
@@ -236,10 +236,10 @@ ora_salloc(size_t size)
 
 		/* I have to divide block */
 
-		list[*list_c].size = list[select].size - alligned_size;
-		list[*list_c].first_byte_ptr = (char*)list[select].first_byte_ptr + alligned_size;
+		list[*list_c].size = list[select].size - aligned_size;
+		list[*list_c].first_byte_ptr = (char*)list[select].first_byte_ptr + aligned_size;
 		list[*list_c].dispossible = true;
-		list[select].size = alligned_size;
+		list[select].size = aligned_size;
 		list[select].dispossible = false;
 		/* list[select].context = context; */
 		ptr = list[select].first_byte_ptr;
@@ -293,7 +293,7 @@ ora_srealloc(void *ptr, size_t size)
 	for (i = 0; i < *list_c; i++)
 		if (list[i].first_byte_ptr == ptr)
 		{
-			if (allign_size(size) <= list[i].size)
+			if (align_size(size) <= list[i].size)
 				return ptr;
 			aux_s = list[i].size;
 		}
@@ -328,7 +328,7 @@ salloc(size_t size)
 		ereport(ERROR,
 			(errcode(ERRCODE_OUT_OF_MEMORY),
 			errmsg("out of memory"),
-			errdetail("Failed while allocation block %d bytes in shared memory.", size),
+			errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size),
 			errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;
@@ -343,7 +343,7 @@ srealloc(void *ptr, size_t size)
 		ereport(ERROR,
 			(errcode(ERRCODE_OUT_OF_MEMORY),
 			errmsg("out of memory"),
-			errdetail("Failed while reallocation block %d bytes in shared memory.", size),
+			errdetail("Failed while reallocation block %lu bytes in shared memory.", (unsigned long) size),
 			errhint("Increase SHMEMMSGSZ and recompile package.")));
 
 	return result;

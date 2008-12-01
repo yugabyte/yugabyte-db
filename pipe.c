@@ -248,7 +248,7 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory"),
-					 errdetail("Failed while allocation block %d bytes in shared memory.", size)));
+					 errdetail("Failed while allocation block %lu bytes in shared memory.", (unsigned long) size)));
 
 		if (!found)
 		{

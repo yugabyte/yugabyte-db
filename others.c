@@ -115,7 +115,10 @@ ora_set_nls_sort(PG_FUNCTION_ARGS)
 	text *arg = PG_GETARG_TEXT_P(0);
 
 	if (def_locale != NULL)
+	{
 		pfree(def_locale);
+		def_locale = NULL;
+	}
 
 	def_locale = (text*) MemoryContextAlloc(TopMemoryContext, VARSIZE(arg));
 	memcpy(def_locale, arg, VARSIZE(arg));
