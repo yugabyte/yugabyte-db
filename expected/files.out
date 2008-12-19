@@ -23,12 +23,6 @@ BEGIN
   f := utl_file.fclose(f);
 END;
 $$ LANGUAGE plpgsql;
-SELECT gen_file(utl_file.tmpdir());
- gen_file 
-----------
- 
-(1 row)
-
 CREATE OR REPLACE FUNCTION read_file(dir text) RETURNS void AS $$
 DECLARE
   f utl_file.file_type;
@@ -50,6 +44,48 @@ BEGIN
       RAISE NOTICE 'is_open = %', utl_file.is_open(f);
 END;
 $$ LANGUAGE plpgsql;
+SELECT gen_file(utl_file.tmpdir());
+ gen_file 
+----------
+ 
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
+ fexists 
+---------
+ t
+(1 row)
+
+SELECT utl_file.fcopy(utl_file.tmpdir(), 'regress_orafce.txt', utl_file.tmpdir(), 'regress_orafce2.txt');
+ fcopy 
+-------
+ 
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
+ fexists 
+---------
+ t
+(1 row)
+
+SELECT utl_file.frename(utl_file.tmpdir(), 'regress_orafce2.txt', utl_file.tmpdir(), 'regress_orafce.txt', true);
+ frename 
+---------
+ 
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
+ fexists 
+---------
+ t
+(1 row)
+
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
+ fexists 
+---------
+ f
+(1 row)
+
 SELECT read_file(utl_file.tmpdir());
 NOTICE:  [1] >>ABC<<
 NOTICE:  [2] >>123<<
@@ -73,37 +109,13 @@ NOTICE:  is_open = f
  
 (1 row)
 
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
- fexists 
----------
- t
-(1 row)
-
-SELECT utl_file.frename(utl_file.tmpdir(), 'regress_orafce.txt', utl_file.tmpdir(), 'regress_orafce2.txt', true);
- frename 
----------
- 
-(1 row)
-
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
- fexists 
----------
- f
-(1 row)
-
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
- fexists 
----------
- t
-(1 row)
-
-SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce2.txt');
+SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce.txt');
  fremove 
 ---------
  
 (1 row)
 
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
  fexists 
 ---------
  f

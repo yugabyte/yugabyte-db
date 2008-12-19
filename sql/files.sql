@@ -28,8 +28,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-SELECT gen_file(utl_file.tmpdir());
-
 CREATE OR REPLACE FUNCTION read_file(dir text) RETURNS void AS $$
 DECLARE
   f utl_file.file_type;
@@ -52,14 +50,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+SELECT gen_file(utl_file.tmpdir());
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
+SELECT utl_file.fcopy(utl_file.tmpdir(), 'regress_orafce.txt', utl_file.tmpdir(), 'regress_orafce2.txt');
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
+SELECT utl_file.frename(utl_file.tmpdir(), 'regress_orafce2.txt', utl_file.tmpdir(), 'regress_orafce.txt', true);
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
+SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
 SELECT read_file(utl_file.tmpdir());
-
+SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce.txt');
 SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
-SELECT utl_file.frename(utl_file.tmpdir(), 'regress_orafce.txt', utl_file.tmpdir(), 'regress_orafce2.txt', true);
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce.txt');
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
-SELECT utl_file.fremove(utl_file.tmpdir(), 'regress_orafce2.txt');
-SELECT fexists FROM utl_file.fgetattr(utl_file.tmpdir(), 'regress_orafce2.txt');
 DROP FUNCTION gen_file(text);
 DROP FUNCTION read_file(text);
 

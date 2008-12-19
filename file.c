@@ -7,6 +7,7 @@
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
+#include "miscadmin.h"
 #include "port.h"
 #include "utils/memutils.h"
 #include "orafunc.h"
@@ -34,9 +35,7 @@ Datum utl_file_fclose(PG_FUNCTION_ARGS);
 Datum utl_file_fclose_all(PG_FUNCTION_ARGS);
 Datum utl_file_fremove(PG_FUNCTION_ARGS);
 Datum utl_file_frename(PG_FUNCTION_ARGS);
-/*
 Datum utl_file_fcopy(PG_FUNCTION_ARGS);
-*/
 Datum utl_file_fgetattr(PG_FUNCTION_ARGS);
 Datum utl_file_tmpdir(PG_FUNCTION_ARGS);
 
@@ -53,17 +52,9 @@ PG_FUNCTION_INFO_V1(utl_file_fclose);
 PG_FUNCTION_INFO_V1(utl_file_fclose_all);
 PG_FUNCTION_INFO_V1(utl_file_fremove);
 PG_FUNCTION_INFO_V1(utl_file_frename);
-/*
 PG_FUNCTION_INFO_V1(utl_file_fcopy);
-*/
 PG_FUNCTION_INFO_V1(utl_file_fgetattr);
 PG_FUNCTION_INFO_V1(utl_file_tmpdir);
-
-#define PARAMETER_ERROR(detail) \
-	ereport(ERROR, \
-		(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
-		 errmsg("invalid parameter"), \
-		 errdetail(detail)))
 
 #define CUSTOM_EXCEPTION(msg, detail) \
 	ereport(ERROR, \
@@ -114,6 +105,8 @@ static int32	slotid = 0;			/* next slot id */
 
 static void check_secure_locality(const char *path);
 static char *get_safe_path(text *location, text *filename);
+static int copy_text_file(FILE *srcfile, FILE *dstfile,
+						  int start_line, int end_line);
 
 /*
  * get_descriptor(FILE *file) find any free slot for FILE pointer.
@@ -814,6 +807,11 @@ get_safe_path(text *location, text *filename)
 	return fullname;
 }
 
+/*
+ * CREATE FUNCTION utl_file.fremove(
+ *     location		text,
+ *     filename		text)
+ */
 Datum
 utl_file_fremove(PG_FUNCTION_ARGS)
 {
@@ -830,6 +828,14 @@ utl_file_fremove(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/*
+ * CREATE FUNCTION utl_file.frename(
+ *     location		text,
+ *     filename		text,
+ *     dest_dir		text,
+ *     dest_file	text,
+ *     overwrite	boolean DEFAULT false)
+ */
 Datum
 utl_file_frename(PG_FUNCTION_ARGS)
 {
@@ -862,6 +868,127 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	PG_RETURN_VOID();
 }
 
+/*
+ * CREATE FUNCTION utl_file.fcopy(
+ *     src_location		text,
+ *     src_filename		text,
+ *     dest_location	text,
+ *     dest_filename	text,
+ *     start_line		integer DEFAULT NULL
+ *     end_line			integer DEFAULT NULL)
+ */
+Datum
+utl_file_fcopy(PG_FUNCTION_ARGS)
+{
+	char	   *srcpath;
+	char	   *dstpath;
+	int			start_line;
+	int			end_line;
+	FILE	   *srcfile;
+	FILE	   *dstfile;
+
+	NOT_NULL_ARG(0);
+	NOT_NULL_ARG(1);
+	NOT_NULL_ARG(2);
+	NOT_NULL_ARG(3);
+
+	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
+
+	start_line = (PG_NARGS() > 4 && !PG_ARGISNULL(4)) ? PG_GETARG_INT32(4) : 1;
+	if (start_line <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("start_line must be positive (%d passed)", start_line)));
+
+	end_line = (PG_NARGS() > 5 && !PG_ARGISNULL(5)) ? PG_GETARG_INT32(4) : INT_MAX;
+	if (end_line <= 0)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				errmsg("end_line must be positive (%d passed)", end_line)));
+
+	srcfile = fopen(srcpath, "rt");
+	if (srcfile == NULL)
+	{
+		/* failed to open src file. */
+		IO_EXCEPTION();
+	}
+
+	dstfile = fopen(dstpath, "wt");
+	if (dstfile == NULL)
+	{
+		/* failed to open dst file. */
+		fclose(srcfile);
+		IO_EXCEPTION();
+	}
+
+	PG_TRY();
+	{
+		if (copy_text_file(srcfile, dstfile, start_line, end_line))
+			IO_EXCEPTION();
+	}
+	PG_CATCH();
+	{
+		fclose(srcfile);
+		fclose(dstfile);
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
+
+	fclose(srcfile);
+	fclose(dstfile);
+	PG_RETURN_VOID();
+}
+
+/*
+ * Copy srcfile to dstfile. Return 0 if succeeded, or non-0 if error.
+ */
+static int
+copy_text_file(FILE *srcfile, FILE *dstfile, int start_line, int end_line)
+{
+	char	buffer[MAX_LINESIZE];
+	size_t	len;
+	int		i;
+
+	errno = 0;
+	/* skip first start_line. */
+	for (i = 1; i < start_line; i++)
+	{
+		CHECK_FOR_INTERRUPTS();
+		do
+		{
+			if (fgets(buffer, lengthof(buffer), srcfile) == NULL)
+				return errno;
+			len = strlen(buffer);
+		} while(buffer[len - 1] != '\n');
+	}
+
+	/* copy until end_line. */
+	for (; i <= end_line; i++)
+	{
+		CHECK_FOR_INTERRUPTS();
+		do
+		{
+			if (fgets(buffer, lengthof(buffer), srcfile) == NULL)
+				return errno;
+			len = strlen(buffer);
+			if (fwrite(buffer, 1, len, dstfile) != len)
+				return errno;
+		} while(buffer[len - 1] != '\n');
+	}
+
+	return 0;
+}
+
+/*
+ * CREATE FUNCTION utl_file.fgetattr(
+ *     location		text,
+ *     filename		text
+ * ) RETURNS (
+ *     fexists		boolean,
+ *     file_length	bigint,
+ *     blocksize	integer)
+ */
 Datum
 utl_file_fgetattr(PG_FUNCTION_ARGS)
 {
