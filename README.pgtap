@@ -1,9 +1,10 @@
 pgTAP 0.15
 ==========
 
-pgTAP is a collection of TAP-emitting unit testing functions written in
-PL/pgSQL and PL/SQL. It is based on the Test::More module distributed with
-Perl 5. You could even consider it a port of sorts.
+pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
+PL/SQL. It includes a comprehensive collection of TAP-emitting assertion
+functions, as well as the ability to integrate with other TAP-emitting test
+frameworks. It can also be used in the xUnit testing style.
 
 Installation
 ============
@@ -37,7 +38,7 @@ to your `$PATH` environment variable:
     env PATH=$PATH:/path/to/pgsql/bin USE_PGXS=1 make && make test && make install
 
 And finally, if all that fails, copy the entire distribution directory to the
-`contrib/` subdirectory of the PostgreSQL source code and try it there without
+`contrib/` subdirectory of the PostgreSQL source tree and try it there without
 the `$USE_PGXS` variable:
 
     make
@@ -206,6 +207,11 @@ high legibility for humans. TAP started life as part of the test harness for
 Perl but now has implementations in C/C++, Python, PHP, JavaScript, Perl, and
 now PostgreSQL.
 
+There are two ways to use pgTAP: 1) In simple test scripts that use a plan to
+describe the tests in the script; or 2) In xUnit-style test functions that you
+install into your database and run all at once in the PostgreSQL client of
+your choice.
+
 I love it when a plan comes together
 ------------------------------------
 
@@ -233,6 +239,38 @@ completed, so that it can output any diagnostics about failures or a
 discrepancy between the planned number of tests and the number actually run:
 
     SELECT * FROM finish();
+
+What a sweet unit!
+------------------
+
+If you're used to xUnit testing frameworks, you can collect all of your tests
+into database functions and run them all at once with `runtests()`. This is
+similar to how [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
+[Epic](http://www.epictest.org/) work. The `runtests()` function does all the
+work of finding and running your test functions. It even supports setup and
+teardown functions. To use it, write your unit test functions so that they
+return a set of text results, and then use the pgTAP assertion functions to
+return TAP values, like so:
+
+    create or replace function setup_insert(
+    ) RETURNS SETOF TEXT AS $$
+        RETURN NEXT is( MAX(nick), NULL, 'Should have no users') FROM users;
+        INSERT INTO users (nick) VALUES ('theory');
+    $$ LANGUAGE plpgsql;
+    
+    CREATE OR REPLACE FUNCTION test_user(
+    ) RETURNS SETOF TEXT AS $$
+       SELECT is( nick, 'theory', 'Should have nick') FROM users;
+    END;
+    $$ LANGUAGE sql;
+
+See below for details on the pgTAP assertion functions. Once you've defined
+your unit testing functions, you can run your tests at any time using the
+`runtests()` function:
+
+    SELECT * FROM runtests();
+
+The TAP results will be sent to your client.
 
 Test names
 ----------
