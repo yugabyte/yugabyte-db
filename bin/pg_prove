@@ -115,7 +115,7 @@ The test scripts should be a series of SQL statements
   -v --verbose             Display output of test scripts while running them.
   -h --help                Print a usage statement and exit.
   -m --man                 Print the complete documentation and exit.
-  -v --version             Print the version number and exit.
+  -V --version             Print the version number and exit.
   -P --pset OPTION=VALUE   Set psql printing option.
 
 =head1 Options Details
@@ -190,6 +190,9 @@ on the supported options.
 
 =item C<--verbose>
 
+  pg_prove --verbose
+  pg_prove -v
+
 Display standard output of test scripts while running them. This behavior can
 also be triggered by setting the C<$TEST_VERBOSE> environment variable to a
 true value.
@@ -239,12 +242,12 @@ Outputs a brief description of the options supported by C<pg_prove> and exits.
 
 Outputs this documentation and exits.
 
-=item C<-v>
+=item C<-V>
 
 =item C<--version>
 
   pg_prove --version
-  pg_prove -v
+  pg_prove -V
 
 Outputs the program name and version and exits.
 

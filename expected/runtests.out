@@ -1,0 +1,38 @@
+\unset ECHO
+ok 1 - starting up
+ok 2 - starting up some more
+# whatever."test ident"()
+ok 3 - setup
+ok 4 - Should be nothing in the test table
+ok 5 - setup more
+ok 6 - ident
+ok 7 - ident 2
+ok 8 - teardown
+ok 9 - teardown more
+# whatever.test_this()
+ok 10 - setup
+ok 11 - Should be nothing in the test table
+ok 12 - setup more
+ok 13 - simple pass
+ok 14 - another simple pass
+ok 15 - teardown
+ok 16 - teardown more
+# whatever.testplpgsql()
+ok 17 - setup
+ok 18 - Should be nothing in the test table
+ok 19 - setup more
+ok 20 - plpgsql simple
+ok 21 - plpgsql simple 2
+ok 22 - Should be a 1 in the test table
+ok 23 - teardown
+ok 24 - teardown more
+# whatever.testz()
+ok 25 - setup
+ok 26 - Should be nothing in the test table
+ok 27 - setup more
+ok 28 - Late test should find nothing in the test table
+ok 29 - teardown
+ok 30 - teardown more
+ok 31 - shutting down
+ok 32 - shutting down more
+1..32

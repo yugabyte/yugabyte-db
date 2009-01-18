@@ -699,10 +699,10 @@ This function tests that the specified column is of a particular type. If it
 fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
 fourth the type, and the fifth is the test description. If the schema is
-omitted, the table must be visible in the search path. If the test description
-is omitted, it will be set to "Column `:table`.`:column` should be type
-`:type`". Note that this test will fail if the table or column in question
-does not exist.
+omitted, the table and the type must be visible in the search path. If the
+test description is omitted, it will be set to "Column `:table`.`:column`
+should be type `:type`". Note that this test will fail if the table or column
+in question does not exist.
 
 The type argument should be formatted as it would be displayed in the view of
 a table using the `\d` command in `psql`. For example, if you have a numeric
@@ -1647,6 +1647,98 @@ it gets the job done. Of course, if your diagnostics use something other than
 indented "have" and "want", such failures will be easier to read. But either
 way, do test your diagnostics!
 
+Tap that Batch
+--------------
+
+Sometimes it can be useful to batch a lot of TAP tests into a function. The
+simplest way to do so is to define a function that `RETURNS SETOF TEXT` and
+then simply call `RETURN NEXT` for each TAP test. Here's a simple example:
+
+    CREATE OR REPLACE FUNCTION my_tests(
+    ) RETURNS SETOF TEXT AS $$
+    BEGIN
+        RETURN NEXT pass( 'plpgsql simple' );
+        RETURN NEXT pass( 'plpgsql simple 2' );
+    END;
+    $$ LANGUAGE plpgsql;
+
+Then you can just call the function to run all of your TAP tests at once:
+
+    SELECT plan(2);
+    SELECT * FROM my_tests();
+    SELECT * FROM finish();
+
+### `do_tap( schema, pattern )` ###
+### `do_tap( schema )` ###
+### `do_tap( pattern )` ###
+### `do_tap()` ###
+
+    SELECT plan(32);
+    SELECT * FROM do_tap('testschema');
+    SELECT * FROM finish();
+
+If you like you can create a whole slew of these batched tap functions, and
+then use the `do_tap()` function to run them all at once. If passed no
+arguments, it will attempt to find all visible functions that start with
+"test". If passed a schema name, it will look for and run test functions only
+in that schema (be sure to cast the schema to `name` if it is the only
+argument). If passed a regular expression pattern, it will look for function
+names that match that pattern in the search path. If passed both, it will of
+course only search for test functions that match the function in the named
+schema.
+
+This can be very useful if you prefer to keep all of your TAP tests in
+functions defined in the database. Simply call `plan()`, use `do_tap()` to
+execute all of your tests, and then call `finish()`.
+
+As a bonus, if `client_min_messages` is set to "warning", "error", "fatal", or
+"panic", the name of each function will be emitted as a diagnostic message
+before it is called. For example, if `do_tap()` found and executed two TAP
+testing functions an `client_min_messages` is set to "warning", output will
+look something like this:
+
+    # public.test_this()
+    ok 1 - simple pass
+    ok 2 - another simple pass
+    # public.test_that()
+    ok 3 - that simple
+    ok 4 - that simple 2
+
+Which will make it much easier to tell what functions need to be examined for
+failing tests.
+
+### `runtests( schema, match )` ###
+### `runtests( schema )` ###
+### `runtests( match )` ###
+### `runtests( )` ###
+
+    SELECT * FROM runtests('testschema');
+
+If you'd like pgTAP to plan, run all of your tests functions, and finish all
+in one fell swoop, use `runtests()`. This most closely emulates the xUnit
+testing environment, similar to the functionality of
+[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
+[Epic](http://www.epictest.org/).
+
+As with `do_tap()`, you can pass in a schema argument and/or a pattern that
+the names of the tests functions can match. But unlike `do_tap()`,
+`runtests()` fully supports startup, shutdown, setup, and teardown functions,
+as well as transactional rollbacks between tests. It also outputs the test
+plan and fishes the tests, so you don't have to call `plan()` or `finish()`
+yourself.
+
+The fixture functions run by `runtests()` are as follows:
+
+* `^startup` - Functions whose names start with "startup" are run in
+  alphabetical order before any test functions are run.
+* `^setup` - Functions whose names start with "setup" are run in alphabetical
+  order before each test function is run.
+* `^teardown` - Functions whose names start with "teardown" are run in
+  alphabetical order after each test function is run. They will not be run,
+  however, after a test that has died.
+* `^shutdown` - Functions whose names start with "shutdown" are run in
+  alphabetical order after all test functions have been run.
+
 Utility Functions
 =================
 
@@ -1722,6 +1814,22 @@ executing the comparison, but might be generally useful.
     -----------+-----------
      integer   | numeric
 
+### `findfuncs( schema, pattern )` ###
+### `findfuncs( pattern )` ###
+
+    SELECT findfuncs('myschema', '^test' );
+
+This function searches the named schema or, if no schema is passed, the search
+patch, for all functions that match the regular expression pattern. The
+functions it finds are returned as an array of text values, with each value
+consisting of the schema name, a dot, and the function name. For example:
+
+    SELECT findfuncs('tests', '^test);
+                findfuncs
+    -----------------------------------
+     {tests.test_foo,tests."test bar"}
+    (1 row)
+
 Compatibility
 =============
 
@@ -1772,6 +1880,7 @@ and `lives_ok()` functions do not work under 8.0. Don't even use them there.
 To Do
 -----
 
+* Add a `pgtap_version()` function.
 * Update build for 8.4, where `pg_typeof()` is already included.
 * Add xUnit-style support by adding a function to run test functions that emit
   TAP. The function should support startup and shutdown and setup and teardown

@@ -3,6 +3,21 @@ Revision history for pgTAP
 0.15
       - Changed `pg_typeof()` from immutable to stable, in compliance with its
         configuration in the forthcoming PostgreSQL 8.4.
+      - Added `do_tap()`, which finds test functions and runs them, allowing
+        tap tests to be embedded in functions and then executed all at once.
+      - Added `runtests()`, which introduces xUnit-style test running, for
+        those who prefer to put their tests in a slew of test functions and
+        then run one function to run all of the test functions (plus startup,
+        setup, teardown, and shutdown tests).
+      - Added `findfuncs()`, which is used by `do_tap()` to find the functions
+        to execute.
+      - The `col_type_is()` function now requires that the type be visible in
+        the search path when it is called without a schema argument.
+      - The `plan()` function no longer resets the `client_min_messages`
+        setting to its default value, but leaves it set to whatever it was set
+        to before the function was called.
+      - Fixed a typo in the documentation of the short version of the
+        `--version` option to `pg_prove`, which is `-V`, not `-v`.
 
 0.14  2008-10-27T22:43:36
       - Added `SET search_path` statements to `uninstall_pgtap.sql.in` so that

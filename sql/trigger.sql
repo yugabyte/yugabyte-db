@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
--- $Id: unique.sql 4376 2008-10-17 16:08:15Z david $
+-- $Id$
 
 SELECT plan(33);
 --SELECT * FROM no_plan();

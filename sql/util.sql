@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(10);
+SELECT plan(11);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -46,6 +46,12 @@ SELECT matches(
    os_name(),
    '^[[:alpha:]]+$',
    'os_name() should output something like an OS name'
+);
+
+SELECT is(
+    findfuncs('pg_catalog', '^abs$'),
+    ARRAY['pg_catalog.abs'],
+    'findfincs() should return distinct values'
 );
 
 /****************************************************************************/
