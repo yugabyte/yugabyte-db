@@ -143,3 +143,6 @@ installcheck: test_setup.sql
 # In addition to installcheck, one can also run the tests through pg_prove.
 test: test_setup.sql
 	./bin/pg_prove --pset tuples_only=1 $(TESTS)
+
+markdown:
+	markdown -F 0x1000 README.pgtap > pgtap.html
