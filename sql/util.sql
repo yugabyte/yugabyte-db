@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(11);
+SELECT plan(12);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -19,7 +19,7 @@ SELECT is(
 SELECT matches(
     pg_version(),
     '^8[.][[:digit:]]{1,2}[.][[:digit:]]{1,2}$',
-    'pg_version should work'
+    'pg_version() should work'
 );
 
 SELECT CASE WHEN pg_version_num() < 81000
@@ -53,6 +53,13 @@ SELECT is(
     ARRAY['pg_catalog.abs'],
     'findfincs() should return distinct values'
 );
+
+SELECT matches(
+    pgtap_version()::text,
+    '^0[.][[:digit:]]{2}$',
+    'pgtap_version() should work'
+);
+
 
 /****************************************************************************/
 /****************************************************************************/

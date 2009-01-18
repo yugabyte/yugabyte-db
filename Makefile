@@ -23,6 +23,7 @@ endif
 PGVER_MAJOR = $(shell echo $(VERSION) | awk -F. '{ print ($$1 + 0) }')
 PGVER_MINOR = $(shell echo $(VERSION) | awk -F. '{ print ($$2 + 0) }')
 PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
+PGTAP_VERSION = 0.15
 
 # We support 8.0 and later.
 ifneq ($(PGVER_MAJOR), 8)
@@ -102,9 +103,9 @@ endif
 
 pgtap.sql: pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
 else
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 3)

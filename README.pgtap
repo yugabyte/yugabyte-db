@@ -1745,6 +1745,18 @@ Utility Functions
 Along with the usual array of testing, planning, and diagnostic functions,
 pTAP provides a few extra functions to make the work of testing more pleasant.
 
+### `pgtap_version()` ###
+
+    SELECT pgtap_version();
+
+Returns the version of pgTAP installed in the server. The value is NUMERIC,
+and thus suitable for comparing to a decimal value:
+
+    SELECT CASE WHEN pgtap_version() < 0.14
+        THEN skip('No index assertions before pgTAP 0.14')
+        ELSE has_index('users', 'idx_user_name')
+        END;
+
 ### `pg_version()` ###
 
     SELECT pg_version();
@@ -1880,11 +1892,7 @@ and `lives_ok()` functions do not work under 8.0. Don't even use them there.
 To Do
 -----
 
-* Add a `pgtap_version()` function.
 * Update build for 8.4, where `pg_typeof()` is already included.
-* Add xUnit-style support by adding a function to run test functions that emit
-  TAP. The function should support startup and shutdown and setup and teardown
-  functions, too.
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not
