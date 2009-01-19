@@ -2679,7 +2679,8 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION _runem( text[], boolean )
 RETURNS SETOF TEXT AS $$
 DECLARE
-    tap    text;
+    -- We must iterate with a record rather than text for 8.1 compat.
+    rec    record;
     lbound int := array_lower($1, 1);
 BEGIN
     IF lbound IS NULL THEN RETURN; END IF;
@@ -2687,8 +2688,8 @@ BEGIN
         -- Send the name of the function to diag if warranted.
         IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
         -- Execute the tap function and return its results.
-        FOR tap IN EXECUTE 'SELECT * FROM ' || $1[i] || '()' LOOP
-            RETURN NEXT tap;
+        FOR rec IN EXECUTE 'SELECT a FROM ' || $1[i] || '() AS b(a)' LOOP
+            RETURN NEXT rec.a;
         END LOOP;
     END LOOP;
     RETURN;
@@ -2758,14 +2759,14 @@ DECLARE
     setup    ALIAS FOR $3;
     teardown ALIAS FOR $4;
     tests    ALIAS FOR $5;
-    tap      text;
+    rec      record;
     verbose  boolean := _is_verbose();
     num_faild INTEGER := 0;
 BEGIN
     BEGIN
         -- No plan support.
         PERFORM * FROM no_plan();
-        FOR tap IN SELECT * FROM _runem(startup, false) LOOP RETURN NEXT tap; END LOOP;
+        FOR rec IN SELECT a FROM _runem(startup, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
     EXCEPTION
         -- Catch all exceptions and simply rethrow custom exceptions. This
         -- will roll back everything in the above block.
@@ -2780,15 +2781,15 @@ BEGIN
                 IF verbose THEN RETURN NEXT diag(tests[i] || '()'); END IF;
 
                 -- Run the setup functions.
-                FOR tap IN SELECT * FROM _runem(setup, false) LOOP RETURN NEXT tap; END LOOP;
+                FOR rec IN SELECT a FROM _runem(setup, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 
                 -- Run the actual test function.
-                FOR tap IN EXECUTE 'SELECT * FROM ' || tests[i] || '()' LOOP
-                    RETURN NEXT tap;
+                FOR rec IN EXECUTE 'SELECT a FROM ' || tests[i] || '() AS b(a)' LOOP
+                    RETURN NEXT rec.a;
                 END LOOP;
 
                 -- Run the teardown functions.
-                FOR tap IN SELECT * FROM _runem(teardown, false) LOOP RETURN NEXT tap; END LOOP;
+                FOR rec IN SELECT a FROM _runem(teardown, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 
                 -- Remember how many failed and then roll back.
                 num_faild := num_faild + num_failed();
@@ -2803,7 +2804,7 @@ BEGIN
         END LOOP;
 
         -- Run the shutdown functions.
-        FOR tap IN SELECT * FROM _runem(shutdown, false) LOOP RETURN NEXT tap; END LOOP;
+        FOR rec IN SELECT a FROM _runem(shutdown, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 
         -- Raise an exception to rollback any changes.
         RAISE EXCEPTION '__TAP_ROLLBACK__';
@@ -2814,8 +2815,8 @@ BEGIN
         END IF;
     END;
     -- Finish up.
-    FOR tap IN SELECT * FROM _finish( currval('__tresults___numb_seq')::integer, 0, num_faild ) LOOP
-        RETURN NEXT tap;
+    FOR rec IN SELECT a FROM _finish( currval('__tresults___numb_seq')::integer, 0, num_faild ) AS b(a) LOOP
+        RETURN NEXT rec.a;
     END LOOP;
 
     -- Clean up and return.
