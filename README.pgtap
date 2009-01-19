@@ -1910,6 +1910,7 @@ No changes. Everything should just work.
 A number of casts are added to increase compatibility. The casts are:
 
 * `boolean` to `text`
+* `text[]` to `text`
 * `name[]` to `text`
 * `regtype` to `text`
 

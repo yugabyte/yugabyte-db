@@ -6,6 +6,13 @@ LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE CAST (boolean AS text) WITH FUNCTION booltext(boolean) AS IMPLICIT;
 
+-- Cast text[]s to text like 8.3 does.
+CREATE OR REPLACE FUNCTION textarray_text(text[])
+RETURNS TEXT AS 'SELECT textin(array_out($1));'
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE CAST (text[] AS text) WITH FUNCTION textarray_text(text[]) AS IMPLICIT;
+
 -- Cast name[]s to text like 8.3 does.
 CREATE OR REPLACE FUNCTION namearray_text(name[])
 RETURNS TEXT AS 'SELECT textin(array_out($1));'
