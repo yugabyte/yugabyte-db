@@ -4,11 +4,14 @@
 #include <sys/stat.h>
 
 #include "executor/spi.h"
+
+#include "catalog/pg_type.h"
 #include "fmgr.h"
 #include "funcapi.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "port.h"
+#include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "orafunc.h"
 
