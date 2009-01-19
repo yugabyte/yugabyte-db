@@ -1,6 +1,6 @@
 # $Id$
 TESTS = $(wildcard sql/*.sql)
-EXTRA_CLEAN = test_setup.sql
+EXTRA_CLEAN = test_setup.sql pgtap.html toc.html
 DATA_built = pgtap.sql uninstall_pgtap.sql
 MODULES = pgtap
 DOCS = README.pgtap
