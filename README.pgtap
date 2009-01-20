@@ -1499,6 +1499,201 @@ preceding `todo_start()` method call.
 
 Returns true if the test is currently inside a TODO block.
 
+Utility Functions
+-----------------
+
+Along with the usual array of testing, planning, and diagnostic functions,
+pTAP provides a few extra functions to make the work of testing more pleasant.
+
+### `pgtap_version()` ###
+
+    SELECT pgtap_version();
+
+Returns the version of pgTAP installed in the server. The value is NUMERIC,
+and thus suitable for comparing to a decimal value:
+
+    SELECT CASE WHEN pgtap_version() < 0.14
+        THEN skip('No index assertions before pgTAP 0.14')
+        ELSE has_index('users', 'idx_user_name')
+        END;
+
+### `pg_version()` ###
+
+    SELECT pg_version();
+
+Returns the server version number against which pgTAP was compiled. This is
+the stringified version number displayed in the first part of the core
+`version()` function and stored in the "server_version" setting:
+
+    try=% select current_setting( 'server_version'), pg_version();
+     current_setting | pg_version
+    -----------------+------------
+     8.3.4           | 8.3.4
+    (1 row)
+
+### `pg_version_num()` ###
+
+    SELECT pg_version_num();
+
+Returns an integer representation of the server version number against which
+pgTAP was compiled. This function is useful for determining whether or not
+certain tests should be run or skipped (using `skip()`) depending on the
+version of PostgreSQL. For example:
+
+    SELECT CASE WHEN pg_version_num() < 80100
+        THEN skip('throws_ok() not supported before 8.1' )
+        ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
+        END;
+
+The revision level is in the tens position, the minor version in the thousands
+position, and the major version in the ten thousands position and above
+(assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
+position). This value is the same as the "sever_version_num" setting available
+in PostgreSQL 8.2 and higher, but supported by this function back to
+PostgreSQL 8.0:
+
+    try=% select current_setting( 'server_version_num'), pg_version_num();
+     current_setting | pg_version_num
+    -----------------+----------------
+     80304           |          80304
+
+### `os_name()` ###
+
+    SELECT os_name();
+
+Returns a string representing the name of the operating system on which pgTAP
+was compiled. This can be useful for determining whether or not to skip tests
+on certain operating systems.
+
+This is usually the same a the ouput of `uname`, but converted to lower case.
+There are some semantics in the pgTAP build process to detect other operating
+systems, though assistance in improving such detection would be greatly
+appreciated.
+
+**NOTE:** The values returned by this function may change in the future,
+depending on how good the pgTAP build process gets at detecting a OS.
+
+### `pg_typeof(any)` ###
+
+    SELECT pg_typeof(:value);
+
+Returns a `regtype` identifying the type of value passed to the function. This
+function is used internally by `cmp_ok()` to properly construct types when
+executing the comparison, but might be generally useful.
+
+    try=% select pg_typeof(12), pg_typeof(100.2);
+     pg_typeof | pg_typeof
+    -----------+-----------
+     integer   | numeric
+
+### `findfuncs( schema, pattern )` ###
+### `findfuncs( pattern )` ###
+
+    SELECT findfuncs('myschema', '^test' );
+
+This function searches the named schema or, if no schema is passed, the search
+patch, for all functions that match the regular expression pattern. The
+functions it finds are returned as an array of text values, with each value
+consisting of the schema name, a dot, and the function name. For example:
+
+    SELECT findfuncs('tests', '^test);
+                findfuncs
+    -----------------------------------
+     {tests.test_foo,tests."test bar"}
+    (1 row)
+
+Tap that Batch
+--------------
+
+Sometimes it can be useful to batch a lot of TAP tests into a function. The
+simplest way to do so is to define a function that `RETURNS SETOF TEXT` and
+then simply call `RETURN NEXT` for each TAP test. Here's a simple example:
+
+    CREATE OR REPLACE FUNCTION my_tests(
+    ) RETURNS SETOF TEXT AS $$
+    BEGIN
+        RETURN NEXT pass( 'plpgsql simple' );
+        RETURN NEXT pass( 'plpgsql simple 2' );
+    END;
+    $$ LANGUAGE plpgsql;
+
+Then you can just call the function to run all of your TAP tests at once:
+
+    SELECT plan(2);
+    SELECT * FROM my_tests();
+    SELECT * FROM finish();
+
+### `do_tap( schema, pattern )` ###
+### `do_tap( schema )` ###
+### `do_tap( pattern )` ###
+### `do_tap()` ###
+
+    SELECT plan(32);
+    SELECT * FROM do_tap('testschema');
+    SELECT * FROM finish();
+
+If you like you can create a whole slew of these batched tap functions, and
+then use the `do_tap()` function to run them all at once. If passed no
+arguments, it will attempt to find all visible functions that start with
+"test". If passed a schema name, it will look for and run test functions only
+in that schema (be sure to cast the schema to `name` if it is the only
+argument). If passed a regular expression pattern, it will look for function
+names that match that pattern in the search path. If passed both, it will of
+course only search for test functions that match the function in the named
+schema.
+
+This can be very useful if you prefer to keep all of your TAP tests in
+functions defined in the database. Simply call `plan()`, use `do_tap()` to
+execute all of your tests, and then call `finish()`.
+
+As a bonus, if `client_min_messages` is set to "warning", "error", "fatal", or
+"panic", the name of each function will be emitted as a diagnostic message
+before it is called. For example, if `do_tap()` found and executed two TAP
+testing functions an `client_min_messages` is set to "warning", output will
+look something like this:
+
+    # public.test_this()
+    ok 1 - simple pass
+    ok 2 - another simple pass
+    # public.test_that()
+    ok 3 - that simple
+    ok 4 - that simple 2
+
+Which will make it much easier to tell what functions need to be examined for
+failing tests.
+
+### `runtests( schema, match )` ###
+### `runtests( schema )` ###
+### `runtests( match )` ###
+### `runtests( )` ###
+
+    SELECT * FROM runtests('testschema');
+
+If you'd like pgTAP to plan, run all of your tests functions, and finish all
+in one fell swoop, use `runtests()`. This most closely emulates the xUnit
+testing environment, similar to the functionality of
+[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
+[Epic](http://www.epictest.org/). It requires PostgreSQL 8.1 or higher.
+
+As with `do_tap()`, you can pass in a schema argument and/or a pattern that
+the names of the tests functions can match. But unlike `do_tap()`,
+`runtests()` fully supports startup, shutdown, setup, and teardown functions,
+as well as transactional rollbacks between tests. It also outputs the test
+plan and fishes the tests, so you don't have to call `plan()` or `finish()`
+yourself.
+
+The fixture functions run by `runtests()` are as follows:
+
+* `^startup` - Functions whose names start with "startup" are run in
+  alphabetical order before any test functions are run.
+* `^setup` - Functions whose names start with "setup" are run in alphabetical
+  order before each test function is run.
+* `^teardown` - Functions whose names start with "teardown" are run in
+  alphabetical order after each test function is run. They will not be run,
+  however, after a test that has died.
+* `^shutdown` - Functions whose names start with "shutdown" are run in
+  alphabetical order after all test functions have been run.
+
 Writing Test Functions
 ======================
 
@@ -1685,201 +1880,6 @@ I realize that can be a bit confusing, given the various haves and wants, but
 it gets the job done. Of course, if your diagnostics use something other than
 indented "have" and "want", such failures will be easier to read. But either
 way, do test your diagnostics!
-
-Tap that Batch
---------------
-
-Sometimes it can be useful to batch a lot of TAP tests into a function. The
-simplest way to do so is to define a function that `RETURNS SETOF TEXT` and
-then simply call `RETURN NEXT` for each TAP test. Here's a simple example:
-
-    CREATE OR REPLACE FUNCTION my_tests(
-    ) RETURNS SETOF TEXT AS $$
-    BEGIN
-        RETURN NEXT pass( 'plpgsql simple' );
-        RETURN NEXT pass( 'plpgsql simple 2' );
-    END;
-    $$ LANGUAGE plpgsql;
-
-Then you can just call the function to run all of your TAP tests at once:
-
-    SELECT plan(2);
-    SELECT * FROM my_tests();
-    SELECT * FROM finish();
-
-### `do_tap( schema, pattern )` ###
-### `do_tap( schema )` ###
-### `do_tap( pattern )` ###
-### `do_tap()` ###
-
-    SELECT plan(32);
-    SELECT * FROM do_tap('testschema');
-    SELECT * FROM finish();
-
-If you like you can create a whole slew of these batched tap functions, and
-then use the `do_tap()` function to run them all at once. If passed no
-arguments, it will attempt to find all visible functions that start with
-"test". If passed a schema name, it will look for and run test functions only
-in that schema (be sure to cast the schema to `name` if it is the only
-argument). If passed a regular expression pattern, it will look for function
-names that match that pattern in the search path. If passed both, it will of
-course only search for test functions that match the function in the named
-schema.
-
-This can be very useful if you prefer to keep all of your TAP tests in
-functions defined in the database. Simply call `plan()`, use `do_tap()` to
-execute all of your tests, and then call `finish()`.
-
-As a bonus, if `client_min_messages` is set to "warning", "error", "fatal", or
-"panic", the name of each function will be emitted as a diagnostic message
-before it is called. For example, if `do_tap()` found and executed two TAP
-testing functions an `client_min_messages` is set to "warning", output will
-look something like this:
-
-    # public.test_this()
-    ok 1 - simple pass
-    ok 2 - another simple pass
-    # public.test_that()
-    ok 3 - that simple
-    ok 4 - that simple 2
-
-Which will make it much easier to tell what functions need to be examined for
-failing tests.
-
-### `runtests( schema, match )` ###
-### `runtests( schema )` ###
-### `runtests( match )` ###
-### `runtests( )` ###
-
-    SELECT * FROM runtests('testschema');
-
-If you'd like pgTAP to plan, run all of your tests functions, and finish all
-in one fell swoop, use `runtests()`. This most closely emulates the xUnit
-testing environment, similar to the functionality of
-[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
-[Epic](http://www.epictest.org/). It requires PostgreSQL 8.1 or higher.
-
-As with `do_tap()`, you can pass in a schema argument and/or a pattern that
-the names of the tests functions can match. But unlike `do_tap()`,
-`runtests()` fully supports startup, shutdown, setup, and teardown functions,
-as well as transactional rollbacks between tests. It also outputs the test
-plan and fishes the tests, so you don't have to call `plan()` or `finish()`
-yourself.
-
-The fixture functions run by `runtests()` are as follows:
-
-* `^startup` - Functions whose names start with "startup" are run in
-  alphabetical order before any test functions are run.
-* `^setup` - Functions whose names start with "setup" are run in alphabetical
-  order before each test function is run.
-* `^teardown` - Functions whose names start with "teardown" are run in
-  alphabetical order after each test function is run. They will not be run,
-  however, after a test that has died.
-* `^shutdown` - Functions whose names start with "shutdown" are run in
-  alphabetical order after all test functions have been run.
-
-Utility Functions
-=================
-
-Along with the usual array of testing, planning, and diagnostic functions,
-pTAP provides a few extra functions to make the work of testing more pleasant.
-
-### `pgtap_version()` ###
-
-    SELECT pgtap_version();
-
-Returns the version of pgTAP installed in the server. The value is NUMERIC,
-and thus suitable for comparing to a decimal value:
-
-    SELECT CASE WHEN pgtap_version() < 0.14
-        THEN skip('No index assertions before pgTAP 0.14')
-        ELSE has_index('users', 'idx_user_name')
-        END;
-
-### `pg_version()` ###
-
-    SELECT pg_version();
-
-Returns the server version number against which pgTAP was compiled. This is
-the stringified version number displayed in the first part of the core
-`version()` function and stored in the "server_version" setting:
-
-    try=% select current_setting( 'server_version'), pg_version();
-     current_setting | pg_version
-    -----------------+------------
-     8.3.4           | 8.3.4
-    (1 row)
-
-### `pg_version_num()` ###
-
-    SELECT pg_version_num();
-
-Returns an integer representation of the server version number against which
-pgTAP was compiled. This function is useful for determining whether or not
-certain tests should be run or skipped (using `skip()`) depending on the
-version of PostgreSQL. For example:
-
-    SELECT CASE WHEN pg_version_num() < 80100
-        THEN skip('throws_ok() not supported before 8.1' )
-        ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
-        END;
-
-The revision level is in the tens position, the minor version in the thousands
-position, and the major version in the ten thousands position and above
-(assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
-position). This value is the same as the "sever_version_num" setting available
-in PostgreSQL 8.2 and higher, but supported by this function back to
-PostgreSQL 8.0:
-
-    try=% select current_setting( 'server_version_num'), pg_version_num();
-     current_setting | pg_version_num
-    -----------------+----------------
-     80304           |          80304
-
-### `os_name()` ###
-
-    SELECT os_name();
-
-Returns a string representing the name of the operating system on which pgTAP
-was compiled. This can be useful for determining whether or not to skip tests
-on certain operating systems.
-
-This is usually the same a the ouput of `uname`, but converted to lower case.
-There are some semantics in the pgTAP build process to detect other operating
-systems, though assistance in improving such detection would be greatly
-appreciated.
-
-**NOTE:** The values returned by this function may change in the future,
-depending on how good the pgTAP build process gets at detecting a OS.
-
-### `pg_typeof(any)` ###
-
-    SELECT pg_typeof(:value);
-
-Returns a `regtype` identifying the type of value passed to the function. This
-function is used internally by `cmp_ok()` to properly construct types when
-executing the comparison, but might be generally useful.
-
-    try=% select pg_typeof(12), pg_typeof(100.2);
-     pg_typeof | pg_typeof
-    -----------+-----------
-     integer   | numeric
-
-### `findfuncs( schema, pattern )` ###
-### `findfuncs( pattern )` ###
-
-    SELECT findfuncs('myschema', '^test' );
-
-This function searches the named schema or, if no schema is passed, the search
-patch, for all functions that match the regular expression pattern. The
-functions it finds are returned as an array of text values, with each value
-consisting of the schema name, a dot, and the function name. For example:
-
-    SELECT findfuncs('tests', '^test);
-                findfuncs
-    -----------------------------------
-     {tests.test_foo,tests."test bar"}
-    (1 row)
 
 Compatibility
 =============
