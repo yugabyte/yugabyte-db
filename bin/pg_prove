@@ -96,11 +96,37 @@ pg_prove - A command-line tool for running pgTAP tests against TAP::Harness
 
 =head1 Description
 
-C<pg_prove> is a command-line interface to the test-running functionality of
-L<TAP::Harness|TAP::Harness>. Shell metacharacters may be used with command
-lines options and will be exanded via "glob".
+C<pg_prove> is a command-line application to run one or more pgTAP tests against
+a PostgreSQL database. The output of the tests is harvested and processed by
+L<TAP::Harness|TAP::Harness> in order to summarize the results of the test.
 
-The test scripts should be a series of SQL statements
+The pgTAP test scripts should consist of a series of SQL statements that
+output TAP. Here's a simple example that assumes that the pgTAP functions have
+been installed in the database:
+
+    -- Start transaction and plan the tests.
+    BEGIN;
+    SELECT plan(1);
+
+    -- Run the tests.
+    SELECT pass( 'My test passed, w00t!' );
+
+    -- Finish the tests and clean up.
+    SELECT * FROM finish();
+    ROLLBACK;
+
+Now run the tests. Here's what it looks like when the pgTAP tests are run with
+`pg_prove`:
+
+    % pg_prove -U postgres sql/*.sql
+    sql/coltap.....ok
+    sql/hastap.....ok
+    sql/moretap....ok
+    sql/pg73.......ok
+    sql/pktap......ok
+    All tests successful.
+    Files=5, Tests=216,  1 wallclock secs ( 0.06 usr  0.02 sys +  0.08 cusr  0.07 csys =  0.23 CPU)
+    Result: PASS
 
 =head1 Options
 
