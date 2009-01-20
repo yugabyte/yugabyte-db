@@ -1,5 +1,7 @@
 Revision history for pgTAP
 
+0.16
+
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its
         configuration in the forthcoming PostgreSQL 8.4.
