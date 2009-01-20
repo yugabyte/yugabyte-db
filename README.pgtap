@@ -243,9 +243,10 @@ discrepancy between the planned number of tests and the number actually run:
 What a sweet unit!
 ------------------
 
-If you're used to xUnit testing frameworks, you can collect all of your tests
-into database functions and run them all at once with `runtests()`. This is
-similar to how [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
+If you're used to xUnit testing frameworks and using PostgreSQL 8.1 or higher,
+you can collect all of your tests into database functions and run them all at
+once with `runtests()`. This is similar to how
+[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
 [Epic](http://www.epictest.org/) work. The `runtests()` function does all the
 work of finding and running your test functions. It even supports setup and
 teardown functions. To use it, write your unit test functions so that they
@@ -1756,7 +1757,7 @@ If you'd like pgTAP to plan, run all of your tests functions, and finish all
 in one fell swoop, use `runtests()`. This most closely emulates the xUnit
 testing environment, similar to the functionality of
 [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
-[Epic](http://www.epictest.org/).
+[Epic](http://www.epictest.org/). It requires PostgreSQL 8.1 or higher.
 
 As with `do_tap()`, you can pass in a schema argument and/or a pattern that
 the names of the tests functions can match. But unlike `do_tap()`,
@@ -1919,14 +1920,16 @@ An `=` operator is also added that compares `name[]` values.
 8.0 and Lower
 -------------
 
-A patch is applied that changes how some of the test functions are written.
-Also, a few casts are added for compatibility:
+A patch is applied that changes how some of the test functions are written and
+removes the `runtests()` function. Also, a few casts are added for
+compatibility:
 
 * `oidvector` to `regtypep[]`.
 * `int2vector` to `integer[]`.
 
-Otherwise, all is the same as for 8.2 Do note, however, that the `throws_ok()`
-and `lives_ok()` functions do not work under 8.0. Don't even use them there.
+Otherwise, all is the same as for 8.2 Do note, however, that the
+`throws_ok()`, `lives_ok()`, and `runtests()` functions do not work under 8.0.
+Don't even use them there.
 
 To Do
 -----

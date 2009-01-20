@@ -35,9 +35,9 @@ ifeq ($(PGVER_MAJOR), 8)
 ifeq ($(PGVER_MINOR), 0)
 # Hack for E'' syntax (<= PG8.0)
 REMOVE_E := -e "s/ E'/ '/g"
-# Throw isn't supported in 8.0.
-TESTS := $(filter-out sql/throwtap.sql,$(TESTS))
-REGRESS := $(filter-out throwtap,$(REGRESS))
+# Throw and runtests aren't supported in 8.0.
+TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql,$(TESTS))
+REGRESS := $(filter-out throwtap runtests,$(REGRESS))
 endif
 endif
 

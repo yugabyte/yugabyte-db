@@ -17,6 +17,7 @@ CREATE OR REPLACE FUNCTION public.testplpgsql() RETURNS SETOF TEXT AS $$
 BEGIN
     RETURN NEXT pass( 'plpgsql simple' );
     RETURN NEXT pass( 'plpgsql simple 2' );
+    RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -24,6 +25,7 @@ CREATE OR REPLACE FUNCTION public."test ident"() RETURNS SETOF TEXT AS $$
 BEGIN
     RETURN NEXT pass( 'ident' );
     RETURN NEXT pass( 'ident 2' );
+    RETURN;
 END;
 $$ LANGUAGE plpgsql;
 
