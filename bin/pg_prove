@@ -242,7 +242,7 @@ Print elapsed time after each test file.
 Display test results in color. Colored test output is the default, but if
 output is not to a terminal, color is disabled.
 
-Requires L<Term::ANSIColor|Term::ANSIColor> on Unix‐like platforms and
+Requires L<Term::ANSIColor|Term::ANSIColor> on Unix-like platforms and
 L<Win32::Console|Win32::Console> on Windows. If the necessary module is not
 installed colored output will not be available.
 
