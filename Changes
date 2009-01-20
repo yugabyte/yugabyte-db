@@ -19,6 +19,8 @@ Revision history for pgTAP
       - Fixed a typo in the documentation of the short version of the
         `--version` option to `pg_prove`, which is `-V`, not `-v`.
       - Added `pgtap_version()`.
+      - Added the `markdown` make target to generate the HTML documentation
+        for the Web site, including a table of contents.
 
 0.14  2008-10-27T22:43:36
       - Added `SET search_path` statements to `uninstall_pgtap.sql.in` so that
