@@ -146,6 +146,7 @@ installcheck: test_setup.sql
 test: test_setup.sql
 	./bin/pg_prove --pset tuples_only=1 $(TESTS)
 
-markdown:
+html:
 	markdown -F 0x1000 README.pgtap > pgtap.html
 	perl -ne 'BEGIN { $$prev = 0; $$lab = ""; print "<h2>Table of Contents</h2>\n<ul>\n" } if (m{<h([23])\s+id="([^"]+)">((<code>[^(]+)?.+?)</h\1>}) { next if $$lab && $$lab eq $$4; $$lab = $$4; if ($$prev) { if ($$1 != $$prev) { print $$1 > $$prev ? "<ul>\n" : "</ul></li>\n"; $$prev = $$1; } else { print "</li>\n" } } else { $$prev = $$1; } print qq{<li><a href="#$$2">} . ($$4 ? "$$4()</code>" : $$3) . "</a>" } END { print "</ul>\n" }' pgtap.html > toc.html
+	perldoc -MPod::Simple::XHTML bin/pg_prove > pg_prove.html
