@@ -324,9 +324,8 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    result := CASE WHEN $1 IS NULL AND $2 IS NULL THEN TRUE
-                   WHEN $1 IS NULL OR  $2 IS NULL THEN FALSE
-                   ELSE $1 = $2 END;
+    -- Would prefer $1 IS NOT DISTINCT FROM, but that's not supported by 8.1.
+    result := NOT $1 IS DISTINCT FROM $2;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '        have: ' || COALESCE( $1::text, 'NULL' ) ||
@@ -346,9 +345,7 @@ DECLARE
     result BOOLEAN;
     output TEXT;
 BEGIN
-    result := CASE WHEN $1 IS NULL AND $2 IS NULL THEN FALSE
-                   WHEN $1 IS NULL OR  $2 IS NULL THEN TRUE
-                   ELSE $1 <> $2 END;
+    result := $1 IS DISTINCT FROM $2;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '    ' || COALESCE( $1::text, 'NULL' ) ||

@@ -351,9 +351,9 @@ additional diagnostic:
     SELECT is(   :this, :that, :description );
     SELECT isnt( :this, :that, :description );
 
-Similar to `ok()`, `is()` and `isnt()` compare their two arguments with `=`
-and `<>` respectively and use the result of that to determine if the test
-succeeded or failed. So these:
+Similar to `ok()`, `is()` and `isnt()` compare their two arguments with `IS
+NOT DISTINCT FROM` (`=`) AND `IS DISTINCT FROM` (`<>`) respectively and use
+the result of that to determine if the test succeeded or failed. So these:
 
     -- Is the ultimate answer 42?
     SELECT is( ultimate_answer(), 42, 'Meaning of Life' );
@@ -368,13 +368,15 @@ are similar to these:
 
 (Mnemonic: "This is that." "This isn't that.")
 
-*Note:* `NULL`s are not treated as unknowns by `is()` or `isnt()`. That is, if
-`:this` and `:that` are both `NULL`, the test will pass, and if only one of
-them is `NULL`, the test will fail.
+*Note:* Thanks to the use of the `IS [ NOT ] DISTINCT FROM` construct, `NULL`s
+are not treated as unknowns by `is()` or `isnt()`. That is, if `:this` and
+`:that` are both `NULL`, the test will pass, and if only one of them is
+`NULL`, the test will fail.
 
-So why use these? They produce better diagnostics on failure. `ok()` cannot
-know what you are testing for (beyond the description), but `is()` and
-`isnt()` know what the test was and why it failed. For example this test:
+So why use these test functions? They produce better diagnostics on failure.
+`ok()` cannot know what you are testing for (beyond the description), but
+`is()` and `isnt()` know what the test was and why it failed. For example this
+test:
 
     \set foo '\'' waffle '\''
     \set bar '\'' yarblokos '\''
@@ -1935,6 +1937,7 @@ To Do
 -----
 
 * Update build for 8.4, where `pg_typeof()` is already included.
+* Add `has_type()`.
 * Update the Makefile to process pg_prove and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not
