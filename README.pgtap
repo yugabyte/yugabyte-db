@@ -1942,6 +1942,8 @@ To Do
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not
   installed.
+* Update the installer to set the default value for `--psql-bin` in `pg_prove`
+  is in the directory returned by `pg_config --bindir`.
 
 Suported Versions
 -----------------
