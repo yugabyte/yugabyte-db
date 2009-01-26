@@ -139,7 +139,7 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
   -c --color               Display colored test ouput.
      --nocolor             Do not display colored test ouput.
   -v --verbose             Display output of test scripts while running them.
-  -h --help                Print a usage statement and exit.
+  -H --help                Print a usage statement and exit.
   -m --man                 Print the complete documentation and exit.
   -V --version             Print the version number and exit.
   -P --pset OPTION=VALUE   Set psql printing option.
@@ -255,7 +255,7 @@ Do not display test results in color.
 =item C<--help>
 
   pg_prove --help
-  pg_prove -h
+  pg_prove -H
 
 Outputs a brief description of the options supported by C<pg_prove> and exits.
 

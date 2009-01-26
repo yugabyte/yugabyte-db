@@ -3,6 +3,8 @@ Revision history for pgTAP
 0.16
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
         of `IS NOT DISTINCT FROM` and `IS DISTINCT FROM`. Swiped from PGUnit.
+      - Fixed documentation for the short version of `--help` in `pg_prove`.
+        It's `-H`, not `-h`.
 
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its
