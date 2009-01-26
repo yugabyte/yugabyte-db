@@ -1944,6 +1944,8 @@ To Do
   installed.
 * Update the installer to set the default value for `--psql-bin` in `pg_prove`
   is in the directory returned by `pg_config --bindir`.
+* Add options to `pg_prove` to allow it to run tests using the `runtests()`
+  function rather than test files.
 
 Suported Versions
 -----------------
