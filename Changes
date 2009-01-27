@@ -5,6 +5,9 @@ Revision history for pgTAP
         of `IS NOT DISTINCT FROM` and `IS DISTINCT FROM`. Swiped from PGUnit.
       - Fixed documentation for the short version of `--help` in `pg_prove`.
         It's `-H`, not `-h`.
+      - Fixed a bug in the makefile that prevented OS detection from working
+        properly on many platforms (including Linux, and probably many
+        others).
 
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its

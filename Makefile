@@ -90,7 +90,7 @@ endif
 
 # Fallback on uname, if it's available.
 ifndef OSNAME
-OSNAME = $(shell uname | awk '{print tolower($1)}')
+OSNAME = $(shell uname | awk '{print tolower($$1)}')
 endif
 
 # Override how .sql targets are processed to add the schema info, if
