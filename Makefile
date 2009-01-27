@@ -45,10 +45,13 @@ endif
 ifeq ($(PGVER_MAJOR), 8)
 ifeq ($(PGVER_MINOR), 0)
 # Hack for E'' syntax (<= PG8.0)
-REMOVE_E := -e "s/ E'/ '/g"
+EXTRA_SUBS := -e "s/ E'/ '/g"
 # Throw and runtests aren't supported in 8.0.
 TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests,$(REGRESS))
+else ifeq ($(PGVER_MINOR), 4)
+# Remove lines 15-20, which define pg_typeof().
+EXTRA_SUBS := -e '15,19d'
 endif
 endif
 
@@ -114,11 +117,12 @@ endif
 
 pgtap.sql: pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(EXTRA_SUBS) pgtap.sql.in > pgtap.sql
 else
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(REMOVE_E) pgtap.sql.in > pgtap.sql
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(EXTRA_SUBS) pgtap.sql.in > pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
+ifneq ($(PGVER_MINOR), 4)
 ifneq ($(PGVER_MINOR), 3)
 	cat compat/install-8.2.sql >> pgtap.sql
 ifneq ($(PGVER_MINOR), 2)
@@ -126,6 +130,7 @@ ifeq ($(PGVER_MINOR), 1)
 	patch -p0 < compat/install-8.1.patch
 else
 	patch -p0 < compat/install-8.0.patch
+endif
 endif
 endif
 endif
@@ -138,6 +143,7 @@ else
 	cp uninstall_pgtap.sql.in uninstall_pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
+ifneq ($(PGVER_MINOR), 4)
 ifneq ($(PGVER_MINOR), 3)
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp
 	cat compat/uninstall-8.2.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
@@ -147,6 +153,7 @@ ifeq ($(PGVER_MINOR), 0)
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp
 	cat compat/uninstall-8.0.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
 	rm uninstall_pgtap.tmp
+endif
 endif
 endif
 
