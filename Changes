@@ -8,6 +8,8 @@ Revision history for pgTAP
       - Fixed a bug in the makefile that prevented OS detection from working
         properly on many platforms (including Linux, and probably many
         others).
+      - No C code is compiled for 8.4, since the function we were compiling
+        ships with 8.4.
 
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its

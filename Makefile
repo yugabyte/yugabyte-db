@@ -2,28 +2,39 @@
 TESTS = $(wildcard sql/*.sql)
 EXTRA_CLEAN = test_setup.sql *.html
 DATA_built = pgtap.sql uninstall_pgtap.sql
-MODULES = pgtap
 DOCS = README.pgtap
 SCRIPTS = bin/pg_prove
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --load-language=plpgsql
 
+# Figure out where pg_config is, and set other vars we'll need depending on
+# whether or not we're in the source tree.
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
-include $(PGXS)
 else
-subdir = contrib/citext
 top_builddir = ../..
-include $(top_builddir)/src/Makefile.global
-include $(top_srcdir)/contrib/contrib-global.mk
+PG_CONFIG := $(top_builddir)/src/bin/pg_config
 endif
 
 # We need to do various things with various versions of PostgreSQL.
+VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 PGVER_MAJOR = $(shell echo $(VERSION) | awk -F. '{ print ($$1 + 0) }')
 PGVER_MINOR = $(shell echo $(VERSION) | awk -F. '{ print ($$2 + 0) }')
 PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
 PGTAP_VERSION = 0.16
+
+# Compile the C code only if we're on 8.3 or older.
+ifneq ($(PGVER_MINOR), 4)
+MODULES = pgtap
+endif
+
+ifdef PGXS
+include $(PGXS)
+else
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+endif
 
 # We support 8.0 and later.
 ifneq ($(PGVER_MAJOR), 8)
