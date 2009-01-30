@@ -602,6 +602,31 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
+### `has_schema( schema, description )` ###
+### `has_schema( schema )` ###
+
+    SELECT has_schema(
+        'someschema',
+        'I got someschema'
+    );
+
+This function tests whether or not a schema exists in the database. The first
+argument is a schema name and the second is the test description. If you omit
+the schema, the schema must be visible in the search path. If you omit the
+test description, it will be set to "Schema `:schema` should exist".
+
+### `hasnt_schema( schema, schema, description )` ###
+### `hasnt_schema( schema, description )` ###
+### `hasnt_schema( schema )` ###
+
+    SELECT hasnt_schema(
+        'someschema',
+        'There should be no schema someschema'
+    );
+
+This function is the inverse of `has_schema()`. The test passes if the
+specified schema does *not* exist.
+
 ### `has_table( schema, table, description )` ###
 ### `has_table( table, description )` ###
 ### `has_table( table )` ###

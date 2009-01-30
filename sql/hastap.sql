@@ -3,7 +3,8 @@
 
 -- $Id$
 
-SELECT plan(90);
+SELECT plan(114);
+--SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
@@ -13,7 +14,72 @@ CREATE TABLE sometab(
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+CREATE SCHEMA someschema;
 RESET client_min_messages;
+
+/****************************************************************************/
+-- Test has_schema().
+SELECT * FROM check_test(
+    has_schema( '__SDFSDFD__' ),
+    false,
+    'has_schema(non-existent schema)',
+    'Schema __SDFSDFD__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_schema( '__SDFSDFD__', 'lol' ),
+    false,
+    'has_schema(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_schema( 'someschema' ),
+    true,
+    'has_schema(schema)',
+    'Schema someschema should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_schema( 'someschema', 'lol' ),
+    true,
+    'has_schema(schema, desc)',
+    'lol',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_schema().
+SELECT * FROM check_test(
+    hasnt_schema( '__SDFSDFD__' ),
+    true,
+    'hasnt_schema(non-existent schema)',
+    'Schema __SDFSDFD__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_schema( '__SDFSDFD__', 'lol' ),
+    true,
+    'hasnt_schema(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_schema( 'someschema' ),
+    false,
+    'hasnt_schema(schema)',
+    'Schema someschema should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_schema( 'someschema', 'lol' ),
+    false,
+    'hasnt_schema(schema, desc)',
+    'lol',
+    ''
+);
 
 /****************************************************************************/
 -- Test has_table().
@@ -37,7 +103,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_table( 'foo', '__SDFSDFD__', 'desc' ),
     false,
-    'has_table(sch, non-existent tab, desc)',
+    'has_table(sch, non-existent table, desc)',
     'desc',
     ''
 );

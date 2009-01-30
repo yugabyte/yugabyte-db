@@ -2546,6 +2546,42 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+-- has_schema( schema, desscription )
+CREATE OR REPLACE FUNCTION has_schema( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_namespace n
+             WHERE LOWER(n.nspname) = LOWER($1)
+        ), $2
+    );
+$$ LANGUAGE sql;
+
+-- has_schema( schema )
+CREATE OR REPLACE FUNCTION has_schema( NAME )
+RETURNS TEXT AS $$
+    SELECT has_schema( $1, 'Schema ' || $1 || ' should exist' );
+$$ LANGUAGE sql;
+
+-- hasnt_schema( schema, desscription )
+CREATE OR REPLACE FUNCTION hasnt_schema( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_namespace n
+             WHERE LOWER(n.nspname) = LOWER($1)
+        ), $2
+    );
+$$ LANGUAGE sql;
+
+-- hasnt_schema( schema )
+CREATE OR REPLACE FUNCTION hasnt_schema( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_schema( $1, 'Schema ' || $1 || ' should not exist' );
+$$ LANGUAGE sql;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$
@@ -2731,8 +2767,6 @@ EXCEPTION
     WHEN object_not_in_prerequisite_state THEN RETURN 0;
 END;
 $$ LANGUAGE plpgsql;
-
-
 
 CREATE OR REPLACE FUNCTION _cleanup()
 RETURNS boolean AS $$
