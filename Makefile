@@ -3,7 +3,7 @@ TESTS = $(wildcard sql/*.sql)
 EXTRA_CLEAN = test_setup.sql *.html
 DATA_built = pgtap.sql uninstall_pgtap.sql
 DOCS = README.pgtap
-SCRIPTS = bin/pg_prove
+SCRIPTS = bbin/pg_prove
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --load-language=plpgsql
 
@@ -29,11 +29,22 @@ ifneq ($(PGVER_MINOR), 4)
 MODULES = pgtap
 endif
 
+# Load up the PostgreSQL makefiles.
 ifdef PGXS
 include $(PGXS)
 else
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
+endif
+
+# We need Perl.
+ifndef PERL
+PERL := $(shell which foo)
+endif
+
+# Is Tap::Harness installed?
+ifdef PERL
+HAVE_HARNESS := $(shell $(PERL) -le 'eval { require Tap::Harness }; print 1 unless $$@' )
 endif
 
 # We support 8.0 and later.
@@ -157,8 +168,32 @@ endif
 endif
 endif
 
+# Build pg_prove and holler if there's no Perl or Tap::Harness.
+bbin/pg_prove:
+	mkdir bbin
+#	sed -e "s,\\('\\|F<\\)psql\\(['>]\\),\\1$(bindir)/psql\\2,g" bin/pg_prove > bbin/pg_prove
+	sed -e "s,\\'psql\\',\\'$(bindir)/psql\\'," -e 's,F<psql>,F<$(bindir)/psql>,' bin/pg_prove > bbin/pg_prove
+	chmod +x bbin/pg_prove
+ifdef PERL
+	$(PERL) '-MExtUtils::MY' -e 'MY->fixin(shift)' bbin/pg_prove
+ifndef HAVE_HARNESS
+	$(warning To use pg_prove, Tap::Harness Perl module must be installed from CPAN.)
+endif
+else
+	$(warning Could not find perl (required by pg_prove). Install it or set the PERL variable.)
+endif
+
 # Make sure that we build the regression tests.
 installcheck: test_setup.sql
+
+# Make sure we build pg_prove.
+all: bbin/pg_prove
+
+# Make sure we remove bbin.
+clean: extraclean
+
+extraclean:
+	rm -rf bbin
 
 # In addition to installcheck, one can also run the tests through pg_prove.
 test: test_setup.sql

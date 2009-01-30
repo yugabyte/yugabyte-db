@@ -156,7 +156,7 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
   pg_prove -b /usr/local/bin/psql
 
 Path to the C<psql> program, which will be used to actually run the tests.
-Defaults to "psql", which should work fine it if happens to be in your path.
+Defaults to F<psql>.
 
 =item C<-d>
 

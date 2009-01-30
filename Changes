@@ -14,6 +14,13 @@ Revision history for pgTAP
         with PostgreSQL 8.4.
       - Added `has_schema()` and `hasnt_schema()`.
       - Added `has_type()` and `hasnt_type()`.
+      - Updated the `Makefile` to fix the shebang line in `pg_prove` if Perl
+        is found, and to emite a warning if the `$PERL` variable is not set.
+      - Updated the `Makefile` so that if `$PERL` is set and Tap::Harness is
+        not installed, it warns the user to install it in order to use
+        `pg_prove`.
+      - Updated the `Makefile` to set the location of the `psql` binary to the
+        bin directory specified for PostgreSQL when it was built.
 
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its
