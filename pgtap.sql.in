@@ -2582,6 +2582,76 @@ RETURNS TEXT AS $$
     SELECT hasnt_schema( $1, 'Schema ' || $1 || ' should not exist' );
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _has_type( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_type t
+          JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
+         WHERE t.typisdefined
+           AND n.nspname = $1
+           AND t.typname = $2
+    );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _has_type( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_type t
+         WHERE t.typisdefined
+           AND t.typname = $1
+    );
+$$ LANGUAGE sql;
+
+-- has_type( schema, type, description )
+CREATE OR REPLACE FUNCTION has_type( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, $2 ), $3 );
+$$ LANGUAGE sql;
+
+-- has_type( schema, type )
+CREATE OR REPLACE FUNCTION has_type( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT has_type( $1, $2, 'Type ' || $1 || '.' || $2 || ' should exist' );
+$$ LANGUAGE sql;
+
+-- has_type( type, description )
+CREATE OR REPLACE FUNCTION has_type( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1 ), $2 );
+$$ LANGUAGE sql;
+
+-- has_type( type )
+CREATE OR REPLACE FUNCTION has_type( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1 ), ('Type ' || $1 || ' should exist')::text );
+$$ LANGUAGE sql;
+
+-- hasnt_type( schema, type, description )
+CREATE OR REPLACE FUNCTION hasnt_type( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, $2 ), $3 );
+$$ LANGUAGE sql;
+
+-- hasnt_type( schema, type )
+CREATE OR REPLACE FUNCTION hasnt_type( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_type( $1, $2, 'Type ' || $1 || '.' || $2 || ' should not exist' );
+$$ LANGUAGE sql;
+
+-- hasnt_type( type, description )
+CREATE OR REPLACE FUNCTION hasnt_type( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1 ), $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_type( type )
+CREATE OR REPLACE FUNCTION hasnt_type( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1 ), ('Type ' || $1 || ' should not exist')::text );
+$$ LANGUAGE sql;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$

@@ -681,6 +681,47 @@ Just like `has_table()`, only it tests for the existence of a view.
 This function is the inverse of `has_view()`. The test passes if the specified
 view does *not* exist.
 
+### `has_type( schema, type, description )` ###
+### `has_type( schema, type )` ###
+### `has_type( type, description )` ###
+### `has_type( type )` ###
+
+    SELECT has_type(
+        'myschema',
+        'sometype',
+        'I got myschema.sometype'
+    );
+
+This function tests whether or not a type exists in the database. The first
+argument is a schema name, the second is a type name, and the third is the
+test description. If you omit the schema, the type must be visible in the
+search path. If you omit the test description, it will be set to "Type `:type`
+should exist". If you're passing a schema and type rather than type and
+description, be sure to cast the arguments to `name` values so that your type
+name doesn't get treated as a description.
+
+If you've created a composite type and want to test that the composed types
+are a part of it, use the column testing functions to verify them, like so:
+
+    CREATE TYPE foo AS (id int, name text);
+    SELECT has_type( 'foo' );
+    SELECT has_column( 'foo', 'id' );
+    SELECT col_type_is( 'foo', 'id', 'integer' );
+
+### `hasnt_type( schema, type, description )` ###
+### `hasnt_type( schema, type )` ###
+### `hasnt_type( type, description )` ###
+### `hasnt_type( type )` ###
+
+    SELECT hasnt_type(
+        'myschema',
+        'sometype',
+        'There should be no type myschema.sometype'
+    );
+
+This function is the inverse of `has_type()`. The test passes if the specified
+type does *not* exist.
+
 ### `has_column( schema, table, column, description )` ###
 ### `has_column( table, column, description )` ###
 ### `has_column( table, column )` ###
@@ -692,11 +733,12 @@ view does *not* exist.
         'I got myschema.sometable.somecolumn'
     );
 
-Tests whether or not a column exists in a given table or view. The first
-argument is the schema name, the second the table name, the third the column
-name, and the fourth is the test description. If the schema is omitted, the
-table must be visible in the search path. If the test description is omitted,
-it will be set to "Column `:table`.`:column` should exist".
+Tests whether or not a column exists in a given table, view, or composite
+type. The first argument is the schema name, the second the table name, the
+third the column name, and the fourth is the test description. If the schema
+is omitted, the table must be visible in the search path. If the test
+description is omitted, it will be set to "Column `:table`.`:column` should
+exist".
 
 ### `hasnt_column( schema, table, column, description )` ###
 ### `hasnt_column( table, column, description )` ###
@@ -710,7 +752,8 @@ it will be set to "Column `:table`.`:column` should exist".
     );
 
 This function is the inverse of `has_column()`. The test passes if the
-specified column does *not* exist.
+specified column does *not* exist in the specified table, view, or composite
+type.
 
 ### `col_not_null( schema, table, column, description )` ###
 ### `col_not_null( table, column, description )` ###
@@ -1961,7 +2004,6 @@ Don't even use them there.
 To Do
 -----
 
-* Add `has_type()`.
 * Update the Makefile to process `pg_prove` and set the proper path to Perl on
   the shebang line. Will likely require a `$(PERL)` environment variable.
 * Update the Makefile to check for TAP::Harness and warn if it's not

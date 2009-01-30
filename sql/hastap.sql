@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(114);
+SELECT plan(180);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -13,6 +13,10 @@ CREATE TABLE sometab(
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
+);
+CREATE TYPE sometype AS (
+    id    INT,
+    name  TEXT
 );
 CREATE SCHEMA someschema;
 RESET client_min_messages;
@@ -120,6 +124,22 @@ SELECT * FROM check_test(
     has_table( 'pg_catalog', 'pg_type', 'desc' ),
     true,
     'has_table(sch, tab, desc)',
+    'desc',
+    ''
+);
+
+-- It should ignore views and types.
+SELECT * FROM check_test(
+    has_table( 'pg_catalog', 'pg_tables', 'desc' ),
+    false,
+    'has_table(sch, view, desc)',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    has_table( 'sometype', 'desc' ),
+    false,
+    'has_table(type, desc)',
     'desc',
     ''
 );
@@ -254,6 +274,128 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test has_type().
+SELECT * FROM check_test(
+    has_type( 'sometype' ),
+    true,
+    'has_type(type)',
+    'Type sometype should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'sometype', 'mydesc' ),
+    true,
+    'has_type(type, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'public'::name, 'sometype'::name ),
+    true,
+    'has_type(scheam, type)',
+    'Type public.sometype should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'public', 'sometype', 'mydesc' ),
+    true,
+    'has_type(schema, type, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try failures.
+SELECT * FROM check_test(
+    has_type( '__foobarbaz__' ),
+    false,
+    'has_type(type)',
+    'Type __foobarbaz__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( '__foobarbaz__', 'mydesc' ),
+    false,
+    'has_type(type, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'public'::name, '__foobarbaz__'::name ),
+    false,
+    'has_type(scheam, type)',
+    'Type public.__foobarbaz__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'public', '__foobarbaz__', 'mydesc' ),
+    false,
+    'has_type(schema, type, desc)',
+    'mydesc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_type().
+SELECT * FROM check_test(
+    hasnt_type( '__foobarbaz__' ),
+    true,
+    'hasnt_type(type)',
+    'Type __foobarbaz__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_type( '__foobarbaz__', 'mydesc' ),
+    true,
+    'hasnt_type(type, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_type( 'public'::name, '__foobarbaz__'::name ),
+    true,
+    'hasnt_type(scheam, type)',
+    'Type public.__foobarbaz__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_type( 'public', '__foobarbaz__', 'mydesc' ),
+    true,
+    'hasnt_type(schema, type, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try failures.
+SELECT * FROM check_test(
+    hasnt_type( 'sometype' ),
+    false,
+    'hasnt_type(type)',
+    'Type sometype should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_type( 'sometype', 'mydesc' ),
+    false,
+    'hasnt_type(type, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_type( 'public'::name, 'sometype'::name ),
+    false,
+    'hasnt_type(scheam, type)',
+    'Type public.sometype should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_type( 'public', 'sometype', 'mydesc' ),
+    false,
+    'hasnt_type(schema, type, desc)',
+    'mydesc',
+    ''
+);
+
+/****************************************************************************/
 -- Test has_column().
 
 SELECT * FROM check_test(
@@ -293,6 +435,24 @@ SELECT * FROM check_test(
     true,
     'has_column(sch, tab, col, desc)',
     'desc',
+    ''
+);
+
+-- Make sure it works with views.
+SELECT * FROM check_test(
+    has_column( 'pg_tables', 'schemaname' ),
+    true,
+    'has_column(view, column)',
+    'Column pg_tables(schemaname) should exist',
+    ''
+);
+
+-- Make sure it works with composite types.
+SELECT * FROM check_test(
+    has_column( 'sometype', 'name' ),
+    true,
+    'has_column(type, column)',
+    'Column sometype(name) should exist',
     ''
 );
 
@@ -336,6 +496,24 @@ SELECT * FROM check_test(
     false,
     'hasnt_column(sch, tab, col, desc)',
     'desc',
+    ''
+);
+
+-- Make sure it works with views.
+SELECT * FROM check_test(
+    hasnt_column( 'pg_tables', 'whatever' ),
+    true,
+    'hasnt_column(view, column)',
+    'Column pg_tables(whatever) should not exist',
+    ''
+);
+
+-- Make sure it works with composite types.
+SELECT * FROM check_test(
+    hasnt_column( 'sometype', 'foobar' ),
+    true,
+    'hasnt_column(type, column)',
+    'Column sometype(foobar) should not exist',
     ''
 );
 

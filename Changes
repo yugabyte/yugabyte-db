@@ -13,6 +13,7 @@ Revision history for pgTAP
         C code is for this function. This is because `pg_typeof()` is included
         with PostgreSQL 8.4.
       - Added `has_schema()` and `hasnt_schema()`.
+      - Added `has_type()` and `hasnt_type()`.
 
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its
