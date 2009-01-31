@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(180);
+SELECT plan(183);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -18,6 +18,11 @@ CREATE TYPE sometype AS (
     id    INT,
     name  TEXT
 );
+
+CREATE DOMAIN us_postal_code AS TEXT CHECK(
+    VALUE ~ '^[[:digit:]]{5}$' OR VALUE ~ '^[[:digit:]]{5}-[[:digit:]]{4}$'
+);
+
 CREATE SCHEMA someschema;
 RESET client_min_messages;
 
@@ -331,6 +336,15 @@ SELECT * FROM check_test(
     false,
     'has_type(schema, type, desc)',
     'mydesc',
+    ''
+);
+
+-- Make sure it works for domains.
+SELECT * FROM check_test(
+    has_type( 'us_postal_code' ),
+    true,
+    'has_type(domain)',
+    'Type us_postal_code should exist',
     ''
 );
 
