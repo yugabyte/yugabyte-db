@@ -767,13 +767,14 @@ specified domain does *not* exist.
         'I got myschema.someenum'
     );
 
-This function tests whether or not a enum exists in the database. The first
-argument is a schema name, the second is the an enum name, and the third is
-the test description. If you omit the schema, the enum must be visible in the
-search path. If you omit the test description, it will be set to "Enum `:enum`
-should exist". If you're passing a schema and enum rather than enum and
-description, be sure to cast the arguments to `name` values so that your enum
-name doesn't get treated as a description.
+This function tests whether or not a enum exists in the database. Enums are
+supported in PostgreSQL 8.3 or higher. The first argument is a schema name,
+the second is the an enum name, and the third is the test description. If you
+omit the schema, the enum must be visible in the search path. If you omit the
+test description, it will be set to "Enum `:enum` should exist". If you're
+passing a schema and enum rather than enum and description, be sure to cast
+the arguments to `name` values so that your enum name doesn't get treated as a
+description.
 
 ### `hasnt_enum( schema, enum, description )` ###
 ### `hasnt_enum( schema, enum )` ###
@@ -788,6 +789,25 @@ name doesn't get treated as a description.
 
 This function is the inverse of `has_enum()`. The test passes if the
 specified enum does *not* exist.
+
+### `enum_has_labels( schema, enum, labels, desc )` ###
+### `enum_has_labels( schema, enum, labels )` ###
+### `enum_has_labels( enum, labels, desc )` ###
+### `enum_has_labels( enum, labels )` ###
+
+    SELECT enum_has_labels(
+        'myschema',
+        'someenum',
+        ARRAY['foo', 'bar'],
+        'Enum someenum should have labels foo, bar'
+    );
+
+This function tests that an enum consists of an expected list of labels. Enums
+are supported in PostgreSQL 8.3 or higher. The first argument is a schema
+name, the second an enum name, the third an array of enum labels, and the
+fourth a description. If you omit the schema, the enum must be visible in the
+search path. If you omit the test description, it will be set to "Enum `:enum`
+should have labels (`:labels`)".
 
 ### `has_column( schema, table, column, description )` ###
 ### `has_column( table, column, description )` ###

@@ -15,6 +15,7 @@ Revision history for pgTAP
       - Added `has_schema()` and `hasnt_schema()`.
       - Added `has_type()`, `hasnt_type()`, `has_domain()`, `hasnt_domain()`,
         `has_enum()`, and `hasnt_enum()`.
+      - Added `enum_has_labels()`.
       - Updated the `Makefile` to fix the shebang line in `pg_prove` if
         Perl is found, and to emite a warning if the `$PERL` variable is not
         set. - Updated the `Makefile` so that if `$PERL` is set and
