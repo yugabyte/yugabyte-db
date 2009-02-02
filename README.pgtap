@@ -30,6 +30,10 @@ If you encounter an error such as:
 
     make: pg_config: Command not found
 
+Or:
+
+    Makefile:52: *** pgTAP requires PostgreSQL 8.0 or later. This is .  Stop.
+
 Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
 `-devel` package is also installed. If necessary, add the path to `pg_config`
@@ -2107,10 +2111,11 @@ Suported Versions
 
 pgTAP has been tested on the following builds of PostgreSQL:
 
+* PostgreSQL 8.4devel on i386-apple-darwin9.6.0
 * PostgreSQL 8.3.5 on i386-apple-darwin9.5.0
 * PostgreSQL 8.2.11 on i386-apple-darwin9.5.0
-* PostgreSQL 8.1.15 on i386-apple-darwin9.5.0
-* PostgreSQL 8.0.19 on i686-apple-darwin9.5.0
+* PostgreSQL 8.1.15 on i686-apple-darwin9.6.0
+* PostgreSQL 8.0.19 on i686-apple-darwin9.6.0
 
 If you know of others, please submit them! Use
 `psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
