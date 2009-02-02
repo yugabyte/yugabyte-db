@@ -23,7 +23,7 @@ Revision history for pgTAP
         order to use `pg_prove`. - Updated the `Makefile` to set the location
         of the `psql` binary to the bin directory specified for PostgreSQL
         when it was built.
-      - Fixed `pg_version_num() to work on PostgreSQL 8.4devel.
+      - Fixed `pg_version_num()` to work on PostgreSQL 8.4devel.
       - Fixed a test failure on PostgreSQL 8.4devel.
 
 0.15  2009-01-20T18:41:24
