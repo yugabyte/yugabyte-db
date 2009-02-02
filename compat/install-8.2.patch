@@ -1,0 +1,66 @@
+--- pgtap.sql	(revision 4476)
++++ pgtap.sql	(working copy)
+@@ -2751,63 +2751,6 @@
+     SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || $1 || ' should not exist')::text );
+ $$ LANGUAGE sql;
+ 
+--- enum_has_labels( schema, enum, labels, desc )
+-CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[], TEXT )
+-RETURNS TEXT AS $$
+-    SELECT is(
+-        ARRAY(
+-            SELECT e.enumlabel
+-              FROM pg_catalog.pg_type t
+-              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
+-              JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
+-              WHERE t.typisdefined
+-               AND n.nspname = $1
+-               AND t.typname = $2
+-               AND t.typtype = 'e'
+-             ORDER BY e.oid
+-        ),
+-        $3,
+-        $4
+-    );
+-$$ LANGUAGE sql;
+-
+--- enum_has_labels( schema, enum, labels )
+-CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[] )
+-RETURNS TEXT AS $$
+-    SELECT enum_has_labels(
+-        $1, $2, $3,
+-        'Enum ' || $1 || '.' || $2 || ' should have labels (' || array_to_string( $3, ', ' ) || ')'
+-    );
+-$$ LANGUAGE sql;
+-
+--- enum_has_labels( enum, labels, desc )
+-CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[], TEXT )
+-RETURNS TEXT AS $$
+-    SELECT is(
+-        ARRAY(
+-            SELECT e.enumlabel
+-              FROM pg_catalog.pg_type t
+-              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
+-              WHERE t.typisdefined
+-               AND pg_catalog.pg_type_is_visible(t.oid)
+-               AND t.typname = $1
+-               AND t.typtype = 'e'
+-             ORDER BY e.oid
+-        ),
+-        $2,
+-        $3
+-    );
+-$$ LANGUAGE sql;
+-
+--- enum_has_labels( enum, labels )
+-CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[] )
+-RETURNS TEXT AS $$
+-    SELECT enum_has_labels(
+-        $1, $2,
+-        'Enum ' || $1 || ' should have labels (' || array_to_string( $2, ', ' ) || ')'
+-    );
+-$$ LANGUAGE sql;
+-
+ -- check_test( test_output, pass, name, description, diag )
+ CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
+ RETURNS SETOF TEXT AS $$

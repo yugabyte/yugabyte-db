@@ -2065,7 +2065,7 @@ No changes. Everything should just work.
 8.2 and Lower
 -------------
 
-A number of casts are added to increase compatibility. The casts are:
+A patch is applied that removes the `enum_has_lables()` function. Also, a number of casts are added to increase compatibility. The casts are:
 
 * `boolean` to `text`
 * `text[]` to `text`
@@ -2108,8 +2108,8 @@ Suported Versions
 pgTAP has been tested on the following builds of PostgreSQL:
 
 * PostgreSQL 8.3.5 on i386-apple-darwin9.5.0
-* PostgreSQL 8.2.10 on i386-apple-darwin9.5.0
-* PostgreSQL 8.1.14 on i386-apple-darwin9.5.0
+* PostgreSQL 8.2.11 on i386-apple-darwin9.5.0
+* PostgreSQL 8.1.15 on i386-apple-darwin9.5.0
 * PostgreSQL 8.0.19 on i686-apple-darwin9.5.0
 
 If you know of others, please submit them! Use

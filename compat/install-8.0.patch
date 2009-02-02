@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-01-19 16:14:17.000000000 -0800
-+++ pgtap.sql	2009-01-19 16:16:18.000000000 -0800
+--- pgtap.sql	2009-02-02 11:39:23.000000000 -0800
++++ pgtap.sql.saf	2009-02-02 11:39:10.000000000 -0800
 @@ -12,6 +12,22 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
@@ -120,7 +120,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -485,13 +513,16 @@
+@@ -482,13 +510,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -140,7 +140,7 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1052,15 +1083,16 @@
+@@ -1049,15 +1080,16 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -161,7 +161,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -2559,6 +2591,7 @@
+@@ -2761,6 +2793,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -169,7 +169,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -2569,8 +2602,10 @@
+@@ -2771,8 +2804,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -182,7 +182,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -2679,7 +2714,7 @@
+@@ -2881,7 +2916,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -191,7 +191,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -2687,8 +2722,8 @@
+@@ -2889,8 +2924,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -202,7 +202,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -2750,116 +2785,6 @@
+@@ -2950,116 +2985,6 @@
  END
  $$ LANGUAGE plpgsql;
  
