@@ -2582,7 +2582,7 @@ RETURNS TEXT AS $$
     SELECT hasnt_schema( $1, 'Schema ' || $1 || ' should not exist' );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _has_type( NAME, NAME )
+CREATE OR REPLACE FUNCTION _has_type( NAME, NAME, CHAR[] )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
         SELECT true
@@ -2591,23 +2591,25 @@ RETURNS BOOLEAN AS $$
          WHERE t.typisdefined
            AND n.nspname = $1
            AND t.typname = $2
+           AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
     );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _has_type( NAME )
+CREATE OR REPLACE FUNCTION _has_type( NAME, CHAR[] )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
         SELECT true
           FROM pg_catalog.pg_type t
          WHERE t.typisdefined
            AND t.typname = $1
+           AND t.typtype = ANY( COALESCE($2, ARRAY['b', 'c', 'd', 'p', 'e']) )
     );
 $$ LANGUAGE sql;
 
 -- has_type( schema, type, description )
 CREATE OR REPLACE FUNCTION has_type( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( _has_type( $1, $2 ), $3 );
+    SELECT ok( _has_type( $1, $2, NULL ), $3 );
 $$ LANGUAGE sql;
 
 -- has_type( schema, type )
@@ -2619,19 +2621,19 @@ $$ LANGUAGE sql;
 -- has_type( type, description )
 CREATE OR REPLACE FUNCTION has_type( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( _has_type( $1 ), $2 );
+    SELECT ok( _has_type( $1, NULL ), $2 );
 $$ LANGUAGE sql;
 
 -- has_type( type )
 CREATE OR REPLACE FUNCTION has_type( NAME )
 RETURNS TEXT AS $$
-    SELECT ok( _has_type( $1 ), ('Type ' || $1 || ' should exist')::text );
+    SELECT ok( _has_type( $1, NULL ), ('Type ' || $1 || ' should exist')::text );
 $$ LANGUAGE sql;
 
 -- hasnt_type( schema, type, description )
 CREATE OR REPLACE FUNCTION hasnt_type( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _has_type( $1, $2 ), $3 );
+    SELECT ok( NOT _has_type( $1, $2, NULL ), $3 );
 $$ LANGUAGE sql;
 
 -- hasnt_type( schema, type )
@@ -2643,13 +2645,109 @@ $$ LANGUAGE sql;
 -- hasnt_type( type, description )
 CREATE OR REPLACE FUNCTION hasnt_type( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _has_type( $1 ), $2 );
+    SELECT ok( NOT _has_type( $1, NULL ), $2 );
 $$ LANGUAGE sql;
 
 -- hasnt_type( type )
 CREATE OR REPLACE FUNCTION hasnt_type( NAME )
 RETURNS TEXT AS $$
-    SELECT ok( NOT _has_type( $1 ), ('Type ' || $1 || ' should not exist')::text );
+    SELECT ok( NOT _has_type( $1, NULL ), ('Type ' || $1 || ' should not exist')::text );
+$$ LANGUAGE sql;
+
+-- has_domain( schema, domain, description )
+CREATE OR REPLACE FUNCTION has_domain( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, $2, ARRAY['d'] ), $3 );
+$$ LANGUAGE sql;
+
+-- has_domain( schema, domain )
+CREATE OR REPLACE FUNCTION has_domain( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT has_domain( $1, $2, 'Domain ' || $1 || '.' || $2 || ' should exist' );
+$$ LANGUAGE sql;
+
+-- has_domain( domain, description )
+CREATE OR REPLACE FUNCTION has_domain( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, ARRAY['d'] ), $2 );
+$$ LANGUAGE sql;
+
+-- has_domain( domain )
+CREATE OR REPLACE FUNCTION has_domain( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, ARRAY['d'] ), ('Domain ' || $1 || ' should exist')::text );
+$$ LANGUAGE sql;
+
+-- hasnt_domain( schema, domain, description )
+CREATE OR REPLACE FUNCTION hasnt_domain( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, $2, ARRAY['d'] ), $3 );
+$$ LANGUAGE sql;
+
+-- hasnt_domain( schema, domain )
+CREATE OR REPLACE FUNCTION hasnt_domain( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_domain( $1, $2, 'Domain ' || $1 || '.' || $2 || ' should not exist' );
+$$ LANGUAGE sql;
+
+-- hasnt_domain( domain, description )
+CREATE OR REPLACE FUNCTION hasnt_domain( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, ARRAY['d'] ), $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_domain( domain )
+CREATE OR REPLACE FUNCTION hasnt_domain( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, ARRAY['d'] ), ('Domain ' || $1 || ' should not exist')::text );
+$$ LANGUAGE sql;
+
+-- has_enum( schema, enum, description )
+CREATE OR REPLACE FUNCTION has_enum( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, $2, ARRAY['e'] ), $3 );
+$$ LANGUAGE sql;
+
+-- has_enum( schema, enum )
+CREATE OR REPLACE FUNCTION has_enum( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT has_enum( $1, $2, 'Enum ' || $1 || '.' || $2 || ' should exist' );
+$$ LANGUAGE sql;
+
+-- has_enum( enum, description )
+CREATE OR REPLACE FUNCTION has_enum( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, ARRAY['e'] ), $2 );
+$$ LANGUAGE sql;
+
+-- has_enum( enum )
+CREATE OR REPLACE FUNCTION has_enum( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _has_type( $1, ARRAY['e'] ), ('Enum ' || $1 || ' should exist')::text );
+$$ LANGUAGE sql;
+
+-- hasnt_enum( schema, enum, description )
+CREATE OR REPLACE FUNCTION hasnt_enum( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, $2, ARRAY['e'] ), $3 );
+$$ LANGUAGE sql;
+
+-- hasnt_enum( schema, enum )
+CREATE OR REPLACE FUNCTION hasnt_enum( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_enum( $1, $2, 'Enum ' || $1 || '.' || $2 || ' should not exist' );
+$$ LANGUAGE sql;
+
+-- hasnt_enum( enum, description )
+CREATE OR REPLACE FUNCTION hasnt_enum( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, ARRAY['e'] ), $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_enum( enum )
+CREATE OR REPLACE FUNCTION hasnt_enum( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || $1 || ' should not exist')::text );
 $$ LANGUAGE sql;
 
 -- check_test( test_output, pass, name, description, diag )

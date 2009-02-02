@@ -692,13 +692,14 @@ view does *not* exist.
         'I got myschema.sometype'
     );
 
-This function tests whether or not a type or domain exists in the database.
-The first argument is a schema name, the second is a type name, and the third
-is the test description. If you omit the schema, the type must be visible in
-the search path. If you omit the test description, it will be set to "Type
-`:type` should exist". If you're passing a schema and type rather than type
-and description, be sure to cast the arguments to `name` values so that your
-type name doesn't get treated as a description.
+This function tests whether or not a type exists in the database. Detects all
+types of types, including base types, composite types, domains, enums, and
+pseudo-types. The first argument is a schema name, the second is a type name,
+and the third is the test description. If you omit the schema, the type must
+be visible in the search path. If you omit the test description, it will be
+set to "Type `:type` should exist". If you're passing a schema and type rather
+than type and description, be sure to cast the arguments to `name` values so
+that your type name doesn't get treated as a description.
 
 If you've created a composite type and want to test that the composed types
 are a part of it, use the column testing functions to verify them, like so:
@@ -720,7 +721,73 @@ are a part of it, use the column testing functions to verify them, like so:
     );
 
 This function is the inverse of `has_type()`. The test passes if the specified
-type or domain does *not* exist.
+type does *not* exist.
+
+### `has_domain( schema, domain, description )` ###
+### `has_domain( schema, domain )` ###
+### `has_domain( domain, description )` ###
+### `has_domain( domain )` ###
+
+    SELECT has_domain(
+        'myschema',
+        'somedomain',
+        'I got myschema.somedomain'
+    );
+
+This function tests whether or not a domain exists in the database. The first
+argument is a schema name, the second is the name of a domain, and the third
+is the test description. If you omit the schema, the domain must be visible in
+the search path. If you omit the test description, it will be set to "Domain
+`:domain` should exist". If you're passing a schema and domain rather than
+domain and description, be sure to cast the arguments to `name` values so that
+your domain name doesn't get treated as a description.
+
+### `hasnt_domain( schema, domain, description )` ###
+### `hasnt_domain( schema, domain )` ###
+### `hasnt_domain( domain, description )` ###
+### `hasnt_domain( domain )` ###
+
+    SELECT hasnt_domain(
+        'myschema',
+        'somedomain',
+        'There should be no domain myschema.somedomain'
+    );
+
+This function is the inverse of `has_domain()`. The test passes if the
+specified domain does *not* exist.
+
+### `has_enum( schema, enum, description )` ###
+### `has_enum( schema, enum )` ###
+### `has_enum( enum, description )` ###
+### `has_enum( enum )` ###
+
+    SELECT has_enum(
+        'myschema',
+        'someenum',
+        'I got myschema.someenum'
+    );
+
+This function tests whether or not a enum exists in the database. The first
+argument is a schema name, the second is the an enum name, and the third is
+the test description. If you omit the schema, the enum must be visible in the
+search path. If you omit the test description, it will be set to "Enum `:enum`
+should exist". If you're passing a schema and enum rather than enum and
+description, be sure to cast the arguments to `name` values so that your enum
+name doesn't get treated as a description.
+
+### `hasnt_enum( schema, enum, description )` ###
+### `hasnt_enum( schema, enum )` ###
+### `hasnt_enum( enum, description )` ###
+### `hasnt_enum( enum )` ###
+
+    SELECT hasnt_enum(
+        'myschema',
+        'someenum',
+        'There should be no enum myschema.someenum'
+    );
+
+This function is the inverse of `has_enum()`. The test passes if the
+specified enum does *not* exist.
 
 ### `has_column( schema, table, column, description )` ###
 ### `has_column( table, column, description )` ###
@@ -2007,7 +2074,6 @@ To Do
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
 * Useful schema testing functions to consider adding:
-  * `has_domain()`
   * `has_tablespace()`
   * `has_cast()`
   * `has_group()`

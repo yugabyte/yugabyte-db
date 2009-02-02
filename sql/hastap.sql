@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(183);
+SELECT plan(282);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -22,6 +22,8 @@ CREATE TYPE sometype AS (
 CREATE DOMAIN us_postal_code AS TEXT CHECK(
     VALUE ~ '^[[:digit:]]{5}$' OR VALUE ~ '^[[:digit:]]{5}-[[:digit:]]{4}$'
 );
+
+CREATE TYPE bug_status AS ENUM ('new', 'open', 'closed');
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;
@@ -339,12 +341,19 @@ SELECT * FROM check_test(
     ''
 );
 
--- Make sure it works for domains.
+-- Make sure it works for domains and enums.
 SELECT * FROM check_test(
     has_type( 'us_postal_code' ),
     true,
     'has_type(domain)',
     'Type us_postal_code should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'bug_status' ),
+    true,
+    'has_type(enum)',
+    'Type bug_status should exist',
     ''
 );
 
@@ -405,6 +414,252 @@ SELECT * FROM check_test(
     hasnt_type( 'public', 'sometype', 'mydesc' ),
     false,
     'hasnt_type(schema, type, desc)',
+    'mydesc',
+    ''
+);
+
+/****************************************************************************/
+-- Test has_domain().
+SELECT * FROM check_test(
+    has_domain( 'us_postal_code' ),
+    true,
+    'has_domain(domain)',
+    'Domain us_postal_code should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_domain( 'us_postal_code', 'mydesc' ),
+    true,
+    'has_domain(domain, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'public'::name, 'us_postal_code'::name ),
+    true,
+    'has_domain(scheam, domain)',
+    'Domain public.us_postal_code should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'public', 'us_postal_code', 'mydesc' ),
+    true,
+    'has_domain(schema, domain, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try failures.
+SELECT * FROM check_test(
+    has_domain( '__foobarbaz__' ),
+    false,
+    'has_domain(domain)',
+    'Domain __foobarbaz__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( '__foobarbaz__', 'mydesc' ),
+    false,
+    'has_domain(domain, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'public'::name, '__foobarbaz__'::name ),
+    false,
+    'has_domain(scheam, domain)',
+    'Domain public.__foobarbaz__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'public', '__foobarbaz__', 'mydesc' ),
+    false,
+    'has_domain(schema, domain, desc)',
+    'mydesc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_domain().
+SELECT * FROM check_test(
+    hasnt_domain( '__foobarbaz__' ),
+    true,
+    'hasnt_domain(domain)',
+    'Domain __foobarbaz__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_domain( '__foobarbaz__', 'mydesc' ),
+    true,
+    'hasnt_domain(domain, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_domain( 'public'::name, '__foobarbaz__'::name ),
+    true,
+    'hasnt_domain(scheam, domain)',
+    'Domain public.__foobarbaz__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_domain( 'public', '__foobarbaz__', 'mydesc' ),
+    true,
+    'hasnt_domain(schema, domain, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try failures.
+SELECT * FROM check_test(
+    hasnt_domain( 'us_postal_code' ),
+    false,
+    'hasnt_domain(domain)',
+    'Domain us_postal_code should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_domain( 'us_postal_code', 'mydesc' ),
+    false,
+    'hasnt_domain(domain, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_domain( 'public'::name, 'us_postal_code'::name ),
+    false,
+    'hasnt_domain(scheam, domain)',
+    'Domain public.us_postal_code should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_domain( 'public', 'us_postal_code', 'mydesc' ),
+    false,
+    'hasnt_domain(schema, domain, desc)',
+    'mydesc',
+    ''
+);
+
+/****************************************************************************/
+-- Test has_enum().
+SELECT * FROM check_test(
+    has_enum( 'bug_status' ),
+    true,
+    'has_enum(enum)',
+    'Enum bug_status should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_enum( 'bug_status', 'mydesc' ),
+    true,
+    'has_enum(enum, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_enum( 'public'::name, 'bug_status'::name ),
+    true,
+    'has_enum(scheam, enum)',
+    'Enum public.bug_status should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_enum( 'public', 'bug_status', 'mydesc' ),
+    true,
+    'has_enum(schema, enum, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try failures.
+SELECT * FROM check_test(
+    has_enum( '__foobarbaz__' ),
+    false,
+    'has_enum(enum)',
+    'Enum __foobarbaz__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_enum( '__foobarbaz__', 'mydesc' ),
+    false,
+    'has_enum(enum, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_enum( 'public'::name, '__foobarbaz__'::name ),
+    false,
+    'has_enum(scheam, enum)',
+    'Enum public.__foobarbaz__ should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_enum( 'public', '__foobarbaz__', 'mydesc' ),
+    false,
+    'has_enum(schema, enum, desc)',
+    'mydesc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_enum().
+SELECT * FROM check_test(
+    hasnt_enum( '__foobarbaz__' ),
+    true,
+    'hasnt_enum(enum)',
+    'Enum __foobarbaz__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_enum( '__foobarbaz__', 'mydesc' ),
+    true,
+    'hasnt_enum(enum, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_enum( 'public'::name, '__foobarbaz__'::name ),
+    true,
+    'hasnt_enum(scheam, enum)',
+    'Enum public.__foobarbaz__ should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_enum( 'public', '__foobarbaz__', 'mydesc' ),
+    true,
+    'hasnt_enum(schema, enum, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try failures.
+SELECT * FROM check_test(
+    hasnt_enum( 'bug_status' ),
+    false,
+    'hasnt_enum(enum)',
+    'Enum bug_status should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_enum( 'bug_status', 'mydesc' ),
+    false,
+    'hasnt_enum(enum, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_enum( 'public'::name, 'bug_status'::name ),
+    false,
+    'hasnt_enum(scheam, enum)',
+    'Enum public.bug_status should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_enum( 'public', 'bug_status', 'mydesc' ),
+    false,
+    'hasnt_enum(schema, enum, desc)',
     'mydesc',
     ''
 );
