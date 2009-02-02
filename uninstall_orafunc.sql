@@ -22,6 +22,7 @@ DROP FUNCTION pg_catalog.to_char(num real);
 DROP FUNCTION pg_catalog.to_char(num double precision);
 DROP FUNCTION pg_catalog.to_char(num numeric);
 DROP FUNCTION pg_catalog.to_number(str text);
+DROP FUNCTION pg_catalog.to_date(str text);
 DROP FUNCTION pg_catalog.reverse(str text);
 DROP FUNCTION pg_catalog.lnnvl(bool);
 

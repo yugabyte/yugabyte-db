@@ -118,6 +118,8 @@ select plvsubst.string('My name is %s.', ARRAY['Stěhule']);
 select plvsubst.string('My name is %s %s.', 'Pavel,Stěhule');
 select plvsubst.string('My name is %s %s.', 'Pavel|Stěhule','|');
 select plvsubst.string('My name is %s.', 'Stěhule');
+select plvsubst.string('My name is %s.', '');
+select plvsubst.string('My name is empty.', '');
 
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'YEAR')  =  to_date ('01-JAN-04', 'DD-MON-YY');
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'Q')  =  to_date ('01-OCT-03', 'DD-MON-YY');
@@ -211,6 +213,8 @@ select to_char(1234567890.12345);
 
 SELECT to_number('123'::text);
 SELECT to_number('123.456'::text);
+
+SELECT to_date('2009-01-02');
 
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
 SELECT sinh(1.570796), cosh(1.570796), tanh(4);

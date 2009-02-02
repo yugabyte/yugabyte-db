@@ -625,7 +625,7 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 		p = VARDATA_ANY(str);
 		for (i = end - 1; i>= start - 1; i--)
 		{
-			for(j=0;j<sizes[i];j++)
+			for (j=0; j<sizes[i]; j++)
 				*data++ = *(p+positions[i]+j);
 			cur_size += sizes[i];
 		}
@@ -762,7 +762,7 @@ plvstr_lstrip (PG_FUNCTION_ARGS)
 		if (len_s < len_p)
 			break;
 
-		for(i = 0; i < len_p; i++)
+		for (i = 0; i < len_p; i++)
 			if (*aux_str_p++ != *pat_p++)
 				break;
 
@@ -819,7 +819,7 @@ plvstr_rstrip (PG_FUNCTION_ARGS)
 		if (len_s < len_p)
 			break;
 
-		for(i = 0; i < len_p; i++)
+		for (i = 0; i < len_p; i++)
 			if (*aux_str_p-- != *pat_p--)
 				break;
 

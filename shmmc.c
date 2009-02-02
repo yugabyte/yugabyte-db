@@ -148,7 +148,7 @@ align_size(size_t size)
 
 	/* default, we can allocate max MAX_SIZE memory block */
 
-	for(i = 0; i < 17; i++)
+	for (i = 0; i < 17; i++)
 		if (asize[i] >= size)
 			return asize[i];
 
@@ -203,11 +203,11 @@ ora_salloc(size_t size)
 	max_min = max_size;
 	select = -1;
 
-	for(repeat_c = 0; repeat_c < 2; repeat_c++)
+	for (repeat_c = 0; repeat_c < 2; repeat_c++)
 	{
 
 		/* find first good free block */
-		for(i = 0; i < *list_c; i++)
+		for (i = 0; i < *list_c; i++)
 			if (list[i].dispossible)
 			{
 				if (list[i].size == aligned_size)

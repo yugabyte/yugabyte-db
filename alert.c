@@ -169,7 +169,7 @@ find_event(text *event_name, bool create, int *event_id)
 
 	if (create)
 	{
-		for(i=0; i < MAX_EVENTS;i++)
+		for (i=0; i < MAX_EVENTS; i++)
 			if (events[i].event_name == NULL)
 			{
 				events[i].event_name = ora_scstring(event_name);
@@ -207,7 +207,7 @@ register_event(text *event_name)
 	ev = find_event(event_name, true, NULL);
 
 	first_free = NOT_FOUND;
-	for(i = 0; i < ev->max_receivers; i++)
+	for (i = 0; i < ev->max_receivers; i++)
 	{
 		if (ev->receivers[i] == sid)
 			return;   /* event is registered */
@@ -299,7 +299,7 @@ remove_receiver(message_item *msg, int sid)
 	bool find_other = false;
 	bool found = false;
 
-	for(i = 0; i < msg->receivers_number; i++)
+	for (i = 0; i < msg->receivers_number; i++)
 	{
 		if (msg->receivers[i] == sid)
 		{
@@ -621,7 +621,7 @@ dbms_alert_removeall(PG_FUNCTION_ARGS)
 	WATCH_PRE(timeout, endtime, cycle);
 	if (ora_lock_shmem(SHMEMMSGSZ, MAX_PIPES,MAX_EVENTS,MAX_LOCKS,false))
 	{
-		for(i = 0; i < MAX_EVENTS; i++)
+		for (i = 0; i < MAX_EVENTS; i++)
 			if (events[i].event_name != NULL)
 			{
 				find_and_remove_message_item(i, sid,

@@ -578,6 +578,14 @@ select plvsubst.string('My name is %s.', 'Stěhule');
  My name is Stěhule.
 (1 row)
 
+select plvsubst.string('My name is %s.', '');
+ERROR:  too few parameters specified for template string
+select plvsubst.string('My name is empty.', '');
+      string       
+-------------------
+ My name is empty.
+(1 row)
+
 select round(to_date ('22-AUG-03', 'DD-MON-YY'),'YEAR')  =  to_date ('01-JAN-04', 'DD-MON-YY');
  ?column? 
 ----------
@@ -1114,6 +1122,12 @@ SELECT to_number('123.456'::text);
  to_number 
 -----------
    123.456
+(1 row)
+
+SELECT to_date('2009-01-02');
+  to_date 
+------------
+ 2009-01-02
 (1 row)
 
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);

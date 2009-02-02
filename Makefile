@@ -20,6 +20,10 @@ include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
+ifeq ($(enable_nls), yes)
+SHLIB_LINK += -lintl
+endif
+
 ifeq (,$(FLEX))
 FLEX = flex
 endif

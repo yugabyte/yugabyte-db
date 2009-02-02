@@ -57,7 +57,7 @@ text *c_subst = NULL;
 static void
 init_c_subst()
 {
-	if(!c_subst)
+	if (!c_subst)
 	{
 		MemoryContext oldctx;
 
@@ -88,7 +88,6 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 				   *dims,
 					ndims;
 	char		   *p;
-	Oid				element_type;
 	int16			typlen;
 	bool			typbyval;
 	char			typalign;
@@ -98,43 +97,48 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	FmgrInfo		proc;
 	int				i = 0, items = 0;
 	StringInfo		sinfo;
+	const char	   *template_str;
 	int				template_len;
 	char		   *sizes;
 	int			   *positions;
 	int				subst_mb_len;
 	int				subst_len;
-
-	bits8		   *bitmap;
+	const bits8	   *bitmap;
 	int				bitmask;
 
-	bitmap = ARR_NULLBITMAP(v);
-	bitmask = 1;
+	if (v != NULL)
+	{
+		ndims = ARR_NDIM(v);
+		if (ndims != 1)
+			PARAMETER_ERROR("Array of arguments has wrong dimension.");
 
-	p = ARR_DATA_PTR(v);
-	ndims = ARR_NDIM(v);
-	dims = ARR_DIMS(v);
-	nitems = ArrayGetNItems(ndims, dims);
+		p = ARR_DATA_PTR(v);
+		dims = ARR_DIMS(v);
+		nitems = ArrayGetNItems(ndims, dims);
+		bitmap = ARR_NULLBITMAP(v);
+		get_type_io_data(ARR_ELEMTYPE(v), IOFunc_output,
+						 &typlen, &typbyval,
+						 &typalign, &typdelim,
+						 &typelem, &typiofunc);
+		fmgr_info_cxt(typiofunc, &proc, fcinfo->flinfo->fn_mcxt);
+	}
+	else
+	{
+		nitems = 0;
+		p = NULL;
+		bitmap = NULL;
+	}
 
-	if (ndims != 1)
-		PARAMETER_ERROR("Array of arguments has wrong dimension.");
-
-	element_type = ARR_ELEMTYPE(v);
-
-	get_type_io_data(element_type, IOFunc_output,
-					 &typlen, &typbyval,
-					 &typalign, &typdelim,
-					 &typelem, &typiofunc);
-
-	fmgr_info_cxt(typiofunc, &proc, fcinfo->flinfo->fn_mcxt);
+	template_str = VARDATA(template_in);
 	template_len = ora_mb_strlen(template_in, &sizes, &positions);
-
-	sinfo = makeStringInfo();
 	subst_mb_len = ora_mb_strlen1(c_subst);
-	subst_len = VARSIZE(c_subst) - VARHDRSZ;
+	subst_len = VARSIZE_ANY_EXHDR(c_subst);
+	sinfo = makeStringInfo();
 
+	bitmask = 1;
 	for (i = 0; i < template_len; i++)
 	{
-		if (strncmp(&(VARDATA(template_in)[positions[i]]), VARDATA(c_subst), subst_len) == 0)
+		if (strncmp(&template_str[positions[i]], VARDATA(c_subst), subst_len) == 0)
 		{
 			Datum    itemvalue;
 			char     *value;
@@ -175,7 +179,7 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 			i += subst_mb_len - 1;
 		}
 		else
-			appendBinaryStringInfo(sinfo, &(VARDATA(template_in)[positions[i]]), sizes[i]);
+			appendBinaryStringInfo(sinfo, &template_str[positions[i]], sizes[i]);
 	}
 
 	return CStringGetTextP(sinfo->data);
@@ -199,7 +203,8 @@ plvsubst_string_array(PG_FUNCTION_ARGS)
 Datum
 plvsubst_string_string(PG_FUNCTION_ARGS)
 {
-	ArrayType *array;
+	Datum		r;
+	ArrayType  *array;
 	FunctionCallInfoData locfcinfo;
 
 	init_c_subst();
@@ -212,17 +217,20 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 	 */
 
 	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);
-
 	locfcinfo.arg[0] = PG_GETARG_DATUM(1);
-	locfcinfo.arg[1] = PG_ARGISNULL(2)? CStringGetTextDatum(",") : PG_GETARG_DATUM(2);
+	locfcinfo.arg[1] = (PG_NARGS() <= 2 || PG_ARGISNULL(2)) ? CStringGetTextDatum(",") : PG_GETARG_DATUM(2);
 	locfcinfo.argnull[0] = false;
 	locfcinfo.argnull[1] = false;
+	r = text_to_array(&locfcinfo);
 
-	array = DatumGetArrayTypeP(text_to_array(&locfcinfo));
+	if (locfcinfo.isnull || r == (Datum) 0)
+		array = NULL;
+	else
+		array = DatumGetArrayTypeP(r);
 
 	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0),
 					 array,
-					 PG_ARGISNULL(3) ? c_subst : PG_GETARG_TEXT_P(3),
+					 (PG_NARGS() <= 3 || PG_ARGISNULL(3)) ? c_subst : PG_GETARG_TEXT_P(3),
 					 fcinfo));
 }
 

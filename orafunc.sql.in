@@ -10,43 +10,43 @@ AS 'MODULE_PATHNAME','ora_date_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(date, text) IS 'round dates according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday text) 
+CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday text)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greather than a date value';
 
-CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday integer) 
+CREATE OR REPLACE FUNCTION pg_catalog.next_day(value date, weekday integer)
 RETURNS date
 AS 'MODULE_PATHNAME', 'next_day_by_index'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.next_day (date, integer) IS 'returns the first weekday that is greather than a date value';
 
-CREATE OR REPLACE FUNCTION pg_catalog.last_day(value date) 
+CREATE OR REPLACE FUNCTION pg_catalog.last_day(value date)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.last_day(date) IS 'returns last day of the month based on a date value';
 
-CREATE OR REPLACE FUNCTION pg_catalog.months_between(date1 date, date2 date) 
+CREATE OR REPLACE FUNCTION pg_catalog.months_between(date1 date, date2 date)
 RETURNS float8
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.months_between(date, date) IS 'returns the number of months between date1 and date2';
 
-CREATE OR REPLACE FUNCTION pg_catalog.add_months(day date, value int) 
+CREATE OR REPLACE FUNCTION pg_catalog.add_months(day date, value int)
 RETURNS date
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.add_months(date, int) IS 'returns date plus n months';
 
-CREATE OR REPLACE FUNCTION pg_catalog.trunc(value timestamp with time zone, fmt text) 
+CREATE OR REPLACE FUNCTION pg_catalog.trunc(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
 
-CREATE OR REPLACE FUNCTION pg_catalog.round(value timestamp with time zone, fmt text) 
+CREATE OR REPLACE FUNCTION pg_catalog.round(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','ora_timestamptz_round'
 LANGUAGE 'C' IMMUTABLE STRICT;
@@ -59,7 +59,7 @@ LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone) IS 'will round dates according to the specified format';
 
 CREATE OR REPLACE FUNCTION pg_catalog.round(value date)
-RETURNS date 
+RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(value date)IS 'will round dates according to the specified format';
@@ -71,7 +71,7 @@ LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
 
 CREATE OR REPLACE FUNCTION pg_catalog.trunc(value date)
-RETURNS date 
+RETURNS date
 AS $$ SELECT $1; $$
 LANGUAGE 'SQL' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(date) IS 'truncate date according to the specified format';
@@ -146,9 +146,15 @@ CREATE OR REPLACE FUNCTION pg_catalog.to_number(str text)
 RETURNS numeric
 AS 'MODULE_PATHNAME','orafce_to_number'
 LANGUAGE C IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_char(numeric) IS 'Convert string to number';
+COMMENT ON FUNCTION pg_catalog.to_number(text) IS 'Convert string to number';
 
-CREATE OR REPLACE FUNCTION bitand(bigint, bigint) 
+CREATE OR REPLACE FUNCTION pg_catalog.to_date(str text)
+RETURNS date
+AS $$ SELECT $1::date; $$
+LANGUAGE sql IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to date';
+
+CREATE OR REPLACE FUNCTION bitand(bigint, bigint)
 RETURNS bigint
 AS $$ SELECT $1 & $2; $$
 LANGUAGE sql IMMUTABLE STRICT;
@@ -241,98 +247,98 @@ GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
 ANALYZE public.dual;
 
 -- this packege is emulation of dbms_output Oracle packege
--- 
+--
 
 DROP SCHEMA IF EXISTS dbms_output CASCADE;
 
 CREATE SCHEMA dbms_output;
 
-CREATE OR REPLACE FUNCTION dbms_output.enable(IN buffer_size int4) 
-RETURNS void 
-AS 'MODULE_PATHNAME','dbms_output_enable' 
+CREATE OR REPLACE FUNCTION dbms_output.enable(IN buffer_size int4)
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_enable'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_output.enable(IN int4) IS 'Enable package functionality';
-    
+
 CREATE OR REPLACE FUNCTION dbms_output.enable()
-RETURNS void 
-AS 'MODULE_PATHNAME','dbms_output_enable_default' 
+RETURNS void
+AS 'MODULE_PATHNAME','dbms_output_enable_default'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.enable() IS 'Enable package functionality';
-    
+
 CREATE OR REPLACE FUNCTION dbms_output.disable()
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_disable' 
-LANGUAGE C VOLATILE STRICT; 
+AS 'MODULE_PATHNAME','dbms_output_disable'
+LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.disable() IS 'Disable package functionality';
 
 CREATE OR REPLACE FUNCTION dbms_output.serveroutput(IN bool)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_serveroutput' 
+AS 'MODULE_PATHNAME','dbms_output_serveroutput'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.serveroutput(IN bool) IS 'Set drowing output';
-    
+
 CREATE OR REPLACE FUNCTION dbms_output.put(IN a text)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_put' 
+AS 'MODULE_PATHNAME','dbms_output_put'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.put(IN text) IS 'Put some text to output';
 
 CREATE OR REPLACE FUNCTION dbms_output.put_line(IN a text)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_put_line' 
+AS 'MODULE_PATHNAME','dbms_output_put_line'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.put_line(IN text) IS 'Put line to output';
 
 CREATE OR REPLACE FUNCTION dbms_output.new_line()
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_output_new_line' 
+AS 'MODULE_PATHNAME','dbms_output_new_line'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.new_line() IS 'Put new line char to output';
 
-CREATE OR REPLACE FUNCTION dbms_output.get_line(OUT line text, OUT status int4) 
-AS 'MODULE_PATHNAME','dbms_output_get_line' 
+CREATE OR REPLACE FUNCTION dbms_output.get_line(OUT line text, OUT status int4)
+AS 'MODULE_PATHNAME','dbms_output_get_line'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.get_line(OUT text, OUT int4) IS 'Get line from output buffer';
 
-    
+
 CREATE OR REPLACE FUNCTION dbms_output.get_lines(OUT lines text[], INOUT numlines int4)
-AS 'MODULE_PATHNAME','dbms_output_get_lines' 
+AS 'MODULE_PATHNAME','dbms_output_get_lines'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_output.get_lines(OUT text[], INOUT int4) IS 'Get lines from output buffer';
 
 
 -- others functions
 
-CREATE OR REPLACE FUNCTION nvl(anyelement, anyelement) 
+CREATE OR REPLACE FUNCTION nvl(anyelement, anyelement)
 RETURNS anyelement
-AS 'MODULE_PATHNAME','ora_nvl' 
+AS 'MODULE_PATHNAME','ora_nvl'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION nvl(anyelement, anyelement) IS '';
 
-CREATE OR REPLACE FUNCTION nvl2(anyelement, anyelement, anyelement) 
+CREATE OR REPLACE FUNCTION nvl2(anyelement, anyelement, anyelement)
 RETURNS anyelement
-AS 'MODULE_PATHNAME','ora_nvl2' 
+AS 'MODULE_PATHNAME','ora_nvl2'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION nvl2(anyelement, anyelement, anyelement) IS '';
 
-CREATE OR REPLACE FUNCTION concat(text, text) 
-RETURNS text 
-AS 'MODULE_PATHNAME','ora_concat' 
+CREATE OR REPLACE FUNCTION concat(text, text)
+RETURNS text
+AS 'MODULE_PATHNAME','ora_concat'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION concat(text, text) IS 'Concat two strings';
 
 CREATE OR REPLACE FUNCTION concat(text, anyelement)
-RETURNS text 
+RETURNS text
 AS 'SELECT concat($1, $2::text)'
 LANGUAGE sql IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION concat(anyelement, text) 
-RETURNS text 
+CREATE OR REPLACE FUNCTION concat(anyelement, text)
+RETURNS text
 AS 'SELECT concat($1::text, $2)'
 LANGUAGE sql IMMUTABLE;
 
-CREATE OR REPLACE FUNCTION concat(anyelement, anyelement) 
-RETURNS text 
+CREATE OR REPLACE FUNCTION concat(anyelement, anyelement)
+RETURNS text
 AS 'SELECT concat($1::text, $2::text)'
 LANGUAGE sql IMMUTABLE;
 
@@ -493,19 +499,19 @@ CREATE SCHEMA dbms_pipe;
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(text)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_text' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_text'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(text) IS 'Add text field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unpack_message_text()
 RETURNS text
-AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_text' 
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_text'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.unpack_message_text() IS 'Get text fiedl from message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.receive_message(text, int)
 RETURNS int
-AS 'MODULE_PATHNAME','dbms_pipe_receive_message' 
+AS 'MODULE_PATHNAME','dbms_pipe_receive_message'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.receive_message(text, int) IS 'Receive message from pipe';
 
@@ -517,7 +523,7 @@ COMMENT ON FUNCTION dbms_pipe.receive_message(text) IS 'Receive message from pip
 
 CREATE OR REPLACE FUNCTION dbms_pipe.send_message(text, int, int)
 RETURNS int
-AS 'MODULE_PATHNAME','dbms_pipe_send_message' 
+AS 'MODULE_PATHNAME','dbms_pipe_send_message'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.send_message(text, int, int) IS 'Send message to pipe';
 
@@ -535,130 +541,130 @@ COMMENT ON FUNCTION dbms_pipe.send_message(text) IS 'Send message to pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unique_session_name()
 RETURNS varchar
-AS 'MODULE_PATHNAME','dbms_pipe_unique_session_name' 
+AS 'MODULE_PATHNAME','dbms_pipe_unique_session_name'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.unique_session_name() IS 'Returns unique session name';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.__list_pipes()
 RETURNS SETOF RECORD
-AS 'MODULE_PATHNAME','dbms_pipe_list_pipes' 
+AS 'MODULE_PATHNAME','dbms_pipe_list_pipes'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.__list_pipes() IS '';
 
-CREATE VIEW dbms_pipe.db_pipes 
+CREATE VIEW dbms_pipe.db_pipes
 AS SELECT * FROM dbms_pipe.__list_pipes() AS (Name varchar, Items int, Size int, "limit" int, "private" bool, "owner" varchar);
 
 CREATE OR REPLACE FUNCTION dbms_pipe.next_item_type()
 RETURNS int
-AS 'MODULE_PATHNAME','dbms_pipe_next_item_type' 
+AS 'MODULE_PATHNAME','dbms_pipe_next_item_type'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.next_item_type() IS 'Returns type of next field in message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.create_pipe(text, int, bool)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_create_pipe' 
+AS 'MODULE_PATHNAME','dbms_pipe_create_pipe'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.create_pipe(text, int, bool) IS 'Create named pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.create_pipe(text, int)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_create_pipe_2' 
+AS 'MODULE_PATHNAME','dbms_pipe_create_pipe_2'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.create_pipe(text, int) IS 'Create named pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.create_pipe(text)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_create_pipe_1' 
+AS 'MODULE_PATHNAME','dbms_pipe_create_pipe_1'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.create_pipe(text) IS 'Create named pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.reset_buffer()
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_reset_buffer' 
+AS 'MODULE_PATHNAME','dbms_pipe_reset_buffer'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_pipe.reset_buffer() IS 'Clean input buffer';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.purge(text)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_purge' 
+AS 'MODULE_PATHNAME','dbms_pipe_purge'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.purge(text) IS 'Clean pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.remove_pipe(text)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_remove_pipe' 
+AS 'MODULE_PATHNAME','dbms_pipe_remove_pipe'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.remove_pipe(text) IS 'Destroy pipe';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(date)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_date' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_date'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(date) IS 'Add date field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unpack_message_date()
 RETURNS date
-AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_date' 
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_date'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.unpack_message_date() IS 'Get date field from message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(timestamp with time zone)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_timestamp' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_timestamp'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(timestamp with time zone) IS 'Add timestamp field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unpack_message_timestamp()
 RETURNS timestamp with time zone
-AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_timestamp' 
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_timestamp'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.unpack_message_timestamp() IS 'Get timestamp field from message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(numeric)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_number' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_number'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(numeric) IS 'Add numeric field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unpack_message_number()
 RETURNS numeric
-AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_number' 
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_number'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.unpack_message_number() IS 'Get numeric field from message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(integer)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_integer' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_integer'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(integer) IS 'Add numeric field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(bigint)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_bigint' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_bigint'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(bigint) IS 'Add numeric field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(bytea)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_bytea' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_bytea'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(bytea) IS 'Add bytea field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unpack_message_bytea()
 RETURNS bytea
-AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_bytea' 
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_bytea'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.unpack_message_bytea() IS 'Get bytea field from message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(record)
 RETURNS void
-AS 'MODULE_PATHNAME','dbms_pipe_pack_message_record' 
+AS 'MODULE_PATHNAME','dbms_pipe_pack_message_record'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.pack_message(record) IS 'Add record field to message';
 
 CREATE OR REPLACE FUNCTION dbms_pipe.unpack_message_record()
 RETURNS record
-AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_record' 
+AS 'MODULE_PATHNAME','dbms_pipe_unpack_message_record'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_pipe.unpack_message_record() IS 'Get record field from message';
 
@@ -1137,7 +1143,7 @@ LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_alert.register(text) IS 'Register session as recipient of alert name';
 
 CREATE OR REPLACE FUNCTION dbms_alert.remove(name text)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_remove'
 LANGUAGE C VOLATILE STRICT;
 COMMENT ON FUNCTION dbms_alert.remove(text) IS 'Remove session as recipient of alert name';
@@ -1155,7 +1161,7 @@ LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert._signal(text, text) IS '';
 
 CREATE OR REPLACE FUNCTION dbms_alert.waitany(OUT name text, OUT message text, OUT status integer, timeout float8)
-RETURNS record 
+RETURNS record
 AS 'MODULE_PATHNAME','dbms_alert_waitany'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.waitany(OUT text, OUT text, OUT integer, float8) IS 'Wait for any signal';
@@ -1172,14 +1178,14 @@ AS 'MODULE_PATHNAME','dbms_alert_set_defaults'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_alert.set_defaults(float8) IS '';
 
-CREATE OR REPLACE FUNCTION dbms_alert.defered_signal() 
+CREATE OR REPLACE FUNCTION dbms_alert.defered_signal()
 RETURNS trigger
 AS 'MODULE_PATHNAME','dbms_alert_defered_signal'
 LANGUAGE C SECURITY DEFINER;
 REVOKE ALL ON FUNCTION dbms_alert.defered_signal() FROM PUBLIC;
 
-CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text) 
-RETURNS void 
+CREATE OR REPLACE FUNCTION dbms_alert.signal(_event text, _message text)
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_alert_signal'
 LANGUAGE C SECURITY DEFINER;
 COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipients';
@@ -1187,49 +1193,49 @@ COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipie
 DROP SCHEMA IF EXISTS plvsubst CASCADE;
 CREATE SCHEMA plvsubst;
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[], subst text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[], subst text)
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_string_array'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text[], text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[]) 
+CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[])
 RETURNS text
 AS $$SELECT plvsubst.string($1,$2, NULL);$$
 LANGUAGE SQL STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.string(text, text[]) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text, subst_in text)
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_string_string'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text, text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text)
 RETURNS text
-AS $$SELECT plvsubst.string($1, $2, ',', NULL); $$ 
-LANGUAGE SQL STRICT VOLATILE;
+AS 'MODULE_PATHNAME','plvsubst_string_string'
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text) 
+CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, vals_in text, delim_in text)
 RETURNS text
-AS $$SELECT plvsubst.string($1, $2, $3, NULL); $$ 
-LANGUAGE SQL STRICT VOLATILE;
+AS 'MODULE_PATHNAME','plvsubst_string_string'
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plvsubst.string(text, text, text) IS 'Scans a string for all instances of the substitution keyword and replace it with the next value in the substitution values list';
 
-CREATE OR REPLACE FUNCTION plvsubst.setsubst(str text) 
+CREATE OR REPLACE FUNCTION plvsubst.setsubst(str text)
 RETURNS void
 AS 'MODULE_PATHNAME','plvsubst_setsubst'
 LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.setsubst(text) IS 'Change the substitution keyword';
 
-CREATE OR REPLACE FUNCTION plvsubst.setsubst() 
+CREATE OR REPLACE FUNCTION plvsubst.setsubst()
 RETURNS void
 AS 'MODULE_PATHNAME','plvsubst_setsubst_default'
 LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.setsubst() IS 'Change the substitution keyword to default %s';
 
-CREATE OR REPLACE FUNCTION plvsubst.subst() 
+CREATE OR REPLACE FUNCTION plvsubst.subst()
 RETURNS text
 AS 'MODULE_PATHNAME','plvsubst_subst'
 LANGUAGE C STRICT VOLATILE;
@@ -1238,13 +1244,13 @@ COMMENT ON FUNCTION plvsubst.subst() IS 'Retrieve the current substitution keywo
 DROP SCHEMA IF EXISTS dbms_utility CASCADE;
 CREATE SCHEMA dbms_utility;
 
-CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack(text) 
+CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack(text)
 RETURNS text
 AS 'MODULE_PATHNAME','dbms_utility_format_call_stack1'
 LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION dbms_utility.format_call_stack(text) IS 'Return formated call stack';
 
-CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack() 
+CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack()
 RETURNS text
 AS 'MODULE_PATHNAME','dbms_utility_format_call_stack0'
 LANGUAGE C VOLATILE;
@@ -1256,7 +1262,7 @@ CREATE SCHEMA plvlex;
 CREATE OR REPLACE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qualified_names bool,
 OUT pos int, OUT token text, OUT code int, OUT class text, OUT separator text, OUT mod text)
 RETURNS SETOF RECORD
-AS 'MODULE_PATHNAME','plvlex_tokens' 
+AS 'MODULE_PATHNAME','plvlex_tokens'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
 
@@ -1266,7 +1272,7 @@ CREATE DOMAIN utl_file.file_type integer;
 
 CREATE FUNCTION utl_file.fopen(location text, filename text, open_mode text, max_linesize integer)
 RETURNS utl_file.file_type
-AS 'MODULE_PATHNAME','utl_file_fopen' 
+AS 'MODULE_PATHNAME','utl_file_fopen'
 LANGUAGE C VOLATILE SECURITY DEFINER;
 COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN function open file and return file handle';
 
@@ -1278,28 +1284,28 @@ COMMENT ON FUNCTION utl_file.fopen(text,text,text,integer) IS 'The FOPEN functio
 
 CREATE FUNCTION utl_file.is_open(file utl_file.file_type)
 RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_is_open' 
+AS 'MODULE_PATHNAME','utl_file_is_open'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.is_open(utl_file.file_type) IS 'Functions returns true if handle points to file that is open';
 
 CREATE FUNCTION utl_file.get_line(file utl_file.file_type, OUT buffer text)
-AS 'MODULE_PATHNAME','utl_file_get_line' 
+AS 'MODULE_PATHNAME','utl_file_get_line'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type) IS 'Returns one line from file';
 
 CREATE FUNCTION utl_file.get_line(file utl_file.file_type, OUT buffer text, len integer)
-AS 'MODULE_PATHNAME','utl_file_get_line' 
+AS 'MODULE_PATHNAME','utl_file_get_line'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_line(utl_file.file_type, len integer) IS 'Returns one line from file';
 
 CREATE FUNCTION utl_file.get_nextline(file utl_file.file_type, OUT buffer text)
-AS 'MODULE_PATHNAME','utl_file_get_nextline' 
+AS 'MODULE_PATHNAME','utl_file_get_nextline'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.get_nextline(utl_file.file_type) IS 'Returns one line from file or returns NULL';
 
 CREATE FUNCTION utl_file.put(file utl_file.file_type, buffer text)
 RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_put' 
+AS 'MODULE_PATHNAME','utl_file_put'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.put(utl_file.file_type, text) IS 'Puts data to specified file';
 
@@ -1347,7 +1353,7 @@ COMMENT ON FUNCTION utl_file.put_line(utl_file.file_type, anyelement, bool) IS '
 
 CREATE FUNCTION utl_file.putf(file utl_file.file_type, format text, arg1 text, arg2 text, arg3 text, arg4 text, arg5 text)
 RETURNS bool
-AS 'MODULE_PATHNAME','utl_file_putf' 
+AS 'MODULE_PATHNAME','utl_file_putf'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text, text, text, text, text, text) IS 'Puts formatted data to specified file';
 
@@ -1383,19 +1389,19 @@ COMMENT ON FUNCTION utl_file.putf(utl_file.file_type, text) IS 'Puts formatted d
 
 CREATE FUNCTION utl_file.fflush(file utl_file.file_type)
 RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fflush' 
+AS 'MODULE_PATHNAME','utl_file_fflush'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fflush(file utl_file.file_type) IS 'This procedure makes sure that all pending data for specified file is written physically out to a file';
 
 CREATE FUNCTION utl_file.fclose(file utl_file.file_type)
 RETURNS utl_file.file_type
-AS 'MODULE_PATHNAME','utl_file_fclose' 
+AS 'MODULE_PATHNAME','utl_file_fclose'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fclose(utl_file.file_type) IS 'Close file';
 
 CREATE FUNCTION utl_file.fclose_all()
 RETURNS void
-AS 'MODULE_PATHNAME','utl_file_fclose_all' 
+AS 'MODULE_PATHNAME','utl_file_fclose_all'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION utl_file.fclose_all() IS 'Close all open files.';
 

@@ -258,13 +258,13 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 			ora_sinit(sh_mem->data, size, true);
 			pipes = sh_mem->pipes = ora_salloc(max_pipes*sizeof(pipe));
 			sid = sh_mem->sid = 1;
-			for(i = 0; i < max_pipes; i++)
+			for (i = 0; i < max_pipes; i++)
 				pipes[i].is_valid = false;
 
 			events = sh_mem->events = ora_salloc(max_events*sizeof(alert_event));
 			locks = sh_mem->locks = ora_salloc(max_locks*sizeof(alert_lock));
 
-			for(i = 0; i < max_events; i++)
+			for (i = 0; i < max_events; i++)
 			{
 				events[i].event_name = NULL;
 				events[i].max_receivers = 0;
@@ -565,7 +565,7 @@ check_buffer(message_buffer *buffer, int32 size)
 	if (buffer == NULL)
 	{
 		buffer = (message_buffer*) MemoryContextAlloc(TopMemoryContext, size);
-		if( buffer == NULL )
+		if (buffer == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
 					 errmsg("out of memory"),

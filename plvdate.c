@@ -657,7 +657,7 @@ plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS)
 	}
 	else
 	{
-		for(i = 0; i < exceptions_c; i++)
+		for (i = 0; i < exceptions_c; i++)
 			if (!found && exceptions[i] == arg1)
 				found = true;
 			else if (found)
