@@ -24,7 +24,7 @@ Revision history for pgTAP
         of the `psql` binary to the bin directory specified for PostgreSQL
         when it was built.
       - Fixed `pg_version_num()` to work on PostgreSQL 8.4devel.
-      - Fixed a test failure on PostgreSQL 8.4devel.
+      - Fixed test failures on PostgreSQL 8.4devel.
 
 0.15  2009-01-20T18:41:24
       - Changed `pg_typeof()` from immutable to stable, in compliance with its
