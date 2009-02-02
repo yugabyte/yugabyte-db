@@ -2096,9 +2096,7 @@ To Do
 * Useful schema testing functions to consider adding:
   * `has_tablespace()`
   * `has_cast()`
-  * `has_group()`
-  * `has_user()`
-  * `has_role()`
+  * `has_role()`, `has_user()`, `has_group()`
   * `has_operator()`
   * `has_operator_class()`
   * `has_sequence()`
@@ -2109,7 +2107,7 @@ Suported Versions
 
 pgTAP has been tested on the following builds of PostgreSQL:
 
-* PostgreSQL 8.3.4 on i386-apple-darwin9.5.0
+* PostgreSQL 8.3.5 on i386-apple-darwin9.5.0
 * PostgreSQL 8.2.10 on i386-apple-darwin9.5.0
 * PostgreSQL 8.1.14 on i386-apple-darwin9.5.0
 * PostgreSQL 8.0.19 on i686-apple-darwin9.5.0
