@@ -102,13 +102,14 @@ SELECT * FROM todo('just because', 2 );
 -- We have to use ok() instead of is() to get around lack of cast to text in 8.0.
 SELECT ok(
     ARRAY(
-        SELECT fail('This is a todo test 1')
+        SELECT fail('This is a todo test 1') AS stuff
         UNION
         SELECT todo::text FROM todo('inside')
         UNION
         SELECT fail('This is a todo test 2')
         UNION
         SELECT fail('This is a todo test 3')
+        ORDER BY stuff
     )
     = ARRAY[
         'not ok 25 - This is a todo test 1 # TODO just because
