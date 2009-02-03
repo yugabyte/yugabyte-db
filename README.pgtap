@@ -1,4 +1,4 @@
-pgTAP 0.16
+pgTAP 0.17
 ==========
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
@@ -262,7 +262,7 @@ return TAP values, like so:
         RETURN NEXT is( MAX(nick), NULL, 'Should have no users') FROM users;
         INSERT INTO users (nick) VALUES ('theory');
     $$ LANGUAGE plpgsql;
-    
+
     CREATE OR REPLACE FUNCTION test_user(
     ) RETURNS SETOF TEXT AS $$
        SELECT is( nick, 'theory', 'Should have nick') FROM users;

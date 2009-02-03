@@ -1,5 +1,7 @@
 Revision history for pgTAP
 
+0.17
+
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
         of `IS NOT DISTINCT FROM` and `IS DISTINCT FROM`. Swiped from PGUnit.
