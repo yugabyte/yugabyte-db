@@ -1,13 +1,13 @@
 Revision history for pgTAP
 
-0.16
+0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
         of `IS NOT DISTINCT FROM` and `IS DISTINCT FROM`. Swiped from PGUnit.
       - Fixed documentation for the short version of `--help` in `pg_prove`.
         It's `-H`, not `-h`.
       - Fixed a bug in the makefile that prevented OS detection from working
         properly on many platforms (including Linux, and probably many
-        others).
+        others). This allows `os_name()` to actually work on those platforms.
       - The definition of the `pg_typeof()` function is removed when
         installing on POstgresQL 8.4 and no C code is compiled, since the only
         C code is for this function. This is because `pg_typeof()` is included
