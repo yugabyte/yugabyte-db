@@ -1747,6 +1747,11 @@ executing the comparison, but might be generally useful.
     -----------+-----------
      integer   | numeric
 
+*Note:* pgTAP does not build `pg_typeof()` on PostgreSQL 8.4 or higher,
+because it's in core in 8.4. You only need to worry about this if you depend
+on the function being in particular schema. It will always be in `pg_catalog`
+in 8.4 and higher.
+
 ### `findfuncs( schema, pattern )` ###
 ### `findfuncs( pattern )` ###
 
