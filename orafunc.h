@@ -65,4 +65,8 @@ extern Oid	equality_oper_funcid(Oid argtype);
 typedef void *SPIPlanPtr;
 #endif
 
+#if PG_VERSION_NUM < 80200
+#define ARR_NULLBITMAP(a)		(NULL)
+#endif
+
 #endif

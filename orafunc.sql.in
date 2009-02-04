@@ -184,8 +184,6 @@ RETURNS float8 AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-DROP SCHEMA IF EXISTS plvstr CASCADE;
-
 CREATE SCHEMA plvstr;
 
 CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int, _end int)
@@ -221,7 +219,6 @@ COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
 -- can't overwrite PostgreSQL functions!!!!
 
-DROP SCHEMA IF EXISTS oracle CASCADE;
 CREATE SCHEMA oracle;
 
 CREATE OR REPLACE FUNCTION oracle.substr(str text, start int)
@@ -236,7 +233,6 @@ AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
-DROP TABLE IF EXISTS public.dual CASCADE;
 CREATE TABLE public.dual(dummy varchar(1));
 INSERT INTO public.dual(dummy) VALUES('X');
 CREATE RULE noins_dual AS ON INSERT TO public.dual DO INSTEAD NOTHING;
@@ -248,8 +244,6 @@ ANALYZE public.dual;
 
 -- this packege is emulation of dbms_output Oracle packege
 --
-
-DROP SCHEMA IF EXISTS dbms_output CASCADE;
 
 CREATE SCHEMA dbms_output;
 
@@ -493,8 +487,6 @@ AS 'MODULE_PATHNAME', 'ora_decode'
 LANGUAGE C IMMUTABLE;
 
 
-DROP SCHEMA IF EXISTS dbms_pipe CASCADE;
-
 CREATE SCHEMA dbms_pipe;
 
 CREATE OR REPLACE FUNCTION dbms_pipe.pack_message(text)
@@ -671,8 +663,6 @@ COMMENT ON FUNCTION dbms_pipe.unpack_message_record() IS 'Get record field from 
 
 
 -- follow package PLVdate emulation
-
-DROP SCHEMA IF EXISTS plvdate CASCADE;
 
 CREATE SCHEMA plvdate;
 
@@ -1000,8 +990,6 @@ AS $$ SELECT plvstr.betwn($1,$2,$3,$4,$5,true,false);$$
 LANGUAGE SQL IMMUTABLE;
 COMMENT ON FUNCTION plvstr.betwn(text, text, text, int, int) IS 'Find the Substring Between Start and End Locations';
 
-DROP SCHEMA IF EXISTS plvchr CASCADE;
-
 CREATE SCHEMA plvchr;
 
 CREATE OR REPLACE FUNCTION plvchr.nth(str text, n int)
@@ -1132,8 +1120,6 @@ COMMENT ON FUNCTION plvchr.stripped(text, text) IS 'Strips a string of all insta
 
 -- dbms_alert
 
-DROP SCHEMA IF EXISTS dbms_alert CASCADE;
-
 CREATE SCHEMA dbms_alert;
 
 CREATE OR REPLACE FUNCTION dbms_alert.register(name text)
@@ -1190,7 +1176,6 @@ AS 'MODULE_PATHNAME','dbms_alert_signal'
 LANGUAGE C SECURITY DEFINER;
 COMMENT ON FUNCTION dbms_alert.signal(text, text) IS 'Emit signal to all recipients';
 
-DROP SCHEMA IF EXISTS plvsubst CASCADE;
 CREATE SCHEMA plvsubst;
 
 CREATE OR REPLACE FUNCTION plvsubst.string(template_in text, values_in text[], subst text)
@@ -1241,7 +1226,6 @@ AS 'MODULE_PATHNAME','plvsubst_subst'
 LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION plvsubst.subst() IS 'Retrieve the current substitution keyword';
 
-DROP SCHEMA IF EXISTS dbms_utility CASCADE;
 CREATE SCHEMA dbms_utility;
 
 CREATE OR REPLACE FUNCTION dbms_utility.format_call_stack(text)
@@ -1256,7 +1240,6 @@ AS 'MODULE_PATHNAME','dbms_utility_format_call_stack0'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_utility.format_call_stack() IS 'Return formated call stack';
 
-DROP SCHEMA IF EXISTS plvlex CASCADE;
 CREATE SCHEMA plvlex;
 
 CREATE OR REPLACE FUNCTION plvlex.tokens(IN str text, IN skip_spaces bool, IN qualified_names bool,
@@ -1266,7 +1249,6 @@ AS 'MODULE_PATHNAME','plvlex_tokens'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvlex.tokens(text,bool,bool) IS 'Parse SQL string';
 
-DROP SCHEMA IF EXISTS utl_file CASCADE;
 CREATE SCHEMA utl_file;
 CREATE DOMAIN utl_file.file_type integer;
 
@@ -1459,7 +1441,6 @@ REVOKE ALL ON FUNCTION utl_file.tmpdir() FROM PUBLIC;
 
 -- dbms_assert
 
-DROP SCHEMA IF EXISTS dbms_assert CASCADE;
 CREATE SCHEMA dbms_assert;
 
 CREATE FUNCTION dbms_assert.enquote_literal(str varchar)
@@ -1510,7 +1491,6 @@ AS 'MODULE_PATHNAME','dbms_assert_qualified_sql_name'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_assert.object_name(varchar) IS 'Verify input string is an qualified sql name.';
 
-DROP SCHEMA IF EXISTS plunit CASCADE;
 CREATE SCHEMA plunit;
 
 CREATE FUNCTION plunit.assert_true(condition boolean)
@@ -1632,7 +1612,9 @@ $$
 $$
 LANGUAGE sql;
 
-SELECT CASE WHEN current_setting('server_version_num')::integer < 80300
+-- server_version_num doesn't exist in 8.1.
+-- current_setting('server_version_num')::integer < 80300
+SELECT CASE WHEN substring(current_setting('server_version'), E'^[[:digit:]]+\\.[[:digit:]]+')::numeric < 8.3
   THEN oracle.drop_anyelement_overloads()
   ELSE NULL END;
 

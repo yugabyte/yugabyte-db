@@ -15,6 +15,10 @@
 #include "utils/memutils.h"
 #include "orafunc.h"
 
+#ifndef ERRCODE_NO_DATA_FOUND
+#define ERRCODE_NO_DATA_FOUND				MAKE_SQLSTATE('P','0', '0','0','2')
+#endif
+
 #define INVALID_OPERATION		"UTL_FILE_INVALID_OPERATION"
 #define WRITE_ERROR				"UTL_FILE_WRITE_ERROR"
 #define READ_ERROR				"UTL_FILE_READ_ERROR"
