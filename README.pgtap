@@ -828,7 +828,7 @@ Tests whether or not a column exists in a given table, view, or composite
 type. The first argument is the schema name, the second the table name, the
 third the column name, and the fourth is the test description. If the schema
 is omitted, the table must be visible in the search path. If the test
-description is omitted, it will be set to "Column `:table`.`:column` should
+description is omitted, it will be set to "Column `:table.:column` should
 exist".
 
 ### `hasnt_column( schema, table, column, description )` ###
@@ -861,8 +861,8 @@ Tests whether the specified column has a `NOT NULL` constraint. The first
 argument is the schema name, the second the table name, the third the column
 name, and the fourth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
-it will be set to "Column `:table`.`:column` should be NOT NULL". Note that
-this test will fail if the table or column in question does not exist.
+it will be set to "Column `:table.:column` should be NOT NULL". Note that this
+test will fail if the table or column in question does not exist.
 
 ### `col_is_null( schema, table, column, description )` ###
 ### `col_is_null( table, column, description )` ###
@@ -880,7 +880,7 @@ column does not have a `NOT NULL` constraint. The first argument is the schema
 name, the second the table name, the third the column name, and the fourth is
 the test description. If the schema is omitted, the table must be visible in
 the search path. If the test description is omitted, it will be set to "Column
-`:table`.`:column` should allow NULL". Note that this test will fail if the
+`:table.:column` should allow NULL". Note that this test will fail if the
 table or column in question does not exist.
 
 ### `col_has_default( schema, table, column, description )` ###
@@ -976,9 +976,8 @@ showing the actual default value. The first argument is the schema name, the
 second the table name, the third the column name, the fourth the default
 value, and the fifth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
-it will be set to "Column `:table`.`:column` should default to `:default`".
-Note that this test will fail if the table or column in question does not
-exist.
+it will be set to "Column `:table.:column` should default to `:default`". Note
+that this test will fail if the table or column in question does not exist.
 
 The default argument must have an unambiguous type in order for the call to
 succeed. If you see an error such as 'ERROR: could not determine polymorphic
@@ -1102,7 +1101,7 @@ primary key columns, if any. The first argument is the schema name, the second
 the table name, the third the column name or an array of column names, and the
 fourth is the test description. If the schema is omitted, the table must be
 visible in the search path. If the test description is omitted, it will be set
-to "Column `:table`.`:column` should be a primary key". Note that this test
+to "Column `:table(:column)` should be a primary key". Note that this test
 will fail if the table or column in question does not exist.
 
 If the test fails, it will output useful diagnostics. For example this test:
@@ -2148,8 +2147,6 @@ To Do
   function rather than test files.
 * Fix various column testing functions so that they emit useful diagnostics if
   a column does not exist, like `col_has_default()` does.
-* Change all the uses of `schema.table(column)` to `schema.table.column` in
-  diagnostics and descriptions.
 * Use `quote_ident()` to quote all identifiers in diagnostics and descriptions.
 * Useful schema testing functions to consider adding:
   * `has_tablespace()`

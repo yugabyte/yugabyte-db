@@ -11,6 +11,9 @@ Revision history for pgTAP
         you have previous versions of this function installed, so as to
         eliminate the incompatible version.
       - Added `col_has_default()` and `col_hasnt_default()`.
+      - Changed default descriptions for column testing functions to refer to
+        the columns as the more SQL-standard `schema.table.column` insteada of
+        `schema.table(column)`.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use

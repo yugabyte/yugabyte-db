@@ -539,7 +539,7 @@ SELECT * FROM check_test(
     has_column( '__SDFSDFD__', 'foo' ),
     false,
     'has_column(non-existent tab, col)',
-    'Column __SDFSDFD__(foo) should exist',
+    'Column __SDFSDFD__.foo should exist',
     ''
 );
 
@@ -563,7 +563,7 @@ SELECT * FROM check_test(
     has_column( 'sometab', 'id' ),
     true,
     'has_column(table, column)',
-    'Column sometab(id) should exist',
+    'Column sometab.id should exist',
     ''
 );
 
@@ -580,7 +580,7 @@ SELECT * FROM check_test(
     has_column( 'pg_tables', 'schemaname' ),
     true,
     'has_column(view, column)',
-    'Column pg_tables(schemaname) should exist',
+    'Column pg_tables.schemaname should exist',
     ''
 );
 
@@ -589,7 +589,7 @@ SELECT * FROM check_test(
     has_column( 'sometype', 'name' ),
     true,
     'has_column(type, column)',
-    'Column sometype(name) should exist',
+    'Column sometype.name should exist',
     ''
 );
 
@@ -600,7 +600,7 @@ SELECT * FROM check_test(
     hasnt_column( '__SDFSDFD__', 'foo' ),
     true,
     'hasnt_column(non-existent tab, col)',
-    'Column __SDFSDFD__(foo) should not exist',
+    'Column __SDFSDFD__.foo should not exist',
     ''
 );
 
@@ -624,7 +624,7 @@ SELECT * FROM check_test(
     hasnt_column( 'sometab', 'id' ),
     false,
     'hasnt_column(table, column)',
-    'Column sometab(id) should not exist',
+    'Column sometab.id should not exist',
     ''
 );
 
@@ -641,7 +641,7 @@ SELECT * FROM check_test(
     hasnt_column( 'pg_tables', 'whatever' ),
     true,
     'hasnt_column(view, column)',
-    'Column pg_tables(whatever) should not exist',
+    'Column pg_tables.whatever should not exist',
     ''
 );
 
@@ -650,7 +650,7 @@ SELECT * FROM check_test(
     hasnt_column( 'sometype', 'foobar' ),
     true,
     'hasnt_column(type, column)',
-    'Column sometype(foobar) should not exist',
+    'Column sometype.foobar should not exist',
     ''
 );
 

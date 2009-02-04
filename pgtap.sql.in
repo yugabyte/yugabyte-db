@@ -899,7 +899,7 @@ $$ LANGUAGE SQL;
 -- has_column( table, column )
 CREATE OR REPLACE FUNCTION has_column ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT has_column( $1, $2, 'Column ' || $1 || '(' || $2 || ') should exist' );
+    SELECT has_column( $1, $2, 'Column ' || $1 || '.' || $2 || ' should exist' );
 $$ LANGUAGE SQL;
 
 -- hasnt_column( schema, table, column, description )
@@ -917,7 +917,7 @@ $$ LANGUAGE SQL;
 -- hasnt_column( table, column )
 CREATE OR REPLACE FUNCTION hasnt_column ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT hasnt_column( $1, $2, 'Column ' || $1 || '(' || $2 || ') should not exist' );
+    SELECT hasnt_column( $1, $2, 'Column ' || $1 || '.' || $2 || ' should not exist' );
 $$ LANGUAGE SQL;
 
 -- _col_is_null( schema, table, column, desc, null )
@@ -972,7 +972,7 @@ $$ LANGUAGE SQL;
 -- col_not_null( table, column )
 CREATE OR REPLACE FUNCTION col_not_null ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '(' || $2 || ') should be NOT NULL', true );
+    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should be NOT NULL', true );
 $$ LANGUAGE SQL;
 
 -- col_is_null( schema, table, column, description )
@@ -990,7 +990,7 @@ $$ LANGUAGE SQL;
 -- col_is_null( table, column )
 CREATE OR REPLACE FUNCTION col_is_null ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '(' || $2 || ') should allow NULL', false );
+    SELECT _col_is_null( $1, $2, 'Column ' || $1 || '.' || $2 || ' should allow NULL', false );
 $$ LANGUAGE SQL;
 
 -- col_type_is( schema, table, column, type, description )
@@ -1045,7 +1045,7 @@ $$ LANGUAGE SQL;
 -- col_type_is( table, column, type )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '(' || $2 || ') should be type ' || $3 );
+    SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '.' || $2 || ' should be type ' || $3 );
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _has_def ( NAME, NAME, NAME )

@@ -39,7 +39,7 @@ SELECT * FROM check_test(
     col_not_null( 'sometab', 'id' ),
     true,
     'col_not_null( table, column )',
-    'Column sometab(id) should be NOT NULL',
+    'Column sometab.id should be NOT NULL',
     ''
 );
 
@@ -48,7 +48,7 @@ SELECT * FROM check_test(
     col_not_null( 'sometab', 'name' ),
     false,
     'col_not_null( table, column ) fail',
-    'Column sometab(name) should be NOT NULL',
+    'Column sometab.name should be NOT NULL',
     ''
 );
 
@@ -74,7 +74,7 @@ SELECT * FROM check_test(
     col_is_null( 'sometab', 'name' ),
     true,
     'col_is_null( tab, col )',
-    'Column sometab(name) should allow NULL',
+    'Column sometab.name should allow NULL',
     ''
 );
 -- Make sure failure is correct.
@@ -82,7 +82,7 @@ SELECT * FROM check_test(
     col_is_null( 'sometab', 'id' ),
     false,
     'col_is_null( tab, col ) fail',
-    'Column sometab(id) should allow NULL',
+    'Column sometab.id should allow NULL',
     ''
 );
 
@@ -108,7 +108,7 @@ SELECT * FROM check_test(
     col_type_is( 'sometab', 'name', 'text' ),
     true,
     'col_type_is( tab, col, type )',
-    'Column sometab(name) should be type text',
+    'Column sometab.name should be type text',
     ''
 );
 
@@ -116,7 +116,7 @@ SELECT * FROM check_test(
     col_type_is( 'sometab', 'name', 'TEXT' ),
     true,
     'col_type_is( tab, col, type ) insensitive',
-    'Column sometab(name) should be type TEXT',
+    'Column sometab.name should be type TEXT',
     ''
 );
 
@@ -125,7 +125,7 @@ SELECT * FROM check_test(
     col_type_is( 'sometab', 'name', 'int4' ),
     false,
     'col_type_is( tab, col, type ) fail',
-    'Column sometab(name) should be type int4',
+    'Column sometab.name should be type int4',
     '        have: text
         want: int4'
 );
