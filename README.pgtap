@@ -883,6 +883,40 @@ the search path. If the test description is omitted, it will be set to "Column
 `:table`.`:column` should allow NULL". Note that this test will fail if the
 table or column in question does not exist.
 
+### `col_has_default( schema, table, column, description )` ###
+### `col_has_default( table, column, description )` ###
+### `col_has_default( table, column )` ###
+
+    SELECT col_has_default(
+        'myschema',
+        'sometable',
+        'somecolumn',
+        'Column myschema.sometable.somecolumn has a default'
+    );
+
+Tests whether or not a column has a default value. Fails if the column dosn't
+have a default value. It will also fail if the column doesn't exist, and emit
+useful diagnostics to let you know:
+
+    not ok 136 - desc
+    # Failed test 136: "desc"
+    #     Column public.sometab.__asdfasdfs__ does not exist
+
+### `col_hasnt_default( schema, table, column, description )` ###
+### `col_hasnt_default( table, column, description )` ###
+### `col_hasnt_default( table, column )` ###
+
+    SELECT col_hasnt_default(
+        'myschema',
+        'sometable',
+        'somecolumn',
+        'There should be no default on myschema.sometable.somecolumn'
+    );
+
+This function is the inverse of `col_has_default()`. The test passes if the
+specified column does *not* have a default. It will still fail if the column
+does not exist.
+
 ### `col_type_is( schema, table, column, type, description )` ###
 ### `col_type_is( table, column, type, description )` ###
 ### `col_type_is( table, column, type )` ###
@@ -900,9 +934,9 @@ fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
 fourth the type, and the fifth is the test description. If the schema is
 omitted, the table and the type must be visible in the search path. If the
-test description is omitted, it will be set to "Column `:table`.`:column`
-should be type `:type`". Note that this test will fail if the table or column
-in question does not exist.
+test description is omitted, it will be set to "Column
+`:schema.:table.:column` should be type `:type`". Note that this test will
+fail if the table or column in question does not exist.
 
 The type argument should be formatted as it would be displayed in the view of
 a table using the `\d` command in `psql`. For example, if you have a numeric
@@ -919,6 +953,11 @@ Will produce something like this:
     # Failed test 138: "Column pg_catalog.pg_type.typname should be type text"
     #         have: name
     #         want: text
+
+It will even tell you if the test fails because a column doesn't exist or
+actually has no default. But you use `has_column()` and `col_has_default()` to
+test those conditions before you call `col_default_is()`, right? *Right???*
+Yeah, good, I thought so.
 
 ### `col_default_is( schema, table, column, default, description )` ###
 ### `col_default_is( table, column, default, description )` ###
@@ -951,6 +990,11 @@ expected value to its proper type. IOW, this will fail:
 But this will not:
 
     SELECT col_default_is( 'tab', 'name', 'foo'::text );
+
+You even need to properly cast your default value when it's a NULL. Just cast
+it to the same data type as the column itself:
+
+    SELECT col_default_is( 'tab', age, NULL::integer );
 
 You can also test for functional defaults. Just specify the function call as a
 string:
@@ -2102,7 +2146,11 @@ To Do
 
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
-* Fix `col_has_default()` to check for `NULL` defaults. It's a bug that it doesn't.
+* Fix various column testing functions so that they emit useful diagnostics if
+  a column does not exist, like `col_has_default()` does.
+* Change all the uses of `schema.table(column)` to `schema.table.column` in
+  diagnostics and descriptions.
+* Use `quote_ident()` to quote all identifiers in diagnostics and descriptions.
 * Useful schema testing functions to consider adding:
   * `has_tablespace()`
   * `has_cast()`

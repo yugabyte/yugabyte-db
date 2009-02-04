@@ -1048,17 +1048,105 @@ RETURNS TEXT AS $$
     SELECT col_type_is( $1, $2, $3, 'Column ' || $1 || '(' || $2 || ') should be type ' || $3 );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
+CREATE OR REPLACE FUNCTION _has_def ( NAME, NAME, NAME )
+RETURNS boolean AS $$
+    SELECT a.atthasdef
+      FROM pg_catalog.pg_namespace n
+      JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+     WHERE n.nspname = $1
+       AND c.relname = $2
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+       AND a.attname = LOWER($3)
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _has_def ( NAME, NAME )
+RETURNS boolean AS $$
+    SELECT a.atthasdef
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+     WHERE c.relname = $1
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+       AND a.attname = LOWER($2)
+$$ LANGUAGE sql;
+
+-- col_has_default( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_has_default ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    IF NOT _cexists( $1, $2, $3 ) THEN
+        RETURN fail( $4 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || '.' || $3 || ' does not exist' );
+    END IF;
+    RETURN ok( _has_def( $1, $2, $3 ), $4 );
+END
+$$ LANGUAGE plpgsql;
+
+-- col_has_default( table, column, description )
+CREATE OR REPLACE FUNCTION col_has_default ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    IF NOT _cexists( $1, $2 ) THEN
+        RETURN fail( $3 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || ' does not exist' );
+    END IF;
+    RETURN ok( _has_def( $1, $2 ), $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- col_has_default( table, column )
+CREATE OR REPLACE FUNCTION col_has_default ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT col_has_default( $1, $2, 'Column ' || $1 || '.' || $2 || ' should have a default' );
+$$ LANGUAGE SQL;
+
+-- col_hasnt_default( schema, table, column, description )
+CREATE OR REPLACE FUNCTION col_hasnt_default ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    IF NOT _cexists( $1, $2, $3 ) THEN
+        RETURN fail( $4 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || '.' || $3 || ' does not exist' );
+    END IF;
+    RETURN ok( NOT _has_def( $1, $2, $3 ), $4 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- col_hasnt_default( table, column, description )
+CREATE OR REPLACE FUNCTION col_hasnt_default ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    IF NOT _cexists( $1, $2 ) THEN
+        RETURN fail( $3 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || ' does not exist' );
+    END IF;
+    RETURN ok( NOT _has_def( $1, $2 ), $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- col_hasnt_default( table, column )
+CREATE OR REPLACE FUNCTION col_hasnt_default ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT col_hasnt_default( $1, $2, 'Column ' || $1 || '.' || $2 || ' should not have a default' );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     thing text;
 BEGIN
     IF $1 ~ '^[^'']+[(]' THEN
         -- It's a functional default.
-        RETURN is( $1, $2, $3 );
+        RETURN is( $1, $3, $4 );
     END IF;
-    EXECUTE 'SELECT is(' || COALESCE($1, 'NULL::text') || ', ' || quote_literal($2) || ', ' || quote_literal($3) || ')'
-      INTO thing;
+
+    EXECUTE 'SELECT is(' 
+             || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
+             || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
+             || COALESCE(quote_literal($4), 'NULL')
+    || ')' INTO thing;
     RETURN thing;
 END;
 $$ LANGUAGE plpgsql;
@@ -1066,47 +1154,76 @@ $$ LANGUAGE plpgsql;
 -- col_default_is( schema, table, column, default, description )
 CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, NAME, anyelement, TEXT )
 RETURNS TEXT AS $$
-    SELECT _def_is((
-        SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
-          FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
-               pg_catalog.pg_attrdef d
-         WHERE n.oid = c.relnamespace
-           AND c.oid = a.attrelid
-           AND a.atthasdef
-           AND a.attrelid = d.adrelid
-           AND a.attnum = d.adnum
-           AND n.nspname = $1
-           AND c.relname = $2
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-           AND a.attname = $3
-     ), $4, $5 );
-$$ LANGUAGE sql;
+BEGIN
+    IF NOT _cexists( $1, $2, $3 ) THEN
+        RETURN fail( $5 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || '.' || $3 || ' does not exist' );
+    END IF;
+
+    IF NOT _has_def( $1, $2, $3 ) THEN
+        RETURN fail( $5 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || '.' || $3 || ' has no default' );
+    END IF;
+
+    RETURN _def_is(
+        pg_catalog.pg_get_expr(d.adbin, d.adrelid),
+        pg_catalog.format_type(a.atttypid, a.atttypmod),
+        $4, $5
+    )
+      FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
+           pg_catalog.pg_attrdef d
+     WHERE n.oid = c.relnamespace
+       AND c.oid = a.attrelid
+       AND a.atthasdef
+       AND a.attrelid = d.adrelid
+       AND a.attnum = d.adnum
+       AND n.nspname = $1
+       AND c.relname = $2
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+       AND a.attname = $3;
+END;
+$$ LANGUAGE plpgsql;
 
 -- col_default_is( table, column, default, description )
 CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement, TEXT )
 RETURNS TEXT AS $$
-    SELECT _def_is((
-        SELECT pg_catalog.pg_get_expr(d.adbin, d.adrelid)
-          FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a, pg_catalog.pg_attrdef d
-         WHERE c.oid = a.attrelid
-           AND pg_table_is_visible(c.oid)
-           AND a.atthasdef
-           AND a.attrelid = d.adrelid
-           AND a.attnum = d.adnum
-           AND c.relname = $1
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-           AND a.attname = $2
-    ), $3, $4 );
-$$ LANGUAGE sql;
+BEGIN
+    IF NOT _cexists( $1, $2 ) THEN
+        RETURN fail( $4 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || ' does not exist' );
+    END IF;
+
+    IF NOT _has_def( $1, $2 ) THEN
+        RETURN fail( $4 ) || E'\n'
+            || diag ('    Column ' || $1 || '.' || $2 || ' has no default' );
+    END IF;
+
+    RETURN _def_is(
+        pg_catalog.pg_get_expr(d.adbin, d.adrelid),
+        pg_catalog.format_type(a.atttypid, a.atttypmod),
+        $3, $4
+    )
+      FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a, pg_catalog.pg_attrdef d
+     WHERE c.oid = a.attrelid
+       AND pg_table_is_visible(c.oid)
+       AND a.atthasdef
+       AND a.attrelid = d.adrelid
+       AND a.attnum = d.adnum
+       AND c.relname = $1
+       AND a.attnum > 0
+       AND NOT a.attisdropped
+       AND a.attname = $2;
+END;
+$$ LANGUAGE plpgsql;
 
 -- col_default_is( table, column, default )
-CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, TEXT )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement )
 RETURNS TEXT AS $$
     SELECT col_default_is(
         $1, $2, $3,
-        'Column ' || $1 || '(' || $2 || ') should default to ' || quote_literal($3)
+        'Column ' || $1 || '.' || $2 || ' should default to ' 
+        || COALESCE( quote_literal($3), 'NULL')
     );
 $$ LANGUAGE sql;
 

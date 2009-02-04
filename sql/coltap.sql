@@ -3,15 +3,17 @@
 
 -- $Id$
 
-SELECT plan(57);
+SELECT plan(135);
+--SELECT * from no_plan();
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
 CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
-    numb  NUMERIC(10, 2),
-    myint NUMERIC(8)
+    numb  NUMERIC(10, 2) DEFAULT NULL,
+    myint NUMERIC(8) DEFAULT 24,
+    plain INTEGER
 );
 RESET client_min_messages;
 
@@ -149,6 +151,146 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test col_has_default().
+SELECT * FROM check_test(
+    col_has_default( 'public', 'sometab', 'name', 'desc' ),
+    true,
+    'col_has_default( sch, tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_has_default( 'sometab', 'name', 'desc' ),
+    true,
+    'col_has_default( tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_has_default( 'sometab', 'name' ),
+    true,
+    'col_has_default( tab, col )',
+    'Column sometab.name should have a default',
+    ''
+);
+
+-- Check with a column with no default.
+SELECT * FROM check_test(
+    col_has_default( 'public', 'sometab', 'plain', 'desc' ),
+    false,
+    'col_has_default( sch, tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_has_default( 'sometab', 'plain', 'desc' ),
+    false,
+    'col_has_default( tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_has_default( 'sometab', 'plain' ),
+    false,
+    'col_has_default( tab, col )',
+    'Column sometab.plain should have a default',
+    ''
+);
+
+-- Check with a nonexistent column.
+SELECT * FROM check_test(
+    col_has_default( 'public', 'sometab', '__asdfasdfs__', 'desc' ),
+    false,
+    'col_has_default( sch, tab, col, desc )',
+    'desc',
+    '    Column public.sometab.__asdfasdfs__ does not exist'
+);
+SELECT * FROM check_test(
+    col_has_default( 'sometab', '__asdfasdfs__', 'desc' ),
+    false,
+    'col_has_default( tab, col, desc )',
+    'desc',
+    '    Column sometab.__asdfasdfs__ does not exist'
+);
+SELECT * FROM check_test(
+    col_has_default( 'sometab', '__asdfasdfs__' ),
+    false,
+    'col_has_default( tab, col )',
+    'Column sometab.__asdfasdfs__ should have a default',
+    '    Column sometab.__asdfasdfs__ does not exist'
+);
+
+/****************************************************************************/
+-- Test col_hasnt_default().
+SELECT * FROM check_test(
+    col_hasnt_default( 'public', 'sometab', 'name', 'desc' ),
+    false,
+    'col_hasnt_default( sch, tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_hasnt_default( 'sometab', 'name', 'desc' ),
+    false,
+    'col_hasnt_default( tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_hasnt_default( 'sometab', 'name' ),
+    false,
+    'col_hasnt_default( tab, col )',
+    'Column sometab.name should not have a default',
+    ''
+);
+
+-- Check with a column with no default.
+SELECT * FROM check_test(
+    col_hasnt_default( 'public', 'sometab', 'plain', 'desc' ),
+    true,
+    'col_hasnt_default( sch, tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_hasnt_default( 'sometab', 'plain', 'desc' ),
+    true,
+    'col_hasnt_default( tab, col, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_hasnt_default( 'sometab', 'plain' ),
+    true,
+    'col_hasnt_default( tab, col )',
+    'Column sometab.plain should not have a default',
+    ''
+);
+
+-- Check with a nonexistent column.
+SELECT * FROM check_test(
+    col_hasnt_default( 'public', 'sometab', '__asdfasdfs__', 'desc' ),
+    false,
+    'col_hasnt_default( sch, tab, col, desc )',
+    'desc',
+    '    Column public.sometab.__asdfasdfs__ does not exist'
+);
+SELECT * FROM check_test(
+    col_hasnt_default( 'sometab', '__asdfasdfs__', 'desc' ),
+    false,
+    'col_hasnt_default( tab, col, desc )',
+    'desc',
+    '    Column sometab.__asdfasdfs__ does not exist'
+);
+SELECT * FROM check_test(
+    col_hasnt_default( 'sometab', '__asdfasdfs__' ),
+    false,
+    'col_hasnt_default( tab, col )',
+    'Column sometab.__asdfasdfs__ should not have a default',
+    '    Column sometab.__asdfasdfs__ does not exist'
+);
+
+/****************************************************************************/
 -- Test col_default_is().
 
 SELECT * FROM check_test(
@@ -177,11 +319,76 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    col_default_is( 'sometab', 'name', '' ),
+    col_default_is( 'sometab', 'name', ''::text ),
     true,
     'col_default_is( tab, col, def )',
-    'Column sometab(name) should default to ''''',
+    'Column sometab.name should default to ''''',
     ''
+);
+
+-- Make sure it works with a non-text column.
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'myint', 24 ),
+    true,
+    'col_default_is( tab, col, int )',
+    'Column sometab.myint should default to ''24''',
+    ''
+);
+
+-- Make sure it works with a NULL default.
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'numb', NULL::numeric, 'desc' ),
+    true,
+    'col_default_is( tab, col, NULL, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'numb', NULL::numeric ),
+    true,
+    'col_default_is( tab, col, NULL )',
+    'Column sometab.numb should default to NULL',
+    ''
+);
+
+-- Make sure that it fails when there is no default.
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'plain', 1::integer, 'desc' ),
+    false,
+    'col_default_is( tab, col, bogus, desc )',
+    'desc',
+    '    Column sometab.plain has no default'
+);
+
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'plain', 1::integer ),
+    false,
+    'col_default_is( tab, col, bogus )',
+    'Column sometab.plain should default to ''1''',
+    '    Column sometab.plain has no default'
+);
+
+-- Check with a nonexistent column.
+SELECT * FROM check_test(
+    col_default_is( 'public', 'sometab', '__asdfasdfs__', NULL::text, 'desc' ),
+    false,
+    'col_default_is( sch, tab, col, def, desc )',
+    'desc',
+    '    Column public.sometab.__asdfasdfs__ does not exist'
+);
+SELECT * FROM check_test(
+    col_default_is( 'sometab', '__asdfasdfs__', NULL::text, 'desc' ),
+    false,
+    'col_default_is( tab, col, def, desc )',
+    'desc',
+    '    Column sometab.__asdfasdfs__ does not exist'
+);
+SELECT * FROM check_test(
+    col_default_is( 'sometab', '__asdfasdfs__', NULL::text ),
+    false,
+    'col_default_is( tab, col, def )',
+    'Column sometab.__asdfasdfs__ should default to NULL',
+    '    Column sometab.__asdfasdfs__ does not exist'
 );
 
 /****************************************************************************/

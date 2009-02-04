@@ -1,6 +1,16 @@
 Revision history for pgTAP
 
 0.17
+      - Fixed `col_default_is()` so that it works properly in cases where the
+        default value is `NULL`.
+      - Fixed `col_default_is()` to gracefully handle different data types,
+        columns without defaults, and nonexistent columns.
+      - Fixed the three-argument form of `col_default_is()` to accept any data
+        type for the default, not just text.
+      *NOTE:* You must `DROP FUNCTION col_default_is ( NAME, NAME, TEXT );` if
+        you have previous versions of this function installed, so as to
+        eliminate the incompatible version.
+      - Added `col_has_default()` and `col_hasnt_default()`.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
