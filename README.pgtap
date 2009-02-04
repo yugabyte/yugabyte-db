@@ -2147,7 +2147,6 @@ To Do
   function rather than test files.
 * Fix various column testing functions so that they emit useful diagnostics if
   a column does not exist, like `col_has_default()` does.
-* Use `quote_ident()` to quote all identifiers in diagnostics and descriptions.
 * Useful schema testing functions to consider adding:
   * `has_tablespace()`
   * `has_cast()`

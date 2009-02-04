@@ -14,6 +14,10 @@ Revision history for pgTAP
       - Changed default descriptions for column testing functions to refer to
         the columns as the more SQL-standard `schema.table.column` instead of
         `schema.table(column)`.
+      - Modified all diagnostic messages and test descriptions that reference
+        database objects to use `quote_ident()` to quote the names of those
+        objects, rather than emitting them with or without double-quotes in an
+        ad-hoc way as had hitherto been the case.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use

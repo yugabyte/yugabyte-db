@@ -34,7 +34,7 @@ SELECT * FROM check_test(
     has_index( 'public', 'sometab', 'idx_foo', 'name'::name ),
     true,
     'has_index() single column no desc',
-    'Index "idx_foo" should exist',
+    'Index idx_foo should exist',
     ''
 );
 
@@ -50,7 +50,7 @@ SELECT * FROM check_test(
     has_index( 'public', 'sometab', 'idx_bar', ARRAY['name', 'numb'] ),
     true,
     'has_index() multi-column no desc',
-    'Index "idx_bar" should exist',
+    'Index idx_bar should exist',
     ''
 );
 
@@ -74,7 +74,7 @@ SELECT * FROM check_test(
     has_index( 'public', 'sometab', 'idx_baz'::name ),
     true,
     'has_index() no cols no desc',
-    'Index "idx_baz" should exist',
+    'Index idx_baz should exist',
     ''
 );
 
@@ -90,7 +90,7 @@ SELECT * FROM check_test(
     has_index( 'sometab', 'idx_foo', 'name'::name ),
     true,
     'has_index() no schema single column no desc',
-    'Index "idx_foo" should exist',
+    'Index idx_foo should exist',
     ''
 );
 
@@ -106,7 +106,7 @@ SELECT * FROM check_test(
     has_index( 'sometab', 'idx_bar', ARRAY['name', 'numb'] ),
     true,
     'has_index() no schema multi-column no desc',
-    'Index "idx_bar" should exist',
+    'Index idx_bar should exist',
     ''
 );
 
@@ -122,7 +122,7 @@ SELECT * FROM check_test(
     has_index( 'sometab', 'idx_baz', 'LOWER(name)' ),
     true,
     'has_index() no schema functional no desc',
-    'Index "idx_baz" should exist',
+    'Index idx_baz should exist',
     ''
 );
 
@@ -138,7 +138,7 @@ SELECT * FROM check_test(
     has_index( 'sometab', 'idx_baz' ),
     true,
     'has_index() no schema or cols or desc',
-    'Index "idx_baz" should exist',
+    'Index idx_baz should exist',
     ''
 );
 
@@ -148,7 +148,7 @@ SELECT * FROM check_test(
     false,
     'has_index() missing',
     'whatever',
-    'Index "blah" ON public.sometab not found'
+    'Index blah ON public.sometab not found'
 );
 
 SELECT * FROM check_test(
@@ -156,8 +156,8 @@ SELECT * FROM check_test(
     false,
     'has_index() invalid',
     'whatever',
-    '        have: "idx_bar" ON public.sometab(name, numb)
-        want: "idx_bar" ON public.sometab(name, id)'
+    '        have: idx_bar ON public.sometab(name, numb)
+        want: idx_bar ON public.sometab(name, id)'
 );
 
 SELECT * FROM check_test(
@@ -165,7 +165,7 @@ SELECT * FROM check_test(
     false,
     'has_index() missing no schema',
     'whatever',
-    'Index "blah" ON sometab not found'
+    'Index blah ON sometab not found'
 );
 
 SELECT * FROM check_test(
@@ -173,8 +173,8 @@ SELECT * FROM check_test(
     false,
     'has_index() invalid no schema',
     'whatever',
-    '        have: "idx_bar" ON sometab(name, numb)
-        want: "idx_bar" ON sometab(name, id)'
+    '        have: idx_bar ON sometab(name, numb)
+        want: idx_bar ON sometab(name, id)'
 );
 
 SELECT * FROM check_test(
@@ -182,8 +182,8 @@ SELECT * FROM check_test(
     false,
     'has_index() functional fail',
     'whatever',
-    '        have: "idx_baz" ON public.sometab(lower(name))
-        want: "idx_baz" ON public.sometab(lower(wank))'
+    '        have: idx_baz ON public.sometab(lower(name))
+        want: idx_baz ON public.sometab(lower(wank))'
 );
 
 SELECT * FROM check_test(
@@ -191,8 +191,8 @@ SELECT * FROM check_test(
     false,
     'has_index() functional fail no schema',
     'whatever',
-    '        have: "idx_baz" ON sometab(lower(name))
-        want: "idx_baz" ON sometab(lower(wank))'
+    '        have: idx_baz ON sometab(lower(name))
+        want: idx_baz ON sometab(lower(wank))'
 );
 
 /****************************************************************************/
@@ -209,7 +209,7 @@ SELECT * FROM check_test(
     index_is_unique( 'public', 'sometab', 'idx_baz' ),
     true,
     'index_is_unique() no desc',
-    'Index "idx_baz" should be unique',
+    'Index idx_baz should be unique',
     ''
 );
 
@@ -217,7 +217,7 @@ SELECT * FROM check_test(
     index_is_unique( 'sometab', 'idx_baz' ),
     true,
     'index_is_unique() no schema',
-    'Index "idx_baz" should be unique',
+    'Index idx_baz should be unique',
     ''
 );
 
@@ -225,7 +225,7 @@ SELECT * FROM check_test(
     index_is_unique( 'idx_baz' ),
     true,
     'index_is_unique() index only',
-    'Index "idx_baz" should be unique',
+    'Index idx_baz should be unique',
     ''
 );
 
@@ -241,7 +241,7 @@ SELECT * FROM check_test(
     index_is_unique( 'public', 'sometab', 'sometab_pkey' ),
     true,
     'index_is_unique() on pk no desc',
-    'Index "sometab_pkey" should be unique',
+    'Index sometab_pkey should be unique',
     ''
 );
 
@@ -249,7 +249,7 @@ SELECT * FROM check_test(
     index_is_unique( 'sometab', 'sometab_pkey' ),
     true,
     'index_is_unique() on pk no schema',
-    'Index "sometab_pkey" should be unique',
+    'Index sometab_pkey should be unique',
     ''
 );
 
@@ -257,7 +257,7 @@ SELECT * FROM check_test(
     index_is_unique( 'sometab_pkey' ),
     true,
     'index_is_unique() on pk index only',
-    'Index "sometab_pkey" should be unique',
+    'Index sometab_pkey should be unique',
     ''
 );
 
@@ -273,7 +273,7 @@ SELECT * FROM check_test(
     index_is_unique( 'public', 'sometab', 'idx_bar' ),
     false,
     'index_is_unique() fail no desc',
-    'Index "idx_bar" should be unique',
+    'Index idx_bar should be unique',
     ''
 );
 
@@ -281,7 +281,7 @@ SELECT * FROM check_test(
     index_is_unique( 'sometab', 'idx_bar' ),
     false,
     'index_is_unique() fail no schema',
-    'Index "idx_bar" should be unique',
+    'Index idx_bar should be unique',
     ''
 );
 
@@ -289,7 +289,7 @@ SELECT * FROM check_test(
     index_is_unique( 'idx_bar' ),
     false,
     'index_is_unique() fail index only',
-    'Index "idx_bar" should be unique',
+    'Index idx_bar should be unique',
     ''
 );
 
@@ -297,7 +297,7 @@ SELECT * FROM check_test(
     index_is_unique( 'blahblah' ),
     false,
     'index_is_unique() no such index',
-    'Index "blahblah" should be unique',
+    'Index blahblah should be unique',
     ''
 );
 
@@ -315,7 +315,7 @@ SELECT * FROM check_test(
     index_is_primary( 'public', 'sometab', 'sometab_pkey' ),
     true,
     'index_is_primary() no desc',
-    'Index "sometab_pkey" should be on a primary key',
+    'Index sometab_pkey should be on a primary key',
     ''
 );
 
@@ -323,7 +323,7 @@ SELECT * FROM check_test(
     index_is_primary( 'sometab', 'sometab_pkey' ),
     true,
     'index_is_primary() no schema',
-    'Index "sometab_pkey" should be on a primary key',
+    'Index sometab_pkey should be on a primary key',
     ''
 );
 
@@ -331,7 +331,7 @@ SELECT * FROM check_test(
     index_is_primary( 'sometab_pkey' ),
     true,
     'index_is_primary() index only',
-    'Index "sometab_pkey" should be on a primary key',
+    'Index sometab_pkey should be on a primary key',
     ''
 );
 
@@ -347,7 +347,7 @@ SELECT * FROM check_test(
     index_is_primary( 'public', 'sometab', 'idx_baz' ),
     false,
     'index_is_primary() fail no desc',
-    'Index "idx_baz" should be on a primary key',
+    'Index idx_baz should be on a primary key',
     ''
 );
 
@@ -355,7 +355,7 @@ SELECT * FROM check_test(
     index_is_primary( 'sometab', 'idx_baz' ),
     false,
     'index_is_primary() fail no schema',
-    'Index "idx_baz" should be on a primary key',
+    'Index idx_baz should be on a primary key',
     ''
 );
 
@@ -363,7 +363,7 @@ SELECT * FROM check_test(
     index_is_primary( 'idx_baz' ),
     false,
     'index_is_primary() fail index only',
-    'Index "idx_baz" should be on a primary key',
+    'Index idx_baz should be on a primary key',
     ''
 );
 
@@ -371,7 +371,7 @@ SELECT * FROM check_test(
     index_is_primary( 'blahblah' ),
     false,
     'index_is_primary() no such index',
-    'Index "blahblah" should be on a primary key',
+    'Index blahblah should be on a primary key',
     ''
 );
 
@@ -389,7 +389,7 @@ SELECT * FROM check_test(
     is_clustered( 'public', 'sometab', 'idx_bar' ),
     false,
     'is_clustered() fail no desc',
-    'Table public.sometab should be clustered on index "idx_bar"',
+    'Table public.sometab should be clustered on index idx_bar',
     ''
 );
 
@@ -397,7 +397,7 @@ SELECT * FROM check_test(
     is_clustered( 'sometab', 'idx_bar' ),
     false,
     'is_clustered() fail no schema',
-    'Table sometab should be clustered on index "idx_bar"',
+    'Table sometab should be clustered on index idx_bar',
     ''
 );
 
@@ -405,7 +405,7 @@ SELECT * FROM check_test(
     is_clustered( 'idx_bar' ),
     false,
     'is_clustered() fail index only',
-    'Table should be clustered on index "idx_bar"',
+    'Table should be clustered on index idx_bar',
     ''
 );
 
@@ -422,7 +422,7 @@ SELECT * FROM check_test(
     is_clustered( 'public', 'sometab', 'idx_bar' ),
     true,
     'is_clustered() no desc',
-    'Table public.sometab should be clustered on index "idx_bar"',
+    'Table public.sometab should be clustered on index idx_bar',
     ''
 );
 
@@ -430,7 +430,7 @@ SELECT * FROM check_test(
     is_clustered( 'sometab', 'idx_bar' ),
     true,
     'is_clustered() no schema',
-    'Table sometab should be clustered on index "idx_bar"',
+    'Table sometab should be clustered on index idx_bar',
     ''
 );
 
@@ -438,7 +438,7 @@ SELECT * FROM check_test(
     is_clustered( 'idx_bar' ),
     true,
     'is_clustered() index only',
-    'Table should be clustered on index "idx_bar"',
+    'Table should be clustered on index idx_bar',
     ''
 );
 

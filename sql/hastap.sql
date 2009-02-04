@@ -32,7 +32,7 @@ SELECT * FROM check_test(
     has_schema( '__SDFSDFD__' ),
     false,
     'has_schema(non-existent schema)',
-    'Schema __SDFSDFD__ should exist',
+    'Schema "__SDFSDFD__" should exist',
     ''
 );
 SELECT * FROM check_test(
@@ -64,7 +64,7 @@ SELECT * FROM check_test(
     hasnt_schema( '__SDFSDFD__' ),
     true,
     'hasnt_schema(non-existent schema)',
-    'Schema __SDFSDFD__ should not exist',
+    'Schema "__SDFSDFD__" should not exist',
     ''
 );
 SELECT * FROM check_test(
@@ -97,7 +97,7 @@ SELECT * FROM check_test(
     has_table( '__SDFSDFD__' ),
     false,
     'has_table(non-existent table)',
-    'Table __SDFSDFD__ should exist',
+    'Table "__SDFSDFD__" should exist',
     ''
 );
 
@@ -156,7 +156,7 @@ SELECT * FROM check_test(
     hasnt_table( '__SDFSDFD__' ),
     true,
     'hasnt_table(non-existent table)',
-    'Table __SDFSDFD__ should not exist',
+    'Table "__SDFSDFD__" should not exist',
     ''
 );
 
@@ -199,7 +199,7 @@ SELECT * FROM check_test(
     has_view( '__SDFSDFD__' ),
     false,
     'has_view(non-existent view)',
-    'View __SDFSDFD__ should exist',
+    'View "__SDFSDFD__" should exist',
     ''
 );
 
@@ -242,7 +242,7 @@ SELECT * FROM check_test(
     hasnt_view( '__SDFSDFD__' ),
     true,
     'hasnt_view(non-existent view)',
-    'View __SDFSDFD__ should not exist',
+    'View "__SDFSDFD__" should not exist',
     ''
 );
 
@@ -539,7 +539,7 @@ SELECT * FROM check_test(
     has_column( '__SDFSDFD__', 'foo' ),
     false,
     'has_column(non-existent tab, col)',
-    'Column __SDFSDFD__.foo should exist',
+    'Column "__SDFSDFD__".foo should exist',
     ''
 );
 
@@ -600,7 +600,7 @@ SELECT * FROM check_test(
     hasnt_column( '__SDFSDFD__', 'foo' ),
     true,
     'hasnt_column(non-existent tab, col)',
-    'Column __SDFSDFD__.foo should not exist',
+    'Column "__SDFSDFD__".foo should not exist',
     ''
 );
 
