@@ -2097,6 +2097,7 @@ To Do
 
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
+* Fix `col_has_default()` to check for `NULL` defaults. It's a bug that it doesn't.
 * Useful schema testing functions to consider adding:
   * `has_tablespace()`
   * `has_cast()`
