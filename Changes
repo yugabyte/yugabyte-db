@@ -12,7 +12,7 @@ Revision history for pgTAP
         eliminate the incompatible version.
       - Added `col_has_default()` and `col_hasnt_default()`.
       - Changed default descriptions for column testing functions to refer to
-        the columns as the more SQL-standard `schema.table.column` insteada of
+        the columns as the more SQL-standard `schema.table.column` instead of
         `schema.table(column)`.
 
 0.16  2009-02-03T17:37:03
