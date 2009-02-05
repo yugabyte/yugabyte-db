@@ -2180,6 +2180,8 @@ To Do
 
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
+* Update all functions that compare idents to use `quote_ident()` instead of
+  just straight-ahead comparisons or `LOWER()` comparisons.
 * Useful schema testing functions to consider adding:
   * `has_cast()`
   * `has_role()`, `has_user()`, `has_group()`
