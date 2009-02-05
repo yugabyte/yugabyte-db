@@ -8,6 +8,10 @@
 #include "utils/datetime.h"
 #include "utils/datum.h"
 
+#ifndef PG_VERSION_NUM
+#define PG_VERSION_NUM		80100	/* assume 8.1. */
+#endif
+
 #if PG_VERSION_NUM >= 80400
 #define TextPGetCString(t)	text_to_cstring((t))
 #define CStringGetTextP(c)	cstring_to_text((c))
