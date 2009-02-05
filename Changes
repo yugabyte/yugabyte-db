@@ -21,6 +21,7 @@ Revision history for pgTAP
       - Modified `col_not_null()`, `col_is_null()` and `col_type_is()` to emit
         diagnostics if they fail because the column in question does not
         exist.
+      - Added `has_tablespace()` and `hasnt_tablespace()`.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use

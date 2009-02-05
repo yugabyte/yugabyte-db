@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(231);
+SELECT plan(255);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -25,6 +25,70 @@ CREATE DOMAIN us_postal_code AS TEXT CHECK(
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;
+
+/****************************************************************************/
+-- Test has_tablespace(). Can't really test with the location argument, though.
+SELECT * FROM check_test(
+    has_tablespace( '__SDFSDFD__' ),
+    false,
+    'has_tablespace(non-existent tablespace)',
+    'Tablespace "__SDFSDFD__" should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_tablespace( '__SDFSDFD__', 'lol' ),
+    false,
+    'has_tablespace(non-existent tablespace, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_tablespace( 'pg_default' ),
+    true,
+    'has_tablespace(tablespace)',
+    'Tablespace pg_default should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_tablespace( 'pg_default', 'lol' ),
+    true,
+    'has_tablespace(tablespace, desc)',
+    'lol',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_tablespace().
+SELECT * FROM check_test(
+    hasnt_tablespace( '__SDFSDFD__' ),
+    true,
+    'hasnt_tablespace(non-existent tablespace)',
+    'Tablespace "__SDFSDFD__" should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_tablespace( '__SDFSDFD__', 'lol' ),
+    true,
+    'hasnt_tablespace(non-existent tablespace, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_tablespace( 'pg_default' ),
+    false,
+    'hasnt_tablespace(pg_default)',
+    'Tablespace pg_default should not exist',
+    ''
+);
+SELECT * FROM check_test(
+    hasnt_tablespace( 'pg_default', 'lol' ),
+    false,
+    'hasnt_tablespace(tablespace, desc)',
+    'lol',
+    ''
+);
 
 /****************************************************************************/
 -- Test has_schema().

@@ -606,6 +606,34 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
+### `has_tablespace( tablespace, location, description )` ###
+### `has_tablespace( tablespace, description )` ###
+### `has_tablespace( tablespace )` ###
+
+    SELECT has_tablespace(
+        'sometablespace',
+        '/data/dbs',
+        'I got sometablespace in /data/dbs'
+    );
+
+This function tests whether or not a tablespace exists in the database. The
+first argument is a tablespace name. The second is either the a file system
+path for the database or a test description. If you specify a location path,
+you must pass a description as the third argument; otherwise, if you omit the
+test description, it will be set to "Tablespace `:tablespace` should exist".
+
+### `hasnt_tablespace( tablespace, tablespace, description )` ###
+### `hasnt_tablespace( tablespace, description )` ###
+### `hasnt_tablespace( tablespace )` ###
+
+    SELECT hasnt_tablespace(
+        'sometablespace',
+        'There should be no tablespace sometablespace'
+    );
+
+This function is the inverse of `has_tablespace()`. The test passes if the
+specified tablespace does *not* exist.
+
 ### `has_schema( schema, description )` ###
 ### `has_schema( schema )` ###
 
@@ -2153,7 +2181,6 @@ To Do
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
 * Useful schema testing functions to consider adding:
-  * `has_tablespace()`
   * `has_cast()`
   * `has_role()`, `has_user()`, `has_group()`
   * `has_operator()`

@@ -2687,14 +2687,14 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- has_schema( schema, desscription )
+-- has_schema( schema, description )
 CREATE OR REPLACE FUNCTION has_schema( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
             SELECT true
-              FROM pg_catalog.pg_namespace n
-             WHERE LOWER(n.nspname) = LOWER($1)
+              FROM pg_catalog.pg_namespace
+             WHERE LOWER(nspname) = LOWER($1)
         ), $2
     );
 $$ LANGUAGE sql;
@@ -2705,14 +2705,14 @@ RETURNS TEXT AS $$
     SELECT has_schema( $1, 'Schema ' || quote_ident($1) || ' should exist' );
 $$ LANGUAGE sql;
 
--- hasnt_schema( schema, desscription )
+-- hasnt_schema( schema, description )
 CREATE OR REPLACE FUNCTION hasnt_schema( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         NOT EXISTS(
             SELECT true
-              FROM pg_catalog.pg_namespace n
-             WHERE LOWER(n.nspname) = LOWER($1)
+              FROM pg_catalog.pg_namespace
+             WHERE LOWER(nspname) = LOWER($1)
         ), $2
     );
 $$ LANGUAGE sql;
@@ -2721,6 +2721,55 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION hasnt_schema( NAME )
 RETURNS TEXT AS $$
     SELECT hasnt_schema( $1, 'Schema ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE sql;
+
+-- has_tablespace( tablespace, location, description )
+CREATE OR REPLACE FUNCTION has_tablespace( NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_tablespace
+             WHERE LOWER(spcname) = LOWER($1)
+               AND spclocation = $2
+        ), $3
+    );
+$$ LANGUAGE sql;
+
+-- has_tablespace( tablespace, description )
+CREATE OR REPLACE FUNCTION has_tablespace( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_tablespace
+             WHERE LOWER(spcname) = LOWER($1)
+        ), $2
+    );
+$$ LANGUAGE sql;
+
+-- has_tablespace( tablespace )
+CREATE OR REPLACE FUNCTION has_tablespace( NAME )
+RETURNS TEXT AS $$
+    SELECT has_tablespace( $1, 'Tablespace ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE sql;
+
+-- hasnt_tablespace( tablespace, description )
+CREATE OR REPLACE FUNCTION hasnt_tablespace( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT EXISTS(
+            SELECT true
+              FROM pg_catalog.pg_tablespace
+             WHERE LOWER(spcname) = LOWER($1)
+        ), $2
+    );
+$$ LANGUAGE sql;
+
+-- hasnt_tablespace( tablespace )
+CREATE OR REPLACE FUNCTION hasnt_tablespace( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_tablespace( $1, 'Tablespace ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _has_type( NAME, NAME, CHAR[] )
