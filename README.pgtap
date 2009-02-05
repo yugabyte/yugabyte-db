@@ -2152,8 +2152,6 @@ To Do
 
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
-* Fix various column testing functions so that they emit useful diagnostics if
-  a column does not exist, like `col_has_default()` does.
 * Useful schema testing functions to consider adding:
   * `has_tablespace()`
   * `has_cast()`
