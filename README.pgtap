@@ -1773,12 +1773,12 @@ pTAP provides a few extra functions to make the work of testing more pleasant.
 
     SELECT pgtap_version();
 
-Returns the version of pgTAP installed in the server. The value is NUMERIC,
+Returns the version of pgTAP installed in the server. The value is `NUMERIC`,
 and thus suitable for comparing to a decimal value:
 
-    SELECT CASE WHEN pgtap_version() < 0.14
-        THEN skip('No index assertions before pgTAP 0.14')
-        ELSE has_index('users', 'idx_user_name')
+    SELECT CASE WHEN pgtap_version() < 0.17
+        THEN skip('No sequence assertions before pgTAP 0.17')
+        ELSE has_sequence('my_big_seq')
         END;
 
 ### `pg_version()` ###
