@@ -192,6 +192,8 @@ select decode(3, 1, 100, 2, 200, 300);
 select decode(NULL, 1, 100, NULL, 200, 300);
 select decode('1', '1', 100, '2', 200);
 select decode(2, 1, 'ABC'::text, 2, 'DEF');
+select decode('2009-02-05'::date, '2009-02-05', 'ok'::text);
+select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok'::text);
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 9) = 'hsalF kcaJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';

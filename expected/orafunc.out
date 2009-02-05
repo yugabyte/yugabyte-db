@@ -1012,6 +1012,18 @@ select decode(2, 1, 'ABC'::text, 2, 'DEF');
  DEF
 (1 row)
 
+select decode('2009-02-05'::date, '2009-02-05', 'ok'::text);
+ decode 
+--------
+ ok
+(1 row)
+
+select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok'::text);
+ decode 
+--------
+ ok
+(1 row)
+
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
  ?column? 
 ----------
