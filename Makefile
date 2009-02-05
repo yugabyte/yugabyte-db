@@ -24,24 +24,33 @@ ifeq ($(enable_nls), yes)
 SHLIB_LINK += -lintl
 endif
 
-ifeq (,$(FLEX))
-FLEX = flex
-endif
-
-ifeq (,$(YACC))
-YACC = yacc
-endif
-
 plvlex.o: sqlparse.o
 
-sqlparse.o: sqlscan.c                                                                                                                      
-                                                                                                                                               
-sqlparse.c: sqlparse.h ;                                                                                                                   
-                                                                                                                                               
-sqlparse.h: sqlparse.y                                                                                                                     
-	$(YACC) -d $(YFLAGS) -p orafce_sql_yy $<                                                                                                    
-	mv -f y.tab.c sqlparse.c                                                                                                             
-	mv -f y.tab.h sqlparse.h                                                                                                             
-                                                                                                                                               
-sqlscan.c: sqlscan.l                                                                                                                       
-	$(FLEX) $(FLEXFLAGS) -o'$@' $<                                                                                                         
+sqlparse.o: $(srcdir)/sqlscan.c                                                                                                                      
+
+$(srcdir)/sqlparse.h: $(srcdir)/sqlparse.c ;
+
+$(srcdir)/sqlparse.c: sqlparse.y
+ifdef BISON
+	$(BISON) -d $(BISONFLAGS) -o $@ $<
+else
+ifdef YACC
+	$(YACC) -d $(YFLAGS) -p cube_yy $<
+	mv -f y.tab.c sqlparse.c
+	mv -f y.tab.h sqlparse.h
+else
+	@$(missing) bison $< $@
+endif
+endif
+
+$(srcdir)/sqlscan.c: sqlscan.l
+ifdef FLEX
+	$(FLEX) $(FLEXFLAGS) -o'$@' $<
+else
+	@$(missing) flex $< $@
+endif
+
+distprep: $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
+
+maintainer-clean:
+	rm -f $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
