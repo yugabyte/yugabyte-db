@@ -22,6 +22,7 @@ Revision history for pgTAP
         diagnostics if they fail because the column in question does not
         exist.
       - Added `has_tablespace()` and `hasnt_tablespace()`.
+      - Added `has_sequence()` and `hasnt_sequence()`.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use

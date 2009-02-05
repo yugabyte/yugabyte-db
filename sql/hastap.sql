@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(255);
+SELECT plan(285);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -22,6 +22,8 @@ CREATE TYPE sometype AS (
 CREATE DOMAIN us_postal_code AS TEXT CHECK(
     VALUE ~ '^[[:digit:]]{5}$' OR VALUE ~ '^[[:digit:]]{5}-[[:digit:]]{4}$'
 );
+
+CREATE SEQUENCE someseq;
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;
@@ -338,6 +340,92 @@ SELECT * FROM check_test(
     hasnt_view( 'information_schema', 'tables', 'desc' ),
     false,
     'hasnt_view(sch, view, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test has_sequence().
+
+SELECT * FROM check_test(
+    has_sequence( '__SDFSDFD__' ),
+    false,
+    'has_sequence(non-existent sequence)',
+    'Sequence "__SDFSDFD__" should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_sequence( '__SDFSDFD__', 'howdy' ),
+    false,
+    'has_sequence(non-existent sequence, desc)',
+    'howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_sequence( 'foo', '__SDFSDFD__', 'desc' ),
+    false,
+    'has_sequence(sch, non-existtent sequence, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_sequence( 'someseq', 'yowza' ),
+    true,
+    'has_sequence(sequence, desc)',
+    'yowza',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_sequence( 'public', 'someseq', 'desc' ),
+    true,
+    'has_sequence(sch, sequence, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_sequence().
+
+SELECT * FROM check_test(
+    hasnt_sequence( '__SDFSDFD__' ),
+    true,
+    'hasnt_sequence(non-existent sequence)',
+    'Sequence "__SDFSDFD__" should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_sequence( '__SDFSDFD__', 'howdy' ),
+    true,
+    'hasnt_sequence(non-existent sequence, desc)',
+    'howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_sequence( 'foo', '__SDFSDFD__', 'desc' ),
+    true,
+    'hasnt_sequence(sch, non-existtent sequence, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_sequence( 'someseq', 'yowza' ),
+    false,
+    'hasnt_sequence(sequence, desc)',
+    'yowza',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_sequence( 'public', 'someseq', 'desc' ),
+    false,
+    'hasnt_sequence(sch, sequence, desc)',
     'desc',
     ''
 );

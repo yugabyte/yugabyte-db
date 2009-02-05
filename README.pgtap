@@ -713,6 +713,31 @@ Just like `has_table()`, only it tests for the existence of a view.
 This function is the inverse of `has_view()`. The test passes if the specified
 view does *not* exist.
 
+### `has_sequence( schema, sequence, description )` ###
+### `has_sequence( sequence, description )` ###
+### `has_sequence( sequence )` ###
+
+    SELECT has_sequence(
+        'myschema',
+        'somesequence',
+        'I got myschema.somesequence'
+    );
+
+Just like `has_table()`, only it tests for the existence of a sequence.
+
+### `hasnt_sequence( schema, sequence, description )` ###
+### `hasnt_sequence( sequence, description )` ###
+### `hasnt_sequence( sequence )` ###
+
+    SELECT hasnt_sequence(
+        'myschema',
+        'somesequence',
+        'There should be no myschema.somesequence'
+    );
+
+This function is the inverse of `has_sequence()`. The test passes if the
+specified sequence does *not* exist.
+
 ### `has_type( schema, type, description )` ###
 ### `has_type( schema, type )` ###
 ### `has_type( type, description )` ###
@@ -2187,8 +2212,11 @@ To Do
   * `has_role()`, `has_user()`, `has_group()`
   * `has_operator()`
   * `has_operator_class()`
-  * `has_sequence()`
   * `has_rule()`
+  * `seq_has_range()`
+  * `seq_increments_by()`
+  * `seq_starts_at()`
+  * `seq_cycles()`
 
 Suported Versions
 -----------------

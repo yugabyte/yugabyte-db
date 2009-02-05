@@ -855,6 +855,42 @@ RETURNS TEXT AS $$
     SELECT hasnt_view( $1, 'View ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
+-- has_sequence( schema, sequence, description )
+CREATE OR REPLACE FUNCTION has_sequence ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'S', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_sequence( sequence, description )
+CREATE OR REPLACE FUNCTION has_sequence ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'S', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- has_sequence( sequence )
+CREATE OR REPLACE FUNCTION has_sequence ( NAME )
+RETURNS TEXT AS $$
+    SELECT has_sequence( $1, 'Sequence ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_sequence( schema, sequence, description )
+CREATE OR REPLACE FUNCTION hasnt_sequence ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'S', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_sequence( sequence, description )
+CREATE OR REPLACE FUNCTION hasnt_sequence ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'S', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_sequence( sequence )
+CREATE OR REPLACE FUNCTION hasnt_sequence ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_sequence( $1, 'Sequence ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION _cexists ( NAME, NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(

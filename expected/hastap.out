@@ -1,5 +1,5 @@
 \unset ECHO
-1..255
+1..285
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -114,144 +114,174 @@ ok 111 - hasnt_view(view, desc) should have the proper diagnostics
 ok 112 - hasnt_view(sch, view, desc) should fail
 ok 113 - hasnt_view(sch, view, desc) should have the proper description
 ok 114 - hasnt_view(sch, view, desc) should have the proper diagnostics
-ok 115 - has_type(type) should pass
-ok 116 - has_type(type) should have the proper description
-ok 117 - has_type(type) should have the proper diagnostics
-ok 118 - has_type(type, desc) should pass
-ok 119 - has_type(type, desc) should have the proper description
-ok 120 - has_type(type, desc) should have the proper diagnostics
-ok 121 - has_type(scheam, type) should pass
-ok 122 - has_type(scheam, type) should have the proper description
-ok 123 - has_type(scheam, type) should have the proper diagnostics
-ok 124 - has_type(schema, type, desc) should pass
-ok 125 - has_type(schema, type, desc) should have the proper description
-ok 126 - has_type(schema, type, desc) should have the proper diagnostics
-ok 127 - has_type(type) should fail
-ok 128 - has_type(type) should have the proper description
-ok 129 - has_type(type) should have the proper diagnostics
-ok 130 - has_type(type, desc) should fail
-ok 131 - has_type(type, desc) should have the proper description
-ok 132 - has_type(type, desc) should have the proper diagnostics
-ok 133 - has_type(scheam, type) should fail
-ok 134 - has_type(scheam, type) should have the proper description
-ok 135 - has_type(scheam, type) should have the proper diagnostics
-ok 136 - has_type(schema, type, desc) should fail
-ok 137 - has_type(schema, type, desc) should have the proper description
-ok 138 - has_type(schema, type, desc) should have the proper diagnostics
-ok 139 - has_type(domain) should pass
-ok 140 - has_type(domain) should have the proper description
-ok 141 - has_type(domain) should have the proper diagnostics
-ok 142 - hasnt_type(type) should pass
-ok 143 - hasnt_type(type) should have the proper description
-ok 144 - hasnt_type(type) should have the proper diagnostics
-ok 145 - hasnt_type(type, desc) should pass
-ok 146 - hasnt_type(type, desc) should have the proper description
-ok 147 - hasnt_type(type, desc) should have the proper diagnostics
-ok 148 - hasnt_type(scheam, type) should pass
-ok 149 - hasnt_type(scheam, type) should have the proper description
-ok 150 - hasnt_type(scheam, type) should have the proper diagnostics
-ok 151 - hasnt_type(schema, type, desc) should pass
-ok 152 - hasnt_type(schema, type, desc) should have the proper description
-ok 153 - hasnt_type(schema, type, desc) should have the proper diagnostics
-ok 154 - hasnt_type(type) should fail
-ok 155 - hasnt_type(type) should have the proper description
-ok 156 - hasnt_type(type) should have the proper diagnostics
-ok 157 - hasnt_type(type, desc) should fail
-ok 158 - hasnt_type(type, desc) should have the proper description
-ok 159 - hasnt_type(type, desc) should have the proper diagnostics
-ok 160 - hasnt_type(scheam, type) should fail
-ok 161 - hasnt_type(scheam, type) should have the proper description
-ok 162 - hasnt_type(scheam, type) should have the proper diagnostics
-ok 163 - hasnt_type(schema, type, desc) should fail
-ok 164 - hasnt_type(schema, type, desc) should have the proper description
-ok 165 - hasnt_type(schema, type, desc) should have the proper diagnostics
-ok 166 - has_domain(domain) should pass
-ok 167 - has_domain(domain) should have the proper description
-ok 168 - has_domain(domain) should have the proper diagnostics
-ok 169 - has_domain(domain, desc) should pass
-ok 170 - has_domain(domain, desc) should have the proper description
-ok 171 - has_domain(domain, desc) should have the proper diagnostics
-ok 172 - has_domain(scheam, domain) should pass
-ok 173 - has_domain(scheam, domain) should have the proper description
-ok 174 - has_domain(scheam, domain) should have the proper diagnostics
-ok 175 - has_domain(schema, domain, desc) should pass
-ok 176 - has_domain(schema, domain, desc) should have the proper description
-ok 177 - has_domain(schema, domain, desc) should have the proper diagnostics
-ok 178 - has_domain(domain) should fail
-ok 179 - has_domain(domain) should have the proper description
-ok 180 - has_domain(domain) should have the proper diagnostics
-ok 181 - has_domain(domain, desc) should fail
-ok 182 - has_domain(domain, desc) should have the proper description
-ok 183 - has_domain(domain, desc) should have the proper diagnostics
-ok 184 - has_domain(scheam, domain) should fail
-ok 185 - has_domain(scheam, domain) should have the proper description
-ok 186 - has_domain(scheam, domain) should have the proper diagnostics
-ok 187 - has_domain(schema, domain, desc) should fail
-ok 188 - has_domain(schema, domain, desc) should have the proper description
-ok 189 - has_domain(schema, domain, desc) should have the proper diagnostics
-ok 190 - hasnt_domain(domain) should pass
-ok 191 - hasnt_domain(domain) should have the proper description
-ok 192 - hasnt_domain(domain) should have the proper diagnostics
-ok 193 - hasnt_domain(domain, desc) should pass
-ok 194 - hasnt_domain(domain, desc) should have the proper description
-ok 195 - hasnt_domain(domain, desc) should have the proper diagnostics
-ok 196 - hasnt_domain(scheam, domain) should pass
-ok 197 - hasnt_domain(scheam, domain) should have the proper description
-ok 198 - hasnt_domain(scheam, domain) should have the proper diagnostics
-ok 199 - hasnt_domain(schema, domain, desc) should pass
-ok 200 - hasnt_domain(schema, domain, desc) should have the proper description
-ok 201 - hasnt_domain(schema, domain, desc) should have the proper diagnostics
-ok 202 - hasnt_domain(domain) should fail
-ok 203 - hasnt_domain(domain) should have the proper description
-ok 204 - hasnt_domain(domain) should have the proper diagnostics
-ok 205 - hasnt_domain(domain, desc) should fail
-ok 206 - hasnt_domain(domain, desc) should have the proper description
-ok 207 - hasnt_domain(domain, desc) should have the proper diagnostics
-ok 208 - hasnt_domain(scheam, domain) should fail
-ok 209 - hasnt_domain(scheam, domain) should have the proper description
-ok 210 - hasnt_domain(scheam, domain) should have the proper diagnostics
-ok 211 - hasnt_domain(schema, domain, desc) should fail
-ok 212 - hasnt_domain(schema, domain, desc) should have the proper description
-ok 213 - hasnt_domain(schema, domain, desc) should have the proper diagnostics
-ok 214 - has_column(non-existent tab, col) should fail
-ok 215 - has_column(non-existent tab, col) should have the proper description
-ok 216 - has_column(non-existent tab, col) should have the proper diagnostics
-ok 217 - has_column(non-existent tab, col, desc) should fail
-ok 218 - has_column(non-existent tab, col, desc) should have the proper description
-ok 219 - has_column(non-existent tab, col, desc) should have the proper diagnostics
-ok 220 - has_column(non-existent sch, tab, col, desc) should fail
-ok 221 - has_column(non-existent sch, tab, col, desc) should have the proper description
-ok 222 - has_column(non-existent sch, tab, col, desc) should have the proper diagnostics
-ok 223 - has_column(table, column) should pass
-ok 224 - has_column(table, column) should have the proper description
-ok 225 - has_column(table, column) should have the proper diagnostics
-ok 226 - has_column(sch, tab, col, desc) should pass
-ok 227 - has_column(sch, tab, col, desc) should have the proper description
-ok 228 - has_column(sch, tab, col, desc) should have the proper diagnostics
-ok 229 - has_column(view, column) should pass
-ok 230 - has_column(view, column) should have the proper description
-ok 231 - has_column(view, column) should have the proper diagnostics
-ok 232 - has_column(type, column) should pass
-ok 233 - has_column(type, column) should have the proper description
-ok 234 - has_column(type, column) should have the proper diagnostics
-ok 235 - hasnt_column(non-existent tab, col) should pass
-ok 236 - hasnt_column(non-existent tab, col) should have the proper description
-ok 237 - hasnt_column(non-existent tab, col) should have the proper diagnostics
-ok 238 - hasnt_column(non-existent tab, col, desc) should pass
-ok 239 - hasnt_column(non-existent tab, col, desc) should have the proper description
-ok 240 - hasnt_column(non-existent tab, col, desc) should have the proper diagnostics
-ok 241 - hasnt_column(non-existent sch, tab, col, desc) should pass
-ok 242 - hasnt_column(non-existent sch, tab, col, desc) should have the proper description
-ok 243 - hasnt_column(non-existent sch, tab, col, desc) should have the proper diagnostics
-ok 244 - hasnt_column(table, column) should fail
-ok 245 - hasnt_column(table, column) should have the proper description
-ok 246 - hasnt_column(table, column) should have the proper diagnostics
-ok 247 - hasnt_column(sch, tab, col, desc) should fail
-ok 248 - hasnt_column(sch, tab, col, desc) should have the proper description
-ok 249 - hasnt_column(sch, tab, col, desc) should have the proper diagnostics
-ok 250 - hasnt_column(view, column) should pass
-ok 251 - hasnt_column(view, column) should have the proper description
-ok 252 - hasnt_column(view, column) should have the proper diagnostics
-ok 253 - hasnt_column(type, column) should pass
-ok 254 - hasnt_column(type, column) should have the proper description
-ok 255 - hasnt_column(type, column) should have the proper diagnostics
+ok 115 - has_sequence(non-existent sequence) should fail
+ok 116 - has_sequence(non-existent sequence) should have the proper description
+ok 117 - has_sequence(non-existent sequence) should have the proper diagnostics
+ok 118 - has_sequence(non-existent sequence, desc) should fail
+ok 119 - has_sequence(non-existent sequence, desc) should have the proper description
+ok 120 - has_sequence(non-existent sequence, desc) should have the proper diagnostics
+ok 121 - has_sequence(sch, non-existtent sequence, desc) should fail
+ok 122 - has_sequence(sch, non-existtent sequence, desc) should have the proper description
+ok 123 - has_sequence(sch, non-existtent sequence, desc) should have the proper diagnostics
+ok 124 - has_sequence(sequence, desc) should pass
+ok 125 - has_sequence(sequence, desc) should have the proper description
+ok 126 - has_sequence(sequence, desc) should have the proper diagnostics
+ok 127 - has_sequence(sch, sequence, desc) should pass
+ok 128 - has_sequence(sch, sequence, desc) should have the proper description
+ok 129 - has_sequence(sch, sequence, desc) should have the proper diagnostics
+ok 130 - hasnt_sequence(non-existent sequence) should pass
+ok 131 - hasnt_sequence(non-existent sequence) should have the proper description
+ok 132 - hasnt_sequence(non-existent sequence) should have the proper diagnostics
+ok 133 - hasnt_sequence(non-existent sequence, desc) should pass
+ok 134 - hasnt_sequence(non-existent sequence, desc) should have the proper description
+ok 135 - hasnt_sequence(non-existent sequence, desc) should have the proper diagnostics
+ok 136 - hasnt_sequence(sch, non-existtent sequence, desc) should pass
+ok 137 - hasnt_sequence(sch, non-existtent sequence, desc) should have the proper description
+ok 138 - hasnt_sequence(sch, non-existtent sequence, desc) should have the proper diagnostics
+ok 139 - hasnt_sequence(sequence, desc) should fail
+ok 140 - hasnt_sequence(sequence, desc) should have the proper description
+ok 141 - hasnt_sequence(sequence, desc) should have the proper diagnostics
+ok 142 - hasnt_sequence(sch, sequence, desc) should fail
+ok 143 - hasnt_sequence(sch, sequence, desc) should have the proper description
+ok 144 - hasnt_sequence(sch, sequence, desc) should have the proper diagnostics
+ok 145 - has_type(type) should pass
+ok 146 - has_type(type) should have the proper description
+ok 147 - has_type(type) should have the proper diagnostics
+ok 148 - has_type(type, desc) should pass
+ok 149 - has_type(type, desc) should have the proper description
+ok 150 - has_type(type, desc) should have the proper diagnostics
+ok 151 - has_type(scheam, type) should pass
+ok 152 - has_type(scheam, type) should have the proper description
+ok 153 - has_type(scheam, type) should have the proper diagnostics
+ok 154 - has_type(schema, type, desc) should pass
+ok 155 - has_type(schema, type, desc) should have the proper description
+ok 156 - has_type(schema, type, desc) should have the proper diagnostics
+ok 157 - has_type(type) should fail
+ok 158 - has_type(type) should have the proper description
+ok 159 - has_type(type) should have the proper diagnostics
+ok 160 - has_type(type, desc) should fail
+ok 161 - has_type(type, desc) should have the proper description
+ok 162 - has_type(type, desc) should have the proper diagnostics
+ok 163 - has_type(scheam, type) should fail
+ok 164 - has_type(scheam, type) should have the proper description
+ok 165 - has_type(scheam, type) should have the proper diagnostics
+ok 166 - has_type(schema, type, desc) should fail
+ok 167 - has_type(schema, type, desc) should have the proper description
+ok 168 - has_type(schema, type, desc) should have the proper diagnostics
+ok 169 - has_type(domain) should pass
+ok 170 - has_type(domain) should have the proper description
+ok 171 - has_type(domain) should have the proper diagnostics
+ok 172 - hasnt_type(type) should pass
+ok 173 - hasnt_type(type) should have the proper description
+ok 174 - hasnt_type(type) should have the proper diagnostics
+ok 175 - hasnt_type(type, desc) should pass
+ok 176 - hasnt_type(type, desc) should have the proper description
+ok 177 - hasnt_type(type, desc) should have the proper diagnostics
+ok 178 - hasnt_type(scheam, type) should pass
+ok 179 - hasnt_type(scheam, type) should have the proper description
+ok 180 - hasnt_type(scheam, type) should have the proper diagnostics
+ok 181 - hasnt_type(schema, type, desc) should pass
+ok 182 - hasnt_type(schema, type, desc) should have the proper description
+ok 183 - hasnt_type(schema, type, desc) should have the proper diagnostics
+ok 184 - hasnt_type(type) should fail
+ok 185 - hasnt_type(type) should have the proper description
+ok 186 - hasnt_type(type) should have the proper diagnostics
+ok 187 - hasnt_type(type, desc) should fail
+ok 188 - hasnt_type(type, desc) should have the proper description
+ok 189 - hasnt_type(type, desc) should have the proper diagnostics
+ok 190 - hasnt_type(scheam, type) should fail
+ok 191 - hasnt_type(scheam, type) should have the proper description
+ok 192 - hasnt_type(scheam, type) should have the proper diagnostics
+ok 193 - hasnt_type(schema, type, desc) should fail
+ok 194 - hasnt_type(schema, type, desc) should have the proper description
+ok 195 - hasnt_type(schema, type, desc) should have the proper diagnostics
+ok 196 - has_domain(domain) should pass
+ok 197 - has_domain(domain) should have the proper description
+ok 198 - has_domain(domain) should have the proper diagnostics
+ok 199 - has_domain(domain, desc) should pass
+ok 200 - has_domain(domain, desc) should have the proper description
+ok 201 - has_domain(domain, desc) should have the proper diagnostics
+ok 202 - has_domain(scheam, domain) should pass
+ok 203 - has_domain(scheam, domain) should have the proper description
+ok 204 - has_domain(scheam, domain) should have the proper diagnostics
+ok 205 - has_domain(schema, domain, desc) should pass
+ok 206 - has_domain(schema, domain, desc) should have the proper description
+ok 207 - has_domain(schema, domain, desc) should have the proper diagnostics
+ok 208 - has_domain(domain) should fail
+ok 209 - has_domain(domain) should have the proper description
+ok 210 - has_domain(domain) should have the proper diagnostics
+ok 211 - has_domain(domain, desc) should fail
+ok 212 - has_domain(domain, desc) should have the proper description
+ok 213 - has_domain(domain, desc) should have the proper diagnostics
+ok 214 - has_domain(scheam, domain) should fail
+ok 215 - has_domain(scheam, domain) should have the proper description
+ok 216 - has_domain(scheam, domain) should have the proper diagnostics
+ok 217 - has_domain(schema, domain, desc) should fail
+ok 218 - has_domain(schema, domain, desc) should have the proper description
+ok 219 - has_domain(schema, domain, desc) should have the proper diagnostics
+ok 220 - hasnt_domain(domain) should pass
+ok 221 - hasnt_domain(domain) should have the proper description
+ok 222 - hasnt_domain(domain) should have the proper diagnostics
+ok 223 - hasnt_domain(domain, desc) should pass
+ok 224 - hasnt_domain(domain, desc) should have the proper description
+ok 225 - hasnt_domain(domain, desc) should have the proper diagnostics
+ok 226 - hasnt_domain(scheam, domain) should pass
+ok 227 - hasnt_domain(scheam, domain) should have the proper description
+ok 228 - hasnt_domain(scheam, domain) should have the proper diagnostics
+ok 229 - hasnt_domain(schema, domain, desc) should pass
+ok 230 - hasnt_domain(schema, domain, desc) should have the proper description
+ok 231 - hasnt_domain(schema, domain, desc) should have the proper diagnostics
+ok 232 - hasnt_domain(domain) should fail
+ok 233 - hasnt_domain(domain) should have the proper description
+ok 234 - hasnt_domain(domain) should have the proper diagnostics
+ok 235 - hasnt_domain(domain, desc) should fail
+ok 236 - hasnt_domain(domain, desc) should have the proper description
+ok 237 - hasnt_domain(domain, desc) should have the proper diagnostics
+ok 238 - hasnt_domain(scheam, domain) should fail
+ok 239 - hasnt_domain(scheam, domain) should have the proper description
+ok 240 - hasnt_domain(scheam, domain) should have the proper diagnostics
+ok 241 - hasnt_domain(schema, domain, desc) should fail
+ok 242 - hasnt_domain(schema, domain, desc) should have the proper description
+ok 243 - hasnt_domain(schema, domain, desc) should have the proper diagnostics
+ok 244 - has_column(non-existent tab, col) should fail
+ok 245 - has_column(non-existent tab, col) should have the proper description
+ok 246 - has_column(non-existent tab, col) should have the proper diagnostics
+ok 247 - has_column(non-existent tab, col, desc) should fail
+ok 248 - has_column(non-existent tab, col, desc) should have the proper description
+ok 249 - has_column(non-existent tab, col, desc) should have the proper diagnostics
+ok 250 - has_column(non-existent sch, tab, col, desc) should fail
+ok 251 - has_column(non-existent sch, tab, col, desc) should have the proper description
+ok 252 - has_column(non-existent sch, tab, col, desc) should have the proper diagnostics
+ok 253 - has_column(table, column) should pass
+ok 254 - has_column(table, column) should have the proper description
+ok 255 - has_column(table, column) should have the proper diagnostics
+ok 256 - has_column(sch, tab, col, desc) should pass
+ok 257 - has_column(sch, tab, col, desc) should have the proper description
+ok 258 - has_column(sch, tab, col, desc) should have the proper diagnostics
+ok 259 - has_column(view, column) should pass
+ok 260 - has_column(view, column) should have the proper description
+ok 261 - has_column(view, column) should have the proper diagnostics
+ok 262 - has_column(type, column) should pass
+ok 263 - has_column(type, column) should have the proper description
+ok 264 - has_column(type, column) should have the proper diagnostics
+ok 265 - hasnt_column(non-existent tab, col) should pass
+ok 266 - hasnt_column(non-existent tab, col) should have the proper description
+ok 267 - hasnt_column(non-existent tab, col) should have the proper diagnostics
+ok 268 - hasnt_column(non-existent tab, col, desc) should pass
+ok 269 - hasnt_column(non-existent tab, col, desc) should have the proper description
+ok 270 - hasnt_column(non-existent tab, col, desc) should have the proper diagnostics
+ok 271 - hasnt_column(non-existent sch, tab, col, desc) should pass
+ok 272 - hasnt_column(non-existent sch, tab, col, desc) should have the proper description
+ok 273 - hasnt_column(non-existent sch, tab, col, desc) should have the proper diagnostics
+ok 274 - hasnt_column(table, column) should fail
+ok 275 - hasnt_column(table, column) should have the proper description
+ok 276 - hasnt_column(table, column) should have the proper diagnostics
+ok 277 - hasnt_column(sch, tab, col, desc) should fail
+ok 278 - hasnt_column(sch, tab, col, desc) should have the proper description
+ok 279 - hasnt_column(sch, tab, col, desc) should have the proper diagnostics
+ok 280 - hasnt_column(view, column) should pass
+ok 281 - hasnt_column(view, column) should have the proper description
+ok 282 - hasnt_column(view, column) should have the proper diagnostics
+ok 283 - hasnt_column(type, column) should pass
+ok 284 - hasnt_column(type, column) should have the proper description
+ok 285 - hasnt_column(type, column) should have the proper diagnostics
