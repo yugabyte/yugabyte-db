@@ -862,7 +862,9 @@ argument is the schema name, the second the table name, the third the column
 name, and the fourth is the test description. If the schema is omitted, the
 table must be visible in the search path. If the test description is omitted,
 it will be set to "Column `:table.:column` should be NOT NULL". Note that this
-test will fail if the table or column in question does not exist.
+test will fail with a useful diagnostic message if the table or column in
+question does not exist. But use `has_column()` to make sure the column exists
+first, eh?
 
 ### `col_is_null( schema, table, column, description )` ###
 ### `col_is_null( table, column, description )` ###
@@ -880,8 +882,9 @@ column does not have a `NOT NULL` constraint. The first argument is the schema
 name, the second the table name, the third the column name, and the fourth is
 the test description. If the schema is omitted, the table must be visible in
 the search path. If the test description is omitted, it will be set to "Column
-`:table.:column` should allow NULL". Note that this test will fail if the
-table or column in question does not exist.
+`:table.:column` should allow NULL". Note that this test will fail with a
+useful diagnostic message if the table or column in question does not exist.
+But use `has_column()` to make sure the column exists first, eh?
 
 ### `col_has_default( schema, table, column, description )` ###
 ### `col_has_default( table, column, description )` ###
@@ -915,7 +918,7 @@ useful diagnostics to let you know:
 
 This function is the inverse of `col_has_default()`. The test passes if the
 specified column does *not* have a default. It will still fail if the column
-does not exist.
+does not exist, and emit useful diagnostics to let you know.
 
 ### `col_type_is( schema, table, column, type, description )` ###
 ### `col_type_is( table, column, type, description )` ###
@@ -1015,6 +1018,10 @@ Will produce something like this:
     # Failed test 152: "check typname"
     #         have: NULL
     #         want: foo
+
+And if the test fails because the table or column in question does not exist,
+the diagnostics will tell you that, too. But use `has_column()` to make sure
+the column exists first, eh?
 
 ### `has_pk( schema, table, description )` ###
 ### `has_pk( table, description )` ###

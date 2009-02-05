@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(135);
+SELECT plan(153);
 --SELECT * from no_plan();
 
 -- This will be rolled back. :-)
@@ -52,6 +52,23 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Make sure nonexisting column is correct
+SELECT * FROM check_test(
+    col_not_null( 'pg_catalog', 'pg_type', 'foo', 'desc' ),
+    false,
+    'col_not_null( sch, tab, noncol, desc )',
+    'desc',
+    '    Column pg_catalog.pg_type.foo does not exist'
+);
+
+SELECT * FROM check_test(
+    col_not_null( 'sometab', 'foo' ),
+    false,
+    'col_not_null( table, noncolumn ) fail',
+    'Column sometab.foo should be NOT NULL',
+    '    Column sometab.foo does not exist'
+);
+
 /****************************************************************************/
 -- Test col_is_null().
 SELECT * FROM check_test(
@@ -84,6 +101,23 @@ SELECT * FROM check_test(
     'col_is_null( tab, col ) fail',
     'Column sometab.id should allow NULL',
     ''
+);
+
+-- Make sure nonexisting column is correct
+SELECT * FROM check_test(
+    col_is_null( 'pg_catalog', 'pg_type', 'foo', 'desc' ),
+    false,
+    'col_is_null( sch, tab, noncol, desc )',
+    'desc',
+    '    Column pg_catalog.pg_type.foo does not exist'
+);
+
+SELECT * FROM check_test(
+    col_is_null( 'sometab', 'foo' ),
+    false,
+    'col_is_null( table, noncolumn ) fail',
+    'Column sometab.foo should allow NULL',
+    '    Column sometab.foo does not exist'
 );
 
 /****************************************************************************/
@@ -128,6 +162,23 @@ SELECT * FROM check_test(
     'Column sometab.name should be type int4',
     '        have: text
         want: int4'
+);
+
+-- Make sure missing column is in diagnostics.
+SELECT * FROM check_test(
+    col_type_is( 'sometab', 'blah', 'int4' ),
+    false,
+    'col_type_is( tab, noncol, type ) fail',
+    'Column sometab.blah should be type int4',
+    '   Column sometab.blah does not exist'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'blah', 'text', 'blah is text' ),
+    false,
+    'col_type_is( sch, tab, noncol, type, desc ) fail',
+    'blah is text',
+    '   Column public.sometab.blah does not exist'
 );
 
 /****************************************************************************/

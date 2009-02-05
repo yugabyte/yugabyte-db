@@ -18,6 +18,9 @@ Revision history for pgTAP
         database objects to use `quote_ident()` to quote the names of those
         objects, rather than emitting them with or without double-quotes in an
         ad-hoc way as had hitherto been the case.
+      - Modified `col_not_null()`, `col_is_null()` and `col_type_is()` to emit
+        diagnostics if they fail because the column in question does not
+        exist.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
