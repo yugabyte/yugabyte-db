@@ -6,6 +6,11 @@ Revision history for pgTAP
         for a type in a table that had dropped columns. Thanks to depesz and
         RhodiumToad on #postgresql for the help nailing that one down!
       - Fixed a test failure in `sql/coltap.sql` on PostgreSQL 8.3.
+      - Fixed a bug in the `Makefile` where it did not properly point to
+        `pg_config` when building from the `compat` directory in the
+        PostgreSQL source tree.
+      - Fixed a bug in the `Makefile` where the `test_setup.sql` file, which
+        is required for tests, was not always getting created.
 
 0.17  2009-02-06T17:51:52
       - Fixed `col_default_is()` so that it works properly in cases where the

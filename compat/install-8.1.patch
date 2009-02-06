@@ -1,6 +1,6 @@
---- pgtap.sql	2009-02-05 22:14:29.000000000 -0800
-+++ pgtap.sql.new	2009-02-05 22:13:45.000000000 -0800
-@@ -3136,7 +3136,7 @@
+--- pgtap.sql.saf	2009-02-06 11:43:37.000000000 -0800
++++ pgtap.sql	2009-02-06 11:43:43.000000000 -0800
+@@ -3134,7 +3134,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -9,7 +9,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -3144,8 +3144,8 @@
+@@ -3142,8 +3142,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -20,7 +20,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -3213,14 +3213,14 @@
+@@ -3211,14 +3211,14 @@
      setup    ALIAS FOR $3;
      teardown ALIAS FOR $4;
      tests    ALIAS FOR $5;
@@ -37,7 +37,7 @@
      EXCEPTION
          -- Catch all exceptions and simply rethrow custom exceptions. This
          -- will roll back everything in the above block.
-@@ -3235,15 +3235,15 @@
+@@ -3233,15 +3233,15 @@
                  IF verbose THEN RETURN NEXT diag(tests[i] || '()'); END IF;
  
                  -- Run the setup functions.
@@ -57,7 +57,7 @@
  
                  -- Remember how many failed and then roll back.
                  num_faild := num_faild + num_failed();
-@@ -3258,7 +3258,7 @@
+@@ -3256,7 +3256,7 @@
          END LOOP;
  
          -- Run the shutdown functions.
@@ -66,7 +66,7 @@
  
          -- Raise an exception to rollback any changes.
          RAISE EXCEPTION '__TAP_ROLLBACK__';
-@@ -3269,8 +3269,8 @@
+@@ -3267,8 +3267,8 @@
          END IF;
      END;
      -- Finish up.

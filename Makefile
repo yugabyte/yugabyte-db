@@ -14,7 +14,7 @@ PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 else
 top_builddir = ../..
-PG_CONFIG := $(top_builddir)/src/bin/pg_config
+PG_CONFIG := $(top_builddir)/src/bin/pg_config/pg_config
 endif
 
 # We need to do various things with various versions of PostgreSQL.
@@ -127,6 +127,7 @@ endif
 test_setup.sql: test_setup.sql.in
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
+else
 	cp $< $@
 endif
 
