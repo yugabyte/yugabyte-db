@@ -533,6 +533,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION todo ( how_many int, why text )
+RETURNS SETOF BOOLEAN AS $$
+BEGIN
+    PERFORM _add('todo', COALESCE(how_many, 1), COALESCE(why, ''));
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION todo ( why text )
 RETURNS SETOF BOOLEAN AS $$
 BEGIN

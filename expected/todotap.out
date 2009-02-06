@@ -1,5 +1,5 @@
 \unset ECHO
-1..33
+1..36
 ok 1 - todo fail
 ok 2 - todo pass
 ok 3 - TODO tests should display properly
@@ -32,4 +32,7 @@ ok 29 - todo fail
 ok 30 - todo fail
 ok 31 - todo fail
 ok 32 - todo_start() and todo_end() should work properly with in_todo()
-ok 33 - Should get an exception when todo_end() is called without todo_start()
+ok 33 - todo fail
+ok 34 - todo pass
+ok 35 - Should be able to revers the arguments to todo()
+ok 36 - Should get an exception when todo_end() is called without todo_start()

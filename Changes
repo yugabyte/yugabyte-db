@@ -31,6 +31,8 @@ Revision history for pgTAP
         case-insensitive matching. This means that tests should use only
         lowercase strings to specify object names, unless mixed case objects
         were crated with double quote characters.
+      - Added version of `todo()` with the `why` and `how_many` arugments
+        reversed, so that I don't have to remember a specific order.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use

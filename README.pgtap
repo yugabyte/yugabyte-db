@@ -1722,6 +1722,7 @@ This will cause it to skip the same number of rows as would have been tested
 had the `WHEN` condition been true.
 
 ### `todo( why, how_many )` ###
+### `todo( how_many, why )` ###
 ### `todo( how_many )` ###
 ### `todo( why )` ###
 

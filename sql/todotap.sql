@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(33);
+SELECT plan(36);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -162,6 +162,24 @@ SELECT ok(
 );
 
 UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 29, 30, 31 );
+
+/****************************************************************************/
+-- Make sure we can reverse the arguments.
+\echo ok 33 - todo fail
+\echo ok 34 - todo pass
+SELECT * FROM todo(2, 'just because' );
+SELECT is(
+    fail('This is a todo test' ) || '
+'
+      || fail('Another todo test'),
+    'not ok 33 - This is a todo test # TODO just because
+# Failed (TODO) test 33: "This is a todo test"
+not ok 34 - Another todo test # TODO just because
+# Failed (TODO) test 34: "Another todo test"',
+   'Should be able to revers the arguments to todo()'
+);
+
+UPDATE __tresults__ SET ok = true, aok = true WHERE numb IN( 32, 33 );
 
 -- Test the exception when throws_ok() is available.
 SELECT CASE WHEN pg_version_num() < 80100
