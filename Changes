@@ -27,9 +27,10 @@ Revision history for pgTAP
         sensitively.
       - In the schema testing functions, now using `quote_ident()` to compare
         all identifiers, such as table names, schema names, column names, etc.
-        This means that tests should use only lowercase strings to specify
-        object names, unless mixed case objects were crated with double quote
-        characters.
+        It had been a mix of straight-forward string comparison, and
+        case-insensitive matching. This means that tests should use only
+        lowercase strings to specify object names, unless mixed case objects
+        were crated with double quote characters.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
