@@ -1,5 +1,7 @@
 Revision history for pgTAP
 
+0.19
+
 0.18  2009-02-06T20:06:00
       - Fixed `pg_version_num()`. It was broken in 0.16; sorry about that!
       - Fixed a bug in `col_type_is()` where it would die if it was looking
