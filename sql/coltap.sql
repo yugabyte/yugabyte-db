@@ -407,8 +407,8 @@ BEGIN
             'col_default_is( tab, col, NULL, desc )',
             'desc',
             ''
-        ) LOOP
-            RETURN NEXT tap;
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(

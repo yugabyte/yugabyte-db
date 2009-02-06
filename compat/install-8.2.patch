@@ -1,6 +1,6 @@
---- pgtap.sql.saf	2009-02-05 19:45:38.000000000 -0800
-+++ pgtap.sql	2009-02-05 19:46:10.000000000 -0800
-@@ -3006,63 +3006,6 @@
+--- pgtap.sql.saf	2009-02-06 11:31:08.000000000 -0800
++++ pgtap.sql	2009-02-06 11:31:14.000000000 -0800
+@@ -3004,63 +3004,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
