@@ -144,7 +144,7 @@ SELECT * FROM check_test(
     'col_is_fk( schema, table, column, description )',
     'public.fk.name should be an fk',
     '    Table public.fk has foreign key constraints on these columns:
-        {pk_id}'
+        pk_id'
 );
 
 SELECT * FROM check_test(
@@ -153,8 +153,8 @@ SELECT * FROM check_test(
     'col_is_fk( table, column, description )',
     'fk3.name should be an fk',
     '    Table fk3 has foreign key constraints on these columns:
-        {pk2_num,pk2_dot}
-        {pk_id}'
+        pk2_num, pk2_dot
+        pk_id'
 );
 
 -- Check table with multiple FKs.

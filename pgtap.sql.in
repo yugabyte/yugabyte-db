@@ -767,8 +767,8 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_namespace n
           JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
          WHERE c.relkind = $1
-           AND n.nspname = $2
-           AND c.relname = $3
+           AND quote_ident(n.nspname) = quote_ident($2)
+           AND quote_ident(c.relname) = quote_ident($3)
     );
 $$ LANGUAGE SQL;
 
@@ -779,7 +779,7 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_class c
          WHERE c.relkind = $1
            AND pg_catalog.pg_table_is_visible(c.oid)
-           AND c.relname = $2
+           AND quote_ident(c.relname) = quote_ident($2)
     );
 $$ LANGUAGE SQL;
 
@@ -898,8 +898,8 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_namespace n
           JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
           JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE n.nspname = $1
-           AND c.relname = $2
+         WHERE quote_ident(n.nspname) = quote_ident($1)
+           AND quote_ident(c.relname) = quote_ident($2)
            AND a.attnum > 0
            AND NOT a.attisdropped
            AND a.attname = LOWER($3)
@@ -912,7 +912,7 @@ RETURNS BOOLEAN AS $$
         SELECT true
           FROM pg_catalog.pg_class c
           JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE c.relname = $1
+         WHERE quote_ident(c.relname) = quote_ident($1)
            AND pg_catalog.pg_table_is_visible(c.oid)
            AND a.attnum > 0
            AND NOT a.attisdropped
@@ -970,11 +970,11 @@ BEGIN
               FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
              WHERE n.oid = c.relnamespace
                AND c.oid = a.attrelid
-               AND n.nspname = $1
-               AND c.relname = $2
+               AND quote_ident(n.nspname) = quote_ident($1)
+               AND quote_ident(c.relname) = quote_ident($2)
                AND a.attnum > 0
                AND NOT a.attisdropped
-               AND a.attname = LOWER($3)
+               AND quote_ident(a.attname) = quote_ident($3)
                AND a.attnotnull = $5
         ), $4
     );
@@ -995,10 +995,10 @@ BEGIN
               FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a
              WHERE c.oid = a.attrelid
                AND pg_catalog.pg_table_is_visible(c.oid)
-               AND c.relname = $1
+               AND quote_ident(c.relname) = quote_ident($1)
                AND a.attnum > 0
                AND NOT a.attisdropped
-               AND a.attname = LOWER($2)
+               AND quote_ident(a.attname) = quote_ident($2)
                AND a.attnotnull = $4
         ), $3
     );
@@ -1059,10 +1059,10 @@ BEGIN
          WHERE a.attrelid = c.oid
            AND pg_table_is_visible(c.oid)
            AND pg_type_is_visible(a.atttypid)
-           AND c.relname = $2
+           AND quote_ident(c.relname) = quote_ident($2)
            AND attnum > 0
            AND NOT attisdropped
-           AND a.attname = $3;
+           AND quote_ident(a.attname) = quote_ident($3);
     ELSE
         IF NOT _cexists( $1, $2, $3 ) THEN
             RETURN fail( $5 ) || E'\n'
@@ -1074,11 +1074,11 @@ BEGIN
          WHERE n.oid = c.relnamespace
            AND pg_type_is_visible(a.atttypid)
            AND c.oid = a.attrelid
-           AND n.nspname = $1
-           AND c.relname = $2
+           AND quote_ident(n.nspname) = quote_ident($1)
+           AND quote_ident(c.relname) = quote_ident($2)
            AND attnum > 0
            AND NOT attisdropped
-           AND a.attname = $3;
+           AND quote_ident(a.attname) = quote_ident($3);
     END IF;
 
     IF actual_type = LOWER($4) THEN
@@ -1112,8 +1112,8 @@ RETURNS boolean AS $$
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-     WHERE n.nspname = $1
-       AND c.relname = $2
+     WHERE quote_ident(n.nspname) = quote_ident($1)
+       AND quote_ident(c.relname) = quote_ident($2)
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = LOWER($3)
@@ -1124,7 +1124,7 @@ RETURNS boolean AS $$
     SELECT a.atthasdef
       FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-     WHERE c.relname = $1
+     WHERE quote_ident(c.relname) = quote_ident($1)
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = LOWER($2)
@@ -1235,8 +1235,8 @@ BEGIN
        AND a.atthasdef
        AND a.attrelid = d.adrelid
        AND a.attnum = d.adnum
-       AND n.nspname = $1
-       AND c.relname = $2
+       AND quote_ident(n.nspname) = quote_ident($1)
+       AND quote_ident(c.relname) = quote_ident($2)
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = $3;
@@ -1268,7 +1268,7 @@ BEGIN
        AND a.atthasdef
        AND a.attrelid = d.adrelid
        AND a.attnum = d.adnum
-       AND c.relname = $1
+       AND quote_ident(c.relname) = quote_ident($1)
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = $2;
@@ -1296,8 +1296,8 @@ RETURNS BOOLEAN AS $$
                AND c.oid = x.conrelid
                AND pg_table_is_visible(c.oid)
                AND c.relhaspkey = true
-               AND n.nspname = $1
-               AND c.relname = $2
+               AND quote_ident(n.nspname) = quote_ident($1)
+               AND quote_ident(c.relname) = quote_ident($2)
                AND x.contype = $3
     );
 $$ LANGUAGE sql;
@@ -1310,7 +1310,7 @@ RETURNS BOOLEAN AS $$
               FROM pg_catalog.pg_class c
               JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
              WHERE c.relhaspkey = true
-               AND c.relname = $1
+               AND quote_ident(c.relname) = quote_ident($1)
                AND x.contype = $2
     );
 $$ LANGUAGE sql;
@@ -1360,8 +1360,8 @@ RETURNS NAME[] AS $$
         JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
         JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
         JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
-       WHERE n.nspname = $1
-         AND c.relname = $2
+       WHERE quote_ident(n.nspname) = quote_ident($1)
+         AND quote_ident(c.relname) = quote_ident($2)
          AND x.contype = $3
     );
 $$ LANGUAGE sql;
@@ -1374,10 +1374,28 @@ RETURNS NAME[] AS $$
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
         JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
-         AND c.relname = $1
+         AND quote_ident(c.relname) = quote_ident($1)
          AND x.contype = $2
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _quote_ident_array( name[] )
+RETURNS text[] AS $$
+    SELECT ARRAY(
+        SELECT quote_ident($1[i])
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+         ORDER BY i
+    )
+$$ LANGUAGE SQL immutable;
+
+CREATE OR REPLACE FUNCTION _ident_array_to_string( name[], text )
+RETURNS text AS $$
+    SELECT array_to_string(ARRAY(
+        SELECT quote_ident($1[i])
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+         ORDER BY i
+    ), $2);
+$$ LANGUAGE SQL immutable;
 
 -- Borrowed from newsysviews: http://pgfoundry.org/projects/newsysviews/
 CREATE OR REPLACE FUNCTION _pg_sv_column_array( OID, SMALLINT[] )
@@ -1487,7 +1505,7 @@ $$ LANGUAGE sql;
 -- col_is_pk( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_is_pk( $1, $2, 'Columns ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ') should be a primary key' );
+    SELECT col_is_pk( $1, $2, 'Columns ' || quote_ident($1) || '(' || _ident_array_to_string($2, ', ') || ') should be a primary key' );
 $$ LANGUAGE sql;
 
 -- col_is_pk( schema, table, column, description )
@@ -1523,7 +1541,7 @@ $$ LANGUAGE sql;
 -- col_isnt_pk( table, column[] )
 CREATE OR REPLACE FUNCTION col_isnt_pk ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_isnt_pk( $1, $2, 'Columns ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ') should not be a primary key' );
+    SELECT col_isnt_pk( $1, $2, 'Columns ' || quote_ident($1) || '(' || _ident_array_to_string($2, ', ') || ') should not be a primary key' );
 $$ LANGUAGE sql;
 
 -- col_isnt_pk( schema, table, column, description )
@@ -1585,9 +1603,9 @@ RETURNS BOOLEAN AS $$
     SELECT EXISTS(
         SELECT TRUE
            FROM pg_all_foreign_keys
-          WHERE fk_schema_name = $1
-            AND fk_table_name  = $2
-            AND fk_columns     = $3
+          WHERE quote_ident(fk_schema_name)    = quote_ident($1)
+            AND quote_ident(fk_table_name)     = quote_ident($2)
+            AND _quote_ident_array(fk_columns) = _quote_ident_array($3)
     );
 $$ LANGUAGE SQL;
 
@@ -1596,8 +1614,8 @@ RETURNS BOOLEAN AS $$
     SELECT EXISTS(
         SELECT TRUE
            FROM pg_all_foreign_keys
-          WHERE fk_table_name  = $1
-            AND fk_columns     = $2
+          WHERE quote_ident(fk_table_name)     = quote_ident($1)
+            AND _quote_ident_array(fk_columns) = _quote_ident_array($2)
     );
 $$ LANGUAGE SQL;
 
@@ -1605,7 +1623,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    names text[][];
+    names text[];
 BEGIN
     IF _fkexists($1, $2, $3) THEN
         RETURN pass( $4 );
@@ -1613,17 +1631,17 @@ BEGIN
 
     -- Try to show the columns.
     SELECT ARRAY(
-        SELECT fk_columns::text
+        SELECT _ident_array_to_string(fk_columns, ', ')
           FROM pg_all_foreign_keys
-         WHERE fk_schema_name = $1
-           AND fk_table_name  = $2
+         WHERE quote_ident(fk_schema_name) = quote_ident($1)
+           AND quote_ident(fk_table_name)  = quote_ident($2)
          ORDER BY fk_columns
     ) INTO names;
 
     IF NAMES[1] IS NOT NULL THEN
         RETURN fail($4) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || E' has foreign key constraints on these columns:\n        '
-            || array_to_string( names, E'\n        ' )
+            ||  array_to_string( names, E'\n        ' )
         );
     END IF;
 
@@ -1638,7 +1656,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    names text[][];
+    names text[];
 BEGIN
     IF _fkexists($1, $2) THEN
         RETURN pass( $3 );
@@ -1646,9 +1664,9 @@ BEGIN
 
     -- Try to show the columns.
     SELECT ARRAY(
-        SELECT fk_columns::text
+        SELECT _ident_array_to_string(fk_columns, ', ')
           FROM pg_all_foreign_keys
-         WHERE fk_table_name  = $1
+         WHERE quote_ident(fk_table_name)  = quote_ident($1)
          ORDER BY fk_columns
     ) INTO names;
 
@@ -1669,7 +1687,7 @@ $$ LANGUAGE plpgsql;
 -- col_is_fk( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_fk ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_is_fk( $1, $2, 'Columns ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ') should be a foreign key' );
+    SELECT col_is_fk( $1, $2, 'Columns ' || quote_ident($1) || '(' || _ident_array_to_string($2, ', ') || ') should be a foreign key' );
 $$ LANGUAGE sql;
 
 -- col_is_fk( schema, table, column, description )
@@ -1705,7 +1723,7 @@ $$ LANGUAGE SQL;
 -- col_isnt_fk( table, column[] )
 CREATE OR REPLACE FUNCTION col_isnt_fk ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_isnt_fk( $1, $2, 'Columns ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ') should not be a foreign key' );
+    SELECT col_isnt_fk( $1, $2, 'Columns ' || quote_ident($1) || '(' || _ident_array_to_string($2, ', ') || ') should not be a foreign key' );
 $$ LANGUAGE sql;
 
 -- col_isnt_fk( schema, table, column, description )
@@ -1759,7 +1777,7 @@ $$ LANGUAGE sql;
 -- col_is_unique( table, column[] )
 CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_is_unique( $1, $2, 'Columns ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ') should have a unique constraint' );
+    SELECT col_is_unique( $1, $2, 'Columns ' || quote_ident($1) || '(' || _ident_array_to_string($2, ', ') || ') should have a unique constraint' );
 $$ LANGUAGE sql;
 
 -- col_is_unique( schema, table, column, description )
@@ -1813,7 +1831,7 @@ $$ LANGUAGE sql;
 -- col_has_check( table, column[] )
 CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT col_has_check( $1, $2, 'Columns ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ') should have a check constraint' );
+    SELECT col_has_check( $1, $2, 'Columns ' || quote_ident($1) || '(' || _ident_array_to_string($2, ', ') || ') should have a check constraint' );
 $$ LANGUAGE sql;
 
 -- col_has_check( schema, table, column, description )
@@ -1844,19 +1862,19 @@ DECLARE
 BEGIN
     SELECT pk_schema_name, pk_table_name, pk_columns
       FROM pg_all_foreign_keys
-     WHERE fk_schema_name = $1
-       AND fk_table_name  = $2
-       AND fk_columns     = $3
+      WHERE quote_ident(fk_schema_name)    = quote_ident($1)
+        AND quote_ident(fk_table_name)     = quote_ident($2)
+        AND _quote_ident_array(fk_columns) = _quote_ident_array($3)
       INTO sch, tab, cols;
 
     RETURN is(
         -- have
-        quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( $3, ', ' )
-        || ') REFERENCES ' || COALESCE ( sch || '.' || tab || '(' || array_to_string( cols, ', ' ) || ')', 'NOTHING' ),
+        quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string( $3, ', ' )
+        || ') REFERENCES ' || COALESCE ( sch || '.' || tab || '(' || _ident_array_to_string( cols, ', ' ) || ')', 'NOTHING' ),
         -- want
-        quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( $3, ', ' )
+        quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string( $3, ', ' )
         || ') REFERENCES ' ||
-        $4 || '.' || $5 || '(' || array_to_string( $6, ', ' ) || ')',
+        $4 || '.' || $5 || '(' || _ident_array_to_string( $6, ', ' ) || ')',
         $7
     );
 END;
@@ -1871,18 +1889,18 @@ DECLARE
 BEGIN
     SELECT pk_table_name, pk_columns
       FROM pg_all_foreign_keys
-     WHERE fk_table_name  = $1
-       AND fk_columns     = $2
+      WHERE quote_ident(fk_table_name)     = quote_ident($1)
+        AND _quote_ident_array(fk_columns) = _quote_ident_array($2)
       INTO tab, cols;
 
     RETURN is(
         -- have
-        $1 || '(' || array_to_string( $2, ', ' )
-        || ') REFERENCES ' || COALESCE( tab || '(' || array_to_string( cols, ', ' ) || ')', 'NOTHING'),
+        $1 || '(' || _ident_array_to_string( $2, ', ' )
+        || ') REFERENCES ' || COALESCE( tab || '(' || _ident_array_to_string( cols, ', ' ) || ')', 'NOTHING'),
         -- want
-        $1 || '(' || array_to_string( $2, ', ' )
+        $1 || '(' || _ident_array_to_string( $2, ', ' )
         || ') REFERENCES ' ||
-        $3 || '(' || array_to_string( $4, ', ' ) || ')',
+        $3 || '(' || _ident_array_to_string( $4, ', ' ) || ')',
         $5
     );
 END;
@@ -1892,9 +1910,9 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME, NAME[], NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, $2, $3, $4, $5, $6,
-        quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( $3, ', ' )
+        quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string( $3, ', ' )
         || ') should reference ' ||
-        $4 || '.' || $5 || '(' || array_to_string( $6, ', ' ) || ')'
+        $4 || '.' || $5 || '(' || _ident_array_to_string( $6, ', ' ) || ')'
     );
 $$ LANGUAGE sql;
 
@@ -1902,9 +1920,9 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME[], NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT fk_ok( $1, $2, $3, $4,
-        $1 || '(' || array_to_string( $2, ', ' )
+        $1 || '(' || _ident_array_to_string( $2, ', ' )
         || ') should reference ' ||
-        $3 || '(' || array_to_string( $4, ', ' ) || ')'
+        $3 || '(' || _ident_array_to_string( $4, ', ' ) || ')'
     );
 $$ LANGUAGE sql;
 
@@ -1940,8 +1958,8 @@ RETURNS TEXT AS $$
             SELECT true
               FROM pg_catalog.pg_proc p
               JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-             WHERE n.nspname = $1
-               AND p.proname = $2
+             WHERE quote_ident(n.nspname) = quote_ident($1)
+               AND quote_ident(p.proname) = quote_ident($2)
                AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($3, ',')
         ), $4
     );
@@ -1962,8 +1980,8 @@ RETURNS TEXT AS $$
             SELECT true
               FROM pg_catalog.pg_proc p
               JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-             WHERE n.nspname = $1
-               AND p.proname = $2
+             WHERE quote_ident(n.nspname) = quote_ident($1)
+               AND quote_ident(p.proname) = quote_ident($2)
         ), $3
     );
 $$ LANGUAGE SQL;
@@ -1981,7 +1999,7 @@ RETURNS TEXT AS $$
         EXISTS(
             SELECT true
               FROM pg_catalog.pg_proc p
-             WHERE p.proname = $1
+             WHERE quote_ident(p.proname) = quote_ident($1)
                AND pg_catalog.pg_function_is_visible(p.oid)
                AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($2, ',')
         ), $3
@@ -2002,7 +2020,7 @@ RETURNS TEXT AS $$
         EXISTS(
             SELECT true
               FROM pg_catalog.pg_proc p
-             WHERE p.proname = $1
+             WHERE quote_ident(p.proname) = quote_ident($1)
                AND pg_catalog.pg_function_is_visible(p.oid)
         ), $2
     );
@@ -2016,12 +2034,12 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _pg_sv_type_array( OID[] )
 RETURNS NAME[] AS $$
-SELECT ARRAY(
-SELECT t.typname
-FROM pg_catalog.pg_type t
-JOIN generate_series(1, array_upper($1, 1)) s(i) ON (t.oid = $1[i])
-ORDER BY i
-)
+    SELECT ARRAY(
+        SELECT t.typname
+          FROM pg_catalog.pg_type t
+          JOIN generate_series(1, array_upper($1, 1)) s(i) ON (t.oid = $1[i])
+         ORDER BY i
+    )
 $$ LANGUAGE SQL stable;
 
 -- can( schema, func_names[], description )
@@ -2031,10 +2049,10 @@ DECLARE
     missing name[];
 BEGIN
     SELECT ARRAY(
-        SELECT $2[i]
+        SELECT quote_ident($2[i])
           FROM generate_series(1, array_upper($2, 1)) s(i)
           LEFT JOIN pg_catalog.pg_proc p
-            ON ($2[i] = p.proname)
+            ON (quote_ident($2[i]) = quote_ident(p.proname))
           LEFT JOIN pg_catalog.pg_namespace n
             ON p.pronamespace = n.oid AND n.nspname = 'pg_catalog'
           WHERE p.oid IS NULL
@@ -2064,10 +2082,10 @@ DECLARE
     missing name[];
 BEGIN
     SELECT ARRAY(
-        SELECT $1[i]
+        SELECT quote_ident($1[i])
           FROM generate_series(1, array_upper($1, 1)) s(i)
           LEFT JOIN pg_catalog.pg_proc p
-            ON ($1[i] = p.proname AND pg_catalog.pg_function_is_visible(p.oid))
+            ON (quote_ident($1[i]) = quote_ident(p.proname) AND pg_catalog.pg_function_is_visible(p.oid))
           WHERE p.oid IS NULL
           ORDER BY s.i
     ) INTO missing;
@@ -2085,7 +2103,7 @@ $$ LANGUAGE plpgsql;
 -- can( func_names[] )
 CREATE OR REPLACE FUNCTION can ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT can( $1, 'Schema ' || array_to_string(current_schemas(true), ' or ') || ' can' );
+    SELECT can( $1, 'Schema ' || _ident_array_to_string(current_schemas(true), ' or ') || ' can' );
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _ikeys( NAME, NAME, NAME)
@@ -2097,9 +2115,9 @@ RETURNS NAME[] AS $$
           JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
           JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
           JOIN pg_catalog.pg_attribute a ON (ct.oid = a.attrelid)
-         WHERE ct.relname = $2
-           AND ci.relname = $3
-           AND n.nspname  = $1
+         WHERE ct.relname = quote_ident($2)
+           AND ci.relname = quote_ident($3)
+           AND n.nspname  = quote_ident($1)
            AND a.attnum = ANY(x.indkey::int[])
     );
 $$ LANGUAGE sql;
@@ -2112,8 +2130,8 @@ RETURNS NAME[] AS $$
           JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
           JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
           JOIN pg_catalog.pg_attribute a ON (ct.oid = a.attrelid)
-         WHERE ct.relname = $1
-           AND ci.relname = $2
+         WHERE quote_ident(ct.relname) = quote_ident($1)
+           AND quote_ident(ci.relname) = quote_ident($2)
            AND a.attnum = ANY(x.indkey::int[])
            AND pg_catalog.pg_table_is_visible(ct.oid)
     );
@@ -2126,9 +2144,9 @@ RETURNS TEXT AS $$
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
-     WHERE ct.relname = $2
-       AND ci.relname = $3
-       AND n.nspname  = $1;
+     WHERE quote_ident(ct.relname) = quote_ident($2)
+       AND quote_ident(ci.relname) = quote_ident($3)
+       AND quote_ident(n.nspname)  = quote_ident($1);
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _iexpr( NAME, NAME)
@@ -2137,8 +2155,8 @@ RETURNS TEXT AS $$
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-     WHERE ct.relname = $1
-       AND ci.relname = $2
+     WHERE quote_ident(ct.relname) = quote_ident($1)
+       AND quote_ident(ci.relname) = quote_ident($2)
        AND pg_catalog.pg_table_is_visible(ct.oid)
 $$ LANGUAGE sql;
 
@@ -2156,8 +2174,8 @@ BEGIN
     END IF;
 
     RETURN is(
-        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( index_cols, ', ' ) || ')',
-        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( $4, ', ' ) || ')',
+        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string( index_cols, ', ' ) || ')',
+        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || _ident_array_to_string( $4, ', ' ) || ')',
         $5
     );
 END;
@@ -2190,7 +2208,7 @@ BEGIN
 
     RETURN is(
         quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || expr || ')',
-        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || LOWER($4)   || ')',
+        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || $4 || ')',
         $5
     );
 END;
@@ -2216,8 +2234,8 @@ BEGIN
     END IF;
 
     RETURN is(
-        quote_ident($2) || ' ON ' || quote_ident($1) || '(' || array_to_string( index_cols, ', ' ) || ')',
-        quote_ident($2) || ' ON ' || quote_ident($1) || '(' || array_to_string( $3, ', ' ) || ')',
+        quote_ident($2) || ' ON ' || quote_ident($1) || '(' || _ident_array_to_string( index_cols, ', ' ) || ')',
+        quote_ident($2) || ' ON ' || quote_ident($1) || '(' || _ident_array_to_string( $3, ', ' ) || ')',
         $4
     );
 END;
@@ -2232,7 +2250,10 @@ $$ LANGUAGE sql;
 -- _is_schema( schema )
 CREATE OR REPLACE FUNCTION _is_schema( NAME )
 returns boolean AS $$
-    SELECT EXISTS( SELECT true FROM pg_catalog.pg_namespace WHERE nspname = LOWER($1) );
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_namespace
+          WHERE quote_ident(nspname) = quote_ident($1) );
 $$ LANGUAGE sql;
 
 -- _has_index( schema, table, index )
@@ -2272,17 +2293,17 @@ BEGIN
     IF _is_schema( $1 ) THEN
         -- Looking for an index within a schema.
         have_expr := _iexpr($1, $2, $3);
-        want_expr := lower($4);
+        want_expr := $4;
         descr := 'Index ' || quote_ident($3) || ' should exist';
         idx   := $3;
         tab   := quote_ident($1) || '.' || quote_ident($2);
     ELSE
         -- Looking for an index without a schema spec.
         have_expr := _iexpr($1, $2);
-        want_expr := lower($3);
+        want_expr := $3;
         descr := $4;
         idx   := $2;
-        tab   := $1;
+        tab   := quote_ident($1);
     END IF;
 
     IF have_expr IS NULL THEN
@@ -2339,9 +2360,9 @@ BEGIN
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
-     WHERE ct.relname = $2
-       AND ci.relname = $3
-       AND n.nspname  = $1
+     WHERE quote_ident(ct.relname) = quote_ident($2)
+       AND quote_ident(ci.relname) = quote_ident($3)
+       AND quote_ident(n.nspname)  = quote_ident($1)
       INTO res;
 
       RETURN ok( COALESCE(res, false), $4 );
@@ -2367,8 +2388,8 @@ BEGIN
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-     WHERE ct.relname = $1
-       AND ci.relname = $2
+     WHERE quote_ident(ct.relname) = quote_ident($1)
+       AND quote_ident(ci.relname) = quote_ident($2)
        AND pg_catalog.pg_table_is_visible(ct.oid)
       INTO res;
 
@@ -2389,7 +2410,7 @@ BEGIN
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-     WHERE ci.relname = $1
+     WHERE quote_ident(ci.relname) = quote_ident($1)
        AND pg_catalog.pg_table_is_visible(ct.oid)
       INTO res;
 
@@ -2411,9 +2432,9 @@ BEGIN
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
-     WHERE ct.relname = $2
-       AND ci.relname = $3
-       AND n.nspname  = $1
+     WHERE quote_ident(ct.relname) = quote_ident($2)
+       AND quote_ident(ci.relname) = quote_ident($3)
+       AND quote_ident(n.nspname)  = quote_ident($1)
       INTO res;
 
       RETURN ok( COALESCE(res, false), $4 );
@@ -2439,8 +2460,8 @@ BEGIN
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-     WHERE ct.relname = $1
-       AND ci.relname = $2 
+     WHERE quote_ident(ct.relname) = quote_ident($1)
+       AND quote_ident(ci.relname) = quote_ident($2)
        AND pg_catalog.pg_table_is_visible(ct.oid)
      INTO res;
 
@@ -2461,7 +2482,7 @@ BEGIN
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-     WHERE ci.relname = $1
+     WHERE quote_ident(ci.relname) = quote_ident($1)
        AND pg_catalog.pg_table_is_visible(ct.oid)
       INTO res;
 
@@ -2483,9 +2504,9 @@ BEGIN
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
-     WHERE ct.relname = $2
-       AND ci.relname = $3
-       AND n.nspname  = $1
+     WHERE quote_ident(ct.relname) = quote_ident($2)
+       AND quote_ident(ci.relname) = quote_ident($3)
+       AND quote_ident(n.nspname)  = quote_ident($1)
       INTO res;
 
       RETURN ok( COALESCE(res, false), $4 );
@@ -2512,8 +2533,8 @@ BEGIN
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-     WHERE ct.relname = $1
-       AND ci.relname = $2
+     WHERE quote_ident(ct.relname) = quote_ident($1)
+       AND quote_ident(ci.relname) = quote_ident($2)
       INTO res;
 
       RETURN ok(
@@ -2532,7 +2553,7 @@ BEGIN
     SELECT x.indisclustered
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-     WHERE ci.relname = $1
+     WHERE quote_ident(ci.relname) = quote_ident($1)
       INTO res;
 
       RETURN ok(
@@ -2554,9 +2575,9 @@ BEGIN
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
       JOIN pg_catalog.pg_am am ON ( ci.relam = am.oid)
-     WHERE ct.relname = $2
-       AND ci.relname = $3
-       AND n.nspname  = $1
+     WHERE quote_ident(ct.relname) = quote_ident($2)
+       AND quote_ident(ci.relname) = quote_ident($3)
+       AND quote_ident(n.nspname)  = quote_ident($1)
       INTO aname;
 
       return is( aname, LOWER($4)::name, $5 );
@@ -2583,8 +2604,8 @@ BEGIN
       JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_am am ON ( ci.relam = am.oid)
-     WHERE ct.relname = $1
-       AND ci.relname = $2
+     WHERE quote_ident(ct.relname) = quote_ident($1)
+       AND quote_ident(ci.relname) = quote_ident($2)
       INTO aname;
 
       return is(
@@ -2605,7 +2626,7 @@ BEGIN
       FROM pg_catalog.pg_index x
       JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
       JOIN pg_catalog.pg_am am ON ( ci.relam = am.oid)
-     WHERE ci.relname = $1
+     WHERE quote_ident(ci.relname) = quote_ident($1)
       INTO aname;
 
       return is(
@@ -2626,9 +2647,9 @@ BEGIN
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
-     WHERE n.nspname = $1
-       AND c.relname = $2
-       AND t.tgname  = $3
+     WHERE quote_ident(n.nspname) = quote_ident($1)
+       AND quote_ident(c.relname) = quote_ident($2)
+       AND quote_ident(t.tgname)  = quote_ident($3)
       INTO res;
 
       RETURN ok( COALESCE(res, false), $4 );
@@ -2653,8 +2674,8 @@ BEGIN
     SELECT true
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
-     WHERE c.relname = $1
-       AND t.tgname  = $2
+     WHERE quote_ident(c.relname) = quote_ident($1)
+       AND quote_ident(t.tgname)  = quote_ident($2)
        AND pg_catalog.pg_table_is_visible(c.oid)
       INTO res;
 
@@ -2677,9 +2698,9 @@ BEGIN
       JOIN pg_catalog.pg_namespace nt ON (nt.oid = ct.relnamespace)
       JOIN pg_catalog.pg_proc p ON (p.oid = t.tgfoid)
       JOIN pg_catalog.pg_namespace ni ON (ni.oid = p.pronamespace)
-     WHERE nt.nspname = $1
-       AND ct.relname = $2
-       AND t.tgname   = $3
+     WHERE quote_ident(nt.nspname) = quote_ident($1)
+       AND quote_ident(ct.relname) = quote_ident($2)
+       AND quote_ident(t.tgname)   = quote_ident($3)
       INTO pname;
 
     RETURN is( pname, quote_ident($4) || '.' || quote_ident($5), $6 );
@@ -2705,8 +2726,8 @@ BEGIN
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class ct ON (ct.oid = t.tgrelid)
       JOIN pg_catalog.pg_proc p ON (p.oid = t.tgfoid)
-     WHERE ct.relname = $1
-       AND t.tgname   = $2
+     WHERE quote_ident(ct.relname) = quote_ident($1)
+       AND quote_ident(t.tgname)   = quote_ident($2)
        AND pg_catalog.pg_table_is_visible(ct.oid)
       INTO pname;
 
@@ -2730,7 +2751,7 @@ RETURNS TEXT AS $$
         EXISTS(
             SELECT true
               FROM pg_catalog.pg_namespace
-             WHERE LOWER(nspname) = LOWER($1)
+             WHERE quote_ident(nspname) = quote_ident($1)
         ), $2
     );
 $$ LANGUAGE sql;
@@ -2748,7 +2769,7 @@ RETURNS TEXT AS $$
         NOT EXISTS(
             SELECT true
               FROM pg_catalog.pg_namespace
-             WHERE LOWER(nspname) = LOWER($1)
+             WHERE quote_ident(nspname) = quote_ident($1)
         ), $2
     );
 $$ LANGUAGE sql;
@@ -2766,7 +2787,7 @@ RETURNS TEXT AS $$
         EXISTS(
             SELECT true
               FROM pg_catalog.pg_tablespace
-             WHERE LOWER(spcname) = LOWER($1)
+             WHERE quote_ident(spcname) = quote_ident($1)
                AND spclocation = $2
         ), $3
     );
@@ -2779,7 +2800,7 @@ RETURNS TEXT AS $$
         EXISTS(
             SELECT true
               FROM pg_catalog.pg_tablespace
-             WHERE LOWER(spcname) = LOWER($1)
+             WHERE quote_ident(spcname) = quote_ident($1)
         ), $2
     );
 $$ LANGUAGE sql;
@@ -2797,7 +2818,7 @@ RETURNS TEXT AS $$
         NOT EXISTS(
             SELECT true
               FROM pg_catalog.pg_tablespace
-             WHERE LOWER(spcname) = LOWER($1)
+             WHERE quote_ident(spcname) = quote_ident($1)
         ), $2
     );
 $$ LANGUAGE sql;
@@ -2815,8 +2836,8 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_type t
           JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
          WHERE t.typisdefined
-           AND n.nspname = $1
-           AND t.typname = $2
+           AND quote_ident(n.nspname) = quote_ident($1)
+           AND quote_ident(t.typname) = quote_ident($2)
            AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
     );
 $$ LANGUAGE sql;
@@ -2987,7 +3008,7 @@ RETURNS TEXT AS $$
               JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
               JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
               WHERE t.typisdefined
-               AND n.nspname = $1
+               AND quote_ident(n.nspname) = quote_ident($1)
                AND t.typname = $2
                AND t.typtype = 'e'
              ORDER BY e.oid

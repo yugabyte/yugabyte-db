@@ -55,7 +55,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'idx_baz', 'LOWER(name)', 'whatever' ),
+    has_index( 'public', 'sometab', 'idx_baz', 'lower(name)', 'whatever' ),
     true,
     'has_index() functional',
     'whatever',
@@ -111,7 +111,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'sometab', 'idx_baz', 'LOWER(name)', 'whatever' ),
+    has_index( 'sometab', 'idx_baz', 'lower(name)', 'whatever' ),
     true,
     'has_index() no schema functional',
     'whatever',
@@ -119,7 +119,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'sometab', 'idx_baz', 'LOWER(name)' ),
+    has_index( 'sometab', 'idx_baz', 'lower(name)' ),
     true,
     'has_index() no schema functional no desc',
     'Index idx_baz should exist',
@@ -178,7 +178,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'idx_baz', 'LOWER(wank)', 'whatever' ),
+    has_index( 'public', 'sometab', 'idx_baz', 'lower(wank)', 'whatever' ),
     false,
     'has_index() functional fail',
     'whatever',
@@ -187,7 +187,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'sometab', 'idx_baz', 'LOWER(wank)', 'whatever' ),
+    has_index( 'sometab', 'idx_baz', 'lower(wank)', 'whatever' ),
     false,
     'has_index() functional fail no schema',
     'whatever',

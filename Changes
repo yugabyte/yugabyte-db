@@ -23,6 +23,13 @@ Revision history for pgTAP
         exist.
       - Added `has_tablespace()` and `hasnt_tablespace()`.
       - Added `has_sequence()` and `hasnt_sequence()`.
+      - Changed `has_index()` so that expressions are compared case-
+        sensitively.
+      - In the schema testing functions, now using `quote_ident()` to compare
+        all identifiers, such as table names, schema names, column names, etc.
+        This means that tests should use only lowercase strings to specify
+        object names, unless mixed case objects were crated with double quote
+        characters.
 
 0.16  2009-02-03T17:37:03
       - Switched from a crazy trinary logic in `is()` and `isnt()` to the use
@@ -33,7 +40,7 @@ Revision history for pgTAP
         properly on many platforms (including Linux, and probably many
         others). This allows `os_name()` to actually work on those platforms.
       - The definition of the `pg_typeof()` function is removed when
-        installing on POstgresQL 8.4 and no C code is compiled, since the only
+        installing on PostgreSQL 8.4 and no C code is compiled, since the only
         C code is for this function. This is because `pg_typeof()` is included
         with PostgreSQL 8.4.
       - Added `has_schema()` and `hasnt_schema()`.
@@ -41,7 +48,7 @@ Revision history for pgTAP
         `has_enum()`, and `hasnt_enum()`.
       - Added `enum_has_labels()`.
       - Updated the `Makefile` to fix the shebang line in `pg_prove` if
-        Perl is found, and to emite a warning if the `$PERL` variable is not
+        Perl is found, and to emit a warning if the `$PERL` variable is not
         set. - Updated the `Makefile` so that if `$PERL` is set and
         Tap::Harness is not installed, it warns the user to install it in
         order to use `pg_prove`. - Updated the `Makefile` to set the location
@@ -70,7 +77,7 @@ Revision history for pgTAP
         `--version` option to `pg_prove`, which is `-V`, not `-v`.
       - Added `pgtap_version()`.
       - Added the "html" make target to generate the HTML documentation for
-        the Web site, including a table of contents and documenation for
+        the Web site, including a table of contents and documentation for
         `pg_prove`.
 
 0.14  2008-10-27T22:43:36
@@ -135,7 +142,7 @@ Revision history for pgTAP
         error codes.
       - Converted some more tests to use `check_test()`.
       - Added `can()` and `can_ok()`.
-      - Fixed a bug in `check_test()` where the leading whitespace for
+      - Fixed a bug in `check_test()` where the leading white space for
         diagnostic messages could be off by 1 or more characters.
       - Fixed the `installcheck` target so that it properly installs PL/pgSQL
         into the target database before the tests run.
@@ -182,7 +189,7 @@ Revision history for pgTAP
       - Added the `col_type_is()`, `col_default_is()`, `col_is_pk()`,
         `col_is_fk()`, `col_is_unique()`, and `col_has_check()` test
         functions.
-      - Fixed `is()` and `isnt()` to better handle NULLs.
+      - Fixed `is()` and `isnt()` to better handle `NULL`s.
       - Added `cmp_ok()`.
       - Added the `--set ON_ERROR_STOP=1` option to the call to `psql` in
         `pg_prove`.
@@ -204,12 +211,12 @@ Revision history for pgTAP
 0.02  2008-06-17T16:26:41
       - Converted the documentation to Markdown.
       - Added pg_prove, a Perl script that use TAP::Harness to run tests and
-        report the results, juse like the Perl program `prove`.
+        report the results, just like the Perl program `prove`.
       - Fixed `no_plan()` so that it no longer emits a plan, which apparently
         was wrong. Now `finish()` outputs it when there's no plan.
       - Fixed the test script so that it now emits a proper plan.
       - Removed all of the configuration settings from `pgtap.sql`, as they're
-        now handled by `pg_prove`. I've mengioned them in the README for
+        now handled by `pg_prove`. I've mentioned them in the README for
         reference.
       - Added `lives_ok()`.
       - Moved the creation of temporary tables into `plan()`, so that

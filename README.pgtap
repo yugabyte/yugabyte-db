@@ -606,6 +606,33 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
+A note on comparisons: pgTAP uses the PostgreSQL function `quote_ident()` to
+compare all SQL identifiers, such as the names of tables, schemas, functions,
+indexes, and columns (but not data types). So in general, you should always
+use lowercase strings when passing identifier arguments to the functions
+below. Use mixed case strings only when the objects were declared in your
+schema using double-quotes. For example, if you created a table like so:
+
+    CREATE TABLE Foo (id integer);
+
+Then you *must* test for it using only lowercase characters (if you want the
+test to pass):
+
+    SELECT has_table('foo');
+
+If, however, you declared the table using a double-quoted string, like so:
+
+    CREATE TABLE "Foo" (id integer);
+
+Then you'd need to test for it using exactly the same string, including case,
+like so:
+
+    SELECT has_table('Foo');
+
+In general, this should not be an issue, as mixed-case objects are created
+only rarely. So if you just stick to lowercase-only arguments to these
+functions, you should be in good shape.
+
 ### `has_tablespace( tablespace, location, description )` ###
 ### `has_tablespace( tablespace, description )` ###
 ### `has_tablespace( tablespace )` ###
@@ -1405,8 +1432,12 @@ Checks for the existence of an index associated with the named table. The
 `:schema` argument is optional, as is the column name or names or expression,
 and the description. The columns argument may be a string naming one column or
 an array of column names. It may also be a string representing an expression,
-such as `LOWER(foo)`. If you find that the function call seems to be getting
-confused, cast the index name to the `NAME` type:
+such as `lower(foo)`. For expressions, you must use lowercase for all SQL
+keywords and functions to properly compare to PostgreSQL's internal form of
+the expression.
+
+If you find that the function call seems to be getting confused, cast the
+index name to the `NAME` type:
 
     SELECT has_index( 'public', 'sometab', 'idx_foo', 'name'::name );
 
