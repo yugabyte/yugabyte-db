@@ -8,22 +8,22 @@ SELECT plan(285);
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
-CREATE TABLE sometab(
+CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
-CREATE TYPE sometype AS (
+CREATE TYPE public.sometype AS (
     id    INT,
     name  TEXT
 );
 
-CREATE DOMAIN us_postal_code AS TEXT CHECK(
+CREATE DOMAIN public.us_postal_code AS TEXT CHECK(
     VALUE ~ '^[[:digit:]]{5}$' OR VALUE ~ '^[[:digit:]]{5}-[[:digit:]]{4}$'
 );
 
-CREATE SEQUENCE someseq;
+CREATE SEQUENCE public.someseq;
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;

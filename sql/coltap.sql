@@ -389,7 +389,7 @@ SELECT * FROM check_test(
 -- Make sure it works with a NULL default.
 CREATE OR REPLACE FUNCTION nulltest () RETURNS SETOF TEXT AS $$
 DECLARE
-    tap text;
+    tap record;
 BEGIN
     IF pg_version_num() < 80300 THEN
         -- Before 8.2, DEFAULT NULL was ignored.
@@ -417,10 +417,11 @@ BEGIN
             'col_default_is( tab, col, NULL )',
             'Column sometab.numb should default to NULL',
             ''
-        ) LOOP
-            RETURN NEXT tap;
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
         END LOOP;
     END IF;
+    RETURN;
 END;
 $$ LANGUAGE plpgsql;
 SELECT * FROM nulltest();

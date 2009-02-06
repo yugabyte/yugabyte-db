@@ -8,7 +8,7 @@ SELECT plan(72);
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
-CREATE TYPE bug_status AS ENUM ('new', 'open', 'closed');
+CREATE TYPE public.bug_status AS ENUM ('new', 'open', 'closed');
 RESET client_min_messages;
 
 /****************************************************************************/

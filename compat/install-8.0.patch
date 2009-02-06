@@ -1,5 +1,5 @@
---- pgtap.sql	2009-02-02 11:39:23.000000000 -0800
-+++ pgtap.sql.saf	2009-02-02 11:39:10.000000000 -0800
+--- pgtap.sql.saf	2009-02-05 22:20:59.000000000 -0800
++++ pgtap.sql	2009-02-05 22:29:29.000000000 -0800
 @@ -12,6 +12,22 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
@@ -23,7 +23,7 @@
  CREATE OR REPLACE FUNCTION pg_typeof("any")
  RETURNS regtype
  AS '$libdir/pgtap'
-@@ -95,53 +111,63 @@
+@@ -97,53 +113,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -70,7 +70,7 @@
 +    quote_literal($1) || ' AND value = ' || $2 LOOP
 +        RETURN rec.id;
 +    END LOOP;
-+    RETURN NULL;
++    RETURN;
  END;
  $$ LANGUAGE plpgsql strict;
  
@@ -85,7 +85,7 @@
 +    FOR rec IN EXECUTE 'SELECT note FROM __tcache__ WHERE label = ' || quote_literal($1) || ' LIMIT 1' LOOP
 +        RETURN rec.note;
 +    END LOOP;
-+    RETURN NULL;
++    RETURN;
  END;
  $$ LANGUAGE plpgsql strict;
  
@@ -100,11 +100,11 @@
 +    FOR rec IN EXECUTE 'SELECT note FROM __tcache__ WHERE id = ' || $1 || ' LIMIT 1' LOOP
 +        RETURN rec.note;
 +    END LOOP;
-+    RETURN NULL;
++    RETURN;
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -205,10 +231,12 @@
+@@ -207,10 +233,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -116,11 +116,11 @@
 +    FOR rec IN EXECUTE 'SELECT COUNT(*)::INTEGER AS cnt FROM __tresults__ WHERE ok = FALSE' LOOP
 +        RETURN rec.cnt;
 +    END LOOP;
-+    RETURN NULL;
++    RETURN;
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -482,13 +510,16 @@
+@@ -484,13 +512,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -140,28 +140,36 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1049,15 +1080,16 @@
- CREATE OR REPLACE FUNCTION _def_is( TEXT, anyelement, TEXT )
+@@ -1201,19 +1232,21 @@
+ CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
 -    thing text;
-+    rec RECORD;
++    ret RECORD;
  BEGIN
      IF $1 ~ '^[^'']+[(]' THEN
          -- It's a functional default.
-         RETURN is( $1, $2, $3 );
+         RETURN is( $1, $3, $4 );
      END IF;
--    EXECUTE 'SELECT is(' || COALESCE($1, 'NULL::text') || ', ' || quote_literal($2) || ', ' || quote_literal($3) || ')'
--      INTO thing;
+ 
+-    EXECUTE 'SELECT is(' 
+-             || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
+-             || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
+-             || COALESCE(quote_literal($4), 'NULL')
+-    || ')' INTO thing;
 -    RETURN thing;
-+    FOR rec IN EXECUTE 'SELECT is(' || COALESCE($1, 'NULL::text') || ', ' || quote_literal($2) || ', ' || quote_literal($3) || ')' || 'AS is' LOOP
-+        RETURN rec.is;
++    FOR ret IN EXECUTE 'SELECT is(' 
++         || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
++         || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
++         || COALESCE(quote_literal($4), 'NULL')
++    || ') AS a' LOOP
++        RETURN ret.a;
 +    END LOOP;
-+    RETURN NULL;
++    RETURN;
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -2761,6 +2793,7 @@
+@@ -3016,6 +3049,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -169,7 +177,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -2771,8 +2804,10 @@
+@@ -3026,8 +3060,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -182,7 +190,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -2881,7 +2916,7 @@
+@@ -3136,7 +3172,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -191,7 +199,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -2889,8 +2924,8 @@
+@@ -3144,8 +3180,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -202,7 +210,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -2950,116 +2985,6 @@
+@@ -3205,116 +3241,6 @@
  END
  $$ LANGUAGE plpgsql;
  
