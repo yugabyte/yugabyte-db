@@ -1079,9 +1079,10 @@ cast it to the same data type as the column itself:
     SELECT col_default_is( 'tab', age, NULL::integer );
 
 You can also test for functional defaults. Just specify the function call as a
-string:
+string (and, yes, you have to cast it to `TEXT`; just think of the function as
+code in a string):
 
-    SELECT col_default_is( 'user', 'created_at', 'now()' );
+    SELECT col_default_is( 'user', 'created_at', 'now()'::text );
 
 If the test fails, it will output useful diagnostics. For example, this test:
 
