@@ -335,14 +335,16 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 		int16		typlen;
 		bool		typbyval;
 		char		typalign;
+		ArrayType  *arr;
 
 		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
-		values[0] = PointerGetDatum(construct_md_array(
+		arr = construct_md_array(
 			NULL,
 #if PG_VERSION_NUM >= 80200
 			NULL,
 #endif
-			0, NULL, NULL, TEXTOID, typlen, typbyval, typalign));
+			0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
+		values[0] = PointerGetDatum(arr);
 	}
 
 	/* 1: # of lines as integer */
