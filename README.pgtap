@@ -1038,9 +1038,8 @@ Will produce something like this:
     #         want: text
 
 It will even tell you if the test fails because a column doesn't exist or
-actually has no default. But you use `has_column()` and `col_has_default()` to
-test those conditions before you call `col_default_is()`, right? *Right???*
-Yeah, good, I thought so.
+actually has no default. But use `has_column()` to make sure the column exists
+first, eh?
 
 ### `col_default_is( schema, table, column, default, description )` ###
 ### `col_default_is( table, column, default, description )` ###
@@ -1073,8 +1072,9 @@ But this will not:
 
     SELECT col_default_is( 'tab', 'name', 'foo'::text );
 
-You even need to properly cast your default value when it's a NULL. Just cast
-it to the same data type as the column itself:
+You even need to properly cast your default value when it's a NULL (which, by
+the way, you can only properly test for in PostgreSQL 8.3 and later). Just
+cast it to the same data type as the column itself:
 
     SELECT col_default_is( 'tab', age, NULL::integer );
 
@@ -1100,8 +1100,9 @@ Will produce something like this:
     #         want: foo
 
 And if the test fails because the table or column in question does not exist,
-the diagnostics will tell you that, too. But use `has_column()` to make sure
-the column exists first, eh?
+the diagnostics will tell you that, too. But you use `has_column()` and
+`col_has_default()` to test those conditions before you call
+`col_default_is()`, right? *Right???* Yeah, good, I thought so.
 
 ### `has_pk( schema, table, description )` ###
 ### `has_pk( table, description )` ###
@@ -2209,7 +2210,10 @@ No changes. Everything should just work.
 8.2 and Lower
 -------------
 
-A patch is applied that removes the `enum_has_lables()` function. Also, a number of casts are added to increase compatibility. The casts are:
+A patch is applied that removes the `enum_has_labels()` function, and
+`col_has_default()` cannot be used to test for columns specified with `DEFAULT
+NULL` (even though that's the implied default default). Also, a number of
+casts are added to increase compatibility. The casts are:
 
 * `boolean` to `text`
 * `text[]` to `text`

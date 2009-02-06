@@ -1,7 +1,7 @@
---- pgtap.sql	(revision 4476)
-+++ pgtap.sql	(working copy)
-@@ -2751,63 +2751,6 @@
-     SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || $1 || ' should not exist')::text );
+--- pgtap.sql.saf	2009-02-05 19:45:38.000000000 -0800
++++ pgtap.sql	2009-02-05 19:46:10.000000000 -0800
+@@ -3006,63 +3006,6 @@
+     SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
 --- enum_has_labels( schema, enum, labels, desc )
@@ -14,7 +14,7 @@
 -              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
 -              JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
 -              WHERE t.typisdefined
--               AND n.nspname = $1
+-               AND quote_ident(n.nspname) = quote_ident($1)
 -               AND t.typname = $2
 -               AND t.typtype = 'e'
 -             ORDER BY e.oid
@@ -29,7 +29,7 @@
 -RETURNS TEXT AS $$
 -    SELECT enum_has_labels(
 -        $1, $2, $3,
--        'Enum ' || $1 || '.' || $2 || ' should have labels (' || array_to_string( $3, ', ' ) || ')'
+-        'Enum ' || quote_ident($1) || '.' || quote_ident($2) || ' should have labels (' || array_to_string( $3, ', ' ) || ')'
 -    );
 -$$ LANGUAGE sql;
 -
@@ -57,7 +57,7 @@
 -RETURNS TEXT AS $$
 -    SELECT enum_has_labels(
 -        $1, $2,
--        'Enum ' || $1 || ' should have labels (' || array_to_string( $2, ', ' ) || ')'
+-        'Enum ' || quote_ident($1) || ' should have labels (' || array_to_string( $2, ', ' ) || ')'
 -    );
 -$$ LANGUAGE sql;
 -

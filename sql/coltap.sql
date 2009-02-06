@@ -387,20 +387,43 @@ SELECT * FROM check_test(
 );
 
 -- Make sure it works with a NULL default.
-SELECT * FROM check_test(
-    col_default_is( 'sometab', 'numb', NULL::numeric, 'desc' ),
-    true,
-    'col_default_is( tab, col, NULL, desc )',
-    'desc',
-    ''
-);
-SELECT * FROM check_test(
-    col_default_is( 'sometab', 'numb', NULL::numeric ),
-    true,
-    'col_default_is( tab, col, NULL )',
-    'Column sometab.numb should default to NULL',
-    ''
-);
+CREATE OR REPLACE FUNCTION nulltest () RETURNS SETOF TEXT AS $$
+DECLARE
+    tap text;
+BEGIN
+    IF pg_version_num() < 80300 THEN
+        -- Before 8.2, DEFAULT NULL was ignored.
+        RETURN NEXT pass('col_default_is( tab, col, NULL, desc ) should pass');
+        RETURN NEXT pass('col_default_is( tab, col, NULL, desc ) should have the proper description');
+        RETURN NEXT pass('col_default_is( tab, col, NULL, desc ) should have the proper diagnostics');
+        RETURN NEXT pass('col_default_is( tab, col, NULL ) should pass');
+        RETURN NEXT pass('col_default_is( tab, col, NULL ) should have the proper description');
+        RETURN NEXT pass('col_default_is( tab, col, NULL ) should have the proper diagnostics');
+    ELSE
+        -- In 8.3 and later, we can handle DEFAULT NULL correctly.
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'numb', NULL::numeric, 'desc' ),
+            true,
+            'col_default_is( tab, col, NULL, desc )',
+            'desc',
+            ''
+        ) LOOP
+            RETURN NEXT tap;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'numb', NULL::numeric ),
+            true,
+            'col_default_is( tab, col, NULL )',
+            'Column sometab.numb should default to NULL',
+            ''
+        ) LOOP
+            RETURN NEXT tap;
+        END LOOP;
+    END IF;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM nulltest();
 
 -- Make sure that it fails when there is no default.
 SELECT * FROM check_test(
