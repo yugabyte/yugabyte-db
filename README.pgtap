@@ -1,4 +1,4 @@
-pgTAP 0.17
+pgTAP 0.18
 ==========
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and

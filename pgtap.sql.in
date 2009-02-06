@@ -24,7 +24,7 @@ LANGUAGE SQL IMMUTABLE;
 CREATE OR REPLACE FUNCTION pg_version_num()
 RETURNS integer AS $$
     SELECT s.a[1]::int * 10000
-           + COALESCE(substring(s.a[2] FROM '[[:digit:]]+')::int, 0)
+           + COALESCE(substring(s.a[2] FROM '[[:digit:]]+')::int, 0) * 100
            + COALESCE(substring(s.a[3] FROM '[[:digit:]]+')::int, 0)
       FROM (
           SELECT string_to_array(current_setting('server_version'), '.') AS a
@@ -1066,10 +1066,9 @@ BEGIN
           FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c
          WHERE a.attrelid = c.oid
            AND pg_table_is_visible(c.oid)
-           AND pg_type_is_visible(a.atttypid)
+           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
            AND quote_ident(c.relname) = quote_ident($2)
            AND attnum > 0
-           AND NOT attisdropped
            AND quote_ident(a.attname) = quote_ident($3);
     ELSE
         IF NOT _cexists( $1, $2, $3 ) THEN
@@ -1080,12 +1079,11 @@ BEGIN
         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
           FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
          WHERE n.oid = c.relnamespace
-           AND pg_type_is_visible(a.atttypid)
+           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
            AND c.oid = a.attrelid
            AND quote_ident(n.nspname) = quote_ident($1)
            AND quote_ident(c.relname) = quote_ident($2)
            AND attnum > 0
-           AND NOT attisdropped
            AND quote_ident(a.attname) = quote_ident($3);
     END IF;
 
