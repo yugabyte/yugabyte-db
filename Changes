@@ -1,9 +1,10 @@
 Revision history for pgTAP
 
 0.19
-      - Fixed documentation for `col_default_is()` to explain that a
-        functional default must be cast to `TEXT` in the call to
-        `col_default_is()`.
+      - Added a alernate versions of `col_default_is()` to better handle the
+        common case when a default is specified as a string, such as a text or
+        expression default. This means that you have to do a lot less casting
+        of default values specified in the arguments to `col_default_is()`.
 
 0.18  2009-02-06T20:06:00
       - Fixed `pg_version_num()`. It was broken in 0.16; sorry about that!

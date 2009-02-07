@@ -1215,8 +1215,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- col_default_is( schema, table, column, default, description )
-CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, NAME, anyelement, TEXT )
+-- _cdi( schema, table, column, default, description )
+CREATE OR REPLACE FUNCTION _cdi ( NAME, NAME, NAME, anyelement, TEXT )
 RETURNS TEXT AS $$
 BEGIN
     IF NOT _cexists( $1, $2, $3 ) THEN
@@ -1249,8 +1249,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- col_default_is( table, column, default, description )
-CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement, TEXT )
+-- _cdi( table, column, default, description )
+CREATE OR REPLACE FUNCTION _cdi ( NAME, NAME, anyelement, TEXT )
 RETURNS TEXT AS $$
 BEGIN
     IF NOT _cexists( $1, $2 ) THEN
@@ -1281,14 +1281,50 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- col_default_is( table, column, default )
-CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement )
+-- _cdi( table, column, default )
+CREATE OR REPLACE FUNCTION _cdi ( NAME, NAME, anyelement )
 RETURNS TEXT AS $$
     SELECT col_default_is(
         $1, $2, $3,
         'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should default to ' 
         || COALESCE( quote_literal($3), 'NULL')
     );
+$$ LANGUAGE sql;
+
+-- col_default_is( schema, table, column, default, description )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, NAME, anyelement, TEXT )
+RETURNS TEXT AS $$
+    SELECT _cdi( $1, $2, $3, $4, $5 );
+$$ LANGUAGE sql;
+
+-- col_default_is( schema, table, column, default, description )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _cdi( $1, $2, $3, $4, $5 );
+$$ LANGUAGE sql;
+
+-- col_default_is( table, column, default, description )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement, TEXT )
+RETURNS TEXT AS $$
+    SELECT _cdi( $1, $2, $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_default_is( table, column, default, description )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _cdi( $1, $2, $3, $4 );
+$$ LANGUAGE sql;
+
+-- col_default_is( table, column, default )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, anyelement )
+RETURNS TEXT AS $$
+    SELECT _cdi( $1, $2, $3 );
+$$ LANGUAGE sql;
+
+-- col_default_is( table, column, default::text )
+CREATE OR REPLACE FUNCTION col_default_is ( NAME, NAME, text )
+RETURNS TEXT AS $$
+    SELECT _cdi( $1, $2, $3 );
 $$ LANGUAGE sql;
 
 -- _hasc( schema, table, constraint_type )

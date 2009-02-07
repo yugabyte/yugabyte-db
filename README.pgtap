@@ -1064,25 +1064,20 @@ that this test will fail if the table or column in question does not exist.
 The default argument must have an unambiguous type in order for the call to
 succeed. If you see an error such as 'ERROR: could not determine polymorphic
 type because input has type "unknown"', it's because you forgot to cast the
-expected value to its proper type. IOW, this will fail:
+expected value, probabaly a `NULL` (which, by the way, you can only properly
+test for in PostgreSQL 8.3 and later), to its proper type. IOW, this will
+fail:
 
-    SELECT col_default_is( 'tab', 'name', 'foo' );
+    SELECT col_default_is( 'tab', age, NULL );
 
 But this will not:
-
-    SELECT col_default_is( 'tab', 'name', 'foo'::text );
-
-You even need to properly cast your default value when it's a NULL (which, by
-the way, you can only properly test for in PostgreSQL 8.3 and later). Just
-cast it to the same data type as the column itself:
 
     SELECT col_default_is( 'tab', age, NULL::integer );
 
 You can also test for functional defaults. Just specify the function call as a
-string (and, yes, you have to cast it to `TEXT`; just think of the function as
-code in a string):
+string:
 
-    SELECT col_default_is( 'user', 'created_at', 'now()'::text );
+    SELECT col_default_is( 'user', 'created_at', 'now()' );
 
 If the test fails, it will output useful diagnostics. For example, this test:
 
@@ -1090,7 +1085,7 @@ If the test fails, it will output useful diagnostics. For example, this test:
         'pg_catalog',
         'pg_type',
         'typname',
-        'foo'::text,
+        'foo',
         'check typname'
     );
 

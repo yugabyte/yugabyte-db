@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(153);
+SELECT plan(171);
 --SELECT * from no_plan();
 
 -- This will be rolled back. :-)
@@ -13,6 +13,7 @@ CREATE TABLE public.sometab(
     name  TEXT DEFAULT '',
     numb  NUMERIC(10, 2) DEFAULT NULL,
     myint NUMERIC(8) DEFAULT 24,
+    myat  TIMESTAMP DEFAULT NOW(),
     plain INTEGER
 );
 RESET client_min_messages;
@@ -441,6 +442,50 @@ SELECT * FROM check_test(
     'col_default_is( tab, col, bogus )',
     'Column sometab.plain should default to ''1''',
     '    Column sometab.plain has no default'
+);
+
+-- Make sure that it works when the default is an expression.
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'myat', 'now()' ),
+    true,
+    'col_default_is( tab, col, expression )',
+    'Column sometab.myat should default to ''now()''',
+    ''
+);
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'myat', 'now()'::text ),
+    true,
+    'col_default_is( tab, col, expression::text )',
+    'Column sometab.myat should default to ''now()''',
+    ''
+);
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'myat', 'now()', 'desc' ),
+    true,
+    'col_default_is( tab, col, expression, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_default_is( 'sometab', 'myat', 'now()', 'desc'::text ),
+    true,
+    'col_default_is( tab, col, expression, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_default_is( 'public', 'sometab', 'myat', 'now()', 'desc' ),
+    true,
+    'col_default_is( schema, tab, col, expression, desc )',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    col_default_is( 'public', 'sometab', 'myat', 'now()', 'desc'::text ),
+    true,
+    'col_default_is( schema, tab, col, expression, desc )',
+    'desc',
+    ''
 );
 
 -- Check with a nonexistent column.
