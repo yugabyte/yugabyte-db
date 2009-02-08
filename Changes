@@ -7,7 +7,8 @@ Revision history for pgTAP
 * Added a alernate versions of `col_default_is()` to better handle the common
   case when a default is specified as a string, such as a text or expression
   default. This means that you have to do a lot less casting of default values
-  specified in the arguments to `col_default_is()`.
+  specified in the arguments to `col_default_is()`. It also restores the
+  signature that 0.17 recommended be dropped.
 
 0.18  2009-02-06T20:06:00
 -------------------------
