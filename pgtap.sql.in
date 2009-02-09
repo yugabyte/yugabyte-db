@@ -3097,6 +3097,75 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _is_super( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT usesuper
+      FROM pg_catalog.pg_user
+     WHERE quote_ident(usename) = quote_ident($1)
+$$ LANGUAGE sql STRICT;
+
+-- has_user( user, desc )
+CREATE OR REPLACE FUNCTION has_user( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_super($1) IS NOT NULL, $2 );
+$$ LANGUAGE sql;
+
+-- has_user( user )
+CREATE OR REPLACE FUNCTION has_user( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_super( $1 ) IS NOT NULL, 'User ' || quote_ident($1) || ' should exist');
+$$ LANGUAGE sql;
+
+-- hasnt_user( user, desc )
+CREATE OR REPLACE FUNCTION hasnt_user( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_super($1) IS NULL, $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_user( user )
+CREATE OR REPLACE FUNCTION hasnt_user( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_super( $1 ) IS NULL, 'User ' || quote_ident($1) || ' should not exist');
+$$ LANGUAGE sql;
+
+-- is_superuser( user, desc )
+CREATE OR REPLACE FUNCTION is_superuser( NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    is_super boolean := _is_super($1);
+BEGIN
+    IF is_super IS NULL THEN
+        RETURN fail( $2 ) || E'\n' || diag( '    User ' || quote_ident($1) || ' does not exist') ;
+    END IF;
+    RETURN ok( is_super, $2 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- is_superuser( user )
+CREATE OR REPLACE FUNCTION is_superuser( NAME )
+RETURNS TEXT AS $$
+    SELECT is_superuser( $1, 'User ' || quote_ident($1) || ' should be a super user' );
+$$ LANGUAGE sql;
+
+-- isnt_superuser( user, desc )
+CREATE OR REPLACE FUNCTION isnt_superuser( NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    is_super boolean := _is_super($1);
+BEGIN
+    IF is_super IS NULL THEN
+        RETURN fail( $2 ) || E'\n' || diag( '    User ' || quote_ident($1) || ' does not exist') ;
+    END IF;
+    RETURN ok( NOT is_super, $2 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- isnt_superuser( user )
+CREATE OR REPLACE FUNCTION isnt_superuser( NAME )
+RETURNS TEXT AS $$
+    SELECT isnt_superuser( $1, 'User ' || quote_ident($1) || ' should not be a super user' );
+$$ LANGUAGE sql;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$

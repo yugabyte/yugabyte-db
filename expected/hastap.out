@@ -1,5 +1,5 @@
 \unset ECHO
-1..285
+1..333
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -285,3 +285,51 @@ ok 282 - hasnt_column(view, column) should have the proper diagnostics
 ok 283 - hasnt_column(type, column) should pass
 ok 284 - hasnt_column(type, column) should have the proper description
 ok 285 - hasnt_column(type, column) should have the proper diagnostics
+ok 286 - has_user(current user) should pass
+ok 287 - has_user(current user) should have the proper description
+ok 288 - has_user(current user) should have the proper diagnostics
+ok 289 - has_user(current user, desc) should pass
+ok 290 - has_user(current user, desc) should have the proper description
+ok 291 - has_user(current user, desc) should have the proper diagnostics
+ok 292 - has_user(nonexistent user) should fail
+ok 293 - has_user(nonexistent user) should have the proper description
+ok 294 - has_user(nonexistent user) should have the proper diagnostics
+ok 295 - has_user(nonexistent user, desc) should fail
+ok 296 - has_user(nonexistent user, desc) should have the proper description
+ok 297 - has_user(nonexistent user, desc) should have the proper diagnostics
+ok 298 - hasnt_user(current user) should fail
+ok 299 - hasnt_user(current user) should have the proper description
+ok 300 - hasnt_user(current user) should have the proper diagnostics
+ok 301 - hasnt_user(current user, desc) should fail
+ok 302 - hasnt_user(current user, desc) should have the proper description
+ok 303 - hasnt_user(current user, desc) should have the proper diagnostics
+ok 304 - hasnt_user(nonexistent user) should pass
+ok 305 - hasnt_user(nonexistent user) should have the proper description
+ok 306 - hasnt_user(nonexistent user) should have the proper diagnostics
+ok 307 - hasnt_user(nonexistent user, desc) should pass
+ok 308 - hasnt_user(nonexistent user, desc) should have the proper description
+ok 309 - hasnt_user(nonexistent user, desc) should have the proper diagnostics
+ok 310 - is_superuser(nonexistent user, desc) should fail
+ok 311 - is_superuser(nonexistent user, desc) should have the proper description
+ok 312 - is_superuser(nonexistent user, desc) should have the proper diagnostics
+ok 313 - is_superuser(nonexistent user) should fail
+ok 314 - is_superuser(nonexistent user) should have the proper description
+ok 315 - is_superuser(nonexistent user) should have the proper diagnostics
+ok 316 - isnt_superuser(nonexistent user, desc) should fail
+ok 317 - isnt_superuser(nonexistent user, desc) should have the proper description
+ok 318 - isnt_superuser(nonexistent user, desc) should have the proper diagnostics
+ok 319 - isnt_superuser(nonexistent user) should fail
+ok 320 - isnt_superuser(nonexistent user) should have the proper description
+ok 321 - isnt_superuser(nonexistent user) should have the proper diagnostics
+ok 322 - is_superuser( current user ) should pass
+ok 323 - is_superuser( current user ) should have the proper description
+ok 324 - is_superuser( current user ) should have the proper diagnostics
+ok 325 - is_superuser( current user, desc ) should pass
+ok 326 - is_superuser( current user, desc ) should have the proper description
+ok 327 - is_superuser( current user, desc ) should have the proper diagnostics
+ok 328 - isnt_superuser( current user ) should pass
+ok 329 - isnt_superuser( current user ) should have the proper description
+ok 330 - isnt_superuser( current user ) should have the proper diagnostics
+ok 331 - isnt_superuser( current user, desc ) should pass
+ok 332 - isnt_superuser( current user, desc ) should have the proper description
+ok 333 - isnt_superuser( current user, desc ) should have the proper diagnostics

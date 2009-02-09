@@ -9,6 +9,7 @@ Revision history for pgTAP
   default. This means that you have to do a lot less casting of default values
   specified in the arguments to `col_default_is()`. It also restores the
   signature that 0.17 recommended be dropped.
+* Added `has_user()`, `isnt_user()`, `is_superuser()`, and `isnt_superuser()`.
 
 0.18  2009-02-06T20:06:00
 -------------------------

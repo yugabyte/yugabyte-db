@@ -1631,6 +1631,44 @@ cast it to `name[]` to disambiguate it from a text string:
 
     SELECT can_ok( 'lower', '{text}'::name[] );
 
+### `has_user( user, desc )` ###
+### `has_user( user )` ###
+
+    SELECT has_user( 'theory', 'User "theory" should exist' );
+
+Checks to ensure that a database user exists. If the description is omitted,
+it will default to "User `:username` should exist".
+
+### `hasnt_user( user, desc )` ###
+### `hasnt_user( user )` ###
+
+    SELECT hasnt_user( 'theory', 'User "theory" should exist' );
+
+The inverse of `has_user()`, this function tests for the *absence* of a database
+user.
+
+### `is_superuser( user, desc )` ###
+### `is_superuser( user )` ###
+
+    SELECT is_superuser( 'theory', 'User "theory" should be a super user' );
+
+Tests that a database user is a super user. If the description is omitted, it
+will default to "User `:username` should be a super user". If the user does
+not exist in the database, the diagnostics will say so.
+
+### `isnt_superuser( user, desc )` ###
+### `isnt_superuser( user )` ###
+
+    SELECT is_superuser(
+        'dr_evil',
+        'User "dr_evil" should not be a super user'
+    );
+
+The inverse of `is_superuser()`, this function tests that a database user is
+*not* a super user. Note that if the named user does not exist in the
+database, the test is still considered a failure, and the diagnostics will say
+so.
+
 Diagnostics
 -----------
 
@@ -2239,10 +2277,12 @@ To Do
   function rather than test files.
 * Useful schema testing functions to consider adding:
   * `has_cast()`
-  * `has_role()`, `has_user()`, `has_group()`
+  * `has_role()`, `has_group()`
   * `has_operator()`
   * `has_operator_class()`
   * `has_rule()`
+  * `func_returns()`
+  * `func_lang_is()`
   * `seq_has_range()`
   * `seq_increments_by()`
   * `seq_starts_at()`
