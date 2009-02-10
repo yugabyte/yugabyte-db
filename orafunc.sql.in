@@ -233,14 +233,10 @@ AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
-CREATE TABLE public.dual(dummy varchar(1));
-INSERT INTO public.dual(dummy) VALUES('X');
-CREATE RULE noins_dual AS ON INSERT TO public.dual DO INSTEAD NOTHING;
-CREATE RULE nodel_dual AS ON DELETE TO public.dual DO INSTEAD NOTHING;
-CREATE RULE noupd_dual AS ON UPDATE TO public.dual DO INSTEAD NOTHING;
+-- emulation of dual table
+CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;
 GRANT SELECT, REFERENCES ON public.dual TO PUBLIC;
-ANALYZE public.dual;
 
 -- this packege is emulation of dbms_output Oracle packege
 --
