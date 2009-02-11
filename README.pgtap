@@ -2275,6 +2275,7 @@ To Do
 
 * Add options to `pg_prove` to allow it to run tests using the `runtests()`
   function rather than test files.
+* Fix bug: Schema argument ignored in `can()`.
 * Useful schema testing functions to consider adding:
   * `has_cast()`
   * `has_role()`, `has_group()`
@@ -2287,6 +2288,7 @@ To Do
   * `seq_increments_by()`
   * `seq_starts_at()`
   * `seq_cycles()`
+  * `can_only()`
 
 Suported Versions
 -----------------
