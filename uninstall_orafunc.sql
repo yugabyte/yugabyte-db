@@ -26,7 +26,7 @@ DROP FUNCTION pg_catalog.to_date(str text);
 DROP FUNCTION pg_catalog.reverse(str text);
 DROP FUNCTION pg_catalog.lnnvl(bool);
 
-DROP TABLE public.dual CASCADE;
+DROP VIEW public.dual CASCADE;
 
 DROP FUNCTION nvl(anyelement, anyelement);
 DROP FUNCTION nvl2(anyelement, anyelement, anyelement);
