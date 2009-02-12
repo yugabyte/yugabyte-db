@@ -60,13 +60,17 @@ EXTRA_SUBS := -e "s/ E'/ '/g"
 # Throw, runtests, and enums aren't supported in 8.0.
 TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests enumtap,$(REGRESS))
-else ifeq ($(PGVER_MINOR), 4)
+else
+ifeq ($(PGVER_MINOR), 4)
 # Remove lines 15-20, which define pg_typeof().
 EXTRA_SUBS := -e '15,19d'
-else ifneq ($(PGVER_MINOR), 3)
+else
+ifneq ($(PGVER_MINOR), 3)
 # Enum test not supported by 8.2 and earlier.
 TESTS := $(filter-out sql/enumtap.sql,$(TESTS))
 REGRESS := $(filter-out enumtap,$(REGRESS))
+endif
+endif
 endif
 endif
 

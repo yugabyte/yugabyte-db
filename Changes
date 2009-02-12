@@ -10,6 +10,8 @@ Revision history for pgTAP
   specified in the arguments to `col_default_is()`. It also restores the
   signature that 0.17 recommended be dropped.
 * Added `has_user()`, `isnt_user()`, `is_superuser()`, and `isnt_superuser()`.
+* Fixed syntax in the `Makefile` to make it compatible with older versions of
+  `make`. Reported by Aaron Kangas.
 
 0.18  2009-02-06T20:06:00
 -------------------------
