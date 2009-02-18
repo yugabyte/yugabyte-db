@@ -252,10 +252,10 @@ you can collect all of your tests into database functions and run them all at
 once with `runtests()`. This is similar to how
 [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
 [Epic](http://www.epictest.org/) work. The `runtests()` function does all the
-work of finding and running your test functions. It even supports setup and
-teardown functions. To use it, write your unit test functions so that they
-return a set of text results, and then use the pgTAP assertion functions to
-return TAP values, like so:
+work of finding and running your test functions in individual transactions. It
+even supports setup and teardown functions. To use it, write your unit test
+functions so that they return a set of text results, and then use the pgTAP
+assertion functions to return TAP values, like so:
 
     create or replace function setup_insert(
     ) RETURNS SETOF TEXT AS $$
@@ -275,7 +275,9 @@ your unit testing functions, you can run your tests at any time using the
 
     SELECT * FROM runtests();
 
-The TAP results will be sent to your client.
+Each test function will run within its own transaction, and rolled back when
+the function completes (or after any teardown functions have run). The TAP
+results will be sent to your client.
 
 Test names
 ----------
@@ -2029,6 +2031,14 @@ The fixture functions run by `runtests()` are as follows:
   however, after a test that has died.
 * `^shutdown` - Functions whose names start with "shutdown" are run in
   alphabetical order after all test functions have been run.
+
+Note that all tests executed by `runtests()` are run within a single
+transaction, and each test is run in a subtransaction that also includes
+execution all the setup and teardown functions. All transactions are rolled
+back after each test function, and at the end of testing, leaving your
+database in largely the same condition as it was in when you started it (the
+one exception I'm aware of being sequences, which are not rolled back to the
+value used at the beginning of a rolled-back transaction).
 
 Writing Test Functions
 ======================
