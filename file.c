@@ -1058,5 +1058,5 @@ utl_file_tmpdir(PG_FUNCTION_ARGS)
 	canonicalize_path(tmpdir);
 #endif
 
-	PG_RETURN_TEXT_P(CStringGetTextP(tmpdir));
+	PG_RETURN_TEXT_P(cstring_to_text(tmpdir));
 }

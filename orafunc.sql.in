@@ -29,7 +29,7 @@ LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.last_day(date) IS 'returns last day of the month based on a date value';
 
 CREATE OR REPLACE FUNCTION pg_catalog.months_between(date1 date, date2 date)
-RETURNS float8
+RETURNS numeric
 AS 'MODULE_PATHNAME'
 LANGUAGE 'C' IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.months_between(date, date) IS 'returns the number of months between date1 and date2';
@@ -181,6 +181,11 @@ LANGUAGE sql IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION nanvl(float8, float8)
 RETURNS float8 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nanvl(numeric, numeric)
+RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 

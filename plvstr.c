@@ -191,7 +191,7 @@ ora_substr(Datum str, int start, int len)
 		n = pg_mbstrlen_with_len(VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
 		start = n + start + 1;
 		if (start <= 0)
-			return CStringGetTextP("");
+			return cstring_to_text("");
 		str = PointerGetDatum(t);	/* save detoasted text */
 	}
 
@@ -1080,7 +1080,7 @@ plvchr_char_name(PG_FUNCTION_ARGS)
 	if (c >= lengthof(char_names))
 		result = ora_substr_text(str, 1, 1);
 	else
-		result = CStringGetTextP(char_names[c]);
+		result = cstring_to_text(char_names[c]);
 
 	PG_RETURN_TEXT_P(result);
 }
@@ -1269,7 +1269,7 @@ plvstr_betwn_i(PG_FUNCTION_ARGS)
 		end_in -= 1;
 
 		if (start_in > end_in)
-			PG_RETURN_TEXT_P(CStringGetTextP(""));
+			PG_RETURN_TEXT_P(cstring_to_text(""));
 	}
 
 	PG_RETURN_TEXT_P(ora_substr_text(string_in,

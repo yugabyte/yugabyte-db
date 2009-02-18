@@ -12,19 +12,6 @@
 #define PG_VERSION_NUM		80100	/* assume 8.1. */
 #endif
 
-#if PG_VERSION_NUM >= 80400
-#define TextPGetCString(t)	text_to_cstring((t))
-#define CStringGetTextP(c)	cstring_to_text((c))
-#else
-#define CStringGetTextDatum(c) \
-        DirectFunctionCall1(textin, CStringGetDatum(c))
-#define TextPGetCString(t) \
-        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
-#define CStringGetTextP(c) \
-        DatumGetTextP(CStringGetTextDatum(c))
-text *cstring_to_text_with_len(const char *c, int n);
-#endif
-
 #define TextPCopy(t) \
 	DatumGetTextP(datumCopy(PointerGetDatum(t), false, -1))
 
@@ -50,6 +37,16 @@ int ora_mb_strlen1(text *str);
 
 #if PG_VERSION_NUM >= 80400
 extern Oid	equality_oper_funcid(Oid argtype);
+#endif
+
+#if PG_VERSION_NUM < 80400
+#define CStringGetTextDatum(c) \
+        DirectFunctionCall1(textin, CStringGetDatum(c))
+#define text_to_cstring(t) \
+        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
+#define cstring_to_text(c) \
+        DatumGetTextP(CStringGetTextDatum(c))
+text *cstring_to_text_with_len(const char *c, int n);
 #endif
 
 #if PG_VERSION_NUM < 80300

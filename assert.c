@@ -222,7 +222,7 @@ dbms_assert_qualified_sql_name(PG_FUNCTION_ARGS)
 	if (EMPTY_STR(qname))
 		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
 
-	if (!ParseIdentifierString(TextPGetCString(qname)))
+	if (!ParseIdentifierString(text_to_cstring(qname)))
 		ISNOT_QUALIFIED_SQL_NAME_EXCEPTION();
 
 	PG_RETURN_TEXT_P(qname);
@@ -258,7 +258,7 @@ dbms_assert_schema_name(PG_FUNCTION_ARGS)
 	if (EMPTY_STR(sname))
 		INVALID_SCHEMA_NAME_EXCEPTION();
 
-	nspname = TextPGetCString(sname);
+	nspname = text_to_cstring(sname);
 	names = stringToQualifiedNameList(nspname);
 	if (list_length(names) != 1)
 		INVALID_SCHEMA_NAME_EXCEPTION();
@@ -374,7 +374,7 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 	if (EMPTY_STR(str))
 		INVALID_OBJECT_NAME_EXCEPTION();
 
-	object_name = TextPGetCString(str);
+	object_name = text_to_cstring(str);
 
 	names = stringToQualifiedNameList(object_name);
 

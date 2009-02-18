@@ -31,7 +31,7 @@ orafce_to_char_int4(PG_FUNCTION_ARGS)
 
 	appendStringInfo(buf, "%d", arg0);
 
-	PG_RETURN_TEXT_P(CStringGetTextP(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
 }
 
 
@@ -43,7 +43,7 @@ orafce_to_char_int8(PG_FUNCTION_ARGS)
 
 	appendStringInfo(buf, INT64_FORMAT, arg0);
 
-	PG_RETURN_TEXT_P(CStringGetTextP(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
 }
 
 
@@ -61,7 +61,7 @@ orafce_to_char_float4(PG_FUNCTION_ARGS)
 		if (*p == '.')
 			*p = lconv->decimal_point[0];
 
-	PG_RETURN_TEXT_P(CStringGetTextP(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
 }
 
 
@@ -79,7 +79,7 @@ orafce_to_char_float8(PG_FUNCTION_ARGS)
 		if (*p == '.')
 			*p = lconv->decimal_point[0];
 
-	PG_RETURN_TEXT_P(CStringGetTextP(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
 }
 
 
@@ -97,7 +97,7 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 		if (*p == '.')
 			*p = lconv->decimal_point[0];
 
-	PG_RETURN_TEXT_P(CStringGetTextP(buf->data));
+	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
 }
 
 
@@ -110,7 +110,7 @@ orafce_to_number(PG_FUNCTION_ARGS)
 	Numeric		res;
 	char	   *p;
 
-	buf = TextPGetCString(arg0);
+	buf = text_to_cstring(arg0);
 
 	for (p = buf; *p; p++)
 		if (*p == lconv->decimal_point[0] && lconv->decimal_point[0])

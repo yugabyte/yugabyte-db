@@ -62,7 +62,7 @@ init_c_subst()
 		MemoryContext oldctx;
 
 		oldctx = MemoryContextSwitchTo(TopMemoryContext);
-		c_subst = CStringGetTextP(C_SUBST);
+		c_subst = cstring_to_text(C_SUBST);
 		MemoryContextSwitchTo(oldctx);
 	}
 }
@@ -76,7 +76,7 @@ set_c_subst(text *sc)
 		pfree(c_subst);
 
 	oldctx = MemoryContextSwitchTo(TopMemoryContext);
-	c_subst = sc ? TextPCopy(sc) : CStringGetTextP(C_SUBST);
+	c_subst = sc ? TextPCopy(sc) : cstring_to_text(C_SUBST);
 	MemoryContextSwitchTo(oldctx);
 }
 
@@ -182,7 +182,7 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 			appendBinaryStringInfo(sinfo, &template_str[positions[i]], sizes[i]);
 	}
 
-	return CStringGetTextP(sinfo->data);
+	return cstring_to_text(sinfo->data);
 }
 
 

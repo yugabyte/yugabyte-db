@@ -259,7 +259,7 @@ dbms_output_next(void)
 {
 	if (buffer_get < buffer_len)
 	{
-		text *line = CStringGetTextP(buffer + buffer_get);
+		text *line = cstring_to_text(buffer + buffer_get);
 		buffer_get += VARSIZE_ANY_EXHDR(line) + 1;
 		return line;
 	}

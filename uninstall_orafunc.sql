@@ -40,6 +40,7 @@ DROP FUNCTION cosh(float8);
 DROP FUNCTION tanh(float8);
 DROP FUNCTION nanvl(float4, float4);
 DROP FUNCTION nanvl(float8, float8);
+DROP FUNCTION nanvl(numeric, numeric);
 
 DROP FUNCTION decode(text, text, anyelement);
 DROP FUNCTION decode(text, text, anyelement, anyelement);

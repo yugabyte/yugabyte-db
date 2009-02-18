@@ -44,6 +44,7 @@ SELECT months_between ('2007-02-28', '2007-04-30');
 SELECT months_between ('2008-01-31', '2008-02-29');
 SELECT months_between ('2008-02-29', '2008-03-31');
 SELECT months_between ('2008-02-29', '2008-04-30');
+SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
 
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
 select length('a bydlim ve Skalici'),dbms_pipe.pack_message('a bydlim ve Skalici');
@@ -221,6 +222,9 @@ SELECT to_date('2009-01-02');
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
 SELECT sinh(1.570796), cosh(1.570796), tanh(4);
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
+SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
+SELECT nanvl(12345::float8, 1), nanvl('NaN'::float8, 1);
+SELECT nanvl(12345::numeric, 1), nanvl('NaN'::numeric, 1);
 
 select dbms_assert.enquote_literal('some text '' some text');
 select dbms_assert.enquote_name('''"AAA');

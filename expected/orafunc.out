@@ -199,6 +199,12 @@ SELECT months_between ('2008-02-29', '2008-04-30');
              -2
 (1 row)
 
+SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
+ trunc 
+-------
+     0
+(1 row)
+
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
  length | pack_message 
 --------+--------------
@@ -1155,6 +1161,24 @@ SELECT sinh(1.570796), cosh(1.570796), tanh(4);
 (1 row)
 
 SELECT nanvl(12345, 1), nanvl('NaN', 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT nanvl(12345::float8, 1), nanvl('NaN'::float8, 1);
+ nanvl | nanvl 
+-------+-------
+ 12345 |     1
+(1 row)
+
+SELECT nanvl(12345::numeric, 1), nanvl('NaN'::numeric, 1);
  nanvl | nanvl 
 -------+-------
  12345 |     1

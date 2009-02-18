@@ -178,7 +178,7 @@ dbms_utility_format_call_stack(char mode)
 Datum
 dbms_utility_format_call_stack0(PG_FUNCTION_ARGS)
 {
-	PG_RETURN_TEXT_P(CStringGetTextP(dbms_utility_format_call_stack('o')));
+	PG_RETURN_TEXT_P(cstring_to_text(dbms_utility_format_call_stack('o')));
 };
 
 Datum
@@ -207,5 +207,5 @@ dbms_utility_format_call_stack1(PG_FUNCTION_ARGS)
 				 errdetail("Allowed only chars [ops].")));
 	}
 
-	PG_RETURN_TEXT_P(CStringGetTextP(dbms_utility_format_call_stack(mode)));
+	PG_RETURN_TEXT_P(cstring_to_text(dbms_utility_format_call_stack(mode)));
 }

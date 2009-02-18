@@ -3,6 +3,7 @@
 #include "utils/date.h"
 #include "utils/builtins.h"
 #include "utils/nabstime.h"
+#include "utils/numeric.h"
 #include <sys/time.h>
 #include "orafunc.h"
 
@@ -330,7 +331,8 @@ months_between(PG_FUNCTION_ARGS)
 	else
 		result = (y1 - y2) * 12 + (m1 - m2) + (d1 - d2) / 31.0;
 
-	PG_RETURN_FLOAT8(result);
+	PG_RETURN_NUMERIC(
+		DirectFunctionCall1(float8_numeric, Float8GetDatumFast(result)));
 }
 
 /********************************************************************
