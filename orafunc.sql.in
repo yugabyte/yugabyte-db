@@ -189,6 +189,26 @@ RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
+CREATE OR REPLACE FUNCTION pg_catalog.dump("any") 
+RETURNS varchar
+AS 'MODULE_PATHNAME', 'orafce_dump'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION pg_catalog.dump(text) 
+RETURNS varchar
+AS 'MODULE_PATHNAME', 'orafce_dump'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION pg_catalog.dump("any", integer) 
+RETURNS varchar
+AS 'MODULE_PATHNAME', 'orafce_dump'
+LANGUAGE C;
+
+CREATE OR REPLACE FUNCTION pg_catalog.dump(text, integer) 
+RETURNS varchar
+AS 'MODULE_PATHNAME', 'orafce_dump'
+LANGUAGE C;
+
 CREATE SCHEMA plvstr;
 
 CREATE OR REPLACE FUNCTION plvstr.rvrs(str text, start int, _end int)

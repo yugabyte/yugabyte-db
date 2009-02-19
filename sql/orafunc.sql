@@ -257,3 +257,10 @@ select plunit.assert_equals(10.2, 10.3, 0.01, 'attention some diff');
 select plunit.assert_not_equals(current_date, current_date + 1, 'yestarday is today');
 select plunit.fail();
 select plunit.fail('custom exception');
+
+select dump('Yellow dog');
+select dump('Yellow dog', 10);
+select dump('Yellow dog', 17);
+select dump(10);
+select dump(date '2008-10-10');
+select dump(10.23);

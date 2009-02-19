@@ -25,6 +25,10 @@ DROP FUNCTION pg_catalog.to_number(str text);
 DROP FUNCTION pg_catalog.to_date(str text);
 DROP FUNCTION pg_catalog.reverse(str text);
 DROP FUNCTION pg_catalog.lnnvl(bool);
+DROP FUNCTION pg_catalog.dump("any");
+DROP FUNCTION pg_catalog.dump(text);
+DROP FUNCTION pg_catalog.dump("any", integer);
+DROP FUNCTION pg_catalog.dump(text, integer);
 
 DROP VIEW public.dual CASCADE;
 

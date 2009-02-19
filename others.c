@@ -4,8 +4,13 @@
 #include "catalog/pg_operator.h"
 #include "catalog/pg_type.h"
 #include "fmgr.h"
+#include "lib/stringinfo.h"
+#include "nodes/nodeFuncs.h"
+#include "nodes/pg_list.h"
+#include "nodes/primnodes.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
+#include "utils/datum.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
@@ -23,6 +28,8 @@ Datum ora_nlssort(PG_FUNCTION_ARGS);
 Datum ora_set_nls_sort(PG_FUNCTION_ARGS);
 Datum ora_lnnvl(PG_FUNCTION_ARGS);
 Datum ora_decode(PG_FUNCTION_ARGS);
+Datum orafce_dump(PG_FUNCTION_ARGS);
+
 
 static char *lc_collate_cache = NULL;
 static int multiplication = 1;
@@ -385,3 +392,117 @@ equality_oper_funcid(Oid argtype)
 	return get_opcode(eq);
 }
 #endif
+
+/*
+ * dump(anyexpr [,format])
+ *
+ *  the dump function returns a varchar2 value that includes the datatype code, 
+ *  the length in bytes, and the internal representation of the expression.
+ */
+static void 
+appendChar(StringInfo str, const char *formatstr, int format, unsigned char c)
+{
+	/* print only ANSI visible chars */
+	if (format == 17 && (iscntrl(c) || !isascii(c)))
+		appendStringInfoChar(str, '?');
+	else
+		appendStringInfo(str, formatstr, c);
+}
+
+PG_FUNCTION_INFO_V1(orafce_dump);
+
+
+static void
+outDatum(StringInfo str, Datum value, int typlen, bool typbyval, int format,  char *formatstr)
+{
+	Size		length,
+				i;
+	char	   *s;
+	
+	length = datumGetSize(value, typbyval, typlen);
+
+	if (typbyval)
+	{
+		s = (char *) (&value);
+		for (i = 0; i < (Size) sizeof(Datum); i++)
+		{
+			if (i > 0) appendStringInfoChar(str, ',');
+			appendChar(str, formatstr, format, (unsigned char) (s[i]));
+		}
+	}
+	else
+	{
+		s = (char *) DatumGetPointer(value);
+		if (!PointerIsValid(s))
+			appendStringInfoChar(str, ':');
+		else
+		{
+			for (i = 0; i < length; i++)
+			{
+				if (i > 0) appendStringInfoChar(str, ',');
+				appendChar(str, formatstr, format, (unsigned char) (s[i]));
+			}
+		}
+	}
+}
+
+
+Datum
+orafce_dump(PG_FUNCTION_ARGS)
+{
+	Oid	valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	List	*args;
+	int16	typlen;
+	bool	typbyval;
+	Size		length;
+	Datum		value;
+	StringInfo	str = makeStringInfo();
+	int	format;
+	char	*formatstr = NULL; 			/* quite compiler */
+	
+	if (!fcinfo->flinfo || !fcinfo->flinfo->fn_expr)
+		elog(ERROR, "function is called from invalid context");
+	
+	if (PG_ARGISNULL(0))
+		elog(ERROR, "argument is NULL");
+		
+	value = PG_GETARG_DATUM(0);
+	if (PG_NARGS() == 1)
+		format = 10;
+	else
+	{
+		if (PG_ARGISNULL(1))
+			format = 10;
+		else
+			format = PG_GETARG_INT32(1);
+	}
+	
+	switch (format)
+	{
+		case 8:
+			formatstr = "%ho";
+			break;
+		case 10: 
+			formatstr = "%hu";
+			break;
+		case 16:
+			formatstr = "%hx";
+			break;
+		case 17:
+			formatstr = "%hc";
+			break;
+		default:
+			elog(ERROR, "unknown format");
+	}
+
+	args = ((FuncExpr *) fcinfo->flinfo->fn_expr)->args;
+	valtype = exprType((Node *) list_nth(args, 0));
+	
+	get_typlenbyval(valtype, &typlen, &typbyval);
+	length = datumGetSize(value, typbyval, typlen);
+	
+	appendStringInfo(str, "Typ=%d Len=%d: ", valtype, length);
+	outDatum(str, value, typlen, typbyval, format, formatstr);
+
+	PG_RETURN_TEXT_P(cstring_to_text(str->data));
+}

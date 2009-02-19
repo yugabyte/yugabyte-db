@@ -67,19 +67,19 @@ SELECT add_months ('2008-01-31', -80640);
  4712-01-31 BC
 (1 row)
 
-SELECT last_day (to_date('2003/03/15', 'yyyy/mm/dd'));
+SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
   last_day  
 ------------
  2003-03-31
 (1 row)
 
-SELECT last_day (to_date('2003/02/03', 'yyyy/mm/dd'));
+SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
   last_day  
 ------------
  2003-02-28
 (1 row)
 
-SELECT last_day (to_date('2004/02/03', 'yyyy/mm/dd'));
+SELECT last_day(to_date('2004/02/03', 'yyyy/mm/dd'));
   last_day  
 ------------
  2004-02-29
@@ -1143,7 +1143,7 @@ SELECT to_number('123.456'::text);
 (1 row)
 
 SELECT to_date('2009-01-02');
-  to_date 
+  to_date   
 ------------
  2009-01-02
 (1 row)
@@ -1312,3 +1312,39 @@ DETAIL:  Plunit.assertation (assert_fail).
 select plunit.fail('custom exception');
 ERROR:  custom exception
 DETAIL:  Plunit.assertation (assert_fail).
+select dump('Yellow dog');
+                             dump                              
+---------------------------------------------------------------
+ Typ=25 Len=14: 56,0,0,0,89,101,108,108,111,119,32,100,111,103
+(1 row)
+
+select dump('Yellow dog', 10);
+                             dump                              
+---------------------------------------------------------------
+ Typ=25 Len=14: 56,0,0,0,89,101,108,108,111,119,32,100,111,103
+(1 row)
+
+select dump('Yellow dog', 17);
+                    dump                    
+--------------------------------------------
+ Typ=25 Len=14: 8,?,?,?,Y,e,l,l,o,w, ,d,o,g
+(1 row)
+
+select dump(10);
+          dump          
+------------------------
+ Typ=23 Len=4: 10,0,0,0
+(1 row)
+
+select dump(date '2008-10-10');
+            dump            
+----------------------------
+ Typ=1082 Len=4: 133,12,0,0
+(1 row)
+
+select dump(10.23);
+                     dump                     
+----------------------------------------------
+ Typ=1700 Len=12: 48,0,0,0,2,0,0,0,10,0,252,8
+(1 row)
+
