@@ -19,6 +19,9 @@ Getopt::Long::GetOptions(
     'host|h=s'            => \$opts->{host},
     'port|p=s'            => \$opts->{port},
     'pset|P=s%'           => \$opts->{pset},
+    'runtests|r'          => \$opts->{runtests},
+    'schema|s|=s'         => \$opts->{schema},
+    'match|x|=s'          => \$opts->{match},
     'timer|t'             => \$opts->{timer},
     'color|c!'            => \$opts->{color},
     'verbose|v+'          => \$opts->{verbose},
@@ -41,10 +44,13 @@ if ($opts->{version}) {
     exit;
 }
 
-unless (@ARGV) {
+# --schema and --match assume --runtests.
+$opts->{runtests} ||= !!($opts->{schema} || $opts->{match});
+
+unless ($opts->{runtests} or @ARGV) {
     require Pod::Usage;
     Pod::Usage::pod2usage(
-        '-message'  => "\nOops! You didn't say what test scripts to run.\n",
+        '-message'  => "\nOops! You didn't say what test scripts to run or specify --runtests.\n",
         '-sections' => '(?i:(Usage|Options))',
         '-verbose'  => 99,
         '-exitval' => 1,
@@ -75,34 +81,64 @@ if (my $pset = $opts->{pset}) {
     }
 }
 
-push @command, '--file';
+# Figure out what tests to run.
+my $tests;
+if ($opts->{runtests}) {
+    # We're just going to call `runtests()`.
+    push @command, '--command';
 
+    my @args;
+    for my $key qw(schema match) {
+        next unless $opts->{$key};
+        (my $arg = $opts->{$key}) =~ s/'/\\'/g;
+        # Gotta cast the arguments.
+        push @args, "'$arg'::" . ($key eq 'schema' ? 'name' : 'text');
+    }
+
+    # This is the command we'll run.
+    $tests = [[
+        "SELECT * FROM runtests(" . join( ', ', @args ) . ');',
+        'runtests(' . join(', ', @args) . ')',
+    ]];
+} else {
+    # Each item in @ARGV is a file name.
+    $tests = \@ARGV;
+    push @command, '--file';
+}
+
+# Make it so!
 TAP::Harness->new({
     verbosity => $opts->{verbose} || $ENV{TEST_VERBOSE},
     timer     => $opts->{timer},
     color     => $opts->{color},
     exec      => \@command,
-})->runtests( @ARGV );
+})->runtests( @{ $tests } );
 
 __END__
 
 =head1 Name
 
-pg_prove - A command-line tool for running pgTAP tests against TAP::Harness
+pg_prove - A command-line tool for running and harnessing pgTAP tests
 
 =head1 Usage
 
   pg_prove -d template1 test*.sql
+  pg_prove -d testdb -s testschema
 
 =head1 Description
 
-C<pg_prove> is a command-line application to run one or more pgTAP tests against
-a PostgreSQL database. The output of the tests is harvested and processed by
+C<pg_prove> is a command-line application to run one or more pgTAP tests in a
+PostgreSQL database. The output of the tests is harvested and processed by
 L<TAP::Harness|TAP::Harness> in order to summarize the results of the test.
 
-The pgTAP test scripts should consist of a series of SQL statements that
-output TAP. Here's a simple example that assumes that the pgTAP functions have
-been installed in the database:
+Tests can be written and run in one of two ways, as SQL scripts or as database
+functions.
+
+=head2 Test Scripts
+
+pgTAP test scripts should consist of a series of SQL statements that output
+TAP. Here's a simple example that assumes that the pgTAP functions have been
+installed in the database:
 
     -- Start transaction and plan the tests.
     BEGIN;
@@ -115,8 +151,8 @@ been installed in the database:
     SELECT * FROM finish();
     ROLLBACK;
 
-Now run the tests. Here's what it looks like when the pgTAP tests are run with
-`pg_prove`:
+Now run the tests by passing the list of SQL script names to C<pg_prove>.
+Here's what it looks like when the pgTAP tests are run with C<pg_prove>
 
     % pg_prove -U postgres sql/*.sql
     sql/coltap.....ok
@@ -128,6 +164,39 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
     Files=5, Tests=216,  1 wallclock secs ( 0.06 usr  0.02 sys +  0.08 cusr  0.07 csys =  0.23 CPU)
     Result: PASS
 
+=head2 xUnit Test Functions
+
+pgTAP test functions should return a set of text, and then simply return the
+values returned by pgTAP functions, like so:
+
+    CREATE OR REPLACE FUNCTION setup_insert(
+    ) RETURNS SETOF TEXT AS $$
+        RETURN NEXT is( MAX(nick), NULL, 'Should have no users') FROM users;
+        INSERT INTO users (nick) VALUES ('theory');
+    $$ LANGUAGE plpgsql;
+
+    CREATE OR REPLACE FUNCTION test_user(
+    ) RETURNS SETOF TEXT AS $$
+       SELECT is( nick, 'theory', 'Should have nick') FROM users;
+    END;
+    $$ LANGUAGE sql;
+
+Once you have these functions defined in your database, you can run them with
+C<pg_prove> by using the C<--runtests> option.
+
+    % pg_prove -d myapp -r
+    runtests()....ok
+    All tests successful.
+    Files=1, Tests=32,  0 wallclock secs ( 0.02 usr  0.01 sys +  0.01 cusr  0.00 csys =  0.04 CPU)
+    Result: PASS
+
+Be sure to pass the C<--schema> option if your test functions are all in one
+schema, and the C<--match> option if they have names that don't start with
+"test". For example, if you have all of your test functions in "test" schema
+and I<ending> with "test", run the tests like so:
+
+    pg_prove -d myapp --schema test --match 'test$'
+
 =head1 Options
 
   -b --psql-bin PSQL       Location of the psql program.
@@ -135,6 +204,9 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
   -U --username USERNAME   Username with which to connect.
   -h --host HOST           Host to which to connect.
   -p --port PORT           Port to which to connect.
+  -r --runtests            Run tests using C<runtests()>.
+  -s --test-schema         Schema in which to find test functions.
+  -x --test-match          Regular expression to find test functions.
   -t --timer               Print elapsed time after each test file.
   -c --color               Display colored test ouput.
      --nocolor             Do not display colored test ouput.
@@ -222,6 +294,60 @@ on the supported options.
 Display standard output of test scripts while running them. This behavior can
 also be triggered by setting the C<$TEST_VERBOSE> environment variable to a
 true value.
+
+=item C<-r>
+
+=item C<--runtests>
+
+  pg_prove --runtests
+  pg_prove -r
+
+Don't run any test scripts, but just use the C<runtests()> pgTAP function to
+run xUnit tests. This ends up looking like a single test script has been run,
+when in fact no test scripts have been run. Instead, C<pg_prove> tells C<psql>
+to run something like:
+
+  psql --command 'SELECT * FROM runtests()'
+
+You should use this option when you've written your tests in xUnit style,
+where they're all defined in test functions already loaded in the database.
+
+=item C<-s>
+
+=item C<--schema>
+
+  pg_prove --schema test
+  pg_prove -s mytest
+
+Used with C<--runtests>, and, in fact, implicitly forces C<--runtests> to be
+true. This option can be used to specify the name of a schema in which to find
+xUnit functions to run. Basically, it tells C<psql> to run something like:
+
+  psql --command "SELECT * FROM runtests('test'::name)"
+
+=item C<-x>
+
+=item C<--match>
+
+  pg_prove --match 'test$'
+  pg_prove -x _test_
+
+Used with C<--runtests>, and, in fact, implicitly forces C<--runtests> to be
+true. This option can be used to specify a POSIX regular expression that will
+be used to search for xUnit functions to run. Basically, it tells C<psql> to
+run something like:
+
+  psql --command "SELECT * FROM runtests('_test_'::text)"
+
+This will run any visible functions with the string "_test_" in their names.
+This can be especially useful if you just want to run a single test in a
+given schema. For example, this:
+
+  pg_prove --schema testing --match '^test_widgets$'
+
+Will have C<psql> execute the C<runtests()> function like so:
+
+ SELECT * FROM runtests('testing'::name, '^test_widgets$'::text);
 
 =item C<-t>
 

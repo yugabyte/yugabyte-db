@@ -168,10 +168,11 @@ loading of the test functions -- in the event of an uncaught exception.
 Using `pg_prove`
 ----------------
 
-Or save yourself some effort -- and run a batch of tests scripts at once -- by
-using `pg_prove`. If you're not relying on `installcheck`, your test scripts
-can be a lot less verbose; you don't need to set all the extra variables,
-because `pg_prove` takes care of that for you:
+Or save yourself some effort -- and run a batch of tests scripts or all of
+your xUnit test functions at once -- by using `pg_prove`. If you're not
+relying on `installcheck`, your test scripts can be a lot less verbose; you
+don't need to set all the extra variables, because `pg_prove` takes care of
+that for you:
 
     -- Start transaction and plan the tests.
     BEGIN;
@@ -196,6 +197,11 @@ Now run the tests. Here's what it looks like when the pgTAP tests are run with
     All tests successful.
     Files=5, Tests=216,  1 wallclock secs ( 0.06 usr  0.02 sys +  0.08 cusr  0.07 csys =  0.23 CPU)
     Result: PASS
+
+If you're using xUnit tests and just want to have `pg_prove` run them all
+through the `runtests()` function, just tell it to do so:
+
+    % pg_prove -d myapp --runtests
 
 Yep, that's all there is to it. Call `pg_prove --help` to see other supported
 options, and `pg_prove --man` to see its entire documentation.
@@ -257,7 +263,7 @@ even supports setup and teardown functions. To use it, write your unit test
 functions so that they return a set of text results, and then use the pgTAP
 assertion functions to return TAP values, like so:
 
-    create or replace function setup_insert(
+    CREATE OR REPLACE FUNCTION setup_insert(
     ) RETURNS SETOF TEXT AS $$
         RETURN NEXT is( MAX(nick), NULL, 'Should have no users') FROM users;
         INSERT INTO users (nick) VALUES ('theory');
@@ -1967,7 +1973,7 @@ Then you can just call the function to run all of your TAP tests at once:
 ### `do_tap()` ###
 
     SELECT plan(32);
-    SELECT * FROM do_tap('testschema');
+    SELECT * FROM do_tap('testschema'::name);
     SELECT * FROM finish();
 
 If you like you can create a whole slew of these batched tap functions, and
@@ -2005,7 +2011,7 @@ failing tests.
 ### `runtests( match )` ###
 ### `runtests( )` ###
 
-    SELECT * FROM runtests('testschema');
+    SELECT * FROM runtests( 'testschema', '^test' );
 
 If you'd like pgTAP to plan, run all of your tests functions, and finish all
 in one fell swoop, use `runtests()`. This most closely emulates the xUnit
@@ -2014,11 +2020,16 @@ testing environment, similar to the functionality of
 [Epic](http://www.epictest.org/). It requires PostgreSQL 8.1 or higher.
 
 As with `do_tap()`, you can pass in a schema argument and/or a pattern that
-the names of the tests functions can match. But unlike `do_tap()`,
-`runtests()` fully supports startup, shutdown, setup, and teardown functions,
-as well as transactional rollbacks between tests. It also outputs the test
-plan and fishes the tests, so you don't have to call `plan()` or `finish()`
-yourself.
+the names of the tests functions can match. If you pass in only the schema
+argument, be sure to cast it to `name` to identify it as a schema name rather
+than a pattern:
+
+    SELECT * FROM runtests('testschema'::name);
+
+Unlike `do_tap()`, `runtests()` fully supports startup, shutdown, setup, and
+teardown functions, as well as transactional rollbacks between tests. It also
+outputs the test plan and fishes the tests, so you don't have to call `plan()`
+or `finish()` yourself.
 
 The fixture functions run by `runtests()` are as follows:
 
@@ -2283,8 +2294,6 @@ Don't even use them there.
 To Do
 -----
 
-* Add options to `pg_prove` to allow it to run tests using the `runtests()`
-  function rather than test files.
 * Fix bug: Schema argument ignored in `can()`.
 * Useful schema testing functions to consider adding:
   * `has_cast()`
