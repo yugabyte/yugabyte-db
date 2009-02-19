@@ -8,6 +8,7 @@
 #include "nodes/nodeFuncs.h"
 #include "nodes/pg_list.h"
 #include "nodes/primnodes.h"
+#include "parser/parse_expr.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
