@@ -39,7 +39,8 @@ package management system such as RPM to install PostgreSQL, be sure that the
 `-devel` package is also installed. If necessary, add the path to `pg_config`
 to your `$PATH` environment variable:
 
-    env PATH=$PATH:/path/to/pgsql/bin USE_PGXS=1 make && make test && make install
+    env PATH=$PATH:/path/to/pgsql/bin USE_PGXS=1 \
+    make && make install && make installcheck
 
 And finally, if all that fails, copy the entire distribution directory to the
 `contrib/` subdirectory of the PostgreSQL source tree and try it there without
@@ -48,6 +49,15 @@ the `$USE_PGXS` variable:
     make
     make install
     make installcheck
+
+If you encounter an error such as:
+
+    ERROR:  must be owner of database regression
+
+You need to run the test suite using a super user, such as the default
+"postgres" super user:
+
+    make installcheck PGUSER=postgres
 
 If you want to schema-qualify pgTAP (that is, install all of its functions
 into their own schema), set the `$TAPSCHEMA` variable to the name of the
@@ -74,7 +84,7 @@ PostgreSQL client environment variables:
 * `$PGPORT`
 * `$PGUSER`
 
-You can use it to run the test suite like so:
+You can use it to run the test suite as a database super user like so:
 
     make test USE_PGXS=1 PGUSER=postgres
 
@@ -1639,21 +1649,37 @@ cast it to `name[]` to disambiguate it from a text string:
 
     SELECT can_ok( 'lower', '{text}'::name[] );
 
+### `has_role( role, desc )` ###
+### `has_role( role )` ###
+
+    SELECT has_role( 'theory', 'Role "theory" should exist' );
+
+Checks to ensure that a database role exists. If the description is omitted,
+it will default to "Role `:role` should exist".
+
+### `hasnt_role( role, desc )` ###
+### `hasnt_role( role )` ###
+
+    SELECT hasnt_role( 'theory', 'Role "theory" not should exist' );
+
+The inverse of `has_role()`, this function tests for the *absence* of a
+database role.
+
 ### `has_user( user, desc )` ###
 ### `has_user( user )` ###
 
     SELECT has_user( 'theory', 'User "theory" should exist' );
 
 Checks to ensure that a database user exists. If the description is omitted,
-it will default to "User `:username` should exist".
+it will default to "User `:user` should exist".
 
 ### `hasnt_user( user, desc )` ###
 ### `hasnt_user( user )` ###
 
-    SELECT hasnt_user( 'theory', 'User "theory" should exist' );
+    SELECT hasnt_user( 'theory', 'User "theory" not should exist' );
 
-The inverse of `has_user()`, this function tests for the *absence* of a database
-user.
+The inverse of `has_user()`, this function tests for the *absence* of a
+database user.
 
 ### `is_superuser( user, desc )` ###
 ### `is_superuser( user )` ###
@@ -1661,8 +1687,8 @@ user.
     SELECT is_superuser( 'theory', 'User "theory" should be a super user' );
 
 Tests that a database user is a super user. If the description is omitted, it
-will default to "User `:username` should be a super user". If the user does
-not exist in the database, the diagnostics will say so.
+will default to "User `:user` should be a super user". If the user does not
+exist in the database, the diagnostics will say so.
 
 ### `isnt_superuser( user, desc )` ###
 ### `isnt_superuser( user )` ###
@@ -1676,6 +1702,45 @@ The inverse of `is_superuser()`, this function tests that a database user is
 *not* a super user. Note that if the named user does not exist in the
 database, the test is still considered a failure, and the diagnostics will say
 so.
+
+### `has_group( group, desc )` ###
+### `has_group( group )` ###
+
+    SELECT has_group( 'sweeties, 'Group "sweeties should exist' );
+
+Checks to ensure that a database group exists. If the description is omitted,
+it will default to "Group `:group` should exist".
+
+### `hasnt_group( group, desc )` ###
+### `hasnt_group( group )` ###
+
+    SELECT hasnt_group( 'meanies, 'Group meaines should not exist' );
+
+The inverse of `has_group()`, this function tests for the *absence* of a
+database group.
+
+### `is_member_of( group, users[], desc )` ###
+### `is_member_of( group, users[] )` ###
+### `is_member_of( group, users, desc )` ###
+### `is_member_of( group, users )` ###
+
+    SELECT is_member_of( 'sweeties', 'anna' 'Anna should be a sweetie' );
+    SELECT is_member_of( 'meanies', ARRAY['dr_evil', 'dr_no' ] );
+
+Checks whether a group contains a user or all of an array of users. If the
+description is omitted, it will default to "Should have members of group
+`:group`." On failure, `is_member_of()` will output diagnostics listing the
+missing users, like so:
+
+    not ok 370 - Should have members of group meanies
+    # Failed test 370: "Should have members of group meanies"
+    #     Users missing from the meanies group:
+    #         theory
+    #         agliodbs
+
+If the group does not exist, the diagnostics will tell you that, instead. But
+you use `has_group()` to make sure the group exists before you check its
+members, don't you? Of course you do.
 
 Diagnostics
 -----------
@@ -2288,15 +2353,14 @@ compatibility:
 * `int2vector` to `integer[]`.
 
 Otherwise, all is the same as for 8.2 Do note, however, that the
-`throws_ok()`, `lives_ok()`, and `runtests()` functions do not work under 8.0.
-Don't even use them there.
+`throws_ok()`, `lives_ok()`, `runtests()`, `has_role()`, and `hasnt_role()`
+functions do not work under 8.0. Don't even use them there.
 
 To Do
 -----
 
 * Useful schema testing functions to consider adding:
   * `has_cast()`
-  * `has_role()`, `has_group()`
   * `has_operator()`
   * `has_operator_class()`
   * `has_rule()`

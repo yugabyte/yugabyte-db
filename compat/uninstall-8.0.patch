@@ -1,0 +1,14 @@
+--- uninstall_pgtap.sql.orig	2009-02-19 20:04:48.000000000 -0800
++++ uninstall_pgtap.sql.in	2009-02-19 20:04:50.000000000 -0800
+@@ -38,11 +38,6 @@
+ DROP FUNCTION has_user( NAME );
+ DROP FUNCTION has_user( NAME, TEXT );
+ DROP FUNCTION _is_super( NAME );
+-DROP FUNCTION hasnt_role( NAME );
+-DROP FUNCTION hasnt_role( NAME, TEXT );
+-DROP FUNCTION has_role( NAME );
+-DROP FUNCTION has_role( NAME, TEXT );
+-DROP FUNCTION _has_role( NAME );
+ DROP FUNCTION enum_has_labels( NAME, NAME[] );
+ DROP FUNCTION enum_has_labels( NAME, NAME[], TEXT );
+ DROP FUNCTION enum_has_labels( NAME, NAME, NAME[] );

@@ -16,6 +16,19 @@ CREATE TABLE public.sometab(
     myat  TIMESTAMP DEFAULT NOW(),
     plain INTEGER
 );
+
+CREATE OR REPLACE FUNCTION fakeout( eok boolean, name text )
+RETURNS SETOF TEXT AS $$
+DECLARE
+    descr text := coalesce( name || ' ', 'Test ' ) || 'should ';
+BEGIN
+    RETURN NEXT pass(descr || CASE eok WHEN true then 'pass' ELSE 'fail' END);
+    RETURN NEXT pass(descr || 'have the proper description');
+    RETURN NEXT pass(descr || 'have the proper diagnostics');
+    RETURN;
+END;
+$$ LANGUAGE PLPGSQL;
+
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -394,12 +407,17 @@ DECLARE
 BEGIN
     IF pg_version_num() < 80300 THEN
         -- Before 8.2, DEFAULT NULL was ignored.
-        RETURN NEXT pass('col_default_is( tab, col, NULL, desc ) should pass');
-        RETURN NEXT pass('col_default_is( tab, col, NULL, desc ) should have the proper description');
-        RETURN NEXT pass('col_default_is( tab, col, NULL, desc ) should have the proper diagnostics');
-        RETURN NEXT pass('col_default_is( tab, col, NULL ) should pass');
-        RETURN NEXT pass('col_default_is( tab, col, NULL ) should have the proper description');
-        RETURN NEXT pass('col_default_is( tab, col, NULL ) should have the proper diagnostics');
+        FOR tap IN SELECT * FROM fakeout(
+            true, 'col_default_is( tab, col, NULL, desc )'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM fakeout(
+            true, 'col_default_is( tab, col, NULL )'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
     ELSE
         -- In 8.3 and later, we can handle DEFAULT NULL correctly.
         FOR tap IN SELECT * FROM check_test(

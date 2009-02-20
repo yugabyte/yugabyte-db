@@ -57,9 +57,9 @@ ifeq ($(PGVER_MAJOR), 8)
 ifeq ($(PGVER_MINOR), 0)
 # Hack for E'' syntax (<= PG8.0)
 EXTRA_SUBS := -e "s/ E'/ '/g"
-# Throw, runtests, and enums aren't supported in 8.0.
-TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql,$(TESTS))
-REGRESS := $(filter-out throwtap runtests enumtap,$(REGRESS))
+# Throw, runtests, enums, and roles aren't supported in 8.0.
+TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/roletap.sql,$(TESTS))
+REGRESS := $(filter-out throwtap runtests enumtap roletap,$(REGRESS))
 else
 ifeq ($(PGVER_MINOR), 4)
 # Remove lines 15-20, which define pg_typeof().
@@ -173,6 +173,7 @@ ifneq ($(PGVER_MINOR), 3)
 	rm uninstall_pgtap.tmp
 endif
 ifeq ($(PGVER_MINOR), 0)
+	patch -p0 < compat/uninstall-8.0.patch
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp
 	cat compat/uninstall-8.0.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
 	rm uninstall_pgtap.tmp
