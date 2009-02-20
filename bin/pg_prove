@@ -106,9 +106,13 @@ if ($opts->{runtests}) {
     push @command, '--file';
 }
 
+my $verbosity = $opts->{verbose} || $ENV{TEST_VERBOSE};
+
 # Make it so!
 TAP::Harness->new({
-    verbosity => $opts->{verbose} || $ENV{TEST_VERBOSE},
+    verbosity => $verbosity,
+    failures  => !$verbosity,
+    ( TAP::Harness->VERSION ge '3.17' ? (comments  => !$verbosity) : ()),
     timer     => $opts->{timer},
     color     => $opts->{color},
     exec      => \@command,

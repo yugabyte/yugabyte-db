@@ -26,6 +26,10 @@ Revision history for pgTAP
   etc, added in 0.17. This is because `quote_ident(a) = quote_ident(b)` can't
   give a different result than `a = b`, and besides, made things slower and
   prevented the use of indexes. Thanks to Andrew Gierth for the spot.
+* The output from `pg_prove` now includes a list of failing tests when it is
+  not run with `--verbose`. When using TAP::Harness 3.17 and later, it also
+  shows comments and diagnostics in the non-verbose output. Verbose output
+  still outputs everything.
 
 0.18  2009-02-06T20:06:00
 -------------------------
