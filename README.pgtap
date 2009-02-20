@@ -614,12 +614,12 @@ A Wicked Schema
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
 
-A note on comparisons: pgTAP uses the PostgreSQL function `quote_ident()` to
-compare all SQL identifiers, such as the names of tables, schemas, functions,
-indexes, and columns (but not data types). So in general, you should always
-use lowercase strings when passing identifier arguments to the functions
-below. Use mixed case strings only when the objects were declared in your
-schema using double-quotes. For example, if you created a table like so:
+A note on comparisons: pgTAP uses a simple equivalence test (`=`) to compare
+all SQL identifiers, such as the names of tables, schemas, functions, indexes,
+and columns (but not data types). So in general, you should always use
+lowercase strings when passing identifier arguments to the functions below.
+Use mixed case strings only when the objects were declared in your schema
+using double-quotes. For example, if you created a table like so:
 
     CREATE TABLE Foo (id integer);
 

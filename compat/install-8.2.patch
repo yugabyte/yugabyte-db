@@ -14,7 +14,7 @@
 -              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
 -              JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
 -              WHERE t.typisdefined
--               AND quote_ident(n.nspname) = quote_ident($1)
+-               AND n.nspname = $1
 -               AND t.typname = $2
 -               AND t.typtype = 'e'
 -             ORDER BY e.oid

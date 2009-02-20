@@ -19,6 +19,11 @@ Revision history for pgTAP
   that it can be used to run xUnit-style test functions without an SQL script.
 * Fixed a bug in `can()` where it could sometimes report that functions
   were available in a schema when in fact they were not.
+* In the schema testing functions, removed the use ofa `quote_ident()` to
+  compare all identifiers, such as table names, schema names, column names,
+  etc, added in 0.17. This is because `quote_ident(a) = quote_ident(b)` can't
+  give a different result than `a = b`, and besides, made things slower and
+  prevented the use of indexes. Thanks to Andrew Gierth for the spot.
 
 0.18  2009-02-06T20:06:00
 -------------------------
@@ -63,7 +68,7 @@ Revision history for pgTAP
   It had been a mix of straight-forward string comparison, and
   case-insensitive matching. This means that tests should use only
   lowercase strings to specify object names, unless mixed case objects
-  were crated with double quote characters.
+  were created with double quote characters.
 * Added version of `todo()` with the `why` and `how_many` arugments
   reversed, so that I don't have to remember a specific order.
 

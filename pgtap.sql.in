@@ -775,8 +775,8 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_namespace n
           JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
          WHERE c.relkind = $1
-           AND quote_ident(n.nspname) = quote_ident($2)
-           AND quote_ident(c.relname) = quote_ident($3)
+           AND n.nspname = $2
+           AND c.relname = $3
     );
 $$ LANGUAGE SQL;
 
@@ -787,7 +787,7 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_class c
          WHERE c.relkind = $1
            AND pg_catalog.pg_table_is_visible(c.oid)
-           AND quote_ident(c.relname) = quote_ident($2)
+           AND c.relname = $2
     );
 $$ LANGUAGE SQL;
 
@@ -906,8 +906,8 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_namespace n
           JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
           JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE quote_ident(n.nspname) = quote_ident($1)
-           AND quote_ident(c.relname) = quote_ident($2)
+         WHERE n.nspname = $1
+           AND c.relname = $2
            AND a.attnum > 0
            AND NOT a.attisdropped
            AND a.attname = LOWER($3)
@@ -920,7 +920,7 @@ RETURNS BOOLEAN AS $$
         SELECT true
           FROM pg_catalog.pg_class c
           JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE quote_ident(c.relname) = quote_ident($1)
+         WHERE c.relname = $1
            AND pg_catalog.pg_table_is_visible(c.oid)
            AND a.attnum > 0
            AND NOT a.attisdropped
@@ -978,11 +978,11 @@ BEGIN
               FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
              WHERE n.oid = c.relnamespace
                AND c.oid = a.attrelid
-               AND quote_ident(n.nspname) = quote_ident($1)
-               AND quote_ident(c.relname) = quote_ident($2)
-               AND a.attnum > 0
+               AND n.nspname = $1
+               AND c.relname = $2
+               AND a.attnum  > 0
                AND NOT a.attisdropped
-               AND quote_ident(a.attname) = quote_ident($3)
+               AND a.attname    = $3
                AND a.attnotnull = $5
         ), $4
     );
@@ -1003,10 +1003,10 @@ BEGIN
               FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a
              WHERE c.oid = a.attrelid
                AND pg_catalog.pg_table_is_visible(c.oid)
-               AND quote_ident(c.relname) = quote_ident($1)
+               AND c.relname = $1
                AND a.attnum > 0
                AND NOT a.attisdropped
-               AND quote_ident(a.attname) = quote_ident($2)
+               AND a.attname    = $2
                AND a.attnotnull = $4
         ), $3
     );
@@ -1067,9 +1067,9 @@ BEGIN
          WHERE a.attrelid = c.oid
            AND pg_table_is_visible(c.oid)
            AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
-           AND quote_ident(c.relname) = quote_ident($2)
+           AND c.relname = $2
            AND attnum > 0
-           AND quote_ident(a.attname) = quote_ident($3);
+           AND a.attname = $3;
     ELSE
         IF NOT _cexists( $1, $2, $3 ) THEN
             RETURN fail( $5 ) || E'\n'
@@ -1081,10 +1081,10 @@ BEGIN
          WHERE n.oid = c.relnamespace
            AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
            AND c.oid = a.attrelid
-           AND quote_ident(n.nspname) = quote_ident($1)
-           AND quote_ident(c.relname) = quote_ident($2)
+           AND n.nspname = $1
+           AND c.relname = $2
            AND attnum > 0
-           AND quote_ident(a.attname) = quote_ident($3);
+           AND a.attname = $3;
     END IF;
 
     IF actual_type = LOWER($4) THEN
@@ -1118,8 +1118,8 @@ RETURNS boolean AS $$
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-     WHERE quote_ident(n.nspname) = quote_ident($1)
-       AND quote_ident(c.relname) = quote_ident($2)
+     WHERE n.nspname = $1
+       AND c.relname = $2
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = LOWER($3)
@@ -1130,7 +1130,7 @@ RETURNS boolean AS $$
     SELECT a.atthasdef
       FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-     WHERE quote_ident(c.relname) = quote_ident($1)
+     WHERE c.relname = $1
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = LOWER($2)
@@ -1241,8 +1241,8 @@ BEGIN
        AND a.atthasdef
        AND a.attrelid = d.adrelid
        AND a.attnum = d.adnum
-       AND quote_ident(n.nspname) = quote_ident($1)
-       AND quote_ident(c.relname) = quote_ident($2)
+       AND n.nspname = $1
+       AND c.relname = $2
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = $3;
@@ -1274,7 +1274,7 @@ BEGIN
        AND a.atthasdef
        AND a.attrelid = d.adrelid
        AND a.attnum = d.adnum
-       AND quote_ident(c.relname) = quote_ident($1)
+       AND c.relname = $1
        AND a.attnum > 0
        AND NOT a.attisdropped
        AND a.attname = $2;
@@ -1338,8 +1338,8 @@ RETURNS BOOLEAN AS $$
                AND c.oid = x.conrelid
                AND pg_table_is_visible(c.oid)
                AND c.relhaspkey = true
-               AND quote_ident(n.nspname) = quote_ident($1)
-               AND quote_ident(c.relname) = quote_ident($2)
+               AND n.nspname = $1
+               AND c.relname = $2
                AND x.contype = $3
     );
 $$ LANGUAGE sql;
@@ -1352,7 +1352,7 @@ RETURNS BOOLEAN AS $$
               FROM pg_catalog.pg_class c
               JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
              WHERE c.relhaspkey = true
-               AND quote_ident(c.relname) = quote_ident($1)
+               AND c.relname = $1
                AND x.contype = $2
     );
 $$ LANGUAGE sql;
@@ -1402,8 +1402,8 @@ RETURNS NAME[] AS $$
         JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
         JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
         JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
-       WHERE quote_ident(n.nspname) = quote_ident($1)
-         AND quote_ident(c.relname) = quote_ident($2)
+       WHERE n.nspname = $1
+         AND c.relname = $2
          AND x.contype = $3
     );
 $$ LANGUAGE sql;
@@ -1416,7 +1416,7 @@ RETURNS NAME[] AS $$
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
         JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
-         AND quote_ident(c.relname) = quote_ident($1)
+         AND c.relname = $1
          AND x.contype = $2
     );
 $$ LANGUAGE sql;
@@ -2000,7 +2000,7 @@ RETURNS TEXT AS $$
             SELECT true
               FROM pg_catalog.pg_proc p
               JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-             WHERE quote_ident(n.nspname) = quote_ident($1)
+             WHERE n.nspname = $1
                AND quote_ident(p.proname) = quote_ident($2)
                AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($3, ',')
         ), $4
@@ -2022,7 +2022,7 @@ RETURNS TEXT AS $$
             SELECT true
               FROM pg_catalog.pg_proc p
               JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-             WHERE quote_ident(n.nspname) = quote_ident($1)
+             WHERE n.nspname = $1
                AND quote_ident(p.proname) = quote_ident($2)
         ), $3
     );
@@ -2693,8 +2693,8 @@ BEGIN
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
       JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
-     WHERE quote_ident(n.nspname) = quote_ident($1)
-       AND quote_ident(c.relname) = quote_ident($2)
+     WHERE n.nspname = $1
+       AND c.relname = $2
        AND quote_ident(t.tgname)  = quote_ident($3)
       INTO res;
 
@@ -2720,7 +2720,7 @@ BEGIN
     SELECT true
       FROM pg_catalog.pg_trigger t
       JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
-     WHERE quote_ident(c.relname) = quote_ident($1)
+     WHERE c.relname = $1
        AND quote_ident(t.tgname)  = quote_ident($2)
        AND pg_catalog.pg_table_is_visible(c.oid)
       INTO res;
@@ -2882,7 +2882,7 @@ RETURNS BOOLEAN AS $$
           FROM pg_catalog.pg_type t
           JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
          WHERE t.typisdefined
-           AND quote_ident(n.nspname) = quote_ident($1)
+           AND n.nspname = $1
            AND quote_ident(t.typname) = quote_ident($2)
            AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
     );
@@ -3054,7 +3054,7 @@ RETURNS TEXT AS $$
               JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
               JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
               WHERE t.typisdefined
-               AND quote_ident(n.nspname) = quote_ident($1)
+               AND n.nspname = $1
                AND t.typname = $2
                AND t.typtype = 'e'
              ORDER BY e.oid
