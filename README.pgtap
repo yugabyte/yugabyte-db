@@ -2294,7 +2294,6 @@ Don't even use them there.
 To Do
 -----
 
-* Fix bug: Schema argument ignored in `can()`.
 * Useful schema testing functions to consider adding:
   * `has_cast()`
   * `has_role()`, `has_group()`

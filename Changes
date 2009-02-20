@@ -17,6 +17,8 @@ Revision history for pgTAP
   Suggested by Aaron Kangas.
 * Added the `--runtests`, `--schema`, and `--match` options to `pg_prove` so
   that it can be used to run xUnit-style test functions without an SQL script.
+* Fixed a bug in `can()` where it could sometimes report that functions
+  were available in a schema when in fact they were not.
 
 0.18  2009-02-06T20:06:00
 -------------------------

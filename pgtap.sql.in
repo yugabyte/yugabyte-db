@@ -2093,12 +2093,13 @@ BEGIN
     SELECT ARRAY(
         SELECT quote_ident($2[i])
           FROM generate_series(1, array_upper($2, 1)) s(i)
-          LEFT JOIN pg_catalog.pg_proc p
-            ON (quote_ident($2[i]) = quote_ident(p.proname))
-          LEFT JOIN pg_catalog.pg_namespace n
-            ON p.pronamespace = n.oid AND n.nspname = 'pg_catalog'
-          WHERE p.oid IS NULL
-          ORDER BY s.i
+         WHERE quote_ident($2[i]) NOT IN (
+            SELECT quote_ident(p.proname)
+              FROM pg_catalog.pg_proc p
+              JOIN pg_catalog.pg_namespace n
+                ON p.pronamespace = n.oid
+               AND quote_ident(n.nspname) = quote_ident($1)
+        ) ORDER BY s.i
     ) INTO missing;
     IF missing[1] IS NULL THEN
         RETURN ok( true, $3 );

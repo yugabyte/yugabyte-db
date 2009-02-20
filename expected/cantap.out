@@ -1,5 +1,5 @@
 \unset ECHO
-1..60
+1..63
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -51,12 +51,15 @@ ok 48 - can(schema) should have the proper diagnostics
 ok 49 - fail can(schema) with desc should fail
 ok 50 - fail can(schema) with desc should have the proper description
 ok 51 - fail can(schema) with desc should have the proper diagnostics
-ok 52 - can() with desc should pass
-ok 53 - can() with desc should have the proper description
-ok 54 - can() with desc should have the proper diagnostics
-ok 55 - can(schema) should pass
-ok 56 - can(schema) should have the proper description
-ok 57 - can(schema) should have the proper diagnostics
-ok 58 - fail can() with desc should fail
-ok 59 - fail can() with desc should have the proper description
-ok 60 - fail can() with desc should have the proper diagnostics
+ok 52 - fail can(someschema) with desc should fail
+ok 53 - fail can(someschema) with desc should have the proper description
+ok 54 - fail can(someschema) with desc should have the proper diagnostics
+ok 55 - can() with desc should pass
+ok 56 - can() with desc should have the proper description
+ok 57 - can() with desc should have the proper diagnostics
+ok 58 - can(schema) should pass
+ok 59 - can(schema) should have the proper description
+ok 60 - can(schema) should have the proper diagnostics
+ok 61 - fail can() with desc should fail
+ok 62 - fail can() with desc should have the proper description
+ok 63 - fail can() with desc should have the proper diagnostics

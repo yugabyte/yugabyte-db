@@ -3,7 +3,9 @@
 
 -- $Id$
 
-SELECT plan(60);
+SELECT plan(63);
+CREATE SCHEMA someschema;
+CREATE FUNCTION someschema.huh () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -156,6 +158,15 @@ SELECT * FROM check_test(
     'whatever',
     '    pg_catalog.foo() missing
     pg_catalog.bar() missing'
+);
+
+SELECT * FROM check_test(
+    can( 'someschema', ARRAY['huh', 'lower', 'upper'], 'whatever' ),
+    false,
+    'fail can(someschema) with desc',
+    'whatever',
+    '    someschema.lower() missing
+    someschema.upper() missing'
 );
 
 SELECT * FROM check_test(
