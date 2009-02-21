@@ -147,12 +147,14 @@ ifneq ($(PGVER_MINOR), 3)
 	cat compat/install-8.2.sql >> pgtap.sql
 ifeq ($(PGVER_MINOR), 2)
 	patch -p0 < compat/install-8.2.patch
-else ifeq ($(PGVER_MINOR), 1)
+else
+ifeq ($(PGVER_MINOR), 1)
 	patch -p0 < compat/install-8.2.patch
 	patch -p0 < compat/install-8.1.patch
 else
 	patch -p0 < compat/install-8.2.patch
 	patch -p0 < compat/install-8.0.patch
+endif
 endif
 endif
 endif
