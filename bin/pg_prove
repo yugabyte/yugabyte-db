@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use TAP::Harness;
 use Getopt::Long;
-our $VERSION = '0.19';
+our $VERSION = '0.20';
 
 Getopt::Long::Configure (qw(bundling));
 
@@ -181,7 +181,7 @@ values returned by pgTAP functions, like so:
 
     CREATE OR REPLACE FUNCTION test_user(
     ) RETURNS SETOF TEXT AS $$
-       SELECT is( nick, 'theory', 'Should have nick') FROM users;
+        SELECT is( nick, 'theory', 'Should have nick') FROM users;
     END;
     $$ LANGUAGE sql;
 

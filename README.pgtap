@@ -1,4 +1,4 @@
-pgTAP 0.19
+pgTAP 0.20
 ==========
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
@@ -1706,7 +1706,7 @@ so.
 ### `has_group( group, desc )` ###
 ### `has_group( group )` ###
 
-    SELECT has_group( 'sweeties, 'Group "sweeties should exist' );
+    SELECT has_group( 'sweeties, 'Group "sweeties" should exist' );
 
 Checks to ensure that a database group exists. If the description is omitted,
 it will default to "Group `:group` should exist".
