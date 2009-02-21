@@ -1,9 +1,9 @@
---- uninstall_pgtap.sql	(revision 4476)
-+++ uninstall_pgtap.sql	(working copy)
-@@ -19,10 +19,6 @@
- DROP FUNCTION check_test( TEXT, BOOLEAN, TEXT );
- DROP FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT );
- DROP FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT );
+--- uninstall_pgtap.sql.orig	2009-02-20 16:24:08.000000000 -0800
++++ uninstall_pgtap.sql	2009-02-20 16:24:40.000000000 -0800
+@@ -43,10 +43,6 @@
+ DROP FUNCTION has_role( NAME );
+ DROP FUNCTION has_role( NAME, TEXT );
+ DROP FUNCTION _has_role( NAME );
 -DROP FUNCTION enum_has_labels( NAME, NAME[] );
 -DROP FUNCTION enum_has_labels( NAME, NAME[], TEXT );
 -DROP FUNCTION enum_has_labels( NAME, NAME, NAME[] );

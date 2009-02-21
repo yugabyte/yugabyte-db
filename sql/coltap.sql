@@ -391,22 +391,24 @@ SELECT * FROM check_test(
     ''
 );
 
--- Make sure it works with a non-text column.
-SELECT * FROM check_test(
-    col_default_is( 'sometab', 'myint', 24 ),
-    true,
-    'col_default_is( tab, col, int )',
-    'Column sometab.myint should default to ''24''',
-    ''
-);
-
 -- Make sure it works with a NULL default.
-CREATE OR REPLACE FUNCTION nulltest () RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION versiontests () RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
     IF pg_version_num() < 80300 THEN
-        -- Before 8.2, DEFAULT NULL was ignored.
+        -- Before 8.3, have to cast to text.
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'myint', 24::text ),
+            true,
+            'col_default_is( tab, col, int )',
+            'Column sometab.myint should default to ''24''',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        -- Before 8.3, DEFAULT NULL was ignored.
         FOR tap IN SELECT * FROM fakeout(
             true, 'col_default_is( tab, col, NULL, desc )'
         ) AS a(b) LOOP
@@ -418,7 +420,41 @@ BEGIN
         ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
+
+        -- Make sure that it fails when there is no default.
+        -- Before 8.3, must cast values to text
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'plain', 1::text, 'desc' ),
+            false,
+            'col_default_is( tab, col, bogus, desc )',
+            'desc',
+            '    Column sometab.plain has no default'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'plain', 1::text ),
+            false,
+            'col_default_is( tab, col, bogus )',
+            'Column sometab.plain should default to ''1''',
+            '    Column sometab.plain has no default'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
     ELSE
+        -- In 8.3 and later, can just use the raw value.
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'myint', 24 ),
+            true,
+            'col_default_is( tab, col, int )',
+            'Column sometab.myint should default to ''24''',
+            ''
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
         -- In 8.3 and later, we can handle DEFAULT NULL correctly.
         FOR tap IN SELECT * FROM check_test(
             col_default_is( 'sometab', 'numb', NULL::numeric, 'desc' ),
@@ -439,28 +475,34 @@ BEGIN
         ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
+
+        -- Make sure that it fails when there is no default.
+        -- In 8.3 and later, can just use raw values.
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'plain', 1, 'desc' ),
+            false,
+            'col_default_is( tab, col, bogus, desc )',
+            'desc',
+            '    Column sometab.plain has no default'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            col_default_is( 'sometab', 'plain', 1 ),
+            false,
+            'col_default_is( tab, col, bogus )',
+            'Column sometab.plain should default to ''1''',
+            '    Column sometab.plain has no default'
+        ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
     END IF;
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
-SELECT * FROM nulltest();
-
--- Make sure that it fails when there is no default.
-SELECT * FROM check_test(
-    col_default_is( 'sometab', 'plain', 1::integer, 'desc' ),
-    false,
-    'col_default_is( tab, col, bogus, desc )',
-    'desc',
-    '    Column sometab.plain has no default'
-);
-
-SELECT * FROM check_test(
-    col_default_is( 'sometab', 'plain', 1::integer ),
-    false,
-    'col_default_is( tab, col, bogus )',
-    'Column sometab.plain should default to ''1''',
-    '    Column sometab.plain has no default'
-);
+SELECT * FROM versiontests();
 
 -- Make sure that it works when the default is an expression.
 SELECT * FROM check_test(

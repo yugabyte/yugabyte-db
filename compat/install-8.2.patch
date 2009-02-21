@@ -1,6 +1,6 @@
---- pgtap.sql.saf	2009-02-06 11:31:08.000000000 -0800
-+++ pgtap.sql	2009-02-06 11:31:14.000000000 -0800
-@@ -3004,63 +3004,6 @@
+--- pgtap.sql.orig	2009-02-20 16:18:40.000000000 -0800
++++ pgtap.sql	2009-02-20 16:20:17.000000000 -0800
+@@ -3037,63 +3037,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -61,6 +61,6 @@
 -    );
 -$$ LANGUAGE sql;
 -
- -- check_test( test_output, pass, name, description, diag )
- CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
- RETURNS SETOF TEXT AS $$
+ CREATE OR REPLACE FUNCTION _has_role( NAME )
+ RETURNS BOOLEAN AS $$
+     SELECT EXISTS(
