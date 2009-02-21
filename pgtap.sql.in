@@ -2092,7 +2092,7 @@ BEGIN
                     WHERE nspname = $1
          )
          WHERE p.oid IS NULL
-         GROUP BY $2[i]
+         GROUP BY $2[i], s.i
          ORDER BY MIN(s.i)
     ) INTO missing;
     IF missing[1] IS NULL THEN

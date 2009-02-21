@@ -1,5 +1,5 @@
---- pgtap.sql.saf	2009-02-06 11:49:08.000000000 -0800
-+++ pgtap.sql	2009-02-06 11:49:16.000000000 -0800
+--- pgtap.sql.orig	2009-02-20 17:35:51.000000000 -0800
++++ pgtap.sql	2009-02-20 17:36:21.000000000 -0800
 @@ -12,6 +12,22 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
@@ -169,7 +169,56 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -3014,6 +3047,7 @@
+@@ -3037,39 +3070,6 @@
+     SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
+ $$ LANGUAGE sql;
+ 
+-CREATE OR REPLACE FUNCTION _has_role( NAME )
+-RETURNS BOOLEAN AS $$
+-    SELECT EXISTS(
+-        SELECT true
+-          FROM pg_catalog.pg_roles
+-         WHERE rolname = $1
+-    );
+-$$ LANGUAGE sql STRICT;
+-
+--- has_role( role, desc )
+-CREATE OR REPLACE FUNCTION has_role( NAME, TEXT )
+-RETURNS TEXT AS $$
+-    SELECT ok( _has_role($1), $2 );
+-$$ LANGUAGE sql;
+-
+--- has_role( role )
+-CREATE OR REPLACE FUNCTION has_role( NAME )
+-RETURNS TEXT AS $$
+-    SELECT ok( _has_role($1), 'Role ' || quote_ident($1) || ' should exist' );
+-$$ LANGUAGE sql;
+-
+--- hasnt_role( role, desc )
+-CREATE OR REPLACE FUNCTION hasnt_role( NAME, TEXT )
+-RETURNS TEXT AS $$
+-    SELECT ok( NOT _has_role($1), $2 );
+-$$ LANGUAGE sql;
+-
+--- hasnt_role( role )
+-CREATE OR REPLACE FUNCTION hasnt_role( NAME )
+-RETURNS TEXT AS $$
+-    SELECT ok( NOT _has_role($1), 'Role ' || quote_ident($1) || ' should not exist' );
+-$$ LANGUAGE sql;
+-
+ CREATE OR REPLACE FUNCTION _is_super( NAME )
+ RETURNS BOOLEAN AS $$
+     SELECT usesuper
+@@ -3173,7 +3173,7 @@
+ $$ LANGUAGE sql;
+ 
+ CREATE OR REPLACE FUNCTION _grolist ( NAME )
+-RETURNS oid[] AS $$
++RETURNS integer[] AS $$
+     SELECT grolist FROM pg_catalog.pg_group WHERE groname = $1;
+ $$ LANGUAGE sql;
+ 
+@@ -3235,6 +3235,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -177,7 +226,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -3024,8 +3058,10 @@
+@@ -3245,8 +3246,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -190,7 +239,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -3134,7 +3170,7 @@
+@@ -3355,7 +3358,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -199,7 +248,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -3142,8 +3178,8 @@
+@@ -3363,8 +3366,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -210,7 +259,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -3203,116 +3239,6 @@
+@@ -3424,116 +3427,6 @@
  END
  $$ LANGUAGE plpgsql;
  
