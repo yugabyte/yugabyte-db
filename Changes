@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.19
+0.19 2009-02-21T02:09:26
 -------------------------
 
 * Added a alernate versions of `col_default_is()` to better handle the common
