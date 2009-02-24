@@ -5,36 +5,36 @@ ok 2 - findfuncs(^test) should work
 # public."test ident"()
 ok 3 - ident
 ok 4 - ident 2
-# public.test_this()
-ok 5 - simple pass
-ok 6 - another simple pass
 # public.testplpgsql()
-ok 7 - plpgsql simple
-ok 8 - plpgsql simple 2
+ok 5 - plpgsql simple
+ok 6 - plpgsql simple 2
+# public.testthis()
+ok 7 - simple pass
+ok 8 - another simple pass
 # public."test ident"()
 ok 9 - ident
 ok 10 - ident 2
-# public.test_this()
-ok 11 - simple pass
-ok 12 - another simple pass
 # public.testplpgsql()
-ok 13 - plpgsql simple
-ok 14 - plpgsql simple 2
+ok 11 - plpgsql simple
+ok 12 - plpgsql simple 2
+# public.testthis()
+ok 13 - simple pass
+ok 14 - another simple pass
 # public."test ident"()
 ok 15 - ident
 ok 16 - ident 2
-# public.test_this()
-ok 17 - simple pass
-ok 18 - another simple pass
 # public.testplpgsql()
-ok 19 - plpgsql simple
-ok 20 - plpgsql simple 2
+ok 17 - plpgsql simple
+ok 18 - plpgsql simple 2
+# public.testthis()
+ok 19 - simple pass
+ok 20 - another simple pass
 # public."test ident"()
 ok 21 - ident
 ok 22 - ident 2
-# public.test_this()
-ok 23 - simple pass
-ok 24 - another simple pass
 # public.testplpgsql()
-ok 25 - plpgsql simple
-ok 26 - plpgsql simple 2
+ok 23 - plpgsql simple
+ok 24 - plpgsql simple 2
+# public.testthis()
+ok 25 - simple pass
+ok 26 - another simple pass

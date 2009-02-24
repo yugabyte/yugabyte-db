@@ -7,7 +7,7 @@ SET client_min_messages = notice;
 SELECT plan(26);
 --SELECT * FROM no_plan();
 
-CREATE OR REPLACE FUNCTION public.test_this() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION public.testthis() RETURNS SETOF TEXT AS $$
     SELECT pass('simple pass') AS foo
     UNION SELECT pass('another simple pass')
     ORDER BY foo ASC;
@@ -31,13 +31,13 @@ $$ LANGUAGE plpgsql;
 
 SELECT is(
     findfuncs('public', '^test'),
-    ARRAY[ 'public."test ident"', 'public.test_this', 'public.testplpgsql' ],
+    ARRAY[ 'public."test ident"', 'public.testplpgsql', 'public.testthis' ],
     'findfuncs(public, ^test) should work'
 );
 
 SELECT is(
     findfuncs('^test'),
-    ARRAY[ 'public."test ident"', 'public.test_this', 'public.testplpgsql' ],
+    ARRAY[ 'public."test ident"', 'public.testplpgsql', 'public.testthis' ],
     'findfuncs(^test) should work'
 );
 

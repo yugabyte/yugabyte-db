@@ -3,6 +3,9 @@ Revision history for pgTAP
 
 0.20
 -------------------------
+* Changed the names of the functions tested in `sql/do_tap.sql` so that they
+  are less likely to be ordered differently given a different locale. Reported
+  by Ingmar Brouns.
 
 0.19 2009-02-21T02:09:26
 -------------------------
