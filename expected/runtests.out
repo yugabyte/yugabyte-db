@@ -9,21 +9,21 @@ ok 6 - ident
 ok 7 - ident 2
 ok 8 - teardown
 ok 9 - teardown more
-# whatever.test_this()
+# whatever.testplpgsql()
 ok 10 - setup
 ok 11 - Should be nothing in the test table
 ok 12 - setup more
-ok 13 - simple pass
-ok 14 - another simple pass
-ok 15 - teardown
-ok 16 - teardown more
-# whatever.testplpgsql()
-ok 17 - setup
-ok 18 - Should be nothing in the test table
-ok 19 - setup more
-ok 20 - plpgsql simple
-ok 21 - plpgsql simple 2
-ok 22 - Should be a 1 in the test table
+ok 13 - plpgsql simple
+ok 14 - plpgsql simple 2
+ok 15 - Should be a 1 in the test table
+ok 16 - teardown
+ok 17 - teardown more
+# whatever.testthis()
+ok 18 - setup
+ok 19 - Should be nothing in the test table
+ok 20 - setup more
+ok 21 - simple pass
+ok 22 - another simple pass
 ok 23 - teardown
 ok 24 - teardown more
 # whatever.testz()

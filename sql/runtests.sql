@@ -14,7 +14,7 @@ CREATE OR REPLACE FUNCTION whatever.startup() RETURNS SETOF TEXT AS $$
     SELECT pass('starting up');
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION whatever.startup_more() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION whatever.startupmore() RETURNS SETOF TEXT AS $$
     SELECT pass('starting up some more');
 $$ LANGUAGE SQL;
 
@@ -24,7 +24,7 @@ CREATE OR REPLACE FUNCTION whatever.setup() RETURNS SETOF TEXT AS $$
     SELECT is( MAX(id), NULL, 'Should be nothing in the test table') FROM whatever.foo;
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION whatever.setup_more() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION whatever.setupmore() RETURNS SETOF TEXT AS $$
     SELECT pass('setup more');
 $$ LANGUAGE SQL;
 
@@ -32,7 +32,7 @@ CREATE OR REPLACE FUNCTION whatever.teardown() RETURNS SETOF TEXT AS $$
     SELECT pass('teardown');
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION whatever.teardown_more() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION whatever.teardownmore() RETURNS SETOF TEXT AS $$
     SELECT pass('teardown more');
 $$ LANGUAGE SQL;
 
@@ -40,11 +40,11 @@ CREATE OR REPLACE FUNCTION whatever.shutdown() RETURNS SETOF TEXT AS $$
     SELECT pass('shutting down');
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION whatever.shutdown_more() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION whatever.shutdownmore() RETURNS SETOF TEXT AS $$
     SELECT pass('shutting down more');
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION whatever.test_this() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION whatever.testthis() RETURNS SETOF TEXT AS $$
     SELECT pass('simple pass') AS foo
     UNION SELECT pass('another simple pass')
     ORDER BY foo ASC;
