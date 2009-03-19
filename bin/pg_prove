@@ -24,6 +24,8 @@ Getopt::Long::GetOptions(
     'match|x|=s'          => \$opts->{match},
     'timer|t'             => \$opts->{timer},
     'color|c!'            => \$opts->{color},
+    'formatter|f=s'       => \$opts->{formatter},
+    'archive|a=s'         => \$opts->{archive},
     'verbose|v+'          => \$opts->{verbose},
     'help|H'              => \$opts->{help},
     'man|m'               => \$opts->{man},
@@ -106,16 +108,25 @@ if ($opts->{runtests}) {
     push @command, '--file';
 }
 
+# Are we using TAP::Harness or TAP::Harness::Archive?
+my $harness_class = 'TAP::Harness';
+if ( $opts->{archive} ) {
+    require TAP::Harness::Archive;
+    $harness_class = 'TAP::Harness::Archive';
+}
+
 my $verbosity = $opts->{verbose} || $ENV{TEST_VERBOSE};
 
 # Make it so!
-TAP::Harness->new({
+$harness_class->new({
     verbosity => $verbosity,
     failures  => !$verbosity,
     ( TAP::Harness->VERSION ge '3.17' ? (comments  => !$verbosity) : ()),
-    timer     => $opts->{timer},
-    color     => $opts->{color},
-    exec      => \@command,
+    timer           => $opts->{timer},
+    color           => $opts->{color},
+    formatter_class => $opts->{formatter},
+    ($opts->{archive} ? (archive => $opts->{archive}) : ()),
+    exec            => \@command,
 })->runtests( @{ $tests } );
 
 __END__
@@ -203,22 +214,24 @@ and I<ending> with "test", run the tests like so:
 
 =head1 Options
 
-  -b --psql-bin PSQL       Location of the psql program.
-  -d --dbname DBNAME       Database to which to connect.
-  -U --username USERNAME   Username with which to connect.
-  -h --host HOST           Host to which to connect.
-  -p --port PORT           Port to which to connect.
-  -r --runtests            Run tests using C<runtests()>.
-  -s --test-schema         Schema in which to find test functions.
-  -x --test-match          Regular expression to find test functions.
-  -t --timer               Print elapsed time after each test file.
-  -c --color               Display colored test ouput.
-     --nocolor             Do not display colored test ouput.
-  -v --verbose             Display output of test scripts while running them.
-  -H --help                Print a usage statement and exit.
-  -m --man                 Print the complete documentation and exit.
-  -V --version             Print the version number and exit.
-  -P --pset OPTION=VALUE   Set psql printing option.
+  -b --psql-bin PSQL        Location of the psql program.
+  -d --dbname DBNAME        Database to which to connect.
+  -U --username USERNAME    Username with which to connect.
+  -h --host HOST            Host to which to connect.
+  -p --port PORT            Port to which to connect.
+  -P --pset OPTION=VALUE    Set psql printing option.
+  -v --verbose              Display output of test scripts while running them.
+  -r --runtests             Run tests using C<runtests()>.
+  -s --schema               Schema in which to find test functions.
+  -x --match                Regular expression to find test functions.
+  -t --timer                Print elapsed time after each test file.
+  -c --color                Display colored test ouput.
+     --nocolor              Do not display colored test ouput.
+  -f --formatter FORMATTER  TAP::Formatter class to format output.
+  -a --archive FILENAME     Store the resulting TAP in an archive file.
+  -H --help                 Print a usage statement and exit.
+  -m --man                  Print the complete documentation and exit.
+  -V --version              Print the version number and exit.
 
 =head1 Options Details
 
@@ -379,6 +392,27 @@ installed colored output will not be available.
 =item C<--nocolor>
 
 Do not display test results in color.
+
+=item C<-f>
+
+=item C<--formatter>
+
+  pg_prove --formatter TAP::Formatter::File
+  pg_prove -f TAP::Formatter::Console
+
+The name of the class to use to format output. The default is
+L<TAP::Formatter::Console|TAP::Formatter::Console>, or
+L<TAP::Formatter::File|TAP::Formatter::File> if the output isn’t a TTY.
+
+=item C<-a>
+
+=item C<--archive>
+
+  pg_prove --archive tap.tar.gz
+  pg_prove -a test_output.tar
+
+Send the TAP output to a TAP archive file as wel as to the normal output
+destination. The archive formats supported are F<.tar> and F<.tar.gz>.
 
 =item C<-H>
 

@@ -7,6 +7,9 @@ Revision history for pgTAP
   `sql/runtests.sql` so that they are less likely to be ordered differently
   given varying collation orders provided in different locales and by
   different vendors. Reported by Ingmar Brouns.
+* Added the `--formatter` and `--archive` options to `pg_prove`.
+* Fixed the typos in `pg_prove` where the output of `--help` listed
+  `--test-match` and `--test-schema` instead of `--match` and `--schema`.
 
 0.19 2009-02-21T02:09:26
 -------------------------
