@@ -1697,8 +1697,8 @@ The data types should be passed as they are displayed by
 varying", and not "VARCHAR".
 
 The The supported contexts are "implicit", "assignment", and "explicit". You
-can also just pass in "i", "a", or "e". Consult the PostgreSQL `[CREATE
-CAST](http://www.postgresql.org/docs/current/static/sql-createcast.html)`
+can also just pass in "i", "a", or "e". Consult the PostgreSQL [`CREATE
+CAST`](http://www.postgresql.org/docs/current/static/sql-createcast.html)
 documentation for the differences between these contexts (hint: they
 correspond to the default context, `AS IMPLICIT`, and `AS ASSIGNMENT`). If you
 don't supply a test description, pgTAP will create a reasonable one for you.
