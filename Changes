@@ -10,6 +10,8 @@ Revision history for pgTAP
 * Added the `--formatter` and `--archive` options to `pg_prove`.
 * Fixed the typos in `pg_prove` where the output of `--help` listed
   `--test-match` and `--test-schema` instead of `--match` and `--schema`.
+* Added `has_cast()`, `hasnt_cast()`, and `cast_context_is()`.
+* Fixed a borked function signature in `has_trigger()`.
 
 0.19 2009-02-21T02:09:26
 -------------------------

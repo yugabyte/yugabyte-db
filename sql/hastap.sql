@@ -3,7 +3,7 @@
 
 -- $Id$
 
-SELECT plan(285);
+SELECT plan(378);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -804,6 +804,265 @@ SELECT * FROM check_test(
     'hasnt_column(type, column)',
     'Column sometype.foobar should not exist',
     ''
+);
+
+/****************************************************************************/
+-- Test has_cast().
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'pg_catalog', 'int8', 'desc' ),
+    true,
+    'has_cast( src, targ, schema, func, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'pg_catalog', 'int8'::name),
+    true,
+    'has_cast( src, targ, schema, func )',
+    'Cast ("integer" AS "bigint") WITH FUNCTION pg_catalog.int8() should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'int8', 'desc' ),
+    true,
+    'has_cast( src, targ, func, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'int8'::name),
+    true,
+    'has_cast( src, targ, func)',
+    'Cast ("integer" AS "bigint") WITH FUNCTION int8() should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'desc' ),
+    true,
+    'has_cast( src, targ, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint' ),
+    true,
+    'has_cast( src, targ )',
+    'Cast ("integer" AS "bigint") should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'pg_catalog', 'foo', 'desc' ),
+    false,
+    'has_cast( src, targ, schema, func, desc) fail',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'bigint', 'foo', 'desc' ),
+    false,
+    'has_cast( src, targ, func, desc ) fail',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_cast( 'integer', 'clue', 'desc' ),
+    false,
+    'has_cast( src, targ, desc ) fail',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_cast().
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'pg_catalog', 'int8', 'desc' ),
+    false,
+    'hasnt_cast( src, targ, schema, func, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'pg_catalog', 'int8'::name),
+    false,
+    'hasnt_cast( src, targ, schema, func )',
+    'Cast ("integer" AS "bigint") WITH FUNCTION pg_catalog.int8() should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'int8', 'desc' ),
+    false,
+    'hasnt_cast( src, targ, func, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'int8'::name),
+    false,
+    'hasnt_cast( src, targ, func)',
+    'Cast ("integer" AS "bigint") WITH FUNCTION int8() should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'desc' ),
+    false,
+    'hasnt_cast( src, targ, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint' ),
+    false,
+    'hasnt_cast( src, targ )',
+    'Cast ("integer" AS "bigint") should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'pg_catalog', 'foo', 'desc' ),
+    true,
+    'hasnt_cast( src, targ, schema, func, desc) fail',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'bigint', 'foo', 'desc' ),
+    true,
+    'hasnt_cast( src, targ, func, desc ) fail',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_cast( 'integer', 'clue', 'desc' ),
+    true,
+    'hasnt_cast( src, targ, desc ) fail',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test cast_has_context().
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bigint', 'implicit', 'desc' ),
+    true,
+    'cast_context_is( src, targ, context, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bigint', 'implicit' ),
+    true,
+    'cast_context_is( src, targ, context )',
+    'Cast ("integer" AS "bigint") context should be implicit',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bigint', 'i', 'desc' ),
+    true,
+    'cast_context_is( src, targ, i, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bigint', 'IMPL', 'desc' ),
+    true,
+    'cast_context_is( src, targ, IMPL, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'cidr', 'text', 'assignment', 'desc' ),
+    true,
+    'cast_context_is( src, targ, assignment, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'cidr', 'text', 'a', 'desc' ),
+    true,
+    'cast_context_is( src, targ, a, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'cidr', 'text', 'ASS', 'desc' ),
+    true,
+    'cast_context_is( src, targ, ASS, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'bit', 'integer', 'explicit', 'desc' ),
+    true,
+    'cast_context_is( src, targ, explicit, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'bit', 'integer', 'e', 'desc' ),
+    true,
+    'cast_context_is( src, targ, e, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'bit', 'integer', 'EX', 'desc' ),
+    true,
+    'cast_context_is( src, targ, EX, desc )',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bigint', 'ex', 'desc' ),
+    false,
+    'cast_context_is( src, targ, context, desc ) fail',
+    'desc',
+    '        have: implicit
+        want: explicit'
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bigint', 'ex' ),
+    false,
+    'cast_context_is( src, targ, context ) fail',
+    'Cast ("integer" AS "bigint") context should be explicit',
+    '        have: implicit
+        want: explicit'
+);
+
+SELECT * FROM check_test(
+    cast_context_is( 'integer', 'bogus', 'ex', 'desc' ),
+    false,
+    'cast_context_is( src, targ, context, desc ) noexist',
+    'desc',
+    '    Cast ("integer" AS bogus) does not exist'
 );
 
 /****************************************************************************/

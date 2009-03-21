@@ -1649,6 +1649,74 @@ cast it to `name[]` to disambiguate it from a text string:
 
     SELECT can_ok( 'lower', '{text}'::name[] );
 
+### `has_cast( source_type, target_type, schema, function, description )` ###
+### `has_cast( source_type, target_type, schema, function )` ###
+### `has_cast( source_type, target_type, function, description )` ###
+### `has_cast( source_type, target_type, function )` ###
+### `has_cast( source_type, target_type, description )` ###
+### `has_cast( source_type, target_type )` ###
+
+    SELECT has_cast(
+        'integer',
+        'bigint',
+        'pg_catalog',
+        'int8'
+        'We should have a cast from integer to bigint'
+    );
+
+Tests for the existence of a cast. A cast consists of a source data type, a
+target data type, and perhaps a (possibly schema-qualified) function. If you
+omit the description four the 3- or 4- argument version, you'll need to cast
+the function name to the `NAME` data type so that PostgreSQL doesn't resolve
+the function name as a description. For example:
+
+    SELECT has_cast( 'integer', 'bigint', 'int8'::NAME );
+
+pgTAP will generate a useful description if you don't provide one.
+
+### `hasnt_cast( source_type, target_type, schema, function, description )` ###
+### `hasnt_cast( source_type, target_type, schema, function )` ###
+### `hasnt_cast( source_type, target_type, function, description )` ###
+### `hasnt_cast( source_type, target_type, function )` ###
+### `hasnt_cast( source_type, target_type, description )` ###
+### `hasnt_cast( source_type, target_type )` ###
+
+    SELECT hasnt_cast( 'integer', 'circle' );
+
+This function is the inverse of `has_cast()`. The test passes if the specified
+cast does *not* exist.
+
+### `cast_context_is( source_type, target_type, context, desc )` ###
+### `cast_context_is( source_type, target_type, context )` ###
+
+    SELECT cast_context_is( 'integer', 'bigint', 'implicit' );
+
+Test that a cast from a source to a target data type has a particular context.
+The data types should be passed as they are displayed by
+`pg_catalog.format_type()`. For example, you would need to pass "character
+varying", and not "VARCHAR".
+
+The The supported contexts are "implicit", "assignment", and "explicit". You
+can also just pass in "i", "a", or "e". Consult the PostgreSQL `[CREATE
+CAST](http://www.postgresql.org/docs/current/static/sql-createcast.html)`
+documentation for the differences between these contexts (hint: they
+correspond to the default context, `AS IMPLICIT`, and `AS ASSIGNMENT`). If you
+don't supply a test description, pgTAP will create a reasonable one for you.
+
+Test failure will result in useful diagnostics, such as:
+
+    # Failed test 124: "Cast ("integer" AS "bigint") context should be explicit"
+    #         have: implicit
+    #         want: explicit
+
+If the cast doesn't exist, you'll be told that, too:
+
+    # Failed test 199: "Cast ("integer" AS foo) context should be explicit"
+    #     Cast ("integer" AS foo) does not exist
+
+But you've already used `has_cast()` to make sure of that, right?
+
+
 ### `has_role( role, desc )` ###
 ### `has_role( role )` ###
 
@@ -2360,7 +2428,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `has_cast()`
   * `has_operator()`
   * `has_operator_class()`
   * `has_rule()`

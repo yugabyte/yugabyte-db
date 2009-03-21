@@ -1,5 +1,5 @@
 \unset ECHO
-1..285
+1..378
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -285,3 +285,96 @@ ok 282 - hasnt_column(view, column) should have the proper diagnostics
 ok 283 - hasnt_column(type, column) should pass
 ok 284 - hasnt_column(type, column) should have the proper description
 ok 285 - hasnt_column(type, column) should have the proper diagnostics
+ok 286 - has_cast( src, targ, schema, func, desc) should pass
+ok 287 - has_cast( src, targ, schema, func, desc) should have the proper description
+ok 288 - has_cast( src, targ, schema, func, desc) should have the proper diagnostics
+ok 289 - has_cast( src, targ, schema, func ) should pass
+ok 290 - has_cast( src, targ, schema, func ) should have the proper description
+ok 291 - has_cast( src, targ, schema, func ) should have the proper diagnostics
+ok 292 - has_cast( src, targ, func, desc ) should pass
+ok 293 - has_cast( src, targ, func, desc ) should have the proper description
+ok 294 - has_cast( src, targ, func, desc ) should have the proper diagnostics
+ok 295 - has_cast( src, targ, func) should pass
+ok 296 - has_cast( src, targ, func) should have the proper description
+ok 297 - has_cast( src, targ, func) should have the proper diagnostics
+ok 298 - has_cast( src, targ, desc ) should pass
+ok 299 - has_cast( src, targ, desc ) should have the proper description
+ok 300 - has_cast( src, targ, desc ) should have the proper diagnostics
+ok 301 - has_cast( src, targ ) should pass
+ok 302 - has_cast( src, targ ) should have the proper description
+ok 303 - has_cast( src, targ ) should have the proper diagnostics
+ok 304 - has_cast( src, targ, schema, func, desc) fail should fail
+ok 305 - has_cast( src, targ, schema, func, desc) fail should have the proper description
+ok 306 - has_cast( src, targ, schema, func, desc) fail should have the proper diagnostics
+ok 307 - has_cast( src, targ, func, desc ) fail should fail
+ok 308 - has_cast( src, targ, func, desc ) fail should have the proper description
+ok 309 - has_cast( src, targ, func, desc ) fail should have the proper diagnostics
+ok 310 - has_cast( src, targ, desc ) fail should fail
+ok 311 - has_cast( src, targ, desc ) fail should have the proper description
+ok 312 - has_cast( src, targ, desc ) fail should have the proper diagnostics
+ok 313 - hasnt_cast( src, targ, schema, func, desc) should fail
+ok 314 - hasnt_cast( src, targ, schema, func, desc) should have the proper description
+ok 315 - hasnt_cast( src, targ, schema, func, desc) should have the proper diagnostics
+ok 316 - hasnt_cast( src, targ, schema, func ) should fail
+ok 317 - hasnt_cast( src, targ, schema, func ) should have the proper description
+ok 318 - hasnt_cast( src, targ, schema, func ) should have the proper diagnostics
+ok 319 - hasnt_cast( src, targ, func, desc ) should fail
+ok 320 - hasnt_cast( src, targ, func, desc ) should have the proper description
+ok 321 - hasnt_cast( src, targ, func, desc ) should have the proper diagnostics
+ok 322 - hasnt_cast( src, targ, func) should fail
+ok 323 - hasnt_cast( src, targ, func) should have the proper description
+ok 324 - hasnt_cast( src, targ, func) should have the proper diagnostics
+ok 325 - hasnt_cast( src, targ, desc ) should fail
+ok 326 - hasnt_cast( src, targ, desc ) should have the proper description
+ok 327 - hasnt_cast( src, targ, desc ) should have the proper diagnostics
+ok 328 - hasnt_cast( src, targ ) should fail
+ok 329 - hasnt_cast( src, targ ) should have the proper description
+ok 330 - hasnt_cast( src, targ ) should have the proper diagnostics
+ok 331 - hasnt_cast( src, targ, schema, func, desc) fail should pass
+ok 332 - hasnt_cast( src, targ, schema, func, desc) fail should have the proper description
+ok 333 - hasnt_cast( src, targ, schema, func, desc) fail should have the proper diagnostics
+ok 334 - hasnt_cast( src, targ, func, desc ) fail should pass
+ok 335 - hasnt_cast( src, targ, func, desc ) fail should have the proper description
+ok 336 - hasnt_cast( src, targ, func, desc ) fail should have the proper diagnostics
+ok 337 - hasnt_cast( src, targ, desc ) fail should pass
+ok 338 - hasnt_cast( src, targ, desc ) fail should have the proper description
+ok 339 - hasnt_cast( src, targ, desc ) fail should have the proper diagnostics
+ok 340 - cast_context_is( src, targ, context, desc ) should pass
+ok 341 - cast_context_is( src, targ, context, desc ) should have the proper description
+ok 342 - cast_context_is( src, targ, context, desc ) should have the proper diagnostics
+ok 343 - cast_context_is( src, targ, context ) should pass
+ok 344 - cast_context_is( src, targ, context ) should have the proper description
+ok 345 - cast_context_is( src, targ, context ) should have the proper diagnostics
+ok 346 - cast_context_is( src, targ, i, desc ) should pass
+ok 347 - cast_context_is( src, targ, i, desc ) should have the proper description
+ok 348 - cast_context_is( src, targ, i, desc ) should have the proper diagnostics
+ok 349 - cast_context_is( src, targ, IMPL, desc ) should pass
+ok 350 - cast_context_is( src, targ, IMPL, desc ) should have the proper description
+ok 351 - cast_context_is( src, targ, IMPL, desc ) should have the proper diagnostics
+ok 352 - cast_context_is( src, targ, assignment, desc ) should pass
+ok 353 - cast_context_is( src, targ, assignment, desc ) should have the proper description
+ok 354 - cast_context_is( src, targ, assignment, desc ) should have the proper diagnostics
+ok 355 - cast_context_is( src, targ, a, desc ) should pass
+ok 356 - cast_context_is( src, targ, a, desc ) should have the proper description
+ok 357 - cast_context_is( src, targ, a, desc ) should have the proper diagnostics
+ok 358 - cast_context_is( src, targ, ASS, desc ) should pass
+ok 359 - cast_context_is( src, targ, ASS, desc ) should have the proper description
+ok 360 - cast_context_is( src, targ, ASS, desc ) should have the proper diagnostics
+ok 361 - cast_context_is( src, targ, explicit, desc ) should pass
+ok 362 - cast_context_is( src, targ, explicit, desc ) should have the proper description
+ok 363 - cast_context_is( src, targ, explicit, desc ) should have the proper diagnostics
+ok 364 - cast_context_is( src, targ, e, desc ) should pass
+ok 365 - cast_context_is( src, targ, e, desc ) should have the proper description
+ok 366 - cast_context_is( src, targ, e, desc ) should have the proper diagnostics
+ok 367 - cast_context_is( src, targ, EX, desc ) should pass
+ok 368 - cast_context_is( src, targ, EX, desc ) should have the proper description
+ok 369 - cast_context_is( src, targ, EX, desc ) should have the proper diagnostics
+ok 370 - cast_context_is( src, targ, context, desc ) fail should fail
+ok 371 - cast_context_is( src, targ, context, desc ) fail should have the proper description
+ok 372 - cast_context_is( src, targ, context, desc ) fail should have the proper diagnostics
+ok 373 - cast_context_is( src, targ, context ) fail should fail
+ok 374 - cast_context_is( src, targ, context ) fail should have the proper description
+ok 375 - cast_context_is( src, targ, context ) fail should have the proper diagnostics
+ok 376 - cast_context_is( src, targ, context, desc ) noexist should fail
+ok 377 - cast_context_is( src, targ, context, desc ) noexist should have the proper description
+ok 378 - cast_context_is( src, targ, context, desc ) noexist should have the proper diagnostics

@@ -2677,7 +2677,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- has_trigger( schema, table, trigger, description )
-CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, NAME, NAME )
+CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     res boolean;
@@ -3280,6 +3280,185 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT is_member_of( $1, ARRAY[$2] );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _cast_exists ( NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_cast c
+         JOIN pg_catalog.pg_proc p ON c.castfunc = p.oid
+         JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+        WHERE pg_catalog.format_type(castsource, NULL) = $1
+          AND pg_catalog.format_type(casttarget, NULL) = $2
+          AND n.nspname   = $3
+          AND p.proname   = $4
+   );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _cast_exists ( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_cast c
+         JOIN pg_catalog.pg_proc p ON c.castfunc = p.oid
+        WHERE pg_catalog.format_type(castsource, NULL) = $1
+          AND pg_catalog.format_type(casttarget, NULL) = $2
+          AND p.proname   = $3
+   );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _cast_exists ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_cast c
+        WHERE pg_catalog.format_type(castsource, NULL) = $1
+          AND pg_catalog.format_type(casttarget, NULL) = $2
+   );
+$$ LANGUAGE SQL;
+
+-- has_cast( source_type, target_type, schema, function, description )
+CREATE OR REPLACE FUNCTION has_cast ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+   SELECT ok( _cast_exists( $1, $2, $3, $4 ), $5 );
+$$ LANGUAGE SQL;
+
+-- has_cast( source_type, target_type, schema, function )
+CREATE OR REPLACE FUNCTION has_cast ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+   SELECT ok(
+       _cast_exists( $1, $2, $3, $4 ),
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') WITH FUNCTION ' || quote_ident($3)
+        || '.' || quote_ident($4) || '() should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_cast( source_type, target_type, function, description )
+CREATE OR REPLACE FUNCTION has_cast ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+   SELECT ok( _cast_exists( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- has_cast( source_type, target_type, function )
+CREATE OR REPLACE FUNCTION has_cast ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+   SELECT ok(
+        _cast_exists( $1, $2, $3 ),
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') WITH FUNCTION ' || quote_ident($3) || '() should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_cast( source_type, target_type, description )
+CREATE OR REPLACE FUNCTION has_cast ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _cast_exists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_cast( source_type, target_type )
+CREATE OR REPLACE FUNCTION has_cast ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _cast_exists( $1, $2 ),
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_cast( source_type, target_type, schema, function, description )
+CREATE OR REPLACE FUNCTION hasnt_cast ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+   SELECT ok( NOT _cast_exists( $1, $2, $3, $4 ), $5 );
+$$ LANGUAGE SQL;
+
+-- hasnt_cast( source_type, target_type, schema, function )
+CREATE OR REPLACE FUNCTION hasnt_cast ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+   SELECT ok(
+       NOT _cast_exists( $1, $2, $3, $4 ),
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') WITH FUNCTION ' || quote_ident($3)
+        || '.' || quote_ident($4) || '() should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_cast( source_type, target_type, function, description )
+CREATE OR REPLACE FUNCTION hasnt_cast ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+   SELECT ok( NOT _cast_exists( $1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_cast( source_type, target_type, function )
+CREATE OR REPLACE FUNCTION hasnt_cast ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+   SELECT ok(
+        NOT _cast_exists( $1, $2, $3 ),
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') WITH FUNCTION ' || quote_ident($3) || '() should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_cast( source_type, target_type, description )
+CREATE OR REPLACE FUNCTION hasnt_cast ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _cast_exists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_cast( source_type, target_type )
+CREATE OR REPLACE FUNCTION hasnt_cast ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _cast_exists( $1, $2 ),
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') should not exist'
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _expand_context( char )
+RETURNS text AS $$
+   SELECT CASE $1
+          WHEN 'i' THEN 'implicit'
+          WHEN 'a' THEN 'assignment'
+          WHEN 'e' THEN 'explicit'
+          ELSE          'unknown' END
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_context( NAME, NAME )
+RETURNS "char" AS $$
+   SELECT c.castcontext
+     FROM pg_catalog.pg_cast c
+    WHERE pg_catalog.format_type(castsource, NULL) = $1
+      AND pg_catalog.format_type(casttarget, NULL) = $2
+$$ LANGUAGE SQL;
+
+-- cast_context_is( source_type, target_type, context, desc )
+CREATE OR REPLACE FUNCTION cast_context_is( NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want char = substring(LOWER($3) FROM 1 FOR 1);
+    have char := _get_context($1, $2);
+BEGIN
+    IF have IS NOT NULL THEN
+        RETURN is( _expand_context(have), _expand_context(want), $4 );
+    END IF;
+
+    RETURN ok( false, $4 ) || E'\n' || diag(
+       '    Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+      || ') does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- cast_context_is( source_type, target_type, context )
+CREATE OR REPLACE FUNCTION cast_context_is( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT cast_context_is(
+        $1, $2, $3,
+        'Cast (' || quote_ident($1) || ' AS ' || quote_ident($2)
+        || ') context should be ' || _expand_context(substring(LOWER($3) FROM 1 FOR 1))
+    );
 $$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag )
