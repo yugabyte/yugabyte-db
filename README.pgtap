@@ -1666,7 +1666,7 @@ cast it to `name[]` to disambiguate it from a text string:
 
 Tests for the existence of a cast. A cast consists of a source data type, a
 target data type, and perhaps a (possibly schema-qualified) function. If you
-omit the description four the 3- or 4- argument version, you'll need to cast
+omit the description four the 3- or 4-argument version, you'll need to cast
 the function name to the `NAME` data type so that PostgreSQL doesn't resolve
 the function name as a description. For example:
 
