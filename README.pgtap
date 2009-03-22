@@ -1716,6 +1716,70 @@ If the cast doesn't exist, you'll be told that, too:
 
 But you've already used `has_cast()` to make sure of that, right?
 
+### `has_operator( left_type, schema, name, right_type, return_type, desc )` ###
+### `has_operator( left_type, schema, name, right_type, return_type )` ###
+### `has_operator( left_type, name, right_type, return_type, desc )` ###
+### `has_operator( left_type, name, right_type, return_type )` ###
+### `has_operator( left_type, name, right_type, desc )` ###
+### `has_operator( left_type, name, right_type )` ###
+
+    SELECT has_operator(
+        'integer',
+        'pg_catalog', '<=',
+        'integer',
+        'boolean',
+        'Operator (integer <= integer = boolean) should exist'
+    );
+
+Tests for the presence of a binary operator. If the operator exists with the
+given schema, name, left and right arguments, and return value, the test will
+fail. If the operator does not exist, the test will fail. If you omit the
+schema name, then the operator must be visible in the search path. If you omit
+the test description, pgTAP will generate a reasonable one for you. The return
+value is also optional. If you need to test for a left or right unary
+operator, use `has_leftop()` or `has_rightop()` instead.
+
+### `has_leftop( schema, name, right_type, return_type, desc )` ###
+### `has_leftop( schema, name, right_type, return_type )` ###
+### `has_leftop( name, right_type, return_type, desc )` ###
+### `has_leftop( name, right_type, return_type )` ###
+### `has_leftop( name, right_type, desc )` ###
+### `has_leftop( name, right_type )` ###
+
+    SELECT has_leftop(
+        'pg_catalog', '!!',
+         'bigint',
+         'numeric',
+         'Operator (!! bigint = numeric) should exist'
+     );
+
+Tests for the presence of a left-unary operator. If the operator exists with
+the given schema, name, right argument, and return value, the test will fail.
+If the operator does not exist, the test will fail. If you omit the schema
+name, then the operator must be visible in the search path. If you omit the
+test description, pgTAP will generate a reasonable one for you. The return
+value is also optional.
+
+### `has_rightop( left_type, schema, name, return_type, desc )` ###
+### `has_rightop( left_type, schema, name, return_type )` ###
+### `has_rightop( left_type, name, return_type, desc )` ###
+### `has_rightop( left_type, name, return_type )` ###
+### `has_rightop( left_type, name, desc )` ###
+### `has_rightop( left_type, name )` ###
+
+    SELECT has_rightop(
+        'bigint',
+        'pg_catalog', '!',
+        'numeric',
+        'Operator (bigint ! = numeric) should exist'
+    );
+
+Tests for the presence of a right-unary operator. If the operator exists with
+the given left argument, schema, name, and return value, the test will fail.
+If the operator does not exist, the test will fail. If you omit the schema
+name, then the operator must be visible in the search path. If you omit the
+test description, pgTAP will generate a reasonable one for you. The return
+value is also optional.
 
 ### `has_role( role, desc )` ###
 ### `has_role( role )` ###
@@ -2428,7 +2492,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `has_operator()`
   * `has_operator_class()`
   * `has_rule()`
   * `func_returns()`

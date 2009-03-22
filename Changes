@@ -12,6 +12,7 @@ Revision history for pgTAP
   `--test-match` and `--test-schema` instead of `--match` and `--schema`.
 * Added `has_cast()`, `hasnt_cast()`, and `cast_context_is()`.
 * Fixed a borked function signature in `has_trigger()`.
+* Added `has_operator()`, `has_leftop()`, and `has_rightop()`.
 
 0.19 2009-02-21T02:09:26
 -------------------------

@@ -3461,6 +3461,210 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+
+CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_operator o
+         JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
+        WHERE n.nspname = $2
+          AND o.oprname = $3
+          AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
+              ELSE pg_catalog.format_type(o.oprleft, NULL) = $1 END
+          AND CASE o.oprkind WHEN 'r' THEN $4 IS NULL
+              ELSE pg_catalog.format_type(o.oprright, NULL) = $4 END
+          AND pg_catalog.format_type(o.oprresult, NULL) = $5
+   );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_operator o
+        WHERE pg_catalog.pg_operator_is_visible(o.oid)
+          AND o.oprname = $2
+          AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
+              ELSE pg_catalog.format_type(o.oprleft, NULL) = $1 END
+          AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
+              ELSE pg_catalog.format_type(o.oprright, NULL) = $3 END
+          AND pg_catalog.format_type(o.oprresult, NULL) = $4
+   );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+       SELECT TRUE
+         FROM pg_catalog.pg_operator o
+        WHERE pg_catalog.pg_operator_is_visible(o.oid)
+          AND o.oprname = $2
+          AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
+              ELSE pg_catalog.format_type(o.oprleft, NULL) = $1 END
+          AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
+              ELSE pg_catalog.format_type(o.oprright, NULL) = $3 END
+   );
+$$ LANGUAGE SQL;
+
+-- has_operator( left_type, schema, name, right_type, return_type, desc )
+CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists($1, $2, $3, $4, $5 ), $6 );
+$$ LANGUAGE SQL;
+
+-- has_operator( left_type, schema, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists($1, $2, $3, $4, $5 ),
+        'Operator ('
+        || quote_ident($1)
+        || ' ' || quote_ident($2) || '.' || $3 || ' '
+        || quote_ident($4)
+        || ' = ' || quote_ident($5) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_operator( left_type, name, right_type, return_type, desc )
+CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists($1, $2, $3, $4 ), $5 );
+$$ LANGUAGE SQL;
+
+-- has_operator( left_type, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists($1, $2, $3, $4 ),
+        'Operator ('
+        || quote_ident($1)
+        || ' ' || $2 || ' '
+        || quote_ident($3)
+        || ' = ' || quote_ident($4) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_operator( left_type, name, right_type, desc )
+CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists($1, $2, $3 ), $4 );
+$$ LANGUAGE SQL;
+
+-- has_operator( left_type, name, right_type )
+CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists($1, $2, $3 ),
+        'Operator ('
+        || quote_ident($1)
+        || ' ' || $2 || ' '
+        || quote_ident($3)
+        || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_leftop( schema, name, right_type, return_type, desc )
+CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists(NULL, $1, $2, $3, $4), $5 );
+$$ LANGUAGE SQL;
+
+-- has_leftop( schema, name, right_type, return_type )
+CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists(NULL, $1, $2, $3, $4 ),
+        'Operator ('
+        || quote_ident($1) || '.' || $2 || ' '
+        || quote_ident($3)
+        || ' = ' || quote_ident($4) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_leftop( name, right_type, return_type, desc )
+CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists(NULL, $1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- has_leftop( name, right_type, return_type )
+CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists(NULL, $1, $2, $3 ),
+        'Operator (' || $1 || ' '
+        || quote_ident($2)
+        || ' = ' || quote_ident($3) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_leftop( name, right_type, desc )
+CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists(NULL, $1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- has_leftop( name, right_type )
+CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists(NULL, $1, $2 ),
+        'Operator (' || $1 || ' ' || quote_ident($2) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_rightop( left_type, schema, name, return_type, desc )
+CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists( $1, $2, $3, NULL, $4), $5 );
+$$ LANGUAGE SQL;
+
+-- has_rightop( left_type, schema, name, return_type )
+CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists($1, $2, $3, NULL, $4 ),
+        'Operator ('
+        || quote_ident($1) || ' '
+        || quote_ident($2) || '.' || $3
+        || ' = ' || quote_ident($4) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_rightop( left_type, name, return_type, desc )
+CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists( $1, $2, NULL, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- has_rightop( left_type, name, return_type )
+CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists($1, $2, NULL, $3 ),
+        'Operator ('
+        || quote_ident($1) || ' ' || $2
+        || ' = ' || quote_ident($3) || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_rightop( left_type, name, desc )
+CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _op_exists( $1, $2, NULL), $3 );
+$$ LANGUAGE SQL;
+
+-- has_rightop( left_type, name )
+CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+         _op_exists($1, $2, NULL ),
+        'Operator ('
+        || quote_ident($1) || ' ' || $2 || ') should exist'
+    );
+$$ LANGUAGE SQL;
+
 -- check_test( test_output, pass, name, description, diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$
