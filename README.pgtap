@@ -1728,7 +1728,7 @@ But you've already used `has_cast()` to make sure of that, right?
         'pg_catalog', '<=',
         'integer',
         'boolean',
-        'Operator (integer <= integer = boolean) should exist'
+        'Operator (integer <= integer RETURNS boolean) should exist'
     );
 
 Tests for the presence of a binary operator. If the operator exists with the
@@ -1750,7 +1750,7 @@ operator, use `has_leftop()` or `has_rightop()` instead.
         'pg_catalog', '!!',
          'bigint',
          'numeric',
-         'Operator (!! bigint = numeric) should exist'
+         'Operator (!! bigint RETURNS numeric) should exist'
      );
 
 Tests for the presence of a left-unary operator. If the operator exists with
@@ -1771,7 +1771,7 @@ value is also optional.
         'bigint',
         'pg_catalog', '!',
         'numeric',
-        'Operator (bigint ! = numeric) should exist'
+        'Operator (bigint ! RETURNS numeric) should exist'
     );
 
 Tests for the presence of a right-unary operator. If the operator exists with

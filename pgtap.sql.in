@@ -3526,7 +3526,7 @@ RETURNS TEXT AS $$
         || quote_ident($1)
         || ' ' || quote_ident($2) || '.' || $3 || ' '
         || quote_ident($4)
-        || ' = ' || quote_ident($5) || ') should exist'
+        || ' RETURNS ' || quote_ident($5) || ') should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3545,7 +3545,7 @@ RETURNS TEXT AS $$
         || quote_ident($1)
         || ' ' || $2 || ' '
         || quote_ident($3)
-        || ' = ' || quote_ident($4) || ') should exist'
+        || ' RETURNS ' || quote_ident($4) || ') should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3582,7 +3582,7 @@ RETURNS TEXT AS $$
         'Operator ('
         || quote_ident($1) || '.' || $2 || ' '
         || quote_ident($3)
-        || ' = ' || quote_ident($4) || ') should exist'
+        || ' RETURNS ' || quote_ident($4) || ') should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3599,7 +3599,7 @@ RETURNS TEXT AS $$
          _op_exists(NULL, $1, $2, $3 ),
         'Operator (' || $1 || ' '
         || quote_ident($2)
-        || ' = ' || quote_ident($3) || ') should exist'
+        || ' RETURNS ' || quote_ident($3) || ') should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3632,7 +3632,7 @@ RETURNS TEXT AS $$
         'Operator ('
         || quote_ident($1) || ' '
         || quote_ident($2) || '.' || $3
-        || ' = ' || quote_ident($4) || ') should exist'
+        || ' RETURNS ' || quote_ident($4) || ') should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3649,7 +3649,7 @@ RETURNS TEXT AS $$
          _op_exists($1, $2, NULL, $3 ),
         'Operator ('
         || quote_ident($1) || ' ' || $2
-        || ' = ' || quote_ident($3) || ') should exist'
+        || ' RETURNS ' || quote_ident($3) || ') should exist'
     );
 $$ LANGUAGE SQL;
 

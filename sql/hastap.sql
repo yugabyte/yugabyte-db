@@ -1080,7 +1080,7 @@ SELECT * FROM check_test(
   has_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean'::name ),
   true,
   'has_operator( left, schema, name, right, result )',
-  'Operator ("integer" pg_catalog.<= "integer" = "boolean") should exist',
+  'Operator ("integer" pg_catalog.<= "integer" RETURNS "boolean") should exist',
   ''
 );
 
@@ -1096,7 +1096,7 @@ SELECT * FROM check_test(
   has_operator( 'integer', '<=', 'integer', 'boolean'::name ),
   true,
   'has_operator( left, name, right, result )',
-  'Operator ("integer" <= "integer" = "boolean") should exist',
+  'Operator ("integer" <= "integer" RETURNS "boolean") should exist',
   ''
 );
 
@@ -1128,7 +1128,7 @@ SELECT * FROM check_test(
   has_operator( 'integer', 'pg_catalog', '<=', 'text', 'boolean'::name ),
   false,
   'has_operator( left, schema, name, right, result ) fail',
-  'Operator ("integer" pg_catalog.<= text = "boolean") should exist',
+  'Operator ("integer" pg_catalog.<= text RETURNS "boolean") should exist',
   ''
 );
 
@@ -1144,7 +1144,7 @@ SELECT * FROM check_test(
   has_operator( 'integer', '<=', 'text', 'boolean'::name ),
   false,
   'has_operator( left, name, right, result ) fail',
-  'Operator ("integer" <= text = "boolean") should exist',
+  'Operator ("integer" <= text RETURNS "boolean") should exist',
   ''
 );
 
@@ -1179,7 +1179,7 @@ SELECT * FROM check_test(
   has_leftop( 'pg_catalog', '!!', 'bigint', 'numeric'::name ),
   true,
   'has_leftop( schema, name, right, result )',
-  'Operator (pg_catalog.!! "bigint" = "numeric") should exist',
+  'Operator (pg_catalog.!! "bigint" RETURNS "numeric") should exist',
   ''
 );
 
@@ -1195,7 +1195,7 @@ SELECT * FROM check_test(
   has_leftop( '!!', 'bigint', 'numeric'::name ),
   true,
   'has_leftop( name, right, result )',
-  'Operator (!! "bigint" = "numeric") should exist',
+  'Operator (!! "bigint" RETURNS "numeric") should exist',
   ''
 );
 
@@ -1227,7 +1227,7 @@ SELECT * FROM check_test(
   has_leftop( 'pg_catalog', '!!', 'text', 'numeric'::name ),
   false,
   'has_leftop( schema, name, right, result ) fail',
-  'Operator (pg_catalog.!! text = "numeric") should exist',
+  'Operator (pg_catalog.!! text RETURNS "numeric") should exist',
   ''
 );
 
@@ -1243,7 +1243,7 @@ SELECT * FROM check_test(
   has_leftop( '!!', 'text', 'numeric'::name ),
   false,
   'has_leftop( name, right, result ) fail',
-  'Operator (!! text = "numeric") should exist',
+  'Operator (!! text RETURNS "numeric") should exist',
   ''
 );
 
@@ -1278,7 +1278,7 @@ SELECT * FROM check_test(
   has_rightop( 'bigint', 'pg_catalog', '!', 'numeric'::name ),
   true,
   'has_rightop( left, schema, name, result )',
-  'Operator ("bigint" pg_catalog.! = "numeric") should exist',
+  'Operator ("bigint" pg_catalog.! RETURNS "numeric") should exist',
   ''
 );
 
@@ -1294,7 +1294,7 @@ SELECT * FROM check_test(
   has_rightop( 'bigint', '!', 'numeric'::name ),
   true,
   'has_rightop( left, name, result )',
-  'Operator ("bigint" ! = "numeric") should exist',
+  'Operator ("bigint" ! RETURNS "numeric") should exist',
   ''
 );
 
@@ -1326,7 +1326,7 @@ SELECT * FROM check_test(
   has_rightop( 'text', 'pg_catalog', '!', 'numeric'::name ),
   false,
   'has_rightop( left, schema, name, result ) fail',
-  'Operator (text pg_catalog.! = "numeric") should exist',
+  'Operator (text pg_catalog.! RETURNS "numeric") should exist',
   ''
 );
 
@@ -1342,7 +1342,7 @@ SELECT * FROM check_test(
   has_rightop( 'text', '!', 'numeric'::name ),
   false,
   'has_rightop( left, name, result ) fail',
-  'Operator (text ! = "numeric") should exist',
+  'Operator (text ! RETURNS "numeric") should exist',
   ''
 );
 
