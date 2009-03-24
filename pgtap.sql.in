@@ -1436,7 +1436,7 @@ RETURNS NAME[] AS $$
     SELECT ARRAY(
         SELECT a.attname
           FROM pg_catalog.pg_attribute a
-          JOIN generate_series(1, array_upper($2, 1)) s(i) ON (a.attnum = $2[i])
+          JOIN generate_series(1, array_upper($2, 1)) s(i) ON a.attnum = $2[i]
          WHERE attrelid = $1
          ORDER BY i
     )
@@ -1497,7 +1497,7 @@ AS
     JOIN pg_catalog.pg_class c1     ON (c1.oid = k1.conrelid)
     JOIN pg_catalog.pg_class c2     ON (c2.oid = k1.confrelid)
     JOIN pg_catalog.pg_namespace n2 ON (n2.oid = c2.relnamespace)
-    JOIN pg_catalog.pg_depend d    ON (
+    JOIN pg_catalog.pg_depend d     ON (
                  d.classid = 'pg_constraint'::regclass
              AND d.objid = k1.oid
              AND d.objsubid = 0
@@ -1506,7 +1506,7 @@ AS
              AND d.refobjsubid=0
          )
     JOIN pg_catalog.pg_class ci ON (ci.oid = d.refobjid AND ci.relkind = 'i')
-    LEFT JOIN pg_depend d2 ON (
+    LEFT JOIN pg_depend d2      ON (
                  d2.classid = 'pg_class'::regclass
              AND d2.objid = ci.oid
              AND d2.objsubid = 0
@@ -2070,7 +2070,7 @@ RETURNS NAME[] AS $$
     SELECT ARRAY(
         SELECT t.typname
           FROM pg_catalog.pg_type t
-          JOIN generate_series(1, array_upper($1, 1)) s(i) ON (t.oid = $1[i])
+          JOIN generate_series(1, array_upper($1, 1)) s(i) ON t.oid = $1[i]
          ORDER BY i
     )
 $$ LANGUAGE SQL stable;
@@ -2149,11 +2149,11 @@ RETURNS NAME[] AS $$
     SELECT ARRAY(
         SELECT a.attname
           FROM pg_catalog.pg_index x
-          JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-          JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-          JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
-          JOIN pg_catalog.pg_attribute a ON (ct.oid = a.attrelid)
-          JOIN generate_series(0, current_setting('max_index_keys')::integer - 1) s(i)
+          JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+          JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+          JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
+          JOIN pg_catalog.pg_attribute a ON ct.oid = a.attrelid
+          JOIN generate_series(0, current_setting('max_index_keys')::int - 1) s(i)
             ON a.attnum = x.indkey[s.i]
          WHERE ct.relname = $2
            AND ci.relname = $3
@@ -2167,10 +2167,10 @@ RETURNS NAME[] AS $$
     SELECT ARRAY(
         SELECT a.attname
           FROM pg_catalog.pg_index x
-          JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-          JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-          JOIN pg_catalog.pg_attribute a ON (ct.oid = a.attrelid)
-          JOIN generate_series(0, current_setting('max_index_keys')::integer - 1) s(i)
+          JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+          JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+          JOIN pg_catalog.pg_attribute a ON ct.oid = a.attrelid
+          JOIN generate_series(0, current_setting('max_index_keys')::int - 1) s(i)
             ON a.attnum = x.indkey[s.i]
          WHERE ct.relname = $1
            AND ci.relname = $2
@@ -2183,9 +2183,9 @@ CREATE OR REPLACE FUNCTION _iexpr( NAME, NAME, NAME)
 RETURNS TEXT AS $$
     SELECT pg_catalog.pg_get_expr( x.indexprs, ct.oid )
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
      WHERE ct.relname = $2
        AND ci.relname = $3
        AND n.nspname  = $1
@@ -2195,8 +2195,8 @@ CREATE OR REPLACE FUNCTION _iexpr( NAME, NAME)
 RETURNS TEXT AS $$
     SELECT pg_catalog.pg_get_expr( x.indexprs, ct.oid )
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
      WHERE ct.relname = $1
        AND ci.relname = $2
        AND pg_catalog.pg_table_is_visible(ct.oid)
@@ -2400,9 +2400,9 @@ DECLARE
 BEGIN
     SELECT x.indisunique
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
      WHERE ct.relname = $2
        AND ci.relname = $3
        AND n.nspname  = $1
@@ -2429,8 +2429,8 @@ DECLARE
 BEGIN
     SELECT x.indisunique
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
      WHERE ct.relname = $1
        AND ci.relname = $2
        AND pg_catalog.pg_table_is_visible(ct.oid)
@@ -2451,8 +2451,8 @@ DECLARE
 BEGIN
     SELECT x.indisunique
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
      WHERE ci.relname = $1
        AND pg_catalog.pg_table_is_visible(ct.oid)
       INTO res;
@@ -2472,9 +2472,9 @@ DECLARE
 BEGIN
     SELECT x.indisprimary
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
      WHERE ct.relname = $2
        AND ci.relname = $3
        AND n.nspname  = $1
@@ -2501,8 +2501,8 @@ DECLARE
 BEGIN
     SELECT x.indisprimary
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
      WHERE ct.relname = $1
        AND ci.relname = $2
        AND pg_catalog.pg_table_is_visible(ct.oid)
@@ -2523,8 +2523,8 @@ DECLARE
 BEGIN
     SELECT x.indisprimary
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
      WHERE ci.relname = $1
        AND pg_catalog.pg_table_is_visible(ct.oid)
       INTO res;
@@ -2544,9 +2544,9 @@ DECLARE
 BEGIN
     SELECT x.indisclustered
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
      WHERE ct.relname = $2
        AND ci.relname = $3
        AND n.nspname  = $1
@@ -2574,8 +2574,8 @@ DECLARE
 BEGIN
     SELECT x.indisclustered
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
      WHERE ct.relname = $1
        AND ci.relname = $2
       INTO res;
@@ -2595,7 +2595,7 @@ DECLARE
 BEGIN
     SELECT x.indisclustered
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
      WHERE ci.relname = $1
       INTO res;
 
@@ -2614,10 +2614,10 @@ DECLARE
 BEGIN
     SELECT am.amname
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_namespace n ON (n.oid = ct.relnamespace)
-      JOIN pg_catalog.pg_am am ON ( ci.relam = am.oid)
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
+      JOIN pg_catalog.pg_am am       ON ci.relam = am.oid
      WHERE ct.relname = $2
        AND ci.relname = $3
        AND n.nspname  = $1
@@ -2644,9 +2644,9 @@ DECLARE
 BEGIN
     SELECT am.amname
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ct ON (ct.oid = x.indrelid)
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_am am ON ( ci.relam = am.oid)
+      JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_am am    ON ci.relam = am.oid
      WHERE ct.relname = $1
        AND ci.relname = $2
       INTO aname;
@@ -2667,8 +2667,8 @@ DECLARE
 BEGIN
     SELECT am.amname
       FROM pg_catalog.pg_index x
-      JOIN pg_catalog.pg_class ci ON (ci.oid = x.indexrelid)
-      JOIN pg_catalog.pg_am am ON ( ci.relam = am.oid)
+      JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_am am    ON ci.relam = am.oid
      WHERE ci.relname = $1
       INTO aname;
 
@@ -2688,8 +2688,8 @@ DECLARE
 BEGIN
     SELECT true
       FROM pg_catalog.pg_trigger t
-      JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
-      JOIN pg_catalog.pg_namespace n ON (n.oid = c.relnamespace)
+      JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname = $1
        AND c.relname = $2
        AND t.tgname  = $3
@@ -2716,7 +2716,7 @@ DECLARE
 BEGIN
     SELECT true
       FROM pg_catalog.pg_trigger t
-      JOIN pg_catalog.pg_class c ON (c.oid = t.tgrelid)
+      JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
      WHERE c.relname = $1
        AND t.tgname  = $2
        AND pg_catalog.pg_table_is_visible(c.oid)
@@ -2737,10 +2737,10 @@ DECLARE
 BEGIN
     SELECT quote_ident(ni.nspname) || '.' || quote_ident(p.proname)
       FROM pg_catalog.pg_trigger t
-      JOIN pg_catalog.pg_class ct ON (ct.oid = t.tgrelid)
-      JOIN pg_catalog.pg_namespace nt ON (nt.oid = ct.relnamespace)
-      JOIN pg_catalog.pg_proc p ON (p.oid = t.tgfoid)
-      JOIN pg_catalog.pg_namespace ni ON (ni.oid = p.pronamespace)
+      JOIN pg_catalog.pg_class ct     ON ct.oid = t.tgrelid
+      JOIN pg_catalog.pg_namespace nt ON nt.oid = ct.relnamespace
+      JOIN pg_catalog.pg_proc p       ON p.oid = t.tgfoid
+      JOIN pg_catalog.pg_namespace ni ON ni.oid = p.pronamespace
      WHERE nt.nspname = $1
        AND ct.relname = $2
        AND t.tgname   = $3
@@ -2767,8 +2767,8 @@ DECLARE
 BEGIN
     SELECT p.proname
       FROM pg_catalog.pg_trigger t
-      JOIN pg_catalog.pg_class ct ON (ct.oid = t.tgrelid)
-      JOIN pg_catalog.pg_proc p ON (p.oid = t.tgfoid)
+      JOIN pg_catalog.pg_class ct ON ct.oid = t.tgrelid
+      JOIN pg_catalog.pg_proc p   ON p.oid = t.tgfoid
      WHERE ct.relname = $1
        AND t.tgname   = $2
        AND pg_catalog.pg_table_is_visible(ct.oid)
@@ -2877,7 +2877,7 @@ RETURNS BOOLEAN AS $$
     SELECT EXISTS(
         SELECT true
           FROM pg_catalog.pg_type t
-          JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
+          JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
          WHERE t.typisdefined
            AND n.nspname = $1
            AND t.typname = $2
@@ -3048,8 +3048,8 @@ RETURNS TEXT AS $$
         ARRAY(
             SELECT e.enumlabel
               FROM pg_catalog.pg_type t
-              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
-              JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
+              JOIN pg_catalog.pg_enum e      ON t.oid = e.enumtypid
+              JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
               WHERE t.typisdefined
                AND n.nspname = $1
                AND t.typname = $2
@@ -3077,7 +3077,7 @@ RETURNS TEXT AS $$
         ARRAY(
             SELECT e.enumlabel
               FROM pg_catalog.pg_type t
-              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
+              JOIN pg_catalog.pg_enum e ON t.oid = e.enumtypid
               WHERE t.typisdefined
                AND pg_catalog.pg_type_is_visible(t.oid)
                AND t.typname = $1
