@@ -2157,6 +2157,7 @@ RETURNS NAME[] AS $$
            AND ci.relname = $3
            AND n.nspname  = $1
            AND a.attnum = ANY(x.indkey::int[])
+         ORDER BY a.attnum
     );
 $$ LANGUAGE sql;
 
@@ -2172,6 +2173,7 @@ RETURNS NAME[] AS $$
            AND ci.relname = $2
            AND a.attnum = ANY(x.indkey::int[])
            AND pg_catalog.pg_table_is_visible(ct.oid)
+         ORDER BY a.attnum
     );
 $$ LANGUAGE sql;
 

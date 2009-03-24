@@ -13,6 +13,8 @@ Revision history for pgTAP
 * Added `has_cast()`, `hasnt_cast()`, and `cast_context_is()`.
 * Fixed a borked function signature in `has_trigger()`.
 * Added `has_operator()`, `has_leftop()`, and `has_rightop()`.
+* Fixed a bug where the order of columns found for multicolum indexes by
+  `has_index()` could be wrong. Reported by Jeff Wartes.
 
 0.19 2009-02-21T02:09:26
 -------------------------
