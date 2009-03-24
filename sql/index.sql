@@ -15,7 +15,7 @@ CREATE TABLE public.sometab(
     myint NUMERIC(8)
 );
 CREATE INDEX idx_foo ON public.sometab using hash(name);
-CREATE INDEX idx_bar ON public.sometab(name, numb);
+CREATE INDEX idx_bar ON public.sometab(numb, name);
 CREATE UNIQUE INDEX idx_baz ON public.sometab(LOWER(name));
 RESET client_min_messages;
 
@@ -39,7 +39,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'idx_bar', ARRAY['name', 'numb'], 'whatever' ),
+    has_index( 'public', 'sometab', 'idx_bar', ARRAY['numb', 'name'], 'whatever' ),
     true,
     'has_index() multi-column',
     'whatever',
@@ -47,7 +47,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'idx_bar', ARRAY['name', 'numb'] ),
+    has_index( 'public', 'sometab', 'idx_bar', ARRAY['numb', 'name'] ),
     true,
     'has_index() multi-column no desc',
     'Index idx_bar should exist',
@@ -95,7 +95,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'sometab', 'idx_bar', ARRAY['name', 'numb'], 'whatever' ),
+    has_index( 'sometab', 'idx_bar', ARRAY['numb', 'name'], 'whatever' ),
     true,
     'has_index() no schema multi-column',
     'whatever',
@@ -103,7 +103,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'sometab', 'idx_bar', ARRAY['name', 'numb'] ),
+    has_index( 'sometab', 'idx_bar', ARRAY['numb', 'name'] ),
     true,
     'has_index() no schema multi-column no desc',
     'Index idx_bar should exist',
@@ -144,7 +144,7 @@ SELECT * FROM check_test(
 
 -- Check failure diagnostics.
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'blah', ARRAY['name', 'numb'], 'whatever' ),
+    has_index( 'public', 'sometab', 'blah', ARRAY['numb', 'name'], 'whatever' ),
     false,
     'has_index() missing',
     'whatever',
@@ -156,12 +156,12 @@ SELECT * FROM check_test(
     false,
     'has_index() invalid',
     'whatever',
-    '        have: idx_bar ON public.sometab(name, numb)
+    '        have: idx_bar ON public.sometab(numb, name)
         want: idx_bar ON public.sometab(name, id)'
 );
 
 SELECT * FROM check_test(
-    has_index( 'sometab', 'blah', ARRAY['name', 'numb'], 'whatever' ),
+    has_index( 'sometab', 'blah', ARRAY['numb', 'name'], 'whatever' ),
     false,
     'has_index() missing no schema',
     'whatever',
@@ -173,7 +173,7 @@ SELECT * FROM check_test(
     false,
     'has_index() invalid no schema',
     'whatever',
-    '        have: idx_bar ON sometab(name, numb)
+    '        have: idx_bar ON sometab(numb, name)
         want: idx_bar ON sometab(name, id)'
 );
 
