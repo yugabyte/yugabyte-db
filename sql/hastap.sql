@@ -992,7 +992,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'cidr', 'text', 'assignment', 'desc' ),
+    cast_context_is( 'bigint', 'smallint', 'assignment', 'desc' ),
     true,
     'cast_context_is( src, targ, assignment, desc )',
     'desc',
@@ -1000,7 +1000,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'cidr', 'text', 'a', 'desc' ),
+    cast_context_is( 'bigint', 'smallint', 'a', 'desc' ),
     true,
     'cast_context_is( src, targ, a, desc )',
     'desc',
@@ -1008,7 +1008,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    cast_context_is( 'cidr', 'text', 'ASS', 'desc' ),
+    cast_context_is( 'bigint', 'smallint', 'ASS', 'desc' ),
     true,
     'cast_context_is( src, targ, ASS, desc )',
     'desc',

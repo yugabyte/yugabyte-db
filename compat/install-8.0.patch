@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-02-20 17:35:51.000000000 -0800
-+++ pgtap.sql	2009-02-20 17:36:21.000000000 -0800
+--- pgtap.sql.saf	2009-03-28 15:55:36.000000000 -0400
++++ pgtap.sql	2009-03-28 15:55:45.000000000 -0400
 @@ -12,6 +12,22 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
@@ -169,7 +169,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -3037,39 +3070,6 @@
+@@ -3041,39 +3074,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -209,7 +209,7 @@
  CREATE OR REPLACE FUNCTION _is_super( NAME )
  RETURNS BOOLEAN AS $$
      SELECT usesuper
-@@ -3173,7 +3173,7 @@
+@@ -3177,7 +3177,7 @@
  $$ LANGUAGE sql;
  
  CREATE OR REPLACE FUNCTION _grolist ( NAME )
@@ -218,7 +218,7 @@
      SELECT grolist FROM pg_catalog.pg_group WHERE groname = $1;
  $$ LANGUAGE sql;
  
-@@ -3235,6 +3235,7 @@
+@@ -3622,6 +3622,7 @@
      res    BOOLEAN;
      descr  TEXT;
      adiag  TEXT;
@@ -226,7 +226,7 @@
      have   ALIAS FOR $1;
      eok    ALIAS FOR $2;
      name   ALIAS FOR $3;
-@@ -3245,8 +3246,10 @@
+@@ -3632,8 +3633,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -239,7 +239,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -3355,7 +3358,7 @@
+@@ -3742,7 +3745,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -248,7 +248,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -3363,8 +3366,8 @@
+@@ -3750,8 +3753,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -259,7 +259,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -3424,116 +3427,6 @@
+@@ -3811,116 +3814,6 @@
  END
  $$ LANGUAGE plpgsql;
  

@@ -1,6 +1,6 @@
---- pgtap.sql.orig	2009-02-20 16:18:40.000000000 -0800
-+++ pgtap.sql	2009-02-20 16:20:17.000000000 -0800
-@@ -3037,63 +3037,6 @@
+--- pgtap.sql.orig	2009-03-28 15:33:47.000000000 -0400
++++ pgtap.sql	2009-03-28 15:34:28.000000000 -0400
+@@ -3041,63 +3041,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -11,8 +11,8 @@
 -        ARRAY(
 -            SELECT e.enumlabel
 -              FROM pg_catalog.pg_type t
--              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
--              JOIN pg_catalog.pg_namespace n ON (t.typnamespace = n.oid)
+-              JOIN pg_catalog.pg_enum e      ON t.oid = e.enumtypid
+-              JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
 -              WHERE t.typisdefined
 -               AND n.nspname = $1
 -               AND t.typname = $2
@@ -40,7 +40,7 @@
 -        ARRAY(
 -            SELECT e.enumlabel
 -              FROM pg_catalog.pg_type t
--              JOIN pg_catalog.pg_enum e ON (t.oid = e.enumtypid)
+-              JOIN pg_catalog.pg_enum e ON t.oid = e.enumtypid
 -              WHERE t.typisdefined
 -               AND pg_catalog.pg_type_is_visible(t.oid)
 -               AND t.typname = $1
