@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.20
+0.20 2009-03-29T19:05:40
 -------------------------
 * Changed the names of the functions tested in `sql/do_tap.sql` and
   `sql/runtests.sql` so that they are less likely to be ordered differently
