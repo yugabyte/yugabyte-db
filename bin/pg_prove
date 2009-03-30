@@ -6,7 +6,7 @@ use strict;
 use warnings;
 use TAP::Harness;
 use Getopt::Long;
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 Getopt::Long::Configure (qw(bundling));
 
@@ -131,6 +131,8 @@ $harness_class->new({
 
 __END__
 
+=encoding utf8
+
 =head1 Name
 
 pg_prove - A command-line tool for running and harnessing pgTAP tests
@@ -152,7 +154,7 @@ functions.
 =head2 Test Scripts
 
 pgTAP test scripts should consist of a series of SQL statements that output
-TAP. Here's a simple example that assumes that the pgTAP functions have been
+TAP. Here’s a simple example that assumes that the pgTAP functions have been
 installed in the database:
 
     -- Start transaction and plan the tests.
@@ -167,7 +169,7 @@ installed in the database:
     ROLLBACK;
 
 Now run the tests by passing the list of SQL script names to C<pg_prove>.
-Here's what it looks like when the pgTAP tests are run with C<pg_prove>
+Here’s what it looks like when the pgTAP tests are run with C<pg_prove>
 
     % pg_prove -U postgres sql/*.sql
     sql/coltap.....ok
@@ -206,9 +208,9 @@ C<pg_prove> by using the C<--runtests> option.
     Result: PASS
 
 Be sure to pass the C<--schema> option if your test functions are all in one
-schema, and the C<--match> option if they have names that don't start with
-"test". For example, if you have all of your test functions in "test" schema
-and I<ending> with "test", run the tests like so:
+schema, and the C<--match> option if they have names that don’t start with
+“test”. For example, if you have all of your test functions in “test” schema
+and I<ending> with “test,” run the tests like so:
 
     pg_prove -d myapp --schema test --match 'test$'
 
@@ -319,15 +321,15 @@ true value.
   pg_prove --runtests
   pg_prove -r
 
-Don't run any test scripts, but just use the C<runtests()> pgTAP function to
+Don’t run any test scripts, but just use the C<runtests()> pgTAP function to
 run xUnit tests. This ends up looking like a single test script has been run,
 when in fact no test scripts have been run. Instead, C<pg_prove> tells C<psql>
 to run something like:
 
   psql --command 'SELECT * FROM runtests()'
 
-You should use this option when you've written your tests in xUnit style,
-where they're all defined in test functions already loaded in the database.
+You should use this option when you’ve written your tests in xUnit style,
+where they’re all defined in test functions already loaded in the database.
 
 =item C<-s>
 
@@ -356,7 +358,7 @@ run something like:
 
   psql --command "SELECT * FROM runtests('_test_'::text)"
 
-This will run any visible functions with the string "_test_" in their names.
+This will run any visible functions with the string “_test_” in their names.
 This can be especially useful if you just want to run a single test in a
 given schema. For example, this:
 

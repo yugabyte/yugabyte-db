@@ -22,7 +22,7 @@ VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 PGVER_MAJOR = $(shell echo $(VERSION) | awk -F. '{ print ($$1 + 0) }')
 PGVER_MINOR = $(shell echo $(VERSION) | awk -F. '{ print ($$2 + 0) }')
 PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
-PGTAP_VERSION = 0.20
+PGTAP_VERSION = 0.21
 
 # Compile the C code only if we're on 8.3 or older.
 ifneq ($(PGVER_MINOR), 4)
@@ -217,4 +217,4 @@ test: test_setup.sql
 html:
 	markdown -F 0x1000 README.pgtap > readme.html
 	perl -ne 'BEGIN { $$prev = 0; $$lab = ""; print "<h1>Contents</h1>\n<ul>\n" } if (m{<h([123])\s+id="([^"]+)">((<code>[^(]+)?.+?)</h\1>}) { next if $$lab && $$lab eq $$4; $$lab = $$4; if ($$prev) { if ($$1 != $$prev) { print $$1 > $$prev ? $$1 - $$prev > 1 ? "<ul><li><ul>" : "<ul>\n" : $$prev - $$1 > 1 ? "</li></ul></li></ul></li>\n" : "</li></ul></li>\n"; $$prev = $$1; } else { print "</li>\n" } } else { $$prev = $$1; } print qq{<li><a href="#$$2">} . ($$4 ? "$$4()</code>" : $$3) . "</a>" } END { print "</li>\n</ul>\n" }' readme.html > toc.html
-	PERL5LIB=/Users/david/dev/perl/Pod-Simple/lib perldoc -MPod::Simple::XHTML bin/pg_prove > pg_prove.html
+	PERL5LIB=/Users/david/dev/perl/Pod-Simple/lib perldoc -MPod::Simple::XHTML -d pg_prove.html -w html_header_tags:'<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">' bin/pg_prove
