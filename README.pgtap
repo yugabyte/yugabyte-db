@@ -2517,8 +2517,25 @@ pgTAP has been tested on the following builds of PostgreSQL:
 If you know of others, please submit them! Use
 `psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
 
+Public Repository
+-----------------
+
+The source code for pgTAP is available on [GitHub][]. Please feel free to fork
+and contribute!
+
+[GitHub]: http://github.com/theory/pgtap/tree/
+
+Mail List
+---------
+
+Join the pgTAP community by subscribing to the [mail list][]. All questions,
+comments, suggestions, and bug reports are welcomed there.
+
+[mail list]: http://pgfoundry.org/mail/?group_id=1000389
+
 Author
 ------
+
 [David E. Wheeler](http://justatheory.com/)
 
 Credits
