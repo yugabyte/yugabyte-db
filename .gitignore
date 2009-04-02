@@ -1,0 +1,8 @@
+pgtap.sql
+uninstall_pgtap.sql
+test_setup.sql
+results
+pgtap.so
+regression.*
+*.html
+bbin
