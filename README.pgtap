@@ -2520,18 +2520,16 @@ If you know of others, please submit them! Use
 Public Repository
 -----------------
 
-The source code for pgTAP is available on [GitHub][]. Please feel free to fork
-and contribute!
-
-[GitHub]: http://github.com/theory/pgtap/tree/
+The source code for pgTAP is available on
+[GitHub](http://github.com/theory/pgtap/tree/). Please feel free to fork and
+contribute!
 
 Mail List
 ---------
 
-Join the pgTAP community by subscribing to the [mail list][]. All questions,
+Join the pgTAP community by subscribing to the [pgtap-users mail
+list](http://pgfoundry.org/mailman/listinfo/pgtap-users). All questions,
 comments, suggestions, and bug reports are welcomed there.
-
-[mail list]: http://pgfoundry.org/mail/?group_id=1000389
 
 Author
 ------
