@@ -3,6 +3,8 @@ Revision history for pgTAP
 
 0.21
 -------------------------
+* Fixed a bug in the processing of the `--schema` and `--match` options that
+  only shows up in Getopt::Long 2.38 or higher.
 
 0.20 2009-03-29T19:05:40
 -------------------------
