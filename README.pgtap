@@ -1479,7 +1479,7 @@ incorrect, the diagnostics will look more like this:
         'Index "myindex" should be unique'
     );
 
-   SELECT index_is_unique( 'sometable', 'myindex' );
+    SELECT index_is_unique( 'sometable', 'myindex' );
 
 Tests whether an index is unique.
 
@@ -1495,7 +1495,7 @@ Tests whether an index is unique.
         'Index "myindex" should be on a primary key'
     );
 
-   SELECT index_is_primary( 'sometable', 'myindex' );
+    SELECT index_is_primary( 'sometable', 'myindex' );
 
 Tests whether an index is on a primary key.
 
@@ -1511,7 +1511,7 @@ Tests whether an index is on a primary key.
         'Table sometable should be clustered on "myindex"'
     );
 
-   SELECT is_clustered( 'sometable', 'myindex' );
+    SELECT is_clustered( 'sometable', 'myindex' );
 
 Tests whether a table is clustered on the given index. A table is clustered on
 an index when the SQL command `CLUSTER TABLE INDEXNAME` has been executed.
@@ -1531,7 +1531,7 @@ order defined by the index.
         'Index "myindex" should be a GIST index'
     );
 
-   SELECT index_is_type( 'myindex', 'gin' );
+    SELECT index_is_type( 'myindex', 'gin' );
 
 Tests to ensure that an index is of a particular type. At the time of this
 writing, the supported types are:
