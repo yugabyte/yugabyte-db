@@ -312,7 +312,7 @@ Or this?
       not ok 5 - simple exponential
       ok 6 - force == mass * acceleration
 
-The later gives you some idea of what failed. It also makes it easier to find
+The latter gives you some idea of what failed. It also makes it easier to find
 the test in your script, simply search for "simple exponential".
 
 All test functions take a name argument. It's optional, but highly suggested
@@ -574,7 +574,7 @@ A.](http://www.postgresql.org/docs/current/static/errcodes-appendix.html
 documentation](http://www.postgresql.org/docs/current/static/).
 
 The third argument is an error message. This will be most useful for functions
-you've written that raise exceptions, so that you can test the excption
+you've written that raise exceptions, so that you can test the exception
 message that you've thrown. Otherwise, for core errors, you'll need to be
 careful of localized error messages.
 
