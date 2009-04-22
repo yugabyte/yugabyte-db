@@ -11,6 +11,7 @@
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "port.h"
+#include "storage/fd.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "orafunc.h"
@@ -243,6 +244,15 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 
 	/* open file */
 	fullname = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
+
+	/*
+	 * We cannot use AllocateFile here because those files are automatically
+	 * closed at the end of (sub)transactions, but we want to keep them open
+	 * for oracle compatibility.
+	 */
+#if NOT_USED
+	fullname = convert_encoding_server_to_platform(fullname);
+#endif
 	file = fopen(fullname, mode);
 	if (!file)
 		IO_EXCEPTION();
@@ -914,14 +924,14 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("end_line must be positive (%d passed)", end_line)));
 
-	srcfile = fopen(srcpath, "rt");
+	srcfile = AllocateFile(srcpath, "rt");
 	if (srcfile == NULL)
 	{
 		/* failed to open src file. */
 		IO_EXCEPTION();
 	}
 
-	dstfile = fopen(dstpath, "wt");
+	dstfile = AllocateFile(dstpath, "wt");
 	if (dstfile == NULL)
 	{
 		/* failed to open dst file. */
@@ -929,21 +939,12 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 		IO_EXCEPTION();
 	}
 
-	PG_TRY();
-	{
-		if (copy_text_file(srcfile, dstfile, start_line, end_line))
-			IO_EXCEPTION();
-	}
-	PG_CATCH();
-	{
-		fclose(srcfile);
-		fclose(dstfile);
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+	if (copy_text_file(srcfile, dstfile, start_line, end_line))
+		IO_EXCEPTION();
 
-	fclose(srcfile);
-	fclose(dstfile);
+	FreeFile(srcfile);
+	FreeFile(dstfile);
+
 	PG_RETURN_VOID();
 }
 
