@@ -2084,8 +2084,8 @@ version of PostgreSQL. For example:
 The revision level is in the tens position, the minor version in the thousands
 position, and the major version in the ten thousands position and above
 (assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
-position). This value is the same as the "sever_version_num" setting available
-in PostgreSQL 8.2 and higher, but supported by this function back to
+position). This value is the same as the "server_version_num" setting
+available in PostgreSQL 8.2 and higher, but supported by this function back to
 PostgreSQL 8.0:
 
     try=% select current_setting( 'server_version_num'), pg_version_num();

@@ -5,7 +5,8 @@ Revision history for pgTAP
 -------------------------
 * Fixed a bug in the processing of the `--schema` and `--match` options that
   only shows up in Getopt::Long 2.38 or higher.
-* A few doc typos fixed thanks to Gabrielle Roth.
+* A few doc and test typos fixed thanks to Gabrielle Roth.
+* Fixed failing test on Solaris 10 on Intel thanks to Gabrielle Roth.
 
 0.20 2009-03-29T19:05:40
 -------------------------
