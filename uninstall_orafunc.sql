@@ -25,10 +25,10 @@ DROP FUNCTION pg_catalog.to_number(str text);
 DROP FUNCTION pg_catalog.to_date(str text);
 DROP FUNCTION pg_catalog.reverse(str text);
 DROP FUNCTION pg_catalog.lnnvl(bool);
-DROP FUNCTION pg_catalog.dump("any");
-DROP FUNCTION pg_catalog.dump(text);
-DROP FUNCTION pg_catalog.dump("any", integer);
-DROP FUNCTION pg_catalog.dump(text, integer);
+DROP FUNCTION dump("any");
+DROP FUNCTION dump(text);
+DROP FUNCTION dump("any", integer);
+DROP FUNCTION dump(text, integer);
 
 DROP VIEW public.dual CASCADE;
 
@@ -45,6 +45,7 @@ DROP FUNCTION tanh(float8);
 DROP FUNCTION nanvl(float4, float4);
 DROP FUNCTION nanvl(float8, float8);
 DROP FUNCTION nanvl(numeric, numeric);
+DROP FUNCTION to_multi_byte(text);
 
 DROP FUNCTION decode(text, text, anyelement);
 DROP FUNCTION decode(text, text, anyelement, anyelement);

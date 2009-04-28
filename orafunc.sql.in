@@ -154,6 +154,12 @@ AS $$ SELECT $1::date; $$
 LANGUAGE sql IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to date';
 
+CREATE OR REPLACE FUNCTION to_multi_byte(str text)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_multi_byte'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION to_multi_byte(text) IS 'Convert all single-byte characters to their corresponding multibyte characters';
+
 CREATE OR REPLACE FUNCTION bitand(bigint, bigint)
 RETURNS bigint
 AS $$ SELECT $1 & $2; $$
@@ -189,22 +195,22 @@ RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION pg_catalog.dump("any") 
+CREATE OR REPLACE FUNCTION dump("any") 
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE OR REPLACE FUNCTION pg_catalog.dump(text) 
+CREATE OR REPLACE FUNCTION dump(text) 
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE OR REPLACE FUNCTION pg_catalog.dump("any", integer) 
+CREATE OR REPLACE FUNCTION dump("any", integer) 
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE OR REPLACE FUNCTION pg_catalog.dump(text, integer) 
+CREATE OR REPLACE FUNCTION dump(text, integer) 
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
@@ -1652,12 +1658,18 @@ AS 'MODULE_PATHNAME','plunit_fail_message'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
 
+/*
+ * PostgreSQL 8.2 or earlier version cannot handle overloaded functions with
+ * text and pseudo types (ex. anyelement). So, drop one versions of them.
+ */
 -- if server_version_num < 80300
 CREATE FUNCTION oracle.drop_anyelement_overloads() RETURNS VOID AS
 $$
   DROP FUNCTION concat(text, anyelement);
   DROP FUNCTION concat(anyelement, text);
   DROP FUNCTION concat(anyelement, anyelement);
+  DROP FUNCTION dump(text);
+  DROP FUNCTION dump(text, integer);
   DROP FUNCTION utl_file.put_line(utl_file.file_type, anyelement);
   DROP FUNCTION utl_file.put_line(utl_file.file_type, anyelement, bool);
 $$

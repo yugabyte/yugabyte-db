@@ -1066,7 +1066,7 @@ select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'W
  t
 (1 row)
 
-select plvstr.left('Příliš žluťoučký kůň',4) = 'Příl';
+select plvstr.left('Příliš žluťoučký kůň',4) = pg_catalog.substr('Příl', 1, 4);
  ?column? 
 ----------
  t
@@ -1312,19 +1312,19 @@ DETAIL:  Plunit.assertation (assert_fail).
 select plunit.fail('custom exception');
 ERROR:  custom exception
 DETAIL:  Plunit.assertation (assert_fail).
-select dump('Yellow dog');
+select dump('Yellow dog'::text);
                              dump                              
 ---------------------------------------------------------------
  Typ=25 Len=14: 56,0,0,0,89,101,108,108,111,119,32,100,111,103
 (1 row)
 
-select dump('Yellow dog', 10);
+select dump('Yellow dog'::text, 10);
                              dump                              
 ---------------------------------------------------------------
  Typ=25 Len=14: 56,0,0,0,89,101,108,108,111,119,32,100,111,103
 (1 row)
 
-select dump('Yellow dog', 17);
+select dump('Yellow dog'::text, 17);
                     dump                    
 --------------------------------------------
  Typ=25 Len=14: 8,?,?,?,Y,e,l,l,o,w, ,d,o,g

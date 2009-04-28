@@ -201,7 +201,7 @@ select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';
 select PLVstr.lstrip ('*val1|val2|val3|*', '*') = 'val1|val2|val3|*';
 select PLVstr.lstrip (',,,val1,val2,val3,', ',', 3)= 'val1,val2,val3,';
 select PLVstr.lstrip ('WHERE WHITE = ''FRONT'' AND COMP# = 1500', 'WHERE ') = 'WHITE = ''FRONT'' AND COMP# = 1500';
-select plvstr.left('Příliš žluťoučký kůň',4) = 'Příl';
+select plvstr.left('Příliš žluťoučký kůň',4) = pg_catalog.substr('Příl', 1, 4);
 
 select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, true);
 
@@ -258,9 +258,9 @@ select plunit.assert_not_equals(current_date, current_date + 1, 'yestarday is to
 select plunit.fail();
 select plunit.fail('custom exception');
 
-select dump('Yellow dog');
-select dump('Yellow dog', 10);
-select dump('Yellow dog', 17);
+select dump('Yellow dog'::text);
+select dump('Yellow dog'::text, 10);
+select dump('Yellow dog'::text, 17);
 select dump(10);
 select dump(date '2008-10-10');
 select dump(10.23);
