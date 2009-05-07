@@ -357,7 +357,7 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 			map = TO_MULTI_BYTE_UTF8;
 			break;
 		case PG_EUC_JP:
-#ifdef PG_EUC_JIS_2004
+#if PG_VERSION_NUM >= 80300
 		case PG_EUC_JIS_2004:
 #endif
 			map = TO_MULTI_BYTE_EUCJP;
