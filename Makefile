@@ -21,7 +21,11 @@ include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
 ifeq ($(enable_nls), yes)
+ifeq ($(PORTNAME),win32)
 SHLIB_LINK += -lintl
+else
+SHLIB_LINK += -L$(libdir)/gettextlib
+endif
 endif
 
 plvlex.o: sqlparse.o
