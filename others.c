@@ -400,49 +400,49 @@ equality_oper_funcid(Oid argtype)
  *  the dump function returns a varchar2 value that includes the datatype code, 
  *  the length in bytes, and the internal representation of the expression.
  */
-static void 
-appendChar(StringInfo str, const char *formatstr, int format, unsigned char c)
-{
-	/* print only ANSI visible chars */
-	if (format == 17 && (iscntrl(c) || !isascii(c)))
-		appendStringInfoChar(str, '?');
-	else
-		appendStringInfo(str, formatstr, c);
-}
-
 PG_FUNCTION_INFO_V1(orafce_dump);
 
-
 static void
-outDatum(StringInfo str, Datum value, int typlen, bool typbyval, int format,  char *formatstr)
+appendDatum(StringInfo str, const void *ptr, size_t length, int format)
 {
-	Size		length,
-				i;
-	char	   *s;
-
-	length = datumGetSize(value, typbyval, typlen);
-
-	if (typbyval)
-	{
-		s = (char *) (&value);
-		for (i = 0; i < (Size) sizeof(Datum); i++)
-		{
-			if (i > 0) appendStringInfoChar(str, ',');
-			appendChar(str, formatstr, format, (unsigned char) (s[i]));
-		}
-	}
+	if (!PointerIsValid(ptr))
+		appendStringInfoChar(str, ':');
 	else
 	{
-		s = (char *) DatumGetPointer(value);
-		if (!PointerIsValid(s))
-			appendStringInfoChar(str, ':');
-		else
+		const unsigned char *s = (const char *) ptr;
+		const char *formatstr;
+		size_t	i;
+
+		switch (format)
 		{
-			for (i = 0; i < length; i++)
-			{
-				if (i > 0) appendStringInfoChar(str, ',');
-				appendChar(str, formatstr, format, (unsigned char) (s[i]));
-			}
+			case 8:
+				formatstr = "%ho";
+				break;
+			case 10: 
+				formatstr = "%hu";
+				break;
+			case 16:
+				formatstr = "%hx";
+				break;
+			case 17:
+				formatstr = "%hc";
+				break;
+			default:
+				elog(ERROR, "unknown format");
+				formatstr  = NULL; 	/* quite compiler */
+		}
+
+		/* append a byte array with the specified format */
+		for (i = 0; i < length; i++)
+		{
+			if (i > 0)
+				appendStringInfoChar(str, ',');
+
+			/* print only ANSI visible chars */
+			if (format == 17 && (iscntrl(s[i]) || !isascii(s[i])))
+				appendStringInfoChar(str, '?');
+			else
+				appendStringInfo(str, formatstr, s[i]);
 		}
 	}
 }
@@ -451,15 +451,14 @@ outDatum(StringInfo str, Datum value, int typlen, bool typbyval, int format,  ch
 Datum
 orafce_dump(PG_FUNCTION_ARGS)
 {
-	Oid	valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
+	Oid		valtype = get_fn_expr_argtype(fcinfo->flinfo, 0);
 	List	*args;
 	int16	typlen;
 	bool	typbyval;
-	Size		length;
-	Datum		value;
-	StringInfo	str = makeStringInfo();
-	int	format;
-	char	*formatstr = NULL; 			/* quite compiler */
+	Size	length;
+	Datum	value;
+	int		format;
+	StringInfoData	str;
 
 	if (!fcinfo->flinfo || !fcinfo->flinfo->fn_expr)
 		elog(ERROR, "function is called from invalid context");
@@ -470,32 +469,39 @@ orafce_dump(PG_FUNCTION_ARGS)
 	value = PG_GETARG_DATUM(0);
 	format = PG_GETARG_IF_EXISTS(1, INT32, 10);
 
-	switch (format)
-	{
-		case 8:
-			formatstr = "%ho";
-			break;
-		case 10: 
-			formatstr = "%hu";
-			break;
-		case 16:
-			formatstr = "%hx";
-			break;
-		case 17:
-			formatstr = "%hc";
-			break;
-		default:
-			elog(ERROR, "unknown format");
-	}
-
 	args = ((FuncExpr *) fcinfo->flinfo->fn_expr)->args;
 	valtype = exprType((Node *) list_nth(args, 0));
 
 	get_typlenbyval(valtype, &typlen, &typbyval);
 	length = datumGetSize(value, typbyval, typlen);
 
-	appendStringInfo(str, "Typ=%d Len=%d: ", valtype, length);
-	outDatum(str, value, typlen, typbyval, format, formatstr);
+	initStringInfo(&str);
+	appendStringInfo(&str, "Typ=%d Len=%d: ", valtype, length);
 
-	PG_RETURN_TEXT_P(cstring_to_text(str->data));
+	if (!typbyval)
+	{
+		appendDatum(&str, DatumGetPointer(value), length, format);
+	}
+	else if (length <= 1)
+	{
+		char	v = DatumGetChar(value);
+		appendDatum(&str, &v, sizeof(char), format);
+	}
+	else if (length <= 2)
+	{
+		int16	v = DatumGetInt16(value);
+		appendDatum(&str, &v, sizeof(int16), format);
+	}
+	else if (length <= 4)
+	{
+		int32	v = DatumGetInt32(value);
+		appendDatum(&str, &v, sizeof(int32), format);
+	}
+	else
+	{
+		int64	v = DatumGetInt64(value);
+		appendDatum(&str, &v, sizeof(int64), format);
+	}
+
+	PG_RETURN_TEXT_P(cstring_to_text(str.data));
 }
