@@ -419,7 +419,7 @@ outDatum(StringInfo str, Datum value, int typlen, bool typbyval, int format,  ch
 	Size		length,
 				i;
 	char	   *s;
-	
+
 	length = datumGetSize(value, typbyval, typlen);
 
 	if (typbyval)
@@ -460,24 +460,16 @@ orafce_dump(PG_FUNCTION_ARGS)
 	StringInfo	str = makeStringInfo();
 	int	format;
 	char	*formatstr = NULL; 			/* quite compiler */
-	
+
 	if (!fcinfo->flinfo || !fcinfo->flinfo->fn_expr)
 		elog(ERROR, "function is called from invalid context");
-	
+
 	if (PG_ARGISNULL(0))
 		elog(ERROR, "argument is NULL");
-		
+
 	value = PG_GETARG_DATUM(0);
-	if (PG_NARGS() == 1)
-		format = 10;
-	else
-	{
-		if (PG_ARGISNULL(1))
-			format = 10;
-		else
-			format = PG_GETARG_INT32(1);
-	}
-	
+	format = PG_GETARG_IF_EXISTS(1, INT32, 10);
+
 	switch (format)
 	{
 		case 8:
@@ -498,10 +490,10 @@ orafce_dump(PG_FUNCTION_ARGS)
 
 	args = ((FuncExpr *) fcinfo->flinfo->fn_expr)->args;
 	valtype = exprType((Node *) list_nth(args, 0));
-	
+
 	get_typlenbyval(valtype, &typlen, &typbyval);
 	length = datumGetSize(value, typbyval, typlen);
-	
+
 	appendStringInfo(str, "Typ=%d Len=%d: ", valtype, length);
 	outDatum(str, value, typlen, typbyval, format, formatstr);
 

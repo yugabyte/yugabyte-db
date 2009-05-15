@@ -15,6 +15,9 @@
 #define TextPCopy(t) \
 	DatumGetTextP(datumCopy(PointerGetDatum(t), false, -1))
 
+#define PG_GETARG_IF_EXISTS(n, type, defval) \
+	((PG_NARGS() > (n) && !PG_ARGISNULL(n)) ? PG_GETARG_##type(n) : (defval))
+
 /* alignment of this struct must fit for all types */
 typedef union vardata
 {

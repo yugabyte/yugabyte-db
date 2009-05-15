@@ -523,7 +523,7 @@ utl_file_put_line(PG_FUNCTION_ARGS)
 
 	f = do_put(fcinfo);
 
-	autoflush = (PG_NARGS() > 2 && !PG_ARGISNULL(2) && PG_GETARG_BOOL(2));
+	autoflush = PG_GETARG_IF_EXISTS(2, BOOL, false);
 
 	do_new_line(f, 1);
 
@@ -541,11 +541,7 @@ utl_file_new_line(PG_FUNCTION_ARGS)
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), NULL);
-
-	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
-		lines = PG_GETARG_INT32(1);
-	else
-		lines = 1;
+	lines = PG_GETARG_IF_EXISTS(1, INT32, 1);
 
 	do_new_line(f, lines);
 
@@ -865,7 +861,7 @@ utl_file_frename(PG_FUNCTION_ARGS)
 	NOT_NULL_ARG(2);
 	NOT_NULL_ARG(3);
 
-	overwrite = (PG_NARGS() > 4 && !PG_ARGISNULL(4) && PG_GETARG_BOOL(4));
+	overwrite = PG_GETARG_IF_EXISTS(4, BOOL, false);
 	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
 
@@ -912,13 +908,13 @@ utl_file_fcopy(PG_FUNCTION_ARGS)
 	srcpath = get_safe_path(PG_GETARG_TEXT_P(0), PG_GETARG_TEXT_P(1));
 	dstpath = get_safe_path(PG_GETARG_TEXT_P(2), PG_GETARG_TEXT_P(3));
 
-	start_line = (PG_NARGS() > 4 && !PG_ARGISNULL(4)) ? PG_GETARG_INT32(4) : 1;
+	start_line = PG_GETARG_IF_EXISTS(4, INT32, 1);
 	if (start_line <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				errmsg("start_line must be positive (%d passed)", start_line)));
 
-	end_line = (PG_NARGS() > 5 && !PG_ARGISNULL(5)) ? PG_GETARG_INT32(4) : INT_MAX;
+	end_line = PG_GETARG_IF_EXISTS(5, INT32, INT_MAX);
 	if (end_line <= 0)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),

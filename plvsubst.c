@@ -218,7 +218,7 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 
 	InitFunctionCallInfoData(locfcinfo, fcinfo->flinfo, 2, NULL, NULL);
 	locfcinfo.arg[0] = PG_GETARG_DATUM(1);
-	locfcinfo.arg[1] = (PG_NARGS() <= 2 || PG_ARGISNULL(2)) ? CStringGetTextDatum(",") : PG_GETARG_DATUM(2);
+	locfcinfo.arg[1] = PG_GETARG_IF_EXISTS(2, DATUM, CStringGetTextDatum(","));
 	locfcinfo.argnull[0] = false;
 	locfcinfo.argnull[1] = false;
 	r = text_to_array(&locfcinfo);
@@ -230,7 +230,7 @@ plvsubst_string_string(PG_FUNCTION_ARGS)
 
 	PG_RETURN_TEXT_P(plvsubst_string(PG_GETARG_TEXT_P(0),
 					 array,
-					 (PG_NARGS() <= 3 || PG_ARGISNULL(3)) ? c_subst : PG_GETARG_TEXT_P(3),
+					 PG_GETARG_IF_EXISTS(3, TEXT_P, c_subst),
 					 fcinfo));
 }
 
