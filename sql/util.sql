@@ -18,7 +18,7 @@ SELECT is(
 );
 SELECT matches(
     pg_version(),
-    '^8[.][[:digit:]]{1,2}([.][[:digit:]]{1,2}|devel)$',
+    '^8[.][[:digit:]]{1,2}([.][[:digit:]]{1,2}|devel|beta[[:digit:]]+)$',
     'pg_version() should work'
 );
 
