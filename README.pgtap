@@ -618,6 +618,40 @@ For example:
 
 Idea borrowed from the Test::Exception Perl module.
 
+### `performs_ok ( sql, milliseconds, description )` ###
+### `performs_ok ( sql, milliseconds )` ###
+
+    SELECT performs_ok(
+        'SELECT id FROM try WHERE name = ''Larry''',
+        250,
+        'A select by name should be fast'
+    );
+
+This function makes sure that an SQL statement performs well. It does so by
+timing its execution, and failing if execution takes longer than the specified
+amount of time.
+
+The first argument should be a string representing the query to be executed.
+`throws_ok()` will use the PL/pgSQL `EXECUTE` statement to execute it and
+catch any exception.
+
+The second argument is the maximum number of milliseconds it should take for
+the SQL statement to execute. This argument is numeric, so you can even use
+fractions of milliseconds if it floats your boat.
+
+The third argument is the usual description. If not provided, `performs_ok()`
+will generate a placeholder description "Should run in less than $milliseconds
+ms". You'll likely want to provide your own description if you have more than
+a couple of these in a test script or function.
+
+Should a `performs_ok()` test fail it produces appropriate diagnostic
+messages. For example:
+
+    not ok 19 - The lookup should be fast!
+    # Failed test 19: "The lookup should be fast!"
+    #       runtime: 200.266 ms
+    #       exceeds: 200 ms
+
 A Wicked Schema
 ---------------
 
@@ -2303,6 +2337,7 @@ Testing Test Functions
 Now you've written your test function. So how do you test it? Why, with this
 handy-dandy test function!
 
+### `check_test( test_output, is_ok, name, want_description, want_diag, match_diag )` ###
 ### `check_test( test_output, is_ok, name, want_description, want_diag )` ###
 ### `check_test( test_output, is_ok, name, want_description )` ###
 ### `check_test( test_output, is_ok, name )` ###
@@ -2334,6 +2369,9 @@ function. For the impatient, the arguments are:
   Optional.
 * `:want_diag` - Expected diagnostic message output during the execution of
   a test. Must always follow whatever is output by the call to `ok()`.
+* `:match_diag` - Use `matches()` to compare the diagnostics rather than
+  `:is()`. Useful for those situations where you're not sure what will be in
+  the output, but you can match it with a regular expression.
 
 Now, on with the detailed documentation. At its simplest, you just pass it the
 output of your test (and it must be one and **only one** test function's
@@ -2388,21 +2426,21 @@ See how there are two tests run for a single call to `check_test()`? Be sure
 to adjust your plan accordingly. Also note how the test name was used in the
 descriptions for both tests.
 
-If the test had failed, it would output a nice diagnostics (internally it just
-uses `is()` to compare the strings):
+If the test had failed, it would output a nice diagnostics. Internally it just
+uses `is()` to compare the strings:
 
     not ok 43 - lc_eq() test should have the proper description
     # Failed test 43:  "lc_eq() test should have the proper description"
     #         have: 'this is this'
     #         want: 'this is THIS'
 
-The fifth argument, also optional, of course, compares the diagnostics
-generated during the test to an expected string. Such diagnostics **must**
-follow whatever is output by the call to `ok()` in your test. Your test
-fuction should not call `diag()` until after it calls `ok()` or things will
-get truly funky.
+The fifth argument, `:want_diag`, which is also optional, compares the
+diagnostics generated during the test to an expected string. Such diagnostics
+**must** follow whatever is output by the call to `ok()` in your test. Your
+test fuction should not call `diag()` until after it calls `ok()` or things
+will get truly funky.
 
-Assumign you've followed that rule in your `lc_eq()` tset function, to see
+Assuming you've followed that rule in your `lc_eq()` tset function, to see
 what happens when a `lc_eq()` fails. Write your test to test the diagnostics
 like so:
 
@@ -2430,10 +2468,16 @@ like a description failure would, something like this:
     #         want:     Have: this
     #     Want: THat
 
-I realize that can be a bit confusing, given the various haves and wants, but
-it gets the job done. Of course, if your diagnostics use something other than
-indented "have" and "want", such failures will be easier to read. But either
-way, do test your diagnostics!
+If you pass in the optional sixth argument, `:match_diag`, the `:want_diag`
+argument will be compared to the actual diagnostic output using `matches()`
+instead of `is()`. This allows you to use a regular expression in the
+`:want_diag` argument to match the output, for those situations where some
+part of the output might vary, such as time-based diagnostics.
+
+I realize that all of this can be a bit confusing, given the various haves and
+wants, but it gets the job done. Of course, if your diagnostics use something
+other than indented "have" and "want", such failures will be easier to read.
+But either way, *do* test your diagnostics!
 
 Compatibility
 =============

@@ -8,6 +8,7 @@ Revision history for pgTAP
 * A few doc and test typos fixed thanks to Gabrielle Roth.
 * Fixed failing test on Solaris 10 on Intel thanks to Gabrielle Roth.
 * Fixed a failing test for the version number string on 8.4 beta.
+* Added `performs_ok()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

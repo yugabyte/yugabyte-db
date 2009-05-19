@@ -374,7 +374,7 @@ BEGIN
     output := ok( result, descr );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
            '                  ' || COALESCE( quote_literal(got), 'NULL' ) ||
-        E'\n   doesn''t match: ' || COALESCE( quote_literal(rx), 'NULL' )
+       E'\n   doesn''t match: ' || COALESCE( quote_literal(rx), 'NULL' )
     ) END;
 END;
 $$ LANGUAGE plpgsql;
@@ -767,6 +767,35 @@ CREATE OR REPLACE FUNCTION lives_ok ( TEXT )
 RETURNS TEXT AS $$
     SELECT lives_ok( $1, NULL );
 $$ LANGUAGE SQL;
+
+-- performs_ok ( sql, milliseconds, description )
+CREATE OR REPLACE FUNCTION performs_ok ( TEXT, NUMERIC, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    query     ALIAS FOR $1;
+    max_time  ALIAS FOR $2;
+    descr     ALIAS FOR $3;
+    starts_at TEXT;
+    act_time  NUMERIC;
+BEGIN
+    starts_at := timeofday();
+    EXECUTE query;
+    act_time := extract( millisecond from timeofday()::timestamptz - starts_at::timestamptz);
+    IF act_time < max_time THEN RETURN ok(TRUE, descr); END IF;
+    RETURN ok( FALSE, descr ) || E'\n' || diag(
+           '      runtime: ' || act_time || ' ms' ||
+        E'\n      exceeds: ' || max_time || ' ms'
+    );
+END;
+$$ LANGUAGE plpgsql;
+ 
+-- performs_ok ( sql, milliseconds )
+CREATE OR REPLACE FUNCTION performs_ok ( TEXT, NUMERIC )
+RETURNS TEXT AS $$
+    SELECT performs_ok(
+        $1, $2, 'Should run in less than ' || $2 || ' ms'
+    );
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _rexists ( CHAR, NAME, NAME )
 RETURNS BOOLEAN AS $$
@@ -3669,21 +3698,22 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- check_test( test_output, pass, name, description, diag )
-CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
+-- check_test( test_output, pass, name, description, diag, match_diag )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
 RETURNS SETOF TEXT AS $$
 DECLARE
-    tnumb  INTEGER;
-    aok    BOOLEAN;
-    adescr TEXT;
-    res    BOOLEAN;
-    descr  TEXT;
-    adiag  TEXT;
-    have   ALIAS FOR $1;
-    eok    ALIAS FOR $2;
-    name   ALIAS FOR $3;
-    edescr ALIAS FOR $4;
-    ediag  ALIAS FOR $5;
+    tnumb   INTEGER;
+    aok     BOOLEAN;
+    adescr  TEXT;
+    res     BOOLEAN;
+    descr   TEXT;
+    adiag   TEXT;
+    have    ALIAS FOR $1;
+    eok     ALIAS FOR $2;
+    name    ALIAS FOR $3;
+    edescr  ALIAS FOR $4;
+    ediag   ALIAS FOR $5;
+    matchit ALIAS FOR $6;
 BEGIN
     -- What test was it that just ran?
     tnumb := currval('__tresults___numb_seq');
@@ -3741,11 +3771,19 @@ BEGIN
         adiag := replace( substring(adiag from 3), E'\n# ', E'\n' );
 
         -- Now compare the diagnostics.
-        RETURN NEXT is(
-            adiag,
-            ediag,
-            descr || 'have the proper diagnostics'
-        );
+        IF matchit THEN
+            RETURN NEXT matches(
+                adiag,
+                ediag,
+                descr || 'have the proper diagnostics'
+            );
+        ELSE
+            RETURN NEXT is(
+                adiag,
+                ediag,
+                descr || 'have the proper diagnostics'
+            );
+        END IF;
     END IF;
 
     -- And we're done
@@ -3753,22 +3791,28 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- check_test( test_output, pass, name, description, diag )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT )
+RETURNS SETOF TEXT AS $$
+    SELECT * FROM check_test( $1, $2, $3, $4, $5, FALSE );
+$$ LANGUAGE sql;
+
 -- check_test( test_output, pass, name, description )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT )
 RETURNS SETOF TEXT AS $$
-    SELECT * FROM check_test( $1, $2, $3, $4, NULL );
+    SELECT * FROM check_test( $1, $2, $3, $4, NULL, FALSE );
 $$ LANGUAGE sql;
 
 -- check_test( test_output, pass, name )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT )
 RETURNS SETOF TEXT AS $$
-    SELECT * FROM check_test( $1, $2, $3, NULL, NULL );
+    SELECT * FROM check_test( $1, $2, $3, NULL, NULL, FALSE );
 $$ LANGUAGE sql;
 
 -- check_test( test_output, pass )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN )
 RETURNS SETOF TEXT AS $$
-    SELECT * FROM check_test( $1, $2, NULL, NULL, NULL );
+    SELECT * FROM check_test( $1, $2, NULL, NULL, NULL, FALSE );
 $$ LANGUAGE sql;
 
 

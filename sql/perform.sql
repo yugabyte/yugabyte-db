@@ -1,0 +1,66 @@
+\unset ECHO
+\i test_setup.sql
+
+SELECT plan(18);
+--SELECT * FROM no_plan();
+
+/****************************************************************************/
+-- Test performs_ok().
+SELECT * FROM check_test(
+    performs_ok( 'SELECT TRUE', 500, 'whatever' ),
+    true,
+    'simple select',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    performs_ok( 'SELECT TRUE', 500 ),
+    true,
+    'simple select no desc',
+    'Should run in less than 500 ms',
+    ''
+);
+
+SELECT * FROM check_test(
+    performs_ok( 'SELECT TRUE', 99.99 ),
+    true,
+    'simple select numeric',
+    'Should run in less than 99.99 ms',
+    ''
+);
+
+SELECT * FROM check_test(
+    performs_ok( 'SELECT TRUE', 0, 'whatever' ),
+    false,
+    'simple select fail',
+    'whatever',
+    '      runtime: [[:digit:]]+([.][[:digit:]]+)? ms
+      exceeds: 0 ms',
+    true
+);
+
+SELECT * FROM check_test(
+    performs_ok( 'SELECT TRUE', 0 ),
+    false,
+    'simple select no desc fail',
+    'Should run in less than 0 ms',
+    '      runtime: [[:digit:]]+([.][[:digit:]]+)? ms
+      exceeds: 0 ms',
+    true
+);
+
+SELECT * FROM check_test(
+    performs_ok( 'SELECT TRUE', 0.00 ),
+    false,
+    'simple select no desc numeric fail',
+    'Should run in less than 0.00 ms',
+    '      runtime: [[:digit:]]+([.][[:digit:]]+)? ms
+      exceeds: 0.00 ms',
+    true
+);
+
+/****************************************************************************/
+-- Finish the tests and clean up.
+SELECT * FROM finish();
+ROLLBACK;
