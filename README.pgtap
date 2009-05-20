@@ -652,6 +652,12 @@ messages. For example:
     #       runtime: 200.266 ms
     #       exceeds: 200 ms
 
+*Note:* There is a little extra time included in the execution time for the
+the overhead of PL/pgSQL's `EXECUTE`, which must compile and execute the SQL
+string. You will want to account for this and pad your estimates accordingly.
+It's best to think of this as a brute force comparison of runtimes, in order
+to ensure that a query is not *really* slow (think seconds).
+
 A Wicked Schema
 ---------------
 
