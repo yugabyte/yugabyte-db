@@ -1,8 +1,6 @@
 \unset ECHO
 \i test_setup.sql
 
--- $Id$
-
 SELECT plan(39);
 
 -- This will be rolled back. :-)

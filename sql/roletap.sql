@@ -1,8 +1,6 @@
 \unset ECHO
 \i test_setup.sql
 
--- $Id$
-
 SELECT plan(24);
 --SELECT * FROM no_plan();
 

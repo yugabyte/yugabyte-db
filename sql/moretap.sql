@@ -1,8 +1,6 @@
 \unset ECHO
 \i test_setup.sql
 
--- $Id$
-
 \set numb_tests 40
 SELECT plan(:numb_tests);
 

@@ -2,8 +2,6 @@
 \i test_setup.sql
 SET client_min_messages = warning;
 
--- $Id$
-
 CREATE SCHEMA whatever;
 CREATE TABLE whatever.foo ( id serial primary key );
 

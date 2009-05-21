@@ -2,8 +2,6 @@
 \i test_setup.sql
 SET client_min_messages = notice;
 
--- $Id$
-
 SELECT plan(26);
 --SELECT * FROM no_plan();
 
