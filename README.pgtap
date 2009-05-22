@@ -2713,7 +2713,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `tablespaces_are()`
   * `functions_are()`
   * `indexes_are()`
   * `users_are()`
@@ -2726,7 +2725,6 @@ To Do
   * `seq_increments_by()`
   * `seq_starts_at()`
   * `seq_cycles()`
-  * `can_only()`
 
 Suported Versions
 -----------------

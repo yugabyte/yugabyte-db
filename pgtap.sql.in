@@ -3711,14 +3711,14 @@ BEGIN
         res = FALSE;
         msg := E'\n' || diag(
             '    These are extra ' || what || E':\n        '
-            ||  array_to_string( extras, E'\n        ' )
+            ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
             '    These ' || what || E' are missing:\n        '
-            ||  array_to_string( missing, E'\n        ' )
+            ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;
 
@@ -3860,14 +3860,14 @@ BEGIN
         res = FALSE;
         msg := E'\n' || diag(
             '    Schema ' || quote_ident($3) || ' has these extra ' || $2 || E':\n        '
-            ||  array_to_string( extras, E'\n        ' )
+            ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
             '    Schema ' || quote_ident($3) || ' is missing these ' || $2 || E':\n        '
-            ||  array_to_string( missing, E'\n        ' )
+            ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;
 
@@ -3887,14 +3887,14 @@ BEGIN
         res = FALSE;
         msg := E'\n' || diag(
             '    These are extra ' || $2 || E':\n        '
-            ||  array_to_string( extras, E'\n        ' )
+            ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
             '    These ' || $2 || E' are missing:\n        '
-            ||  array_to_string( missing, E'\n        ' )
+            ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;
 
