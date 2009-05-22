@@ -691,6 +691,35 @@ In general, this should not be an issue, as mixed-case objects are created
 only rarely. So if you just stick to lowercase-only arguments to these
 functions, you should be in good shape.
 
+### `tablespaces_are( tablespaces, description )` ###
+### `tablespaces_are( tablespaces )` ###
+
+    SELECT tablespaces_are(
+        ARRAY[ 'public, 'contrib, 'tap' ],
+        'Should have the correct tablespaces
+    );
+
+This function tests that all of the tablespaces in the databse only the
+tablespaces that *should* be there. In other words, given a list of
+tablespaces, this assertion will fail if there are tablespaces that are not in
+the list, or if there are tablespaces in the list that are missing from the
+database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the tablespaces in a database are exactly the tablespaces
+that should exist in the database, no more, no less.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing tablespaces, like so:
+
+    not ok 121 - There should be the correct tablespaces
+    # Failed test 121: "There should be the correct tablespaces"
+    #     These are extra tablespaces:
+    #         pg_default
+    #     These tablespaces are missing:
+    #         __booya__
+
 ### `has_tablespace( tablespace, location, description )` ###
 ### `has_tablespace( tablespace, description )` ###
 ### `has_tablespace( tablespace )` ###
@@ -719,9 +748,7 @@ test description, it will be set to "Tablespace `:tablespace` should exist".
 This function is the inverse of `has_tablespace()`. The test passes if the
 specified tablespace does *not* exist.
 
-### `schemas_are( schema, schemas, description )` ###
 ### `schemas_are( schemas, description )` ###
-### `schemas_are( schema, schemas )` ###
 ### `schemas_are( schemas )` ###
 
     SELECT schemas_are(
@@ -738,10 +765,6 @@ This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
 to make sure that the schemas in a database are exactly the schemas that should
 exist in the database, no more, no less.
-
-If the `:schema` argument is omitted, schemas will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing schemas, like so:

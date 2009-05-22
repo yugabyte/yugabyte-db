@@ -3697,53 +3697,90 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- schemas_are( schemas, description )
-CREATE OR REPLACE FUNCTION schemas_are ( NAME[], TEXT )
+CREATE OR REPLACE FUNCTION _are ( text, name[], name[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    extras  name[];
-    missing name[];
+    what    ALIAS FOR $1;
+    extras  ALIAS FOR $2;
+    missing ALIAS FOR $3;
+    descr   ALIAS FOR $4;
     msg     TEXT    := '';
     res     BOOLEAN := TRUE;
 BEGIN
-    SELECT ARRAY(
-        SELECT nspname
-          FROM pg_catalog.pg_namespace
-         WHERE nspname NOT LIKE 'pg_%'
-           AND nspname <> 'information_schema'
-        EXCEPT
-        SELECT $1[i]
-          FROM generate_series(1, array_upper($1, 1)) s(i)
-    ) INTO extras;
-
-    SELECT ARRAY(
-        SELECT $1[i]
-          FROM generate_series(1, array_upper($1, 1)) s(i)
-        EXCEPT
-        SELECT nspname
-          FROM pg_catalog.pg_namespace
-         WHERE nspname NOT LIKE 'pg_%'
-           AND nspname <> 'information_schema'
-    ) INTO missing;
-
     IF extras[1] IS NOT NULL THEN
         res = FALSE;
         msg := E'\n' || diag(
-            E'    These are extra schemas:\n        '
+            '    These are extra ' || what || E':\n        '
             ||  array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
-            E'    These schemas are missing:\n        '
+            '    These ' || what || E' are missing:\n        '
             ||  array_to_string( missing, E'\n        ' )
         );
     END IF;
 
-    RETURN ok(res, $2) || msg;    
+    RETURN ok(res, descr) || msg;    
 END;
 $$ LANGUAGE plpgsql;
+
+-- tablespaces_are( tablespaces, description )
+CREATE OR REPLACE FUNCTION tablespaces_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'tablespaces',
+        ARRAY(
+            SELECT spcname
+              FROM pg_catalog.pg_tablespace
+            EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+               FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT spcname
+              FROM pg_catalog.pg_tablespace
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- tablespaces_are( tablespaces )
+CREATE OR REPLACE FUNCTION tablespaces_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT tablespaces_are( $1, 'There should be the correct tablespaces' );
+$$ LANGUAGE SQL;
+
+-- schemas_are( schemas, description )
+CREATE OR REPLACE FUNCTION schemas_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'schemas',
+        ARRAY(
+            SELECT nspname
+              FROM pg_catalog.pg_namespace
+             WHERE nspname NOT LIKE 'pg_%'
+               AND nspname <> 'information_schema'
+             EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT nspname
+              FROM pg_catalog.pg_namespace
+             WHERE nspname NOT LIKE 'pg_%'
+               AND nspname <> 'information_schema'
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
 
 -- schemas_are( schemas )
 CREATE OR REPLACE FUNCTION schemas_are ( NAME[] )

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(105);
+SELECT plan(120);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -29,6 +29,62 @@ CREATE SEQUENCE public.sumeseq;
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;
+
+/****************************************************************************/
+-- Test tablespaces_are().
+
+CREATE FUNCTION ___myts(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT spcname
+          FROM pg_catalog.pg_tablespace
+         WHERE spcname <> $1
+    );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    tablespaces_are( ___myts(''), 'whatever' ),
+    true,
+    'tablespaces_are(schemas, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    tablespaces_are( ___myts('') ),
+    true,
+    'tablespaces_are(schemas)',
+    'There should be the correct tablespaces',
+    ''
+);
+
+SELECT * FROM check_test(
+    tablespaces_are( array_append(___myts(''), '__booya__'), 'whatever' ),
+    false,
+    'tablespaces_are(schemas, desc) missing',
+    'whatever',
+    '    These tablespaces are missing:
+        __booya__'
+);
+
+SELECT * FROM check_test(
+    tablespaces_are( ___myts('pg_default'), 'whatever' ),
+    false,
+    'tablespaces_are(schemas, desc) extra',
+    'whatever',
+    '    These are extra tablespaces:
+        pg_default'
+);
+
+SELECT * FROM check_test(
+    tablespaces_are( array_append(___myts('pg_default'), '__booya__'), 'whatever' ),
+    false,
+    'tablespaces_are(schemas, desc) extras and missing',
+    'whatever',
+    '    These are extra tablespaces:
+        pg_default
+    These tablespaces are missing:
+        __booya__'
+);
 
 /****************************************************************************/
 -- Test schemas_are().
