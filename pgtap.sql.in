@@ -1699,7 +1699,7 @@ BEGIN
          ORDER BY fk_columns
     ) INTO names;
 
-    IF NAMES[1] IS NOT NULL THEN
+    IF names[1] IS NOT NULL THEN
         RETURN fail($4) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || E' has foreign key constraints on these columns:\n        '
             ||  array_to_string( names, E'\n        ' )
@@ -3695,6 +3695,192 @@ RETURNS TEXT AS $$
         'Operator ('
         || quote_ident($1) || ' ' || $2 || ') should exist'
     );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _extras ( CHAR, NAME, NAME[] )
+RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT c.relname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE c.relkind = $1
+           AND n.nspname = $2
+           AND c.relname <> 'pg_all_foreign_keys'
+        EXCEPT
+        SELECT $3[i]
+          FROM generate_series(1, array_upper($3, 1)) s(i)
+    );
+$$ LANGUAGE SQL;
+    
+CREATE OR REPLACE FUNCTION _extras ( CHAR, NAME[] )
+RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT c.relname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE pg_catalog.pg_table_is_visible(c.oid)
+           AND n.nspname <> 'pg_catalog'
+           AND c.relkind = $1
+           AND c.relname NOT IN ('__tcache__', '__tresults__', 'pg_all_foreign_keys', '__tresults___numb_seq', '__tcache___id_seq')
+        EXCEPT
+        SELECT $2[i]
+          FROM generate_series(1, array_upper($2, 1)) s(i)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _missing ( CHAR, NAME, NAME[] )
+RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT $3[i]
+          FROM generate_series(1, array_upper($3, 1)) s(i)
+        EXCEPT
+        SELECT c.relname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE c.relkind = $1
+           AND n.nspname = $2
+    );
+$$ LANGUAGE SQL;
+    
+CREATE OR REPLACE FUNCTION _missing ( CHAR, NAME[] )
+RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT $2[i]
+          FROM generate_series(1, array_upper($2, 1)) s(i)
+        EXCEPT
+        SELECT c.relname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE pg_catalog.pg_table_is_visible(c.oid)
+           AND n.nspname <> 'pg_catalog'
+           AND c.relkind = $1
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _rels_are ( CHAR, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  name[]  := _extras( $1, $3, $4 );
+    missing name[]  := _missing( $1, $3, $4 );
+    msg     TEXT    := '';
+    res     BOOLEAN := TRUE;
+BEGIN
+    IF extras[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := E'\n' || diag(
+            '    Schema ' || quote_ident($3) || ' has these extra ' || $2 || E':\n        '
+            ||  array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    IF missing[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := msg || E'\n' || diag(
+            '    Schema ' || quote_ident($3) || ' is missing these ' || $2 || E':\n        '
+            ||  array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $5) || msg;    
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _rels_are ( CHAR, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  name[]  := _extras( $1, $3 );
+    missing name[]  := _missing( $1, $3 );
+    msg     TEXT    := '';
+    res     BOOLEAN := TRUE;
+BEGIN
+    IF extras[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := E'\n' || diag(
+            '    These are extra ' || $2 || E':\n        '
+            ||  array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    IF missing[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := msg || E'\n' || diag(
+            '    These ' || $2 || E' are missing:\n        '
+            ||  array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $4) || msg;    
+END;
+$$ LANGUAGE plpgsql;
+
+-- tables_are( schema, tables, description )
+CREATE OR REPLACE FUNCTION tables_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _rels_are('r', 'tables', $1, $2, $3 );
+$$ LANGUAGE SQL;
+
+-- tables_are( tables, description )
+CREATE OR REPLACE FUNCTION tables_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _rels_are('r', 'tables', $1, $2 );
+$$ LANGUAGE SQL;
+
+-- tables_are( schema, tables )
+CREATE OR REPLACE FUNCTION tables_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _rels_are('r', 'tables', $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct tables' );
+$$ LANGUAGE SQL;
+
+-- tables_are( tables )
+CREATE OR REPLACE FUNCTION tables_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _rels_are('r', 'tables', $1, 'There should be the correct tables' );
+$$ LANGUAGE SQL;
+
+-- views_are( schema, views, description )
+CREATE OR REPLACE FUNCTION views_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _rels_are('v', 'views', $1, $2, $3 );
+$$ LANGUAGE SQL;
+
+-- views_are( views, description )
+CREATE OR REPLACE FUNCTION views_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _rels_are('v', 'views', $1, $2 );
+$$ LANGUAGE SQL;
+
+-- views_are( schema, views )
+CREATE OR REPLACE FUNCTION views_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _rels_are('v', 'views', $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct views' );
+$$ LANGUAGE SQL;
+
+-- views_are( views )
+CREATE OR REPLACE FUNCTION views_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _rels_are('v', 'views', $1, 'There should be the correct views' );
+$$ LANGUAGE SQL;
+
+-- sequences_are( schema, sequences, description )
+CREATE OR REPLACE FUNCTION sequences_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _rels_are('S', 'sequences', $1, $2, $3 );
+$$ LANGUAGE SQL;
+
+-- sequences_are( sequences, description )
+CREATE OR REPLACE FUNCTION sequences_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _rels_are('S', 'sequences', $1, $2 );
+$$ LANGUAGE SQL;
+
+-- sequences_are( schema, sequences )
+CREATE OR REPLACE FUNCTION sequences_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _rels_are('S', 'sequences', $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct sequences' );
+$$ LANGUAGE SQL;
+
+-- sequences_are( sequences )
+CREATE OR REPLACE FUNCTION sequences_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _rels_are('S', 'sequences', $1, 'There should be the correct sequences' );
 $$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )

@@ -744,6 +744,44 @@ test description, it will be set to "Schema `:schema` should exist".
 This function is the inverse of `has_schema()`. The test passes if the
 specified schema does *not* exist.
 
+### `tables_are( schema, tables, description )` ###
+### `tables_are( tables, description )` ###
+### `tables_are( schema, tables )` ###
+### `tables_are( tables )` ###
+
+    SELECT tables_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
+        'Should have the correct tables in myschema'
+    );
+
+This function tests that all of the tables in the named schema, or that are
+visible in the search path, are only the tables that *should* be there. In
+other words, given a list of tables, this assertion will fail if there are
+tables that don't exist in the list, or if there are tables in the list that
+are missing from the database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the tables in a database are exactly the tables that should
+exist in the database, no more, no less.
+
+If the `:schema` argument is omitted, tables will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing tables, like so:
+
+    not ok 91 - Schema public should have the correct tables
+    # Failed test 91: "Schema public should have the correct tables"
+    #     These are extra tables:
+    #         mallots
+    #         __test_table
+    #     These tables are missing:
+    #         users
+    #         widgets
+
 ### `has_table( schema, table, description )` ###
 ### `has_table( table, description )` ###
 ### `has_table( table )` ###
@@ -773,6 +811,44 @@ search path. If you omit the test description, it will be set to "Table
 This function is the inverse of `has_table()`. The test passes if the
 specified table does *not* exist.
 
+### `views_are( schema, views, description )` ###
+### `views_are( views, description )` ###
+### `views_are( schema, views )` ###
+### `views_are( views )` ###
+
+    SELECT views_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
+        'Should have the correct views in myschema'
+    );
+
+This function tests that all of the views in the named schema, or that are
+visible in the search path, are only the views that *should* be there. In
+other words, given a list of views, this assertion will fail if there are
+views that don't exist in the list, or if there are views in the list that are
+missing from the database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the views in a database are exactly the views that should
+exist in the database, no more, no less.
+
+If the `:schema` argument is omitted, views will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing views, like so:
+
+    not ok 92 - Schema public should have the correct views
+    # Failed test 92: "Schema public should have the correct views"
+    #     These are extra views:
+    #         v_userlog_tmp
+    #         __test_view
+    #     These views are missing:
+    #         v_userlog
+    #         eated
+
 ### `has_view( schema, view, description )` ###
 ### `has_view( view, description )` ###
 ### `has_view( view )` ###
@@ -797,6 +873,44 @@ Just like `has_table()`, only it tests for the existence of a view.
 
 This function is the inverse of `has_view()`. The test passes if the specified
 view does *not* exist.
+
+### `sequences_are( schema, sequences, description )` ###
+### `sequences_are( sequences, description )` ###
+### `sequences_are( schema, sequences )` ###
+### `sequences_are( sequences )` ###
+
+    SELECT sequences_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
+        'Should have the correct sequences in myschema'
+    );
+
+This function tests that all of the sequences in the named schema, or that are
+visible in the search path, are only the sequences that *should* be there. In
+other words, given a list of sequences, this assertion will fail if there are
+sequences that don't exist in the list, or if there are sequences in the list
+that are missing from the database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the sequences in a database are exactly the sequences that
+should exist in the database, no more, no less.
+
+If the `:schema` argument is omitted, sequences will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing sequences, like so:
+
+    not ok 93 - Schema public should have the correct sequences
+    # Failed test 93: "Schema public should have the correct sequences"
+    #     These are extra sequences:
+    #         seq_mallots
+    #         __test_table_seq
+    #     These sequences are missing:
+    #         users_seq
+    #         widgets_seq
 
 ### `has_sequence( schema, sequence, description )` ###
 ### `has_sequence( sequence, description )` ###
@@ -2542,10 +2656,16 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
+  * `schemas_are()`
+  * `tablespaces_are()`
+  * `functions_are()`
+  * `indexes_are()`
+  * `users_are()`
+  * `groups_are()`
   * `has_operator_class()`
   * `has_rule()`
-  * `func_returns()`
-  * `func_lang_is()`
+  * `function_returns()`
+  * `function_lang_is()`
   * `seq_has_range()`
   * `seq_increments_by()`
   * `seq_starts_at()`
