@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(90);
+SELECT plan(105);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -29,6 +29,65 @@ CREATE SEQUENCE public.sumeseq;
 
 CREATE SCHEMA someschema;
 RESET client_min_messages;
+
+/****************************************************************************/
+-- Test schemas_are().
+
+CREATE FUNCTION ___mysch(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT nspname
+          FROM pg_catalog.pg_namespace
+         WHERE nspname NOT LIKE 'pg_%'
+           AND nspname <> 'information_schema'
+           AND nspname <> $1
+    );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    schemas_are( ___mysch(''), 'whatever' ),
+    true,
+    'schemas_are(schemas, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    schemas_are( ___mysch('') ),
+    true,
+    'schemas_are(schemas)',
+    'There should be the correct schemas',
+    ''
+);
+
+SELECT * FROM check_test(
+    schemas_are( array_append(___mysch(''), '__howdy__'), 'whatever' ),
+    false,
+    'schemas_are(schemas, desc) missing',
+    'whatever',
+    '    These schemas are missing:
+        __howdy__'
+);
+
+SELECT * FROM check_test(
+    schemas_are( ___mysch('someschema'), 'whatever' ),
+    false,
+    'schemas_are(schemas, desc) extras',
+    'whatever',
+    '    These are extra schemas:
+        someschema'
+);
+
+SELECT * FROM check_test(
+    schemas_are( array_append(___mysch('someschema'), '__howdy__'), 'whatever' ),
+    false,
+    'schemas_are(schemas, desc) missing and extras',
+    'whatever',
+    '    These are extra schemas:
+        someschema
+    These schemas are missing:
+        __howdy__'
+);
+
 
 /****************************************************************************/
 -- Test tables_are().

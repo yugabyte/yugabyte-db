@@ -3697,6 +3697,60 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+-- schemas_are( schemas, description )
+CREATE OR REPLACE FUNCTION schemas_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  name[];
+    missing name[];
+    msg     TEXT    := '';
+    res     BOOLEAN := TRUE;
+BEGIN
+    SELECT ARRAY(
+        SELECT nspname
+          FROM pg_catalog.pg_namespace
+         WHERE nspname NOT LIKE 'pg_%'
+           AND nspname <> 'information_schema'
+        EXCEPT
+        SELECT $1[i]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+    ) INTO extras;
+
+    SELECT ARRAY(
+        SELECT $1[i]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+        EXCEPT
+        SELECT nspname
+          FROM pg_catalog.pg_namespace
+         WHERE nspname NOT LIKE 'pg_%'
+           AND nspname <> 'information_schema'
+    ) INTO missing;
+
+    IF extras[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := E'\n' || diag(
+            E'    These are extra schemas:\n        '
+            ||  array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    IF missing[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := msg || E'\n' || diag(
+            E'    These schemas are missing:\n        '
+            ||  array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $2) || msg;    
+END;
+$$ LANGUAGE plpgsql;
+
+-- schemas_are( schemas )
+CREATE OR REPLACE FUNCTION schemas_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT schemas_are( $1, 'There should be the correct schemas' );
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION _extras ( CHAR, NAME, NAME[] )
 RETURNS NAME[] AS $$
     SELECT ARRAY(

@@ -719,6 +719,40 @@ test description, it will be set to "Tablespace `:tablespace` should exist".
 This function is the inverse of `has_tablespace()`. The test passes if the
 specified tablespace does *not* exist.
 
+### `schemas_are( schema, schemas, description )` ###
+### `schemas_are( schemas, description )` ###
+### `schemas_are( schema, schemas )` ###
+### `schemas_are( schemas )` ###
+
+    SELECT schemas_are(
+        ARRAY[ 'public, 'contrib, 'tap' ],
+        'Should have the correct schemas
+    );
+
+This function tests that all of the schemas in the databse only the schemas
+that *should* be there. In other words, given a list of schemas, this
+assertion will fail if there are schemas that are not in the list, or if there
+are schemas in the list that are missing from the database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the schemas in a database are exactly the schemas that should
+exist in the database, no more, no less.
+
+If the `:schema` argument is omitted, schemas will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing schemas, like so:
+
+    not ok 106 - There should be the correct schemas
+    # Failed test 106: "There should be the correct schemas"
+    #     These are extra schemas:
+    #         __howdy__
+    #     These schemas are missing:
+    #         someschema
+
 ### `has_schema( schema, description )` ###
 ### `has_schema( schema )` ###
 
@@ -758,8 +792,8 @@ specified schema does *not* exist.
 This function tests that all of the tables in the named schema, or that are
 visible in the search path, are only the tables that *should* be there. In
 other words, given a list of tables, this assertion will fail if there are
-tables that don't exist in the list, or if there are tables in the list that
-are missing from the database.
+tables that are not in the list, or if there are tables in the list that are
+missing from the database.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -825,7 +859,7 @@ specified table does *not* exist.
 This function tests that all of the views in the named schema, or that are
 visible in the search path, are only the views that *should* be there. In
 other words, given a list of views, this assertion will fail if there are
-views that don't exist in the list, or if there are views in the list that are
+views that are not in the list, or if there are views in the list that are
 missing from the database.
 
 This test is useful in environments where many developers may be making
@@ -888,8 +922,8 @@ view does *not* exist.
 This function tests that all of the sequences in the named schema, or that are
 visible in the search path, are only the sequences that *should* be there. In
 other words, given a list of sequences, this assertion will fail if there are
-sequences that don't exist in the list, or if there are sequences in the list
-that are missing from the database.
+sequences that are not in the list, or if there are sequences in the list that
+are missing from the database.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -2656,7 +2690,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `schemas_are()`
   * `tablespaces_are()`
   * `functions_are()`
   * `indexes_are()`
