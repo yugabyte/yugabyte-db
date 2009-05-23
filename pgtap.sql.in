@@ -2103,7 +2103,7 @@ RETURNS NAME[] AS $$
     )
 $$ LANGUAGE SQL stable;
 
--- can( schema, func_names[], description )
+-- can( schema, functions[], description )
 CREATE OR REPLACE FUNCTION can ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -2134,13 +2134,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- can( schema, func_names[] )
+-- can( schema, functions[] )
 CREATE OR REPLACE FUNCTION can ( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT can( $1, $2, 'Schema ' || quote_ident($1) || ' can' );
 $$ LANGUAGE sql;
 
--- can( func_names[], description )
+-- can( functions[], description )
 CREATE OR REPLACE FUNCTION can ( NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -2166,7 +2166,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- can( func_names[] )
+-- can( functions[] )
 CREATE OR REPLACE FUNCTION can ( NAME[] )
 RETURNS TEXT AS $$
     SELECT can( $1, 'Schema ' || _ident_array_to_string(current_schemas(true), ' or ') || ' can' );
@@ -3972,6 +3972,116 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION sequences_are ( NAME[] )
 RETURNS TEXT AS $$
     SELECT _rels_are('S', 'sequences', $1, 'There should be the correct sequences' );
+$$ LANGUAGE SQL;
+
+-- functions_are( schema, functions[], description )
+CREATE OR REPLACE FUNCTION functions_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  name[];
+    missing name[];
+    msg     TEXT    := '';
+    res     BOOLEAN := TRUE;
+BEGIN
+    SELECT ARRAY(
+        SELECT p.proname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_proc p ON n.oid = p.pronamespace
+         WHERE n.nspname = $1
+        EXCEPT
+        SELECT $2[i]
+          FROM generate_series(1, array_upper($2, 1)) s(i)
+    ) INTO extras;
+
+    SELECT ARRAY(
+        SELECT $2[i]
+           FROM generate_series(1, array_upper($2, 1)) s(i)
+        EXCEPT
+        SELECT p.proname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_proc p ON n.oid = p.pronamespace
+         WHERE n.nspname = $1
+    ) INTO missing;
+
+    IF extras[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := E'\n' || diag(
+            '    Schema ' || quote_ident($1) || E' has these extra functions:\n        '
+            ||  _ident_array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    IF missing[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := msg || E'\n' || diag(
+            '    Schema ' || quote_ident($1) || E' is missing these functions:\n        '
+            ||  _ident_array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $3) || msg;    
+END;
+$$ LANGUAGE plpgsql;
+
+-- functions_are( schema, functions[] )
+CREATE OR REPLACE FUNCTION functions_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT functions_are( $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct functions' );
+$$ LANGUAGE SQL;
+
+-- functions_are( functions[], description )
+CREATE OR REPLACE FUNCTION functions_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  name[];
+    missing name[];
+    msg     TEXT    := '';
+    res     BOOLEAN := TRUE;
+BEGIN
+    SELECT ARRAY(
+        SELECT p.proname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_proc p ON n.oid = p.pronamespace
+         WHERE pg_catalog.pg_function_is_visible(p.oid)
+           AND n.nspname <> 'pg_catalog'
+        EXCEPT
+        SELECT $1[i]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+    ) INTO extras;
+
+    SELECT ARRAY(
+        SELECT $1[i]
+           FROM generate_series(1, array_upper($1, 1)) s(i)
+        EXCEPT
+        SELECT p.proname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_proc p ON n.oid = p.pronamespace
+         WHERE pg_catalog.pg_function_is_visible(p.oid)
+           AND n.nspname <> 'pg_catalog'
+    ) INTO missing;
+
+    IF extras[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := E'\n' || diag(
+            E'    These are extra functions:\n        '
+            ||  _ident_array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    IF missing[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := msg || E'\n' || diag(
+            E'    These functions are missing:\n        '
+            ||  _ident_array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $2) || msg;    
+END;
+$$ LANGUAGE plpgsql;
+
+-- functions_are( functions[] )
+CREATE OR REPLACE FUNCTION functions_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT functions_are( $1, 'There should be the correct functions' );
 $$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )

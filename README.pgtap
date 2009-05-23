@@ -658,8 +658,8 @@ string. You will want to account for this and pad your estimates accordingly.
 It's best to think of this as a brute force comparison of runtimes, in order
 to ensure that a query is not *really* slow (think seconds).
 
-A Wicked Schema
----------------
+The Schema Things
+-----------------
 
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
@@ -759,7 +759,7 @@ specified tablespace does *not* exist.
 This function tests that all of the schemas in the databse only the schemas
 that *should* be there. In other words, given a list of schemas, this
 assertion will fail if there are schemas that are not in the list, or if there
-are schemas in the list that are missing from the database.
+are schemas in the list that are not found in the search path.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -816,7 +816,7 @@ This function tests that all of the tables in the named schema, or that are
 visible in the search path, are only the tables that *should* be there. In
 other words, given a list of tables, this assertion will fail if there are
 tables that are not in the list, or if there are tables in the list that are
-missing from the database.
+not found in the search path.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -883,7 +883,7 @@ This function tests that all of the views in the named schema, or that are
 visible in the search path, are only the views that *should* be there. In
 other words, given a list of views, this assertion will fail if there are
 views that are not in the list, or if there are views in the list that are
-missing from the database.
+not found in the search path.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -946,7 +946,7 @@ This function tests that all of the sequences in the named schema, or that are
 visible in the search path, are only the sequences that *should* be there. In
 other words, given a list of sequences, this assertion will fail if there are
 sequences that are not in the list, or if there are sequences in the list that
-are missing from the database.
+are not found in the search path.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -1797,6 +1797,41 @@ a useful diagnostic:
     #         have: hash_pass
     #         want: hash_password
 
+### `functions_are( schema, functions[], description )` ###
+### `functions_are( schema, functions[] )` ###
+### `functions_are( functions[], description )` ###
+### `functions_are( functions[] )` ###
+
+    SELECT functions_are(
+        'myschema',
+        ARRAY[ 'foo', 'bar', 'frobnitz' ],
+        'Should have the correct functions in myschema'
+    );
+
+This function tests that all of the functions in the named schema, or that are
+visible in the search path, are only the functions that *should* be there. In
+other words, given a list of functions, this assertion will fail if there are
+functions that are not in the list, or if there are functions in the list that
+are not found in the search path.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the functions in a database are exactly the functions that
+should exist in the database, no more, no less.
+
+If the `:schema` argument is omitted, functions will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing functions, like so:
+
+    # Failed test 150: "whatever"
+    #     Schema someschema has these extra functions:
+    #         schnauinatify
+    #     Schema someschema is missing these functions:
+    #         frobnitz
+
 ### `can( schema, functions[], description )` ###
 ### `can( schema, functions[] )` ###
 ### `can( functions[], description )` ###
@@ -1804,11 +1839,16 @@ a useful diagnostic:
 
     SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
 
-Checks to be sure that `:schema` has `:functions[]` defined. If `:schema` is
-omitted, then `can()` will look for functions defined in schemas defined in
-the search path. No matter how many functions are listed in `:functions[]`, a
-single call to `can()` counts as one test. If you want otherwise, call `can()`
-once for each function -- or better yet, use `can_ok()`.
+Checks to be sure that `:schema` has `:functions[]` defined. This is subtley
+different from `functions_are()`. `functions_are()` fails if the functions
+defined in `:schema` are not exactly the functions defined in `:functions[]`.
+`can()`, on the other hand, just makes sure that `functions[]` exist.
+
+If `:schema` is omitted, then `can()` will look for functions defined in
+schemas defined in the search path. No matter how many functions are listed in
+`:functions[]`, a single call to `can()` counts as one test. If you want
+otherwise, call `can()` once for each function -- or better yet, use
+`can_ok()`.
 
 If any of the functions are not defined, the test will fail and the
 diagnostics will output a list of the functions that are missing, like so:
@@ -2713,7 +2753,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `functions_are()`
   * `indexes_are()`
   * `users_are()`
   * `groups_are()`

@@ -10,7 +10,7 @@ Revision history for pgTAP
 * Fixed a failing test for the version number string on 8.4 beta.
 * Added `performs_ok()`.
 * Added `tablespaces_are()`, `schemas_are()`, `tables_are()`, `views_are()`,
-  and `sequences_are()`.
+ `sequences_are()`, and `functions_are()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

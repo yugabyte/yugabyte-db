@@ -1,5 +1,5 @@
 \unset ECHO
-1..120
+1..149
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -120,3 +120,32 @@ ok 117 - sequences_are(schema, sequences) extra and missing should have the prop
 ok 118 - sequences_are(sequences) extra and missing should fail
 ok 119 - sequences_are(sequences) extra and missing should have the proper description
 ok 120 - sequences_are(sequences) extra and missing should have the proper diagnostics
+ok 121 - functions_are(schema, functions, desc) should pass
+ok 122 - functions_are(schema, functions, desc) should have the proper description
+ok 123 - functions_are(schema, functions, desc) should have the proper diagnostics
+ok 124 - functions_are(schema, functions) should pass
+ok 125 - functions_are(schema, functions) should have the proper description
+ok 126 - functions_are(schema, functions, desc) + missing should fail
+ok 127 - functions_are(schema, functions, desc) + missing should have the proper description
+ok 128 - functions_are(schema, functions, desc) + missing should have the proper diagnostics
+ok 129 - functions_are(schema, functions, desc) + extra should fail
+ok 130 - functions_are(schema, functions, desc) + extra should have the proper description
+ok 131 - functions_are(schema, functions, desc) + extra should have the proper diagnostics
+ok 132 - functions_are(schema, functions, desc) + extra & missing should fail
+ok 133 - functions_are(schema, functions, desc) + extra & missing should have the proper description
+ok 134 - functions_are(schema, functions, desc) + extra & missing should have the proper diagnostics
+ok 135 - functions_are(functions, desc) should pass
+ok 136 - functions_are(functions, desc) should have the proper description
+ok 137 - functions_are(functions, desc) should have the proper diagnostics
+ok 138 - functions_are(functions) should pass
+ok 139 - functions_are(functions) should have the proper description
+ok 140 - functions_are(functions) should have the proper diagnostics
+ok 141 - functions_are(functions, desc) + missing should fail
+ok 142 - functions_are(functions, desc) + missing should have the proper description
+ok 143 - functions_are(functions, desc) + missing should have the proper diagnostics
+ok 144 - functions_are(functions, desc) + extra should fail
+ok 145 - functions_are(functions, desc) + extra should have the proper description
+ok 146 - functions_are(functions, desc) + extra should have the proper diagnostics
+ok 147 - functions_are(functions, desc) + extra & missing should fail
+ok 148 - functions_are(functions, desc) + extra & missing should have the proper description
+ok 149 - functions_are(functions, desc) + extra & missing should have the proper diagnostics

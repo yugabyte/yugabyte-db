@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(120);
+SELECT plan(149);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -28,6 +28,10 @@ CREATE SEQUENCE public.someseq;
 CREATE SEQUENCE public.sumeseq;
 
 CREATE SCHEMA someschema;
+
+CREATE FUNCTION someschema.yip() returns boolean as 'SELECT TRUE' language SQL;
+CREATE FUNCTION someschema.yap() returns boolean as 'SELECT TRUE' language SQL;
+
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -147,6 +151,7 @@ SELECT * FROM check_test(
 
 /****************************************************************************/
 -- Test tables_are().
+
 SELECT * FROM check_test(
     tables_are( 'public', ARRAY['fou', 'foo'], 'whatever' ),
     true,
@@ -437,6 +442,110 @@ SELECT * FROM check_test(
         ba[rz]
         ba[rz]',
     true
+);
+
+/****************************************************************************/
+-- Test functions_are().
+
+SELECT * FROM check_test(
+    functions_are( 'someschema', ARRAY['yip', 'yap'], 'whatever' ),
+    true,
+    'functions_are(schema, functions, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    functions_are( 'someschema', ARRAY['yip', 'yap'] ),
+    true,
+    'functions_are(schema, functions)',
+    'Schema someschema should have the correct functions'
+    ''
+);
+
+SELECT * FROM check_test(
+    functions_are( 'someschema', ARRAY['yip', 'yap', 'yop'], 'whatever' ),
+    false,
+    'functions_are(schema, functions, desc) + missing',
+    'whatever',
+    '    Schema someschema is missing these functions:
+        yop'
+);
+
+SELECT * FROM check_test(
+    functions_are( 'someschema', ARRAY['yip'], 'whatever' ),
+    false,
+    'functions_are(schema, functions, desc) + extra',
+    'whatever',
+    '    Schema someschema has these extra functions:
+        yap'
+);
+
+SELECT * FROM check_test(
+    functions_are( 'someschema', ARRAY['yap', 'yop'], 'whatever' ),
+    false,
+    'functions_are(schema, functions, desc) + extra & missing',
+    'whatever',
+    '    Schema someschema has these extra functions:
+        yip
+    Schema someschema is missing these functions:
+        yop'
+);
+
+CREATE FUNCTION ___myfunk(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT p.proname
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_proc p ON n.oid = p.pronamespace
+         WHERE pg_catalog.pg_function_is_visible(p.oid)
+           AND n.nspname <> 'pg_catalog'
+           AND p.proname <> $1
+    );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    functions_are( ___myfunk(''), 'whatever' ),
+    true,
+    'functions_are(functions, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    functions_are( ___myfunk('') ),
+    true,
+    'functions_are(functions)',
+    'There should be the correct functions',
+    ''
+);
+
+SELECT * FROM check_test(
+    functions_are( array_append(___myfunk(''), '__booyah__'), 'whatever' ),
+    false,
+    'functions_are(functions, desc) + missing',
+    'whatever',
+    '    These functions are missing:
+        __booyah__'
+);
+
+SELECT * FROM check_test(
+    functions_are( ___myfunk('check_test'), 'whatever' ),
+    false,
+    'functions_are(functions, desc) + extra',
+    'whatever',
+    '    These are extra functions:
+        check_test'
+);
+
+SELECT * FROM check_test(
+    functions_are( array_append(___myfunk('check_test'), '__booyah__'), 'whatever' ),
+    false,
+    'functions_are(functions, desc) + extra & missing',
+    'whatever',
+    '    These are extra functions:
+        check_test
+    These functions are missing:
+        __booyah__'
 );
 
 /****************************************************************************/
