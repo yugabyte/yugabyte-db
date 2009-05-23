@@ -759,7 +759,7 @@ specified tablespace does *not* exist.
 This function tests that all of the schemas in the databse only the schemas
 that *should* be there. In other words, given a list of schemas, this
 assertion will fail if there are schemas that are not in the list, or if there
-are schemas in the list that are not found in the search path.
+are schemas in the list that are missing from the database.
 
 This test is useful in environments where many developers may be making
 changes to the database, or where replication has been deployed, and you want
@@ -2083,6 +2083,34 @@ it will default to "Role `:role` should exist".
 The inverse of `has_role()`, this function tests for the *absence* of a
 database role.
 
+### `users_are( users[], description )` ###
+### `users_are( users[] )` ###
+
+    SELECT users_are(
+        ARRAY[ 'postgres', 'someone', 'root' ],
+        'Should have the correct users
+    );
+
+This function tests that all of the users in the databse only the users that
+*should* be there. In other words, given a list of users, this assertion will
+fail if there are users that are not in the list, or if there are users in the
+list that are missing from the database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the users in a database are exactly the users that should
+exist in the database, no more, no less.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing users, like so:
+
+    not ok 195 - whatever
+    # Failed test 195: "There should be the correct users"
+    #     Extra users:
+    #         root
+    #     Missing users:
+    #         bobby
+
 ### `has_user( user, desc )` ###
 ### `has_user( user )` ###
 
@@ -2120,6 +2148,34 @@ The inverse of `is_superuser()`, this function tests that a database user is
 *not* a super user. Note that if the named user does not exist in the
 database, the test is still considered a failure, and the diagnostics will say
 so.
+
+### `groups_are( groups[], description )` ###
+### `groups_are( groups[] )` ###
+
+    SELECT groups_are(
+        ARRAY[ 'postgres', 'admins, 'l0s3rs' ],
+        'Should have the correct groups
+    );
+
+This function tests that all of the groups in the databse only the groups that
+*should* be there. In other words, given a list of groups, this assertion will
+fail if there are groups that are not in the list, or if there are groups in the
+list that are missing from the database.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the groups in a database are exactly the groups that should
+exist in the database, no more, no less.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing groups, like so:
+
+    not ok 210 - There should be the correct groups
+    # Failed test 210: "There should be the correct groups"
+    #     Extra groups:
+    #         meanies
+    #     Missing groups:
+    #         __howdy__
 
 ### `has_group( group, desc )` ###
 ### `has_group( group )` ###
@@ -2788,8 +2844,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `users_are()`
-  * `groups_are()`
   * `has_operator_class()`
   * `has_rule()`
   * `function_returns()`

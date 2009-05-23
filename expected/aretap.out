@@ -1,5 +1,5 @@
 \unset ECHO
-1..179
+1..209
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -179,3 +179,33 @@ ok 176 - indexes_are(table, indexes) + missing should have the proper diagnostic
 ok 177 - indexes_are(table, indexes) + extra & missing should fail
 ok 178 - indexes_are(table, indexes) + extra & missing should have the proper description
 ok 179 - indexes_are(table, indexes) + extra & missing should have the proper diagnostics
+ok 180 - users_are(users, desc) should pass
+ok 181 - users_are(users, desc) should have the proper description
+ok 182 - users_are(users, desc) should have the proper diagnostics
+ok 183 - users_are(users) should pass
+ok 184 - users_are(users) should have the proper description
+ok 185 - users_are(users) should have the proper diagnostics
+ok 186 - users_are(users, desc) missing should fail
+ok 187 - users_are(users, desc) missing should have the proper description
+ok 188 - users_are(users, desc) missing should have the proper diagnostics
+ok 189 - users_are(users, desc) extras should fail
+ok 190 - users_are(users, desc) extras should have the proper description
+ok 191 - users_are(users, desc) extras should have the proper diagnostics
+ok 192 - users_are(users, desc) missing and extras should fail
+ok 193 - users_are(users, desc) missing and extras should have the proper description
+ok 194 - users_are(users, desc) missing and extras should have the proper diagnostics
+ok 195 - groups_are(groups, desc) should pass
+ok 196 - groups_are(groups, desc) should have the proper description
+ok 197 - groups_are(groups, desc) should have the proper diagnostics
+ok 198 - groups_are(groups) should pass
+ok 199 - groups_are(groups) should have the proper description
+ok 200 - groups_are(groups) should have the proper diagnostics
+ok 201 - groups_are(groups, desc) missing should fail
+ok 202 - groups_are(groups, desc) missing should have the proper description
+ok 203 - groups_are(groups, desc) missing should have the proper diagnostics
+ok 204 - groups_are(groups, desc) extras should fail
+ok 205 - groups_are(groups, desc) extras should have the proper description
+ok 206 - groups_are(groups, desc) extras should have the proper diagnostics
+ok 207 - groups_are(groups, desc) missing and extras should fail
+ok 208 - groups_are(groups, desc) missing and extras should have the proper description
+ok 209 - groups_are(groups, desc) missing and extras should have the proper diagnostics

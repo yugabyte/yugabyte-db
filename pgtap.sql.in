@@ -4065,7 +4065,6 @@ RETURNS TEXT AS $$
             SELECT $3[i]
               FROM generate_series(1, array_upper($3, 1)) s(i)
         ),
-
         ARRAY(
             SELECT $3[i]
               FROM generate_series(1, array_upper($3, 1)) s(i)
@@ -4104,7 +4103,6 @@ RETURNS TEXT AS $$
             SELECT $2[i]
               FROM generate_series(1, array_upper($2, 1)) s(i)
         ),
-
         ARRAY(
             SELECT $2[i]
               FROM generate_series(1, array_upper($2, 1)) s(i)
@@ -4124,6 +4122,64 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION indexes_are( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT indexes_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct indexes' );
+$$ LANGUAGE SQL;
+
+-- users_are( users[], description )
+CREATE OR REPLACE FUNCTION users_are( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'users',
+        ARRAY(
+            SELECT usename
+              FROM pg_catalog.pg_user
+            EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT usename
+              FROM pg_catalog.pg_user
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- users_are( users[] )
+CREATE OR REPLACE FUNCTION users_are( NAME[] )
+RETURNS TEXT AS $$
+    SELECT users_are( $1, 'There should be the correct users' );
+$$ LANGUAGE SQL;
+
+-- groups_are( groups[], description )
+CREATE OR REPLACE FUNCTION groups_are( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'groups',
+        ARRAY(
+            SELECT groname
+              FROM pg_catalog.pg_group
+            EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT groname
+              FROM pg_catalog.pg_group
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- groups_are( groups[] )
+CREATE OR REPLACE FUNCTION groups_are( NAME[] )
+RETURNS TEXT AS $$
+    SELECT groups_are( $1, 'There should be the correct groups' );
 $$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )

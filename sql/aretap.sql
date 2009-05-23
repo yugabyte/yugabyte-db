@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(179);
+SELECT plan(209);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -16,14 +16,9 @@ CREATE TABLE public.fou(
 CREATE TABLE public.foo(
     id    INT NOT NULL PRIMARY KEY
 );
-CREATE TYPE public.sometype AS (
-    id    INT,
-    name  TEXT
-);
 
 CREATE INDEX idx_fou_id ON public.fou(id);
 CREATE INDEX idx_fou_name ON public.fou(name);
-CREATE INDEX idx_foo_id ON public.foo(id);
 
 CREATE VIEW voo AS SELECT * FROM foo;
 CREATE VIEW vou AS SELECT * FROM fou;
@@ -641,6 +636,111 @@ SELECT * FROM check_test(
         fou_pkey
     Missing indexes:
         howdy'
+);
+
+/****************************************************************************/
+-- Test users_are().
+
+CREATE FUNCTION ___myusers(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY( SELECT usename FROM pg_catalog.pg_user WHERE usename <> $1 );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    users_are( ___myusers(''), 'whatever' ),
+    true,
+    'users_are(users, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    users_are( ___myusers('') ),
+    true,
+    'users_are(users)',
+    'There should be the correct users',
+    ''
+);
+
+SELECT * FROM check_test(
+    users_are( array_append(___myusers(''), '__howdy__'), 'whatever' ),
+    false,
+    'users_are(users, desc) missing',
+    'whatever',
+    '    Missing users:
+        __howdy__'
+);
+
+SELECT * FROM check_test(
+    users_are( ___myusers(current_user), 'whatever' ),
+    false,
+    'users_are(users, desc) extras',
+    'whatever',
+    '    Extra users:
+        ' || current_user
+);
+
+SELECT * FROM check_test(
+    users_are( array_append(___myusers(current_user), '__howdy__'), 'whatever' ),
+    false,
+    'users_are(users, desc) missing and extras',
+    'whatever',
+    '    Extra users:
+        ' || current_user || '
+    Missing users:
+        __howdy__'
+);
+
+/****************************************************************************/
+-- Test groups_are().
+
+CREATE GROUP meanies;
+CREATE FUNCTION ___mygroups(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY( SELECT groname FROM pg_catalog.pg_group WHERE groname <> $1 );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    groups_are( ___mygroups(''), 'whatever' ),
+    true,
+    'groups_are(groups, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    groups_are( ___mygroups('') ),
+    true,
+    'groups_are(groups)',
+    'There should be the correct groups',
+    ''
+);
+
+SELECT * FROM check_test(
+    groups_are( array_append(___mygroups(''), '__howdy__'), 'whatever' ),
+    false,
+    'groups_are(groups, desc) missing',
+    'whatever',
+    '    Missing groups:
+        __howdy__'
+);
+
+SELECT * FROM check_test(
+    groups_are( ___mygroups('meanies'), 'whatever' ),
+    false,
+    'groups_are(groups, desc) extras',
+    'whatever',
+    '    Extra groups:
+        meanies'
+);
+
+SELECT * FROM check_test(
+    groups_are( array_append(___mygroups('meanies'), '__howdy__'), 'whatever' ),
+    false,
+    'groups_are(groups, desc) missing and extras',
+    'whatever',
+    '    Extra groups:
+        meanies
+    Missing groups:
+        __howdy__'
 );
 
 /****************************************************************************/
