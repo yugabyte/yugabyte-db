@@ -771,9 +771,9 @@ missing schemas, like so:
 
     not ok 106 - There should be the correct schemas
     # Failed test 106: "There should be the correct schemas"
-    #     These are extra schemas:
+    #     Extra schemas:
     #         __howdy__
-    #     These schemas are missing:
+    #     Missing schemas:
     #         someschema
 
 ### `has_schema( schema, description )` ###
@@ -832,10 +832,10 @@ missing tables, like so:
 
     not ok 91 - Schema public should have the correct tables
     # Failed test 91: "Schema public should have the correct tables"
-    #     These are extra tables:
+    #     Extra tables:
     #         mallots
     #         __test_table
-    #     These tables are missing:
+    #     Missing tables:
     #         users
     #         widgets
 
@@ -899,10 +899,10 @@ missing views, like so:
 
     not ok 92 - Schema public should have the correct views
     # Failed test 92: "Schema public should have the correct views"
-    #     These are extra views:
+    #     Extra views:
     #         v_userlog_tmp
     #         __test_view
-    #     These views are missing:
+    #     Missing views:
     #         v_userlog
     #         eated
 
@@ -1861,10 +1861,10 @@ useful default description will be generated.
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing functions, like so:
 
-    # Failed test 150: "whatever"
-    #     Schema someschema has these extra functions:
+    # Failed test 150: "Schema someschema should have the correct functions"
+    #     Extra functions:
     #         schnauzify
-    #     Schema someschema is missing these functions:
+    #     Missing functions:
     #         frobnitz
 
 ### `can( schema, functions[], description )` ###

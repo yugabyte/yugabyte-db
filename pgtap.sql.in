@@ -3848,130 +3848,94 @@ RETURNS NAME[] AS $$
     );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _rels_are ( CHAR, NAME, NAME, NAME[], TEXT )
-RETURNS TEXT AS $$
-DECLARE
-    extras  name[]  := _extras( $1, $3, $4 );
-    missing name[]  := _missing( $1, $3, $4 );
-    msg     TEXT    := '';
-    res     BOOLEAN := TRUE;
-BEGIN
-    IF extras[1] IS NOT NULL THEN
-        res = FALSE;
-        msg := E'\n' || diag(
-            '    Schema ' || quote_ident($3) || ' has these extra ' || $2 || E':\n        '
-            ||  _ident_array_to_string( extras, E'\n        ' )
-        );
-    END IF;
-    IF missing[1] IS NOT NULL THEN
-        res = FALSE;
-        msg := msg || E'\n' || diag(
-            '    Schema ' || quote_ident($3) || ' is missing these ' || $2 || E':\n        '
-            ||  _ident_array_to_string( missing, E'\n        ' )
-        );
-    END IF;
-
-    RETURN ok(res, $5) || msg;    
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION _rels_are ( CHAR, NAME, NAME[], TEXT )
-RETURNS TEXT AS $$
-DECLARE
-    extras  name[]  := _extras( $1, $3 );
-    missing name[]  := _missing( $1, $3 );
-    msg     TEXT    := '';
-    res     BOOLEAN := TRUE;
-BEGIN
-    IF extras[1] IS NOT NULL THEN
-        res = FALSE;
-        msg := E'\n' || diag(
-            E'    Search path ' || pg_catalog.current_setting('search_path') || ' has these extra ' || $2 || E':\n        '
-            ||  _ident_array_to_string( extras, E'\n        ' )
-        );
-    END IF;
-    IF missing[1] IS NOT NULL THEN
-        res = FALSE;
-        msg := msg || E'\n' || diag(
-            E'    Search path ' || pg_catalog.current_setting('search_path') || ' is missing these ' || $2 || E':\n        '
-            ||  _ident_array_to_string( missing, E'\n        ' )
-        );
-    END IF;
-
-    RETURN ok(res, $4) || msg;    
-END;
-$$ LANGUAGE plpgsql;
-
 -- tables_are( schema, tables, description )
 CREATE OR REPLACE FUNCTION tables_are ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _rels_are('r', 'tables', $1, $2, $3 );
+    SELECT _are( 'tables', _extras('r', $1, $2), _missing('r', $1, $2), $3);
 $$ LANGUAGE SQL;
 
 -- tables_are( tables, description )
 CREATE OR REPLACE FUNCTION tables_are ( NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _rels_are('r', 'tables', $1, $2 );
+    SELECT _are( 'tables', _extras('r', $1), _missing('r', $1), $2);
 $$ LANGUAGE SQL;
 
 -- tables_are( schema, tables )
 CREATE OR REPLACE FUNCTION tables_are ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('r', 'tables', $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct tables' );
+    SELECT _are(
+        'tables', _extras('r', $1, $2), _missing('r', $1, $2),
+        'Schema ' || quote_ident($1) || ' should have the correct tables'
+    );
 $$ LANGUAGE SQL;
 
 -- tables_are( tables )
 CREATE OR REPLACE FUNCTION tables_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('r', 'tables', $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables' );
+    SELECT _are(
+        'tables', _extras('r', $1), _missing('r', $1),
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables'
+    );
 $$ LANGUAGE SQL;
 
 -- views_are( schema, views, description )
 CREATE OR REPLACE FUNCTION views_are ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _rels_are('v', 'views', $1, $2, $3 );
+    SELECT _are( 'views', _extras('v', $1, $2), _missing('v', $1, $2), $3);
 $$ LANGUAGE SQL;
 
 -- views_are( views, description )
 CREATE OR REPLACE FUNCTION views_are ( NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _rels_are('v', 'views', $1, $2 );
+    SELECT _are( 'views', _extras('v', $1), _missing('v', $1), $2);
 $$ LANGUAGE SQL;
 
 -- views_are( schema, views )
 CREATE OR REPLACE FUNCTION views_are ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('v', 'views', $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct views' );
+    SELECT _are(
+        'views', _extras('v', $1, $2), _missing('v', $1, $2),
+        'Schema ' || quote_ident($1) || ' should have the correct views'
+    );
 $$ LANGUAGE SQL;
 
 -- views_are( views )
 CREATE OR REPLACE FUNCTION views_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('v', 'views', $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views' );
+    SELECT _are(
+        'views', _extras('v', $1), _missing('v', $1),
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views'
+    );
 $$ LANGUAGE SQL;
 
 -- sequences_are( schema, sequences, description )
 CREATE OR REPLACE FUNCTION sequences_are ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _rels_are('S', 'sequences', $1, $2, $3 );
+    SELECT _are( 'sequences', _extras('S', $1, $2), _missing('S', $1, $2), $3);
 $$ LANGUAGE SQL;
 
 -- sequences_are( sequences, description )
 CREATE OR REPLACE FUNCTION sequences_are ( NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _rels_are('S', 'sequences', $1, $2 );
+    SELECT _are( 'sequences', _extras('S', $1), _missing('S', $1), $2);
 $$ LANGUAGE SQL;
 
 -- sequences_are( schema, sequences )
 CREATE OR REPLACE FUNCTION sequences_are ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('S', 'sequences', $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct sequences' );
+    SELECT _are(
+        'sequences', _extras('S', $1, $2), _missing('S', $1, $2),
+        'Schema ' || quote_ident($1) || ' should have the correct sequences'
+    );
 $$ LANGUAGE SQL;
 
 -- sequences_are( sequences )
 CREATE OR REPLACE FUNCTION sequences_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('S', 'sequences', $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences' );
+    SELECT _are(
+        'sequences', _extras('S', $1), _missing('S', $1),
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences'
+    );
 $$ LANGUAGE SQL;
 
 -- functions_are( schema, functions[], description )
@@ -4006,14 +3970,14 @@ BEGIN
     IF extras[1] IS NOT NULL THEN
         res = FALSE;
         msg := E'\n' || diag(
-            '    Schema ' || quote_ident($1) || E' has these extra functions:\n        '
+            E'    Extra functions:\n        '
             ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
-            '    Schema ' || quote_ident($1) || E' is missing these functions:\n        '
+            E'    Missing functions:\n        '
             ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;
@@ -4062,14 +4026,14 @@ BEGIN
     IF extras[1] IS NOT NULL THEN
         res = FALSE;
         msg := E'\n' || diag(
-            '    Search path ' || pg_catalog.current_setting('search_path') || E' has these extra functions:\n        '
+            E'    Extra functions:\n        '
             ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
-            '    Search path ' || pg_catalog.current_setting('search_path') || E' is missing these functions:\n        '
+            E'    Missing functions:\n        '
             ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;

@@ -192,7 +192,7 @@ SELECT * FROM check_test(
     false,
     'tables_are(schema, tables) missing',
     'Schema public should have the correct tables',
-    '    Schema public is missing these tables:
+    '    Missing tables:
         bar'
 );
 
@@ -201,7 +201,7 @@ SELECT * FROM check_test(
     false,
     'tables_are(tables) missing',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these tables:
+    '    Missing tables:
         bar'
 );
 
@@ -210,7 +210,7 @@ SELECT * FROM check_test(
     false,
     'tables_are(schema, tables) extra',
     'Schema public should have the correct tables',
-    '    Schema public has these extra tables:
+    '    Extra tables:
         foo'
 );
 
@@ -219,7 +219,7 @@ SELECT * FROM check_test(
     false,
     'tables_are(tables) extra',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra tables:
+    '    Extra tables:
         foo'
 );
 
@@ -228,10 +228,10 @@ SELECT * FROM check_test(
     false,
     'tables_are(schema, tables) extra and missing',
     'Schema public should have the correct tables',
-    '    Schema public has these extra tables:
+    '    Extra tables:
         fo[ou]
         fo[ou]
-    Schema public is missing these tables:
+    Missing tables:
         ba[rz]
         ba[rz]',
     true
@@ -242,10 +242,10 @@ SELECT * FROM check_test(
     false,
     'tables_are(tables) extra and missing',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
-    '    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' has these extra tables:' || '
+    '    Extra tables:' || '
         fo[ou]
         fo[ou]
-    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' is missing these tables:' || '
+    Missing tables:' || '
         ba[rz]
         ba[rz]',
     true
@@ -290,7 +290,7 @@ SELECT * FROM check_test(
     false,
     'views_are(schema, views) missing',
     'Schema public should have the correct views',
-    '    Schema public is missing these views:
+    '    Missing views:
         bar'
 );
 
@@ -299,7 +299,7 @@ SELECT * FROM check_test(
     false,
     'views_are(views) missing',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these views:
+    '    Missing views:
         bar'
 );
 
@@ -308,7 +308,7 @@ SELECT * FROM check_test(
     false,
     'views_are(schema, views) extra',
     'Schema public should have the correct views',
-    '    Schema public has these extra views:
+    '    Extra views:
         voo'
 );
 
@@ -317,7 +317,7 @@ SELECT * FROM check_test(
     false,
     'views_are(views) extra',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra views:
+    '    Extra views:
         voo'
 );
 
@@ -326,10 +326,10 @@ SELECT * FROM check_test(
     false,
     'views_are(schema, views) extra and missing',
     'Schema public should have the correct views',
-    '    Schema public has these extra views:
+    '    Extra views:
         vo[ou]
         vo[ou]
-    Schema public is missing these views:
+    Missing views:
         ba[rz]
         ba[rz]',
     true
@@ -340,10 +340,10 @@ SELECT * FROM check_test(
     false,
     'views_are(views) extra and missing',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
-    '    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' has these extra views:' || '
+    '    Extra views:' || '
         vo[ou]
         vo[ou]
-    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' is missing these views:' || '
+    Missing views:' || '
         ba[rz]
         ba[rz]',
     true
@@ -388,7 +388,7 @@ SELECT * FROM check_test(
     false,
     'sequences_are(schema, sequences) missing',
     'Schema public should have the correct sequences',
-    '    Schema public is missing these sequences:
+    '    Missing sequences:
         bar'
 );
 
@@ -397,7 +397,7 @@ SELECT * FROM check_test(
     false,
     'sequences_are(sequences) missing',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these sequences:
+    '    Missing sequences:
         bar'
 );
 
@@ -406,7 +406,7 @@ SELECT * FROM check_test(
     false,
     'sequences_are(schema, sequences) extra',
     'Schema public should have the correct sequences',
-    '    Schema public has these extra sequences:
+    '    Extra sequences:
         someseq'
 );
 
@@ -415,7 +415,7 @@ SELECT * FROM check_test(
     false,
     'sequences_are(sequences) extra',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra sequences:
+    '    Extra sequences:
         someseq'
 );
 
@@ -424,10 +424,10 @@ SELECT * FROM check_test(
     false,
     'sequences_are(schema, sequences) extra and missing',
     'Schema public should have the correct sequences',
-    '    Schema public has these extra sequences:
+    '    Extra sequences:
         s[ou]meseq
         s[ou]meseq
-    Schema public is missing these sequences:
+    Missing sequences:
         ba[rz]
         ba[rz]',
     true
@@ -438,10 +438,10 @@ SELECT * FROM check_test(
     false,
     'sequences_are(sequences) extra and missing',
     'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
-    '    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' has these extra sequences:' || '
+    '    Extra sequences:' || '
         s[ou]meseq
         s[ou]meseq
-    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' is missing these sequences:' || '
+    Missing sequences:' || '
         ba[rz]
         ba[rz]',
     true
@@ -471,7 +471,7 @@ SELECT * FROM check_test(
     false,
     'functions_are(schema, functions, desc) + missing',
     'whatever',
-    '    Schema someschema is missing these functions:
+    '    Missing functions:
         yop'
 );
 
@@ -480,7 +480,7 @@ SELECT * FROM check_test(
     false,
     'functions_are(schema, functions, desc) + extra',
     'whatever',
-    '    Schema someschema has these extra functions:
+    '    Extra functions:
         yap'
 );
 
@@ -489,9 +489,9 @@ SELECT * FROM check_test(
     false,
     'functions_are(schema, functions, desc) + extra & missing',
     'whatever',
-    '    Schema someschema has these extra functions:
+    '    Extra functions:
         yip
-    Schema someschema is missing these functions:
+    Missing functions:
         yop'
 );
 
@@ -527,7 +527,7 @@ SELECT * FROM check_test(
     false,
     'functions_are(functions, desc) + missing',
     'whatever',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these functions:
+    '    Missing functions:
         __booyah__'
 );
 
@@ -536,7 +536,7 @@ SELECT * FROM check_test(
     false,
     'functions_are(functions, desc) + extra',
     'whatever',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra functions:
+    '    Extra functions:
         check_test'
 );
 
@@ -545,9 +545,9 @@ SELECT * FROM check_test(
     false,
     'functions_are(functions, desc) + extra & missing',
     'whatever',
-    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra functions:
+    '    Extra functions:
         check_test
-    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these functions:
+    Missing functions:
         __booyah__'
 );
 
@@ -642,8 +642,6 @@ SELECT * FROM check_test(
     Missing indexes:
         howdy'
 );
-
-SELECT indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'howdy'] );
 
 /****************************************************************************/
 -- Finish the tests and clean up.
