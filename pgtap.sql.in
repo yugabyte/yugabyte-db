@@ -3886,14 +3886,14 @@ BEGIN
     IF extras[1] IS NOT NULL THEN
         res = FALSE;
         msg := E'\n' || diag(
-            '    These are extra ' || $2 || E':\n        '
+            E'    Search path ' || pg_catalog.current_setting('search_path') || ' has these extra ' || $2 || E':\n        '
             ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
-            '    These ' || $2 || E' are missing:\n        '
+            E'    Search path ' || pg_catalog.current_setting('search_path') || ' is missing these ' || $2 || E':\n        '
             ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;
@@ -3923,7 +3923,7 @@ $$ LANGUAGE SQL;
 -- tables_are( tables )
 CREATE OR REPLACE FUNCTION tables_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('r', 'tables', $1, 'There should be the correct tables' );
+    SELECT _rels_are('r', 'tables', $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables' );
 $$ LANGUAGE SQL;
 
 -- views_are( schema, views, description )
@@ -3947,7 +3947,7 @@ $$ LANGUAGE SQL;
 -- views_are( views )
 CREATE OR REPLACE FUNCTION views_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('v', 'views', $1, 'There should be the correct views' );
+    SELECT _rels_are('v', 'views', $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views' );
 $$ LANGUAGE SQL;
 
 -- sequences_are( schema, sequences, description )
@@ -3971,7 +3971,7 @@ $$ LANGUAGE SQL;
 -- sequences_are( sequences )
 CREATE OR REPLACE FUNCTION sequences_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT _rels_are('S', 'sequences', $1, 'There should be the correct sequences' );
+    SELECT _rels_are('S', 'sequences', $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences' );
 $$ LANGUAGE SQL;
 
 -- functions_are( schema, functions[], description )
@@ -4062,14 +4062,14 @@ BEGIN
     IF extras[1] IS NOT NULL THEN
         res = FALSE;
         msg := E'\n' || diag(
-            E'    These are extra functions:\n        '
+            '    Search path ' || pg_catalog.current_setting('search_path') || E' has these extra functions:\n        '
             ||  _ident_array_to_string( extras, E'\n        ' )
         );
     END IF;
     IF missing[1] IS NOT NULL THEN
         res = FALSE;
         msg := msg || E'\n' || diag(
-            E'    These functions are missing:\n        '
+            '    Search path ' || pg_catalog.current_setting('search_path') || E' is missing these functions:\n        '
             ||  _ident_array_to_string( missing, E'\n        ' )
         );
     END IF;
@@ -4081,7 +4081,7 @@ $$ LANGUAGE plpgsql;
 -- functions_are( functions[] )
 CREATE OR REPLACE FUNCTION functions_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT functions_are( $1, 'There should be the correct functions' );
+    SELECT functions_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct functions' );
 $$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )

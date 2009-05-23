@@ -172,7 +172,7 @@ SELECT * FROM check_test(
     tables_are( ARRAY['fou', 'foo'] ),
     true,
     'tables_are(tables)',
-    'There should be the correct tables',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
     ''
 );
 
@@ -197,8 +197,8 @@ SELECT * FROM check_test(
     tables_are( ARRAY['fou', 'foo', 'bar'] ),
     false,
     'tables_are(tables) missing',
-    'There should be the correct tables',
-    '    These tables are missing:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these tables:
         bar'
 );
 
@@ -215,8 +215,8 @@ SELECT * FROM check_test(
     tables_are( ARRAY['fou'] ),
     false,
     'tables_are(tables) extra',
-    'There should be the correct tables',
-    '    These are extra tables:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra tables:
         foo'
 );
 
@@ -238,11 +238,11 @@ SELECT * FROM check_test(
     tables_are( ARRAY['bar', 'baz'] ),
     false,
     'tables_are(tables) extra and missing',
-    'There should be the correct tables',
-    '    These are extra tables:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables',
+    '    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' has these extra tables:' || '
         fo[ou]
         fo[ou]
-    These tables are missing:
+    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' is missing these tables:' || '
         ba[rz]
         ba[rz]',
     true
@@ -270,7 +270,7 @@ SELECT * FROM check_test(
     views_are( ARRAY['vou', 'voo'] ),
     true,
     'views_are(views)',
-    'There should be the correct views',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
     ''
 );
 
@@ -295,8 +295,8 @@ SELECT * FROM check_test(
     views_are( ARRAY['vou', 'voo', 'bar'] ),
     false,
     'views_are(views) missing',
-    'There should be the correct views',
-    '    These views are missing:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these views:
         bar'
 );
 
@@ -313,8 +313,8 @@ SELECT * FROM check_test(
     views_are( ARRAY['vou'] ),
     false,
     'views_are(views) extra',
-    'There should be the correct views',
-    '    These are extra views:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra views:
         voo'
 );
 
@@ -336,11 +336,11 @@ SELECT * FROM check_test(
     views_are( ARRAY['bar', 'baz'] ),
     false,
     'views_are(views) extra and missing',
-    'There should be the correct views',
-    '    These are extra views:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+    '    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' has these extra views:' || '
         vo[ou]
         vo[ou]
-    These views are missing:
+    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' is missing these views:' || '
         ba[rz]
         ba[rz]',
     true
@@ -368,7 +368,7 @@ SELECT * FROM check_test(
     sequences_are( ARRAY['sumeseq', 'someseq'] ),
     true,
     'sequences_are(sequences)',
-    'There should be the correct sequences',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
     ''
 );
 
@@ -393,8 +393,8 @@ SELECT * FROM check_test(
     sequences_are( ARRAY['sumeseq', 'someseq', 'bar'] ),
     false,
     'sequences_are(sequences) missing',
-    'There should be the correct sequences',
-    '    These sequences are missing:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these sequences:
         bar'
 );
 
@@ -411,8 +411,8 @@ SELECT * FROM check_test(
     sequences_are( ARRAY['sumeseq'] ),
     false,
     'sequences_are(sequences) extra',
-    'There should be the correct sequences',
-    '    These are extra sequences:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra sequences:
         someseq'
 );
 
@@ -434,11 +434,11 @@ SELECT * FROM check_test(
     sequences_are( ARRAY['bar', 'baz'] ),
     false,
     'sequences_are(sequences) extra and missing',
-    'There should be the correct sequences',
-    '    These are extra sequences:
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct sequences',
+    '    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' has these extra sequences:' || '
         s[ou]meseq
         s[ou]meseq
-    These sequences are missing:
+    Search path ' || replace(pg_catalog.current_setting('search_path'), '$', E'\\$') || ' is missing these sequences:' || '
         ba[rz]
         ba[rz]',
     true
@@ -515,7 +515,7 @@ SELECT * FROM check_test(
     functions_are( ___myfunk('') ),
     true,
     'functions_are(functions)',
-    'There should be the correct functions',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct functions',
     ''
 );
 
@@ -524,7 +524,7 @@ SELECT * FROM check_test(
     false,
     'functions_are(functions, desc) + missing',
     'whatever',
-    '    These functions are missing:
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these functions:
         __booyah__'
 );
 
@@ -533,7 +533,7 @@ SELECT * FROM check_test(
     false,
     'functions_are(functions, desc) + extra',
     'whatever',
-    '    These are extra functions:
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra functions:
         check_test'
 );
 
@@ -542,9 +542,9 @@ SELECT * FROM check_test(
     false,
     'functions_are(functions, desc) + extra & missing',
     'whatever',
-    '    These are extra functions:
+    '    Search path ' || pg_catalog.current_setting('search_path')  || ' has these extra functions:
         check_test
-    These functions are missing:
+    Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these functions:
         __booyah__'
 );
 
