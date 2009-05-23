@@ -75,7 +75,7 @@ target uses the included `pg_prove` Perl program to do its testing, which
 requires that TAP::Harness, included in
 [Test::Harness](http://search.cpan.org/dist/Test-Harness/ "Test::Harness on
 CPAN") 3.x. You'll need to make sure that you use a database with PL/pgSQL
-loaded, or else the tests wont't work. `pg_prove` supports a number of
+loaded, or else the tests won't work. `pg_prove` supports a number of
 environment variables that you might need to use, including all the usual
 PostgreSQL client environment variables:
 
@@ -123,7 +123,7 @@ pgTAP Test Scripts
 You can distribute `pgtap.sql` with any PostgreSQL distribution, such as a
 custom data type. For such a case, if your users want to run your test suite
 using PostgreSQL's standard `installcheck` make target, just be sure to set
-varibles to keep the tests quiet, start a transaction, load the functions in
+variables to keep the tests quiet, start a transaction, load the functions in
 your test script, and then rollback the transaction at the end of the script.
 Here's an example:
 
@@ -659,7 +659,7 @@ It's best to think of this as a brute force comparison of runtimes, in order
 to ensure that a query is not *really* slow (think seconds).
 
 The Schema Things
------------------
+=================
 
 Need to make sure that your database is designed just the way you think it
 should be? Use these test functions and rest easy.
@@ -691,6 +691,26 @@ In general, this should not be an issue, as mixed-case objects are created
 only rarely. So if you just stick to lowercase-only arguments to these
 functions, you should be in good shape.
 
+I Object!
+---------
+
+In a busy development environment, you might have a number of users who make
+changes to the database schema. Sometimes you have to really work to keep
+these folks in line. For example, do they add objects to the database without
+adding tests? Do they drop objects that they shouldn't? These assertions are
+designed to help you ensure that the objects in the database are exactly the
+objects that should be in the database, no more, no less.
+
+Each tests tests that all of the objects in the database are only the objects
+that *should* be there. In other words, given a list of objects, say tables in
+a call to `tables_are()`, this assertion will fail if there are tables that
+are not in the list, or if there are tables in the list that are missing from
+the database. It can also be useful for testing replication and the success or
+failure of schema change deployments.
+
+If you're more interested in the specifics of particular objects, skip to
+the next section.
+
 ### `tablespaces_are( tablespaces, description )` ###
 ### `tablespaces_are( tablespaces )` ###
 
@@ -699,19 +719,9 @@ functions, you should be in good shape.
         'Should have the correct tablespaces
     );
 
-This function tests that all of the tablespaces in the databse only the
-tablespaces that *should* be there. In other words, given a list of
-tablespaces, this assertion will fail if there are tablespaces that are not in
-the list, or if there are tablespaces in the list that are missing from the
-database.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the tablespaces in a database are exactly the tablespaces
-that should exist in the database, no more, no less.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing tablespaces, like so:
+This function tests that all of the tablespaces in the database only the
+tablespaces that *should* be there. In the event of a failure, you'll see
+diagnostics listing the extra and/or missing tablespaces, like so:
 
     not ok 121 - There should be the correct tablespaces
     # Failed test 121: "There should be the correct tablespaces"
@@ -719,6 +729,210 @@ missing tablespaces, like so:
     #         pg_default
     #     Missing tablespaces:
     #         __booya__
+
+### `schemas_are( schemas, description )` ###
+### `schemas_are( schemas )` ###
+
+    SELECT schemas_are(
+        ARRAY[ 'public, 'contrib, 'tap' ],
+        'Should have the correct schemas
+    );
+
+This function tests that all of the schemas in the database only the schemas
+that *should* be there. In the event of a failure, you'll see diagnostics
+listing the extra and/or missing schemas, like so:
+
+    not ok 106 - There should be the correct schemas
+    # Failed test 106: "There should be the correct schemas"
+    #     Extra schemas:
+    #         __howdy__
+    #     Missing schemas:
+    #         someschema
+
+### `tables_are( schema, tables, description )` ###
+### `tables_are( tables, description )` ###
+### `tables_are( schema, tables )` ###
+### `tables_are( tables )` ###
+
+    SELECT tables_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
+        'Should have the correct tables in myschema'
+    );
+
+This function tests that all of the tables in the named schema, or that are
+visible in the search path, are only the tables that *should* be there. If the
+`:schema` argument is omitted, tables will be sought in the search path,
+excluding `pg_catalog.` If the description is omitted, a generally useful
+default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing tables, like so:
+
+    not ok 91 - Schema public should have the correct tables
+    # Failed test 91: "Schema public should have the correct tables"
+    #     Extra tables:
+    #         mallots
+    #         __test_table
+    #     Missing tables:
+    #         users
+    #         widgets
+
+### `views_are( schema, views, description )` ###
+### `views_are( views, description )` ###
+### `views_are( schema, views )` ###
+### `views_are( views )` ###
+
+    SELECT views_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
+        'Should have the correct views in myschema'
+    );
+
+This function tests that all of the views in the named schema, or that are
+visible in the search path, are only the views that *should* be there. If the
+`:schema` argument is omitted, views will be sought in the search path,
+excluding `pg_catalog.` If the description is omitted, a generally useful
+default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing views, like so:
+
+    not ok 92 - Schema public should have the correct views
+    # Failed test 92: "Schema public should have the correct views"
+    #     Extra views:
+    #         v_userlog_tmp
+    #         __test_view
+    #     Missing views:
+    #         v_userlog
+    #         eated
+
+### `sequences_are( schema, sequences, description )` ###
+### `sequences_are( sequences, description )` ###
+### `sequences_are( schema, sequences )` ###
+### `sequences_are( sequences )` ###
+
+    SELECT sequences_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
+        'Should have the correct sequences in myschema'
+    );
+
+This function tests that all of the sequences in the named schema, or that are
+visible in the search path, are only the sequences that *should* be there. If
+the `:schema` argument is omitted, sequences will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing sequences, like so:
+
+    not ok 93 - Schema public should have the correct sequences
+    # Failed test 93: "Schema public should have the correct sequences"
+    #     These are extra sequences:
+    #         seq_mallots
+    #         __test_table_seq
+    #     These sequences are missing:
+    #         users_seq
+    #         widgets_seq
+
+### `indexes_are( schema, table, indexes[], description )` ###
+### `indexes_are( schema, table, indexes[] )` ###
+### `indexes_are( table, indexes[], description )` ###
+### `indexes_are( table, indexes[] )` ###
+
+    SELECT indexes_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'atable_pkey', 'idx_atable_name' ],
+        'Should have the correct indexes on myschema.atable'
+    );
+
+This function tests that all of the indexes on the named table are only the
+indexes that *should* be on that table. Iftable.If the `:schema` argument is omitted,
+the table must be visible in the search path. If the description is omitted, a
+generally useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing indexes, like so:
+
+    # Failed test 180: "Table fou should have the correct indexes"
+    #     Extra indexes:
+    #         fou_pkey
+    #     Missing indexes:
+    #         idx_fou_name
+
+### `functions_are( schema, functions[], description )` ###
+### `functions_are( schema, functions[] )` ###
+### `functions_are( functions[], description )` ###
+### `functions_are( functions[] )` ###
+
+    SELECT functions_are(
+        'myschema',
+        ARRAY[ 'foo', 'bar', 'frobnitz' ],
+        'Should have the correct functions in myschema'
+    );
+
+This function tests that all of the functions in the named schema, or that are
+visible in the search path, are only the functions that *should* be there. If
+the `:schema` argument is omitted, functions will be sought in the search
+path, excluding `pg_catalog.` If the description is omitted, a generally
+useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing functions, like so:
+
+    # Failed test 150: "Schema someschema should have the correct functions"
+    #     Extra functions:
+    #         schnauzify
+    #     Missing functions:
+    #         frobnitz
+
+### `users_are( users[], description )` ###
+### `users_are( users[] )` ###
+
+    SELECT users_are(
+        ARRAY[ 'postgres', 'someone', 'root' ],
+        'Should have the correct users
+    );
+
+This function tests that all of the users in the database only the users that
+*should* be there. In the event of a failure, you'll see diagnostics listing
+the extra and/or missing users, like so:
+
+    not ok 195 - whatever
+    # Failed test 195: "There should be the correct users"
+    #     Extra users:
+    #         root
+    #     Missing users:
+    #         bobby
+
+### `groups_are( groups[], description )` ###
+### `groups_are( groups[] )` ###
+
+    SELECT groups_are(
+        ARRAY[ 'postgres', 'admins, 'l0s3rs' ],
+        'Should have the correct groups
+    );
+
+This function tests that all of the groups in the database only the groups
+that *should* be there. In the event of a failure, you'll see diagnostics
+listing the extra and/or missing groups, like so:
+
+    not ok 210 - There should be the correct groups
+    # Failed test 210: "There should be the correct groups"
+    #     Extra groups:
+    #         meanies
+    #     Missing groups:
+    #         __howdy__
+
+To Have or Have Not
+-------------------
+
+Perhaps you're not so concerned with ensuring the [precise correlation of
+database objects](#I+Object! "I Object!"). Perhaps you just need to make sure
+that certain objects exist (or that certain objects *don't* exist). You've
+come to the right place.
 
 ### `has_tablespace( tablespace, location, description )` ###
 ### `has_tablespace( tablespace, description )` ###
@@ -748,34 +962,6 @@ test description, it will be set to "Tablespace `:tablespace` should exist".
 This function is the inverse of `has_tablespace()`. The test passes if the
 specified tablespace does *not* exist.
 
-### `schemas_are( schemas, description )` ###
-### `schemas_are( schemas )` ###
-
-    SELECT schemas_are(
-        ARRAY[ 'public, 'contrib, 'tap' ],
-        'Should have the correct schemas
-    );
-
-This function tests that all of the schemas in the databse only the schemas
-that *should* be there. In other words, given a list of schemas, this
-assertion will fail if there are schemas that are not in the list, or if there
-are schemas in the list that are missing from the database.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the schemas in a database are exactly the schemas that should
-exist in the database, no more, no less.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing schemas, like so:
-
-    not ok 106 - There should be the correct schemas
-    # Failed test 106: "There should be the correct schemas"
-    #     Extra schemas:
-    #         __howdy__
-    #     Missing schemas:
-    #         someschema
-
 ### `has_schema( schema, description )` ###
 ### `has_schema( schema )` ###
 
@@ -800,44 +986,6 @@ test description, it will be set to "Schema `:schema` should exist".
 
 This function is the inverse of `has_schema()`. The test passes if the
 specified schema does *not* exist.
-
-### `tables_are( schema, tables, description )` ###
-### `tables_are( tables, description )` ###
-### `tables_are( schema, tables )` ###
-### `tables_are( tables )` ###
-
-    SELECT tables_are(
-        'myschema',
-        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
-        'Should have the correct tables in myschema'
-    );
-
-This function tests that all of the tables in the named schema, or that are
-visible in the search path, are only the tables that *should* be there. In
-other words, given a list of tables, this assertion will fail if there are
-tables that are not in the list, or if there are tables in the list that are
-not found in the search path.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the tables in a database are exactly the tables that should
-exist in the database, no more, no less.
-
-If the `:schema` argument is omitted, tables will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing tables, like so:
-
-    not ok 91 - Schema public should have the correct tables
-    # Failed test 91: "Schema public should have the correct tables"
-    #     Extra tables:
-    #         mallots
-    #         __test_table
-    #     Missing tables:
-    #         users
-    #         widgets
 
 ### `has_table( schema, table, description )` ###
 ### `has_table( table, description )` ###
@@ -868,44 +1016,6 @@ search path. If you omit the test description, it will be set to "Table
 This function is the inverse of `has_table()`. The test passes if the
 specified table does *not* exist.
 
-### `views_are( schema, views, description )` ###
-### `views_are( views, description )` ###
-### `views_are( schema, views )` ###
-### `views_are( views )` ###
-
-    SELECT views_are(
-        'myschema',
-        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
-        'Should have the correct views in myschema'
-    );
-
-This function tests that all of the views in the named schema, or that are
-visible in the search path, are only the views that *should* be there. In
-other words, given a list of views, this assertion will fail if there are
-views that are not in the list, or if there are views in the list that are
-not found in the search path.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the views in a database are exactly the views that should
-exist in the database, no more, no less.
-
-If the `:schema` argument is omitted, views will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing views, like so:
-
-    not ok 92 - Schema public should have the correct views
-    # Failed test 92: "Schema public should have the correct views"
-    #     Extra views:
-    #         v_userlog_tmp
-    #         __test_view
-    #     Missing views:
-    #         v_userlog
-    #         eated
-
 ### `has_view( schema, view, description )` ###
 ### `has_view( view, description )` ###
 ### `has_view( view )` ###
@@ -930,44 +1040,6 @@ Just like `has_table()`, only it tests for the existence of a view.
 
 This function is the inverse of `has_view()`. The test passes if the specified
 view does *not* exist.
-
-### `sequences_are( schema, sequences, description )` ###
-### `sequences_are( sequences, description )` ###
-### `sequences_are( schema, sequences )` ###
-### `sequences_are( sequences )` ###
-
-    SELECT sequences_are(
-        'myschema',
-        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
-        'Should have the correct sequences in myschema'
-    );
-
-This function tests that all of the sequences in the named schema, or that are
-visible in the search path, are only the sequences that *should* be there. In
-other words, given a list of sequences, this assertion will fail if there are
-sequences that are not in the list, or if there are sequences in the list that
-are not found in the search path.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the sequences in a database are exactly the sequences that
-should exist in the database, no more, no less.
-
-If the `:schema` argument is omitted, sequences will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing sequences, like so:
-
-    not ok 93 - Schema public should have the correct sequences
-    # Failed test 93: "Schema public should have the correct sequences"
-    #     These are extra sequences:
-    #         seq_mallots
-    #         __test_table_seq
-    #     These sequences are missing:
-    #         users_seq
-    #         widgets_seq
 
 ### `has_sequence( schema, sequence, description )` ###
 ### `has_sequence( sequence, description )` ###
@@ -1089,38 +1161,299 @@ passing a schema and enum rather than enum and description, be sure to cast
 the arguments to `name` values so that your enum name doesn't get treated as a
 description.
 
-### `hasnt_enum( schema, enum, description )` ###
-### `hasnt_enum( schema, enum )` ###
-### `hasnt_enum( enum, description )` ###
-### `hasnt_enum( enum )` ###
+### `has_index( schema, table, index, columns[], description )` ###
+### `has_index( schema, table, index, columns[] )` ###
+### `has_index( schema, table, index, column/expression, description )` ###
+### `has_index( schema, table, index, columns/expression )` ###
+### `has_index( table, index, columns[], description )` ###
+### `has_index( table, index, columns[], description )` ###
+### `has_index( table, index, column/expression, description )` ###
+### `has_index( schema, table, index, column/expression )` ###
+### `has_index( table, index, column/expression )` ###
+### `has_index( schema, table, index )` ###
+### `has_index( table, index, description )` ###
+### `has_index( table, index )` ###
 
-    SELECT hasnt_enum(
+    SELECT has_index(
         'myschema',
-        'someenum',
-        'There should be no enum myschema.someenum'
+        'sometable',
+        'myindex',
+        ARRAY[ 'somecolumn', 'anothercolumn' ],
+        'Index "myindex" should exist'
     );
 
-This function is the inverse of `has_enum()`. The test passes if the
-specified enum does *not* exist.
+    SELECT has_index('myschema', 'sometable', 'anidx', 'somecolumn');
+    SELECT has_index('myschema', 'sometable', 'loweridx', 'LOWER(somecolumn)');
+    SELECT has_index('sometable', 'someindex');
 
-### `enum_has_labels( schema, enum, labels, desc )` ###
-### `enum_has_labels( schema, enum, labels )` ###
-### `enum_has_labels( enum, labels, desc )` ###
-### `enum_has_labels( enum, labels )` ###
+Checks for the existence of an index associated with the named table. The
+`:schema` argument is optional, as is the column name or names or expression,
+and the description. The columns argument may be a string naming one column or
+an array of column names. It may also be a string representing an expression,
+such as `lower(foo)`. For expressions, you must use lowercase for all SQL
+keywords and functions to properly compare to PostgreSQL's internal form of
+the expression.
 
-    SELECT enum_has_labels(
+If you find that the function call seems to be getting confused, cast the
+index name to the `NAME` type:
+
+    SELECT has_index( 'public', 'sometab', 'idx_foo', 'name'::name );
+
+If the index does not exist, `has_column()` will output a diagnostic message
+such as:
+
+    # Index "blah" ON public.sometab not found
+
+If the index was found but the column specification or expression is
+incorrect, the diagnostics will look more like this:
+
+    #       have: "idx_baz" ON public.sometab(lower(name))
+    #       want: "idx_baz" ON public.sometab(lower(lname))
+
+### `has_trigger( schema, table, trigger, description )` ###
+### `has_trigger( schema, table, trigger )` ###
+### `has_trigger( table, trigger )` ###
+
+    SELECT has_trigger(
         'myschema',
-        'someenum',
-        ARRAY['foo', 'bar'],
-        'Enum someenum should have labels foo, bar'
+        'sometable',
+        'sometrigger',
+        'Trigger "sometrigger" should exist'
     );
 
-This function tests that an enum consists of an expected list of labels. Enums
-are supported in PostgreSQL 8.3 or higher. The first argument is a schema
-name, the second an enum name, the third an array of enum labels, and the
-fourth a description. If you omit the schema, the enum must be visible in the
-search path. If you omit the test description, it will be set to "Enum `:enum`
-should have labels (`:labels`)".
+    SELECT has_trigger( 'sometable', 'sometrigger' );
+
+Tests to see if the specified table has the named trigger. The `:description`
+is optional, and if the schema is omitted, the table with which the trigger is
+associated must be visible.
+
+### `can( schema, functions[], description )` ###
+### `can( schema, functions[] )` ###
+### `can( functions[], description )` ###
+### `can( functions[] )` ###
+
+    SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
+
+Checks to be sure that `:schema` has `:functions[]` defined. This is subtly
+different from `functions_are()`. `functions_are()` fails if the functions
+defined in `:schema` are not exactly the functions defined in `:functions[]`.
+`can()`, on the other hand, just makes sure that `functions[]` exist.
+
+If `:schema` is omitted, then `can()` will look for functions defined in
+schemas defined in the search path. No matter how many functions are listed in
+`:functions[]`, a single call to `can()` counts as one test. If you want
+otherwise, call `can()` once for each function -- or better yet, use
+`can_ok()`.
+
+If any of the functions are not defined, the test will fail and the
+diagnostics will output a list of the functions that are missing, like so:
+
+    # Failed test 52: "Schema pg_catalog can"
+    #     pg_catalog.foo() missing
+    #     pg_catalog.bar() missing
+
+### `can_ok( schema, function, args[], description )` ###
+### `can_ok( schema, function, args[] )` ###
+### `can_ok( schema, function, description )` ###
+### `can_ok( schema, function )` ###
+### `can_ok( function, args[], description )` ###
+### `can_ok( function, args[] )` ###
+### `can_ok( function, description )` ###
+### `can_ok( function )` ###
+
+    SELECT can_ok(
+        'pg_catalog',
+        'decode',
+        ARRAY[ 'text', 'text' ],
+        'Function decode(text, text) should exist'
+    );
+
+    SELECT can_ok( 'do_something' );
+    SELECT can_ok( 'do_something', ARRAY['integer'] );
+    SELECT can_ok( 'do_something', ARRAY['numeric'] );
+
+Checks to be sure that the given function exists in the named schema and with
+the specified argument data types. If `:schema` is omitted, `can_ok()` will
+search for the function in the schemas defined in the search path. If
+`:args[]` is omitted, `can_ok()` will see if the function exists without
+regard to its arguments.
+
+The `:args[]` argument should be formatted as it would be displayed in the
+view of a function using the `\df` command in `psql`. For example, even if you
+have a numeric column with a precision of 8, you should specify
+`ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
+the `:args[]` argument as `ARRAY['character varying']`.
+
+If you wish to use the two-argument form of `can_ok()`, specifying only the
+schema and the function name, you must cast the `:function` argument to
+`:name` in order to disambiguate it from from the
+`can_ok(`:function`, `:description)` form. If you neglect to do so, your
+results will be unexpected.
+
+Also, if you use the string form to specify the `:args[]` array, be sure to
+cast it to `name[]` to disambiguate it from a text string:
+
+    SELECT can_ok( 'lower', '{text}'::name[] );
+
+### `has_cast( source_type, target_type, schema, function, description )` ###
+### `has_cast( source_type, target_type, schema, function )` ###
+### `has_cast( source_type, target_type, function, description )` ###
+### `has_cast( source_type, target_type, function )` ###
+### `has_cast( source_type, target_type, description )` ###
+### `has_cast( source_type, target_type )` ###
+
+    SELECT has_cast(
+        'integer',
+        'bigint',
+        'pg_catalog',
+        'int8'
+        'We should have a cast from integer to bigint'
+    );
+
+Tests for the existence of a cast. A cast consists of a source data type, a
+target data type, and perhaps a (possibly schema-qualified) function. If you
+omit the description four the 3- or 4-argument version, you'll need to cast
+the function name to the `NAME` data type so that PostgreSQL doesn't resolve
+the function name as a description. For example:
+
+    SELECT has_cast( 'integer', 'bigint', 'int8'::NAME );
+
+pgTAP will generate a useful description if you don't provide one.
+
+### `hasnt_cast( source_type, target_type, schema, function, description )` ###
+### `hasnt_cast( source_type, target_type, schema, function )` ###
+### `hasnt_cast( source_type, target_type, function, description )` ###
+### `hasnt_cast( source_type, target_type, function )` ###
+### `hasnt_cast( source_type, target_type, description )` ###
+### `hasnt_cast( source_type, target_type )` ###
+
+    SELECT hasnt_cast( 'integer', 'circle' );
+
+This function is the inverse of `has_cast()`. The test passes if the specified
+cast does *not* exist.
+
+### `has_operator( left_type, schema, name, right_type, return_type, desc )` ###
+### `has_operator( left_type, schema, name, right_type, return_type )` ###
+### `has_operator( left_type, name, right_type, return_type, desc )` ###
+### `has_operator( left_type, name, right_type, return_type )` ###
+### `has_operator( left_type, name, right_type, desc )` ###
+### `has_operator( left_type, name, right_type )` ###
+
+    SELECT has_operator(
+        'integer',
+        'pg_catalog', '<=',
+        'integer',
+        'boolean',
+        'Operator (integer <= integer RETURNS boolean) should exist'
+    );
+
+Tests for the presence of a binary operator. If the operator exists with the
+given schema, name, left and right arguments, and return value, the test will
+fail. If the operator does not exist, the test will fail. If you omit the
+schema name, then the operator must be visible in the search path. If you omit
+the test description, pgTAP will generate a reasonable one for you. The return
+value is also optional. If you need to test for a left or right unary
+operator, use `has_leftop()` or `has_rightop()` instead.
+
+### `has_leftop( schema, name, right_type, return_type, desc )` ###
+### `has_leftop( schema, name, right_type, return_type )` ###
+### `has_leftop( name, right_type, return_type, desc )` ###
+### `has_leftop( name, right_type, return_type )` ###
+### `has_leftop( name, right_type, desc )` ###
+### `has_leftop( name, right_type )` ###
+
+    SELECT has_leftop(
+        'pg_catalog', '!!',
+         'bigint',
+         'numeric',
+         'Operator (!! bigint RETURNS numeric) should exist'
+     );
+
+Tests for the presence of a left-unary operator. If the operator exists with
+the given schema, name, right argument, and return value, the test will fail.
+If the operator does not exist, the test will fail. If you omit the schema
+name, then the operator must be visible in the search path. If you omit the
+test description, pgTAP will generate a reasonable one for you. The return
+value is also optional.
+
+### `has_rightop( left_type, schema, name, return_type, desc )` ###
+### `has_rightop( left_type, schema, name, return_type )` ###
+### `has_rightop( left_type, name, return_type, desc )` ###
+### `has_rightop( left_type, name, return_type )` ###
+### `has_rightop( left_type, name, desc )` ###
+### `has_rightop( left_type, name )` ###
+
+    SELECT has_rightop(
+        'bigint',
+        'pg_catalog', '!',
+        'numeric',
+        'Operator (bigint ! RETURNS numeric) should exist'
+    );
+
+Tests for the presence of a right-unary operator. If the operator exists with
+the given left argument, schema, name, and return value, the test will fail.
+If the operator does not exist, the test will fail. If you omit the schema
+name, then the operator must be visible in the search path. If you omit the
+test description, pgTAP will generate a reasonable one for you. The return
+value is also optional.
+
+### `has_role( role, desc )` ###
+### `has_role( role )` ###
+
+    SELECT has_role( 'theory', 'Role "theory" should exist' );
+
+Checks to ensure that a database role exists. If the description is omitted,
+it will default to "Role `:role` should exist".
+
+### `hasnt_role( role, desc )` ###
+### `hasnt_role( role )` ###
+
+    SELECT hasnt_role( 'theory', 'Role "theory" not should exist' );
+
+The inverse of `has_role()`, this function tests for the *absence* of a
+database role.
+
+### `has_user( user, desc )` ###
+### `has_user( user )` ###
+
+    SELECT has_user( 'theory', 'User "theory" should exist' );
+
+Checks to ensure that a database user exists. If the description is omitted,
+it will default to "User `:user` should exist".
+
+### `hasnt_user( user, desc )` ###
+### `hasnt_user( user )` ###
+
+    SELECT hasnt_user( 'theory', 'User "theory" not should exist' );
+
+The inverse of `has_user()`, this function tests for the *absence* of a
+database user.
+
+### `has_group( group, desc )` ###
+### `has_group( group )` ###
+
+    SELECT has_group( 'sweeties, 'Group "sweeties" should exist' );
+
+Checks to ensure that a database group exists. If the description is omitted,
+it will default to "Group `:group` should exist".
+
+### `hasnt_group( group, desc )` ###
+### `hasnt_group( group )` ###
+
+    SELECT hasnt_group( 'meanies, 'Group meaines should not exist' );
+
+The inverse of `has_group()`, this function tests for the *absence* of a
+database group.
+
+Table For One
+-------------
+
+Okay, you're sure that your database has exactly the [right schema](#I+Object!
+"I Object!") and that all of the objects you need [are
+there](#To+Have+or+Have+Not "To Have or Have Not"). So let's take a closer
+look at tables. There are a lot of ways to look at tables, to make sure that
+they have all the columns, indexes, constraints, keys, and indexes they need.
+So we have the assertions to validate 'em.
 
 ### `has_column( schema, table, column, description )` ###
 ### `has_column( table, column, description )` ###
@@ -1206,7 +1539,7 @@ But use `has_column()` to make sure the column exists first, eh?
         'Column myschema.sometable.somecolumn has a default'
     );
 
-Tests whether or not a column has a default value. Fails if the column dosn't
+Tests whether or not a column has a default value. Fails if the column doesn't
 have a default value. It will also fail if the column doesn't exist, and emit
 useful diagnostics to let you know:
 
@@ -1293,7 +1626,7 @@ that this test will fail if the table or column in question does not exist.
 The default argument must have an unambiguous type in order for the call to
 succeed. If you see an error such as 'ERROR: could not determine polymorphic
 type because input has type "unknown"', it's because you forgot to cast the
-expected value, probabaly a `NULL` (which, by the way, you can only properly
+expected value, probably a `NULL` (which, by the way, you can only properly
 test for in PostgreSQL 8.3 and later), to its proper type. IOW, this will
 fail:
 
@@ -1531,15 +1864,15 @@ between the foreign and primary key tables. To properly test your
 relationships, this should be your main test function of choice.
 
 The first three arguments are the schema, table, and column or array of
-columns that constitue the foreign key constraint. The schema name is
+columns that constitute the foreign key constraint. The schema name is
 optional, and the columns can be specified as a string for a single column or
 an array of strings for multiple columns. The next three arguments are the
 schema, table, and column or columns that constitute the corresponding primary
 key. Again, the schema is optional and the columns may be a string or array of
 strings (though of course it should have the same number of elements as the
 foreign key column argument). The seventh argument is an optional description
-If it's not included, it will be set to ":fk_schema.:fk_table(:fk_column)
-should reference :pk_column.pk_table(:pk_column).
+If it's not included, it will be set to `:fk_schema.:fk_table(:fk_column)`
+should reference `:pk_column.pk_table(:pk_column)`.
 
 If the test fails, it will output useful diagnostics. For example this test:
 
@@ -1629,90 +1962,6 @@ not exist.
 Just like `col_is_pk()`, except that it test that the column or array of
 columns have a check constraint on them.
 
-### `indexes_are( schema, table, indexes[], description )` ###
-### `indexes_are( schema, table, indexes[] )` ###
-### `indexes_are( table, indexes[], description )` ###
-### `indexes_are( table, indexes[] )` ###
-
-    SELECT indexes_are(
-        'myschema',
-        'atable',
-        ARRAY[ 'atable_pkey', 'idx_atable_name' ],
-        'Should have the correct indexes on myschema.atable'
-    );
-
-This function tests that all of the indexes on the named table are only the
-indexes that *should* be on that table. In other words, given a list of
-indexes, this assertion will fail if there are indexes that are not in the
-list, or if there are indexes in the list that are not on the table.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the indexes on a table are exactly the indexes that should
-exist on a table, no more, no less.
-
-If the `:schema` argument is omitted, the table must be visible in the search
-path. If the description is omitted, a generally useful default description
-will be generated.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing indexes, like so:
-
-    # Failed test 180: "Table fou should have the correct indexes"
-    #     Extra indexes:
-    #         fou_pkey
-    #     Missing indexes:
-    #         idx_fou_name
-
-### `has_index( schema, table, index, columns[], description )` ###
-### `has_index( schema, table, index, columns[] )` ###
-### `has_index( schema, table, index, column/expression, description )` ###
-### `has_index( schema, table, index, columns/expression )` ###
-### `has_index( table, index, columns[], description )` ###
-### `has_index( table, index, columns[], description )` ###
-### `has_index( table, index, column/expression, description )` ###
-### `has_index( schema, table, index, column/expression )` ###
-### `has_index( table, index, column/expression )` ###
-### `has_index( schema, table, index )` ###
-### `has_index( table, index, description )` ###
-### `has_index( table, index )` ###
-
-    SELECT has_index(
-        'myschema',
-        'sometable',
-        'myindex',
-        ARRAY[ 'somecolumn', 'anothercolumn' ],
-        'Index "myindex" should exist'
-    );
-
-    SELECT has_index('myschema', 'sometable', 'anidx', 'somecolumn');
-    SELECT has_index('myschema', 'sometable', 'loweridx', 'LOWER(somecolumn)');
-    SELECT has_index('sometable', 'someindex');
-
-Checks for the existence of an index associated with the named table. The
-`:schema` argument is optional, as is the column name or names or expression,
-and the description. The columns argument may be a string naming one column or
-an array of column names. It may also be a string representing an expression,
-such as `lower(foo)`. For expressions, you must use lowercase for all SQL
-keywords and functions to properly compare to PostgreSQL's internal form of
-the expression.
-
-If you find that the function call seems to be getting confused, cast the
-index name to the `NAME` type:
-
-    SELECT has_index( 'public', 'sometab', 'idx_foo', 'name'::name );
-
-If the index does not exist, `has_column()` will output a diagnostic message
-such as:
-
-    # Index "blah" ON public.sometab not found
-
-If the index was found but the column specification or expression is
-incorrect, the diagnostics will look more like this:
-
-    #       have: "idx_baz" ON public.sometab(lower(name))
-    #       want: "idx_baz" ON public.sometab(lower(lname))
-
 ### `index_is_unique( schema, table, index, description )` ###
 ### `index_is_unique( schema, table, index )` ###
 ### `index_is_unique( table, index )` ###
@@ -1794,23 +2043,6 @@ type, like so:
     #         have: btree
     #         want: hash
 
-### `has_trigger( schema, table, trigger, description )` ###
-### `has_trigger( schema, table, trigger )` ###
-### `has_trigger( table, trigger )` ###
-
-    SELECT has_trigger(
-        'myschema',
-        'sometable',
-        'sometrigger',
-        'Trigger "sometrigger" should exist'
-    );
-
-    SELECT has_trigger( 'sometable', 'sometrigger' );
-
-Tests to see if the specified table has the named trigger. The `:description`
-is optional, and if the schema is omitted, the table with which the trigger is
-associated must be visible.
-
 ### `trigger_is( schema, table, trigger, schema, function, description )` ###
 ### `trigger_is( schema, table, trigger, schema, function )` ###
 ### `trigger_is( table, trigger, function, description )` ###
@@ -1832,145 +2064,45 @@ a useful diagnostic:
     #         have: hash_pass
     #         want: hash_password
 
-### `functions_are( schema, functions[], description )` ###
-### `functions_are( schema, functions[] )` ###
-### `functions_are( functions[], description )` ###
-### `functions_are( functions[] )` ###
+Database Deets
+--------------
 
-    SELECT functions_are(
+Tables aren't the only objects in the database, as you well know. These
+assertions close the gap by letting you test the attributes of other database
+objects.
+
+### `hasnt_enum( schema, enum, description )` ###
+### `hasnt_enum( schema, enum )` ###
+### `hasnt_enum( enum, description )` ###
+### `hasnt_enum( enum )` ###
+
+    SELECT hasnt_enum(
         'myschema',
-        ARRAY[ 'foo', 'bar', 'frobnitz' ],
-        'Should have the correct functions in myschema'
+        'someenum',
+        'There should be no enum myschema.someenum'
     );
 
-This function tests that all of the functions in the named schema, or that are
-visible in the search path, are only the functions that *should* be there. In
-other words, given a list of functions, this assertion will fail if there are
-functions that are not in the list, or if there are functions in the list that
-are not found in the search path.
+This function is the inverse of `has_enum()`. The test passes if the
+specified enum does *not* exist.
 
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the functions in a database are exactly the functions that
-should exist in the database, no more, no less.
+### `enum_has_labels( schema, enum, labels, desc )` ###
+### `enum_has_labels( schema, enum, labels )` ###
+### `enum_has_labels( enum, labels, desc )` ###
+### `enum_has_labels( enum, labels )` ###
 
-If the `:schema` argument is omitted, functions will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing functions, like so:
-
-    # Failed test 150: "Schema someschema should have the correct functions"
-    #     Extra functions:
-    #         schnauzify
-    #     Missing functions:
-    #         frobnitz
-
-### `can( schema, functions[], description )` ###
-### `can( schema, functions[] )` ###
-### `can( functions[], description )` ###
-### `can( functions[] )` ###
-
-    SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
-
-Checks to be sure that `:schema` has `:functions[]` defined. This is subtley
-different from `functions_are()`. `functions_are()` fails if the functions
-defined in `:schema` are not exactly the functions defined in `:functions[]`.
-`can()`, on the other hand, just makes sure that `functions[]` exist.
-
-If `:schema` is omitted, then `can()` will look for functions defined in
-schemas defined in the search path. No matter how many functions are listed in
-`:functions[]`, a single call to `can()` counts as one test. If you want
-otherwise, call `can()` once for each function -- or better yet, use
-`can_ok()`.
-
-If any of the functions are not defined, the test will fail and the
-diagnostics will output a list of the functions that are missing, like so:
-
-    # Failed test 52: "Schema pg_catalog can"
-    #     pg_catalog.foo() missing
-    #     pg_catalog.bar() missing
-
-### `can_ok( schema, function, args[], description )` ###
-### `can_ok( schema, function, args[] )` ###
-### `can_ok( schema, function, description )` ###
-### `can_ok( schema, function )` ###
-### `can_ok( function, args[], description )` ###
-### `can_ok( function, args[] )` ###
-### `can_ok( function, description )` ###
-### `can_ok( function )` ###
-
-    SELECT can_ok(
-        'pg_catalog',
-        'decode',
-        ARRAY[ 'text', 'text' ],
-        'Function decode(text, text) should exist'
+    SELECT enum_has_labels(
+        'myschema',
+        'someenum',
+        ARRAY['foo', 'bar'],
+        'Enum someenum should have labels foo, bar'
     );
 
-    SELECT can_ok( 'do_something' );
-    SELECT can_ok( 'do_something', ARRAY['integer'] );
-    SELECT can_ok( 'do_something', ARRAY['numeric'] );
-
-Checks to be sure that the given function exists in the named schema and with
-the specified argument data types. If `:schema` is omitted, `can_ok()` will
-search for the function in the schemas defined in the search path. If
-`:args[]` is omitted, `can_ok()` will see if the function exists without
-regard to its arguments.
-
-The `:args[]` argument should be formatted as it would be displayed in the
-view of a function using the `\df` command in `psql`. For example, even if you
-have a numeric column with a precision of 8, you should specify
-`ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
-the `:args[]` argument as `ARRAY['character varying']`.
-
-If you wish to use the two-argument form of `can_ok()`, specifying only the
-schema and the function name, you must cast the `:function` argument to
-`:name` in order to disambiguate it from from the
-`can_ok(`:function`, `:description)` form. If you neglect to do so, your
-results will be unexpected.
-
-Also, if you use the string form to specify the `:args[]` array, be sure to
-cast it to `name[]` to disambiguate it from a text string:
-
-    SELECT can_ok( 'lower', '{text}'::name[] );
-
-### `has_cast( source_type, target_type, schema, function, description )` ###
-### `has_cast( source_type, target_type, schema, function )` ###
-### `has_cast( source_type, target_type, function, description )` ###
-### `has_cast( source_type, target_type, function )` ###
-### `has_cast( source_type, target_type, description )` ###
-### `has_cast( source_type, target_type )` ###
-
-    SELECT has_cast(
-        'integer',
-        'bigint',
-        'pg_catalog',
-        'int8'
-        'We should have a cast from integer to bigint'
-    );
-
-Tests for the existence of a cast. A cast consists of a source data type, a
-target data type, and perhaps a (possibly schema-qualified) function. If you
-omit the description four the 3- or 4-argument version, you'll need to cast
-the function name to the `NAME` data type so that PostgreSQL doesn't resolve
-the function name as a description. For example:
-
-    SELECT has_cast( 'integer', 'bigint', 'int8'::NAME );
-
-pgTAP will generate a useful description if you don't provide one.
-
-### `hasnt_cast( source_type, target_type, schema, function, description )` ###
-### `hasnt_cast( source_type, target_type, schema, function )` ###
-### `hasnt_cast( source_type, target_type, function, description )` ###
-### `hasnt_cast( source_type, target_type, function )` ###
-### `hasnt_cast( source_type, target_type, description )` ###
-### `hasnt_cast( source_type, target_type )` ###
-
-    SELECT hasnt_cast( 'integer', 'circle' );
-
-This function is the inverse of `has_cast()`. The test passes if the specified
-cast does *not* exist.
+This function tests that an enum consists of an expected list of labels. Enums
+are supported in PostgreSQL 8.3 or higher. The first argument is a schema
+name, the second an enum name, the third an array of enum labels, and the
+fourth a description. If you omit the schema, the enum must be visible in the
+search path. If you omit the test description, it will be set to "Enum `:enum`
+should have labels (`:labels`)".
 
 ### `cast_context_is( source_type, target_type, context, desc )` ###
 ### `cast_context_is( source_type, target_type, context )` ###
@@ -2002,131 +2134,6 @@ If the cast doesn't exist, you'll be told that, too:
 
 But you've already used `has_cast()` to make sure of that, right?
 
-### `has_operator( left_type, schema, name, right_type, return_type, desc )` ###
-### `has_operator( left_type, schema, name, right_type, return_type )` ###
-### `has_operator( left_type, name, right_type, return_type, desc )` ###
-### `has_operator( left_type, name, right_type, return_type )` ###
-### `has_operator( left_type, name, right_type, desc )` ###
-### `has_operator( left_type, name, right_type )` ###
-
-    SELECT has_operator(
-        'integer',
-        'pg_catalog', '<=',
-        'integer',
-        'boolean',
-        'Operator (integer <= integer RETURNS boolean) should exist'
-    );
-
-Tests for the presence of a binary operator. If the operator exists with the
-given schema, name, left and right arguments, and return value, the test will
-fail. If the operator does not exist, the test will fail. If you omit the
-schema name, then the operator must be visible in the search path. If you omit
-the test description, pgTAP will generate a reasonable one for you. The return
-value is also optional. If you need to test for a left or right unary
-operator, use `has_leftop()` or `has_rightop()` instead.
-
-### `has_leftop( schema, name, right_type, return_type, desc )` ###
-### `has_leftop( schema, name, right_type, return_type )` ###
-### `has_leftop( name, right_type, return_type, desc )` ###
-### `has_leftop( name, right_type, return_type )` ###
-### `has_leftop( name, right_type, desc )` ###
-### `has_leftop( name, right_type )` ###
-
-    SELECT has_leftop(
-        'pg_catalog', '!!',
-         'bigint',
-         'numeric',
-         'Operator (!! bigint RETURNS numeric) should exist'
-     );
-
-Tests for the presence of a left-unary operator. If the operator exists with
-the given schema, name, right argument, and return value, the test will fail.
-If the operator does not exist, the test will fail. If you omit the schema
-name, then the operator must be visible in the search path. If you omit the
-test description, pgTAP will generate a reasonable one for you. The return
-value is also optional.
-
-### `has_rightop( left_type, schema, name, return_type, desc )` ###
-### `has_rightop( left_type, schema, name, return_type )` ###
-### `has_rightop( left_type, name, return_type, desc )` ###
-### `has_rightop( left_type, name, return_type )` ###
-### `has_rightop( left_type, name, desc )` ###
-### `has_rightop( left_type, name )` ###
-
-    SELECT has_rightop(
-        'bigint',
-        'pg_catalog', '!',
-        'numeric',
-        'Operator (bigint ! RETURNS numeric) should exist'
-    );
-
-Tests for the presence of a right-unary operator. If the operator exists with
-the given left argument, schema, name, and return value, the test will fail.
-If the operator does not exist, the test will fail. If you omit the schema
-name, then the operator must be visible in the search path. If you omit the
-test description, pgTAP will generate a reasonable one for you. The return
-value is also optional.
-
-### `has_role( role, desc )` ###
-### `has_role( role )` ###
-
-    SELECT has_role( 'theory', 'Role "theory" should exist' );
-
-Checks to ensure that a database role exists. If the description is omitted,
-it will default to "Role `:role` should exist".
-
-### `hasnt_role( role, desc )` ###
-### `hasnt_role( role )` ###
-
-    SELECT hasnt_role( 'theory', 'Role "theory" not should exist' );
-
-The inverse of `has_role()`, this function tests for the *absence* of a
-database role.
-
-### `users_are( users[], description )` ###
-### `users_are( users[] )` ###
-
-    SELECT users_are(
-        ARRAY[ 'postgres', 'someone', 'root' ],
-        'Should have the correct users
-    );
-
-This function tests that all of the users in the databse only the users that
-*should* be there. In other words, given a list of users, this assertion will
-fail if there are users that are not in the list, or if there are users in the
-list that are missing from the database.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the users in a database are exactly the users that should
-exist in the database, no more, no less.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing users, like so:
-
-    not ok 195 - whatever
-    # Failed test 195: "There should be the correct users"
-    #     Extra users:
-    #         root
-    #     Missing users:
-    #         bobby
-
-### `has_user( user, desc )` ###
-### `has_user( user )` ###
-
-    SELECT has_user( 'theory', 'User "theory" should exist' );
-
-Checks to ensure that a database user exists. If the description is omitted,
-it will default to "User `:user` should exist".
-
-### `hasnt_user( user, desc )` ###
-### `hasnt_user( user )` ###
-
-    SELECT hasnt_user( 'theory', 'User "theory" not should exist' );
-
-The inverse of `has_user()`, this function tests for the *absence* of a
-database user.
-
 ### `is_superuser( user, desc )` ###
 ### `is_superuser( user )` ###
 
@@ -2148,50 +2155,6 @@ The inverse of `is_superuser()`, this function tests that a database user is
 *not* a super user. Note that if the named user does not exist in the
 database, the test is still considered a failure, and the diagnostics will say
 so.
-
-### `groups_are( groups[], description )` ###
-### `groups_are( groups[] )` ###
-
-    SELECT groups_are(
-        ARRAY[ 'postgres', 'admins, 'l0s3rs' ],
-        'Should have the correct groups
-    );
-
-This function tests that all of the groups in the databse only the groups that
-*should* be there. In other words, given a list of groups, this assertion will
-fail if there are groups that are not in the list, or if there are groups in the
-list that are missing from the database.
-
-This test is useful in environments where many developers may be making
-changes to the database, or where replication has been deployed, and you want
-to make sure that the groups in a database are exactly the groups that should
-exist in the database, no more, no less.
-
-In the event of a failure, you'll see diagnostics listing the extra and/or
-missing groups, like so:
-
-    not ok 210 - There should be the correct groups
-    # Failed test 210: "There should be the correct groups"
-    #     Extra groups:
-    #         meanies
-    #     Missing groups:
-    #         __howdy__
-
-### `has_group( group, desc )` ###
-### `has_group( group )` ###
-
-    SELECT has_group( 'sweeties, 'Group "sweeties" should exist' );
-
-Checks to ensure that a database group exists. If the description is omitted,
-it will default to "Group `:group` should exist".
-
-### `hasnt_group( group, desc )` ###
-### `hasnt_group( group )` ###
-
-    SELECT hasnt_group( 'meanies, 'Group meaines should not exist' );
-
-The inverse of `has_group()`, this function tests for the *absence* of a
-database group.
 
 ### `is_member_of( group, users[], desc )` ###
 ### `is_member_of( group, users[] )` ###
@@ -2215,6 +2178,15 @@ missing users, like so:
 If the group does not exist, the diagnostics will tell you that, instead. But
 you use `has_group()` to make sure the group exists before you check its
 members, don't you? Of course you do.
+
+No Test for the Wicked
+======================
+
+There is more to pgTAP. Oh *so* much more! You can output your own
+[diagnostics](#Diagnostics). You can write [conditional
+tests](#Conditional+Tests) based on the output of [utility
+functions](#Utility+Functions). You can [batch up tests in
+functions](#Tap+That+Batch). Read on to learn all about it.
 
 Diagnostics
 -----------
@@ -2249,17 +2221,11 @@ Conditional Tests
 -----------------
 
 Sometimes running a test under certain conditions will cause the test script
-to die. A certain function or method isn't implemented (such as fork() on
-MacOS), some resource isn't available (like a net connection) or a module
-isn't available. In these cases it's necessary to skip tests, or declare that
-they are supposed to fail but will work in the future (a todo test).
-
-Sometimes you might have tests that you want to pass, but you haven't gotten
-around to implementing the logic required to make them pass Other times, you
-might have tests that pass only under certain circumstances, such as with
-particular versions of PostgreSQL. In these cases it's necessary to skip
-tests, or to declare that they are supposed to fail but will work in the
-future (a todo test).
+or function to die. A certain function or feature isn't implemented (such as
+`pg_sleep()` prior to PostgreSQL 8.2), some resource isn't available (like a
+procedural language), or a contrib module isn't available. In these cases it's
+necessary to skip tests, or declare that they are supposed to fail but will
+work in the future (a todo test).
 
 ### `skip( why, how_many )` ###
 ### `skip( how_many, why )` ###
@@ -2426,7 +2392,7 @@ version of PostgreSQL. For example:
 The revision level is in the tens position, the minor version in the thousands
 position, and the major version in the ten thousands position and above
 (assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
-position). This value is the same as the "server_version_num" setting
+position). This value is the same as the `server_version_num` setting
 available in PostgreSQL 8.2 and higher, but supported by this function back to
 PostgreSQL 8.0:
 
@@ -2443,7 +2409,7 @@ Returns a string representing the name of the operating system on which pgTAP
 was compiled. This can be useful for determining whether or not to skip tests
 on certain operating systems.
 
-This is usually the same a the ouput of `uname`, but converted to lower case.
+This is usually the same a the output of `uname`, but converted to lower case.
 There are some semantics in the pgTAP build process to detect other operating
 systems, though assistance in improving such detection would be greatly
 appreciated.
@@ -2590,8 +2556,8 @@ database in largely the same condition as it was in when you started it (the
 one exception I'm aware of being sequences, which are not rolled back to the
 value used at the beginning of a rolled-back transaction).
 
-Writing Test Functions
-======================
+Compose Yourself
+================
 
 So, you've been using pgTAP for a while, and now you want to write your own
 test functions. Go ahead; I don't mind. In fact, I encourage it. How? Why,
@@ -2618,8 +2584,8 @@ want to simplify things. Here's how to go about it:
                '    Have: ' || $1 ||
             E'\n    Want: ' || $2;
     ) END;
-END;
-$$ LANGUAGE plpgsql;
+    END;
+    $$ LANGUAGE plpgsql;
 
 Yep, that's it. The key is to always use pgTAP's `ok()` function to guarantee
 that the output is properly formatted, uses the next number in the sequence,
@@ -2745,10 +2711,10 @@ uses `is()` to compare the strings:
 The fifth argument, `:want_diag`, which is also optional, compares the
 diagnostics generated during the test to an expected string. Such diagnostics
 **must** follow whatever is output by the call to `ok()` in your test. Your
-test fuction should not call `diag()` until after it calls `ok()` or things
+test function should not call `diag()` until after it calls `ok()` or things
 will get truly funky.
 
-Assuming you've followed that rule in your `lc_eq()` tset function, to see
+Assuming you've followed that rule in your `lc_eq()` test function, to see
 what happens when a `lc_eq()` fails. Write your test to test the diagnostics
 like so:
 
@@ -2846,14 +2812,15 @@ To Do
 * Useful schema testing functions to consider adding:
   * `has_operator_class()`
   * `has_rule()`
+  * `has_pl()`
   * `function_returns()`
   * `function_lang_is()`
-  * `seq_has_range()`
-  * `seq_increments_by()`
-  * `seq_starts_at()`
-  * `seq_cycles()`
+  * `sequence_has_range()`
+  * `sequence_increments_by()`
+  * `sequence_starts_at()`
+  * `sequence_cycles()`
 
-Suported Versions
+Supported Versions
 -----------------
 
 pgTAP has been tested on the following builds of PostgreSQL:
