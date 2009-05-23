@@ -4140,6 +4140,85 @@ RETURNS TEXT AS $$
     SELECT groups_are( $1, 'There should be the correct groups' );
 $$ LANGUAGE SQL;
 
+-- languages_are( languages[], description )
+CREATE OR REPLACE FUNCTION languages_are( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'languages',
+        ARRAY(
+            SELECT lanname
+              FROM pg_catalog.pg_language
+             WHERE lanispl
+            EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT lanname
+              FROM pg_catalog.pg_language
+             WHERE lanispl
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- languages_are( languages[] )
+CREATE OR REPLACE FUNCTION languages_are( NAME[] )
+RETURNS TEXT AS $$
+    SELECT languages_are( $1, 'There should be the correct procedural languages' );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _is_trusted( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT lanpltrusted FROM pg_catalog.pg_language WHERE lanname = $1;
+$$ LANGUAGE SQL;
+
+-- has_language( language, description)
+CREATE OR REPLACE FUNCTION has_language( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_trusted($1) IS NOT NULL, $2 );
+$$ LANGUAGE SQL;
+
+-- has_language( language )
+CREATE OR REPLACE FUNCTION has_language( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_trusted($1) IS NOT NULL, 'Procedural language ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_language( language, description)
+CREATE OR REPLACE FUNCTION hasnt_language( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_trusted($1) IS NULL, $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_language( language )
+CREATE OR REPLACE FUNCTION hasnt_language( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_trusted($1) IS NULL, 'Procedural language ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE SQL;
+
+-- language_is_trusted( language, description )
+CREATE OR REPLACE FUNCTION language_is_trusted( NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    is_trusted boolean := _is_trusted($1);
+BEGIN
+    IF is_trusted IS NULL THEN
+        RETURN fail( $2 ) || E'\n' || diag( '    Procedural language ' || quote_ident($1) || ' does not exist') ;
+    END IF;
+    RETURN ok( is_trusted, $2 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- language_is_trusted( language )
+CREATE OR REPLACE FUNCTION language_is_trusted( NAME )
+RETURNS TEXT AS $$
+    SELECT language_is_trusted($1, 'Procedural language ' || quote_ident($1) || ' should be trusted' );
+$$ LANGUAGE SQL;
+
 -- check_test( test_output, pass, name, description, diag, match_diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
 RETURNS SETOF TEXT AS $$

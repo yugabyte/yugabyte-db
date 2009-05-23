@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(209);
+SELECT plan(224);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -741,6 +741,58 @@ SELECT * FROM check_test(
         meanies
     Missing groups:
         __howdy__'
+);
+
+/****************************************************************************/
+-- Test languages_are().
+
+CREATE FUNCTION ___mylangs(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY( SELECT lanname FROM pg_catalog.pg_language WHERE lanispl AND lanname <> $1 );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    languages_are( ___mylangs(''), 'whatever' ),
+    true,
+    'languages_are(languages, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    languages_are( ___mylangs('') ),
+    true,
+    'languages_are(languages)',
+    'There should be the correct procedural languages',
+    ''
+);
+
+SELECT * FROM check_test(
+    languages_are( array_append(___mylangs(''), 'plomgwtf'), 'whatever' ),
+    false,
+    'languages_are(languages, desc) missing',
+    'whatever',
+    '    Missing languages:
+        plomgwtf'
+);
+
+SELECT * FROM check_test(
+    languages_are( ___mylangs('plpgsql'), 'whatever' ),
+    false,
+    'languages_are(languages, desc) extras',
+    'whatever',
+    '    Extra languages:
+        plpgsql'
+);
+
+SELECT * FROM check_test(
+    languages_are( array_append(___mylangs('plpgsql'), 'plomgwtf'), 'whatever' ),
+    false,
+    'languages_are(languages, desc) missing and extras',
+    'whatever',
+    '    Extra languages:
+        plpgsql
+    Missing languages:
+        plomgwtf'
 );
 
 /****************************************************************************/

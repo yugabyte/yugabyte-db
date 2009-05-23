@@ -1,5 +1,5 @@
 \unset ECHO
-1..209
+1..224
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -209,3 +209,18 @@ ok 206 - groups_are(groups, desc) extras should have the proper diagnostics
 ok 207 - groups_are(groups, desc) missing and extras should fail
 ok 208 - groups_are(groups, desc) missing and extras should have the proper description
 ok 209 - groups_are(groups, desc) missing and extras should have the proper diagnostics
+ok 210 - languages_are(languages, desc) should pass
+ok 211 - languages_are(languages, desc) should have the proper description
+ok 212 - languages_are(languages, desc) should have the proper diagnostics
+ok 213 - languages_are(languages) should pass
+ok 214 - languages_are(languages) should have the proper description
+ok 215 - languages_are(languages) should have the proper diagnostics
+ok 216 - languages_are(languages, desc) missing should fail
+ok 217 - languages_are(languages, desc) missing should have the proper description
+ok 218 - languages_are(languages, desc) missing should have the proper diagnostics
+ok 219 - languages_are(languages, desc) extras should fail
+ok 220 - languages_are(languages, desc) extras should have the proper description
+ok 221 - languages_are(languages, desc) extras should have the proper diagnostics
+ok 222 - languages_are(languages, desc) missing and extras should fail
+ok 223 - languages_are(languages, desc) missing and extras should have the proper description
+ok 224 - languages_are(languages, desc) missing and extras should have the proper diagnostics

@@ -926,6 +926,25 @@ listing the extra and/or missing groups, like so:
     #     Missing groups:
     #         __howdy__
 
+### `languages_are( languages[], description )` ###
+### `languages_are( languages[] )` ###
+
+    SELECT languages_are(
+        ARRAY[ 'plpgsql', 'plperl', 'pllolcode' ],
+        'Should have the correct procedural languages
+    );
+
+This function tests that all of the procedural languages in the database only
+the languages that *should* be there. In the event of a failure, you'll see
+diagnostics listing the extra and/or missing languages, like so:
+
+    not ok 225 - There should be the correct procedural languages
+    # Failed test 225: "There should be the correct procedural languages"
+    #     Extra languages:
+    #         pllolcode
+    #     Missing languages:
+    #         plpgsql
+
 To Have or Have Not
 -------------------
 
@@ -1444,6 +1463,22 @@ it will default to "Group `:group` should exist".
 
 The inverse of `has_group()`, this function tests for the *absence* of a
 database group.
+
+### `has_language( language, desc )` ###
+### `has_language( language )` ###
+
+    SELECT has_language( 'plpgsql', 'Language "plpgsql" should exist' );
+
+Checks to ensure that a procedural language exists. If the description is
+omitted, it will default to "Procedural language `:language` should exist".
+
+### `hasnt_language( language, desc )` ###
+### `hasnt_language( language )` ###
+
+    SELECT hasnt_language( 'plpgsql', 'Language "plpgsql" not should exist' );
+
+The inverse of `has_language()`, this function tests for the *absence* of a
+procedural language.
 
 Table For One
 -------------
@@ -2063,6 +2098,27 @@ a useful diagnostic:
     # Failed test 31: "Trigger set_users_pass should call hash_password()"
     #         have: hash_pass
     #         want: hash_password
+
+### `language_is_trusted( language, description )` ###
+### `language_is_trusted( language )` ###
+
+    SELECT language_is_trusted( 'plperl', 'PL/Perl should be trusted' );
+
+Tests that the specified procedural language is trusted. See the [CREATE
+LANGUAGE](http://www.postgresql.org/docs/current/static/sql-createlanguage.html
+"CREATE LANGUAGE") documentation for details on trusted and untrusted
+procedural languages. If the `:description` argument is not passed, a suitably
+useful default will be created.
+
+In the event that the language in question does not exist in the database,
+`language_is_trusted()` will emit a diagnostic message to alert you to this
+fact, like so:
+
+    # Failed test 523: "Procedural language plomgwtf should be trusted"
+    #     Procedural language plomgwtf does not exist
+
+But you really ought to call `has_language()` first so that you never get that
+far.
 
 Database Deets
 --------------

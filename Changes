@@ -11,7 +11,8 @@ Revision history for pgTAP
 * Added `performs_ok()`.
 * Added `tablespaces_are()`, `schemas_are()`, `tables_are()`, `views_are()`,
   `sequences_are()`, `functions_are()`, `indexes_are()`, `users_are()`,
-  and `groups_are()`.
+  `groups_are()`, and `languages_are()`.
+* Added `has_language()`, `hasnt_language()`, and `language_is_trusted()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

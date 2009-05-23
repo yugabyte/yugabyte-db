@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(486);
+SELECT plan(522);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1358,6 +1358,107 @@ SELECT * FROM check_test(
   'has_rightop( left, name ) fail',
   'Operator (text !) should exist',
   ''
+);
+
+/****************************************************************************/
+-- Test has_language() and hasnt_language().
+
+SELECT * FROM check_test(
+    has_language('plpgsql'),
+    true,
+    'has_language(language)',
+    'Procedural language ' || quote_ident('plpgsql') || ' should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_language('plpgsql', 'whatever'),
+    true,
+    'has_language(language, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_language('aoijaoisjfaoidfjaisjdfosjf'),
+    false,
+    'has_language(nonexistent language)',
+    'Procedural language aoijaoisjfaoidfjaisjdfosjf should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_language('aoijaoisjfaoidfjaisjdfosjf', 'desc'),
+    false,
+    'has_language(nonexistent language, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_language('plpgsql'),
+    false,
+    'hasnt_language(language)',
+    'Procedural language ' || quote_ident('plpgsql') || ' should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_language('plpgsql', 'whatever'),
+    false,
+    'hasnt_language(language, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_language('plomgwtf'),
+    true,
+    'hasnt_language(nonexistent language)',
+    'Procedural language plomgwtf should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_language('plomgwtf', 'desc'),
+    true,
+    'hasnt_language(nonexistent language, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test language_is_trusted().
+SELECT * FROM check_test(
+    language_is_trusted('sql', 'whatever'),
+    true,
+    'language_is_trusted(language, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    language_is_trusted('sql'),
+    true,
+    'language_is_trusted(language)',
+    'Procedural language sql should be trusted',
+    ''
+);
+
+SELECT * FROM check_test(
+    language_is_trusted('c', 'whatever'),
+    false,
+    'language_is_trusted(language, desc) fail',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    language_is_trusted('plomgwtf', 'whatever'),
+    false,
+    'language_is_trusted(language, desc) non-existent',
+    'whatever',
+    '    Procedural language plomgwtf does not exist'
 );
 
 /****************************************************************************/

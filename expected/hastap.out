@@ -1,5 +1,5 @@
 \unset ECHO
-1..486
+1..522
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -486,3 +486,39 @@ ok 483 - has_rightop( left, name, desc ) fail should have the proper diagnostics
 ok 484 - has_rightop( left, name ) fail should fail
 ok 485 - has_rightop( left, name ) fail should have the proper description
 ok 486 - has_rightop( left, name ) fail should have the proper diagnostics
+ok 487 - has_language(language) should pass
+ok 488 - has_language(language) should have the proper description
+ok 489 - has_language(language) should have the proper diagnostics
+ok 490 - has_language(language, desc) should pass
+ok 491 - has_language(language, desc) should have the proper description
+ok 492 - has_language(language, desc) should have the proper diagnostics
+ok 493 - has_language(nonexistent language) should fail
+ok 494 - has_language(nonexistent language) should have the proper description
+ok 495 - has_language(nonexistent language) should have the proper diagnostics
+ok 496 - has_language(nonexistent language, desc) should fail
+ok 497 - has_language(nonexistent language, desc) should have the proper description
+ok 498 - has_language(nonexistent language, desc) should have the proper diagnostics
+ok 499 - hasnt_language(language) should fail
+ok 500 - hasnt_language(language) should have the proper description
+ok 501 - hasnt_language(language) should have the proper diagnostics
+ok 502 - hasnt_language(language, desc) should fail
+ok 503 - hasnt_language(language, desc) should have the proper description
+ok 504 - hasnt_language(language, desc) should have the proper diagnostics
+ok 505 - hasnt_language(nonexistent language) should pass
+ok 506 - hasnt_language(nonexistent language) should have the proper description
+ok 507 - hasnt_language(nonexistent language) should have the proper diagnostics
+ok 508 - hasnt_language(nonexistent language, desc) should pass
+ok 509 - hasnt_language(nonexistent language, desc) should have the proper description
+ok 510 - hasnt_language(nonexistent language, desc) should have the proper diagnostics
+ok 511 - language_is_trusted(language, desc) should pass
+ok 512 - language_is_trusted(language, desc) should have the proper description
+ok 513 - language_is_trusted(language, desc) should have the proper diagnostics
+ok 514 - language_is_trusted(language) should pass
+ok 515 - language_is_trusted(language) should have the proper description
+ok 516 - language_is_trusted(language) should have the proper diagnostics
+ok 517 - language_is_trusted(language, desc) fail should fail
+ok 518 - language_is_trusted(language, desc) fail should have the proper description
+ok 519 - language_is_trusted(language, desc) fail should have the proper diagnostics
+ok 520 - language_is_trusted(language, desc) non-existent should fail
+ok 521 - language_is_trusted(language, desc) non-existent should have the proper description
+ok 522 - language_is_trusted(language, desc) non-existent should have the proper diagnostics
