@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(149);
+SELECT plan(179);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -20,6 +20,10 @@ CREATE TYPE public.sometype AS (
     id    INT,
     name  TEXT
 );
+
+CREATE INDEX idx_fou_id ON public.fou(id);
+CREATE INDEX idx_fou_name ON public.fou(name);
+CREATE INDEX idx_foo_id ON public.foo(id);
 
 CREATE VIEW voo AS SELECT * FROM foo;
 CREATE VIEW vou AS SELECT * FROM fou;
@@ -66,7 +70,7 @@ SELECT * FROM check_test(
     false,
     'tablespaces_are(schemas, desc) missing',
     'whatever',
-    '    These tablespaces are missing:
+    '    Missing tablespaces:
         __booya__'
 );
 
@@ -75,7 +79,7 @@ SELECT * FROM check_test(
     false,
     'tablespaces_are(schemas, desc) extra',
     'whatever',
-    '    These are extra tablespaces:
+    '    Extra tablespaces:
         pg_default'
 );
 
@@ -84,9 +88,9 @@ SELECT * FROM check_test(
     false,
     'tablespaces_are(schemas, desc) extras and missing',
     'whatever',
-    '    These are extra tablespaces:
+    '    Extra tablespaces:
         pg_default
-    These tablespaces are missing:
+    Missing tablespaces:
         __booya__'
 );
 
@@ -124,7 +128,7 @@ SELECT * FROM check_test(
     false,
     'schemas_are(schemas, desc) missing',
     'whatever',
-    '    These schemas are missing:
+    '    Missing schemas:
         __howdy__'
 );
 
@@ -133,7 +137,7 @@ SELECT * FROM check_test(
     false,
     'schemas_are(schemas, desc) extras',
     'whatever',
-    '    These are extra schemas:
+    '    Extra schemas:
         someschema'
 );
 
@@ -142,12 +146,11 @@ SELECT * FROM check_test(
     false,
     'schemas_are(schemas, desc) missing and extras',
     'whatever',
-    '    These are extra schemas:
+    '    Extra schemas:
         someschema
-    These schemas are missing:
+    Missing schemas:
         __howdy__'
 );
-
 
 /****************************************************************************/
 -- Test tables_are().
@@ -547,6 +550,100 @@ SELECT * FROM check_test(
     Search path ' || pg_catalog.current_setting('search_path')  || ' is missing these functions:
         __booyah__'
 );
+
+/****************************************************************************/
+-- Test indexes_are().
+SELECT * FROM check_test(
+    indexes_are( 'public', 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'fou_pkey'], 'whatever' ),
+    true,
+    'indexes_are(schema, table, indexes, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'public', 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'fou_pkey'] ),
+    true,
+    'indexes_are(schema, table, indexes)',
+    'Table public.fou should have the correct indexes',
+    ''
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'public', 'fou', ARRAY['idx_fou_id', 'idx_fou_name'] ),
+    false,
+    'indexes_are(schema, table, indexes) + extra',
+    'Table public.fou should have the correct indexes',
+    '    Extra indexes:
+        fou_pkey'
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'public', 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'fou_pkey', 'howdy'] ),
+    false,
+    'indexes_are(schema, table, indexes) + missing',
+    'Table public.fou should have the correct indexes',
+    '    Missing indexes:
+        howdy'
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'public', 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'howdy'] ),
+    false,
+    'indexes_are(schema, table, indexes) + extra & missing',
+    'Table public.fou should have the correct indexes',
+    '    Extra indexes:
+        fou_pkey
+    Missing indexes:
+        howdy'
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'fou_pkey'], 'whatever' ),
+    true,
+    'indexes_are(table, indexes, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'fou_pkey'] ),
+    true,
+    'indexes_are(table, indexes)',
+    'Table fou should have the correct indexes',
+    ''
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name'] ),
+    false,
+    'indexes_are(table, indexes) + extra',
+    'Table fou should have the correct indexes',
+    '    Extra indexes:
+        fou_pkey'
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'fou_pkey', 'howdy'] ),
+    false,
+    'indexes_are(table, indexes) + missing',
+    'Table fou should have the correct indexes',
+    '    Missing indexes:
+        howdy'
+);
+
+SELECT * FROM check_test(
+    indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'howdy'] ),
+    false,
+    'indexes_are(table, indexes) + extra & missing',
+    'Table fou should have the correct indexes',
+    '    Extra indexes:
+        fou_pkey
+    Missing indexes:
+        howdy'
+);
+
+SELECT indexes_are( 'fou', ARRAY['idx_fou_id', 'idx_fou_name', 'howdy'] );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

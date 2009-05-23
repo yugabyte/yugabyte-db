@@ -715,9 +715,9 @@ missing tablespaces, like so:
 
     not ok 121 - There should be the correct tablespaces
     # Failed test 121: "There should be the correct tablespaces"
-    #     These are extra tablespaces:
+    #     Extra tablespaces:
     #         pg_default
-    #     These tablespaces are missing:
+    #     Missing tablespaces:
     #         __booya__
 
 ### `has_tablespace( tablespace, location, description )` ###
@@ -1629,6 +1629,41 @@ not exist.
 Just like `col_is_pk()`, except that it test that the column or array of
 columns have a check constraint on them.
 
+### `indexes_are( schema, table, indexes[], description )` ###
+### `indexes_are( schema, table, indexes[] )` ###
+### `indexes_are( table, indexes[], description )` ###
+### `indexes_are( table, indexes[] )` ###
+
+    SELECT indexes_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'atable_pkey', 'idx_atable_name' ],
+        'Should have the correct indexes on myschema.atable'
+    );
+
+This function tests that all of the indexes on the named table are only the
+indexes that *should* be on that table. In other words, given a list of
+indexes, this assertion will fail if there are indexes that are not in the
+list, or if there are indexes in the list that are not on the table.
+
+This test is useful in environments where many developers may be making
+changes to the database, or where replication has been deployed, and you want
+to make sure that the indexes on a table are exactly the indexes that should
+exist on a table, no more, no less.
+
+If the `:schema` argument is omitted, the table must be visible in the search
+path. If the description is omitted, a generally useful default description
+will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing indexes, like so:
+
+    # Failed test 180: "Table fou should have the correct indexes"
+    #     Extra indexes:
+    #         fou_pkey
+    #     Missing indexes:
+    #         idx_fou_name
+
 ### `has_index( schema, table, index, columns[], description )` ###
 ### `has_index( schema, table, index, columns[] )` ###
 ### `has_index( schema, table, index, column/expression, description )` ###
@@ -1828,7 +1863,7 @@ missing functions, like so:
 
     # Failed test 150: "whatever"
     #     Schema someschema has these extra functions:
-    #         schnauinatify
+    #         schnauzify
     #     Schema someschema is missing these functions:
     #         frobnitz
 
@@ -2753,7 +2788,6 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `indexes_are()`
   * `users_are()`
   * `groups_are()`
   * `has_operator_class()`

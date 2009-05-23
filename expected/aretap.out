@@ -1,5 +1,5 @@
 \unset ECHO
-1..149
+1..179
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -149,3 +149,33 @@ ok 146 - functions_are(functions, desc) + extra should have the proper diagnosti
 ok 147 - functions_are(functions, desc) + extra & missing should fail
 ok 148 - functions_are(functions, desc) + extra & missing should have the proper description
 ok 149 - functions_are(functions, desc) + extra & missing should have the proper diagnostics
+ok 150 - indexes_are(schema, table, indexes, desc) should pass
+ok 151 - indexes_are(schema, table, indexes, desc) should have the proper description
+ok 152 - indexes_are(schema, table, indexes, desc) should have the proper diagnostics
+ok 153 - indexes_are(schema, table, indexes) should pass
+ok 154 - indexes_are(schema, table, indexes) should have the proper description
+ok 155 - indexes_are(schema, table, indexes) should have the proper diagnostics
+ok 156 - indexes_are(schema, table, indexes) + extra should fail
+ok 157 - indexes_are(schema, table, indexes) + extra should have the proper description
+ok 158 - indexes_are(schema, table, indexes) + extra should have the proper diagnostics
+ok 159 - indexes_are(schema, table, indexes) + missing should fail
+ok 160 - indexes_are(schema, table, indexes) + missing should have the proper description
+ok 161 - indexes_are(schema, table, indexes) + missing should have the proper diagnostics
+ok 162 - indexes_are(schema, table, indexes) + extra & missing should fail
+ok 163 - indexes_are(schema, table, indexes) + extra & missing should have the proper description
+ok 164 - indexes_are(schema, table, indexes) + extra & missing should have the proper diagnostics
+ok 165 - indexes_are(table, indexes, desc) should pass
+ok 166 - indexes_are(table, indexes, desc) should have the proper description
+ok 167 - indexes_are(table, indexes, desc) should have the proper diagnostics
+ok 168 - indexes_are(table, indexes) should pass
+ok 169 - indexes_are(table, indexes) should have the proper description
+ok 170 - indexes_are(table, indexes) should have the proper diagnostics
+ok 171 - indexes_are(table, indexes) + extra should fail
+ok 172 - indexes_are(table, indexes) + extra should have the proper description
+ok 173 - indexes_are(table, indexes) + extra should have the proper diagnostics
+ok 174 - indexes_are(table, indexes) + missing should fail
+ok 175 - indexes_are(table, indexes) + missing should have the proper description
+ok 176 - indexes_are(table, indexes) + missing should have the proper diagnostics
+ok 177 - indexes_are(table, indexes) + extra & missing should fail
+ok 178 - indexes_are(table, indexes) + extra & missing should have the proper description
+ok 179 - indexes_are(table, indexes) + extra & missing should have the proper diagnostics
