@@ -1,5 +1,5 @@
 \unset ECHO
-1..250
+1..280
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -250,3 +250,33 @@ ok 247 - opclasses_are(opclasses, desc) + extra should have the proper diagnosti
 ok 248 - opclasses_are(opclasses, desc) + extra & missing should fail
 ok 249 - opclasses_are(opclasses, desc) + extra & missing should have the proper description
 ok 250 - opclasses_are(opclasses, desc) + extra & missing should have the proper diagnostics
+ok 251 - rules_are(schema, table, rules, desc) should pass
+ok 252 - rules_are(schema, table, rules, desc) should have the proper description
+ok 253 - rules_are(schema, table, rules, desc) should have the proper diagnostics
+ok 254 - rules_are(schema, table, rules) should pass
+ok 255 - rules_are(schema, table, rules) should have the proper description
+ok 256 - rules_are(schema, table, rules) should have the proper diagnostics
+ok 257 - rules_are(schema, table, rules) + extra should fail
+ok 258 - rules_are(schema, table, rules) + extra should have the proper description
+ok 259 - rules_are(schema, table, rules) + extra should have the proper diagnostics
+ok 260 - rules_are(schema, table, rules) + missing should fail
+ok 261 - rules_are(schema, table, rules) + missing should have the proper description
+ok 262 - rules_are(schema, table, rules) + missing should have the proper diagnostics
+ok 263 - rules_are(schema, table, rules) + extra & missing should fail
+ok 264 - rules_are(schema, table, rules) + extra & missing should have the proper description
+ok 265 - rules_are(schema, table, rules) + extra & missing should have the proper diagnostics
+ok 266 - rules_are(table, rules, desc) should pass
+ok 267 - rules_are(table, rules, desc) should have the proper description
+ok 268 - rules_are(table, rules, desc) should have the proper diagnostics
+ok 269 - rules_are(table, rules) should pass
+ok 270 - rules_are(table, rules) should have the proper description
+ok 271 - rules_are(table, rules) should have the proper diagnostics
+ok 272 - rules_are(table, rules) + extra should fail
+ok 273 - rules_are(table, rules) + extra should have the proper description
+ok 274 - rules_are(table, rules) + extra should have the proper diagnostics
+ok 275 - rules_are(table, rules) + missing should fail
+ok 276 - rules_are(table, rules) + missing should have the proper description
+ok 277 - rules_are(table, rules) + missing should have the proper diagnostics
+ok 278 - rules_are(table, rules) + extra & missing should fail
+ok 279 - rules_are(table, rules) + extra & missing should have the proper description
+ok 280 - rules_are(table, rules) + extra & missing should have the proper diagnostics

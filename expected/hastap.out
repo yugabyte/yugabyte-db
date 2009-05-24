@@ -1,5 +1,5 @@
 \unset ECHO
-1..558
+1..594
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -558,3 +558,39 @@ ok 555 - hasnt_opclass( schema, name, desc ) fail should have the proper diagnos
 ok 556 - hasnt_opclass( name, desc ) fail should pass
 ok 557 - hasnt_opclass( name, desc ) fail should have the proper description
 ok 558 - hasnt_opclass( name, desc ) fail should have the proper diagnostics
+ok 559 - has_rule(schema, table, rule, desc) should pass
+ok 560 - has_rule(schema, table, rule, desc) should have the proper description
+ok 561 - has_rule(schema, table, rule, desc) should have the proper diagnostics
+ok 562 - has_rule(schema, table, rule) should pass
+ok 563 - has_rule(schema, table, rule) should have the proper description
+ok 564 - has_rule(schema, table, rule) should have the proper diagnostics
+ok 565 - has_rule(schema, table, rule, desc) fail should fail
+ok 566 - has_rule(schema, table, rule, desc) fail should have the proper description
+ok 567 - has_rule(schema, table, rule, desc) fail should have the proper diagnostics
+ok 568 - has_rule(table, rule, desc) should pass
+ok 569 - has_rule(table, rule, desc) should have the proper description
+ok 570 - has_rule(table, rule, desc) should have the proper diagnostics
+ok 571 - has_rule(table, rule) should pass
+ok 572 - has_rule(table, rule) should have the proper description
+ok 573 - has_rule(table, rule) should have the proper diagnostics
+ok 574 - has_rule(table, rule, desc) fail should fail
+ok 575 - has_rule(table, rule, desc) fail should have the proper description
+ok 576 - has_rule(table, rule, desc) fail should have the proper diagnostics
+ok 577 - hasnt_rule(schema, table, rule, desc) should fail
+ok 578 - hasnt_rule(schema, table, rule, desc) should have the proper description
+ok 579 - hasnt_rule(schema, table, rule, desc) should have the proper diagnostics
+ok 580 - hasnt_rule(schema, table, rule) should fail
+ok 581 - hasnt_rule(schema, table, rule) should have the proper description
+ok 582 - hasnt_rule(schema, table, rule) should have the proper diagnostics
+ok 583 - hasnt_rule(schema, table, rule, desc) fail should pass
+ok 584 - hasnt_rule(schema, table, rule, desc) fail should have the proper description
+ok 585 - hasnt_rule(schema, table, rule, desc) fail should have the proper diagnostics
+ok 586 - hasnt_rule(table, rule, desc) should fail
+ok 587 - hasnt_rule(table, rule, desc) should have the proper description
+ok 588 - hasnt_rule(table, rule, desc) should have the proper diagnostics
+ok 589 - hasnt_rule(table, rule) should fail
+ok 590 - hasnt_rule(table, rule) should have the proper description
+ok 591 - hasnt_rule(table, rule) should have the proper diagnostics
+ok 592 - hasnt_rule(table, rule, desc) fail should pass
+ok 593 - hasnt_rule(table, rule, desc) fail should have the proper description
+ok 594 - hasnt_rule(table, rule, desc) fail should have the proper diagnostics

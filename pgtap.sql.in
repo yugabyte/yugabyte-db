@@ -4346,6 +4346,155 @@ RETURNS TEXT AS $$
     SELECT opclasses_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct operator classes' );
 $$ LANGUAGE SQL;
 
+-- rules_are( schema, table, rules[], description )
+CREATE OR REPLACE FUNCTION rules_are( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'rules',
+        ARRAY(
+            SELECT r.rulename
+              FROM pg_catalog.pg_rewrite r
+              JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+              JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+             WHERE c.relname = $2
+               AND n.nspname = $1
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT r.rulename
+              FROM pg_catalog.pg_rewrite r
+              JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+              JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+             WHERE c.relname = $2
+               AND n.nspname = $1
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
+-- rules_are( schema, table, rules[] )
+CREATE OR REPLACE FUNCTION rules_are( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT rules_are( $1, $2, $3, 'Relation ' || quote_ident($1) || '.' || quote_ident($2) || ' should have the correct rules' );
+$$ LANGUAGE SQL;
+
+-- rules_are( table, rules[], description )
+CREATE OR REPLACE FUNCTION rules_are( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'rules',
+        ARRAY(
+            SELECT r.rulename
+              FROM pg_catalog.pg_rewrite r
+              JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+              JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+             WHERE c.relname = $1
+               AND n.nspname <> 'pg_catalog'
+               AND pg_catalog.pg_table_is_visible(c.oid)
+            EXCEPT
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT r.rulename
+              FROM pg_catalog.pg_rewrite r
+              JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+              JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+               AND c.relname = $1
+             WHERE n.nspname <> 'pg_catalog'
+               AND pg_catalog.pg_table_is_visible(c.oid)
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- rules_are( table, rules[] )
+CREATE OR REPLACE FUNCTION rules_are( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT rules_are( $1, $2, 'Relation ' || quote_ident($1) || ' should have the correct rules' );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _is_instead( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT r.is_instead
+      FROM pg_catalog.pg_rewrite r
+      JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+      JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+     WHERE r.rulename = $3
+       AND c.relname  = $2
+       AND n.nspname  = $1
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _is_instead( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT r.is_instead
+      FROM pg_catalog.pg_rewrite r
+      JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+     WHERE r.rulename = $2
+       AND c.relname  = $1
+       AND pg_catalog.pg_table_is_visible(c.oid)
+$$ LANGUAGE SQL;
+
+-- has_rule( schema, table, rule, description )
+CREATE OR REPLACE FUNCTION has_rule( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2, $3) IS NOT NULL, $4 );
+$$ LANGUAGE SQL;
+
+-- has_rule( schema, table, rule )
+CREATE OR REPLACE FUNCTION has_rule( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2, $3) IS NOT NULL, 'Relation ' || quote_ident($1) || '.' || quote_ident($2) || ' should have rule ' || quote_ident($3) );
+$$ LANGUAGE SQL;
+
+-- has_rule( table, rule, description )
+CREATE OR REPLACE FUNCTION has_rule( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2) IS NOT NULL, $3 );
+$$ LANGUAGE SQL;
+
+-- has_rule( table, rule )
+CREATE OR REPLACE FUNCTION has_rule( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2) IS NOT NULL, 'Relation ' || quote_ident($1) || ' should have rule ' || quote_ident($2) );
+$$ LANGUAGE SQL;
+
+-- hasnt_rule( schema, table, rule, description )
+CREATE OR REPLACE FUNCTION hasnt_rule( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2, $3) IS NULL, $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_rule( schema, table, rule )
+CREATE OR REPLACE FUNCTION hasnt_rule( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2, $3) IS NULL, 'Relation ' || quote_ident($1) || '.' || quote_ident($2) || ' should not have rule ' || quote_ident($3) );
+$$ LANGUAGE SQL;
+
+-- hasnt_rule( table, rule, description )
+CREATE OR REPLACE FUNCTION hasnt_rule( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2) IS NULL, $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_rule( table, rule )
+CREATE OR REPLACE FUNCTION hasnt_rule( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _is_instead($1, $2) IS NULL, 'Relation ' || quote_ident($1) || ' should not have rule ' || quote_ident($2) );
+$$ LANGUAGE SQL;
+
+-- rule_is_on( schema, table, rule, type, description )
+
+-- rule_is_instead( schema, table, rule, description )
+
 -- check_test( test_output, pass, name, description, diag, match_diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
 RETURNS SETOF TEXT AS $$

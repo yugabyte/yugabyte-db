@@ -842,9 +842,10 @@ missing sequences, like so:
     );
 
 This function tests that all of the indexes on the named table are only the
-indexes that *should* be on that table. Iftable.If the `:schema` argument is omitted,
-the table must be visible in the search path. If the description is omitted, a
-generally useful default description will be generated.
+indexes that *should* be on that table. If the `:schema` argument is omitted,
+the table must be visible in the search path, excluding `pg_catalog`. If the
+description is omitted, a generally useful default description will be
+generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing indexes, like so:
@@ -949,7 +950,7 @@ diagnostics listing the extra and/or missing languages, like so:
 This function tests that all of the operator classes in the named schema, or
 that are visible in the search path, are only the opclasses that *should* be
 there. If the `:schema` argument is omitted, opclasses will be sought in the
-search path, excluding `pg_catalog.` If the description is omitted, a
+search path, excluding `pg_catalog`. If the description is omitted, a
 generally useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
@@ -960,6 +961,33 @@ missing opclasses, like so:
     #         goofy_ops
     #     Missing operator classes:
     #         custom_ops
+
+### `rules_are( schema, table, rules[], description )` ###
+### `rules_are( schema, table, rules[] )` ###
+### `rules_are( table, rules[], description )` ###
+### `rules_are( table, rules[] )` ###
+
+    SELECT rules_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'on_insert', 'on_update', 'on_delete' ],
+        'Should have the correct rules on myschema.atable'
+    );
+
+This function tests that all of the rules on the named relation are only the
+rules that *should* be on that relation (a table or a view). If the `:schema`
+argument is omitted, the relation must be visible in the search path,
+excluding `pg_catalog`. If the description is omitted, a generally useful
+default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing rules, like so:
+
+    # Failed test 281: "Relation public.users should have the correct rules"
+    #     Extra rules:
+    #         on_select
+    #     Missing rules:
+    #         on_delete
 
 To Have or Have Not
 -------------------
@@ -1234,7 +1262,7 @@ index name to the `NAME` type:
 
     SELECT has_index( 'public', 'sometab', 'idx_foo', 'name'::name );
 
-If the index does not exist, `has_column()` will output a diagnostic message
+If the index does not exist, `has_index()` will output a diagnostic message
 such as:
 
     # Index "blah" ON public.sometab not found
@@ -1261,6 +1289,34 @@ incorrect, the diagnostics will look more like this:
 Tests to see if the specified table has the named trigger. The `:description`
 is optional, and if the schema is omitted, the table with which the trigger is
 associated must be visible.
+
+### `has_rule( schema, table, rule, description )` ###
+### `has_rule( schema, table, rule )` ###
+### `has_rule( table, rule, description )` ###
+### `has_rule( table, rule )` ###
+
+    SELECT has_rule(
+        'myschema',
+        'sometable',
+        'somerule,
+        'Trigger "somerule" should exist'
+    );
+
+    SELECT has_rule( 'sometable', 'somerule' );
+
+Tests to see if the specified table has the named rule. The `:description` is
+optional, and if the schema is omitted, the table with which the trigger is
+associated must be visible in the search path.
+
+### `hasnt_rule( schema, table, rule, description )` ###
+### `hasnt_rule( schema, table, rule )` ###
+### `hasnt_rule( table, rule, description )` ###
+### `hasnt_rule( table, rule )` ###
+
+    SELECT hasnt_rule( 'sometable', 'somerule' );
+
+This function is the inverse of `has_rule()`. The test passes if the specified
+rule does *not* exist.
 
 ### `can( schema, functions[], description )` ###
 ### `can( schema, functions[] )` ###

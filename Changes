@@ -13,7 +13,7 @@ Revision history for pgTAP
 * Added `has_opclass()` and `hasnt_opclass()`.
 * Added `tablespaces_are()`, `schemas_are()`, `tables_are()`, `views_are()`,
   `sequences_are()`, `functions_are()`, `indexes_are()`, `users_are()`,
-  `groups_are()`, `opclasses_are()`, and `languages_are()`.
+  `groups_are()`, `opclasses_are()`, `languages_are()`, and `rules_are()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

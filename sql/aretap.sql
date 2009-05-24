@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(250);
+SELECT plan(280);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -17,11 +17,14 @@ CREATE TABLE public.foo(
     id    INT NOT NULL PRIMARY KEY
 );
 
+CREATE RULE ins_me AS ON INSERT TO public.fou DO NOTHING;
+CREATE RULE upd_me AS ON UPDATE TO public.fou DO NOTHING;
+
 CREATE INDEX idx_fou_id ON public.fou(id);
 CREATE INDEX idx_fou_name ON public.fou(name);
 
-CREATE VIEW voo AS SELECT * FROM foo;
-CREATE VIEW vou AS SELECT * FROM fou;
+CREATE VIEW public.voo AS SELECT * FROM foo;
+CREATE VIEW public.vou AS SELECT * FROM fou;
 
 CREATE SEQUENCE public.someseq;
 CREATE SEQUENCE public.sumeseq;
@@ -31,8 +34,8 @@ CREATE SCHEMA someschema;
 CREATE FUNCTION someschema.yip() returns boolean as 'SELECT TRUE' language SQL;
 CREATE FUNCTION someschema.yap() returns boolean as 'SELECT TRUE' language SQL;
 
-CREATE DOMAIN goofy AS text CHECK ( TRUE );
-CREATE OR REPLACE FUNCTION goofy_cmp(goofy,goofy)
+CREATE DOMAIN public.goofy AS text CHECK ( TRUE );
+CREATE OR REPLACE FUNCTION public.goofy_cmp(goofy,goofy)
 RETURNS INTEGER AS $$
     SELECT CASE WHEN $1 = $2 THEN 0
                 WHEN $1 > $2 THEN 1
@@ -40,13 +43,13 @@ RETURNS INTEGER AS $$
     END;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE OR REPLACE FUNCTION goofy_eq (goofy, goofy) RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION public.goofy_eq (goofy, goofy) RETURNS boolean AS $$
     SELECT $1 = $2;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE OPERATOR = ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
+CREATE OPERATOR public.= ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
 
-CREATE OPERATOR CLASS goofy_ops
+CREATE OPERATOR CLASS public.goofy_ops
 DEFAULT FOR TYPE goofy USING BTREE AS
 	OPERATOR 1 =,
 	FUNCTION 1 goofy_cmp(goofy,goofy)
@@ -911,6 +914,98 @@ SELECT * FROM check_test(
         goofy_ops
     Missing operator classes:
         sillyops'
+);
+
+/****************************************************************************/
+-- Test rules_are().
+SELECT * FROM check_test(
+    rules_are( 'public', 'fou', ARRAY['ins_me', 'upd_me'], 'whatever' ),
+    true,
+    'rules_are(schema, table, rules, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rules_are( 'public', 'fou', ARRAY['ins_me', 'upd_me'] ),
+    true,
+    'rules_are(schema, table, rules)',
+    'Relation public.fou should have the correct rules',
+    ''
+);
+
+SELECT * FROM check_test(
+    rules_are( 'public', 'fou', ARRAY['ins_me'] ),
+    false,
+    'rules_are(schema, table, rules) + extra',
+    'Relation public.fou should have the correct rules',
+    '    Extra rules:
+        upd_me'
+);
+
+SELECT * FROM check_test(
+    rules_are( 'public', 'fou', ARRAY['ins_me', 'upd_me', 'del_me'] ),
+    false,
+    'rules_are(schema, table, rules) + missing',
+    'Relation public.fou should have the correct rules',
+    '    Missing rules:
+        del_me'
+);
+
+SELECT * FROM check_test(
+    rules_are( 'public', 'fou', ARRAY['ins_me', 'del_me'] ),
+    false,
+    'rules_are(schema, table, rules) + extra & missing',
+    'Relation public.fou should have the correct rules',
+    '    Extra rules:
+        upd_me
+    Missing rules:
+        del_me'
+);
+
+SELECT * FROM check_test(
+    rules_are( 'fou', ARRAY['ins_me', 'upd_me'], 'whatever' ),
+    true,
+    'rules_are(table, rules, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rules_are( 'fou', ARRAY['ins_me', 'upd_me'] ),
+    true,
+    'rules_are(table, rules)',
+    'Relation fou should have the correct rules',
+    ''
+);
+
+SELECT * FROM check_test(
+    rules_are( 'fou', ARRAY['ins_me'] ),
+    false,
+    'rules_are(table, rules) + extra',
+    'Relation fou should have the correct rules',
+    '    Extra rules:
+        upd_me'
+);
+
+SELECT * FROM check_test(
+    rules_are( 'fou', ARRAY['ins_me', 'upd_me', 'del_me'] ),
+    false,
+    'rules_are(table, rules) + missing',
+    'Relation fou should have the correct rules',
+    '    Missing rules:
+        del_me'
+);
+
+SELECT * FROM check_test(
+    rules_are( 'fou', ARRAY['ins_me', 'del_me'] ),
+    false,
+    'rules_are(table, rules) + extra & missing',
+    'Relation fou should have the correct rules',
+    '    Extra rules:
+        upd_me
+    Missing rules:
+        del_me'
 );
 
 /****************************************************************************/
