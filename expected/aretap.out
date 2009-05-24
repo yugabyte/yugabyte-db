@@ -1,5 +1,5 @@
 \unset ECHO
-1..224
+1..250
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -224,3 +224,29 @@ ok 221 - languages_are(languages, desc) extras should have the proper diagnostic
 ok 222 - languages_are(languages, desc) missing and extras should fail
 ok 223 - languages_are(languages, desc) missing and extras should have the proper description
 ok 224 - languages_are(languages, desc) missing and extras should have the proper diagnostics
+ok 225 - opclasses_are(schema, opclasses, desc) should pass
+ok 226 - opclasses_are(schema, opclasses, desc) should have the proper description
+ok 227 - opclasses_are(schema, opclasses, desc) should have the proper diagnostics
+ok 228 - opclasses_are(schema, opclasses) should pass
+ok 229 - opclasses_are(schema, opclasses) should have the proper description
+ok 230 - opclasses_are(schema, opclasses, desc) + missing should fail
+ok 231 - opclasses_are(schema, opclasses, desc) + missing should have the proper description
+ok 232 - opclasses_are(schema, opclasses, desc) + missing should have the proper diagnostics
+ok 233 - opclasses_are(schema, opclasses, desc) + extra should fail
+ok 234 - opclasses_are(schema, opclasses, desc) + extra should have the proper description
+ok 235 - opclasses_are(schema, opclasses, desc) + extra should have the proper diagnostics
+ok 236 - opclasses_are(schema, opclasses, desc) + extra & missing should fail
+ok 237 - opclasses_are(schema, opclasses, desc) + extra & missing should have the proper description
+ok 238 - opclasses_are(schema, opclasses, desc) + extra & missing should have the proper diagnostics
+ok 239 - opclasses_are(opclasses) should pass
+ok 240 - opclasses_are(opclasses) should have the proper description
+ok 241 - opclasses_are(opclasses) should have the proper diagnostics
+ok 242 - opclasses_are(opclasses, desc) + missing should fail
+ok 243 - opclasses_are(opclasses, desc) + missing should have the proper description
+ok 244 - opclasses_are(opclasses, desc) + missing should have the proper diagnostics
+ok 245 - opclasses_are(opclasses, desc) + extra should fail
+ok 246 - opclasses_are(opclasses, desc) + extra should have the proper description
+ok 247 - opclasses_are(opclasses, desc) + extra should have the proper diagnostics
+ok 248 - opclasses_are(opclasses, desc) + extra & missing should fail
+ok 249 - opclasses_are(opclasses, desc) + extra & missing should have the proper description
+ok 250 - opclasses_are(opclasses, desc) + extra & missing should have the proper diagnostics

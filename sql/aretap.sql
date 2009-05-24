@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(224);
+SELECT plan(250);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -30,6 +30,27 @@ CREATE SCHEMA someschema;
 
 CREATE FUNCTION someschema.yip() returns boolean as 'SELECT TRUE' language SQL;
 CREATE FUNCTION someschema.yap() returns boolean as 'SELECT TRUE' language SQL;
+
+CREATE DOMAIN goofy AS text CHECK ( TRUE );
+CREATE OR REPLACE FUNCTION goofy_cmp(goofy,goofy)
+RETURNS INTEGER AS $$
+    SELECT CASE WHEN $1 = $2 THEN 0
+                WHEN $1 > $2 THEN 1
+                ELSE -1
+    END;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION goofy_eq (goofy, goofy) RETURNS boolean AS $$
+    SELECT $1 = $2;
+$$ LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OPERATOR = ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
+
+CREATE OPERATOR CLASS goofy_ops
+DEFAULT FOR TYPE goofy USING BTREE AS
+	OPERATOR 1 =,
+	FUNCTION 1 goofy_cmp(goofy,goofy)
+;
 
 RESET client_min_messages;
 
@@ -793,6 +814,103 @@ SELECT * FROM check_test(
         plpgsql
     Missing languages:
         plomgwtf'
+);
+
+/****************************************************************************/
+-- Test opclasses_are().
+
+SELECT * FROM check_test(
+    opclasses_are( 'public', ARRAY['goofy_ops'], 'whatever' ),
+    true,
+    'opclasses_are(schema, opclasses, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    opclasses_are( 'public', ARRAY['goofy_ops'] ),
+    true,
+    'opclasses_are(schema, opclasses)',
+    'Schema public should have the correct operator classes'
+    ''
+);
+
+SELECT * FROM check_test(
+    opclasses_are( 'public', ARRAY['goofy_ops', 'yops'], 'whatever' ),
+    false,
+    'opclasses_are(schema, opclasses, desc) + missing',
+    'whatever',
+    '    Missing operator classes:
+        yops'
+);
+
+SELECT * FROM check_test(
+    opclasses_are( 'public', '{}'::name[], 'whatever' ),
+    false,
+    'opclasses_are(schema, opclasses, desc) + extra',
+    'whatever',
+    '    Extra operator classes:
+        goofy_ops'
+);
+
+SELECT * FROM check_test(
+    opclasses_are( 'public', ARRAY['yops'], 'whatever' ),
+    false,
+    'opclasses_are(schema, opclasses, desc) + extra & missing',
+    'whatever',
+    '    Extra operator classes:
+        goofy_ops
+    Missing operator classes:
+        yops'
+);
+
+CREATE FUNCTION ___myopc(ex text) RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT oc.opcname
+          FROM pg_catalog.pg_opclass oc
+          JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+         WHERE n.nspname <> 'pg_catalog'
+           AND oc.opcname <> $1
+           AND pg_catalog.pg_opclass_is_visible(oc.oid)
+    );
+$$ LANGUAGE SQL;
+
+
+SELECT * FROM check_test(
+    opclasses_are( ___myopc('') ),
+    true,
+    'opclasses_are(opclasses)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct operator classes',
+    ''
+);
+
+SELECT * FROM check_test(
+    opclasses_are( array_append(___myopc(''), 'sillyops'), 'whatever' ),
+    false,
+    'opclasses_are(opclasses, desc) + missing',
+    'whatever',
+    '    Missing operator classes:
+        sillyops'
+);
+
+SELECT * FROM check_test(
+    opclasses_are( ___myopc('goofy_ops'), 'whatever' ),
+    false,
+    'opclasses_are(opclasses, desc) + extra',
+    'whatever',
+    '    Extra operator classes:
+        goofy_ops'
+);
+
+SELECT * FROM check_test(
+    opclasses_are( array_append(___myopc('goofy_ops'), 'sillyops'), 'whatever' ),
+    false,
+    'opclasses_are(opclasses, desc) + extra & missing',
+    'whatever',
+    '    Extra operator classes:
+        goofy_ops
+    Missing operator classes:
+        sillyops'
 );
 
 /****************************************************************************/

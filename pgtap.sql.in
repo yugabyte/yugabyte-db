@@ -3069,7 +3069,7 @@ RETURNS TEXT AS $$
     SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
 $$ LANGUAGE sql;
 
--- enum_has_labels( schema, enum, labels, desc )
+-- enum_has_labels( schema, enum, labels, description )
 CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is(
@@ -3098,7 +3098,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- enum_has_labels( enum, labels, desc )
+-- enum_has_labels( enum, labels, description )
 CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT is(
@@ -3135,7 +3135,7 @@ RETURNS BOOLEAN AS $$
     );
 $$ LANGUAGE sql STRICT;
 
--- has_role( role, desc )
+-- has_role( role, description )
 CREATE OR REPLACE FUNCTION has_role( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _has_role($1), $2 );
@@ -3147,7 +3147,7 @@ RETURNS TEXT AS $$
     SELECT ok( _has_role($1), 'Role ' || quote_ident($1) || ' should exist' );
 $$ LANGUAGE sql;
 
--- hasnt_role( role, desc )
+-- hasnt_role( role, description )
 CREATE OR REPLACE FUNCTION hasnt_role( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( NOT _has_role($1), $2 );
@@ -3166,7 +3166,7 @@ RETURNS BOOLEAN AS $$
      WHERE usename = $1
 $$ LANGUAGE sql STRICT;
 
--- has_user( user, desc )
+-- has_user( user, description )
 CREATE OR REPLACE FUNCTION has_user( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _is_super($1) IS NOT NULL, $2 );
@@ -3178,7 +3178,7 @@ RETURNS TEXT AS $$
     SELECT ok( _is_super( $1 ) IS NOT NULL, 'User ' || quote_ident($1) || ' should exist');
 $$ LANGUAGE sql;
 
--- hasnt_user( user, desc )
+-- hasnt_user( user, description )
 CREATE OR REPLACE FUNCTION hasnt_user( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _is_super($1) IS NULL, $2 );
@@ -3190,7 +3190,7 @@ RETURNS TEXT AS $$
     SELECT ok( _is_super( $1 ) IS NULL, 'User ' || quote_ident($1) || ' should not exist');
 $$ LANGUAGE sql;
 
--- is_superuser( user, desc )
+-- is_superuser( user, description )
 CREATE OR REPLACE FUNCTION is_superuser( NAME, TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -3209,7 +3209,7 @@ RETURNS TEXT AS $$
     SELECT is_superuser( $1, 'User ' || quote_ident($1) || ' should be a super user' );
 $$ LANGUAGE sql;
 
--- isnt_superuser( user, desc )
+-- isnt_superuser( user, description )
 CREATE OR REPLACE FUNCTION isnt_superuser( NAME, TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -3237,7 +3237,7 @@ RETURNS BOOLEAN AS $$
     );
 $$ LANGUAGE sql STRICT;
 
--- has_group( group, desc )
+-- has_group( group, description )
 CREATE OR REPLACE FUNCTION has_group( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _has_group($1), $2 );
@@ -3249,7 +3249,7 @@ RETURNS TEXT AS $$
     SELECT ok( _has_group($1), 'Group ' || quote_ident($1) || ' should exist' );
 $$ LANGUAGE sql;
 
--- hasnt_group( group, desc )
+-- hasnt_group( group, description )
 CREATE OR REPLACE FUNCTION hasnt_group( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( NOT _has_group($1), $2 );
@@ -3266,7 +3266,7 @@ RETURNS oid[] AS $$
     SELECT grolist FROM pg_catalog.pg_group WHERE groname = $1;
 $$ LANGUAGE sql;
 
--- is_member_of( group, user[], desc )
+-- is_member_of( group, user[], description )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -3296,7 +3296,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- is_member_of( group, user, desc )
+-- is_member_of( group, user, description )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT is_member_of( $1, ARRAY[$2], $3 ); 
@@ -3465,7 +3465,7 @@ RETURNS "char" AS $$
       AND pg_catalog.format_type(casttarget, NULL) = $2
 $$ LANGUAGE SQL;
 
--- cast_context_is( source_type, target_type, context, desc )
+-- cast_context_is( source_type, target_type, context, description )
 CREATE OR REPLACE FUNCTION cast_context_is( NAME, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -3539,7 +3539,7 @@ RETURNS BOOLEAN AS $$
    );
 $$ LANGUAGE SQL;
 
--- has_operator( left_type, schema, name, right_type, return_type, desc )
+-- has_operator( left_type, schema, name, right_type, return_type, description )
 CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists($1, $2, $3, $4, $5 ), $6 );
@@ -3558,7 +3558,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_operator( left_type, name, right_type, return_type, desc )
+-- has_operator( left_type, name, right_type, return_type, description )
 CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists($1, $2, $3, $4 ), $5 );
@@ -3577,7 +3577,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_operator( left_type, name, right_type, desc )
+-- has_operator( left_type, name, right_type, description )
 CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists($1, $2, $3 ), $4 );
@@ -3596,7 +3596,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_leftop( schema, name, right_type, return_type, desc )
+-- has_leftop( schema, name, right_type, return_type, description )
 CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists(NULL, $1, $2, $3, $4), $5 );
@@ -3614,7 +3614,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_leftop( name, right_type, return_type, desc )
+-- has_leftop( name, right_type, return_type, description )
 CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists(NULL, $1, $2, $3), $4 );
@@ -3631,7 +3631,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_leftop( name, right_type, desc )
+-- has_leftop( name, right_type, description )
 CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists(NULL, $1, $2), $3 );
@@ -3646,7 +3646,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_rightop( left_type, schema, name, return_type, desc )
+-- has_rightop( left_type, schema, name, return_type, description )
 CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists( $1, $2, $3, NULL, $4), $5 );
@@ -3664,7 +3664,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_rightop( left_type, name, return_type, desc )
+-- has_rightop( left_type, name, return_type, description )
 CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists( $1, $2, NULL, $3), $4 );
@@ -3681,7 +3681,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- has_rightop( left_type, name, desc )
+-- has_rightop( left_type, name, description )
 CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _op_exists( $1, $2, NULL), $3 );
@@ -4217,6 +4217,133 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION language_is_trusted( NAME )
 RETURNS TEXT AS $$
     SELECT language_is_trusted($1, 'Procedural language ' || quote_ident($1) || ' should be trusted' );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _opc_exists( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+        SELECT TRUE
+          FROM pg_catalog.pg_opclass oc
+          JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+         WHERE n.nspname  = COALESCE($1, n.nspname)
+           AND oc.opcname = $2
+    );
+$$ LANGUAGE SQL;
+
+-- has_opclass( schema, name, description )
+CREATE OR REPLACE FUNCTION has_opclass( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _opc_exists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_opclass( schema, name )
+CREATE OR REPLACE FUNCTION has_opclass( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _opc_exists( $1, $2 ), 'Operator class ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- has_opclass( name, description )
+CREATE OR REPLACE FUNCTION has_opclass( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _opc_exists( NULL, $1 ), $2)
+$$ LANGUAGE SQL;
+
+-- has_opclass( name )
+CREATE OR REPLACE FUNCTION has_opclass( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _opc_exists( NULL, $1 ), 'Operator class ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_opclass( schema, name, description )
+CREATE OR REPLACE FUNCTION hasnt_opclass( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _opc_exists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_opclass( schema, name )
+CREATE OR REPLACE FUNCTION hasnt_opclass( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _opc_exists( $1, $2 ), 'Operator class ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_opclass( name, description )
+CREATE OR REPLACE FUNCTION hasnt_opclass( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _opc_exists( NULL, $1 ), $2)
+$$ LANGUAGE SQL;
+
+-- hasnt_opclass( name )
+CREATE OR REPLACE FUNCTION hasnt_opclass( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _opc_exists( NULL, $1 ), 'Operator class ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- opclasses_are( schema, opclasses[], description )
+CREATE OR REPLACE FUNCTION opclasses_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'operator classes',
+        ARRAY(
+            SELECT oc.opcname
+              FROM pg_catalog.pg_opclass oc
+              JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+             WHERE n.nspname  = $1
+            EXCEPT
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $2[i]
+               FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT oc.opcname
+              FROM pg_catalog.pg_opclass oc
+              JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+             WHERE n.nspname  = $1
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- opclasses_are( schema, opclasses[] )
+CREATE OR REPLACE FUNCTION opclasses_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT opclasses_are( $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct operator classes' );
+$$ LANGUAGE SQL;
+
+-- opclasses_are( opclasses[], description )
+CREATE OR REPLACE FUNCTION opclasses_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'operator classes',
+        ARRAY(
+            SELECT oc.opcname
+              FROM pg_catalog.pg_opclass oc
+              JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+             WHERE n.nspname <> 'pg_catalog'
+               AND pg_catalog.pg_opclass_is_visible(oc.oid)
+            EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+               FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT oc.opcname
+              FROM pg_catalog.pg_opclass oc
+              JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+             WHERE n.nspname <> 'pg_catalog'
+               AND pg_catalog.pg_opclass_is_visible(oc.oid)
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- opclasses_are( opclasses[] )
+CREATE OR REPLACE FUNCTION opclasses_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT opclasses_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct operator classes' );
 $$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )

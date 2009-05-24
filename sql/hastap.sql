@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(522);
+SELECT plan(558);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1459,6 +1459,105 @@ SELECT * FROM check_test(
     'language_is_trusted(language, desc) non-existent',
     'whatever',
     '    Procedural language plomgwtf does not exist'
+);
+
+/****************************************************************************/
+-- Test has_opclass() and hasnt_opclass().
+
+SELECT * FROM check_test(
+  has_opclass( 'pg_catalog', 'int4_ops', 'whatever' ),
+  true,
+  'has_opclass( schema, name, desc )',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  has_opclass( 'pg_catalog', 'int4_ops'::name ),
+  true,
+  'has_opclass( schema, name )',
+  'Operator class pg_catalog.int4_ops should exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  has_opclass( 'int4_ops', 'whatever' ),
+  true,
+  'has_opclass( name, desc )',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  has_opclass( 'int4_ops' ),
+  true,
+  'has_opclass( name )',
+  'Operator class int4_ops should exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  has_opclass( 'pg_catalog', 'int4_opss', 'whatever' ),
+  false,
+  'has_opclass( schema, name, desc ) fail',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  has_opclass( 'int4_opss', 'whatever' ),
+  false,
+  'has_opclass( name, desc ) fail',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_opclass( 'pg_catalog', 'int4_ops', 'whatever' ),
+  false,
+  'hasnt_opclass( schema, name, desc )',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_opclass( 'pg_catalog', 'int4_ops'::name ),
+  false,
+  'hasnt_opclass( schema, name )',
+  'Operator class pg_catalog.int4_ops should exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_opclass( 'int4_ops', 'whatever' ),
+  false,
+  'hasnt_opclass( name, desc )',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_opclass( 'int4_ops' ),
+  false,
+  'hasnt_opclass( name )',
+  'Operator class int4_ops should exist',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_opclass( 'pg_catalog', 'int4_opss', 'whatever' ),
+  true,
+  'hasnt_opclass( schema, name, desc ) fail',
+  'whatever',
+  ''
+);
+
+SELECT * FROM check_test(
+  hasnt_opclass( 'int4_opss', 'whatever' ),
+  true,
+  'hasnt_opclass( name, desc ) fail',
+  'whatever',
+  ''
 );
 
 /****************************************************************************/

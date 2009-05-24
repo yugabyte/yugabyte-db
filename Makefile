@@ -188,7 +188,6 @@ bbin/pg_prove:
 	mkdir bbin
 #	sed -e "s,\\('\\|F<\\)psql\\(['>]\\),\\1$(bindir)/psql\\2,g" bin/pg_prove > bbin/pg_prove
 	sed -e "s,\\'psql\\',\\'$(bindir)/psql\\'," -e 's,F<psql>,F<$(bindir)/psql>,' bin/pg_prove > bbin/pg_prove
-	chmod +x bbin/pg_prove
 ifdef PERL
 	$(PERL) '-MExtUtils::MY' -e 'MY->fixin(shift)' bbin/pg_prove
 ifndef HAVE_HARNESS
@@ -197,6 +196,7 @@ endif
 else
 	$(warning Could not find perl (required by pg_prove). Install it or set the PERL variable.)
 endif
+	chmod +x bbin/pg_prove
 
 # Make sure that we build the regression tests.
 installcheck: test_setup.sql
@@ -211,8 +211,8 @@ extraclean:
 	rm -rf bbin
 
 # In addition to installcheck, one can also run the tests through pg_prove.
-test: test_setup.sql
-	./bin/pg_prove --pset tuples_only=1 $(TESTS)
+test: test_setup.sql bbin/pg_prove
+	./bbin/pg_prove --pset tuples_only=1 $(TESTS)
 
 html:
 	markdown -F 0x1000 README.pgtap > readme.html

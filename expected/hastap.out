@@ -1,5 +1,5 @@
 \unset ECHO
-1..522
+1..558
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -522,3 +522,39 @@ ok 519 - language_is_trusted(language, desc) fail should have the proper diagnos
 ok 520 - language_is_trusted(language, desc) non-existent should fail
 ok 521 - language_is_trusted(language, desc) non-existent should have the proper description
 ok 522 - language_is_trusted(language, desc) non-existent should have the proper diagnostics
+ok 523 - has_opclass( schema, name, desc ) should pass
+ok 524 - has_opclass( schema, name, desc ) should have the proper description
+ok 525 - has_opclass( schema, name, desc ) should have the proper diagnostics
+ok 526 - has_opclass( schema, name ) should pass
+ok 527 - has_opclass( schema, name ) should have the proper description
+ok 528 - has_opclass( schema, name ) should have the proper diagnostics
+ok 529 - has_opclass( name, desc ) should pass
+ok 530 - has_opclass( name, desc ) should have the proper description
+ok 531 - has_opclass( name, desc ) should have the proper diagnostics
+ok 532 - has_opclass( name ) should pass
+ok 533 - has_opclass( name ) should have the proper description
+ok 534 - has_opclass( name ) should have the proper diagnostics
+ok 535 - has_opclass( schema, name, desc ) fail should fail
+ok 536 - has_opclass( schema, name, desc ) fail should have the proper description
+ok 537 - has_opclass( schema, name, desc ) fail should have the proper diagnostics
+ok 538 - has_opclass( name, desc ) fail should fail
+ok 539 - has_opclass( name, desc ) fail should have the proper description
+ok 540 - has_opclass( name, desc ) fail should have the proper diagnostics
+ok 541 - hasnt_opclass( schema, name, desc ) should fail
+ok 542 - hasnt_opclass( schema, name, desc ) should have the proper description
+ok 543 - hasnt_opclass( schema, name, desc ) should have the proper diagnostics
+ok 544 - hasnt_opclass( schema, name ) should fail
+ok 545 - hasnt_opclass( schema, name ) should have the proper description
+ok 546 - hasnt_opclass( schema, name ) should have the proper diagnostics
+ok 547 - hasnt_opclass( name, desc ) should fail
+ok 548 - hasnt_opclass( name, desc ) should have the proper description
+ok 549 - hasnt_opclass( name, desc ) should have the proper diagnostics
+ok 550 - hasnt_opclass( name ) should fail
+ok 551 - hasnt_opclass( name ) should have the proper description
+ok 552 - hasnt_opclass( name ) should have the proper diagnostics
+ok 553 - hasnt_opclass( schema, name, desc ) fail should pass
+ok 554 - hasnt_opclass( schema, name, desc ) fail should have the proper description
+ok 555 - hasnt_opclass( schema, name, desc ) fail should have the proper diagnostics
+ok 556 - hasnt_opclass( name, desc ) fail should pass
+ok 557 - hasnt_opclass( name, desc ) fail should have the proper description
+ok 558 - hasnt_opclass( name, desc ) fail should have the proper diagnostics

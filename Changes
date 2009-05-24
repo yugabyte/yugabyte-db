@@ -9,10 +9,11 @@ Revision history for pgTAP
 * Fixed failing test on Solaris 10 on Intel thanks to Gabrielle Roth.
 * Fixed a failing test for the version number string on 8.4 beta.
 * Added `performs_ok()`.
+* Added `has_language()`, `hasnt_language()`, and `language_is_trusted()`.
+* Added `has_opclass()` and `hasnt_opclass()`.
 * Added `tablespaces_are()`, `schemas_are()`, `tables_are()`, `views_are()`,
   `sequences_are()`, `functions_are()`, `indexes_are()`, `users_are()`,
-  `groups_are()`, and `languages_are()`.
-* Added `has_language()`, `hasnt_language()`, and `language_is_trusted()`.
+  `groups_are()`, `opclasses_are()`, and `languages_are()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

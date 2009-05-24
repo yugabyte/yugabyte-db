@@ -506,7 +506,7 @@ Its advantage over `ok()` is that when the test fails you'll know what `:this`
 and `:that` were:
 
     not ok 1
-    #     Failed test
+    #     Failed test 1:
     #     '23'
     #         &&
     #     NULL
@@ -590,8 +590,7 @@ four-argument form.
 Should a `throws_ok()` test fail it produces appropriate diagnostic messages.
 For example:
 
-    not ok 81 - simple error
-    # Failed test "This should not die"
+    # Failed test 81: "This should not die"
     #       caught: 23505: duplicate key value violates unique constraint "try_pkey"
     #       wanted: 23502: null value in column "id" violates not-null constraint
 
@@ -612,8 +611,7 @@ Supported by 8.1 or higher.
 Should a `lives_ok()` test fail, it produces appropriate diagnostic messages.
 For example:
 
-    not ok 85 - simple success
-    # Failed test "simple success"
+    # Failed test 85: "simple success"
     #         died: 23505: duplicate key value violates unique constraint "try_pkey"
 
 Idea borrowed from the Test::Exception Perl module.
@@ -647,7 +645,6 @@ a couple of these in a test script or function.
 Should a `performs_ok()` test fail it produces appropriate diagnostic
 messages. For example:
 
-    not ok 19 - The lookup should be fast!
     # Failed test 19: "The lookup should be fast!"
     #       runtime: 200.266 ms
     #       exceeds: 200 ms
@@ -723,7 +720,6 @@ This function tests that all of the tablespaces in the database only the
 tablespaces that *should* be there. In the event of a failure, you'll see
 diagnostics listing the extra and/or missing tablespaces, like so:
 
-    not ok 121 - There should be the correct tablespaces
     # Failed test 121: "There should be the correct tablespaces"
     #     Extra tablespaces:
     #         pg_default
@@ -739,10 +735,10 @@ diagnostics listing the extra and/or missing tablespaces, like so:
     );
 
 This function tests that all of the schemas in the database only the schemas
-that *should* be there. In the event of a failure, you'll see diagnostics
-listing the extra and/or missing schemas, like so:
+that *should* be there, excluding system schemas and `information_schema`. In
+the event of a failure, you'll see diagnostics listing the extra and/or
+missing schemas, like so:
 
-    not ok 106 - There should be the correct schemas
     # Failed test 106: "There should be the correct schemas"
     #     Extra schemas:
     #         __howdy__
@@ -769,7 +765,6 @@ default description will be generated.
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing tables, like so:
 
-    not ok 91 - Schema public should have the correct tables
     # Failed test 91: "Schema public should have the correct tables"
     #     Extra tables:
     #         mallots
@@ -798,7 +793,6 @@ default description will be generated.
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing views, like so:
 
-    not ok 92 - Schema public should have the correct views
     # Failed test 92: "Schema public should have the correct views"
     #     Extra views:
     #         v_userlog_tmp
@@ -827,7 +821,6 @@ useful default description will be generated.
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing sequences, like so:
 
-    not ok 93 - Schema public should have the correct sequences
     # Failed test 93: "Schema public should have the correct sequences"
     #     These are extra sequences:
     #         seq_mallots
@@ -900,7 +893,6 @@ This function tests that all of the users in the database only the users that
 *should* be there. In the event of a failure, you'll see diagnostics listing
 the extra and/or missing users, like so:
 
-    not ok 195 - whatever
     # Failed test 195: "There should be the correct users"
     #     Extra users:
     #         root
@@ -919,7 +911,6 @@ This function tests that all of the groups in the database only the groups
 that *should* be there. In the event of a failure, you'll see diagnostics
 listing the extra and/or missing groups, like so:
 
-    not ok 210 - There should be the correct groups
     # Failed test 210: "There should be the correct groups"
     #     Extra groups:
     #         meanies
@@ -938,12 +929,37 @@ This function tests that all of the procedural languages in the database only
 the languages that *should* be there. In the event of a failure, you'll see
 diagnostics listing the extra and/or missing languages, like so:
 
-    not ok 225 - There should be the correct procedural languages
     # Failed test 225: "There should be the correct procedural languages"
     #     Extra languages:
     #         pllolcode
     #     Missing languages:
     #         plpgsql
+
+### `opclasses_are( schema, opclasses[], description )` ###
+### `opclasses_are( schema, opclasses[] )` ###
+### `opclasses_are( opclasses[], description )` ###
+### `opclasses_are( opclasses[] )` ###
+
+    SELECT opclasses_are(
+        'myschema',
+        ARRAY[ 'foo', 'bar', 'frobnitz' ],
+        'Should have the correct opclasses in myschema'
+    );
+
+This function tests that all of the operator classes in the named schema, or
+that are visible in the search path, are only the opclasses that *should* be
+there. If the `:schema` argument is omitted, opclasses will be sought in the
+search path, excluding `pg_catalog.` If the description is omitted, a
+generally useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing opclasses, like so:
+
+    # Failed test 251: "Schema public should have the correct operator classes"
+    #     Extra operator classes:
+    #         goofy_ops
+    #     Missing operator classes:
+    #         custom_ops
 
 To Have or Have Not
 -------------------
@@ -1416,6 +1432,36 @@ name, then the operator must be visible in the search path. If you omit the
 test description, pgTAP will generate a reasonable one for you. The return
 value is also optional.
 
+### `has_opclass( schema, name, description )` ###
+### `has_opclass( schema, name )` ###
+### `has_opclass( name, description )` ###
+### `has_opclass( name )` ###
+
+    SELECT has_opclass(
+        'myschema',
+        'my_ops',
+        'We should have the "my_ops" operator class'
+    );
+
+Tests for the presence of an operator class. If you omit the schema name, then
+the operator must be visible in the search path. If you omit the test
+description, pgTAP will generate a reasonable one for you. The return value is
+also optional.
+
+### `hasnt_opclass( schema, name, description )` ###
+### `hasnt_opclass( schema, name )` ###
+### `hasnt_opclass( name, description )` ###
+### `hasnt_opclass( name )` ###
+
+    SELECT hasnt_opclass(
+        'myschema',
+        'your_ops',
+        'We should not have the "your_ops" operator class'
+    );
+
+This function is the inverse of `has_opclass()`. The test passes if the
+specified operator class does *not* exist.
+
 ### `has_role( role, desc )` ###
 ### `has_role( role )` ###
 
@@ -1578,7 +1624,6 @@ Tests whether or not a column has a default value. Fails if the column doesn't
 have a default value. It will also fail if the column doesn't exist, and emit
 useful diagnostics to let you know:
 
-    not ok 136 - desc
     # Failed test 136: "desc"
     #     Column public.sometab.__asdfasdfs__ does not exist
 
@@ -2225,7 +2270,6 @@ description is omitted, it will default to "Should have members of group
 `:group`." On failure, `is_member_of()` will output diagnostics listing the
 missing users, like so:
 
-    not ok 370 - Should have members of group meanies
     # Failed test 370: "Should have members of group meanies"
     #     Users missing from the meanies group:
     #         theory
@@ -2759,7 +2803,6 @@ descriptions for both tests.
 If the test had failed, it would output a nice diagnostics. Internally it just
 uses `is()` to compare the strings:
 
-    not ok 43 - lc_eq() test should have the proper description
     # Failed test 43:  "lc_eq() test should have the proper description"
     #         have: 'this is this'
     #         want: 'this is THIS'
@@ -2791,7 +2834,6 @@ This of course triggers a third test to run. The output will look like so:
 And of course, it the diagnostic test fails, it will output diagnostics just
 like a description failure would, something like this:
 
-    not ok 46 - lc_eq() failing test should have the proper diagnostics
     # Failed test 46:  "lc_eq() failing test should have the proper diagnostics"
     #         have:     Have: this
     #     Want: that
@@ -2866,9 +2908,7 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `has_operator_class()`
   * `has_rule()`
-  * `has_pl()`
   * `function_returns()`
   * `function_lang_is()`
   * `sequence_has_range()`
