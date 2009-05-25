@@ -2327,18 +2327,6 @@ returns boolean AS $$
     );
 $$ LANGUAGE sql;
 
--- _has_index( schema, table, index )
-CREATE OR REPLACE FUNCTION _has_index( NAME, NAME, NAME )
-RETURNS boolean AS $$
-    SELECT EXISTS ( SELECT _iexpr( $1, $2, $3 ) );
-$$ LANGUAGE sql;
-
--- _has_index( table, index )
-CREATE OR REPLACE FUNCTION _has_index( NAME, NAME )
-RETURNS boolean AS $$
-    SELECT EXISTS ( SELECT _iexpr( $1, $2 ) );
-$$ LANGUAGE sql;
-
 -- has_index( table, index, column/expression, description )
 -- has_index( schema, table, index, column/expression )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, text )
@@ -2354,7 +2342,7 @@ BEGIN
         -- Not a functional index.
         IF _is_schema( $1 ) THEN
             -- Looking for schema.table index.
-            RETURN ok ( _has_index( $1, $2, $3 ), $4);
+            RETURN ok ( _iexpr( $1, $2, $3 ) IS NOT NULL, $4);
         END IF;
         -- Looking for particular columns.
         RETURN has_index( $1, $2, ARRAY[$3], $4 );
@@ -2397,7 +2385,7 @@ RETURNS TEXT AS $$
 BEGIN
    IF _is_schema($1) THEN
        -- ( schema, table, index )
-       RETURN ok( _has_index( $1, $2, $3 ), 'Index ' || quote_ident($3) || ' should exist' );
+       RETURN ok( _iexpr( $1, $2, $3 ) IS NOT NULL, 'Index ' || quote_ident($3) || ' should exist' );
    ELSE
        -- ( table, index, column/expression )
        RETURN has_index( $1, $2, $3, 'Index ' || quote_ident($2) || ' should exist' );
@@ -2410,14 +2398,14 @@ CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, text )
 RETURNS TEXT AS $$
     SELECT CASE WHEN $3 LIKE '%(%'
            THEN has_index( $1, $2, $3::name )
-           ELSE ok( _has_index( $1, $2 ), $3 )
+           ELSE ok( _iexpr( $1, $2 ) IS NOT NULL, $3 )
            END;
 $$ LANGUAGE sql;
 
 -- has_index( table, index )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT ok( _has_index( $1, $2 ), 'Index ' || quote_ident($2) || ' should exist' );
+    SELECT ok( _iexpr( $1, $2 ) IS NOT NULL, 'Index ' || quote_ident($2) || ' should exist' );
 $$ LANGUAGE sql;
 
 -- index_is_unique( schema, table, index, description )
