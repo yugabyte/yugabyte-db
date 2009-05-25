@@ -2995,6 +2995,10 @@ To Do
   * `sequence_increments_by()`
   * `sequence_starts_at()`
   * `sequence_cycles()`
+  * `hasnt_trigger()`
+  * `hasnt_enum()`
+  * `hasnt_index()`
+  * `hasnt_function()`
 
 Supported Versions
 -----------------
