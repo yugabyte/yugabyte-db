@@ -2335,6 +2335,30 @@ If the group does not exist, the diagnostics will tell you that, instead. But
 you use `has_group()` to make sure the group exists before you check its
 members, don't you? Of course you do.
 
+### `rule_is_instead( schema, table, rule, description )` ###
+### `rule_is_instead( schema, table, rule )` ###
+### `rule_is_instead( table, rule, description )` ###
+### `rule_is_instead( table, rule )` ###
+
+    SELECT rule_is_instead(
+        'public',
+        'users',
+        'on_insert',
+        'Rule "on_insert" should be on on relation public.users'
+    );
+
+Checks whether a rule on the specified relation is an `INSTEAD` rule. See the
+[`CREATE RULE`
+Documentation](http://www.postgresql.org/docs/current/static/sql-createrule.html)
+for details. If the `:schema` argument is omitted, the relation must be
+visible in the search path. If the `:description` argument is omitted, an
+appropriate description will be created. In the event that the test fails
+because the rule in question does not actually exist, you will see an
+appropriate diagnostic such as:
+
+    # Failed test 625: "Rule on_insert on relation public.users should be an INSTEAD rule"
+    #     Rule on_insert does not exist
+
 No Test for the Wicked
 ======================
 
@@ -2964,7 +2988,7 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `has_rule()`
+  * `rule_is_on()` (INSERT, UPDATE, DELETE, or SELECT)
   * `function_returns()`
   * `function_lang_is()`
   * `sequence_has_range()`

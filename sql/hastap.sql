@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(594);
+SELECT plan(624);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -13,7 +13,10 @@ CREATE TABLE public.sometab(
     myint NUMERIC(8)
 );
 CREATE RULE ins_me AS ON INSERT TO public.sometab DO NOTHING;
-CREATE RULE upd_me AS ON UPDATE TO public.sometab DO NOTHING;
+CREATE RULE upd_me AS ON UPDATE TO public.sometab DO ALSO SELECT now();
+
+CREATE TABLE public.toview ( id INT );
+CREATE RULE "_RETURN" AS ON SELECT TO public.toview DO INSTEAD SELECT 42 AS id;
 
 CREATE TYPE public.sometype AS (
     id    INT,
@@ -1660,6 +1663,90 @@ SELECT * FROM check_test(
     'hasnt_rule(table, rule, desc) fail',
     'whatever',
     ''
+);
+
+/****************************************************************************/
+-- Test rule_is_instead().
+
+SELECT * FROM check_test(
+    rule_is_instead( 'public', 'toview', '_RETURN', 'whatever' ),
+    true,
+    'rule_is_instead(schema, table, rule, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'public', 'toview', '_RETURN'::name ),
+    true,
+    'rule_is_instead(schema, table, rule)',
+    'Rule "_RETURN" on relation public.toview should be an INSTEAD rule',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'public', 'sometab', 'ins_me', 'whatever' ),
+    false,
+    'rule_is_instead(schema, table, nothing rule, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'public', 'sometab', 'upd_me', 'whatever' ),
+    false,
+    'rule_is_instead(schema, table, also rule, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'toview', '_RETURN', 'whatever' ),
+    true,
+    'rule_is_instead(table, rule, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'toview', '_RETURN'::name ),
+    true,
+    'rule_is_instead(table, rule)',
+    'Rule "_RETURN" on relation toview should be an INSTEAD rule',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'sometab', 'ins_me', 'whatever' ),
+    false,
+    'rule_is_instead(table, nothing rule, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'sometab', 'upd_me', 'whatever' ),
+    false,
+    'rule_is_instead(table, also rule, desc)',
+    'whatever',
+    ''
+);
+
+-- Check failure diagnostics for non-existent rules.
+SELECT * FROM check_test(
+    rule_is_instead( 'public', 'sometab', 'blah', 'whatever' ),
+    false,
+    'rule_is_instead(schema, table, non-existent rule, desc)',
+    'whatever',
+    '    Rule blah does not exist'
+);
+
+SELECT * FROM check_test(
+    rule_is_instead( 'sometab', 'blah', 'whatever' ),
+    false,
+    'rule_is_instead(table, non-existent rule, desc)',
+    'whatever',
+    '    Rule blah does not exist'
 );
 
 /****************************************************************************/

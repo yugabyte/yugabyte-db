@@ -4491,9 +4491,48 @@ RETURNS TEXT AS $$
     SELECT ok( _is_instead($1, $2) IS NULL, 'Relation ' || quote_ident($1) || ' should not have rule ' || quote_ident($2) );
 $$ LANGUAGE SQL;
 
--- rule_is_on( schema, table, rule, type, description )
-
 -- rule_is_instead( schema, table, rule, description )
+CREATE OR REPLACE FUNCTION rule_is_instead( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    is_it boolean := _is_instead($1, $2, $3);
+BEGIN
+    IF is_it IS NOT NULL THEN RETURN ok( is_it, $4 ); END IF;
+    RETURN ok( FALSE, $4 ) || E'\n' || diag(
+        '    Rule ' || quote_ident($3) || ' does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- rule_is_instead( schema, table, rule )
+CREATE OR REPLACE FUNCTION rule_is_instead( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT rule_is_instead( $1, $2, $3, 'Rule ' || quote_ident($3) || ' on relation ' || quote_ident($1) || '.' || quote_ident($2) || ' should be an INSTEAD rule' );
+$$ LANGUAGE SQL;
+
+-- rule_is_instead( table, rule, description )
+CREATE OR REPLACE FUNCTION rule_is_instead( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    is_it boolean := _is_instead($1, $2);
+BEGIN
+    IF is_it IS NOT NULL THEN RETURN ok( is_it, $3 ); END IF;
+    RETURN ok( FALSE, $3 ) || E'\n' || diag(
+        '    Rule ' || quote_ident($2) || ' does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- rule_is_instead( table, rule )
+CREATE OR REPLACE FUNCTION rule_is_instead( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT rule_is_instead($1, $2, 'Rule ' || quote_ident($2) || ' on relation ' || quote_ident($1) || ' should be an INSTEAD rule' );
+$$ LANGUAGE SQL;
+
+-- rule_is_on( schema, table, rule, type, description )
+-- rule_is_on( schema, table, rule, type )
+-- rule_is_on( table, rule, type, description )
+-- rule_is_on( table, rule, type )
 
 -- check_test( test_output, pass, name, description, diag, match_diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
