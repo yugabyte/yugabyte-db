@@ -1,5 +1,5 @@
 \unset ECHO
-1..624
+1..558
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -558,69 +558,3 @@ ok 555 - hasnt_opclass( schema, name, desc ) fail should have the proper diagnos
 ok 556 - hasnt_opclass( name, desc ) fail should pass
 ok 557 - hasnt_opclass( name, desc ) fail should have the proper description
 ok 558 - hasnt_opclass( name, desc ) fail should have the proper diagnostics
-ok 559 - has_rule(schema, table, rule, desc) should pass
-ok 560 - has_rule(schema, table, rule, desc) should have the proper description
-ok 561 - has_rule(schema, table, rule, desc) should have the proper diagnostics
-ok 562 - has_rule(schema, table, rule) should pass
-ok 563 - has_rule(schema, table, rule) should have the proper description
-ok 564 - has_rule(schema, table, rule) should have the proper diagnostics
-ok 565 - has_rule(schema, table, rule, desc) fail should fail
-ok 566 - has_rule(schema, table, rule, desc) fail should have the proper description
-ok 567 - has_rule(schema, table, rule, desc) fail should have the proper diagnostics
-ok 568 - has_rule(table, rule, desc) should pass
-ok 569 - has_rule(table, rule, desc) should have the proper description
-ok 570 - has_rule(table, rule, desc) should have the proper diagnostics
-ok 571 - has_rule(table, rule) should pass
-ok 572 - has_rule(table, rule) should have the proper description
-ok 573 - has_rule(table, rule) should have the proper diagnostics
-ok 574 - has_rule(table, rule, desc) fail should fail
-ok 575 - has_rule(table, rule, desc) fail should have the proper description
-ok 576 - has_rule(table, rule, desc) fail should have the proper diagnostics
-ok 577 - hasnt_rule(schema, table, rule, desc) should fail
-ok 578 - hasnt_rule(schema, table, rule, desc) should have the proper description
-ok 579 - hasnt_rule(schema, table, rule, desc) should have the proper diagnostics
-ok 580 - hasnt_rule(schema, table, rule) should fail
-ok 581 - hasnt_rule(schema, table, rule) should have the proper description
-ok 582 - hasnt_rule(schema, table, rule) should have the proper diagnostics
-ok 583 - hasnt_rule(schema, table, rule, desc) fail should pass
-ok 584 - hasnt_rule(schema, table, rule, desc) fail should have the proper description
-ok 585 - hasnt_rule(schema, table, rule, desc) fail should have the proper diagnostics
-ok 586 - hasnt_rule(table, rule, desc) should fail
-ok 587 - hasnt_rule(table, rule, desc) should have the proper description
-ok 588 - hasnt_rule(table, rule, desc) should have the proper diagnostics
-ok 589 - hasnt_rule(table, rule) should fail
-ok 590 - hasnt_rule(table, rule) should have the proper description
-ok 591 - hasnt_rule(table, rule) should have the proper diagnostics
-ok 592 - hasnt_rule(table, rule, desc) fail should pass
-ok 593 - hasnt_rule(table, rule, desc) fail should have the proper description
-ok 594 - hasnt_rule(table, rule, desc) fail should have the proper diagnostics
-ok 595 - rule_is_instead(schema, table, rule, desc) should pass
-ok 596 - rule_is_instead(schema, table, rule, desc) should have the proper description
-ok 597 - rule_is_instead(schema, table, rule, desc) should have the proper diagnostics
-ok 598 - rule_is_instead(schema, table, rule) should pass
-ok 599 - rule_is_instead(schema, table, rule) should have the proper description
-ok 600 - rule_is_instead(schema, table, rule) should have the proper diagnostics
-ok 601 - rule_is_instead(schema, table, nothing rule, desc) should fail
-ok 602 - rule_is_instead(schema, table, nothing rule, desc) should have the proper description
-ok 603 - rule_is_instead(schema, table, nothing rule, desc) should have the proper diagnostics
-ok 604 - rule_is_instead(schema, table, also rule, desc) should fail
-ok 605 - rule_is_instead(schema, table, also rule, desc) should have the proper description
-ok 606 - rule_is_instead(schema, table, also rule, desc) should have the proper diagnostics
-ok 607 - rule_is_instead(table, rule, desc) should pass
-ok 608 - rule_is_instead(table, rule, desc) should have the proper description
-ok 609 - rule_is_instead(table, rule, desc) should have the proper diagnostics
-ok 610 - rule_is_instead(table, rule) should pass
-ok 611 - rule_is_instead(table, rule) should have the proper description
-ok 612 - rule_is_instead(table, rule) should have the proper diagnostics
-ok 613 - rule_is_instead(table, nothing rule, desc) should fail
-ok 614 - rule_is_instead(table, nothing rule, desc) should have the proper description
-ok 615 - rule_is_instead(table, nothing rule, desc) should have the proper diagnostics
-ok 616 - rule_is_instead(table, also rule, desc) should fail
-ok 617 - rule_is_instead(table, also rule, desc) should have the proper description
-ok 618 - rule_is_instead(table, also rule, desc) should have the proper diagnostics
-ok 619 - rule_is_instead(schema, table, non-existent rule, desc) should fail
-ok 620 - rule_is_instead(schema, table, non-existent rule, desc) should have the proper description
-ok 621 - rule_is_instead(schema, table, non-existent rule, desc) should have the proper diagnostics
-ok 622 - rule_is_instead(table, non-existent rule, desc) should fail
-ok 623 - rule_is_instead(table, non-existent rule, desc) should have the proper description
-ok 624 - rule_is_instead(table, non-existent rule, desc) should have the proper diagnostics
