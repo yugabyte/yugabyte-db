@@ -1224,6 +1224,20 @@ passing a schema and enum rather than enum and description, be sure to cast
 the arguments to `name` values so that your enum name doesn't get treated as a
 description.
 
+### `hasnt_enum( schema, enum, description )` ###
+### `hasnt_enum( schema, enum )` ###
+### `hasnt_enum( enum, description )` ###
+### `hasnt_enum( enum )` ###
+
+    SELECT hasnt_enum(
+        'myschema',
+        'someenum',
+        'I don''t got myschema.someenum'
+    );
+
+This function is the inverse of `has_enum()`. The test passes if the specified
+enum does *not* exist.
+
 ### `has_index( schema, table, index, columns[], description )` ###
 ### `has_index( schema, table, index, columns[] )` ###
 ### `has_index( schema, table, index, column/expression, description )` ###
@@ -3011,7 +3025,6 @@ To Do
   * `sequence_increments_by()`
   * `sequence_starts_at()`
   * `sequence_cycles()`
-  * `hasnt_enum()`
   * `hasnt_index()`
   * `hasnt_function()`
 
