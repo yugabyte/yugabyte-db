@@ -2708,24 +2708,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION _trig ( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_trigger t
+          JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1
+           AND c.relname = $2
+           AND t.tgname  = $3
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _trig ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_trigger t
+          JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+         WHERE c.relname = $1
+           AND t.tgname  = $2
+    );
+$$ LANGUAGE SQL;
+
 -- has_trigger( schema, table, trigger, description )
 CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-DECLARE
-    res boolean;
-BEGIN
-    SELECT true
-      FROM pg_catalog.pg_trigger t
-      JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
-      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-     WHERE n.nspname = $1
-       AND c.relname = $2
-       AND t.tgname  = $3
-      INTO res;
-
-      RETURN ok( COALESCE(res, false), $4 );
-END;
-$$ LANGUAGE plpgsql;
+    SELECT ok( _trig($1, $2, $3), $4);
+$$ LANGUAGE SQL;
 
 -- has_trigger( schema, table, trigger )
 CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, NAME )
@@ -2736,26 +2747,44 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+-- has_trigger( table, trigger, description )
+CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _trig($1, $2), $3);
+$$ LANGUAGE sql;
+
 -- has_trigger( table, trigger )
 CREATE OR REPLACE FUNCTION has_trigger ( NAME, NAME )
 RETURNS TEXT AS $$
-DECLARE
-    res boolean;
-BEGIN
-    SELECT true
-      FROM pg_catalog.pg_trigger t
-      JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
-     WHERE c.relname = $1
-       AND t.tgname  = $2
-       AND pg_catalog.pg_table_is_visible(c.oid)
-      INTO res;
+    SELECT ok( _trig($1, $2), 'Table ' || quote_ident($1) || ' should have trigger ' || quote_ident($2));
+$$ LANGUAGE SQL;
 
-      RETURN ok(
-          COALESCE(res, false),
-          'Table ' || quote_ident($1) || ' should have trigger ' || quote_ident($2)
-      );
-END;
-$$ LANGUAGE plpgsql;
+-- hasnt_trigger( schema, table, trigger, description )
+CREATE OR REPLACE FUNCTION hasnt_trigger ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _trig($1, $2, $3), $4);
+$$ LANGUAGE SQL;
+
+-- hasnt_trigger( schema, table, trigger )
+CREATE OR REPLACE FUNCTION hasnt_trigger ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _trig($1, $2, $3),
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should not have trigger ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- hasnt_trigger( table, trigger, description )
+CREATE OR REPLACE FUNCTION hasnt_trigger ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _trig($1, $2), $3);
+$$ LANGUAGE sql;
+
+-- hasnt_trigger( table, trigger )
+CREATE OR REPLACE FUNCTION hasnt_trigger ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _trig($1, $2), 'Table ' || quote_ident($1) || ' should not have trigger ' || quote_ident($2));
+$$ LANGUAGE SQL;
 
 -- trigger_is( schema, table, trigger, schema, function, description )
 CREATE OR REPLACE FUNCTION trigger_is ( NAME, NAME, NAME, NAME, NAME, text )

@@ -1275,6 +1275,7 @@ incorrect, the diagnostics will look more like this:
 
 ### `has_trigger( schema, table, trigger, description )` ###
 ### `has_trigger( schema, table, trigger )` ###
+### `has_trigger( table, trigger, description )` ###
 ### `has_trigger( table, trigger )` ###
 
     SELECT has_trigger(
@@ -1288,7 +1289,22 @@ incorrect, the diagnostics will look more like this:
 
 Tests to see if the specified table has the named trigger. The `:description`
 is optional, and if the schema is omitted, the table with which the trigger is
-associated must be visible.
+associated must be visible in the search path.
+
+### `hasnt_trigger( schema, table, trigger, description )` ###
+### `hasnt_trigger( schema, table, trigger )` ###
+### `hasnt_trigger( table, trigger, description )` ###
+### `hasnt_trigger( table, trigger )` ###
+
+    SELECT hasnt_trigger(
+        'myschema',
+        'sometable',
+        'sometrigger',
+        'Trigger "sometrigger" not should exist'
+    );
+
+This function is the inverse of `has_trigger()`. The test passes if the
+specified trigger does *not* exist.
 
 ### `has_rule( schema, table, rule, description )` ###
 ### `has_rule( schema, table, rule )` ###
@@ -2995,7 +3011,6 @@ To Do
   * `sequence_increments_by()`
   * `sequence_starts_at()`
   * `sequence_cycles()`
-  * `hasnt_trigger()`
   * `hasnt_enum()`
   * `hasnt_index()`
   * `hasnt_function()`

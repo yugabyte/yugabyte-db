@@ -15,6 +15,10 @@ Revision history for pgTAP
 * Added `tablespaces_are()`, `schemas_are()`, `tables_are()`, `views_are()`,
   `sequences_are()`, `functions_are()`, `indexes_are()`, `users_are()`,
   `groups_are()`, `opclasses_are()`, `languages_are()`, and `rules_are()`.
+* Added a `has_trigger(table, trigger, description)`. Note that this means
+  that if you were previously using `has_trigger(schema, table, trigger)`, you
+  will need to cast the third argument to `NAME` to get it working again.
+* Added `hasnt_trigger()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

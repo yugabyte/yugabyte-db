@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(33);
+SELECT plan(54);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -23,28 +23,36 @@ FOR EACH ROW EXECUTE PROCEDURE hash_pass();
 RESET client_min_messages;
 
 /****************************************************************************/
--- Test has_trigger().
+-- Test has_trigger() and hasnt_trigger().
 
 SELECT * FROM check_test(
     has_trigger( 'public', 'users', 'set_users_pass', 'whatever' ),
     true,
-    'has_trigger()',
+    'has_trigger(schema, table, trigger, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    has_trigger( 'public', 'users', 'set_users_pass' ),
+    has_trigger( 'public', 'users', 'set_users_pass'::name ),
     true,
-    'has_trigger() no desc',
+    'has_trigger(schema, table, trigger)',
     'Table public.users should have trigger set_users_pass',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_trigger( 'users', 'set_users_pass', 'whatever' ),
+    true,
+    'has_trigger(table, trigger, desc)',
+    'whatever',
     ''
 );
 
 SELECT * FROM check_test(
     has_trigger( 'users', 'set_users_pass' ),
     true,
-    'has_trigger() no schema',
+    'has_trigger(table, trigger)',
     'Table users should have trigger set_users_pass',
     ''
 );
@@ -52,7 +60,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_trigger( 'public', 'users', 'nosuch', 'whatever' ),
     false,
-    'has_trigger() fail',
+    'has_trigger(schema, table, nonexistent, desc)',
     'whatever',
     ''
 );
@@ -60,8 +68,56 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     has_trigger( 'users', 'nosuch' ),
     false,
-    'has_trigger() no schema fail',
+    'has_trigger(table, nonexistent) no schema fail',
     'Table users should have trigger nosuch',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_trigger( 'public', 'users', 'set_users_pass', 'whatever' ),
+    false,
+    'hasnt_trigger(schema, table, trigger, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_trigger( 'public', 'users', 'set_users_pass'::name ),
+    false,
+    'hasnt_trigger(schema, table, trigger)',
+    'Table public.users should not have trigger set_users_pass',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_trigger( 'users', 'set_users_pass', 'whatever' ),
+    false,
+    'hasnt_trigger(table, trigger, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_trigger( 'users', 'set_users_pass' ),
+    false,
+    'hasnt_trigger(table, trigger)',
+    'Table users should not have trigger set_users_pass',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_trigger( 'public', 'users', 'nosuch', 'whatever' ),
+    true,
+    'hasnt_trigger(schema, table, nonexistent, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_trigger( 'users', 'nosuch' ),
+    true,
+    'hasnt_trigger(table, nonexistent) no schema fail',
+    'Table users should not have trigger nosuch',
     ''
 );
 

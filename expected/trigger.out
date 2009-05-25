@@ -1,35 +1,56 @@
 \unset ECHO
-1..33
-ok 1 - has_trigger() should pass
-ok 2 - has_trigger() should have the proper description
-ok 3 - has_trigger() should have the proper diagnostics
-ok 4 - has_trigger() no desc should pass
-ok 5 - has_trigger() no desc should have the proper description
-ok 6 - has_trigger() no desc should have the proper diagnostics
-ok 7 - has_trigger() no schema should pass
-ok 8 - has_trigger() no schema should have the proper description
-ok 9 - has_trigger() no schema should have the proper diagnostics
-ok 10 - has_trigger() fail should fail
-ok 11 - has_trigger() fail should have the proper description
-ok 12 - has_trigger() fail should have the proper diagnostics
-ok 13 - has_trigger() no schema fail should fail
-ok 14 - has_trigger() no schema fail should have the proper description
-ok 15 - has_trigger() no schema fail should have the proper diagnostics
-ok 16 - trigger_is() should pass
-ok 17 - trigger_is() should have the proper description
-ok 18 - trigger_is() should have the proper diagnostics
-ok 19 - trigger_is() no desc should pass
-ok 20 - trigger_is() no desc should have the proper description
-ok 21 - trigger_is() no desc should have the proper diagnostics
-ok 22 - trigger_is() no schema should pass
-ok 23 - trigger_is() no schema should have the proper description
-ok 24 - trigger_is() no schema should have the proper diagnostics
-ok 25 - trigger_is() no schema or desc should pass
-ok 26 - trigger_is() no schema or desc should have the proper description
-ok 27 - trigger_is() no schema or desc should have the proper diagnostics
-ok 28 - trigger_is() fail should fail
-ok 29 - trigger_is() fail should have the proper description
-ok 30 - trigger_is() fail should have the proper diagnostics
-ok 31 - trigger_is() no schema fail should fail
-ok 32 - trigger_is() no schema fail should have the proper description
-ok 33 - trigger_is() no schema fail should have the proper diagnostics
+1..54
+ok 1 - has_trigger(schema, table, trigger, desc) should pass
+ok 2 - has_trigger(schema, table, trigger, desc) should have the proper description
+ok 3 - has_trigger(schema, table, trigger, desc) should have the proper diagnostics
+ok 4 - has_trigger(schema, table, trigger) should pass
+ok 5 - has_trigger(schema, table, trigger) should have the proper description
+ok 6 - has_trigger(schema, table, trigger) should have the proper diagnostics
+ok 7 - has_trigger(table, trigger, desc) should pass
+ok 8 - has_trigger(table, trigger, desc) should have the proper description
+ok 9 - has_trigger(table, trigger, desc) should have the proper diagnostics
+ok 10 - has_trigger(table, trigger) should pass
+ok 11 - has_trigger(table, trigger) should have the proper description
+ok 12 - has_trigger(table, trigger) should have the proper diagnostics
+ok 13 - has_trigger(schema, table, nonexistent, desc) should fail
+ok 14 - has_trigger(schema, table, nonexistent, desc) should have the proper description
+ok 15 - has_trigger(schema, table, nonexistent, desc) should have the proper diagnostics
+ok 16 - has_trigger(table, nonexistent) no schema fail should fail
+ok 17 - has_trigger(table, nonexistent) no schema fail should have the proper description
+ok 18 - has_trigger(table, nonexistent) no schema fail should have the proper diagnostics
+ok 19 - hasnt_trigger(schema, table, trigger, desc) should fail
+ok 20 - hasnt_trigger(schema, table, trigger, desc) should have the proper description
+ok 21 - hasnt_trigger(schema, table, trigger, desc) should have the proper diagnostics
+ok 22 - hasnt_trigger(schema, table, trigger) should fail
+ok 23 - hasnt_trigger(schema, table, trigger) should have the proper description
+ok 24 - hasnt_trigger(schema, table, trigger) should have the proper diagnostics
+ok 25 - hasnt_trigger(table, trigger, desc) should fail
+ok 26 - hasnt_trigger(table, trigger, desc) should have the proper description
+ok 27 - hasnt_trigger(table, trigger, desc) should have the proper diagnostics
+ok 28 - hasnt_trigger(table, trigger) should fail
+ok 29 - hasnt_trigger(table, trigger) should have the proper description
+ok 30 - hasnt_trigger(table, trigger) should have the proper diagnostics
+ok 31 - hasnt_trigger(schema, table, nonexistent, desc) should pass
+ok 32 - hasnt_trigger(schema, table, nonexistent, desc) should have the proper description
+ok 33 - hasnt_trigger(schema, table, nonexistent, desc) should have the proper diagnostics
+ok 34 - hasnt_trigger(table, nonexistent) no schema fail should pass
+ok 35 - hasnt_trigger(table, nonexistent) no schema fail should have the proper description
+ok 36 - hasnt_trigger(table, nonexistent) no schema fail should have the proper diagnostics
+ok 37 - trigger_is() should pass
+ok 38 - trigger_is() should have the proper description
+ok 39 - trigger_is() should have the proper diagnostics
+ok 40 - trigger_is() no desc should pass
+ok 41 - trigger_is() no desc should have the proper description
+ok 42 - trigger_is() no desc should have the proper diagnostics
+ok 43 - trigger_is() no schema should pass
+ok 44 - trigger_is() no schema should have the proper description
+ok 45 - trigger_is() no schema should have the proper diagnostics
+ok 46 - trigger_is() no schema or desc should pass
+ok 47 - trigger_is() no schema or desc should have the proper description
+ok 48 - trigger_is() no schema or desc should have the proper diagnostics
+ok 49 - trigger_is() fail should fail
+ok 50 - trigger_is() fail should have the proper description
+ok 51 - trigger_is() fail should have the proper diagnostics
+ok 52 - trigger_is() no schema fail should fail
+ok 53 - trigger_is() no schema fail should have the proper description
+ok 54 - trigger_is() no schema fail should have the proper diagnostics
