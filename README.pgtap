@@ -1388,7 +1388,50 @@ diagnostics will output a list of the functions that are missing, like so:
     #     pg_catalog.foo() missing
     #     pg_catalog.bar() missing
 
-**Deprecation notice:** The old name for this test function `can_ok()`, is
+### `has_function( schema, function, args[], description )` ###
+### `has_function( schema, function, args[] )` ###
+### `has_function( schema, function, description )` ###
+### `has_function( schema, function )` ###
+### `has_function( function, args[], description )` ###
+### `has_function( function, args[] )` ###
+### `has_function( function, description )` ###
+### `has_function( function )` ###
+
+    SELECT has_function(
+        'pg_catalog',
+        'decode',
+        ARRAY[ 'text', 'text' ],
+        'Function decode(text, text) should exist'
+    );
+
+    SELECT has_function( 'do_something' );
+    SELECT has_function( 'do_something', ARRAY['integer'] );
+    SELECT has_function( 'do_something', ARRAY['numeric'] );
+
+Checks to be sure that the given function exists in the named schema and with
+the specified argument data types. If `:schema` is omitted, `has_function()` will
+search for the function in the schemas defined in the search path. If
+`:args[]` is omitted, `has_function()` will see if the function exists without
+regard to its arguments.
+
+The `:args[]` argument should be formatted as it would be displayed in the
+view of a function using the `\df` command in `psql`. For example, even if you
+have a numeric column with a precision of 8, you should specify
+`ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
+the `:args[]` argument as `ARRAY['character varying']`.
+
+If you wish to use the two-argument form of `has_function()`, specifying only the
+schema and the function name, you must cast the `:function` argument to
+`:name` in order to disambiguate it from from the
+`has_function(`:function`, `:description)` form. If you neglect to do so, your
+results will be unexpected.
+
+Also, if you use the string form to specify the `:args[]` array, be sure to
+cast it to `name[]` to disambiguate it from a text string:
+
+    SELECT has_function( 'lower', '{text}'::name[] );
+
+**Deprecation notice:** The old name for this test function, `can_ok()`, is
 still available, but emits a warning when called. It will be removed in a
 future version of pgTAP.
 
