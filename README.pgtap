@@ -1363,31 +1363,6 @@ associated must be visible in the search path.
 This function is the inverse of `has_rule()`. The test passes if the specified
 rule does *not* exist.
 
-### `can( schema, functions[], description )` ###
-### `can( schema, functions[] )` ###
-### `can( functions[], description )` ###
-### `can( functions[] )` ###
-
-    SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
-
-Checks to be sure that `:schema` has `:functions[]` defined. This is subtly
-different from `functions_are()`. `functions_are()` fails if the functions
-defined in `:schema` are not exactly the functions defined in `:functions[]`.
-`can()`, on the other hand, just makes sure that `functions[]` exist.
-
-If `:schema` is omitted, then `can()` will look for functions defined in
-schemas defined in the search path. No matter how many functions are listed in
-`:functions[]`, a single call to `can()` counts as one test. If you want
-otherwise, call `can()` once for each function -- or better yet, use
-`has_function()`.
-
-If any of the functions are not defined, the test will fail and the
-diagnostics will output a list of the functions that are missing, like so:
-
-    # Failed test 52: "Schema pg_catalog can"
-    #     pg_catalog.foo() missing
-    #     pg_catalog.bar() missing
-
 ### `has_function( schema, function, args[], description )` ###
 ### `has_function( schema, function, args[] )` ###
 ### `has_function( schema, function, description )` ###
@@ -2277,16 +2252,30 @@ Tables aren't the only objects in the database, as you well know. These
 assertions close the gap by letting you test the attributes of other database
 objects.
 
-### `hasnt_enum( schema, enum, description )` ###
-### `hasnt_enum( schema, enum )` ###
-### `hasnt_enum( enum, description )` ###
-### `hasnt_enum( enum )` ###
+### `can( schema, functions[], description )` ###
+### `can( schema, functions[] )` ###
+### `can( functions[], description )` ###
+### `can( functions[] )` ###
 
-    SELECT hasnt_enum(
-        'myschema',
-        'someenum',
-        'There should be no enum myschema.someenum'
-    );
+    SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
+
+Checks to be sure that `:schema` has `:functions[]` defined. This is subtly
+different from `functions_are()`. `functions_are()` fails if the functions
+defined in `:schema` are not exactly the functions defined in `:functions[]`.
+`can()`, on the other hand, just makes sure that `functions[]` exist.
+
+If `:schema` is omitted, then `can()` will look for functions defined in
+schemas defined in the search path. No matter how many functions are listed in
+`:functions[]`, a single call to `can()` counts as one test. If you want
+otherwise, call `can()` once for each function -- or better yet, use
+`has_function()`.
+
+If any of the functions are not defined, the test will fail and the
+diagnostics will output a list of the functions that are missing, like so:
+
+    # Failed test 52: "Schema pg_catalog can"
+    #     pg_catalog.foo() missing
+    #     pg_catalog.bar() missing
 
 This function is the inverse of `has_enum()`. The test passes if the
 specified enum does *not* exist.
