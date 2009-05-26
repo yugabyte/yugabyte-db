@@ -2011,86 +2011,166 @@ RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;
 
--- has_function( schema, func_name, args[], description )
-CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, NAME[], TEXT )
-RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
+CREATE OR REPLACE FUNCTION _got_func ( NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+        SELECT EXISTS(
+            SELECT TRUE
               FROM pg_catalog.pg_proc p
               JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
              WHERE n.nspname = $1
                AND p.proname = $2
                AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($3, ',')
-        ), $4
-    );
+        );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _got_func ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+        SELECT EXISTS(
+            SELECT TRUE
+              FROM pg_catalog.pg_proc p
+              JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+             WHERE n.nspname = $1
+               AND p.proname = $2
+        );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _got_func ( NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+        SELECT EXISTS(
+            SELECT TRUE
+              FROM pg_catalog.pg_proc p
+             WHERE p.proname = $1
+               AND pg_catalog.pg_function_is_visible(p.oid)
+               AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($2, ',')
+        );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _got_func ( NAME )
+RETURNS BOOLEAN AS $$
+        SELECT EXISTS(
+            SELECT TRUE
+              FROM pg_catalog.pg_proc p
+             WHERE p.proname = $1
+               AND pg_catalog.pg_function_is_visible(p.oid)
+        );
+$$ LANGUAGE SQL;
+
+-- has_function( schema, func_name, args[], description )
+CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _got_func($1, $2, $3), $4 );
 $$ LANGUAGE SQL;
 
 -- has_function( schema, func_name, args[] )
 CREATE OR REPLACE FUNCTION has_function( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT has_function( $1, $2, $3, 'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
-    array_to_string($3, ', ') || ') should exist' );
+    SELECT ok(
+        _got_func($1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should exist'
+    );
 $$ LANGUAGE sql;
 
 -- has_function( schema, func_name, description )
 CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_proc p
-              JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-             WHERE n.nspname = $1
-               AND p.proname = $2
-        ), $3
-    );
+    SELECT ok( _got_func($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- has_function( schema, func_name )
 CREATE OR REPLACE FUNCTION has_function( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT has_function( $1, $2, 'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should exist' );
+    SELECT ok(
+        _got_func($1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should exist'
+    );
 $$ LANGUAGE sql;
 
 -- has_function( func_name, args[], description )
 CREATE OR REPLACE FUNCTION has_function ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_proc p
-             WHERE p.proname = $1
-               AND pg_catalog.pg_function_is_visible(p.oid)
-               AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($2, ',')
-        ), $3
-    );
+    SELECT ok( _got_func($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- has_function( func_name, args[] )
 CREATE OR REPLACE FUNCTION has_function( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT has_function( $1, $2, 'Function ' || quote_ident($1) || '(' ||
-    array_to_string($2, ', ') || ') should exist' );
+    SELECT ok(
+        _got_func($1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should exist'
+    );
 $$ LANGUAGE sql;
 
 -- has_function( func_name, description )
 CREATE OR REPLACE FUNCTION has_function( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok(
-        EXISTS(
-            SELECT true
-              FROM pg_catalog.pg_proc p
-             WHERE p.proname = $1
-               AND pg_catalog.pg_function_is_visible(p.oid)
-        ), $2
-    );
+    SELECT ok( _got_func($1), $2 );
 $$ LANGUAGE sql;
 
 -- has_function( func_name )
 CREATE OR REPLACE FUNCTION has_function( NAME )
 RETURNS TEXT AS $$
-    SELECT has_function( $1, 'Function ' || quote_ident($1) || '() should exist' );
+    SELECT ok( _got_func($1), 'Function ' || quote_ident($1) || '() should exist' );
+$$ LANGUAGE sql;
+
+-- hasnt_function( schema, func_name, args[], description )
+CREATE OR REPLACE FUNCTION hasnt_function ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _got_func($1, $2, $3), $4 );
+$$ LANGUAGE SQL;
+
+-- hasnt_function( schema, func_name, args[] )
+CREATE OR REPLACE FUNCTION hasnt_function( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _got_func($1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should not exist'
+    );
+$$ LANGUAGE sql;
+
+-- hasnt_function( schema, func_name, description )
+CREATE OR REPLACE FUNCTION hasnt_function ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _got_func($1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_function( schema, func_name )
+CREATE OR REPLACE FUNCTION hasnt_function( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _got_func($1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should not exist'
+    );
+$$ LANGUAGE sql;
+
+-- hasnt_function( func_name, args[], description )
+CREATE OR REPLACE FUNCTION hasnt_function ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _got_func($1, $2), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_function( func_name, args[] )
+CREATE OR REPLACE FUNCTION hasnt_function( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _got_func($1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should not exist'
+    );
+$$ LANGUAGE sql;
+
+-- hasnt_function( func_name, description )
+CREATE OR REPLACE FUNCTION hasnt_function( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _got_func($1), $2 );
+$$ LANGUAGE sql;
+
+-- hasnt_function( func_name )
+CREATE OR REPLACE FUNCTION hasnt_function( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _got_func($1), 'Function ' || quote_ident($1) || '() should not exist' );
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, NAME[], TEXT )

@@ -1410,6 +1410,29 @@ cast it to `name[]` to disambiguate it from a text string:
 still available, but emits a warning when called. It will be removed in a
 future version of pgTAP.
 
+### `hasnt_function( schema, function, args[], description )` ###
+### `hasnt_function( schema, function, args[] )` ###
+### `hasnt_function( schema, function, description )` ###
+### `hasnt_function( schema, function )` ###
+### `hasnt_function( function, args[], description )` ###
+### `hasnt_function( function, args[] )` ###
+### `hasnt_function( function, description )` ###
+### `hasnt_function( function )` ###
+
+    SELECT hasnt_function(
+        'pg_catalog',
+        'alamode',
+        ARRAY[ 'text', 'text' ],
+        'Function alamode(text, text) should not exist'
+    );
+
+    SELECT hasnt_function( 'bogus' );
+    SELECT hasnt_function( 'bogus', ARRAY['integer'] );
+    SELECT hasnt_function( 'bogus', ARRAY['numeric'] );
+
+This function is the inverse of `has_function()`. The test passes if the
+specified function (optionally with the specified signature) does *not* exist.
+
 ### `has_cast( source_type, target_type, schema, function, description )` ###
 ### `has_cast( source_type, target_type, schema, function )` ###
 ### `has_cast( source_type, target_type, function, description )` ###
@@ -3033,7 +3056,6 @@ To Do
   * `sequence_increments_by()`
   * `sequence_starts_at()`
   * `sequence_cycles()`
-  * `hasnt_function()`
 
 Supported Versions
 -----------------

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(105);
+SELECT plan(144);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -133,6 +133,112 @@ SELECT * FROM check_test(
     'failure output',
     'Function __cat__(varchar[]) should exist',
     '' -- No diagnostics.
+);
+
+/****************************************************************************/
+-- Test hasnt_function().
+SELECT * FROM check_test(
+    hasnt_function( 'now' ),
+    false,
+    'simple function',
+    'Function now() should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'pg_catalog', 'now'::name ),
+    false,
+    'simple schema.function',
+    'Function pg_catalog.now() should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'now', 'whatever' ),
+    false,
+    'simple function desc',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'now', '{}'::name[] ),
+    false,
+    'simple with 0 args',
+    'Function now() should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'now', '{}'::name[], 'whatever' ),
+    false,
+    'simple with 0 args desc',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'pg_catalog', 'now', '{}'::name[] ),
+    false,
+    'simple schema.func with 0 args',
+    'Function pg_catalog.now() should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'pg_catalog', 'now', 'whatever' ),
+    false,
+    'simple schema.func with desc',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'pg_catalog', 'now', '{}'::name[], 'whatever' ),
+    false,
+    'simple scchma.func with 0 args, desc',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'lower', '{text}'::name[] ),
+    false,
+    'simple function with 1 arg',
+    'Function lower(text) should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'decode', '{text,text}'::name[] ),
+    false,
+    'simple function with 2 args',
+    'Function decode(text, text) should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( 'array_cat', ARRAY['anyarray','anyarray'] ),
+    false,
+    'simple array function',
+    'Function array_cat(anyarray, anyarray) should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( '__cat__', '{text[]}'::name[] ),
+    false,
+    'custom array function',
+    'Function __cat__(text[]) should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_function( '__cat__', '{numeric}'::name[] ),
+    false,
+    'custom numeric function',
+    'Function __cat__(numeric) should not exist',
+    ''
 );
 
 /****************************************************************************/

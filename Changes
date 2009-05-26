@@ -18,13 +18,11 @@ Revision history for pgTAP
 * Added a `has_trigger(table, trigger, description)`. Note that this means
   that if you were previously using `has_trigger(schema, table, trigger)`, you
   will need to cast the third argument to `NAME` to get it working again.
-* Added `hasnt_trigger()` and `hasnt_index()`.
-* Documented `hasnt_enum()`, which has actually been around for as long as
-  `has_enum()`.
 * Changed `can_ok()` to `has_function()`, so that it's named like all of the
   other functions that check for the presence of database objects. The old
   `can_ok()` function is still available as an alias, but it emits a warning
   and will be removed in a future version of pgTAP.
+* Added `hasnt_trigger()`, `hasnt_index()`, and `hasnt_function()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

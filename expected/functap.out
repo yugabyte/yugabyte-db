@@ -1,0 +1,146 @@
+\unset ECHO
+1..144
+ok 1 - simple function should pass
+ok 2 - simple function should have the proper description
+ok 3 - simple function should have the proper diagnostics
+ok 4 - simple schema.function should pass
+ok 5 - simple schema.function should have the proper description
+ok 6 - simple schema.function should have the proper diagnostics
+ok 7 - simple function desc should pass
+ok 8 - simple function desc should have the proper description
+ok 9 - simple function desc should have the proper diagnostics
+ok 10 - simple with 0 args should pass
+ok 11 - simple with 0 args should have the proper description
+ok 12 - simple with 0 args should have the proper diagnostics
+ok 13 - simple with 0 args desc should pass
+ok 14 - simple with 0 args desc should have the proper description
+ok 15 - simple with 0 args desc should have the proper diagnostics
+ok 16 - simple schema.func with 0 args should pass
+ok 17 - simple schema.func with 0 args should have the proper description
+ok 18 - simple schema.func with 0 args should have the proper diagnostics
+ok 19 - simple schema.func with desc should pass
+ok 20 - simple schema.func with desc should have the proper description
+ok 21 - simple schema.func with desc should have the proper diagnostics
+ok 22 - simple scchma.func with 0 args, desc should pass
+ok 23 - simple scchma.func with 0 args, desc should have the proper description
+ok 24 - simple scchma.func with 0 args, desc should have the proper diagnostics
+ok 25 - simple function with 1 arg should pass
+ok 26 - simple function with 1 arg should have the proper description
+ok 27 - simple function with 1 arg should have the proper diagnostics
+ok 28 - simple function with 2 args should pass
+ok 29 - simple function with 2 args should have the proper description
+ok 30 - simple function with 2 args should have the proper diagnostics
+ok 31 - simple array function should pass
+ok 32 - simple array function should have the proper description
+ok 33 - simple array function should have the proper diagnostics
+ok 34 - custom array function should pass
+ok 35 - custom array function should have the proper description
+ok 36 - custom array function should have the proper diagnostics
+ok 37 - custom numeric function should pass
+ok 38 - custom numeric function should have the proper description
+ok 39 - custom numeric function should have the proper diagnostics
+ok 40 - failure output should fail
+ok 41 - failure output should have the proper description
+ok 42 - failure output should have the proper diagnostics
+ok 43 - simple function should fail
+ok 44 - simple function should have the proper description
+ok 45 - simple function should have the proper diagnostics
+ok 46 - simple schema.function should fail
+ok 47 - simple schema.function should have the proper description
+ok 48 - simple schema.function should have the proper diagnostics
+ok 49 - simple function desc should fail
+ok 50 - simple function desc should have the proper description
+ok 51 - simple function desc should have the proper diagnostics
+ok 52 - simple with 0 args should fail
+ok 53 - simple with 0 args should have the proper description
+ok 54 - simple with 0 args should have the proper diagnostics
+ok 55 - simple with 0 args desc should fail
+ok 56 - simple with 0 args desc should have the proper description
+ok 57 - simple with 0 args desc should have the proper diagnostics
+ok 58 - simple schema.func with 0 args should fail
+ok 59 - simple schema.func with 0 args should have the proper description
+ok 60 - simple schema.func with 0 args should have the proper diagnostics
+ok 61 - simple schema.func with desc should fail
+ok 62 - simple schema.func with desc should have the proper description
+ok 63 - simple schema.func with desc should have the proper diagnostics
+ok 64 - simple scchma.func with 0 args, desc should fail
+ok 65 - simple scchma.func with 0 args, desc should have the proper description
+ok 66 - simple scchma.func with 0 args, desc should have the proper diagnostics
+ok 67 - simple function with 1 arg should fail
+ok 68 - simple function with 1 arg should have the proper description
+ok 69 - simple function with 1 arg should have the proper diagnostics
+ok 70 - simple function with 2 args should fail
+ok 71 - simple function with 2 args should have the proper description
+ok 72 - simple function with 2 args should have the proper diagnostics
+ok 73 - simple array function should fail
+ok 74 - simple array function should have the proper description
+ok 75 - simple array function should have the proper diagnostics
+ok 76 - custom array function should fail
+ok 77 - custom array function should have the proper description
+ok 78 - custom array function should have the proper diagnostics
+ok 79 - custom numeric function should fail
+ok 80 - custom numeric function should have the proper description
+ok 81 - custom numeric function should have the proper diagnostics
+ok 82 - simple function should pass
+ok 83 - simple function should have the proper description
+ok 84 - simple function should have the proper diagnostics
+ok 85 - simple schema.function should pass
+ok 86 - simple schema.function should have the proper description
+ok 87 - simple schema.function should have the proper diagnostics
+ok 88 - simple function desc should pass
+ok 89 - simple function desc should have the proper description
+ok 90 - simple function desc should have the proper diagnostics
+ok 91 - simple with 0 args should pass
+ok 92 - simple with 0 args should have the proper description
+ok 93 - simple with 0 args should have the proper diagnostics
+ok 94 - simple with 0 args desc should pass
+ok 95 - simple with 0 args desc should have the proper description
+ok 96 - simple with 0 args desc should have the proper diagnostics
+ok 97 - simple schema.func with 0 args should pass
+ok 98 - simple schema.func with 0 args should have the proper description
+ok 99 - simple schema.func with 0 args should have the proper diagnostics
+ok 100 - simple schema.func with desc should pass
+ok 101 - simple schema.func with desc should have the proper description
+ok 102 - simple schema.func with desc should have the proper diagnostics
+ok 103 - simple scchma.func with 0 args, desc should pass
+ok 104 - simple scchma.func with 0 args, desc should have the proper description
+ok 105 - simple scchma.func with 0 args, desc should have the proper diagnostics
+ok 106 - simple function with 1 arg should pass
+ok 107 - simple function with 1 arg should have the proper description
+ok 108 - simple function with 1 arg should have the proper diagnostics
+ok 109 - simple function with 2 args should pass
+ok 110 - simple function with 2 args should have the proper description
+ok 111 - simple function with 2 args should have the proper diagnostics
+ok 112 - simple array function should pass
+ok 113 - simple array function should have the proper description
+ok 114 - simple array function should have the proper diagnostics
+ok 115 - custom array function should pass
+ok 116 - custom array function should have the proper description
+ok 117 - custom array function should have the proper diagnostics
+ok 118 - custom numeric function should pass
+ok 119 - custom numeric function should have the proper description
+ok 120 - custom numeric function should have the proper diagnostics
+ok 121 - failure output should fail
+ok 122 - failure output should have the proper description
+ok 123 - failure output should have the proper diagnostics
+ok 124 - can(schema) with desc should pass
+ok 125 - can(schema) with desc should have the proper description
+ok 126 - can(schema) with desc should have the proper diagnostics
+ok 127 - can(schema) should pass
+ok 128 - can(schema) should have the proper description
+ok 129 - can(schema) should have the proper diagnostics
+ok 130 - fail can(schema) with desc should fail
+ok 131 - fail can(schema) with desc should have the proper description
+ok 132 - fail can(schema) with desc should have the proper diagnostics
+ok 133 - fail can(someschema) with desc should fail
+ok 134 - fail can(someschema) with desc should have the proper description
+ok 135 - fail can(someschema) with desc should have the proper diagnostics
+ok 136 - can() with desc should pass
+ok 137 - can() with desc should have the proper description
+ok 138 - can() with desc should have the proper diagnostics
+ok 139 - can(schema) should pass
+ok 140 - can(schema) should have the proper description
+ok 141 - can(schema) should have the proper diagnostics
+ok 142 - fail can() with desc should fail
+ok 143 - fail can() with desc should have the proper description
+ok 144 - fail can() with desc should have the proper diagnostics
