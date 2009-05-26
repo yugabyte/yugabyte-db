@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(180);
+SELECT plan(228);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -12,6 +12,7 @@ CREATE TABLE public.sometab(
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+CREATE INDEX idx_hey ON public.sometab(numb);
 CREATE INDEX idx_foo ON public.sometab using hash(name);
 CREATE INDEX idx_bar ON public.sometab(numb, name);
 CREATE UNIQUE INDEX idx_baz ON public.sometab(LOWER(name));
@@ -21,7 +22,7 @@ RESET client_min_messages;
 -- Test has_index().
 
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'idx_foo', 'name', 'whatever' ),
+    has_index( 'public', 'sometab', 'idx_hey', 'numb', 'whatever' ),
     true,
     'has_index() single column',
     'whatever',
@@ -29,9 +30,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_index( 'public', 'sometab', 'idx_foo', 'name'::name ),
+    has_index( 'public', 'sometab', 'idx_hey', 'numb'::name ),
     true,
     'has_index() single column no desc',
+    'Index idx_hey should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_foo', 'name', 'whatever' ),
+    true,
+    'has_index() hash index',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_foo', 'name'::name ),
+    true,
+    'has_index() hash index no desc',
     'Index idx_foo should exist',
     ''
 );
@@ -69,10 +86,26 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_foo', 'whatever' ),
+    true,
+    'has_index() hash index',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
     has_index( 'public', 'sometab', 'idx_baz'::name ),
     true,
     'has_index() no cols no desc',
     'Index idx_baz should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_foo'::name ),
+    true,
+    'has_index() no cols hash index no desc',
+    'Index idx_foo should exist',
     ''
 );
 
@@ -133,6 +166,14 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    has_index( 'sometab', 'idx_foo', 'whatever' ),
+    true,
+    'has_index() hash index no schema or cols',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
     has_index( 'sometab', 'idx_baz' ),
     true,
     'has_index() no schema or cols or desc',
@@ -140,7 +181,23 @@ SELECT * FROM check_test(
     ''
 );
 
+SELECT * FROM check_test(
+    has_index( 'sometab', 'idx_foo' ),
+    true,
+    'has_index() hash index no schema or cols or desc',
+    'Index idx_foo should exist',
+    ''
+);
+
 -- Check failure diagnostics.
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_heya', 'numb', 'whatever' ),
+    false,
+    'has_index() non-existent',
+    'whatever',
+    'Index idx_heya ON public.sometab not found'
+);
+
 SELECT * FROM check_test(
     has_index( 'public', 'sometab', 'blah', ARRAY['numb', 'name'], 'whatever' ),
     false,
@@ -156,6 +213,15 @@ SELECT * FROM check_test(
     'whatever',
     '        have: idx_bar ON public.sometab(numb, name)
         want: idx_bar ON public.sometab(name, id)'
+);
+
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_bar', ARRAY['name'], 'whatever' ),
+    false,
+    'has_index() missing column',
+    'whatever',
+    '        have: idx_bar ON public.sometab(numb, name)
+        want: idx_bar ON public.sometab(name)'
 );
 
 SELECT * FROM check_test(
@@ -191,6 +257,73 @@ SELECT * FROM check_test(
     'whatever',
     '        have: idx_baz ON sometab(lower(name))
         want: idx_baz ON sometab(lower(wank))'
+);
+
+/****************************************************************************/
+-- Test hasnt_index().
+
+SELECT * FROM check_test(
+    hasnt_index( 'public', 'sometab', 'idx_foo', 'whatever' ),
+    false,
+    'hasnt_index(schema, table, index, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'public', 'sometab', 'idx_foo'::name ),
+    false,
+    'hasnt_index(schema, table, index)',
+    'Index idx_foo should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'public', 'sometab', 'idx_blah', 'whatever' ),
+    true,
+    'hasnt_index(schema, table, non-index, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'public', 'sometab', 'idx_blah'::name ),
+    true,
+    'hasnt_index(schema, table, non-index)',
+    'Index idx_blah should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'sometab', 'idx_foo', 'whatever' ),
+    false,
+    'hasnt_index(table, index, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'sometab', 'idx_foo'::name ),
+    false,
+    'hasnt_index(table, index)',
+    'Index idx_foo should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'sometab', 'idx_blah', 'whatever' ),
+    true,
+    'hasnt_index(table, non-index, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_index( 'sometab', 'idx_blah'::name ),
+    true,
+    'hasnt_index(table, non-index)',
+    'Index idx_blah should not exist',
+    ''
 );
 
 /****************************************************************************/

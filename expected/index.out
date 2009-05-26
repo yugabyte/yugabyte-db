@@ -1,182 +1,230 @@
 \unset ECHO
-1..180
+1..228
 ok 1 - has_index() single column should pass
 ok 2 - has_index() single column should have the proper description
 ok 3 - has_index() single column should have the proper diagnostics
 ok 4 - has_index() single column no desc should pass
 ok 5 - has_index() single column no desc should have the proper description
 ok 6 - has_index() single column no desc should have the proper diagnostics
-ok 7 - has_index() multi-column should pass
-ok 8 - has_index() multi-column should have the proper description
-ok 9 - has_index() multi-column should have the proper diagnostics
-ok 10 - has_index() multi-column no desc should pass
-ok 11 - has_index() multi-column no desc should have the proper description
-ok 12 - has_index() multi-column no desc should have the proper diagnostics
-ok 13 - has_index() functional should pass
-ok 14 - has_index() functional should have the proper description
-ok 15 - has_index() functional should have the proper diagnostics
-ok 16 - has_index() no cols should pass
-ok 17 - has_index() no cols should have the proper description
-ok 18 - has_index() no cols should have the proper diagnostics
-ok 19 - has_index() no cols no desc should pass
-ok 20 - has_index() no cols no desc should have the proper description
-ok 21 - has_index() no cols no desc should have the proper diagnostics
-ok 22 - has_index() no schema single column should pass
-ok 23 - has_index() no schema single column should have the proper description
-ok 24 - has_index() no schema single column should have the proper diagnostics
-ok 25 - has_index() no schema single column no desc should pass
-ok 26 - has_index() no schema single column no desc should have the proper description
-ok 27 - has_index() no schema single column no desc should have the proper diagnostics
-ok 28 - has_index() no schema multi-column should pass
-ok 29 - has_index() no schema multi-column should have the proper description
-ok 30 - has_index() no schema multi-column should have the proper diagnostics
-ok 31 - has_index() no schema multi-column no desc should pass
-ok 32 - has_index() no schema multi-column no desc should have the proper description
-ok 33 - has_index() no schema multi-column no desc should have the proper diagnostics
-ok 34 - has_index() no schema functional should pass
-ok 35 - has_index() no schema functional should have the proper description
-ok 36 - has_index() no schema functional should have the proper diagnostics
-ok 37 - has_index() no schema functional no desc should pass
-ok 38 - has_index() no schema functional no desc should have the proper description
-ok 39 - has_index() no schema functional no desc should have the proper diagnostics
-ok 40 - has_index() no schema or cols should pass
-ok 41 - has_index() no schema or cols should have the proper description
-ok 42 - has_index() no schema or cols should have the proper diagnostics
-ok 43 - has_index() no schema or cols or desc should pass
-ok 44 - has_index() no schema or cols or desc should have the proper description
-ok 45 - has_index() no schema or cols or desc should have the proper diagnostics
-ok 46 - has_index() missing should fail
-ok 47 - has_index() missing should have the proper description
-ok 48 - has_index() missing should have the proper diagnostics
-ok 49 - has_index() invalid should fail
-ok 50 - has_index() invalid should have the proper description
-ok 51 - has_index() invalid should have the proper diagnostics
-ok 52 - has_index() missing no schema should fail
-ok 53 - has_index() missing no schema should have the proper description
-ok 54 - has_index() missing no schema should have the proper diagnostics
-ok 55 - has_index() invalid no schema should fail
-ok 56 - has_index() invalid no schema should have the proper description
-ok 57 - has_index() invalid no schema should have the proper diagnostics
-ok 58 - has_index() functional fail should fail
-ok 59 - has_index() functional fail should have the proper description
-ok 60 - has_index() functional fail should have the proper diagnostics
-ok 61 - has_index() functional fail no schema should fail
-ok 62 - has_index() functional fail no schema should have the proper description
-ok 63 - has_index() functional fail no schema should have the proper diagnostics
-ok 64 - index_is_unique() should pass
-ok 65 - index_is_unique() should have the proper description
-ok 66 - index_is_unique() should have the proper diagnostics
-ok 67 - index_is_unique() no desc should pass
-ok 68 - index_is_unique() no desc should have the proper description
-ok 69 - index_is_unique() no desc should have the proper diagnostics
-ok 70 - index_is_unique() no schema should pass
-ok 71 - index_is_unique() no schema should have the proper description
-ok 72 - index_is_unique() no schema should have the proper diagnostics
-ok 73 - index_is_unique() index only should pass
-ok 74 - index_is_unique() index only should have the proper description
-ok 75 - index_is_unique() index only should have the proper diagnostics
-ok 76 - index_is_unique() on pk should pass
-ok 77 - index_is_unique() on pk should have the proper description
-ok 78 - index_is_unique() on pk should have the proper diagnostics
-ok 79 - index_is_unique() on pk no desc should pass
-ok 80 - index_is_unique() on pk no desc should have the proper description
-ok 81 - index_is_unique() on pk no desc should have the proper diagnostics
-ok 82 - index_is_unique() on pk no schema should pass
-ok 83 - index_is_unique() on pk no schema should have the proper description
-ok 84 - index_is_unique() on pk no schema should have the proper diagnostics
-ok 85 - index_is_unique() on pk index only should pass
-ok 86 - index_is_unique() on pk index only should have the proper description
-ok 87 - index_is_unique() on pk index only should have the proper diagnostics
-ok 88 - index_is_unique() fail should fail
-ok 89 - index_is_unique() fail should have the proper description
-ok 90 - index_is_unique() fail should have the proper diagnostics
-ok 91 - index_is_unique() fail no desc should fail
-ok 92 - index_is_unique() fail no desc should have the proper description
-ok 93 - index_is_unique() fail no desc should have the proper diagnostics
-ok 94 - index_is_unique() fail no schema should fail
-ok 95 - index_is_unique() fail no schema should have the proper description
-ok 96 - index_is_unique() fail no schema should have the proper diagnostics
-ok 97 - index_is_unique() fail index only should fail
-ok 98 - index_is_unique() fail index only should have the proper description
-ok 99 - index_is_unique() fail index only should have the proper diagnostics
-ok 100 - index_is_unique() no such index should fail
-ok 101 - index_is_unique() no such index should have the proper description
-ok 102 - index_is_unique() no such index should have the proper diagnostics
-ok 103 - index_is_primary() should pass
-ok 104 - index_is_primary() should have the proper description
-ok 105 - index_is_primary() should have the proper diagnostics
-ok 106 - index_is_primary() no desc should pass
-ok 107 - index_is_primary() no desc should have the proper description
-ok 108 - index_is_primary() no desc should have the proper diagnostics
-ok 109 - index_is_primary() no schema should pass
-ok 110 - index_is_primary() no schema should have the proper description
-ok 111 - index_is_primary() no schema should have the proper diagnostics
-ok 112 - index_is_primary() index only should pass
-ok 113 - index_is_primary() index only should have the proper description
-ok 114 - index_is_primary() index only should have the proper diagnostics
-ok 115 - index_is_primary() fail should fail
-ok 116 - index_is_primary() fail should have the proper description
-ok 117 - index_is_primary() fail should have the proper diagnostics
-ok 118 - index_is_primary() fail no desc should fail
-ok 119 - index_is_primary() fail no desc should have the proper description
-ok 120 - index_is_primary() fail no desc should have the proper diagnostics
-ok 121 - index_is_primary() fail no schema should fail
-ok 122 - index_is_primary() fail no schema should have the proper description
-ok 123 - index_is_primary() fail no schema should have the proper diagnostics
-ok 124 - index_is_primary() fail index only should fail
-ok 125 - index_is_primary() fail index only should have the proper description
-ok 126 - index_is_primary() fail index only should have the proper diagnostics
-ok 127 - index_is_primary() no such index should fail
-ok 128 - index_is_primary() no such index should have the proper description
-ok 129 - index_is_primary() no such index should have the proper diagnostics
-ok 130 - is_clustered() fail should fail
-ok 131 - is_clustered() fail should have the proper description
-ok 132 - is_clustered() fail should have the proper diagnostics
-ok 133 - is_clustered() fail no desc should fail
-ok 134 - is_clustered() fail no desc should have the proper description
-ok 135 - is_clustered() fail no desc should have the proper diagnostics
-ok 136 - is_clustered() fail no schema should fail
-ok 137 - is_clustered() fail no schema should have the proper description
-ok 138 - is_clustered() fail no schema should have the proper diagnostics
-ok 139 - is_clustered() fail index only should fail
-ok 140 - is_clustered() fail index only should have the proper description
-ok 141 - is_clustered() fail index only should have the proper diagnostics
-ok 142 - is_clustered() should pass
-ok 143 - is_clustered() should have the proper description
-ok 144 - is_clustered() should have the proper diagnostics
-ok 145 - is_clustered() no desc should pass
-ok 146 - is_clustered() no desc should have the proper description
-ok 147 - is_clustered() no desc should have the proper diagnostics
-ok 148 - is_clustered() no schema should pass
-ok 149 - is_clustered() no schema should have the proper description
-ok 150 - is_clustered() no schema should have the proper diagnostics
-ok 151 - is_clustered() index only should pass
-ok 152 - is_clustered() index only should have the proper description
-ok 153 - is_clustered() index only should have the proper diagnostics
-ok 154 - index_is_type() should pass
-ok 155 - index_is_type() should have the proper description
-ok 156 - index_is_type() should have the proper diagnostics
-ok 157 - index_is_type() ci should pass
-ok 158 - index_is_type() ci should have the proper description
-ok 159 - index_is_type() ci should have the proper diagnostics
-ok 160 - index_is_type() no desc should pass
-ok 161 - index_is_type() no desc should have the proper description
-ok 162 - index_is_type() no desc should have the proper diagnostics
-ok 163 - index_is_type() fail should fail
-ok 164 - index_is_type() fail should have the proper description
-ok 165 - index_is_type() fail should have the proper diagnostics
-ok 166 - index_is_type() no schema should pass
-ok 167 - index_is_type() no schema should have the proper description
-ok 168 - index_is_type() no schema should have the proper diagnostics
-ok 169 - index_is_type() no schema fail should fail
-ok 170 - index_is_type() no schema fail should have the proper description
-ok 171 - index_is_type() no schema fail should have the proper diagnostics
-ok 172 - index_is_type() no table should pass
-ok 173 - index_is_type() no table should have the proper description
-ok 174 - index_is_type() no table should have the proper diagnostics
-ok 175 - index_is_type() no table fail should fail
-ok 176 - index_is_type() no table fail should have the proper description
-ok 177 - index_is_type() no table fail should have the proper diagnostics
-ok 178 - index_is_type() hash should pass
-ok 179 - index_is_type() hash should have the proper description
-ok 180 - index_is_type() hash should have the proper diagnostics
+ok 7 - has_index() hash index should pass
+ok 8 - has_index() hash index should have the proper description
+ok 9 - has_index() hash index should have the proper diagnostics
+ok 10 - has_index() hash index no desc should pass
+ok 11 - has_index() hash index no desc should have the proper description
+ok 12 - has_index() hash index no desc should have the proper diagnostics
+ok 13 - has_index() multi-column should pass
+ok 14 - has_index() multi-column should have the proper description
+ok 15 - has_index() multi-column should have the proper diagnostics
+ok 16 - has_index() multi-column no desc should pass
+ok 17 - has_index() multi-column no desc should have the proper description
+ok 18 - has_index() multi-column no desc should have the proper diagnostics
+ok 19 - has_index() functional should pass
+ok 20 - has_index() functional should have the proper description
+ok 21 - has_index() functional should have the proper diagnostics
+ok 22 - has_index() no cols should pass
+ok 23 - has_index() no cols should have the proper description
+ok 24 - has_index() no cols should have the proper diagnostics
+ok 25 - has_index() hash index should pass
+ok 26 - has_index() hash index should have the proper description
+ok 27 - has_index() hash index should have the proper diagnostics
+ok 28 - has_index() no cols no desc should pass
+ok 29 - has_index() no cols no desc should have the proper description
+ok 30 - has_index() no cols no desc should have the proper diagnostics
+ok 31 - has_index() no cols hash index no desc should pass
+ok 32 - has_index() no cols hash index no desc should have the proper description
+ok 33 - has_index() no cols hash index no desc should have the proper diagnostics
+ok 34 - has_index() no schema single column should pass
+ok 35 - has_index() no schema single column should have the proper description
+ok 36 - has_index() no schema single column should have the proper diagnostics
+ok 37 - has_index() no schema single column no desc should pass
+ok 38 - has_index() no schema single column no desc should have the proper description
+ok 39 - has_index() no schema single column no desc should have the proper diagnostics
+ok 40 - has_index() no schema multi-column should pass
+ok 41 - has_index() no schema multi-column should have the proper description
+ok 42 - has_index() no schema multi-column should have the proper diagnostics
+ok 43 - has_index() no schema multi-column no desc should pass
+ok 44 - has_index() no schema multi-column no desc should have the proper description
+ok 45 - has_index() no schema multi-column no desc should have the proper diagnostics
+ok 46 - has_index() no schema functional should pass
+ok 47 - has_index() no schema functional should have the proper description
+ok 48 - has_index() no schema functional should have the proper diagnostics
+ok 49 - has_index() no schema functional no desc should pass
+ok 50 - has_index() no schema functional no desc should have the proper description
+ok 51 - has_index() no schema functional no desc should have the proper diagnostics
+ok 52 - has_index() no schema or cols should pass
+ok 53 - has_index() no schema or cols should have the proper description
+ok 54 - has_index() no schema or cols should have the proper diagnostics
+ok 55 - has_index() hash index no schema or cols should pass
+ok 56 - has_index() hash index no schema or cols should have the proper description
+ok 57 - has_index() hash index no schema or cols should have the proper diagnostics
+ok 58 - has_index() no schema or cols or desc should pass
+ok 59 - has_index() no schema or cols or desc should have the proper description
+ok 60 - has_index() no schema or cols or desc should have the proper diagnostics
+ok 61 - has_index() hash index no schema or cols or desc should pass
+ok 62 - has_index() hash index no schema or cols or desc should have the proper description
+ok 63 - has_index() hash index no schema or cols or desc should have the proper diagnostics
+ok 64 - has_index() non-existent should fail
+ok 65 - has_index() non-existent should have the proper description
+ok 66 - has_index() non-existent should have the proper diagnostics
+ok 67 - has_index() missing should fail
+ok 68 - has_index() missing should have the proper description
+ok 69 - has_index() missing should have the proper diagnostics
+ok 70 - has_index() invalid should fail
+ok 71 - has_index() invalid should have the proper description
+ok 72 - has_index() invalid should have the proper diagnostics
+ok 73 - has_index() missing column should fail
+ok 74 - has_index() missing column should have the proper description
+ok 75 - has_index() missing column should have the proper diagnostics
+ok 76 - has_index() missing no schema should fail
+ok 77 - has_index() missing no schema should have the proper description
+ok 78 - has_index() missing no schema should have the proper diagnostics
+ok 79 - has_index() invalid no schema should fail
+ok 80 - has_index() invalid no schema should have the proper description
+ok 81 - has_index() invalid no schema should have the proper diagnostics
+ok 82 - has_index() functional fail should fail
+ok 83 - has_index() functional fail should have the proper description
+ok 84 - has_index() functional fail should have the proper diagnostics
+ok 85 - has_index() functional fail no schema should fail
+ok 86 - has_index() functional fail no schema should have the proper description
+ok 87 - has_index() functional fail no schema should have the proper diagnostics
+ok 88 - hasnt_index(schema, table, index, desc) should fail
+ok 89 - hasnt_index(schema, table, index, desc) should have the proper description
+ok 90 - hasnt_index(schema, table, index, desc) should have the proper diagnostics
+ok 91 - hasnt_index(schema, table, index) should fail
+ok 92 - hasnt_index(schema, table, index) should have the proper description
+ok 93 - hasnt_index(schema, table, index) should have the proper diagnostics
+ok 94 - hasnt_index(schema, table, non-index, desc) should pass
+ok 95 - hasnt_index(schema, table, non-index, desc) should have the proper description
+ok 96 - hasnt_index(schema, table, non-index, desc) should have the proper diagnostics
+ok 97 - hasnt_index(schema, table, non-index) should pass
+ok 98 - hasnt_index(schema, table, non-index) should have the proper description
+ok 99 - hasnt_index(schema, table, non-index) should have the proper diagnostics
+ok 100 - hasnt_index(table, index, desc) should fail
+ok 101 - hasnt_index(table, index, desc) should have the proper description
+ok 102 - hasnt_index(table, index, desc) should have the proper diagnostics
+ok 103 - hasnt_index(table, index) should fail
+ok 104 - hasnt_index(table, index) should have the proper description
+ok 105 - hasnt_index(table, index) should have the proper diagnostics
+ok 106 - hasnt_index(table, non-index, desc) should pass
+ok 107 - hasnt_index(table, non-index, desc) should have the proper description
+ok 108 - hasnt_index(table, non-index, desc) should have the proper diagnostics
+ok 109 - hasnt_index(table, non-index) should pass
+ok 110 - hasnt_index(table, non-index) should have the proper description
+ok 111 - hasnt_index(table, non-index) should have the proper diagnostics
+ok 112 - index_is_unique() should pass
+ok 113 - index_is_unique() should have the proper description
+ok 114 - index_is_unique() should have the proper diagnostics
+ok 115 - index_is_unique() no desc should pass
+ok 116 - index_is_unique() no desc should have the proper description
+ok 117 - index_is_unique() no desc should have the proper diagnostics
+ok 118 - index_is_unique() no schema should pass
+ok 119 - index_is_unique() no schema should have the proper description
+ok 120 - index_is_unique() no schema should have the proper diagnostics
+ok 121 - index_is_unique() index only should pass
+ok 122 - index_is_unique() index only should have the proper description
+ok 123 - index_is_unique() index only should have the proper diagnostics
+ok 124 - index_is_unique() on pk should pass
+ok 125 - index_is_unique() on pk should have the proper description
+ok 126 - index_is_unique() on pk should have the proper diagnostics
+ok 127 - index_is_unique() on pk no desc should pass
+ok 128 - index_is_unique() on pk no desc should have the proper description
+ok 129 - index_is_unique() on pk no desc should have the proper diagnostics
+ok 130 - index_is_unique() on pk no schema should pass
+ok 131 - index_is_unique() on pk no schema should have the proper description
+ok 132 - index_is_unique() on pk no schema should have the proper diagnostics
+ok 133 - index_is_unique() on pk index only should pass
+ok 134 - index_is_unique() on pk index only should have the proper description
+ok 135 - index_is_unique() on pk index only should have the proper diagnostics
+ok 136 - index_is_unique() fail should fail
+ok 137 - index_is_unique() fail should have the proper description
+ok 138 - index_is_unique() fail should have the proper diagnostics
+ok 139 - index_is_unique() fail no desc should fail
+ok 140 - index_is_unique() fail no desc should have the proper description
+ok 141 - index_is_unique() fail no desc should have the proper diagnostics
+ok 142 - index_is_unique() fail no schema should fail
+ok 143 - index_is_unique() fail no schema should have the proper description
+ok 144 - index_is_unique() fail no schema should have the proper diagnostics
+ok 145 - index_is_unique() fail index only should fail
+ok 146 - index_is_unique() fail index only should have the proper description
+ok 147 - index_is_unique() fail index only should have the proper diagnostics
+ok 148 - index_is_unique() no such index should fail
+ok 149 - index_is_unique() no such index should have the proper description
+ok 150 - index_is_unique() no such index should have the proper diagnostics
+ok 151 - index_is_primary() should pass
+ok 152 - index_is_primary() should have the proper description
+ok 153 - index_is_primary() should have the proper diagnostics
+ok 154 - index_is_primary() no desc should pass
+ok 155 - index_is_primary() no desc should have the proper description
+ok 156 - index_is_primary() no desc should have the proper diagnostics
+ok 157 - index_is_primary() no schema should pass
+ok 158 - index_is_primary() no schema should have the proper description
+ok 159 - index_is_primary() no schema should have the proper diagnostics
+ok 160 - index_is_primary() index only should pass
+ok 161 - index_is_primary() index only should have the proper description
+ok 162 - index_is_primary() index only should have the proper diagnostics
+ok 163 - index_is_primary() fail should fail
+ok 164 - index_is_primary() fail should have the proper description
+ok 165 - index_is_primary() fail should have the proper diagnostics
+ok 166 - index_is_primary() fail no desc should fail
+ok 167 - index_is_primary() fail no desc should have the proper description
+ok 168 - index_is_primary() fail no desc should have the proper diagnostics
+ok 169 - index_is_primary() fail no schema should fail
+ok 170 - index_is_primary() fail no schema should have the proper description
+ok 171 - index_is_primary() fail no schema should have the proper diagnostics
+ok 172 - index_is_primary() fail index only should fail
+ok 173 - index_is_primary() fail index only should have the proper description
+ok 174 - index_is_primary() fail index only should have the proper diagnostics
+ok 175 - index_is_primary() no such index should fail
+ok 176 - index_is_primary() no such index should have the proper description
+ok 177 - index_is_primary() no such index should have the proper diagnostics
+ok 178 - is_clustered() fail should fail
+ok 179 - is_clustered() fail should have the proper description
+ok 180 - is_clustered() fail should have the proper diagnostics
+ok 181 - is_clustered() fail no desc should fail
+ok 182 - is_clustered() fail no desc should have the proper description
+ok 183 - is_clustered() fail no desc should have the proper diagnostics
+ok 184 - is_clustered() fail no schema should fail
+ok 185 - is_clustered() fail no schema should have the proper description
+ok 186 - is_clustered() fail no schema should have the proper diagnostics
+ok 187 - is_clustered() fail index only should fail
+ok 188 - is_clustered() fail index only should have the proper description
+ok 189 - is_clustered() fail index only should have the proper diagnostics
+ok 190 - is_clustered() should pass
+ok 191 - is_clustered() should have the proper description
+ok 192 - is_clustered() should have the proper diagnostics
+ok 193 - is_clustered() no desc should pass
+ok 194 - is_clustered() no desc should have the proper description
+ok 195 - is_clustered() no desc should have the proper diagnostics
+ok 196 - is_clustered() no schema should pass
+ok 197 - is_clustered() no schema should have the proper description
+ok 198 - is_clustered() no schema should have the proper diagnostics
+ok 199 - is_clustered() index only should pass
+ok 200 - is_clustered() index only should have the proper description
+ok 201 - is_clustered() index only should have the proper diagnostics
+ok 202 - index_is_type() should pass
+ok 203 - index_is_type() should have the proper description
+ok 204 - index_is_type() should have the proper diagnostics
+ok 205 - index_is_type() ci should pass
+ok 206 - index_is_type() ci should have the proper description
+ok 207 - index_is_type() ci should have the proper diagnostics
+ok 208 - index_is_type() no desc should pass
+ok 209 - index_is_type() no desc should have the proper description
+ok 210 - index_is_type() no desc should have the proper diagnostics
+ok 211 - index_is_type() fail should fail
+ok 212 - index_is_type() fail should have the proper description
+ok 213 - index_is_type() fail should have the proper diagnostics
+ok 214 - index_is_type() no schema should pass
+ok 215 - index_is_type() no schema should have the proper description
+ok 216 - index_is_type() no schema should have the proper diagnostics
+ok 217 - index_is_type() no schema fail should fail
+ok 218 - index_is_type() no schema fail should have the proper description
+ok 219 - index_is_type() no schema fail should have the proper diagnostics
+ok 220 - index_is_type() no table should pass
+ok 221 - index_is_type() no table should have the proper description
+ok 222 - index_is_type() no table should have the proper diagnostics
+ok 223 - index_is_type() no table fail should fail
+ok 224 - index_is_type() no table fail should have the proper description
+ok 225 - index_is_type() no table fail should have the proper diagnostics
+ok 226 - index_is_type() hash should pass
+ok 227 - index_is_type() hash should have the proper description
+ok 228 - index_is_type() hash should have the proper diagnostics

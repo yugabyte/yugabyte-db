@@ -18,10 +18,9 @@ Revision history for pgTAP
 * Added a `has_trigger(table, trigger, description)`. Note that this means
   that if you were previously using `has_trigger(schema, table, trigger)`, you
   will need to cast the third argument to `NAME` to get it working again.
-* Added `hasnt_trigger()`.
+* Added `hasnt_trigger()` and `hasnt_index()`.
 * Documented `hasnt_enum()`, which has actually been around for as long as
   `has_enum()`.
-* Eliminated the unnecessary private function `_has_index()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------

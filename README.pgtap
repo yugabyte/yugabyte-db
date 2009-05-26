@@ -1287,6 +1287,21 @@ incorrect, the diagnostics will look more like this:
     #       have: "idx_baz" ON public.sometab(lower(name))
     #       want: "idx_baz" ON public.sometab(lower(lname))
 
+### `hasnt_index( schema, table, index, description )` ###
+### `hasnt_index( schema, table, index )` ###
+### `hasnt_index( table, index, description )` ###
+### `hasnt_index( table, index )` ###
+
+    SELECT hasnt_index(
+        'myschema',
+        'sometable',
+        'someindex',
+        'Index "someindex" should not exist'
+    );
+
+This function is the inverse of `has_index()`. The test passes if the
+specified index does *not* exist.
+
 ### `has_trigger( schema, table, trigger, description )` ###
 ### `has_trigger( schema, table, trigger )` ###
 ### `has_trigger( table, trigger, description )` ###
@@ -1314,7 +1329,7 @@ associated must be visible in the search path.
         'myschema',
         'sometable',
         'sometrigger',
-        'Trigger "sometrigger" not should exist'
+        'Trigger "sometrigger" should not exist'
     );
 
 This function is the inverse of `has_trigger()`. The test passes if the
@@ -1559,7 +1574,7 @@ it will default to "Role `:role` should exist".
 ### `hasnt_role( role, desc )` ###
 ### `hasnt_role( role )` ###
 
-    SELECT hasnt_role( 'theory', 'Role "theory" not should exist' );
+    SELECT hasnt_role( 'theory', 'Role "theory" should not exist' );
 
 The inverse of `has_role()`, this function tests for the *absence* of a
 database role.
@@ -1575,7 +1590,7 @@ it will default to "User `:user` should exist".
 ### `hasnt_user( user, desc )` ###
 ### `hasnt_user( user )` ###
 
-    SELECT hasnt_user( 'theory', 'User "theory" not should exist' );
+    SELECT hasnt_user( 'theory', 'User "theory" should not exist' );
 
 The inverse of `has_user()`, this function tests for the *absence* of a
 database user.
@@ -1607,7 +1622,7 @@ omitted, it will default to "Procedural language `:language` should exist".
 ### `hasnt_language( language, desc )` ###
 ### `hasnt_language( language )` ###
 
-    SELECT hasnt_language( 'plpgsql', 'Language "plpgsql" not should exist' );
+    SELECT hasnt_language( 'plpgsql', 'Language "plpgsql" should not exist' );
 
 The inverse of `has_language()`, this function tests for the *absence* of a
 procedural language.
@@ -3025,7 +3040,6 @@ To Do
   * `sequence_increments_by()`
   * `sequence_starts_at()`
   * `sequence_cycles()`
-  * `hasnt_index()`
   * `hasnt_function()`
 
 Supported Versions
