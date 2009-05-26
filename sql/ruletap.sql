@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(66);
+SELECT plan(132);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -17,6 +17,10 @@ CREATE RULE upd_me AS ON UPDATE TO public.sometab DO ALSO SELECT now();
 
 CREATE TABLE public.toview ( id INT );
 CREATE RULE "_RETURN" AS ON SELECT TO public.toview DO INSTEAD SELECT 42 AS id;
+
+CREATE TABLE widgets (id int);
+CREATE RULE del_me AS ON DELETE TO public.widgets DO NOTHING;
+CREATE RULE ins_me AS ON INSERT TO public.widgets DO NOTHING;
 
 RESET client_min_messages;
 
@@ -201,6 +205,186 @@ SELECT * FROM check_test(
     'rule_is_instead(table, non-existent rule, desc)',
     'whatever',
     '    Rule blah does not exist'
+);
+
+/****************************************************************************/
+-- Test rule_is_on().
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'ins_me', 'insert', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, insert, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'upd_me', 'update', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, update, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'toview', '_RETURN', 'SELECT', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, SELECT, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'widgets', 'del_me', 'delete', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, delete, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'widgets', 'ins_me', 'insert', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, dupe rule, insert, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'ins_me', 'INSERT', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, INSERT, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'ins_me', 'i', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, i, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'ins_me', 'indigo', 'whatever' ),
+    true,
+    'rule_is_on(schema, table, rule, indigo, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'ins_me'::name, 'i' ),
+    true,
+    'rule_is_on(schema, table, rule, i, desc)',
+    'Rule ins_me should be on INSERT to public.sometab',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'ins_me'::name, 'u' ),
+    false,
+    'rule_is_on(schema, table, rule, u, desc) fail',
+    'Rule ins_me should be on UPDATE to public.sometab',
+    '        have: INSERT
+        want: UPDATE'
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'public', 'sometab', 'foo_me'::name, 'u' ),
+    false,
+    'rule_is_on(schema, table, invalid rule, u, desc)',
+    'Rule foo_me should be on UPDATE to public.sometab',
+    '    Rule foo_me does not exist on public.sometab'
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'ins_me', 'insert', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, insert, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'upd_me', 'update', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, update, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'toview', '_RETURN', 'SELECT', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, SELECT, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'widgets', 'del_me', 'delete', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, delete, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'widgets', 'ins_me', 'insert', 'whatever' ),
+    true,
+    'rule_is_on(table, dupe rule, insert, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'ins_me', 'INSERT', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, INSERT, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'ins_me', 'i', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, i, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'ins_me', 'indigo', 'whatever' ),
+    true,
+    'rule_is_on(table, rule, indigo, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'ins_me'::name, 'i' ),
+    true,
+    'rule_is_on(table, rule, i, desc)',
+    'Rule ins_me should be on INSERT to sometab',
+    ''
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'ins_me'::name, 'u' ),
+    false,
+    'rule_is_on(table, rule, u, desc) fail',
+    'Rule ins_me should be on UPDATE to sometab',
+    '        have: INSERT
+        want: UPDATE'
+);
+
+SELECT * FROM check_test(
+    rule_is_on( 'sometab', 'foo_me'::name, 'u' ),
+    false,
+    'rule_is_on(table, invalid rule, u, desc)',
+    'Rule foo_me should be on UPDATE to sometab',
+    '    Rule foo_me does not exist on sometab'
 );
 
 /****************************************************************************/

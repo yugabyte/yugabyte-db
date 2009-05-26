@@ -3712,7 +3712,6 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
-
 CREATE OR REPLACE FUNCTION _op_exists ( NAME, NAME, NAME, NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS (
@@ -4748,10 +4747,101 @@ RETURNS TEXT AS $$
     SELECT rule_is_instead($1, $2, 'Rule ' || quote_ident($2) || ' on relation ' || quote_ident($1) || ' should be an INSTEAD rule' );
 $$ LANGUAGE SQL;
 
--- rule_is_on( schema, table, rule, type, description )
--- rule_is_on( schema, table, rule, type )
--- rule_is_on( table, rule, type, description )
--- rule_is_on( table, rule, type )
+CREATE OR REPLACE FUNCTION _expand_on( char )
+RETURNS text AS $$
+   SELECT CASE $1
+          WHEN '1' THEN 'SELECT'
+          WHEN '2' THEN 'UPDATE'
+          WHEN '3' THEN 'INSERT'
+          WHEN '4' THEN 'DELETE'
+          ELSE          'UNKNOWN' END
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _contract_on( TEXT )
+RETURNS "char" AS $$
+   SELECT CASE substring(LOWER($1) FROM 1 FOR 1)
+          WHEN 's' THEN '1'::"char"
+          WHEN 'u' THEN '2'::"char"
+          WHEN 'i' THEN '3'::"char"
+          WHEN 'd' THEN '4'::"char"
+          ELSE          '0'::"char" END
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _rule_on( NAME, NAME, NAME )
+RETURNS "char" AS $$
+    SELECT r.ev_type
+      FROM pg_catalog.pg_rewrite r
+      JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+      JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+     WHERE r.rulename = $3
+       AND c.relname  = $2
+       AND n.nspname  = $1
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _rule_on( NAME, NAME )
+RETURNS "char" AS $$
+    SELECT r.ev_type
+      FROM pg_catalog.pg_rewrite r
+      JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
+     WHERE r.rulename = $2
+       AND c.relname  = $1
+$$ LANGUAGE SQL;
+
+-- rule_is_on( schema, table, rule, event, description )
+CREATE OR REPLACE FUNCTION rule_is_on( NAME, NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want char := _contract_on($4);
+    have char := _rule_on($1, $2, $3);
+BEGIN
+    IF have IS NOT NULL THEN
+        RETURN is( _expand_on(have), _expand_on(want), $5 );
+    END IF;
+
+    RETURN ok( false, $5 ) || E'\n' || diag(
+        '    Rule ' || quote_ident($3) || ' does not exist on '
+        || quote_ident($1) || '.' || quote_ident($2)
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- rule_is_on( schema, table, rule, event )
+CREATE OR REPLACE FUNCTION rule_is_on( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT rule_is_on(
+        $1, $2, $3, $4,
+        'Rule ' || quote_ident($3) || ' should be on ' || _expand_on(_contract_on($4)::char)
+        || ' to ' || quote_ident($1) || '.' || quote_ident($2)
+    );
+$$ LANGUAGE SQL;
+
+-- rule_is_on( table, rule, event, description )
+CREATE OR REPLACE FUNCTION rule_is_on( NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want char := _contract_on($3);
+    have char := _rule_on($1, $2);
+BEGIN
+    IF have IS NOT NULL THEN
+        RETURN is( _expand_on(have), _expand_on(want), $4 );
+    END IF;
+
+    RETURN ok( false, $4 ) || E'\n' || diag(
+        '    Rule ' || quote_ident($2) || ' does not exist on '
+        || quote_ident($1)
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- rule_is_on( table, rule, event )
+CREATE OR REPLACE FUNCTION rule_is_on( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT rule_is_on(
+        $1, $2, $3,
+        'Rule ' || quote_ident($2) || ' should be on '
+        || _expand_on(_contract_on($3)::char) || ' to ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )

@@ -2420,6 +2420,38 @@ appropriate diagnostic such as:
     # Failed test 625: "Rule on_insert on relation public.users should be an INSTEAD rule"
     #     Rule on_insert does not exist
 
+### `rule_is_on( schema, table, rule, event, description )` ###
+### `rule_is_on( schema, table, rule, event )` ###
+### `rule_is_on( table, rule, event, description )` ###
+### `rule_is_on( table, rule, event )` ###
+
+    SELECT rule_is_on(
+        'public',
+        'users',
+        'on_insert',
+        'INSERT',
+        'Rule "on_insert" be on insert to on relation public.users'
+    );
+
+Tests the event for a rule, which may be one of `SELECT`, `INSERT`, `UPDATE`,
+or `DELETE`. For the `:event` argument, you can specify the name of the event
+in any case, or even with a single letter ("s", "i", "u", or "d"). If the
+`:schema` argument is omitted, then the table must be visible in the search
+path. If the `:description` is omitted, a reasonable default will be created.
+
+If the test fails, you'll see useful diagnostics, such as:
+
+    # Failed test 133: "Rule ins_me should be on INSERT to public.widgets
+    #         have: UPDATE
+    #         want: INSERT
+
+If the rule in question does not exist, you'll be told that, too:
+
+    # Failed test 134: "Rule upd_me should be on UPDATE to public.widgets"
+    #     Rule upd_me does not exist on public.widgets
+
+But then you run `has_rule()` first, don't you?
+
 No Test for the Wicked
 ======================
 
@@ -3049,9 +3081,8 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `rule_is_on()` (INSERT, UPDATE, DELETE, or SELECT)
   * `function_returns()`
-  * `function_lang_is()`
+  * `function_lang_is()` (or `function_in()`?)
   * `sequence_has_range()`
   * `sequence_increments_by()`
   * `sequence_starts_at()`
