@@ -1379,7 +1379,7 @@ If `:schema` is omitted, then `can()` will look for functions defined in
 schemas defined in the search path. No matter how many functions are listed in
 `:functions[]`, a single call to `can()` counts as one test. If you want
 otherwise, call `can()` once for each function -- or better yet, use
-`can_ok()`.
+`has_function()`.
 
 If any of the functions are not defined, the test will fail and the
 diagnostics will output a list of the functions that are missing, like so:
@@ -1388,48 +1388,9 @@ diagnostics will output a list of the functions that are missing, like so:
     #     pg_catalog.foo() missing
     #     pg_catalog.bar() missing
 
-### `can_ok( schema, function, args[], description )` ###
-### `can_ok( schema, function, args[] )` ###
-### `can_ok( schema, function, description )` ###
-### `can_ok( schema, function )` ###
-### `can_ok( function, args[], description )` ###
-### `can_ok( function, args[] )` ###
-### `can_ok( function, description )` ###
-### `can_ok( function )` ###
-
-    SELECT can_ok(
-        'pg_catalog',
-        'decode',
-        ARRAY[ 'text', 'text' ],
-        'Function decode(text, text) should exist'
-    );
-
-    SELECT can_ok( 'do_something' );
-    SELECT can_ok( 'do_something', ARRAY['integer'] );
-    SELECT can_ok( 'do_something', ARRAY['numeric'] );
-
-Checks to be sure that the given function exists in the named schema and with
-the specified argument data types. If `:schema` is omitted, `can_ok()` will
-search for the function in the schemas defined in the search path. If
-`:args[]` is omitted, `can_ok()` will see if the function exists without
-regard to its arguments.
-
-The `:args[]` argument should be formatted as it would be displayed in the
-view of a function using the `\df` command in `psql`. For example, even if you
-have a numeric column with a precision of 8, you should specify
-`ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
-the `:args[]` argument as `ARRAY['character varying']`.
-
-If you wish to use the two-argument form of `can_ok()`, specifying only the
-schema and the function name, you must cast the `:function` argument to
-`:name` in order to disambiguate it from from the
-`can_ok(`:function`, `:description)` form. If you neglect to do so, your
-results will be unexpected.
-
-Also, if you use the string form to specify the `:args[]` array, be sure to
-cast it to `name[]` to disambiguate it from a text string:
-
-    SELECT can_ok( 'lower', '{text}'::name[] );
+**Deprecation notice:** The old name for this test function `can_ok()`, is
+still available, but emits a warning when called. It will be removed in a
+future version of pgTAP.
 
 ### `has_cast( source_type, target_type, schema, function, description )` ###
 ### `has_cast( source_type, target_type, schema, function )` ###

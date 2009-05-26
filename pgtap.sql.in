@@ -2011,8 +2011,8 @@ RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;
 
--- can_ok( schema, func_name, args[], description )
-CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, NAME[], TEXT )
+-- has_function( schema, func_name, args[], description )
+CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -2026,15 +2026,15 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- can_ok( schema, func_name, args[] )
-CREATE OR REPLACE FUNCTION can_ok( NAME, NAME, NAME[] )
+-- has_function( schema, func_name, args[] )
+CREATE OR REPLACE FUNCTION has_function( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT can_ok( $1, $2, $3, 'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+    SELECT has_function( $1, $2, $3, 'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
     array_to_string($3, ', ') || ') should exist' );
 $$ LANGUAGE sql;
 
--- can_ok( schema, func_name, description )
-CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, TEXT )
+-- has_function( schema, func_name, description )
+CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -2047,14 +2047,14 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- can_ok( schema, func_name )
-CREATE OR REPLACE FUNCTION can_ok( NAME, NAME )
+-- has_function( schema, func_name )
+CREATE OR REPLACE FUNCTION has_function( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT can_ok( $1, $2, 'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should exist' );
+    SELECT has_function( $1, $2, 'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should exist' );
 $$ LANGUAGE sql;
 
--- can_ok( func_name, args[], description )
-CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME[], TEXT )
+-- has_function( func_name, args[], description )
+CREATE OR REPLACE FUNCTION has_function ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -2067,15 +2067,15 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
--- can_ok( func_name, args[] )
-CREATE OR REPLACE FUNCTION can_ok( NAME, NAME[] )
+-- has_function( func_name, args[] )
+CREATE OR REPLACE FUNCTION has_function( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT can_ok( $1, $2, 'Function ' || quote_ident($1) || '(' ||
+    SELECT has_function( $1, $2, 'Function ' || quote_ident($1) || '(' ||
     array_to_string($2, ', ') || ') should exist' );
 $$ LANGUAGE sql;
 
--- can_ok( func_name, description )
-CREATE OR REPLACE FUNCTION can_ok( NAME, TEXT )
+-- has_function( func_name, description )
+CREATE OR REPLACE FUNCTION has_function( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok(
         EXISTS(
@@ -2087,11 +2087,75 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- can_ok( func_name )
+-- has_function( func_name )
+CREATE OR REPLACE FUNCTION has_function( NAME )
+RETURNS TEXT AS $$
+    SELECT has_function( $1, 'Function ' || quote_ident($1) || '() should exist' );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2, $3, $4);
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION can_ok( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2, $3);
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2, $3);
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION can_ok( NAME, NAME )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2);
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2, $3);
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION can_ok( NAME, NAME[] )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2);
+END;
+$$ LANGUAGE PLPGSQL;
+
+CREATE OR REPLACE FUNCTION can_ok( NAME, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1, $2);
+END;
+$$ LANGUAGE PLPGSQL;
+
 CREATE OR REPLACE FUNCTION can_ok( NAME )
 RETURNS TEXT AS $$
-    SELECT can_ok( $1, 'Function ' || quote_ident($1) || '() should exist' );
-$$ LANGUAGE sql;
+BEGIN
+    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RETURN has_function($1);
+END;
+$$ LANGUAGE PLPGSQL;
 
 CREATE OR REPLACE FUNCTION _pg_sv_type_array( OID[] )
 RETURNS NAME[] AS $$
