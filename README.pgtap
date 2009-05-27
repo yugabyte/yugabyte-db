@@ -2300,8 +2300,49 @@ diagnostics will output a list of the functions that are missing, like so:
     #     pg_catalog.foo() missing
     #     pg_catalog.bar() missing
 
-This function is the inverse of `has_enum()`. The test passes if the
-specified enum does *not* exist.
+### `function_lang_is( schema, function, args[], language, description )` ###
+### `function_lang_is( schema, function, args[], language )` ###
+### `function_lang_is( schema, function, language, description )` ###
+### `function_lang_is( schema, function, language )` ###
+### `function_lang_is( function, args[], language, description )` ###
+### `function_lang_is( function, args[], language )` ###
+### `function_lang_is( function, language, description )` ###
+### `function_lang_is( function, language )` ###
+
+    SELECT function_lang_is(
+        'myschema',
+        'foo',
+        ARRAY['integer', 'text'],
+        'perl',
+        'The myschema.foo() function should be written in Perl'
+    );
+
+
+    SELECT function_lang_is( 'do_something', 'sql' );
+    SELECT function_lang_is( 'do_something', ARRAY['integer'], 'plpgsql' );
+    SELECT function_lang_is( 'do_something', ARRAY['numeric'], 'plpgsql' );
+
+Tests that a particular function is implemented in a particular procedural
+language. The function name is required. If the `:schema` argument is omitted,
+then the function must be visible in the search path. If the `:args[]`
+argument is passed, then the function with that argument signature will be the
+one tested; otherwise, a function with any signature will be checked (pass an
+empty array to specify a function with an empty signature). If the
+`:description` is omitted, a reasonable substitute will be created.
+
+In the event of a failure, you'll useful diagnostics will tell you what went
+wrong, for example:
+
+    # Failed test 211: "Function mychema.eat(integer, text) should be written in perl"
+    #         have: plpgsql
+    #         want: perl
+
+If the function does not exist, you'll be told that, too.
+
+    # Failed test 212: "Function myschema.grab() should be written in sql
+    #     Function myschema.grab() does not exist
+
+But then you check with `has_function()` first, right?
 
 ### `enum_has_labels( schema, enum, labels, desc )` ###
 ### `enum_has_labels( schema, enum, labels )` ###
@@ -3082,7 +3123,6 @@ To Do
 
 * Useful schema testing functions to consider adding:
   * `function_returns()`
-  * `function_lang_is()` (or `function_in()`?)
   * `sequence_has_range()`
   * `sequence_increments_by()`
   * `sequence_starts_at()`

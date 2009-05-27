@@ -1,5 +1,5 @@
 \unset ECHO
-1..144
+1..210
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -144,3 +144,69 @@ ok 141 - can(schema) should have the proper diagnostics
 ok 142 - fail can() with desc should fail
 ok 143 - fail can() with desc should have the proper description
 ok 144 - fail can() with desc should have the proper diagnostics
+ok 145 - function_lang_is(schema, func, 0 args, sql, desc ) should pass
+ok 146 - function_lang_is(schema, func, 0 args, sql, desc ) should have the proper description
+ok 147 - function_lang_is(schema, func, 0 args, sql, desc ) should have the proper diagnostics
+ok 148 - function_lang_is(schema, func, 0 args, sql ) should pass
+ok 149 - function_lang_is(schema, func, 0 args, sql ) should have the proper description
+ok 150 - function_lang_is(schema, func, 0 args, sql ) should have the proper diagnostics
+ok 151 - function_lang_is(schema, func, args, plpgsql, desc ) should pass
+ok 152 - function_lang_is(schema, func, args, plpgsql, desc ) should have the proper description
+ok 153 - function_lang_is(schema, func, args, plpgsql, desc ) should have the proper diagnostics
+ok 154 - function_lang_is(schema, func, args, plpgsql ) should pass
+ok 155 - function_lang_is(schema, func, args, plpgsql ) should have the proper description
+ok 156 - function_lang_is(schema, func, args, plpgsql ) should have the proper diagnostics
+ok 157 - function_lang_is(schema, func, 0 args, perl, desc ) should fail
+ok 158 - function_lang_is(schema, func, 0 args, perl, desc ) should have the proper description
+ok 159 - function_lang_is(schema, func, 0 args, perl, desc ) should have the proper diagnostics
+ok 160 - function_lang_is(schema, non-func, 0 args, sql, desc ) should fail
+ok 161 - function_lang_is(schema, non-func, 0 args, sql, desc ) should have the proper description
+ok 162 - function_lang_is(schema, non-func, 0 args, sql, desc ) should have the proper diagnostics
+ok 163 - function_lang_is(schema, func, args, plpgsql ) should fail
+ok 164 - function_lang_is(schema, func, args, plpgsql ) should have the proper description
+ok 165 - function_lang_is(schema, func, args, plpgsql ) should have the proper diagnostics
+ok 166 - function_lang_is(schema, func, sql, desc ) should pass
+ok 167 - function_lang_is(schema, func, sql, desc ) should have the proper description
+ok 168 - function_lang_is(schema, func, sql, desc ) should have the proper diagnostics
+ok 169 - function_lang_is(schema, func, sql ) should pass
+ok 170 - function_lang_is(schema, func, sql ) should have the proper description
+ok 171 - function_lang_is(schema, func, sql ) should have the proper diagnostics
+ok 172 - function_lang_is(schema, func, perl, desc ) should fail
+ok 173 - function_lang_is(schema, func, perl, desc ) should have the proper description
+ok 174 - function_lang_is(schema, func, perl, desc ) should have the proper diagnostics
+ok 175 - function_lang_is(schema, non-func, sql, desc ) should fail
+ok 176 - function_lang_is(schema, non-func, sql, desc ) should have the proper description
+ok 177 - function_lang_is(schema, non-func, sql, desc ) should have the proper diagnostics
+ok 178 - function_lang_is(func, 0 args, sql, desc ) should pass
+ok 179 - function_lang_is(func, 0 args, sql, desc ) should have the proper description
+ok 180 - function_lang_is(func, 0 args, sql, desc ) should have the proper diagnostics
+ok 181 - function_lang_is(func, 0 args, sql ) should pass
+ok 182 - function_lang_is(func, 0 args, sql ) should have the proper description
+ok 183 - function_lang_is(func, 0 args, sql ) should have the proper diagnostics
+ok 184 - function_lang_is(func, args, plpgsql, desc ) should pass
+ok 185 - function_lang_is(func, args, plpgsql, desc ) should have the proper description
+ok 186 - function_lang_is(func, args, plpgsql, desc ) should have the proper diagnostics
+ok 187 - function_lang_is(func, args, plpgsql ) should pass
+ok 188 - function_lang_is(func, args, plpgsql ) should have the proper description
+ok 189 - function_lang_is(func, args, plpgsql ) should have the proper diagnostics
+ok 190 - function_lang_is(func, 0 args, perl, desc ) should fail
+ok 191 - function_lang_is(func, 0 args, perl, desc ) should have the proper description
+ok 192 - function_lang_is(func, 0 args, perl, desc ) should have the proper diagnostics
+ok 193 - function_lang_is(non-func, 0 args, sql, desc ) should fail
+ok 194 - function_lang_is(non-func, 0 args, sql, desc ) should have the proper description
+ok 195 - function_lang_is(non-func, 0 args, sql, desc ) should have the proper diagnostics
+ok 196 - function_lang_is(func, args, plpgsql ) should fail
+ok 197 - function_lang_is(func, args, plpgsql ) should have the proper description
+ok 198 - function_lang_is(func, args, plpgsql ) should have the proper diagnostics
+ok 199 - function_lang_is(func, sql, desc ) should pass
+ok 200 - function_lang_is(func, sql, desc ) should have the proper description
+ok 201 - function_lang_is(func, sql, desc ) should have the proper diagnostics
+ok 202 - function_lang_is(func, sql ) should pass
+ok 203 - function_lang_is(func, sql ) should have the proper description
+ok 204 - function_lang_is(func, sql ) should have the proper diagnostics
+ok 205 - function_lang_is(func, perl, desc ) should fail
+ok 206 - function_lang_is(func, perl, desc ) should have the proper description
+ok 207 - function_lang_is(func, perl, desc ) should have the proper diagnostics
+ok 208 - function_lang_is(non-func, sql, desc ) should fail
+ok 209 - function_lang_is(non-func, sql, desc ) should have the proper description
+ok 210 - function_lang_is(non-func, sql, desc ) should have the proper diagnostics

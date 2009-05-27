@@ -2055,13 +2055,13 @@ RETURNS BOOLEAN AS $$
         );
 $$ LANGUAGE SQL;
 
--- has_function( schema, func_name, args[], description )
+-- has_function( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _got_func($1, $2, $3), $4 );
 $$ LANGUAGE SQL;
 
--- has_function( schema, func_name, args[] )
+-- has_function( schema, function, args[] )
 CREATE OR REPLACE FUNCTION has_function( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT ok(
@@ -2071,13 +2071,13 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- has_function( schema, func_name, description )
+-- has_function( schema, function, description )
 CREATE OR REPLACE FUNCTION has_function ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _got_func($1, $2), $3 );
 $$ LANGUAGE SQL;
 
--- has_function( schema, func_name )
+-- has_function( schema, function )
 CREATE OR REPLACE FUNCTION has_function( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
@@ -2086,13 +2086,13 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- has_function( func_name, args[], description )
+-- has_function( function, args[], description )
 CREATE OR REPLACE FUNCTION has_function ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _got_func($1, $2), $3 );
 $$ LANGUAGE SQL;
 
--- has_function( func_name, args[] )
+-- has_function( function, args[] )
 CREATE OR REPLACE FUNCTION has_function( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT ok(
@@ -2102,25 +2102,25 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- has_function( func_name, description )
+-- has_function( function, description )
 CREATE OR REPLACE FUNCTION has_function( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _got_func($1), $2 );
 $$ LANGUAGE sql;
 
--- has_function( func_name )
+-- has_function( function )
 CREATE OR REPLACE FUNCTION has_function( NAME )
 RETURNS TEXT AS $$
     SELECT ok( _got_func($1), 'Function ' || quote_ident($1) || '() should exist' );
 $$ LANGUAGE sql;
 
--- hasnt_function( schema, func_name, args[], description )
+-- hasnt_function( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION hasnt_function ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT ok( NOT _got_func($1, $2, $3), $4 );
 $$ LANGUAGE SQL;
 
--- hasnt_function( schema, func_name, args[] )
+-- hasnt_function( schema, function, args[] )
 CREATE OR REPLACE FUNCTION hasnt_function( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT ok(
@@ -2130,13 +2130,13 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- hasnt_function( schema, func_name, description )
+-- hasnt_function( schema, function, description )
 CREATE OR REPLACE FUNCTION hasnt_function ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( NOT _got_func($1, $2), $3 );
 $$ LANGUAGE SQL;
 
--- hasnt_function( schema, func_name )
+-- hasnt_function( schema, function )
 CREATE OR REPLACE FUNCTION hasnt_function( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
@@ -2145,13 +2145,13 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- hasnt_function( func_name, args[], description )
+-- hasnt_function( function, args[], description )
 CREATE OR REPLACE FUNCTION hasnt_function ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT ok( NOT _got_func($1, $2), $3 );
 $$ LANGUAGE SQL;
 
--- hasnt_function( func_name, args[] )
+-- hasnt_function( function, args[] )
 CREATE OR REPLACE FUNCTION hasnt_function( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT ok(
@@ -2161,13 +2161,13 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- hasnt_function( func_name, description )
+-- hasnt_function( function, description )
 CREATE OR REPLACE FUNCTION hasnt_function( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( NOT _got_func($1), $2 );
 $$ LANGUAGE sql;
 
--- hasnt_function( func_name )
+-- hasnt_function( function )
 CREATE OR REPLACE FUNCTION hasnt_function( NAME )
 RETURNS TEXT AS $$
     SELECT ok( NOT _got_func($1), 'Function ' || quote_ident($1) || '() should not exist' );
@@ -4840,6 +4840,145 @@ RETURNS TEXT AS $$
         $1, $2, $3,
         'Rule ' || quote_ident($2) || ' should be on '
         || _expand_on(_contract_on($3)::char) || ' to ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+      JOIN pg_catalog.pg_language l  ON p.prolang      = l.oid
+     WHERE n.nspname = $1
+       AND p.proname = $2
+       AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($3, ',');
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+      JOIN pg_catalog.pg_language l  ON p.prolang      = l.oid
+     WHERE n.nspname = $1
+       AND p.proname = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_language l  ON p.prolang      = l.oid
+     WHERE p.proname = $1
+       AND array_to_string(p.proargtypes::regtype[], ',') = array_to_string($2, ',')
+       AND pg_catalog.pg_function_is_visible(p.oid);
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_language l  ON p.prolang      = l.oid
+     WHERE p.proname = $1
+       AND pg_catalog.pg_function_is_visible(p.oid);
+$$ LANGUAGE SQL;
+
+-- function_lang_is( schema, function, args[], language, description )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME, NAME[], NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have name := _lang($1, $2, $3);
+BEGIN
+    IF have IS NOT NULL THEN RETURN is( have, $4, $5 ); END IF;
+
+    RETURN ok( FALSE, $5 ) || E'\n' || diag(
+        '    Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_lang_is( schema, function, args[], language )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME, NAME[], NAME )
+RETURNS TEXT AS $$
+    SELECT function_lang_is(
+        $1, $2, $3, $4,
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be written in ' || quote_ident($4)
+    );
+$$ LANGUAGE SQL;
+
+-- function_lang_is( schema, function, language, description )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have name := _lang($1, $2);
+BEGIN
+    IF have IS NOT NULL THEN RETURN is( have, $3, $4 ); END IF;
+
+    RETURN ok( FALSE, $4 ) || E'\n' || diag(
+        '    Function ' || quote_ident($1) || '.' || quote_ident($2)
+        || '() does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_lang_is( schema, function, language )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT function_lang_is(
+        $1, $2, $3,
+        'Function ' || quote_ident($1) || '.' || quote_ident($2)
+        || '() should be written in ' || quote_ident($3)
+    );
+$$ LANGUAGE SQL;
+
+-- function_lang_is( function, args[], language, description )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME[], NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have name := _lang($1, $2);
+BEGIN
+    IF have IS NOT NULL THEN RETURN is( have, $3, $4 ); END IF;
+
+    RETURN ok( FALSE, $4 ) || E'\n' || diag(
+        '    Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_lang_is( function, args[], language )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME[], NAME )
+RETURNS TEXT AS $$
+    SELECT function_lang_is(
+        $1, $2, $3,
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be written in ' || quote_ident($3)
+    );
+$$ LANGUAGE SQL;
+
+-- function_lang_is( function, language, description )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have name := _lang($1);
+BEGIN
+    IF have IS NOT NULL THEN RETURN is( have, $2, $3 ); END IF;
+
+    RETURN ok( FALSE, $3 ) || E'\n' || diag(
+        '    Function ' || quote_ident($1) || '() does not exist'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_lang_is( function, language )
+CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT function_lang_is(
+        $1, $2,
+        'Function ' || quote_ident($1)
+        || '() should be written in ' || quote_ident($2)
     );
 $$ LANGUAGE SQL;
 

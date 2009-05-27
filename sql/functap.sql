@@ -1,11 +1,17 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(144);
+SELECT plan(210);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
 CREATE FUNCTION someschema.huh () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
+CREATE FUNCTION someschema.bah (int, text) RETURNS BOOL
+AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
+
+CREATE FUNCTION public.yay () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
+CREATE FUNCTION public.oww (int, text) RETURNS BOOL
+AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
 
 -- XXX Delete when can_ok() is removed.
 SET client_min_messages = error;
@@ -417,6 +423,187 @@ SELECT * FROM check_test(
     bar() missing'
 );
 
+/****************************************************************************/
+-- Test function_lang_is().
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'huh', '{}'::name[], 'sql', 'whatever' ),
+    true,
+    'function_lang_is(schema, func, 0 args, sql, desc )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'huh', '{}'::name[], 'sql' ),
+    true,
+    'function_lang_is(schema, func, 0 args, sql )',
+    'Function someschema.huh() should be written in sql',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'bah', '{"integer", "text"}'::name[], 'plpgsql', 'whatever' ),
+    true,
+    'function_lang_is(schema, func, args, plpgsql, desc )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'bah', '{"integer", "text"}'::name[], 'plpgsql' ),
+    true,
+    'function_lang_is(schema, func, args, plpgsql )',
+    'Function someschema.bah(integer, text) should be written in plpgsql',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'huh', '{}'::name[], 'perl', 'whatever' ),
+    false,
+    'function_lang_is(schema, func, 0 args, perl, desc )',
+    'whatever',
+    '        have: sql
+        want: perl'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'why', '{}'::name[], 'sql', 'whatever' ),
+    false,
+    'function_lang_is(schema, non-func, 0 args, sql, desc )',
+    'whatever',
+    '    Function someschema.why() does not exist'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'why', '{"integer", "text"}'::name[], 'plpgsql' ),
+    false,
+    'function_lang_is(schema, func, args, plpgsql )',
+    'Function someschema.why(integer, text) should be written in plpgsql',
+    '    Function someschema.why(integer, text) does not exist'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'huh', 'sql', 'whatever' ),
+    true,
+    'function_lang_is(schema, func, sql, desc )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'huh', 'sql'::name ),
+    true,
+    'function_lang_is(schema, func, sql )',
+    'Function someschema.huh() should be written in sql',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'huh', 'perl', 'whatever' ),
+    false,
+    'function_lang_is(schema, func, perl, desc )',
+    'whatever',
+    '        have: sql
+        want: perl'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'someschema', 'why', 'sql', 'whatever' ),
+    false,
+    'function_lang_is(schema, non-func, sql, desc )',
+    'whatever',
+    '    Function someschema.why() does not exist'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'yay', '{}'::name[], 'sql', 'whatever' ),
+    true,
+    'function_lang_is(func, 0 args, sql, desc )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'yay', '{}'::name[], 'sql' ),
+    true,
+    'function_lang_is(func, 0 args, sql )',
+    'Function yay() should be written in sql',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'oww', '{"integer", "text"}'::name[], 'plpgsql', 'whatever' ),
+    true,
+    'function_lang_is(func, args, plpgsql, desc )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'oww', '{"integer", "text"}'::name[], 'plpgsql' ),
+    true,
+    'function_lang_is(func, args, plpgsql )',
+    'Function oww(integer, text) should be written in plpgsql',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'yay', '{}'::name[], 'perl', 'whatever' ),
+    false,
+    'function_lang_is(func, 0 args, perl, desc )',
+    'whatever',
+    '        have: sql
+        want: perl'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'why', '{}'::name[], 'sql', 'whatever' ),
+    false,
+    'function_lang_is(non-func, 0 args, sql, desc )',
+    'whatever',
+    '    Function why() does not exist'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'why', '{"integer", "text"}'::name[], 'plpgsql' ),
+    false,
+    'function_lang_is(func, args, plpgsql )',
+    'Function why(integer, text) should be written in plpgsql',
+    '    Function why(integer, text) does not exist'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'yay', 'sql', 'whatever' ),
+    true,
+    'function_lang_is(func, sql, desc )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'yay', 'sql' ),
+    true,
+    'function_lang_is(func, sql )',
+    'Function yay() should be written in sql',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'yay', 'perl', 'whatever' ),
+    false,
+    'function_lang_is(func, perl, desc )',
+    'whatever',
+    '        have: sql
+        want: perl'
+);
+
+SELECT * FROM check_test(
+    function_lang_is( 'why', 'sql', 'whatever' ),
+    false,
+    'function_lang_is(non-func, sql, desc )',
+    'whatever',
+    '    Function why() does not exist'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.
