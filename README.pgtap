@@ -2268,12 +2268,14 @@ fact, like so:
 But you really ought to call `has_language()` first so that you never get that
 far.
 
-Database Deets
---------------
+Feeling Funky
+-------------
 
-Tables aren't the only objects in the database, as you well know. These
-assertions close the gap by letting you test the attributes of other database
-objects.
+Perhaps more important than testing the database schema is testing your custom
+functions. Especially if you write functions that provide the interface for
+clients to interact with the database, making sure that they work will save
+you time in the long run. So check out these assertions to maintain your
+sanity.
 
 ### `can( schema, functions[], description )` ###
 ### `can( schema, functions[] )` ###
@@ -2537,6 +2539,13 @@ If the function does not exist, you'll be told that, too.
     #     Function myschema.grab() does not exist
 
 But then you check with `has_function()` first, right?
+
+Database Deets
+--------------
+
+Tables and functions aren't the only objects in the database, as you well
+know. These assertions close the gap by letting you test the attributes of
+other database objects.
 
 ### `enum_has_labels( schema, enum, labels, desc )` ###
 ### `enum_has_labels( schema, enum, labels )` ###
