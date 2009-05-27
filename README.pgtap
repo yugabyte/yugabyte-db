@@ -2361,7 +2361,6 @@ But then you check with `has_function()` first, right?
         'The myschema.foo() function should return an integer'
     );
 
-
     SELECT function_returns( 'do_something', 'setof bool' );
     SELECT function_returns( 'do_something', ARRAY['integer'], 'bool' );
     SELECT function_returns( 'do_something', ARRAY['numeric'], 'numeric' );
@@ -2389,14 +2388,25 @@ If the function does not exist, you'll be told that, too.
 
 But then you check with `has_function()` first, right?
 
-### `function_is_definer( schema, function, args[], description )` ###
-### `function_is_definer( schema, function, args[] )` ###
-### `function_is_definer( schema, function, description )` ###
-### `function_is_definer( schema, function )` ###
-### `function_is_definer( function, args[], description )` ###
-### `function_is_definer( function, args[] )` ###
-### `function_is_definer( function, description )` ###
-### `function_is_definer( function )` ###
+### `is_definer( schema, function, args[], description )` ###
+### `is_definer( schema, function, args[] )` ###
+### `is_definer( schema, function, description )` ###
+### `is_definer( schema, function )` ###
+### `is_definer( function, args[], description )` ###
+### `is_definer( function, args[] )` ###
+### `is_definer( function, description )` ###
+### `is_definer( function )` ###
+
+    SELECT is_definer(
+        'myschema',
+        'foo',
+        ARRAY['integer', 'text'],
+        'The myschema.foo() function should be security definer'
+    );
+
+    SELECT is_definer( 'do_something' );
+    SELECT is_definer( 'do_something', ARRAY['integer'] );
+    SELECT is_definer( 'do_something', ARRAY['numeric'] );
 
 Tests that a function is a security definer (i.e., a "setuid" function). If
 the `:schema` argument is omitted, then the function must be visible in the
@@ -2410,6 +2420,121 @@ If the function does not exist, a handy diagnostic message will let you know:
 
     # Failed test 290: "Function nasty() should be security definer"
     #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `is_strict( schema, function, args[], description )` ###
+### `is_strict( schema, function, args[] )` ###
+### `is_strict( schema, function, description )` ###
+### `is_strict( schema, function )` ###
+### `is_strict( function, args[], description )` ###
+### `is_strict( function, args[] )` ###
+### `is_strict( function, description )` ###
+### `is_strict( function )` ###
+
+    SELECT is_strict(
+        'myschema',
+        'foo',
+        ARRAY['integer', 'text'],
+        'The myschema.foo() function should be strict
+    );
+
+    SELECT is_strict( 'do_something' );
+    SELECT is_strict( 'do_something', ARRAY['integer'] );
+    SELECT is_strict( 'do_something', ARRAY['numeric'] );
+
+Tests that a function is a strict, meaning that the function returns null if
+any argument is null. If the `:schema` argument is omitted, then the function
+must be visible in the search path. If the `:args[]` argument is passed, then
+the function with that argument signature will be the one tested; otherwise, a
+function with any signature will be checked (pass an empty array to specify a
+function with an empty signature). If the `:description` is omitted, a
+reasonable substitute will be created.
+
+If the function does not exist, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should be strict
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `is_aggregate( schema, function, args[], description )` ###
+### `is_aggregate( schema, function, args[] )` ###
+### `is_aggregate( schema, function, description )` ###
+### `is_aggregate( schema, function )` ###
+### `is_aggregate( function, args[], description )` ###
+### `is_aggregate( function, args[] )` ###
+### `is_aggregate( function, description )` ###
+### `is_aggregate( function )` ###
+
+    SELECT is_aggregate(
+        'myschema',
+        'foo',
+        ARRAY['integer', 'text'],
+        'The myschema.foo() function should be strict
+    );
+
+    SELECT is_aggregate( 'do_something' );
+    SELECT is_aggregate( 'do_something', ARRAY['integer'] );
+    SELECT is_aggregate( 'do_something', ARRAY['numeric'] );
+
+Tests that a function is an aggregate function. If the `:schema` argument is
+omitted, then the function must be visible in the search path. If the
+`:args[]` argument is passed, then the function with that argument signature
+will be the one tested; otherwise, a function with any signature will be
+checked (pass an empty array to specify a function with an empty signature).
+If the `:description` is omitted, a reasonable substitute will be created.
+
+If the function does not exist, a handy diagnostic message will let you know:
+
+    # Failed test 290: "Function nasty() should be strict
+    #     Function nasty() does not exist
+
+But then you check with `has_function()` first, right?
+
+### `volatility_is( schema, function, args[], volatility, description )` ###
+### `volatility_is( schema, function, args[], volatility )` ###
+### `volatility_is( schema, function, volatility, description )` ###
+### `volatility_is( schema, function, volatility )` ###
+### `volatility_is( function, args[], volatility, description )` ###
+### `volatility_is( function, args[], volatility )` ###
+### `volatility_is( function, volatility, description )` ###
+### `volatility_is( function, volatility )` ###
+
+    SELECT volatility_is(
+        'myschema',
+        'foo',
+        ARRAY['integer', 'text'],
+        'stable',
+        'The myschema.foo() function should be stable
+    );
+
+
+    SELECT volatility_is( 'do_something', 'immutable' );
+    SELECT volatility_is( 'do_something', ARRAY['integer'], 'stable' );
+    SELECT volatility_is( 'do_something', ARRAY['numeric'], 'volatile' );
+
+Tests the volatility of a function. Supported volailities are "volatile",
+"stable", and "immutable". Consult the [`CREATE FUNCTION` documentation
+A.](http://www.postgresql.org/docs/current/static/sql-createfunction.html) for
+details. The function name is required. If the `:schema` argument is omitted,
+then the function must be visible in the search path. If the `:args[]`
+argument is passed, then the function with that argument signature will be the
+one tested; otherwise, a function with any signature will be checked (pass an
+empty array to specify a function with an empty signature). If the
+`:description` is omitted, a reasonable substitute will be created.
+
+In the event of a failure, you'll useful diagnostics will tell you what went
+wrong, for example:
+
+    # Failed test 211: "Function mychema.eat(integer, text) should be IMMUTABLE"
+    #         have: VOLATILE
+    #         want: IMMUTABLE
+
+If the function does not exist, you'll be told that, too.
+
+    # Failed test 212: "Function myschema.grab() should be IMMUTABLE
+    #     Function myschema.grab() does not exist
 
 But then you check with `has_function()` first, right?
 
@@ -3189,15 +3314,11 @@ functions do not work under 8.0. Don't even use them there.
 
 To Do
 -----
-
 * Useful schema testing functions to consider adding:
-  * `function_is_agg()`
-  * `function_is_strict()`
-  * `function_is_volatile()`
-  * `sequence_has_range()`
-  * `sequence_increments_by()`
-  * `sequence_starts_at()`
-  * `sequence_cycles()`
+* `sequence_has_range()`
+* `sequence_increments_by()`
+* `sequence_starts_at()`
+* `sequence_cycles()`
 
 Supported Versions
 -----------------

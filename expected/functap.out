@@ -1,5 +1,5 @@
 \unset ECHO
-1..336
+1..508
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -282,57 +282,229 @@ ok 279 - function_returns(func, setof bool, desc) should have the proper diagnos
 ok 280 - function_returns(func, setof bool) should pass
 ok 281 - function_returns(func, setof bool) should have the proper description
 ok 282 - function_returns(func, setof bool) should have the proper diagnostics
-ok 283 - function_is_definer(schema, func, 0 args, desc) should pass
-ok 284 - function_is_definer(schema, func, 0 args, desc) should have the proper description
-ok 285 - function_is_definer(schema, func, 0 args, desc) should have the proper diagnostics
-ok 286 - function_is_definer(schema, func, 0 args) should pass
-ok 287 - function_is_definer(schema, func, 0 args) should have the proper description
-ok 288 - function_is_definer(schema, func, 0 args) should have the proper diagnostics
-ok 289 - function_is_definer(schema, func, args, desc) should fail
-ok 290 - function_is_definer(schema, func, args, desc) should have the proper description
-ok 291 - function_is_definer(schema, func, args, desc) should have the proper diagnostics
-ok 292 - function_is_definer(schema, func, args) should fail
-ok 293 - function_is_definer(schema, func, args) should have the proper description
-ok 294 - function_is_definer(schema, func, args) should have the proper diagnostics
-ok 295 - function_is_definer(schema, func, desc) should pass
-ok 296 - function_is_definer(schema, func, desc) should have the proper description
-ok 297 - function_is_definer(schema, func, desc) should have the proper diagnostics
-ok 298 - function_is_definer(schema, func) should pass
-ok 299 - function_is_definer(schema, func) should have the proper description
-ok 300 - function_is_definer(schema, func) should have the proper diagnostics
-ok 301 - function_is_definer(schema, func, 0 args, desc) should pass
-ok 302 - function_is_definer(schema, func, 0 args, desc) should have the proper description
-ok 303 - function_is_definer(schema, func, 0 args, desc) should have the proper diagnostics
-ok 304 - function_is_definer(schema, func, 0 args) should pass
-ok 305 - function_is_definer(schema, func, 0 args) should have the proper description
-ok 306 - function_is_definer(schema, func, 0 args) should have the proper diagnostics
-ok 307 - function_is_definer(schema, func, args, desc) should fail
-ok 308 - function_is_definer(schema, func, args, desc) should have the proper description
-ok 309 - function_is_definer(schema, func, args, desc) should have the proper diagnostics
-ok 310 - function_is_definer(schema, func, args) should fail
-ok 311 - function_is_definer(schema, func, args) should have the proper description
-ok 312 - function_is_definer(schema, func, args) should have the proper diagnostics
-ok 313 - function_is_definer(schema, func, desc) should pass
-ok 314 - function_is_definer(schema, func, desc) should have the proper description
-ok 315 - function_is_definer(schema, func, desc) should have the proper diagnostics
-ok 316 - function_is_definer(schema, func) should pass
-ok 317 - function_is_definer(schema, func) should have the proper description
-ok 318 - function_is_definer(schema, func) should have the proper diagnostics
-ok 319 - function_is_definer(func, 0 args, desc) should pass
-ok 320 - function_is_definer(func, 0 args, desc) should have the proper description
-ok 321 - function_is_definer(func, 0 args, desc) should have the proper diagnostics
-ok 322 - function_is_definer(func, 0 args) should pass
-ok 323 - function_is_definer(func, 0 args) should have the proper description
-ok 324 - function_is_definer(func, 0 args) should have the proper diagnostics
-ok 325 - function_is_definer(func, args, desc) should fail
-ok 326 - function_is_definer(func, args, desc) should have the proper description
-ok 327 - function_is_definer(func, args, desc) should have the proper diagnostics
-ok 328 - function_is_definer(func, args) should fail
-ok 329 - function_is_definer(func, args) should have the proper description
-ok 330 - function_is_definer(func, args) should have the proper diagnostics
-ok 331 - function_is_definer(func, desc) should pass
-ok 332 - function_is_definer(func, desc) should have the proper description
-ok 333 - function_is_definer(func, desc) should have the proper diagnostics
-ok 334 - function_is_definer(func) should pass
-ok 335 - function_is_definer(func) should have the proper description
-ok 336 - function_is_definer(func) should have the proper diagnostics
+ok 283 - is_definer(schema, func, 0 args, desc) should pass
+ok 284 - is_definer(schema, func, 0 args, desc) should have the proper description
+ok 285 - is_definer(schema, func, 0 args, desc) should have the proper diagnostics
+ok 286 - is_definer(schema, func, 0 args) should pass
+ok 287 - is_definer(schema, func, 0 args) should have the proper description
+ok 288 - is_definer(schema, func, 0 args) should have the proper diagnostics
+ok 289 - is_definer(schema, func, args, desc) should fail
+ok 290 - is_definer(schema, func, args, desc) should have the proper description
+ok 291 - is_definer(schema, func, args, desc) should have the proper diagnostics
+ok 292 - is_definer(schema, func, args) should fail
+ok 293 - is_definer(schema, func, args) should have the proper description
+ok 294 - is_definer(schema, func, args) should have the proper diagnostics
+ok 295 - is_definer(schema, func, desc) should pass
+ok 296 - is_definer(schema, func, desc) should have the proper description
+ok 297 - is_definer(schema, func, desc) should have the proper diagnostics
+ok 298 - is_definer(schema, func) should pass
+ok 299 - is_definer(schema, func) should have the proper description
+ok 300 - is_definer(schema, func) should have the proper diagnostics
+ok 301 - is_definer(schema, func, 0 args, desc) should pass
+ok 302 - is_definer(schema, func, 0 args, desc) should have the proper description
+ok 303 - is_definer(schema, func, 0 args, desc) should have the proper diagnostics
+ok 304 - is_definer(schema, func, 0 args) should pass
+ok 305 - is_definer(schema, func, 0 args) should have the proper description
+ok 306 - is_definer(schema, func, 0 args) should have the proper diagnostics
+ok 307 - is_definer(schema, func, args, desc) should fail
+ok 308 - is_definer(schema, func, args, desc) should have the proper description
+ok 309 - is_definer(schema, func, args, desc) should have the proper diagnostics
+ok 310 - is_definer(schema, func, args) should fail
+ok 311 - is_definer(schema, func, args) should have the proper description
+ok 312 - is_definer(schema, func, args) should have the proper diagnostics
+ok 313 - is_definer(schema, func, desc) should pass
+ok 314 - is_definer(schema, func, desc) should have the proper description
+ok 315 - is_definer(schema, func, desc) should have the proper diagnostics
+ok 316 - is_definer(schema, func) should pass
+ok 317 - is_definer(schema, func) should have the proper description
+ok 318 - is_definer(schema, func) should have the proper diagnostics
+ok 319 - is_definer(func, 0 args, desc) should pass
+ok 320 - is_definer(func, 0 args, desc) should have the proper description
+ok 321 - is_definer(func, 0 args, desc) should have the proper diagnostics
+ok 322 - is_definer(func, 0 args) should pass
+ok 323 - is_definer(func, 0 args) should have the proper description
+ok 324 - is_definer(func, 0 args) should have the proper diagnostics
+ok 325 - is_definer(func, args, desc) should fail
+ok 326 - is_definer(func, args, desc) should have the proper description
+ok 327 - is_definer(func, args, desc) should have the proper diagnostics
+ok 328 - is_definer(func, args) should fail
+ok 329 - is_definer(func, args) should have the proper description
+ok 330 - is_definer(func, args) should have the proper diagnostics
+ok 331 - is_definer(func, desc) should pass
+ok 332 - is_definer(func, desc) should have the proper description
+ok 333 - is_definer(func, desc) should have the proper diagnostics
+ok 334 - is_definer(func) should pass
+ok 335 - is_definer(func) should have the proper description
+ok 336 - is_definer(func) should have the proper diagnostics
+ok 337 - is_aggregate(schema, func, arg, desc) should pass
+ok 338 - is_aggregate(schema, func, arg, desc) should have the proper description
+ok 339 - is_aggregate(schema, func, arg, desc) should have the proper diagnostics
+ok 340 - is_aggregate(schema, func, arg) should pass
+ok 341 - is_aggregate(schema, func, arg) should have the proper description
+ok 342 - is_aggregate(schema, func, arg) should have the proper diagnostics
+ok 343 - is_aggregate(schema, func, args, desc) should fail
+ok 344 - is_aggregate(schema, func, args, desc) should have the proper description
+ok 345 - is_aggregate(schema, func, args, desc) should have the proper diagnostics
+ok 346 - is_aggregate(schema, func, args) should fail
+ok 347 - is_aggregate(schema, func, args) should have the proper description
+ok 348 - is_aggregate(schema, func, args) should have the proper diagnostics
+ok 349 - is_aggregate(schema, func, desc) should pass
+ok 350 - is_aggregate(schema, func, desc) should have the proper description
+ok 351 - is_aggregate(schema, func, desc) should have the proper diagnostics
+ok 352 - is_aggregate(schema, func) should pass
+ok 353 - is_aggregate(schema, func) should have the proper description
+ok 354 - is_aggregate(schema, func) should have the proper diagnostics
+ok 355 - is_aggregate(schema, func, arg, desc) should pass
+ok 356 - is_aggregate(schema, func, arg, desc) should have the proper description
+ok 357 - is_aggregate(schema, func, arg, desc) should have the proper diagnostics
+ok 358 - is_aggregate(schema, func, arg) should pass
+ok 359 - is_aggregate(schema, func, arg) should have the proper description
+ok 360 - is_aggregate(schema, func, arg) should have the proper diagnostics
+ok 361 - is_aggregate(schema, func, args, desc) should fail
+ok 362 - is_aggregate(schema, func, args, desc) should have the proper description
+ok 363 - is_aggregate(schema, func, args, desc) should have the proper diagnostics
+ok 364 - is_aggregate(schema, func, args) should fail
+ok 365 - is_aggregate(schema, func, args) should have the proper description
+ok 366 - is_aggregate(schema, func, args) should have the proper diagnostics
+ok 367 - is_aggregate(schema, func, desc) should pass
+ok 368 - is_aggregate(schema, func, desc) should have the proper description
+ok 369 - is_aggregate(schema, func, desc) should have the proper diagnostics
+ok 370 - is_aggregate(schema, func) should pass
+ok 371 - is_aggregate(schema, func) should have the proper description
+ok 372 - is_aggregate(schema, func) should have the proper diagnostics
+ok 373 - is_aggregate(func, arg, desc) should pass
+ok 374 - is_aggregate(func, arg, desc) should have the proper description
+ok 375 - is_aggregate(func, arg, desc) should have the proper diagnostics
+ok 376 - is_aggregate(func, arg) should pass
+ok 377 - is_aggregate(func, arg) should have the proper description
+ok 378 - is_aggregate(func, arg) should have the proper diagnostics
+ok 379 - is_aggregate(func, args, desc) should fail
+ok 380 - is_aggregate(func, args, desc) should have the proper description
+ok 381 - is_aggregate(func, args, desc) should have the proper diagnostics
+ok 382 - is_aggregate(func, args) should fail
+ok 383 - is_aggregate(func, args) should have the proper description
+ok 384 - is_aggregate(func, args) should have the proper diagnostics
+ok 385 - is_aggregate(func, desc) should pass
+ok 386 - is_aggregate(func, desc) should have the proper description
+ok 387 - is_aggregate(func, desc) should have the proper diagnostics
+ok 388 - is_aggregate(func) should pass
+ok 389 - is_aggregate(func) should have the proper description
+ok 390 - is_aggregate(func) should have the proper diagnostics
+ok 391 - is_strict(schema, func, 0 args, desc) should pass
+ok 392 - is_strict(schema, func, 0 args, desc) should have the proper description
+ok 393 - is_strict(schema, func, 0 args, desc) should have the proper diagnostics
+ok 394 - is_strict(schema, func, 0 args) should pass
+ok 395 - is_strict(schema, func, 0 args) should have the proper description
+ok 396 - is_strict(schema, func, 0 args) should have the proper diagnostics
+ok 397 - is_strict(schema, func, args, desc) should fail
+ok 398 - is_strict(schema, func, args, desc) should have the proper description
+ok 399 - is_strict(schema, func, args, desc) should have the proper diagnostics
+ok 400 - is_strict(schema, func, args) should fail
+ok 401 - is_strict(schema, func, args) should have the proper description
+ok 402 - is_strict(schema, func, args) should have the proper diagnostics
+ok 403 - is_strict(schema, func, desc) should pass
+ok 404 - is_strict(schema, func, desc) should have the proper description
+ok 405 - is_strict(schema, func, desc) should have the proper diagnostics
+ok 406 - is_strict(schema, func) should pass
+ok 407 - is_strict(schema, func) should have the proper description
+ok 408 - is_strict(schema, func) should have the proper diagnostics
+ok 409 - is_strict(schema, func, 0 args, desc) should pass
+ok 410 - is_strict(schema, func, 0 args, desc) should have the proper description
+ok 411 - is_strict(schema, func, 0 args, desc) should have the proper diagnostics
+ok 412 - is_strict(schema, func, 0 args) should pass
+ok 413 - is_strict(schema, func, 0 args) should have the proper description
+ok 414 - is_strict(schema, func, 0 args) should have the proper diagnostics
+ok 415 - is_strict(schema, func, args, desc) should fail
+ok 416 - is_strict(schema, func, args, desc) should have the proper description
+ok 417 - is_strict(schema, func, args, desc) should have the proper diagnostics
+ok 418 - is_strict(schema, func, args) should fail
+ok 419 - is_strict(schema, func, args) should have the proper description
+ok 420 - is_strict(schema, func, args) should have the proper diagnostics
+ok 421 - is_strict(schema, func, desc) should pass
+ok 422 - is_strict(schema, func, desc) should have the proper description
+ok 423 - is_strict(schema, func, desc) should have the proper diagnostics
+ok 424 - is_strict(schema, func) should pass
+ok 425 - is_strict(schema, func) should have the proper description
+ok 426 - is_strict(schema, func) should have the proper diagnostics
+ok 427 - is_strict(func, 0 args, desc) should pass
+ok 428 - is_strict(func, 0 args, desc) should have the proper description
+ok 429 - is_strict(func, 0 args, desc) should have the proper diagnostics
+ok 430 - is_strict(func, 0 args) should pass
+ok 431 - is_strict(func, 0 args) should have the proper description
+ok 432 - is_strict(func, 0 args) should have the proper diagnostics
+ok 433 - is_strict(func, args, desc) should fail
+ok 434 - is_strict(func, args, desc) should have the proper description
+ok 435 - is_strict(func, args, desc) should have the proper diagnostics
+ok 436 - is_strict(func, args) should fail
+ok 437 - is_strict(func, args) should have the proper description
+ok 438 - is_strict(func, args) should have the proper diagnostics
+ok 439 - is_strict(func, desc) should pass
+ok 440 - is_strict(func, desc) should have the proper description
+ok 441 - is_strict(func, desc) should have the proper diagnostics
+ok 442 - is_strict(func) should pass
+ok 443 - is_strict(func) should have the proper description
+ok 444 - is_strict(func) should have the proper diagnostics
+ok 445 - function_volatility(schema, func, 0 args, volatile, desc) should pass
+ok 446 - function_volatility(schema, func, 0 args, volatile, desc) should have the proper description
+ok 447 - function_volatility(schema, func, 0 args, volatile, desc) should have the proper diagnostics
+ok 448 - function_volatility(schema, func, 0 args, VOLATILE, desc) should pass
+ok 449 - function_volatility(schema, func, 0 args, VOLATILE, desc) should have the proper description
+ok 450 - function_volatility(schema, func, 0 args, VOLATILE, desc) should have the proper diagnostics
+ok 451 - function_volatility(schema, func, 0 args, v, desc) should pass
+ok 452 - function_volatility(schema, func, 0 args, v, desc) should have the proper description
+ok 453 - function_volatility(schema, func, 0 args, v, desc) should have the proper diagnostics
+ok 454 - function_volatility(schema, func, args, immutable, desc) should pass
+ok 455 - function_volatility(schema, func, args, immutable, desc) should have the proper description
+ok 456 - function_volatility(schema, func, args, immutable, desc) should have the proper diagnostics
+ok 457 - function_volatility(schema, func, 0 args, stable, desc) should pass
+ok 458 - function_volatility(schema, func, 0 args, stable, desc) should have the proper description
+ok 459 - function_volatility(schema, func, 0 args, stable, desc) should have the proper diagnostics
+ok 460 - function_volatility(schema, func, 0 args, volatile) should pass
+ok 461 - function_volatility(schema, func, 0 args, volatile) should have the proper description
+ok 462 - function_volatility(schema, func, 0 args, volatile) should have the proper diagnostics
+ok 463 - function_volatility(schema, func, args, immutable) should pass
+ok 464 - function_volatility(schema, func, args, immutable) should have the proper description
+ok 465 - function_volatility(schema, func, volatile, desc) should pass
+ok 466 - function_volatility(schema, func, volatile, desc) should have the proper description
+ok 467 - function_volatility(schema, func, volatile, desc) should have the proper diagnostics
+ok 468 - function_volatility(schema, func, volatile) should pass
+ok 469 - function_volatility(schema, func, volatile) should have the proper description
+ok 470 - function_volatility(schema, func, volatile) should have the proper diagnostics
+ok 471 - function_volatility(schema, func, immutable, desc) should pass
+ok 472 - function_volatility(schema, func, immutable, desc) should have the proper description
+ok 473 - function_volatility(schema, func, immutable, desc) should have the proper diagnostics
+ok 474 - function_volatility(schema, func, stable, desc) should pass
+ok 475 - function_volatility(schema, func, stable, desc) should have the proper description
+ok 476 - function_volatility(schema, func, stable, desc) should have the proper diagnostics
+ok 477 - function_volatility(func, 0 args, volatile, desc) should pass
+ok 478 - function_volatility(func, 0 args, volatile, desc) should have the proper description
+ok 479 - function_volatility(func, 0 args, volatile, desc) should have the proper diagnostics
+ok 480 - function_volatility(func, 0 args, VOLATILE, desc) should pass
+ok 481 - function_volatility(func, 0 args, VOLATILE, desc) should have the proper description
+ok 482 - function_volatility(func, 0 args, VOLATILE, desc) should have the proper diagnostics
+ok 483 - function_volatility(func, 0 args, v, desc) should pass
+ok 484 - function_volatility(func, 0 args, v, desc) should have the proper description
+ok 485 - function_volatility(func, 0 args, v, desc) should have the proper diagnostics
+ok 486 - function_volatility(func, args, immutable, desc) should pass
+ok 487 - function_volatility(func, args, immutable, desc) should have the proper description
+ok 488 - function_volatility(func, args, immutable, desc) should have the proper diagnostics
+ok 489 - function_volatility(func, 0 args, stable, desc) should pass
+ok 490 - function_volatility(func, 0 args, stable, desc) should have the proper description
+ok 491 - function_volatility(func, 0 args, stable, desc) should have the proper diagnostics
+ok 492 - function_volatility(func, 0 args, volatile) should pass
+ok 493 - function_volatility(func, 0 args, volatile) should have the proper description
+ok 494 - function_volatility(func, 0 args, volatile) should have the proper diagnostics
+ok 495 - function_volatility(func, args, immutable) should pass
+ok 496 - function_volatility(func, args, immutable) should have the proper description
+ok 497 - function_volatility(func, volatile, desc) should pass
+ok 498 - function_volatility(func, volatile, desc) should have the proper description
+ok 499 - function_volatility(func, volatile, desc) should have the proper diagnostics
+ok 500 - function_volatility(func, volatile) should pass
+ok 501 - function_volatility(func, volatile) should have the proper description
+ok 502 - function_volatility(func, volatile) should have the proper diagnostics
+ok 503 - function_volatility(func, immutable, desc) should pass
+ok 504 - function_volatility(func, immutable, desc) should have the proper description
+ok 505 - function_volatility(func, immutable, desc) should have the proper diagnostics
+ok 506 - function_volatility(func, stable, desc) should pass
+ok 507 - function_volatility(func, stable, desc) should have the proper description
+ok 508 - function_volatility(func, stable, desc) should have the proper diagnostics

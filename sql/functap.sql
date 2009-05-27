@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(336);
+SELECT plan(508);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -9,11 +9,18 @@ CREATE FUNCTION someschema.huh () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
 CREATE FUNCTION someschema.bah (int, text) RETURNS BOOL
 AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
 
-CREATE FUNCTION public.yay () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL SECURITY DEFINER;
+CREATE FUNCTION public.yay () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL STRICT SECURITY DEFINER VOLATILE;
 CREATE FUNCTION public.oww (int, text) RETURNS BOOL
-AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
+AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql IMMUTABLE;
 CREATE FUNCTION public.set () RETURNS SETOF BOOL
-AS 'BEGIN RETURN NEXT TRUE; RETURN; END;' LANGUAGE plpgsql;
+AS 'BEGIN RETURN NEXT TRUE; RETURN; END;' LANGUAGE plpgsql STABLE;
+
+CREATE AGGREGATE public.tap_accum (
+    sfunc    = array_append,
+    basetype = anyelement,
+    stype    = anyarray,
+    initcond = '{}'
+);
 
 -- XXX Delete when can_ok() is removed.
 SET client_min_messages = error;
@@ -802,148 +809,618 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test function_is_definer().
+-- Test is_definer().
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
+    is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
-    'function_is_definer(schema, func, 0 args, desc)',
+    'is_definer(schema, func, 0 args, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay', '{}'::name[] ),
+    is_definer( 'public', 'yay', '{}'::name[] ),
     true,
-    'function_is_definer(schema, func, 0 args)',
+    'is_definer(schema, func, 0 args)',
     'Function public.yay() should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
-    'function_is_definer(schema, func, args, desc)',
+    'is_definer(schema, func, args, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
     false,
-    'function_is_definer(schema, func, args)',
+    'is_definer(schema, func, args)',
     'Function public.oww(integer, text) should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay', 'whatever' ),
+    is_definer( 'public', 'yay', 'whatever' ),
     true,
-    'function_is_definer(schema, func, desc)',
+    'is_definer(schema, func, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay'::name ),
+    is_definer( 'public', 'yay'::name ),
     true,
-    'function_is_definer(schema, func)',
+    'is_definer(schema, func)',
     'Function public.yay() should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
+    is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
-    'function_is_definer(schema, func, 0 args, desc)',
+    'is_definer(schema, func, 0 args, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay', '{}'::name[] ),
+    is_definer( 'public', 'yay', '{}'::name[] ),
     true,
-    'function_is_definer(schema, func, 0 args)',
+    'is_definer(schema, func, 0 args)',
     'Function public.yay() should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
-    'function_is_definer(schema, func, args, desc)',
+    'is_definer(schema, func, args, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
     false,
-    'function_is_definer(schema, func, args)',
+    'is_definer(schema, func, args)',
     'Function public.oww(integer, text) should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay', 'whatever' ),
+    is_definer( 'public', 'yay', 'whatever' ),
     true,
-    'function_is_definer(schema, func, desc)',
+    'is_definer(schema, func, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'public', 'yay'::name ),
+    is_definer( 'public', 'yay'::name ),
     true,
-    'function_is_definer(schema, func)',
+    'is_definer(schema, func)',
     'Function public.yay() should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'yay', '{}'::name[], 'whatever' ),
+    is_definer( 'yay', '{}'::name[], 'whatever' ),
     true,
-    'function_is_definer(func, 0 args, desc)',
+    'is_definer(func, 0 args, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'yay', '{}'::name[] ),
+    is_definer( 'yay', '{}'::name[] ),
     true,
-    'function_is_definer(func, 0 args)',
+    'is_definer(func, 0 args)',
     'Function yay() should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    is_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
-    'function_is_definer(func, args, desc)',
+    'is_definer(func, args, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'oww', ARRAY['integer', 'text'] ),
+    is_definer( 'oww', ARRAY['integer', 'text'] ),
     false,
-    'function_is_definer(func, args)',
+    'is_definer(func, args)',
     'Function oww(integer, text) should be security definer',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'yay', 'whatever' ),
+    is_definer( 'yay', 'whatever' ),
     true,
-    'function_is_definer(func, desc)',
+    'is_definer(func, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    function_is_definer( 'yay'::name ),
+    is_definer( 'yay'::name ),
     true,
-    'function_is_definer(func)',
+    'is_definer(func)',
     'Function yay() should be security definer',
+    ''
+);
+
+/****************************************************************************/
+-- Test is_aggregate().
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    true,
+    'is_aggregate(schema, func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    true,
+    'is_aggregate(schema, func, arg)',
+    'Function public.tap_accum(anyelement) should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_aggregate(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_aggregate(schema, func, args)',
+    'Function public.oww(integer, text) should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum', 'whatever' ),
+    true,
+    'is_aggregate(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum'::name ),
+    true,
+    'is_aggregate(schema, func)',
+    'Function public.tap_accum() should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    true,
+    'is_aggregate(schema, func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum', ARRAY['anyelement'] ),
+    true,
+    'is_aggregate(schema, func, arg)',
+    'Function public.tap_accum(anyelement) should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_aggregate(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_aggregate(schema, func, args)',
+    'Function public.oww(integer, text) should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum', 'whatever' ),
+    true,
+    'is_aggregate(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'public', 'tap_accum'::name ),
+    true,
+    'is_aggregate(schema, func)',
+    'Function public.tap_accum() should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'tap_accum', ARRAY['anyelement'], 'whatever' ),
+    true,
+    'is_aggregate(func, arg, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'tap_accum', ARRAY['anyelement'] ),
+    true,
+    'is_aggregate(func, arg)',
+    'Function tap_accum(anyelement) should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_aggregate(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_aggregate(func, args)',
+    'Function oww(integer, text) should be an aggregate function',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'tap_accum', 'whatever' ),
+    true,
+    'is_aggregate(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_aggregate( 'tap_accum'::name ),
+    true,
+    'is_aggregate(func)',
+    'Function tap_accum() should be an aggregate function',
+    ''
+);
+
+/****************************************************************************/
+-- Test is_strict().
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'is_strict(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay', '{}'::name[] ),
+    true,
+    'is_strict(schema, func, 0 args)',
+    'Function public.yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_strict(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_strict(schema, func, args)',
+    'Function public.oww(integer, text) should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay', 'whatever' ),
+    true,
+    'is_strict(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay'::name ),
+    true,
+    'is_strict(schema, func)',
+    'Function public.yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'is_strict(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay', '{}'::name[] ),
+    true,
+    'is_strict(schema, func, 0 args)',
+    'Function public.yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_strict(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_strict(schema, func, args)',
+    'Function public.oww(integer, text) should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay', 'whatever' ),
+    true,
+    'is_strict(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'public', 'yay'::name ),
+    true,
+    'is_strict(schema, func)',
+    'Function public.yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'is_strict(func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'yay', '{}'::name[] ),
+    true,
+    'is_strict(func, 0 args)',
+    'Function yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'is_strict(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'is_strict(func, args)',
+    'Function oww(integer, text) should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'yay', 'whatever' ),
+    true,
+    'is_strict(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_strict( 'yay'::name ),
+    true,
+    'is_strict(func)',
+    'Function yay() should be strict',
+    ''
+);
+
+/****************************************************************************/
+-- Test volatility_is().
+SELECT * FROM check_test(
+    volatility_is( 'public', 'yay', '{}'::name[], 'volatile', 'whatever' ),
+    true,
+    'function_volatility(schema, func, 0 args, volatile, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'yay', '{}'::name[], 'VOLATILE', 'whatever' ),
+    true,
+    'function_volatility(schema, func, 0 args, VOLATILE, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'yay', '{}'::name[], 'v', 'whatever' ),
+    true,
+    'function_volatility(schema, func, 0 args, v, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'oww', ARRAY['integer', 'text'], 'immutable', 'whatever' ),
+    true,
+    'function_volatility(schema, func, args, immutable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'set', '{}'::name[], 'stable', 'whatever' ),
+    true,
+    'function_volatility(schema, func, 0 args, stable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'yay', '{}'::name[], 'volatile' ),
+    true,
+    'function_volatility(schema, func, 0 args, volatile)',
+    'Function public.yay() should be VOLATILE',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'oww', ARRAY['integer', 'text'], 'immutable' ),
+    true,
+    'function_volatility(schema, func, args, immutable)',
+    'Function public.oww(integer, text) should be IMMUTABLE'
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'yay', 'volatile', 'whatever' ),
+    true,
+    'function_volatility(schema, func, volatile, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'yay'::name, 'volatile' ),
+    true,
+    'function_volatility(schema, func, volatile)',
+    'Function public.yay() should be VOLATILE',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'oww', 'immutable', 'whatever' ),
+    true,
+    'function_volatility(schema, func, immutable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'public', 'set', 'stable', 'whatever' ),
+    true,
+    'function_volatility(schema, func, stable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'yay', '{}'::name[], 'volatile', 'whatever' ),
+    true,
+    'function_volatility(func, 0 args, volatile, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'yay', '{}'::name[], 'VOLATILE', 'whatever' ),
+    true,
+    'function_volatility(func, 0 args, VOLATILE, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'yay', '{}'::name[], 'v', 'whatever' ),
+    true,
+    'function_volatility(func, 0 args, v, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'oww', ARRAY['integer', 'text'], 'immutable', 'whatever' ),
+    true,
+    'function_volatility(func, args, immutable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'set', '{}'::name[], 'stable', 'whatever' ),
+    true,
+    'function_volatility(func, 0 args, stable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'yay', '{}'::name[], 'volatile' ),
+    true,
+    'function_volatility(func, 0 args, volatile)',
+    'Function yay() should be VOLATILE',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'oww', ARRAY['integer', 'text'], 'immutable' ),
+    true,
+    'function_volatility(func, args, immutable)',
+    'Function oww(integer, text) should be IMMUTABLE'
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'yay', 'volatile', 'whatever' ),
+    true,
+    'function_volatility(func, volatile, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'yay'::name, 'volatile' ),
+    true,
+    'function_volatility(func, volatile)',
+    'Function yay() should be VOLATILE',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'oww', 'immutable', 'whatever' ),
+    true,
+    'function_volatility(func, immutable, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    volatility_is( 'set', 'stable', 'whatever' ),
+    true,
+    'function_volatility(func, stable, desc)',
+    'whatever',
     ''
 );
 

@@ -2022,7 +2022,7 @@ CREATE OR REPLACE VIEW tap_funky AS
            p.proisagg    AS is_agg,
            p.prosecdef   AS is_definer,
            p.proretset   AS returns_set,
-           p.provolatile AS is_volatile,
+           p.provolatile::char AS volatility,
            pg_catalog.pg_function_is_visible(p.oid) AS is_visible
       FROM pg_catalog.pg_proc p
       JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
@@ -3674,7 +3674,7 @@ RETURNS text AS $$
           WHEN 'a' THEN 'assignment'
           WHEN 'e' THEN 'explicit'
           ELSE          'unknown' END
-$$ LANGUAGE SQL;
+$$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION _get_context( NAME, NAME )
 RETURNS "char" AS $$
@@ -4741,7 +4741,7 @@ RETURNS text AS $$
           WHEN '3' THEN 'INSERT'
           WHEN '4' THEN 'DELETE'
           ELSE          'UNKNOWN' END
-$$ LANGUAGE SQL;
+$$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION _contract_on( TEXT )
 RETURNS "char" AS $$
@@ -4751,7 +4751,7 @@ RETURNS "char" AS $$
           WHEN 'i' THEN '3'::"char"
           WHEN 'd' THEN '4'::"char"
           ELSE          '0'::"char" END
-$$ LANGUAGE SQL;
+$$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION _rule_on( NAME, NAME, NAME )
 RETURNS "char" AS $$
@@ -4829,44 +4829,6 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _lang ( NAME, NAME, NAME[] )
-RETURNS NAME AS $$
-    SELECT l.lanname
-      FROM tap_funky f
-      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
-     WHERE f.schema = $1
-       and f.name   = $2
-       AND f.args   = array_to_string($3, ',')
-$$ LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION _lang ( NAME, NAME )
-RETURNS NAME AS $$
-    SELECT l.lanname
-      FROM tap_funky f
-      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
-     WHERE f.schema = $1
-       and f.name   = $2
-$$ LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION _lang ( NAME, NAME[] )
-RETURNS NAME AS $$
-    SELECT l.lanname
-      FROM tap_funky f
-      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
-     WHERE f.name = $1
-       AND f.args = array_to_string($2, ',')
-       AND f.is_visible;
-$$ LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION _lang ( NAME )
-RETURNS NAME AS $$
-    SELECT l.lanname
-      FROM tap_funky f
-      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
-     WHERE f.name = $1
-       AND f.is_visible;
-$$ LANGUAGE SQL;
-
 CREATE OR REPLACE FUNCTION _func_compare( NAME, NAME, NAME[], anyelement, anyelement, TEXT)
 RETURNS TEXT AS $$
 DECLARE
@@ -4916,6 +4878,44 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM tap_funky f
+      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
+     WHERE f.schema = $1
+       and f.name   = $2
+       AND f.args   = array_to_string($3, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM tap_funky f
+      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
+     WHERE f.schema = $1
+       and f.name   = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM tap_funky f
+      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
+     WHERE f.name = $1
+       AND f.args = array_to_string($2, ',')
+       AND f.is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _lang ( NAME )
+RETURNS NAME AS $$
+    SELECT l.lanname
+      FROM tap_funky f
+      JOIN pg_catalog.pg_language l ON f.langoid = l.oid
+     WHERE f.name = $1
+       AND f.is_visible;
+$$ LANGUAGE SQL;
 
 -- function_lang_is( schema, function, args[], language, description )
 CREATE OR REPLACE FUNCTION function_lang_is( NAME, NAME, NAME[], NAME, TEXT )
@@ -5100,14 +5100,14 @@ RETURNS BOOLEAN AS $$
     SELECT is_definer FROM tap_funky WHERE name = $1 AND is_visible;
 $$ LANGUAGE SQL;
 
--- function_is_definer( schema, function, args[], description )
-CREATE OR REPLACE FUNCTION function_is_definer ( NAME, NAME, NAME[], TEXT )
+-- is_definer( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_definer ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT _func_compare($1, $2, $3, _definer($1, $2, $3), NULL, $4 );
 $$ LANGUAGE SQL;
 
--- function_is_definer( schema, function, args[] )
-CREATE OR REPLACE FUNCTION function_is_definer( NAME, NAME, NAME[] )
+-- is_definer( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_definer( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT ok(
         _definer($1, $2, $3),
@@ -5116,14 +5116,14 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- function_is_definer( schema, function, description )
-CREATE OR REPLACE FUNCTION function_is_definer ( NAME, NAME, TEXT )
+-- is_definer( schema, function, description )
+CREATE OR REPLACE FUNCTION is_definer ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT _func_compare($1, $2, _definer($1, $2), NULL, $3 );
 $$ LANGUAGE SQL;
 
--- function_is_definer( schema, function )
-CREATE OR REPLACE FUNCTION function_is_definer( NAME, NAME )
+-- is_definer( schema, function )
+CREATE OR REPLACE FUNCTION is_definer( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
         _definer($1, $2),
@@ -5131,14 +5131,14 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- function_is_definer( function, args[], description )
-CREATE OR REPLACE FUNCTION function_is_definer ( NAME, NAME[], TEXT )
+-- is_definer( function, args[], description )
+CREATE OR REPLACE FUNCTION is_definer ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
     SELECT _func_compare(NULL, $1, $2, _definer($1, $2), NULL, $3 );
 $$ LANGUAGE SQL;
 
--- function_is_definer( function, args[] )
-CREATE OR REPLACE FUNCTION function_is_definer( NAME, NAME[] )
+-- is_definer( function, args[] )
+CREATE OR REPLACE FUNCTION is_definer( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT ok(
         _definer($1, $2),
@@ -5147,17 +5147,298 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
--- function_is_definer( function, description )
-CREATE OR REPLACE FUNCTION function_is_definer( NAME, TEXT )
+-- is_definer( function, description )
+CREATE OR REPLACE FUNCTION is_definer( NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT _func_compare(NULL, $1, _definer($1), NULL, $2 );
 $$ LANGUAGE sql;
 
--- function_is_definer( function )
-CREATE OR REPLACE FUNCTION function_is_definer( NAME )
+-- is_definer( function )
+CREATE OR REPLACE FUNCTION is_definer( NAME )
 RETURNS TEXT AS $$
     SELECT ok( _definer($1), 'Function ' || quote_ident($1) || '() should be security definer' );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_agg
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = array_to_string($3, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT is_agg FROM tap_funky WHERE schema = $1 AND name = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_agg
+      FROM tap_funky
+     WHERE name = $1
+       AND args = array_to_string($2, ',')
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _agg ( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT is_agg FROM tap_funky WHERE name = $1 AND is_visible;
+$$ LANGUAGE SQL;
+
+-- is_aggregate( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _agg($1, $2, $3), NULL, $4 );
+$$ LANGUAGE SQL;
+
+-- is_aggregate( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _agg($1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- is_aggregate( schema, function, description )
+CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _agg($1, $2), NULL, $3 );
+$$ LANGUAGE SQL;
+
+-- is_aggregate( schema, function )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _agg($1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- is_aggregate( function, args[], description )
+CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _agg($1, $2), NULL, $3 );
+$$ LANGUAGE SQL;
+
+-- is_aggregate( function, args[] )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _agg($1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be an aggregate function'
+    );
+$$ LANGUAGE sql;
+
+-- is_aggregate( function, description )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _agg($1), NULL, $2 );
+$$ LANGUAGE sql;
+
+-- is_aggregate( function )
+CREATE OR REPLACE FUNCTION is_aggregate( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _agg($1), 'Function ' || quote_ident($1) || '() should be an aggregate function' );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _strict ( NAME, NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_strict
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = array_to_string($3, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _strict ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT is_strict FROM tap_funky WHERE schema = $1 AND name = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _strict ( NAME, NAME[] )
+RETURNS BOOLEAN AS $$
+    SELECT is_strict
+      FROM tap_funky
+     WHERE name = $1
+       AND args = array_to_string($2, ',')
+       AND is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _strict ( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT is_strict FROM tap_funky WHERE name = $1 AND is_visible;
+$$ LANGUAGE SQL;
+
+-- is_strict( schema, function, args[], description )
+CREATE OR REPLACE FUNCTION is_strict ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _strict($1, $2, $3), NULL, $4 );
+$$ LANGUAGE SQL;
+
+-- is_strict( schema, function, args[] )
+CREATE OR REPLACE FUNCTION is_strict( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _strict($1, $2, $3),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be strict'
+    );
+$$ LANGUAGE sql;
+
+-- is_strict( schema, function, description )
+CREATE OR REPLACE FUNCTION is_strict ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _strict($1, $2), NULL, $3 );
+$$ LANGUAGE SQL;
+
+-- is_strict( schema, function )
+CREATE OR REPLACE FUNCTION is_strict( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _strict($1, $2),
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '() should be strict'
+    );
+$$ LANGUAGE sql;
+
+-- is_strict( function, args[], description )
+CREATE OR REPLACE FUNCTION is_strict ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _strict($1, $2), NULL, $3 );
+$$ LANGUAGE SQL;
+
+-- is_strict( function, args[] )
+CREATE OR REPLACE FUNCTION is_strict( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _strict($1, $2),
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be strict'
+    );
+$$ LANGUAGE sql;
+
+-- is_strict( function, description )
+CREATE OR REPLACE FUNCTION is_strict( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _strict($1), NULL, $2 );
+$$ LANGUAGE sql;
+
+-- is_strict( function )
+CREATE OR REPLACE FUNCTION is_strict( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _strict($1), 'Function ' || quote_ident($1) || '() should be strict' );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _expand_vol( char )
+RETURNS TEXT AS $$
+   SELECT CASE $1
+          WHEN 'i' THEN 'IMMUTABLE'
+          WHEN 's' THEN 'STABLE'
+          WHEN 'v' THEN 'VOLATILE'
+          ELSE          'UNKNOWN' END
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION _refine_vol( text )
+RETURNS text AS $$
+    SELECT _expand_vol(substring(LOWER($1) FROM 1 FOR 1)::char);
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION _vol ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _expand_vol(volatility)
+      FROM tap_funky f
+     WHERE f.schema = $1
+       and f.name   = $2
+       AND f.args   = array_to_string($3, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _vol ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT _expand_vol(volatility) FROM tap_funky f
+     WHERE f.schema = $1 and f.name = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _vol ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _expand_vol(volatility)
+      FROM tap_funky f
+     WHERE f.name = $1
+       AND f.args = array_to_string($2, ',')
+       AND f.is_visible;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _vol ( NAME )
+RETURNS TEXT AS $$
+    SELECT _expand_vol(volatility) FROM tap_funky f
+     WHERE f.name = $1 AND f.is_visible;
+$$ LANGUAGE SQL;
+
+-- volatility_is( schema, function, args[], volatility, description )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, NAME, NAME[], TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, $3, _vol($1, $2, $3), _refine_vol($4), $5 );
+$$ LANGUAGE SQL;
+
+-- volatility_is( schema, function, args[], volatility )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT volatility_is(
+        $1, $2, $3, $4,
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be ' || _refine_vol($4)
+    );
+$$ LANGUAGE SQL;
+
+-- volatility_is( schema, function, volatility, description )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare($1, $2, _vol($1, $2), _refine_vol($3), $4 );
+$$ LANGUAGE SQL;
+
+-- volatility_is( schema, function, volatility )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT volatility_is(
+        $1, $2, $3,
+        'Function ' || quote_ident($1) || '.' || quote_ident($2)
+        || '() should be ' || _refine_vol($3)
+    );
+$$ LANGUAGE SQL;
+
+-- volatility_is( function, args[], volatility, description )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, NAME[], TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, $2, _vol($1, $2), _refine_vol($3), $4 );
+$$ LANGUAGE SQL;
+
+-- volatility_is( function, args[], volatility )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT volatility_is(
+        $1, $2, $3,
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be ' || _refine_vol($3)
+    );
+$$ LANGUAGE SQL;
+
+-- volatility_is( function, volatility, description )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _func_compare(NULL, $1, _vol($1), _refine_vol($2), $3 );
+$$ LANGUAGE SQL;
+
+-- volatility_is( function, volatility )
+CREATE OR REPLACE FUNCTION volatility_is( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT volatility_is(
+        $1, $2,
+        'Function ' || quote_ident($1) || '() should be ' || _refine_vol($2)
+    );
+$$ LANGUAGE SQL;
 
 -- check_test( test_output, pass, name, description, diag, match_diag )
 CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
