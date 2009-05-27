@@ -1312,69 +1312,69 @@ DETAIL:  Plunit.assertation (assert_fail).
 select plunit.fail('custom exception');
 ERROR:  custom exception
 DETAIL:  Plunit.assertation (assert_fail).
-select dump('Yellow dog'::text);
-                             dump                              
----------------------------------------------------------------
- Typ=25 Len=14: 56,0,0,0,89,101,108,108,111,119,32,100,111,103
+SELECT dump('Yellow dog'::text) ~ E'^Typ=25 Len=(\\d+): \\d+(,\\d+)*$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump('Yellow dog'::text, 10);
-                             dump                              
----------------------------------------------------------------
- Typ=25 Len=14: 56,0,0,0,89,101,108,108,111,119,32,100,111,103
+SELECT dump('Yellow dog'::text, 10) ~ E'^Typ=25 Len=(\\d+): \\d+(,\\d+)*$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump('Yellow dog'::text, 17);
-                    dump                    
---------------------------------------------
- Typ=25 Len=14: 8,?,?,?,Y,e,l,l,o,w, ,d,o,g
+SELECT dump('Yellow dog'::text, 17) ~ E'^Typ=25 Len=(\\d+): .(,.)*$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump(10::int2);
-        dump        
---------------------
- Typ=21 Len=2: 10,0
+SELECT dump(10::int2) ~ E'^Typ=21 Len=2: \\d+(,\\d+){1}$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump(10::int4);
-          dump          
-------------------------
- Typ=23 Len=4: 10,0,0,0
+SELECT dump(10::int4) ~ E'^Typ=23 Len=4: \\d+(,\\d+){3}$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump(10::int8);
-              dump              
---------------------------------
- Typ=20 Len=8: 10,0,0,0,0,0,0,0
+SELECT dump(10::int8) ~ E'^Typ=20 Len=8: \\d+(,\\d+){7}$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump(10.23::float4);
-            dump             
------------------------------
- Typ=700 Len=4: 20,174,35,65
+SELECT dump(10.23::float4) ~ E'^Typ=700 Len=4: \\d+(,\\d+){3}$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump(10.23::float8);
-                    dump                    
---------------------------------------------
- Typ=701 Len=8: 246,40,92,143,194,117,36,64
+SELECT dump(10.23::float8) ~ E'^Typ=701 Len=8: \\d+(,\\d+){7}$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump(10.23::numeric);
-                     dump                     
-----------------------------------------------
- Typ=1700 Len=12: 48,0,0,0,2,0,0,0,10,0,252,8
+SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump('2008-10-10'::date);
-            dump            
-----------------------------
- Typ=1082 Len=4: 133,12,0,0
+SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
+ t
+---
+ t
 (1 row)
 
-select dump('2008-10-10'::timestamp);
-                   dump                    
--------------------------------------------
- Typ=1114 Len=8: 0,224,100,153,217,251,0,0
+SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
+ t
+---
+ t
 (1 row)
 
