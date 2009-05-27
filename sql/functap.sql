@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(282);
+SELECT plan(336);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -9,7 +9,7 @@ CREATE FUNCTION someschema.huh () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
 CREATE FUNCTION someschema.bah (int, text) RETURNS BOOL
 AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
 
-CREATE FUNCTION public.yay () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL;
+CREATE FUNCTION public.yay () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL SECURITY DEFINER;
 CREATE FUNCTION public.oww (int, text) RETURNS BOOL
 AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
 CREATE FUNCTION public.set () RETURNS SETOF BOOL
@@ -798,6 +798,152 @@ SELECT * FROM check_test(
     true,
     'function_returns(func, setof bool)',
     'Function set() should return setof bool',
+    ''
+);
+
+/****************************************************************************/
+-- Test function_is_definer().
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'function_is_definer(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay', '{}'::name[] ),
+    true,
+    'function_is_definer(schema, func, 0 args)',
+    'Function public.yay() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'function_is_definer(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'function_is_definer(schema, func, args)',
+    'Function public.oww(integer, text) should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay', 'whatever' ),
+    true,
+    'function_is_definer(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay'::name ),
+    true,
+    'function_is_definer(schema, func)',
+    'Function public.yay() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'function_is_definer(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay', '{}'::name[] ),
+    true,
+    'function_is_definer(schema, func, 0 args)',
+    'Function public.yay() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'function_is_definer(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'function_is_definer(schema, func, args)',
+    'Function public.oww(integer, text) should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay', 'whatever' ),
+    true,
+    'function_is_definer(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'public', 'yay'::name ),
+    true,
+    'function_is_definer(schema, func)',
+    'Function public.yay() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'yay', '{}'::name[], 'whatever' ),
+    true,
+    'function_is_definer(func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'yay', '{}'::name[] ),
+    true,
+    'function_is_definer(func, 0 args)',
+    'Function yay() should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    false,
+    'function_is_definer(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'oww', ARRAY['integer', 'text'] ),
+    false,
+    'function_is_definer(func, args)',
+    'Function oww(integer, text) should be security definer',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'yay', 'whatever' ),
+    true,
+    'function_is_definer(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_is_definer( 'yay'::name ),
+    true,
+    'function_is_definer(func)',
+    'Function yay() should be security definer',
     ''
 );
 

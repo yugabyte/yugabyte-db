@@ -1,5 +1,5 @@
 \unset ECHO
-1..282
+1..336
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -282,3 +282,57 @@ ok 279 - function_returns(func, setof bool, desc) should have the proper diagnos
 ok 280 - function_returns(func, setof bool) should pass
 ok 281 - function_returns(func, setof bool) should have the proper description
 ok 282 - function_returns(func, setof bool) should have the proper diagnostics
+ok 283 - function_is_definer(schema, func, 0 args, desc) should pass
+ok 284 - function_is_definer(schema, func, 0 args, desc) should have the proper description
+ok 285 - function_is_definer(schema, func, 0 args, desc) should have the proper diagnostics
+ok 286 - function_is_definer(schema, func, 0 args) should pass
+ok 287 - function_is_definer(schema, func, 0 args) should have the proper description
+ok 288 - function_is_definer(schema, func, 0 args) should have the proper diagnostics
+ok 289 - function_is_definer(schema, func, args, desc) should fail
+ok 290 - function_is_definer(schema, func, args, desc) should have the proper description
+ok 291 - function_is_definer(schema, func, args, desc) should have the proper diagnostics
+ok 292 - function_is_definer(schema, func, args) should fail
+ok 293 - function_is_definer(schema, func, args) should have the proper description
+ok 294 - function_is_definer(schema, func, args) should have the proper diagnostics
+ok 295 - function_is_definer(schema, func, desc) should pass
+ok 296 - function_is_definer(schema, func, desc) should have the proper description
+ok 297 - function_is_definer(schema, func, desc) should have the proper diagnostics
+ok 298 - function_is_definer(schema, func) should pass
+ok 299 - function_is_definer(schema, func) should have the proper description
+ok 300 - function_is_definer(schema, func) should have the proper diagnostics
+ok 301 - function_is_definer(schema, func, 0 args, desc) should pass
+ok 302 - function_is_definer(schema, func, 0 args, desc) should have the proper description
+ok 303 - function_is_definer(schema, func, 0 args, desc) should have the proper diagnostics
+ok 304 - function_is_definer(schema, func, 0 args) should pass
+ok 305 - function_is_definer(schema, func, 0 args) should have the proper description
+ok 306 - function_is_definer(schema, func, 0 args) should have the proper diagnostics
+ok 307 - function_is_definer(schema, func, args, desc) should fail
+ok 308 - function_is_definer(schema, func, args, desc) should have the proper description
+ok 309 - function_is_definer(schema, func, args, desc) should have the proper diagnostics
+ok 310 - function_is_definer(schema, func, args) should fail
+ok 311 - function_is_definer(schema, func, args) should have the proper description
+ok 312 - function_is_definer(schema, func, args) should have the proper diagnostics
+ok 313 - function_is_definer(schema, func, desc) should pass
+ok 314 - function_is_definer(schema, func, desc) should have the proper description
+ok 315 - function_is_definer(schema, func, desc) should have the proper diagnostics
+ok 316 - function_is_definer(schema, func) should pass
+ok 317 - function_is_definer(schema, func) should have the proper description
+ok 318 - function_is_definer(schema, func) should have the proper diagnostics
+ok 319 - function_is_definer(func, 0 args, desc) should pass
+ok 320 - function_is_definer(func, 0 args, desc) should have the proper description
+ok 321 - function_is_definer(func, 0 args, desc) should have the proper diagnostics
+ok 322 - function_is_definer(func, 0 args) should pass
+ok 323 - function_is_definer(func, 0 args) should have the proper description
+ok 324 - function_is_definer(func, 0 args) should have the proper diagnostics
+ok 325 - function_is_definer(func, args, desc) should fail
+ok 326 - function_is_definer(func, args, desc) should have the proper description
+ok 327 - function_is_definer(func, args, desc) should have the proper diagnostics
+ok 328 - function_is_definer(func, args) should fail
+ok 329 - function_is_definer(func, args) should have the proper description
+ok 330 - function_is_definer(func, args) should have the proper diagnostics
+ok 331 - function_is_definer(func, desc) should pass
+ok 332 - function_is_definer(func, desc) should have the proper description
+ok 333 - function_is_definer(func, desc) should have the proper diagnostics
+ok 334 - function_is_definer(func) should pass
+ok 335 - function_is_definer(func) should have the proper description
+ok 336 - function_is_definer(func) should have the proper diagnostics
