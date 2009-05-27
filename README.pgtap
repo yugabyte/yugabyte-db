@@ -2226,48 +2226,6 @@ type, like so:
     #         have: btree
     #         want: hash
 
-### `trigger_is( schema, table, trigger, schema, function, description )` ###
-### `trigger_is( schema, table, trigger, schema, function )` ###
-### `trigger_is( table, trigger, function, description )` ###
-### `trigger_is( table, trigger, function )` ###
-
-    SELECT trigger_is(
-        'myschema',
-        'sometable',
-        'sometrigger',
-        'myschema',
-        'somefunction',
-        'Trigger "sometrigger" should call somefunction()'
-    );
-
-Tests that the specified trigger calls the named function. If not, it outputs
-a useful diagnostic:
-
-    # Failed test 31: "Trigger set_users_pass should call hash_password()"
-    #         have: hash_pass
-    #         want: hash_password
-
-### `language_is_trusted( language, description )` ###
-### `language_is_trusted( language )` ###
-
-    SELECT language_is_trusted( 'plperl', 'PL/Perl should be trusted' );
-
-Tests that the specified procedural language is trusted. See the [CREATE
-LANGUAGE](http://www.postgresql.org/docs/current/static/sql-createlanguage.html
-"CREATE LANGUAGE") documentation for details on trusted and untrusted
-procedural languages. If the `:description` argument is not passed, a suitably
-useful default will be created.
-
-In the event that the language in question does not exist in the database,
-`language_is_trusted()` will emit a diagnostic message to alert you to this
-fact, like so:
-
-    # Failed test 523: "Procedural language plomgwtf should be trusted"
-    #     Procedural language plomgwtf does not exist
-
-But you really ought to call `has_language()` first so that you never get that
-far.
-
 Feeling Funky
 -------------
 
@@ -2540,12 +2498,54 @@ If the function does not exist, you'll be told that, too.
 
 But then you check with `has_function()` first, right?
 
+### `trigger_is( schema, table, trigger, schema, function, description )` ###
+### `trigger_is( schema, table, trigger, schema, function )` ###
+### `trigger_is( table, trigger, function, description )` ###
+### `trigger_is( table, trigger, function )` ###
+
+    SELECT trigger_is(
+        'myschema',
+        'sometable',
+        'sometrigger',
+        'myschema',
+        'somefunction',
+        'Trigger "sometrigger" should call somefunction()'
+    );
+
+Tests that the specified trigger calls the named function. If not, it outputs
+a useful diagnostic:
+
+    # Failed test 31: "Trigger set_users_pass should call hash_password()"
+    #         have: hash_pass
+    #         want: hash_password
+
 Database Deets
 --------------
 
 Tables and functions aren't the only objects in the database, as you well
 know. These assertions close the gap by letting you test the attributes of
 other database objects.
+
+### `language_is_trusted( language, description )` ###
+### `language_is_trusted( language )` ###
+
+    SELECT language_is_trusted( 'plperl', 'PL/Perl should be trusted' );
+
+Tests that the specified procedural language is trusted. See the [CREATE
+LANGUAGE](http://www.postgresql.org/docs/current/static/sql-createlanguage.html
+"CREATE LANGUAGE") documentation for details on trusted and untrusted
+procedural languages. If the `:description` argument is not passed, a suitably
+useful default will be created.
+
+In the event that the language in question does not exist in the database,
+`language_is_trusted()` will emit a diagnostic message to alert you to this
+fact, like so:
+
+    # Failed test 523: "Procedural language plomgwtf should be trusted"
+    #     Procedural language plomgwtf does not exist
+
+But you really ought to call `has_language()` first so that you never get that
+far.
 
 ### `enum_has_labels( schema, enum, labels, desc )` ###
 ### `enum_has_labels( schema, enum, labels )` ###
