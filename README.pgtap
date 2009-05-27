@@ -2344,6 +2344,51 @@ If the function does not exist, you'll be told that, too.
 
 But then you check with `has_function()` first, right?
 
+### `function_returns( schema, function, args[], type, description )` ###
+### `function_returns( schema, function, args[], type )` ###
+### `function_returns( schema, function, type, description )` ###
+### `function_returns( schema, function, type )` ###
+### `function_returns( function, args[], type, description )` ###
+### `function_returns( function, args[], type )` ###
+### `function_returns( function, type, description )` ###
+### `function_returns( function, type )` ###
+
+    SELECT function_returns(
+        'myschema',
+        'foo',
+        ARRAY['integer', 'text'],
+        'integer',
+        'The myschema.foo() function should return an integer'
+    );
+
+
+    SELECT function_returns( 'do_something', 'setof bool' );
+    SELECT function_returns( 'do_something', ARRAY['integer'], 'bool' );
+    SELECT function_returns( 'do_something', ARRAY['numeric'], 'numeric' );
+
+Tests that a particular function returns a particular data type. For set
+returning functions, the `:type` argument should start with "setof " (yes,
+lowercase). If the `:schema` argument is omitted, then the function must be
+visible in the search path. If the `:args[]` argument is passed, then the
+function with that argument signature will be the one tested; otherwise, a
+function with any signature will be checked (pass an empty array to specify a
+function with an empty signature). If the `:description` is omitted, a
+reasonable substitute will be created.
+
+In the event of a failure, you'll useful diagnostics will tell you what went
+wrong, for example:
+
+    # Failed test 283: "Function oww(integer, text) should return integer"
+    #         have: bool
+    #         want: integer
+
+If the function does not exist, you'll be told that, too.
+
+    # Failed test 284: "Function oui(integer, text) should return integer"
+    #     Function oui(integer, text) does not exist
+
+But then you check with `has_function()` first, right?
+
 ### `enum_has_labels( schema, enum, labels, desc )` ###
 ### `enum_has_labels( schema, enum, labels )` ###
 ### `enum_has_labels( enum, labels, desc )` ###
@@ -3122,7 +3167,10 @@ To Do
 -----
 
 * Useful schema testing functions to consider adding:
-  * `function_returns()`
+  * `function_is_definer()`
+  * `function_is_agg()`
+  * `function_is_strict()`
+  * `function_is_volatile()`
   * `sequence_has_range()`
   * `sequence_increments_by()`
   * `sequence_starts_at()`

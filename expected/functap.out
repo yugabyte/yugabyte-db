@@ -1,5 +1,5 @@
 \unset ECHO
-1..210
+1..282
 ok 1 - simple function should pass
 ok 2 - simple function should have the proper description
 ok 3 - simple function should have the proper diagnostics
@@ -144,69 +144,141 @@ ok 141 - can(schema) should have the proper diagnostics
 ok 142 - fail can() with desc should fail
 ok 143 - fail can() with desc should have the proper description
 ok 144 - fail can() with desc should have the proper diagnostics
-ok 145 - function_lang_is(schema, func, 0 args, sql, desc ) should pass
-ok 146 - function_lang_is(schema, func, 0 args, sql, desc ) should have the proper description
-ok 147 - function_lang_is(schema, func, 0 args, sql, desc ) should have the proper diagnostics
-ok 148 - function_lang_is(schema, func, 0 args, sql ) should pass
-ok 149 - function_lang_is(schema, func, 0 args, sql ) should have the proper description
-ok 150 - function_lang_is(schema, func, 0 args, sql ) should have the proper diagnostics
-ok 151 - function_lang_is(schema, func, args, plpgsql, desc ) should pass
-ok 152 - function_lang_is(schema, func, args, plpgsql, desc ) should have the proper description
-ok 153 - function_lang_is(schema, func, args, plpgsql, desc ) should have the proper diagnostics
-ok 154 - function_lang_is(schema, func, args, plpgsql ) should pass
-ok 155 - function_lang_is(schema, func, args, plpgsql ) should have the proper description
-ok 156 - function_lang_is(schema, func, args, plpgsql ) should have the proper diagnostics
-ok 157 - function_lang_is(schema, func, 0 args, perl, desc ) should fail
-ok 158 - function_lang_is(schema, func, 0 args, perl, desc ) should have the proper description
-ok 159 - function_lang_is(schema, func, 0 args, perl, desc ) should have the proper diagnostics
-ok 160 - function_lang_is(schema, non-func, 0 args, sql, desc ) should fail
-ok 161 - function_lang_is(schema, non-func, 0 args, sql, desc ) should have the proper description
-ok 162 - function_lang_is(schema, non-func, 0 args, sql, desc ) should have the proper diagnostics
-ok 163 - function_lang_is(schema, func, args, plpgsql ) should fail
-ok 164 - function_lang_is(schema, func, args, plpgsql ) should have the proper description
-ok 165 - function_lang_is(schema, func, args, plpgsql ) should have the proper diagnostics
-ok 166 - function_lang_is(schema, func, sql, desc ) should pass
-ok 167 - function_lang_is(schema, func, sql, desc ) should have the proper description
-ok 168 - function_lang_is(schema, func, sql, desc ) should have the proper diagnostics
-ok 169 - function_lang_is(schema, func, sql ) should pass
-ok 170 - function_lang_is(schema, func, sql ) should have the proper description
-ok 171 - function_lang_is(schema, func, sql ) should have the proper diagnostics
-ok 172 - function_lang_is(schema, func, perl, desc ) should fail
-ok 173 - function_lang_is(schema, func, perl, desc ) should have the proper description
-ok 174 - function_lang_is(schema, func, perl, desc ) should have the proper diagnostics
-ok 175 - function_lang_is(schema, non-func, sql, desc ) should fail
-ok 176 - function_lang_is(schema, non-func, sql, desc ) should have the proper description
-ok 177 - function_lang_is(schema, non-func, sql, desc ) should have the proper diagnostics
-ok 178 - function_lang_is(func, 0 args, sql, desc ) should pass
-ok 179 - function_lang_is(func, 0 args, sql, desc ) should have the proper description
-ok 180 - function_lang_is(func, 0 args, sql, desc ) should have the proper diagnostics
-ok 181 - function_lang_is(func, 0 args, sql ) should pass
-ok 182 - function_lang_is(func, 0 args, sql ) should have the proper description
-ok 183 - function_lang_is(func, 0 args, sql ) should have the proper diagnostics
-ok 184 - function_lang_is(func, args, plpgsql, desc ) should pass
-ok 185 - function_lang_is(func, args, plpgsql, desc ) should have the proper description
-ok 186 - function_lang_is(func, args, plpgsql, desc ) should have the proper diagnostics
-ok 187 - function_lang_is(func, args, plpgsql ) should pass
-ok 188 - function_lang_is(func, args, plpgsql ) should have the proper description
-ok 189 - function_lang_is(func, args, plpgsql ) should have the proper diagnostics
-ok 190 - function_lang_is(func, 0 args, perl, desc ) should fail
-ok 191 - function_lang_is(func, 0 args, perl, desc ) should have the proper description
-ok 192 - function_lang_is(func, 0 args, perl, desc ) should have the proper diagnostics
-ok 193 - function_lang_is(non-func, 0 args, sql, desc ) should fail
-ok 194 - function_lang_is(non-func, 0 args, sql, desc ) should have the proper description
-ok 195 - function_lang_is(non-func, 0 args, sql, desc ) should have the proper diagnostics
-ok 196 - function_lang_is(func, args, plpgsql ) should fail
-ok 197 - function_lang_is(func, args, plpgsql ) should have the proper description
-ok 198 - function_lang_is(func, args, plpgsql ) should have the proper diagnostics
-ok 199 - function_lang_is(func, sql, desc ) should pass
-ok 200 - function_lang_is(func, sql, desc ) should have the proper description
-ok 201 - function_lang_is(func, sql, desc ) should have the proper diagnostics
-ok 202 - function_lang_is(func, sql ) should pass
-ok 203 - function_lang_is(func, sql ) should have the proper description
-ok 204 - function_lang_is(func, sql ) should have the proper diagnostics
-ok 205 - function_lang_is(func, perl, desc ) should fail
-ok 206 - function_lang_is(func, perl, desc ) should have the proper description
-ok 207 - function_lang_is(func, perl, desc ) should have the proper diagnostics
-ok 208 - function_lang_is(non-func, sql, desc ) should fail
-ok 209 - function_lang_is(non-func, sql, desc ) should have the proper description
-ok 210 - function_lang_is(non-func, sql, desc ) should have the proper diagnostics
+ok 145 - function_lang_is(schema, func, 0 args, sql, desc) should pass
+ok 146 - function_lang_is(schema, func, 0 args, sql, desc) should have the proper description
+ok 147 - function_lang_is(schema, func, 0 args, sql, desc) should have the proper diagnostics
+ok 148 - function_lang_is(schema, func, 0 args, sql) should pass
+ok 149 - function_lang_is(schema, func, 0 args, sql) should have the proper description
+ok 150 - function_lang_is(schema, func, 0 args, sql) should have the proper diagnostics
+ok 151 - function_lang_is(schema, func, args, plpgsql, desc) should pass
+ok 152 - function_lang_is(schema, func, args, plpgsql, desc) should have the proper description
+ok 153 - function_lang_is(schema, func, args, plpgsql, desc) should have the proper diagnostics
+ok 154 - function_lang_is(schema, func, args, plpgsql) should pass
+ok 155 - function_lang_is(schema, func, args, plpgsql) should have the proper description
+ok 156 - function_lang_is(schema, func, args, plpgsql) should have the proper diagnostics
+ok 157 - function_lang_is(schema, func, 0 args, perl, desc) should fail
+ok 158 - function_lang_is(schema, func, 0 args, perl, desc) should have the proper description
+ok 159 - function_lang_is(schema, func, 0 args, perl, desc) should have the proper diagnostics
+ok 160 - function_lang_is(schema, non-func, 0 args, sql, desc) should fail
+ok 161 - function_lang_is(schema, non-func, 0 args, sql, desc) should have the proper description
+ok 162 - function_lang_is(schema, non-func, 0 args, sql, desc) should have the proper diagnostics
+ok 163 - function_lang_is(schema, func, args, plpgsql) should fail
+ok 164 - function_lang_is(schema, func, args, plpgsql) should have the proper description
+ok 165 - function_lang_is(schema, func, args, plpgsql) should have the proper diagnostics
+ok 166 - function_lang_is(schema, func, sql, desc) should pass
+ok 167 - function_lang_is(schema, func, sql, desc) should have the proper description
+ok 168 - function_lang_is(schema, func, sql, desc) should have the proper diagnostics
+ok 169 - function_lang_is(schema, func, sql) should pass
+ok 170 - function_lang_is(schema, func, sql) should have the proper description
+ok 171 - function_lang_is(schema, func, sql) should have the proper diagnostics
+ok 172 - function_lang_is(schema, func, perl, desc) should fail
+ok 173 - function_lang_is(schema, func, perl, desc) should have the proper description
+ok 174 - function_lang_is(schema, func, perl, desc) should have the proper diagnostics
+ok 175 - function_lang_is(schema, non-func, sql, desc) should fail
+ok 176 - function_lang_is(schema, non-func, sql, desc) should have the proper description
+ok 177 - function_lang_is(schema, non-func, sql, desc) should have the proper diagnostics
+ok 178 - function_lang_is(func, 0 args, sql, desc) should pass
+ok 179 - function_lang_is(func, 0 args, sql, desc) should have the proper description
+ok 180 - function_lang_is(func, 0 args, sql, desc) should have the proper diagnostics
+ok 181 - function_lang_is(func, 0 args, sql) should pass
+ok 182 - function_lang_is(func, 0 args, sql) should have the proper description
+ok 183 - function_lang_is(func, 0 args, sql) should have the proper diagnostics
+ok 184 - function_lang_is(func, args, plpgsql, desc) should pass
+ok 185 - function_lang_is(func, args, plpgsql, desc) should have the proper description
+ok 186 - function_lang_is(func, args, plpgsql, desc) should have the proper diagnostics
+ok 187 - function_lang_is(func, args, plpgsql) should pass
+ok 188 - function_lang_is(func, args, plpgsql) should have the proper description
+ok 189 - function_lang_is(func, args, plpgsql) should have the proper diagnostics
+ok 190 - function_lang_is(func, 0 args, perl, desc) should fail
+ok 191 - function_lang_is(func, 0 args, perl, desc) should have the proper description
+ok 192 - function_lang_is(func, 0 args, perl, desc) should have the proper diagnostics
+ok 193 - function_lang_is(non-func, 0 args, sql, desc) should fail
+ok 194 - function_lang_is(non-func, 0 args, sql, desc) should have the proper description
+ok 195 - function_lang_is(non-func, 0 args, sql, desc) should have the proper diagnostics
+ok 196 - function_lang_is(func, args, plpgsql) should fail
+ok 197 - function_lang_is(func, args, plpgsql) should have the proper description
+ok 198 - function_lang_is(func, args, plpgsql) should have the proper diagnostics
+ok 199 - function_lang_is(func, sql, desc) should pass
+ok 200 - function_lang_is(func, sql, desc) should have the proper description
+ok 201 - function_lang_is(func, sql, desc) should have the proper diagnostics
+ok 202 - function_lang_is(func, sql) should pass
+ok 203 - function_lang_is(func, sql) should have the proper description
+ok 204 - function_lang_is(func, sql) should have the proper diagnostics
+ok 205 - function_lang_is(func, perl, desc) should fail
+ok 206 - function_lang_is(func, perl, desc) should have the proper description
+ok 207 - function_lang_is(func, perl, desc) should have the proper diagnostics
+ok 208 - function_lang_is(non-func, sql, desc) should fail
+ok 209 - function_lang_is(non-func, sql, desc) should have the proper description
+ok 210 - function_lang_is(non-func, sql, desc) should have the proper diagnostics
+ok 211 - function_returns(schema, func, 0 args, bool, desc) should pass
+ok 212 - function_returns(schema, func, 0 args, bool, desc) should have the proper description
+ok 213 - function_returns(schema, func, 0 args, bool, desc) should have the proper diagnostics
+ok 214 - function_returns(schema, func, 0 args, bool) should pass
+ok 215 - function_returns(schema, func, 0 args, bool) should have the proper description
+ok 216 - function_returns(schema, func, 0 args, bool) should have the proper diagnostics
+ok 217 - function_returns(schema, func, args, bool, false) should pass
+ok 218 - function_returns(schema, func, args, bool, false) should have the proper description
+ok 219 - function_returns(schema, func, args, bool, false) should have the proper diagnostics
+ok 220 - function_returns(schema, func, args, bool) should pass
+ok 221 - function_returns(schema, func, args, bool) should have the proper description
+ok 222 - function_returns(schema, func, args, bool) should have the proper diagnostics
+ok 223 - function_returns(schema, func, 0 args, setof bool, desc) should pass
+ok 224 - function_returns(schema, func, 0 args, setof bool, desc) should have the proper description
+ok 225 - function_returns(schema, func, 0 args, setof bool, desc) should have the proper diagnostics
+ok 226 - function_returns(schema, func, 0 args, setof bool) should pass
+ok 227 - function_returns(schema, func, 0 args, setof bool) should have the proper description
+ok 228 - function_returns(schema, func, 0 args, setof bool) should have the proper diagnostics
+ok 229 - function_returns(schema, func, bool, desc) should pass
+ok 230 - function_returns(schema, func, bool, desc) should have the proper description
+ok 231 - function_returns(schema, func, bool, desc) should have the proper diagnostics
+ok 232 - function_returns(schema, func, bool) should pass
+ok 233 - function_returns(schema, func, bool) should have the proper description
+ok 234 - function_returns(schema, func, bool) should have the proper diagnostics
+ok 235 - function_returns(schema, other func, bool, false) should pass
+ok 236 - function_returns(schema, other func, bool, false) should have the proper description
+ok 237 - function_returns(schema, other func, bool, false) should have the proper diagnostics
+ok 238 - function_returns(schema, other func, bool) should pass
+ok 239 - function_returns(schema, other func, bool) should have the proper description
+ok 240 - function_returns(schema, other func, bool) should have the proper diagnostics
+ok 241 - function_returns(schema, func, setof bool, desc) should pass
+ok 242 - function_returns(schema, func, setof bool, desc) should have the proper description
+ok 243 - function_returns(schema, func, setof bool, desc) should have the proper diagnostics
+ok 244 - function_returns(schema, func, setof bool) should pass
+ok 245 - function_returns(schema, func, setof bool) should have the proper description
+ok 246 - function_returns(schema, func, setof bool) should have the proper diagnostics
+ok 247 - function_returns(func, 0 args, bool, desc) should pass
+ok 248 - function_returns(func, 0 args, bool, desc) should have the proper description
+ok 249 - function_returns(func, 0 args, bool, desc) should have the proper diagnostics
+ok 250 - function_returns(func, 0 args, bool) should pass
+ok 251 - function_returns(func, 0 args, bool) should have the proper description
+ok 252 - function_returns(func, 0 args, bool) should have the proper diagnostics
+ok 253 - function_returns(func, args, bool, false) should pass
+ok 254 - function_returns(func, args, bool, false) should have the proper description
+ok 255 - function_returns(func, args, bool, false) should have the proper diagnostics
+ok 256 - function_returns(func, args, bool) should pass
+ok 257 - function_returns(func, args, bool) should have the proper description
+ok 258 - function_returns(func, args, bool) should have the proper diagnostics
+ok 259 - function_returns(func, 0 args, setof bool, desc) should pass
+ok 260 - function_returns(func, 0 args, setof bool, desc) should have the proper description
+ok 261 - function_returns(func, 0 args, setof bool, desc) should have the proper diagnostics
+ok 262 - function_returns(func, 0 args, setof bool) should pass
+ok 263 - function_returns(func, 0 args, setof bool) should have the proper description
+ok 264 - function_returns(func, 0 args, setof bool) should have the proper diagnostics
+ok 265 - function_returns(func, bool, desc) should pass
+ok 266 - function_returns(func, bool, desc) should have the proper description
+ok 267 - function_returns(func, bool, desc) should have the proper diagnostics
+ok 268 - function_returns(func, bool) should pass
+ok 269 - function_returns(func, bool) should have the proper description
+ok 270 - function_returns(func, bool) should have the proper diagnostics
+ok 271 - function_returns(other func, bool, false) should pass
+ok 272 - function_returns(other func, bool, false) should have the proper description
+ok 273 - function_returns(other func, bool, false) should have the proper diagnostics
+ok 274 - function_returns(other func, bool) should pass
+ok 275 - function_returns(other func, bool) should have the proper description
+ok 276 - function_returns(other func, bool) should have the proper diagnostics
+ok 277 - function_returns(func, setof bool, desc) should pass
+ok 278 - function_returns(func, setof bool, desc) should have the proper description
+ok 279 - function_returns(func, setof bool, desc) should have the proper diagnostics
+ok 280 - function_returns(func, setof bool) should pass
+ok 281 - function_returns(func, setof bool) should have the proper description
+ok 282 - function_returns(func, setof bool) should have the proper diagnostics

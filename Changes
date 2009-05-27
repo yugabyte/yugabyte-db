@@ -23,7 +23,7 @@ Revision history for pgTAP
   `can_ok()` function is still available as an alias, but it emits a warning
   and will be removed in a future version of pgTAP.
 * Added `hasnt_trigger()`, `hasnt_index()`, and `hasnt_function()`.
-* Added `function_lang_is()`.
+* Added `function_lang_is()` and `function_returns()`.
 
 0.20 2009-03-29T19:05:40
 -------------------------
