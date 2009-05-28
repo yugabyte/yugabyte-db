@@ -2182,7 +2182,7 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2, $3, $4);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2190,7 +2190,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2, $3);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2198,7 +2198,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2, $3);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2206,7 +2206,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok( NAME, NAME )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2214,7 +2214,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2, $3);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2222,7 +2222,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok( NAME, NAME[] )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2230,7 +2230,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok( NAME, TEXT )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1, $2);
 END;
 $$ LANGUAGE PLPGSQL;
@@ -2238,7 +2238,7 @@ $$ LANGUAGE PLPGSQL;
 CREATE OR REPLACE FUNCTION can_ok( NAME )
 RETURNS TEXT AS $$
 BEGIN
-    RAISE WARNING '%', 'can_ok() is deprecated; use has_function() instead';
+    RAISE WARNING 'can_ok() is deprecated; use has_function() instead';
     RETURN has_function($1);
 END;
 $$ LANGUAGE PLPGSQL;

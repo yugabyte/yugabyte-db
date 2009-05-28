@@ -1,6 +1,6 @@
---- pgtap.sql.saf	2009-03-28 15:55:36.000000000 -0400
-+++ pgtap.sql	2009-03-28 15:55:45.000000000 -0400
-@@ -12,6 +12,22 @@
+--- pgtap.sql.orig	2009-05-28 15:45:03.000000000 -0700
++++ pgtap.sql	2009-05-28 15:41:05.000000000 -0700
+@@ -11,6 +11,22 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
  
@@ -23,7 +23,7 @@
  CREATE OR REPLACE FUNCTION pg_typeof("any")
  RETURNS regtype
  AS '$libdir/pgtap'
-@@ -97,53 +113,63 @@
+@@ -96,53 +112,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -104,7 +104,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -207,10 +233,12 @@
+@@ -206,10 +232,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -120,7 +120,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -484,13 +512,16 @@
+@@ -483,13 +511,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -140,7 +140,7 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1199,19 +1230,21 @@
+@@ -1227,19 +1258,21 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -153,15 +153,12 @@
      END IF;
  
 -    EXECUTE 'SELECT is(' 
--             || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
--             || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
--             || COALESCE(quote_literal($4), 'NULL')
++    FOR ret IN EXECUTE 'SELECT is(' 
+              || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
+              || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
+              || COALESCE(quote_literal($4), 'NULL')
 -    || ')' INTO thing;
 -    RETURN thing;
-+    FOR ret IN EXECUTE 'SELECT is(' 
-+         || COALESCE($1, 'NULL' || '::' || $2) || '::' || $2 || ', '
-+         || COALESCE(quote_literal($3), 'NULL') || '::' || $2 || ', '
-+         || COALESCE(quote_literal($4), 'NULL')
 +    || ') AS a' LOOP
 +        RETURN ret.a;
 +    END LOOP;
@@ -169,7 +166,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -3041,39 +3074,6 @@
+@@ -3288,39 +3321,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -182,7 +179,7 @@
 -    );
 -$$ LANGUAGE sql STRICT;
 -
---- has_role( role, desc )
+--- has_role( role, description )
 -CREATE OR REPLACE FUNCTION has_role( NAME, TEXT )
 -RETURNS TEXT AS $$
 -    SELECT ok( _has_role($1), $2 );
@@ -194,7 +191,7 @@
 -    SELECT ok( _has_role($1), 'Role ' || quote_ident($1) || ' should exist' );
 -$$ LANGUAGE sql;
 -
---- hasnt_role( role, desc )
+--- hasnt_role( role, description )
 -CREATE OR REPLACE FUNCTION hasnt_role( NAME, TEXT )
 -RETURNS TEXT AS $$
 -    SELECT ok( NOT _has_role($1), $2 );
@@ -209,7 +206,7 @@
  CREATE OR REPLACE FUNCTION _is_super( NAME )
  RETURNS BOOLEAN AS $$
      SELECT usesuper
-@@ -3177,7 +3177,7 @@
+@@ -3424,7 +3424,7 @@
  $$ LANGUAGE sql;
  
  CREATE OR REPLACE FUNCTION _grolist ( NAME )
@@ -218,15 +215,15 @@
      SELECT grolist FROM pg_catalog.pg_group WHERE groname = $1;
  $$ LANGUAGE sql;
  
-@@ -3622,6 +3622,7 @@
-     res    BOOLEAN;
-     descr  TEXT;
-     adiag  TEXT;
-+    rec    RECORD;
-     have   ALIAS FOR $1;
-     eok    ALIAS FOR $2;
-     name   ALIAS FOR $3;
-@@ -3632,8 +3633,10 @@
+@@ -5385,6 +5385,7 @@
+     res     BOOLEAN;
+     descr   TEXT;
+     adiag   TEXT;
++    rec     RECORD;
+     have    ALIAS FOR $1;
+     eok     ALIAS FOR $2;
+     name    ALIAS FOR $3;
+@@ -5396,8 +5397,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -239,7 +236,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -3742,7 +3745,7 @@
+@@ -5520,7 +5523,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -248,7 +245,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -3750,8 +3753,8 @@
+@@ -5528,8 +5531,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -259,7 +256,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -3811,116 +3814,6 @@
+@@ -5589,116 +5592,6 @@
  END
  $$ LANGUAGE plpgsql;
  

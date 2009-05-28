@@ -1,6 +1,6 @@
---- uninstall_pgtap.sql.saf	2009-03-28 15:58:36.000000000 -0400
-+++ uninstall_pgtap.sql	2009-03-28 15:58:43.000000000 -0400
-@@ -90,11 +94,6 @@
+--- uninstall_pgtap.sql.orig	2009-05-28 15:35:12.000000000 -0700
++++ uninstall_pgtap.sql	2009-05-28 15:35:12.000000000 -0700
+@@ -250,11 +250,6 @@
  DROP FUNCTION has_user( NAME );
  DROP FUNCTION has_user( NAME, TEXT );
  DROP FUNCTION _is_super( NAME );
