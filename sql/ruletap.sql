@@ -18,7 +18,7 @@ CREATE RULE upd_me AS ON UPDATE TO public.sometab DO ALSO SELECT now();
 CREATE TABLE public.toview ( id INT );
 CREATE RULE "_RETURN" AS ON SELECT TO public.toview DO INSTEAD SELECT 42 AS id;
 
-CREATE TABLE widgets (id int);
+CREATE TABLE public.widgets (id int);
 CREATE RULE del_me AS ON DELETE TO public.widgets DO NOTHING;
 CREATE RULE ins_me AS ON INSERT TO public.widgets DO NOTHING;
 
