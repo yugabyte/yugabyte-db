@@ -666,7 +666,7 @@ SELECT * FROM check_test(
 -- Test users_are().
 
 CREATE FUNCTION ___myusers(ex text) RETURNS NAME[] AS $$
-    SELECT ARRAY( SELECT usename FROM pg_catalog.pg_user WHERE usename <> $1 );
+    SELECT COALESCE(ARRAY( SELECT usename FROM pg_catalog.pg_user WHERE usename <> $1 ), '{}'::name[]);;
 $$ LANGUAGE SQL;
 
 SELECT * FROM check_test(
@@ -719,7 +719,7 @@ SELECT * FROM check_test(
 
 CREATE GROUP meanies;
 CREATE FUNCTION ___mygroups(ex text) RETURNS NAME[] AS $$
-    SELECT ARRAY( SELECT groname FROM pg_catalog.pg_group WHERE groname <> $1 );
+    SELECT COALESCE(ARRAY( SELECT groname FROM pg_catalog.pg_group WHERE groname <> $1 ), '{}'::name[]);;
 $$ LANGUAGE SQL;
 
 SELECT * FROM check_test(
@@ -771,7 +771,7 @@ SELECT * FROM check_test(
 -- Test languages_are().
 
 CREATE FUNCTION ___mylangs(ex text) RETURNS NAME[] AS $$
-    SELECT ARRAY( SELECT lanname FROM pg_catalog.pg_language WHERE lanispl AND lanname <> $1 );
+    SELECT COALESCE(ARRAY( SELECT lanname FROM pg_catalog.pg_language WHERE lanispl AND lanname <> $1 ), '{}'::name[]);;
 $$ LANGUAGE SQL;
 
 SELECT * FROM check_test(
@@ -868,14 +868,14 @@ SELECT * FROM check_test(
 );
 
 CREATE FUNCTION ___myopc(ex text) RETURNS NAME[] AS $$
-    SELECT ARRAY(
+    SELECT COALESCE(ARRAY(
         SELECT oc.opcname
           FROM pg_catalog.pg_opclass oc
           JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
          WHERE n.nspname <> 'pg_catalog'
            AND oc.opcname <> $1
            AND pg_catalog.pg_opclass_is_visible(oc.oid)
-    );
+    ), '{}'::name[]);;
 $$ LANGUAGE SQL;
 
 
