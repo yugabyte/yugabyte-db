@@ -4829,55 +4829,47 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _nosuch( NAME, NAME, NAME[])
+RETURNS TEXT AS $$
+    SELECT E'\n' || diag(
+        '    Function '
+          || CASE WHEN $1 IS NOT NULL THEN quote_ident($1) || '.' ELSE '' END
+          || quote_ident($2) || '('
+          || array_to_string($3, ', ') || ') does not exist'
+    );
+$$ LANGUAGE SQL IMMUTABLE;
+
 CREATE OR REPLACE FUNCTION _func_compare( NAME, NAME, NAME[], anyelement, anyelement, TEXT)
 RETURNS TEXT AS $$
-DECLARE
-    schema ALIAS FOR $1;
-    name   ALIAS FOR $2;
-    args   ALIAS FOR $3;
-    have   ALIAS FOR $4;
-    want   ALIAS FOR $5;
-    descr  ALIAS FOR $6;
-BEGIN
-    IF have IS NOT NULL THEN
-        RETURN CASE WHEN want IS NULL
-               THEN ok(have::boolean, descr)
-               ELSE is( have, want, descr )
-        END;
-    END IF;
+    SELECT CASE WHEN $4 IS NULL
+      THEN ok( FALSE, $6 ) || _nosuch($1, $2, $3)
+      ELSE is( $4, $5, $6 )
+      END;
+$$ LANGUAGE SQL;
 
-    RETURN ok( FALSE, descr ) || E'\n' || diag(
-        '    Function '
-          || CASE WHEN schema IS NOT NULL THEN quote_ident(schema) || '.' ELSE '' END
-          || quote_ident(name) || '('
-          ||  array_to_string(args, ', ') || ') does not exist'
-    );
-END;
-$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION _func_compare( NAME, NAME, NAME[], boolean, TEXT)
+RETURNS TEXT AS $$
+    SELECT CASE WHEN $4 IS NULL
+      THEN ok( FALSE, $5 ) || _nosuch($1, $2, $3)
+      ELSE ok( $4, $5 )
+      END;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _func_compare( NAME, NAME, anyelement, anyelement, TEXT)
 RETURNS TEXT AS $$
-DECLARE
-    schema ALIAS FOR $1;
-    name   ALIAS FOR $2;
-    have   ALIAS FOR $3;
-    want   ALIAS FOR $4;
-    descr  ALIAS FOR $5;
-BEGIN
-    IF have IS NOT NULL THEN
-        RETURN CASE WHEN want IS NULL
-               THEN ok(have::boolean, descr)
-               ELSE is( have, want, descr )
-        END;
-    END IF;
+    SELECT CASE WHEN $3 IS NULL
+      THEN ok( FALSE, $5 ) || _nosuch($1, $2, '{}')
+      ELSE is( $3, $4, $5 )
+      END;
+$$ LANGUAGE SQL;
 
-    RETURN ok( FALSE, descr ) || E'\n' || diag(
-        '    Function '
-          || CASE WHEN schema IS NOT NULL THEN quote_ident(schema) || '.' ELSE '' END
-          || quote_ident(name) || '() does not exist'
-    );
-END;
-$$ LANGUAGE plpgsql;
+CREATE OR REPLACE FUNCTION _func_compare( NAME, NAME, boolean, TEXT)
+RETURNS TEXT AS $$
+    SELECT CASE WHEN $3 IS NULL
+      THEN ok( FALSE, $4 ) || _nosuch($1, $2, '{}')
+      ELSE ok( $3, $4 )
+      END;
+$$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _lang ( NAME, NAME, NAME[] )
 RETURNS NAME AS $$
@@ -5103,7 +5095,7 @@ $$ LANGUAGE SQL;
 -- is_definer( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION is_definer ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare($1, $2, $3, _definer($1, $2, $3), NULL, $4 );
+    SELECT _func_compare($1, $2, $3, _definer($1, $2, $3), $4 );
 $$ LANGUAGE SQL;
 
 -- is_definer( schema, function, args[] )
@@ -5119,7 +5111,7 @@ $$ LANGUAGE sql;
 -- is_definer( schema, function, description )
 CREATE OR REPLACE FUNCTION is_definer ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare($1, $2, _definer($1, $2), NULL, $3 );
+    SELECT _func_compare($1, $2, _definer($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- is_definer( schema, function )
@@ -5134,7 +5126,7 @@ $$ LANGUAGE sql;
 -- is_definer( function, args[], description )
 CREATE OR REPLACE FUNCTION is_definer ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare(NULL, $1, $2, _definer($1, $2), NULL, $3 );
+    SELECT _func_compare(NULL, $1, $2, _definer($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- is_definer( function, args[] )
@@ -5150,7 +5142,7 @@ $$ LANGUAGE sql;
 -- is_definer( function, description )
 CREATE OR REPLACE FUNCTION is_definer( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare(NULL, $1, _definer($1), NULL, $2 );
+    SELECT _func_compare(NULL, $1, _definer($1), $2 );
 $$ LANGUAGE sql;
 
 -- is_definer( function )
@@ -5190,7 +5182,7 @@ $$ LANGUAGE SQL;
 -- is_aggregate( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare($1, $2, $3, _agg($1, $2, $3), NULL, $4 );
+    SELECT _func_compare($1, $2, $3, _agg($1, $2, $3), $4 );
 $$ LANGUAGE SQL;
 
 -- is_aggregate( schema, function, args[] )
@@ -5206,7 +5198,7 @@ $$ LANGUAGE sql;
 -- is_aggregate( schema, function, description )
 CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare($1, $2, _agg($1, $2), NULL, $3 );
+    SELECT _func_compare($1, $2, _agg($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- is_aggregate( schema, function )
@@ -5221,7 +5213,7 @@ $$ LANGUAGE sql;
 -- is_aggregate( function, args[], description )
 CREATE OR REPLACE FUNCTION is_aggregate ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare(NULL, $1, $2, _agg($1, $2), NULL, $3 );
+    SELECT _func_compare(NULL, $1, $2, _agg($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- is_aggregate( function, args[] )
@@ -5237,7 +5229,7 @@ $$ LANGUAGE sql;
 -- is_aggregate( function, description )
 CREATE OR REPLACE FUNCTION is_aggregate( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare(NULL, $1, _agg($1), NULL, $2 );
+    SELECT _func_compare(NULL, $1, _agg($1), $2 );
 $$ LANGUAGE sql;
 
 -- is_aggregate( function )
@@ -5277,7 +5269,7 @@ $$ LANGUAGE SQL;
 -- is_strict( schema, function, args[], description )
 CREATE OR REPLACE FUNCTION is_strict ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare($1, $2, $3, _strict($1, $2, $3), NULL, $4 );
+    SELECT _func_compare($1, $2, $3, _strict($1, $2, $3), $4 );
 $$ LANGUAGE SQL;
 
 -- is_strict( schema, function, args[] )
@@ -5293,7 +5285,7 @@ $$ LANGUAGE sql;
 -- is_strict( schema, function, description )
 CREATE OR REPLACE FUNCTION is_strict ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare($1, $2, _strict($1, $2), NULL, $3 );
+    SELECT _func_compare($1, $2, _strict($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- is_strict( schema, function )
@@ -5308,7 +5300,7 @@ $$ LANGUAGE sql;
 -- is_strict( function, args[], description )
 CREATE OR REPLACE FUNCTION is_strict ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare(NULL, $1, $2, _strict($1, $2), NULL, $3 );
+    SELECT _func_compare(NULL, $1, $2, _strict($1, $2), $3 );
 $$ LANGUAGE SQL;
 
 -- is_strict( function, args[] )
@@ -5324,7 +5316,7 @@ $$ LANGUAGE sql;
 -- is_strict( function, description )
 CREATE OR REPLACE FUNCTION is_strict( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT _func_compare(NULL, $1, _strict($1), NULL, $2 );
+    SELECT _func_compare(NULL, $1, _strict($1), $2 );
 $$ LANGUAGE sql;
 
 -- is_strict( function )
