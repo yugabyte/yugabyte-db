@@ -12,7 +12,7 @@ AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql;
 CREATE FUNCTION public.yay () RETURNS BOOL AS 'SELECT TRUE' LANGUAGE SQL STRICT SECURITY DEFINER VOLATILE;
 CREATE FUNCTION public.oww (int, text) RETURNS BOOL
 AS 'BEGIN RETURN TRUE; END;' LANGUAGE plpgsql IMMUTABLE;
-CREATE FUNCTION public.set () RETURNS SETOF BOOL
+CREATE FUNCTION public.pet () RETURNS SETOF BOOL
 AS 'BEGIN RETURN NEXT TRUE; RETURN; END;' LANGUAGE plpgsql STABLE;
 
 CREATE AGGREGATE public.tap_accum (
@@ -649,7 +649,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'public', 'set', '{}'::name[], 'setof bool', 'whatever' ),
+    function_returns( 'public', 'pet', '{}'::name[], 'setof bool', 'whatever' ),
     true,
     'function_returns(schema, func, 0 args, setof bool, desc)',
     'whatever',
@@ -657,10 +657,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'public', 'set', '{}'::name[], 'setof bool' ),
+    function_returns( 'public', 'pet', '{}'::name[], 'setof bool' ),
     true,
     'function_returns(schema, func, 0 args, setof bool)',
-    'Function public.set() should return setof bool',
+    'Function public.pet() should return setof bool',
     ''
 );
 
@@ -697,7 +697,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'public', 'set', 'setof bool', 'whatever' ),
+    function_returns( 'public', 'pet', 'setof bool', 'whatever' ),
     true,
     'function_returns(schema, func, setof bool, desc)',
     'whatever',
@@ -705,10 +705,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'public', 'set'::name, 'setof bool' ),
+    function_returns( 'public', 'pet'::name, 'setof bool' ),
     true,
     'function_returns(schema, func, setof bool)',
-    'Function public.set() should return setof bool',
+    'Function public.pet() should return setof bool',
     ''
 );
 
@@ -745,7 +745,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'set', '{}'::name[], 'setof bool', 'whatever' ),
+    function_returns( 'pet', '{}'::name[], 'setof bool', 'whatever' ),
     true,
     'function_returns(func, 0 args, setof bool, desc)',
     'whatever',
@@ -753,10 +753,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'set', '{}'::name[], 'setof bool' ),
+    function_returns( 'pet', '{}'::name[], 'setof bool' ),
     true,
     'function_returns(func, 0 args, setof bool)',
-    'Function set() should return setof bool',
+    'Function pet() should return setof bool',
     ''
 );
 
@@ -793,7 +793,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'set', 'setof bool', 'whatever' ),
+    function_returns( 'pet', 'setof bool', 'whatever' ),
     true,
     'function_returns(func, setof bool, desc)',
     'whatever',
@@ -801,10 +801,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_returns( 'set', 'setof bool' ),
+    function_returns( 'pet', 'setof bool' ),
     true,
     'function_returns(func, setof bool)',
-    'Function set() should return setof bool',
+    'Function pet() should return setof bool',
     ''
 );
 
@@ -1281,7 +1281,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'public', 'set', '{}'::name[], 'stable', 'whatever' ),
+    volatility_is( 'public', 'pet', '{}'::name[], 'stable', 'whatever' ),
     true,
     'function_volatility(schema, func, 0 args, stable, desc)',
     'whatever',
@@ -1329,7 +1329,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'public', 'set', 'stable', 'whatever' ),
+    volatility_is( 'public', 'pet', 'stable', 'whatever' ),
     true,
     'function_volatility(schema, func, stable, desc)',
     'whatever',
@@ -1369,7 +1369,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'set', '{}'::name[], 'stable', 'whatever' ),
+    volatility_is( 'pet', '{}'::name[], 'stable', 'whatever' ),
     true,
     'function_volatility(func, 0 args, stable, desc)',
     'whatever',
@@ -1417,7 +1417,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    volatility_is( 'set', 'stable', 'whatever' ),
+    volatility_is( 'pet', 'stable', 'whatever' ),
     true,
     'function_volatility(func, stable, desc)',
     'whatever',

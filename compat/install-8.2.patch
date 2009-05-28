@@ -1,10 +1,10 @@
---- pgtap.sql.orig	2009-03-28 15:33:47.000000000 -0400
-+++ pgtap.sql	2009-03-28 15:34:28.000000000 -0400
-@@ -3041,63 +3041,6 @@
+--- pgtap.sql.orig	2009-05-28 11:32:50.000000000 -0700
++++ pgtap.sql	2009-05-28 11:34:37.000000000 -0700
+@@ -3288,63 +3288,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
---- enum_has_labels( schema, enum, labels, desc )
+--- enum_has_labels( schema, enum, labels, description )
 -CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[], TEXT )
 -RETURNS TEXT AS $$
 -    SELECT is(
@@ -33,7 +33,7 @@
 -    );
 -$$ LANGUAGE sql;
 -
---- enum_has_labels( enum, labels, desc )
+--- enum_has_labels( enum, labels, description )
 -CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[], TEXT )
 -RETURNS TEXT AS $$
 -    SELECT is(
