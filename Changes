@@ -1,6 +1,9 @@
 Revision history for pgTAP
 ==========================
 
+0.22
+-------------------------
+
 0.21 2009-05-29T00:04:31
 -------------------------
 * Fixed a bug in the processing of the `--schema` and `--match` options that

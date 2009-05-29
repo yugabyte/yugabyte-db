@@ -22,7 +22,7 @@ VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 PGVER_MAJOR = $(shell echo $(VERSION) | awk -F. '{ print ($$1 + 0) }')
 PGVER_MINOR = $(shell echo $(VERSION) | awk -F. '{ print ($$2 + 0) }')
 PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
-PGTAP_VERSION = 0.21
+PGTAP_VERSION = 0.22
 
 # Compile the C code only if we're on 8.3 or older.
 ifneq ($(PGVER_MINOR), 4)
