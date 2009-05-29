@@ -3324,6 +3324,7 @@ functions do not work under 8.0. Don't even use them there.
 To Do
 -----
 * Useful schema testing functions to consider adding:
+* `throws_like()`
 * `sequence_has_range()`
 * `sequence_increments_by()`
 * `sequence_starts_at()`
