@@ -5755,3 +5755,91 @@ CREATE OR REPLACE FUNCTION runtests( )
 RETURNS SETOF TEXT AS $$
     SELECT * FROM runtests( '^test' );
 $$ LANGUAGE sql;
+
+-- set_eq( sql, sql, description )
+CREATE OR REPLACE FUNCTION set_eq( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have    TEXT    := CASE WHEN $1 ~ '[[:space:]]' THEN $1 ELSE 'EXECUTE ' || $1 END;
+    want    TEXT    := CASE WHEN $2 ~ '[[:space:]]' THEN $2 ELSE 'EXECUTE ' || $2 END;
+    extras  TEXT[]  := '{}';
+    missing TEXT[]  := '{}';
+    res     BOOLEAN := TRUE;
+    msg     TEXT    := '';
+    rec     RECORD;
+BEGIN
+    EXECUTE 'CREATE TEMP TABLE __taphave__ AS ' || have;
+    EXECUTE 'CREATE TEMP TABLE __tapwant__ AS ' || want;
+
+    FOR rec in EXECUTE 'SELECT * FROM __taphave__ EXCEPT SELECT * FROM __tapwant__' LOOP
+        extras := extras || rec::text;
+    END LOOP;
+
+    FOR rec in EXECUTE 'SELECT * FROM __tapwant__ EXCEPT SELECT * FROM __taphave__' LOOP
+        missing := missing || rec::text;
+    END LOOP;
+
+    IF extras[1] IS NOT NULL THEN
+        res := FALSE;
+        msg := E'\n' || diag(
+            E'    Extra records:\n        '
+            ||  array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    
+    IF missing[1] IS NOT NULL THEN
+        res := FALSE;
+        msg := msg || E'\n' || diag(
+            E'    Missing records:\n        '
+            ||  array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    EXECUTE 'DROP TABLE __taphave__';
+    EXECUTE 'DROP TABLE __tapwant__';
+    RETURN ok(res, $3) || msg;    
+END;
+$$ LANGUAGE plpgsql;
+
+-- set_eq( sql, sql )
+CREATE OR REPLACE FUNCTION set_eq( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT set_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+
+-- query_gets()
+-- oquery_gets()
+-- squery_gets()
+
+-- cursor_gets()
+-- ocursor_gets()
+-- scursor_gets()
+
+-- results_count_is
+
+-- results_equal
+-- results_intersect
+-- results_except
+
+
+
+
+-- set_equals   -- set equivalence
+-- set_includes -- set intersection
+-- set_excludes -- set difference
+-- set_size_is
+
+-- set_equals( 
+
+
+-- poset_equals
+-- poset_includes
+-- poset_excludes
+
+-- bag_equals
+-- bag_includes
+-- bag_excludes
+-- bag_size_is
+
+

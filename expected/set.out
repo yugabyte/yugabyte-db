@@ -1,0 +1,32 @@
+\unset ECHO
+1..30
+ok 1 - simple set test should pass
+ok 2 - simple set test should have the proper description
+ok 3 - simple set test should have the proper diagnostics
+ok 4 - simple set test without descr should pass
+ok 5 - simple set test without descr should have the proper description
+ok 6 - simple set test without descr should have the proper diagnostics
+ok 7 - execute set test should pass
+ok 8 - execute set test should have the proper description
+ok 9 - execute set test should have the proper diagnostics
+ok 10 - select set test should pass
+ok 11 - select set test should have the proper description
+ok 12 - select set test should have the proper diagnostics
+ok 13 - fail with extra record should fail
+ok 14 - fail with extra record should have the proper description
+ok 15 - fail with extra record should have the proper diagnostics
+ok 16 - fail with 2 extra records should fail
+ok 17 - fail with 2 extra records should have the proper description
+ok 18 - fail with 2 extra records should have the proper diagnostics
+ok 19 - fail with missing record should fail
+ok 20 - fail with missing record should have the proper description
+ok 21 - fail with missing record should have the proper diagnostics
+ok 22 - fail with 2 missing records should fail
+ok 23 - fail with 2 missing records should have the proper description
+ok 24 - fail with 2 missing records should have the proper diagnostics
+ok 25 - fail with extra and missing should fail
+ok 26 - fail with extra and missing should have the proper description
+ok 27 - fail with extra and missing should have the proper diagnostics
+ok 28 - fail with 2 extras and 2 missings should fail
+ok 29 - fail with 2 extras and 2 missings should have the proper description
+ok 30 - fail with 2 extras and 2 missings should have the proper diagnostics
