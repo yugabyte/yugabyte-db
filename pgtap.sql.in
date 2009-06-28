@@ -5771,14 +5771,35 @@ BEGIN
     EXECUTE 'CREATE TEMP TABLE __taphave__ AS ' || have;
     EXECUTE 'CREATE TEMP TABLE __tapwant__ AS ' || want;
 
-    FOR rec in EXECUTE 'SELECT * FROM __taphave__ EXCEPT SELECT * FROM __tapwant__' LOOP
-        extras := extras || rec::text;
-    END LOOP;
+    BEGIN
+        -- Find extra records.
+        FOR rec in EXECUTE 'SELECT * FROM __taphave__ EXCEPT SELECT * FROM __tapwant__' LOOP
+            extras := extras || rec::text;
+        END LOOP;
 
-    FOR rec in EXECUTE 'SELECT * FROM __tapwant__ EXCEPT SELECT * FROM __taphave__' LOOP
-        missing := missing || rec::text;
-    END LOOP;
+        -- Find missing records.
+        FOR rec in EXECUTE 'SELECT * FROM __tapwant__ EXCEPT SELECT * FROM __taphave__' LOOP
+            missing := missing || rec::text;
+        END LOOP;
 
+        -- Drop the temporary tables.
+        EXECUTE 'DROP TABLE __taphave__';
+        EXECUTE 'DROP TABLE __tapwant__';
+    EXCEPTION WHEN others THEN
+        -- The failure likely happend before the dropping of tables.
+        EXECUTE 'DROP TABLE __taphave__';
+        EXECUTE 'DROP TABLE __tapwant__';
+        IF SQLSTATE = '42601' THEN
+            RETURN ok(FALSE, $3) || E'\n    Queries do not have same number of columns';
+        ELSIF SQLSTATE = '42804' THEN
+            RETURN ok(FALSE, $3) || E'\n    Column types do not match between the queries';
+        ELSE
+            -- This should not happen.
+            RAISE EXCEPTION '%', SQLERRM;
+        END IF;
+    END;
+
+    -- What extra records do we have?
     IF extras[1] IS NOT NULL THEN
         res := FALSE;
         msg := E'\n' || diag(
@@ -5786,7 +5807,8 @@ BEGIN
             ||  array_to_string( extras, E'\n        ' )
         );
     END IF;
-    
+
+    -- What missing records do we have?
     IF missing[1] IS NOT NULL THEN
         res := FALSE;
         msg := msg || E'\n' || diag(
@@ -5795,8 +5817,6 @@ BEGIN
         );
     END IF;
 
-    EXECUTE 'DROP TABLE __taphave__';
-    EXECUTE 'DROP TABLE __tapwant__';
     RETURN ok(res, $3) || msg;    
 END;
 $$ LANGUAGE plpgsql;

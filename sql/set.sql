@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(30);
+SELECT plan(36);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -345,6 +345,24 @@ SELECT * FROM check_test(
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
+);
+
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    set_eq( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'fail with column mismatch',
+    '',
+    ' Column types do not match between the queries'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    set_eq( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'fail with different col counts',
+    '',
+    ' Queries do not have same number of columns'
 );
 
 

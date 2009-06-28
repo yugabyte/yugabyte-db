@@ -1,5 +1,5 @@
 \unset ECHO
-1..30
+1..36
 ok 1 - simple set test should pass
 ok 2 - simple set test should have the proper description
 ok 3 - simple set test should have the proper diagnostics
@@ -30,3 +30,9 @@ ok 27 - fail with extra and missing should have the proper diagnostics
 ok 28 - fail with 2 extras and 2 missings should fail
 ok 29 - fail with 2 extras and 2 missings should have the proper description
 ok 30 - fail with 2 extras and 2 missings should have the proper diagnostics
+ok 31 - fail with column mismatch should fail
+ok 32 - fail with column mismatch should have the proper description
+ok 33 - fail with column mismatch should have the proper diagnostics
+ok 34 - fail with different col counts should fail
+ok 35 - fail with different col counts should have the proper description
+ok 36 - fail with different col counts should have the proper diagnostics
