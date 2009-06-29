@@ -1,8 +1,8 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(36);
---SELECT * FROM no_plan();
+--SELECT plan(36);
+SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
@@ -219,12 +219,41 @@ INSERT INTO names (name) VALUES ('Katie');
 CREATE TABLE annames AS
 SELECT id, name FROM names WHERE name like 'An%';
 
-/****************************************************************************/
--- Start by testing simple rows with prepared statement names.
+-- We'll use these prepared statements.
 PREPARE anames AS SELECT id, name FROM names WHERE name like 'An%';
 PREPARE expect AS VALUES (11, 'Andrew'), (15, 'Anthony'), ( 44, 'Anna'),
                          (63, 'Angel'), (86, 'Angelina'), (130, 'Andrea'),
                          (183, 'Antonio');
+
+/****************************************************************************/
+-- First, test _temptable.
+
+SELECT is(
+    _temptable('SELECT * FROM names', '__foonames__'),
+     '__foonames__',
+     'Should create temp table with simple query'
+);
+SELECT has_table('__foonames__' );
+
+SELECT is(
+    _temptable( 'anames', '__somenames__' ),
+    '__somenames__',
+    'Should create a temp table for a prepared statement'
+);
+SELECT has_table('__somenames__' );
+
+PREPARE "something cool" AS VALUES (1, 2), (3, 4);
+SELECT is(
+    _temptable( '"something cool"', '__spacenames__' ),
+    '__spacenames__',
+    'Should create a temp table for a prepared statement with space'
+);
+SELECT has_table('__somenames__' );
+SELECT has_table('__spacenames__' );
+
+
+/****************************************************************************/
+-- Now test set_eq().
 
 SELECT * FROM check_test(
     set_eq( 'anames', 'expect', 'first set test' ),
