@@ -5900,7 +5900,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-
 -- poset_eq( sql, sql, description );
 CREATE OR REPLACE FUNCTION poset_eq( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$

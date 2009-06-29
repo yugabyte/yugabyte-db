@@ -1,0 +1,45 @@
+\unset ECHO
+1..43
+ok 1 - Should create temp table with simple query
+ok 2 - Table __foonames__ should exist
+ok 3 - Should create a temp table for a prepared statement
+ok 4 - Table __somenames__ should exist
+ok 5 - Should create a temp table for a prepared statement with space
+ok 6 - Table __somenames__ should exist
+ok 7 - Table __spacenames__ should exist
+ok 8 - simple set test should pass
+ok 9 - simple set test should have the proper description
+ok 10 - simple set test should have the proper diagnostics
+ok 11 - simple set test without descr should pass
+ok 12 - simple set test without descr should have the proper description
+ok 13 - simple set test without descr should have the proper diagnostics
+ok 14 - execute set test should pass
+ok 15 - execute set test should have the proper description
+ok 16 - execute set test should have the proper diagnostics
+ok 17 - select set test should pass
+ok 18 - select set test should have the proper description
+ok 19 - select set test should have the proper diagnostics
+ok 20 - fail with extra record should fail
+ok 21 - fail with extra record should have the proper description
+ok 22 - fail with extra record should have the proper diagnostics
+ok 23 - fail with 2 extra records should fail
+ok 24 - fail with 2 extra records should have the proper description
+ok 25 - fail with 2 extra records should have the proper diagnostics
+ok 26 - fail with missing record should fail
+ok 27 - fail with missing record should have the proper description
+ok 28 - fail with missing record should have the proper diagnostics
+ok 29 - fail with 2 missing records should fail
+ok 30 - fail with 2 missing records should have the proper description
+ok 31 - fail with 2 missing records should have the proper diagnostics
+ok 32 - fail with extra and missing should fail
+ok 33 - fail with extra and missing should have the proper description
+ok 34 - fail with extra and missing should have the proper diagnostics
+ok 35 - fail with 2 extras and 2 missings should fail
+ok 36 - fail with 2 extras and 2 missings should have the proper description
+ok 37 - fail with 2 extras and 2 missings should have the proper diagnostics
+ok 38 - fail with column mismatch should fail
+ok 39 - fail with column mismatch should have the proper description
+ok 40 - fail with column mismatch should have the proper diagnostics
+ok 41 - fail with different col counts should fail
+ok 42 - fail with different col counts should have the proper description
+ok 43 - fail with different col counts should have the proper diagnostics

@@ -1,8 +1,8 @@
 \unset ECHO
 \i test_setup.sql
 
---SELECT plan(36);
-SELECT * FROM no_plan();
+SELECT plan(43);
+--SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
