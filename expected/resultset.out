@@ -88,21 +88,21 @@ ok 85 - fail with different col counts should have the proper diagnostics
 ok 86 - bag fail with missing dupe should fail
 ok 87 - bag fail with missing dupe should have the proper description
 ok 88 - bag fail with missing dupe should have the proper diagnostics
-ok 89 - simple pobag test should pass
-ok 90 - simple pobag test should have the proper description
-ok 91 - simple pobag test should have the proper diagnostics
-ok 92 - simple pobag test without desc should pass
-ok 93 - simple pobag test without desc should have the proper description
-ok 94 - simple pobag test without desc should have the proper diagnostics
-ok 95 - execute pobag test should pass
-ok 96 - execute pobag test should have the proper description
-ok 97 - execute pobag test should have the proper diagnostics
-ok 98 - select pobag test should pass
-ok 99 - select pobag test should have the proper description
-ok 100 - select pobag test should have the proper diagnostics
-ok 101 - pobag test with dupes should pass
-ok 102 - pobag test with dupes should have the proper description
-ok 103 - pobag test with dupes should have the proper diagnostics
+ok 89 - simple results test should pass
+ok 90 - simple results test should have the proper description
+ok 91 - simple results test should have the proper diagnostics
+ok 92 - simple results test without desc should pass
+ok 93 - simple results test without desc should have the proper description
+ok 94 - simple results test without desc should have the proper diagnostics
+ok 95 - execute results test should pass
+ok 96 - execute results test should have the proper description
+ok 97 - execute results test should have the proper diagnostics
+ok 98 - select results test should pass
+ok 99 - select results test should have the proper description
+ok 100 - select results test should have the proper diagnostics
+ok 101 - results test with dupes should pass
+ok 102 - results test with dupes should have the proper description
+ok 103 - results test with dupes should have the proper diagnostics
 ok 104 - fail with extra record should fail
 ok 105 - fail with extra record should have the proper description
 ok 106 - fail with extra record should have the proper diagnostics
@@ -112,9 +112,9 @@ ok 109 - fail with missing record should have the proper diagnostics
 ok 110 - fail with missing record should fail
 ok 111 - fail with missing record should have the proper description
 ok 112 - fail with missing record should have the proper diagnostics
-ok 113 - pobag fail with missing dupe should fail
-ok 114 - pobag fail with missing dupe should have the proper description
-ok 115 - pobag fail with missing dupe should have the proper diagnostics
-ok 116 - simple pobag with cursors should pass
-ok 117 - simple pobag with cursors should have the proper description
-ok 118 - simple pobag with cursors should have the proper diagnostics
+ok 113 - results fail with missing dupe should fail
+ok 114 - results fail with missing dupe should have the proper description
+ok 115 - results fail with missing dupe should have the proper diagnostics
+ok 116 - simple results with cursors should pass
+ok 117 - simple results with cursors should have the proper description
+ok 118 - simple results with cursors should have the proper diagnostics

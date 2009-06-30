@@ -5859,8 +5859,8 @@ RETURNS TEXT AS $$
     SELECT _relcomp( $1, $2, NULL::text, 'ALL ' );
 $$ LANGUAGE sql;
 
--- pobag_eq( cursor, cursor, description )
-CREATE OR REPLACE FUNCTION pobag_eq( refcursor, refcursor, text )
+-- results_eq( cursor, cursor, description )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, refcursor, text )
 RETURNS TEXT AS $$
 DECLARE
     have      ALIAS FOR $1;
@@ -5888,14 +5888,14 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- pobag_eq( cursor, cursor )
-CREATE OR REPLACE FUNCTION pobag_eq( refcursor, refcursor )
+-- results_eq( cursor, cursor )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, refcursor )
 RETURNS TEXT AS $$
-    SELECT pobag_eq( $1, $2, NULL::text );
+    SELECT results_eq( $1, $2, NULL::text );
 $$ LANGUAGE sql;
 
--- pobag_eq( sql, sql, description )
-CREATE OR REPLACE FUNCTION pobag_eq( TEXT, TEXT, TEXT )
+-- results_eq( sql, sql, description )
+CREATE OR REPLACE FUNCTION results_eq( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     have      REFCURSOR;
@@ -5903,14 +5903,14 @@ DECLARE
 BEGIN
     OPEN have FOR EXECUTE _query($1);
     OPEN want FOR EXECUTE _query($2);
-    RETURN pobag_eq(have, want, $3);
+    RETURN results_eq(have, want, $3);
 END;
 $$ LANGUAGE plpgsql;
 
--- pobag_eq( sql, sql )
-CREATE OR REPLACE FUNCTION pobag_eq( TEXT, TEXT )
+-- results_eq( sql, sql )
+CREATE OR REPLACE FUNCTION results_eq( TEXT, TEXT )
 RETURNS TEXT AS $$
-    SELECT pobag_eq( $1, $2, NULL::text );
+    SELECT results_eq( $1, $2, NULL::text );
 $$ LANGUAGE sql;
 
 

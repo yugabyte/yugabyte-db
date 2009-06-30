@@ -576,7 +576,7 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Now test pobag_eq().
+-- Now test results_eq().
 
 PREPARE anames_ord AS SELECT id, name FROM names WHERE name like 'An%' ORDER BY id;
 PREPARE expect_ord AS VALUES (11, 'Andrew'),  (15, 'Anthony'), ( 44, 'Anna'),
@@ -584,57 +584,57 @@ PREPARE expect_ord AS VALUES (11, 'Andrew'),  (15, 'Anthony'), ( 44, 'Anna'),
                          (183, 'Antonio');
 
 SELECT * FROM check_test(
-    pobag_eq( 'anames_ord', 'expect_ord', 'whatever' ),
+    results_eq( 'anames_ord', 'expect_ord', 'whatever' ),
     true,
-    'simple pobag test',
+    'simple results test',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    pobag_eq( 'anames_ord', 'expect_ord' ),
+    results_eq( 'anames_ord', 'expect_ord' ),
     true,
-    'simple pobag test without desc',
+    'simple results test without desc',
     '',
     ''
 );
 
 -- Pass a full SQL statement for the prepared statements.
 SELECT * FROM check_test(
-    pobag_eq( 'EXECUTE anames_ord', 'EXECUTE expect_ord' ),
+    results_eq( 'EXECUTE anames_ord', 'EXECUTE expect_ord' ),
     true,
-    'execute pobag test',
+    'execute results test',
     '',
     ''
 );
 
 -- Compare actual SELECT statements.
 SELECT * FROM check_test(
-    pobag_eq(
+    results_eq(
         'SELECT id, name FROM names WHERE name like ''An%'' ORDER BY id',
         'SELECT id, name FROM annames ORDER BY id'
     ),
     true,
-    'select pobag test',
+    'select results test',
     '',
     ''
 );
 
 -- Compare with dupes.
 SELECT * FROM check_test(
-    pobag_eq(
+    results_eq(
         'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
         'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')'
     ),
     true,
-    'pobag test with dupes',
+    'results test with dupes',
     '',
     ''
 );
 
 -- And now some failures.
 SELECT * FROM check_test(
-    pobag_eq(
+    results_eq(
         'anames_ord',
         'SELECT id, name FROM annames WHERE name <> ''Anna'''
     ),
@@ -648,7 +648,7 @@ SELECT * FROM check_test(
 
 -- Now when the last row is missing.
 SELECT * FROM check_test(
-    pobag_eq(
+    results_eq(
         'SELECT id, name FROM annames WHERE name <> ''Antonio''',
         'anames_ord'
     ),
@@ -662,7 +662,7 @@ SELECT * FROM check_test(
 
 -- Invert that.
 SELECT * FROM check_test(
-    pobag_eq(
+    results_eq(
         'anames_ord',
         'SELECT id, name FROM annames WHERE name <> ''Antonio'''
     ),
@@ -677,12 +677,12 @@ SELECT * FROM check_test(
 
 -- Compare with missing dupe.
 SELECT * FROM check_test(
-    pobag_eq(
+    results_eq(
         'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
         'VALUES (1, ''Anna''), (86, ''Angelina'')'
     ),
     false,
-    'pobag fail with missing dupe',
+    'results fail with missing dupe',
     '',
     '   Results differ beginning at row 3:
         have: (1,Anna)
@@ -694,9 +694,9 @@ DECLARE cwant CURSOR FOR SELECT id, name FROM names WHERE name like 'An%' ORDER 
 DECLARE chave CURSOR FOR SELECT id, name from annames ORDER BY id;
 
 SELECT * FROM check_test(
-    pobag_eq( 'cwant'::refcursor, 'chave'::refcursor ),
+    results_eq( 'cwant'::refcursor, 'chave'::refcursor ),
     true,
-    'simple pobag with cursors',
+    'simple results with cursors',
     '',
     ''
 );
