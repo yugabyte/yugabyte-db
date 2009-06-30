@@ -605,7 +605,7 @@ certain circumstances, use `throws_ok()` to test for those circumstances.
 Supported by 8.1 or higher.
 
 The first argument should be the name of a prepared statement or else a string
-representing the query to be executed (see the [summary](#Can+You+Relate?) for
+representing the query to be executed (see the [summary](#Submit+Your+Query) for
 query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
 statement to execute it and catch any exception.
 
@@ -652,7 +652,7 @@ Idea borrowed from the Test::Exception Perl module.
 The inverse of `throws_ok()`, these functions test to ensure that an SQL
 statement does *not* throw an exception. Supported by 8.1 or higher. Pass in
 the name of a prepared statement or string of SQL code (see the
-[summary](#Can+You+Relate?) for query argument details). The optional second
+[summary](#Submit+Your+Query) for query argument details). The optional second
 argument is the test description.
 
 Should a `lives_ok()` test fail, it produces appropriate diagnostic messages.
@@ -678,7 +678,7 @@ timing its execution, and failing if execution takes longer than the specified
 amount of time.
 
 The first argument should be the name of a prepared statement or a string
-representing the query to be executed (see the [summary](#Can+You+Relate?) for
+representing the query to be executed (see the [summary](#Submit+Your+Query) for
 query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
 statement to execute it and catch any exception.
 
@@ -731,7 +731,7 @@ a direct row-by-row comparison of results to ensure that they are exactly what
 you expect, in the order you expect. Coincidentally, this is exactly how
 `results_eq()` behaves. Here's how you use it: simply pass in two SQL
 statements or prepared statement names (or some combination; (see the
-[summary](#Can+You+Relate?) for query argument details) and an optional
+[summary](#Submit+Your+Query) for query argument details) and an optional
 description. Yep, that's it. It will do the rest.
 
 For example, say that you have a function, `active_users()`, that returns a
@@ -825,7 +825,7 @@ your result sets. As long as both queries return the same records, regardless
 of duplicates or ordering, a `set_eq()` test will pass.
 
 The SQL arguments can be the names of prepared statements or strings
-containing an SQL query (see the [summary](#Can+You+Relate?) for query
+containing an SQL query (see the [summary](#Submit+Your+Query) for query
 argument details), or even one of each. In whatever case, a failing test
 will yield useful diagnostics, such as:
 
