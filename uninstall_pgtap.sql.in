@@ -1,4 +1,15 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION results_eq( TEXT, TEXT );
+DROP FUNCTION results_eq( TEXT, TEXT, TEXT );
+DROP FUNCTION results_eq( refcursor, refcursor );
+DROP FUNCTION results_eq( refcursor, refcursor, text );
+DROP FUNCTION bag_eq( TEXT, TEXT );
+DROP FUNCTION bag_eq( TEXT, TEXT, TEXT );
+DROP FUNCTION set_eq( TEXT, TEXT );
+DROP FUNCTION set_eq( TEXT, TEXT, TEXT );
+DROP FUNCTION _relcomp( TEXT, TEXT, TEXT, TEXT );
+DROP FUNCTION _temptable ( TEXT, TEXT );
+DROP FUNCTION _query( TEXT );
 DROP FUNCTION runtests( );
 DROP FUNCTION runtests( TEXT );
 DROP FUNCTION runtests( NAME );
