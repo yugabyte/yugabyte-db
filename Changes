@@ -4,7 +4,8 @@ Revision history for pgTAP
 0.22
 -------------------------
 * Fixed failing test on 8.4rc2.
-* Added `results_eq(), `set_eq()`, and `bag_eq()`.
+* Added `results_eq(), `set_eq()`, and `bag_eq()`, functions to test query
+  results.
 
 0.21 2009-05-29T00:04:31
 -------------------------

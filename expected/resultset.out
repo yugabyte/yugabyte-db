@@ -1,5 +1,5 @@
 \unset ECHO
-1..118
+1..145
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -103,18 +103,45 @@ ok 100 - select results test should have the proper diagnostics
 ok 101 - results test with dupes should pass
 ok 102 - results test with dupes should have the proper description
 ok 103 - results test with dupes should have the proper diagnostics
-ok 104 - fail with extra record should fail
-ok 105 - fail with extra record should have the proper description
-ok 106 - fail with extra record should have the proper diagnostics
-ok 107 - fail with missing record should fail
-ok 108 - fail with missing record should have the proper description
-ok 109 - fail with missing record should have the proper diagnostics
+ok 104 - results test with nulls should pass
+ok 105 - results test with nulls should have the proper description
+ok 106 - results test with nulls should have the proper diagnostics
+ok 107 - fail with extra record should fail
+ok 108 - fail with extra record should have the proper description
+ok 109 - fail with extra record should have the proper diagnostics
 ok 110 - fail with missing record should fail
 ok 111 - fail with missing record should have the proper description
 ok 112 - fail with missing record should have the proper diagnostics
-ok 113 - results fail with missing dupe should fail
-ok 114 - results fail with missing dupe should have the proper description
-ok 115 - results fail with missing dupe should have the proper diagnostics
-ok 116 - simple results with cursors should pass
-ok 117 - simple results with cursors should have the proper description
-ok 118 - simple results with cursors should have the proper diagnostics
+ok 113 - fail with missing record should fail
+ok 114 - fail with missing record should have the proper description
+ok 115 - fail with missing record should have the proper diagnostics
+ok 116 - results fail with missing dupe should fail
+ok 117 - results fail with missing dupe should have the proper description
+ok 118 - results fail with missing dupe should have the proper diagnostics
+ok 119 - fail with NULL should fail
+ok 120 - fail with NULL should have the proper description
+ok 121 - fail with NULL should have the proper diagnostics
+ok 122 - fail with column mismatch should fail
+ok 123 - fail with column mismatch should have the proper description
+ok 124 - fail with column mismatch should have the proper diagnostics
+ok 125 - fail with subtle column mismatch should fail
+ok 126 - fail with subtle column mismatch should have the proper description
+ok 127 - fail with subtle column mismatch should have the proper diagnostics
+ok 128 - fail with different col counts should fail
+ok 129 - fail with different col counts should have the proper description
+ok 130 - fail with different col counts should have the proper diagnostics
+ok 131 - simple results with cursors should pass
+ok 132 - simple results with cursors should have the proper description
+ok 133 - simple results with cursors should have the proper diagnostics
+ok 134 - results_eq(cursor, prepared) should pass
+ok 135 - results_eq(cursor, prepared) should have the proper description
+ok 136 - results_eq(cursor, prepared) should have the proper diagnostics
+ok 137 - results_eq(prepared, cursor) should pass
+ok 138 - results_eq(prepared, cursor) should have the proper description
+ok 139 - results_eq(prepared, cursor) should have the proper diagnostics
+ok 140 - results_eq(cursor, sql) should pass
+ok 141 - results_eq(cursor, sql) should have the proper description
+ok 142 - results_eq(cursor, sql) should have the proper diagnostics
+ok 143 - results_eq(sql, cursor) should pass
+ok 144 - results_eq(sql, cursor) should have the proper description
+ok 145 - results_eq(sql, cursor) should have the proper diagnostics

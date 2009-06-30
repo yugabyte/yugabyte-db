@@ -655,6 +655,139 @@ string. You will want to account for this and pad your estimates accordingly.
 It's best to think of this as a brute force comparison of runtimes, in order
 to ensure that a query is not *really* slow (think seconds).
 
+Can You Relate?
+---------------
+
+So you've got your basic scalar comparison funtions, what about relations?
+Mabye you have some pretty hairy `SELECT` statements in views or functions to
+test? We've got your relation-testing functions right here.
+
+### `results_eq( sql, sql, description )` ###
+### `results_eq( sql, sql )` ###
+### `results_eq( cursor, cursor, description )` ###
+### `results_eq( cursor, cursor )` ###
+### `results_eq( sql, cursor, description )` ###
+### `results_eq( sql, cursor )` ###
+### `results_eq( cursor, sql, description )` ###
+### `results_eq( cursor, sql )` ###
+
+    PREPARE users_test AS SELECT * FROM active_users();
+    PREPARE users_expect AS
+    VALUES ( 42, 'Anna'), (19, 'Strongrrl'),  (39, 'Theory');
+
+    SELECT results_eq( 'users_test', 'users_expect', 'We should have users' );
+
+There are three ways to test result sets in pgTAP. The most intuitive is to do
+a direct row-by-row comparison of results to ensure that they are exactly what
+you expect, in the order you expect. Coincidentally, this is exactly how
+`results_eq()` behaves. Here's how you use it: simply pass in two SQL
+statements as strings and an optional description. Yep, that's it. It will do
+the rest.
+
+For example, say that you have a function, `active_users()`, that returns a
+set of rows from the users table. To make sure that it returns the rows you
+expect, you might do something like this:
+
+    SELECT results_eq(
+        'SELECT * FROM active_users()',
+        'SELECT * FROM users WHERE active',
+        'active_users() should return active users'
+    );
+
+Tip: If you want to hard-code the values to compare, use a `VALUES` statement
+instead of a query, like so:
+
+    SELECT results_eq(
+        'SELECT * FROM active_users()',
+        $$VALUES ( 42, 'Anna'), (19, 'Strongrrl'), (39, 'Theory')$$,
+        'active_users() should return active users'
+    );
+
+Of course, you might often need to do something more complex in your SQL, and
+quoting SQL in strings in what is, after all, a SQL application, is an
+unnecessary PITA. There are two ways to make your use of `results_eq()` feel
+more SQLish.
+
+The first is to use prepared statements. This allows you to just write SQL and
+simply pass the prepared statement names to `results_eq()`, as in th example
+at beginning of this section. pgTAP assumes that a SQL statement argument with
+no space or starting with a double quote character is a prepared statement and
+simply `EXECUTE`s it.
+
+If you need to pass arguments to a prepared statement, perhaps because you
+plan to use it in multiple tests to return different values, just include
+`EXECUTE` in the SQL string. Here's an example with a prepared statement with
+a space in its name, and one where arguments need to be passed:
+
+    PREPARE "my test" AS SELECT * FROM active_users() WHERE name LIKE 'A%';
+    PREPARE expect AS SELECT * FROM users WHERE active = $1 AND name LIKE $2;
+
+    SELECT results_eq(
+        '"my test"',
+        'EXECUTE expect( true, ''A%'' )',
+        'See about those "A" users'
+    );
+
+Since the "my test" was declared with double quotes, it therefore must be
+passed with double quotes. And since the call to the "expect" prepared
+statement included spaces (to keep it legible), the `EXECUTE` keyword was
+required.
+
+Internally, `results_eq()` turns your SQL statements into cursors so that it
+can iterate over them one row at a time. Conveniently, this behavior is
+directly available to you, as well. Rather than pass in some arbitrary SQL
+statement or the name of a prepared statement, simply create a cursor and just
+pass *it* in, like so:
+
+    DECLARE cwant CURSOR FOR SELECT * FROM active_users();
+    DECLARE chave CURSOR FOR SELECT * FROM users WHERE active ORDER BY name;
+
+    SELECT results_eq(
+        'cwant'::refcursor,
+        'chave'::refcursor,
+        'Gotta have those active users!'
+    );
+
+The key here is to ensure that the cursor names are passed as `refcursor`s.
+This allows `results_eq()` to disambiguate the arguments from prepared
+statements. And of course, you can mix and match cursors, prepared statements,
+and SQL as much as you like. Here's an example using a prepared statement and
+a (rewound) cursor for the expected results:
+
+    PREPARE users_test AS SELECT * FROM active_users();
+    MOVE BACKWARD ALL IN chave;
+
+    SELECT results_eq(
+        'users_test',
+        'chave'::refcursor,
+        'Gotta have those active users!'
+    );
+
+Regardless of which types of arguments you pass, in the event of a test
+failure due to different results, `results_eq()` will offer a nice diagnostic
+message to tell you at what row the results differ, something like:
+
+    # Failed test 146
+    #     Results differ beginning at row 3:
+    #         have: (1,Anna)
+    #         want: (22,Betty)
+
+If there are different numbers of rows in each result set, you'll see an empty
+row in the comparison:
+
+    # Failed test 147
+    #     Results differ beginning at row 5:
+    #         have: (1,Anna)
+    #         want: ()
+
+If the number of columns varies between result sets, or if results are of
+different data types, you'll get diagnostics like so:
+
+    # Failed test 148
+    #     Column types differ between queries:
+    #         have: (1)
+    #         want: (foo,1)
+
 The Schema Things
 =================
 
@@ -3323,16 +3456,15 @@ functions do not work under 8.0. Don't even use them there.
 
 To Do
 -----
+* Document `set_eq()` and `bag_eq()`.
+* Support prepared statement names in throws_ok, lives_ok, and performs_ok.
+* Get more diagnostics for data type and column type failures in set_eq().
 * Useful schema testing functions to consider adding:
   + `throws_like()`
   + `sequence_has_range()`
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-* Result set testing functions:
-  + `set_eq()`
-  + `poset_eq()`
-  + `pobag_eq()`
 
 Supported Versions
 -----------------

@@ -5804,9 +5804,9 @@ BEGIN
         EXECUTE 'DROP TABLE __taphave__';
         EXECUTE 'DROP TABLE __tapwant__';
         IF SQLSTATE = '42601' THEN
-            RETURN ok(FALSE, $3) || E'\n    Queries do not have same number of columns';
+            RETURN ok(FALSE, $3) || E'\n    Number of columns differs between queries';
         ELSIF SQLSTATE = '42804' THEN
-            RETURN ok(FALSE, $3) || E'\n    Column types do not match between the queries';
+            RETURN ok(FALSE, $3) || E'\n    Column types differ between queries';
         ELSE
             -- This should not happen.
             RAISE EXCEPTION '%', SQLERRM;
@@ -5872,7 +5872,7 @@ BEGIN
     FETCH have INTO rec_have;
     FETCH want INTO rec_want;
     WHILE rec_have IS NOT NULL OR rec_want IS NOT NULL LOOP
-        IF rec_have <> rec_want THEN
+        IF rec_have IS DISTINCT FROM rec_want THEN
             RETURN ok( false, $3 ) || E'\n' || diag(
                 '    Results differ beginning at row ' || rownum || E':\n' ||
                 '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
@@ -5885,6 +5885,13 @@ BEGIN
     END LOOP;
 
     RETURN ok( true, $3 );
+EXCEPTION
+    WHEN datatype_mismatch THEN
+        RETURN ok( false, $3 ) || E'\n' || diag(
+            E'    Column types differ between queries:\n'
+            '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
+            '        want: ' || CASE WHEN rec_want IS NULL THEN '()' ELSE rec_want::text END
+        );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -5898,12 +5905,16 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION results_eq( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    have      REFCURSOR;
-    want      REFCURSOR;
+    have REFCURSOR;
+    want REFCURSOR;
+    res  TEXT;
 BEGIN
     OPEN have FOR EXECUTE _query($1);
     OPEN want FOR EXECUTE _query($2);
-    RETURN results_eq(have, want, $3);
+    res := results_eq(have, want, $3);
+    CLOSE have;
+    CLOSE want;
+    RETURN res;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -5913,4 +5924,43 @@ RETURNS TEXT AS $$
     SELECT results_eq( $1, $2, NULL::text );
 $$ LANGUAGE sql;
 
+-- results_eq( sql, cursor, description )
+CREATE OR REPLACE FUNCTION results_eq( TEXT, refcursor, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN have FOR EXECUTE _query($1);
+    res := results_eq(have, $2, $3);
+    CLOSE have;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_eq( sql, cursor )
+CREATE OR REPLACE FUNCTION results_eq( TEXT, refcursor )
+RETURNS TEXT AS $$
+    SELECT results_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_eq( cursor, sql, description )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN want FOR EXECUTE _query($2);
+    res := results_eq($1, want, $3);
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_eq( cursor, sql )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, TEXT )
+RETURNS TEXT AS $$
+    SELECT results_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
 

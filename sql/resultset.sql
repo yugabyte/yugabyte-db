@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(118);
+SELECT plan(145);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -394,7 +394,7 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    ' Column types do not match between the queries'
+    ' Column types differ between queries'
 );
 
 -- Handle falure due to column count mismatch.
@@ -403,9 +403,8 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    ' Queries do not have same number of columns'
+    ' Number of columns differs between queries'
 );
-
 
 /****************************************************************************/
 -- Now test bag_eq().
@@ -550,7 +549,7 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    ' Column types do not match between the queries'
+    ' Column types differ between queries'
 );
 
 -- Handle falure due to column count mismatch.
@@ -559,7 +558,7 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    ' Queries do not have same number of columns'
+    ' Number of columns differs between queries'
 );
 
 -- Handle failure due to missing dupe.
@@ -632,6 +631,18 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Compare with nulls.
+SELECT * FROM check_test(
+    results_eq(
+        'VALUES (4, NULL), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (4, NULL), (86, ''Angelina''), (1, ''Anna'')'
+    ),
+    true,
+    'results test with nulls',
+    '',
+    ''
+);
+
 -- And now some failures.
 SELECT * FROM check_test(
     results_eq(
@@ -689,6 +700,57 @@ SELECT * FROM check_test(
         want: ()'
 );
 
+-- Handle failure with null.
+SELECT * FROM check_test(
+    results_eq(
+        'VALUES (1, NULL), (86, ''Angelina'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    false,
+    'fail with NULL',
+    '',
+    '   Results differ beginning at row 1:
+        have: (1,)
+        want: (1,Anna)'
+);
+
+
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    results_eq( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'fail with column mismatch',
+    '',
+    '   Column types differ between queries:
+        have: (1,foo)
+        want: (foo,1)'
+);
+
+-- Handle falure due to more subtle column mismatch.
+SELECT * FROM check_test(
+    results_eq(
+        'VALUES (1, ''foo''::varchar), (2, ''bar''::varchar)',
+        'VALUES (1, ''foo''), (2, ''bar'')'
+    ),
+    false,
+    'fail with subtle column mismatch',
+    '',
+    '   Column types differ between queries:
+        have: (1,foo)
+        want: (1,foo)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    results_eq( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'fail with different col counts',
+    '',
+    '   Column types differ between queries:
+        have: (1)
+        want: (foo,1)'
+);
+
 -- Compare with cursors.
 DECLARE cwant CURSOR FOR SELECT id, name FROM names WHERE name like 'An%' ORDER BY id;
 DECLARE chave CURSOR FOR SELECT id, name from annames ORDER BY id;
@@ -701,6 +763,45 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Mix cursors and prepared statements
+PREPARE annames_ord AS SELECT id, name FROM annames ORDER BY id;
+MOVE BACKWARD ALL IN cwant;
+
+SELECT * FROM check_test(
+    results_eq( 'cwant'::refcursor, 'annames_ord' ),
+    true,
+    'results_eq(cursor, prepared)',
+    '',
+    ''
+);
+
+MOVE BACKWARD ALL IN chave;
+SELECT * FROM check_test(
+    results_eq( 'annames_ord', 'chave'::refcursor ),
+    true,
+    'results_eq(prepared, cursor)',
+    '',
+    ''
+);
+
+-- Mix cursor and SQL.
+MOVE BACKWARD ALL IN cwant;
+SELECT * FROM check_test(
+    results_eq( 'cwant'::refcursor, 'SELECT id, name FROM annames ORDER BY id' ),
+    true,
+    'results_eq(cursor, sql)',
+    '',
+    ''
+);
+
+MOVE BACKWARD ALL IN chave;
+SELECT * FROM check_test(
+    results_eq( 'SELECT id, name FROM annames ORDER BY id', 'chave'::refcursor ),
+    true,
+    'results_eq(sql, cursor)',
+    '',
+    ''
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.
