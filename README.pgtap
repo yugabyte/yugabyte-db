@@ -3458,7 +3458,6 @@ To Do
 -----
 * Document `set_eq()` and `bag_eq()`.
 * Support prepared statement names in throws_ok, lives_ok, and performs_ok.
-* Get more diagnostics for data type and column type failures in set_eq().
 * Useful schema testing functions to consider adding:
   + `throws_like()`
   + `sequence_has_range()`

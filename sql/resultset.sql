@@ -394,7 +394,9 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    ' Column types differ between queries'
+    '     Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
 );
 
 -- Handle falure due to column count mismatch.
@@ -403,7 +405,9 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    ' Number of columns differs between queries'
+    '     Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
 );
 
 /****************************************************************************/
@@ -549,7 +553,9 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    ' Column types differ between queries'
+    '     Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
 );
 
 -- Handle falure due to column count mismatch.
@@ -558,7 +564,9 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    ' Number of columns differs between queries'
+    '     Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
 );
 
 -- Handle failure due to missing dupe.
@@ -721,7 +729,7 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    '   Column types differ between queries:
+    '   Columns differ between queries:
         have: (1,foo)
         want: (foo,1)'
 );
@@ -735,7 +743,7 @@ SELECT * FROM check_test(
     false,
     'fail with subtle column mismatch',
     '',
-    '   Column types differ between queries:
+    '   Columns differ between queries:
         have: (1,foo)
         want: (1,foo)'
 );
@@ -746,7 +754,7 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    '   Column types differ between queries:
+    '   Columns differ between queries:
         have: (1)
         want: (foo,1)'
 );

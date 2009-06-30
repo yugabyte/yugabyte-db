@@ -5772,6 +5772,20 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION _temptypes( TEXT )
+RETURNS TEXT AS $$
+    SELECT array_to_string(ARRAY(
+        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+          FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c
+         WHERE a.attrelid = c.oid
+           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
+           AND c.relname = $1
+           AND c.relistemp
+           AND attnum > 0
+         ORDER BY attnum
+    ), ',');
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION _relcomp( TEXT, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -5785,32 +5799,29 @@ DECLARE
 BEGIN
     BEGIN
         -- Find extra records.
-        FOR rec in EXECUTE 'SELECT * FROM __taphave__ EXCEPT ' || $4
-                        || 'SELECT * FROM __tapwant__' LOOP
+        FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
+                        || 'SELECT * FROM ' || want LOOP
             extras := extras || rec::text;
         END LOOP;
 
         -- Find missing records.
-        FOR rec in EXECUTE 'SELECT * FROM __tapwant__ EXCEPT ' || $4
-                        || 'SELECT * FROM __taphave__' LOOP
+        FOR rec in EXECUTE 'SELECT * FROM ' || want || ' EXCEPT ' || $4
+                        || 'SELECT * FROM ' || have LOOP
             missing := missing || rec::text;
         END LOOP;
 
         -- Drop the temporary tables.
-        EXECUTE 'DROP TABLE __taphave__';
-        EXECUTE 'DROP TABLE __tapwant__';
-    EXCEPTION WHEN others THEN
-        -- The failure likely happend before the dropping of tables.
-        EXECUTE 'DROP TABLE __taphave__';
-        EXECUTE 'DROP TABLE __tapwant__';
-        IF SQLSTATE = '42601' THEN
-            RETURN ok(FALSE, $3) || E'\n    Number of columns differs between queries';
-        ELSIF SQLSTATE = '42804' THEN
-            RETURN ok(FALSE, $3) || E'\n    Column types differ between queries';
-        ELSE
-            -- This should not happen.
-            RAISE EXCEPTION '%', SQLERRM;
-        END IF;
+        EXECUTE 'DROP TABLE ' || have;
+        EXECUTE 'DROP TABLE ' || want;
+    EXCEPTION WHEN syntax_error OR datatype_mismatch THEN
+        msg := diag(
+            E'\n    Columns differ between queries:\n'
+            || '        have: (' || _temptypes(have) || E')\n'
+            || '        want: (' || _temptypes(want) || ')'
+        );
+        EXECUTE 'DROP TABLE ' || have;
+        EXECUTE 'DROP TABLE ' || want;
+        RETURN ok(FALSE, $3) || msg;
     END;
 
     -- What extra records do we have?
@@ -5888,7 +5899,7 @@ BEGIN
 EXCEPTION
     WHEN datatype_mismatch THEN
         RETURN ok( false, $3 ) || E'\n' || diag(
-            E'    Column types differ between queries:\n'
+            E'    Columns differ between queries:\n'
             '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
             '        want: ' || CASE WHEN rec_want IS NULL THEN '()' ELSE rec_want::text END
         );
