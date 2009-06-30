@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(18);
+SELECT plan(24);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -27,6 +27,23 @@ SELECT * FROM check_test(
     true,
     'simple select numeric',
     'Should run in less than 99.99 ms',
+    ''
+);
+
+PREPARE mytest AS SELECT TRUE;
+SELECT * FROM check_test(
+    performs_ok( 'mytest', 100 ),
+    true,
+    'simple prepare',
+    'Should run in less than 100 ms',
+    ''
+);
+
+SELECT * FROM check_test(
+    performs_ok( 'EXECUTE mytest', 100 ),
+    true,
+    'simple execute',
+    'Should run in less than 100 ms',
     ''
 );
 

@@ -534,6 +534,49 @@ you've got some complicated condition that is difficult to wedge into an
 
 Use these functions very, very, very sparingly.
 
+Submit Your Query
+=================
+
+Sometimes, you've just gotta run tests on a query. I mean a full blown query,
+not just the scalare type assertion functions we've seen so far. pgTAP provides
+a number of functions to help you test your queries, each of which takes one
+or two SQL statements as arguments. Yes, as strings:
+
+    SELECT throws_ok('SELECT divide_by(0)');
+
+Of course, you'll often need to do something complex in your SQL, and quoting
+SQL in strings in what is, after all, an SQL application, is an unnecessary
+PITA. Each of the query-executing functions in this section thus support an
+alternative to make your tests more SQLish: using prepared statements.
+
+Prepared statements allow you to just write SQL and simply pass the prepared
+statement names. For example, the above example can be rewritten as:
+
+    PREPARE mythrow AS SELECT divide_by(0);
+    SELECT throws_ok('mythrow');
+
+pgTAP assumes that an SQL argument with no space or starting with a double
+quote character is a prepared statement and simply `EXECUTE`s it. If you need
+to pass arguments to a prepared statement, perhaps because you plan to use it
+in multiple tests to return different values, just include `EXECUTE` in the
+SQL string. Here's an example with a prepared statement with a space in its
+name, and one where arguments need to be passed:
+
+    PREPARE "my test" AS SELECT * FROM active_users() WHERE name LIKE 'A%';
+    PREPARE expect AS SELECT * FROM users WHERE active = $1 AND name LIKE $2;
+
+    SELECT results_eq(
+        '"my test"',
+        'EXECUTE expect( true, ''A%'' )'
+    );
+
+Since "my test" was declared with double quotes, it must be passed with double
+quotes. And since the call to "expect" included spaces (to keep it legible),
+the `EXECUTE` keyword was required.
+
+So keeping these techniques in mind, read on for all of the query-testing
+goodness.
+
 To Error is Human
 -----------------
 
@@ -542,15 +585,16 @@ Or maybe you want to make sure a query *does not* trigger an error. For such
 cases, we provide a couple of test functions to make sure your queries are as
 error-prone as you think they should be.
 
-### `throws_ok( query, errcode, errmsg, description )` ###
-### `throws_ok( query, errcode, errmsg )` ###
-### `throws_ok( query, errmsg, description )` ###
-### `throws_ok( query, errcode )` ###
-### `throws_ok( query, errmsg )` ###
-### `throws_ok( query )` ###
+### `throws_ok( sql, errcode, errmsg, description )` ###
+### `throws_ok( sql, errcode, errmsg )` ###
+### `throws_ok( sql, errmsg, description )` ###
+### `throws_ok( sql, errcode )` ###
+### `throws_ok( sql, errmsg )` ###
+### `throws_ok( sql )` ###
 
+    PREPARE my_thrower AS INSERT INTO try (id) VALUES (1);
     SELECT throws_ok(
-        'INSERT INTO try (id) VALUES (1)',
+        'my_thrower',
         '23505',
         'duplicate key value violates unique constraint "try_pkey"',
         'We should get a unique violation for a duplicate PK'
@@ -560,9 +604,10 @@ When you want to make sure that an exception is thrown by PostgreSQL under
 certain circumstances, use `throws_ok()` to test for those circumstances.
 Supported by 8.1 or higher.
 
-The first argument should be a string representing the query to be executed.
-`throws_ok()` will use the PL/pgSQL `EXECUTE` statement to execute it and
-catch any exception.
+The first argument should be the name of a prepared statement or else a string
+representing the query to be executed (see the [summary](#Can+You+Relate?) for
+query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
+statement to execute it and catch any exception.
 
 The second argument should be an exception error code, which is a
 five-character string (if it happens to consist only of numbers and you pass
@@ -604,9 +649,11 @@ Idea borrowed from the Test::Exception Perl module.
         'We should not get a unique violation for a new PK'
     );
 
-The inverse of `throws_ok()`, these functions test to ensure that a SQL
-statement does *not* throw an exception.
-Supported by 8.1 or higher.
+The inverse of `throws_ok()`, these functions test to ensure that an SQL
+statement does *not* throw an exception. Supported by 8.1 or higher. Pass in
+the name of a prepared statement or string of SQL code (see the
+[summary](#Can+You+Relate?) for query argument details). The optional second
+argument is the test description.
 
 Should a `lives_ok()` test fail, it produces appropriate diagnostic messages.
 For example:
@@ -619,8 +666,9 @@ Idea borrowed from the Test::Exception Perl module.
 ### `performs_ok ( sql, milliseconds, description )` ###
 ### `performs_ok ( sql, milliseconds )` ###
 
+    PREPARE fast_query AS SELECT id FROM try WHERE name = 'Larry';
     SELECT performs_ok(
-        'SELECT id FROM try WHERE name = ''Larry''',
+        'fast_query',
         250,
         'A select by name should be fast'
     );
@@ -629,9 +677,10 @@ This function makes sure that an SQL statement performs well. It does so by
 timing its execution, and failing if execution takes longer than the specified
 amount of time.
 
-The first argument should be a string representing the query to be executed.
-`throws_ok()` will use the PL/pgSQL `EXECUTE` statement to execute it and
-catch any exception.
+The first argument should be the name of a prepared statement or a string
+representing the query to be executed (see the [summary](#Can+You+Relate?) for
+query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
+statement to execute it and catch any exception.
 
 The second argument is the maximum number of milliseconds it should take for
 the SQL statement to execute. This argument is numeric, so you can even use
@@ -681,8 +730,9 @@ There are three ways to test result sets in pgTAP. The most intuitive is to do
 a direct row-by-row comparison of results to ensure that they are exactly what
 you expect, in the order you expect. Coincidentally, this is exactly how
 `results_eq()` behaves. Here's how you use it: simply pass in two SQL
-statements as strings and an optional description. Yep, that's it. It will do
-the rest.
+statements or prepared statement names (or some combination; (see the
+[summary](#Can+You+Relate?) for query argument details) and an optional
+description. Yep, that's it. It will do the rest.
 
 For example, say that you have a function, `active_users()`, that returns a
 set of rows from the users table. To make sure that it returns the rows you
@@ -703,39 +753,12 @@ instead of a query, like so:
         'active_users() should return active users'
     );
 
-Of course, you might often need to do something more complex in your SQL, and
-quoting SQL in strings in what is, after all, a SQL application, is an
-unnecessary PITA. There are two ways to make your use of `results_eq()` feel
-more SQLish.
-
-The first is to use prepared statements. This allows you to just write SQL and
-simply pass the prepared statement names to `results_eq()`, as in th example
-at beginning of this section. pgTAP assumes that a SQL statement argument with
-no space or starting with a double quote character is a prepared statement and
-simply `EXECUTE`s it.
-
-If you need to pass arguments to a prepared statement, perhaps because you
-plan to use it in multiple tests to return different values, just include
-`EXECUTE` in the SQL string. Here's an example with a prepared statement with
-a space in its name, and one where arguments need to be passed:
-
-    PREPARE "my test" AS SELECT * FROM active_users() WHERE name LIKE 'A%';
-    PREPARE expect AS SELECT * FROM users WHERE active = $1 AND name LIKE $2;
-
-    SELECT results_eq(
-        '"my test"',
-        'EXECUTE expect( true, ''A%'' )',
-        'See about those "A" users'
-    );
-
-Since the "my test" was declared with double quotes, it therefore must be
-passed with double quotes. And since the call to the "expect" prepared
-statement included spaces (to keep it legible), the `EXECUTE` keyword was
-required.
+In general, the use of prepared statements is highly recommended to keep your
+test code SQLish (you can even use `VALUES` statements in prepared statements!):
 
 Internally, `results_eq()` turns your SQL statements into cursors so that it
 can iterate over them one row at a time. Conveniently, this behavior is
-directly available to you, as well. Rather than pass in some arbitrary SQL
+directly available to you, too. Rather than pass in some arbitrary SQL
 statement or the name of a prepared statement, simply create a cursor and just
 pass *it* in, like so:
 
@@ -749,10 +772,10 @@ pass *it* in, like so:
     );
 
 The key here is to ensure that the cursor names are passed as `refcursor`s.
-This allows `results_eq()` to disambiguate the arguments from prepared
-statements. And of course, you can mix and match cursors, prepared statements,
-and SQL as much as you like. Here's an example using a prepared statement and
-a (rewound) cursor for the expected results:
+This allows `results_eq()` to disambiguate them from prepared statements. And
+of course, you can mix and match cursors, prepared statements, and SQL as much
+as you like. Here's an example using a prepared statement and a (reset) cursor
+for the expected results:
 
     PREPARE users_test AS SELECT * FROM active_users();
     MOVE BACKWARD ALL IN chave;
@@ -787,6 +810,64 @@ different data types, you'll get diagnostics like so:
     #     Column types differ between queries:
     #         have: (1)
     #         want: (foo,1)
+
+
+### `set_eq( sql, sql, description )` ###
+### `set_eq( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
+    SELECT set_eq( 'testq', 'expect', 'gotta have the A listers' );
+
+Sometimes you don't care what order query results are in, or if there are
+duplicates. In those cases, use `set_eq()` to do a simple set comparison of
+your result sets. As long as both queries return the same records, regardless
+of duplicates or ordering, a `set_eq()` test will pass.
+
+The SQL arguments can be the names of prepared statements or strings
+containing an SQL query (see the [summary](#Can+You+Relate?) for query
+argument details), or even one of each. In whatever case, a failing test
+will yield useful diagnostics, such as:
+
+    # Failed test 146
+    #     Extra records:
+    #         (87,Jackson)
+    #         (1,Jacob)
+    #     Missing records:
+    #         (44,Anna)
+    #         (86,Angelina)
+
+In the event that you somehow pass queries that return rows with different
+types of columns, pgTAP will tell you that, too:
+
+    # Failed test 147
+    #     Columns differ between queries:
+    #         have: (integer,text)
+    #         want: (text,integer)
+
+This of course extends to sets with different numbers of columns:
+
+    # Failed test 148
+    #     Columns differ between queries:
+    #         have: (integer)
+    #         want: (text,integer)
+
+### `bag_eq( sql, sql, description )` ###
+### `bag_eq( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
+    SELECT bag_eq( 'testq', 'expect', 'gotta have the A listers' );
+
+The `bag_eq()` function is just like `set_eq()`, except that it considers the
+results as bags rather than as sets. A bag is a set with duplicates. What this
+means, effectively, is that you can use `bag_eq()` to test result sets where
+order doesn't matter, but duplication does. In other words if a two rows are
+the same in the first result set, the same row must appear twice in the second
+result set.
+
+Otherwise, this function behaves exactly like `set_eq()`, including the
+utility of its diagnostics.
 
 The Schema Things
 =================
@@ -3456,8 +3537,6 @@ functions do not work under 8.0. Don't even use them there.
 
 To Do
 -----
-* Document `set_eq()` and `bag_eq()`.
-* Support prepared statement names in throws_ok, lives_ok, and performs_ok.
 * Useful schema testing functions to consider adding:
   + `throws_like()`
   + `sequence_has_range()`

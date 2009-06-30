@@ -656,11 +656,19 @@ CREATE OR REPLACE FUNCTION skip( int )
 RETURNS TEXT AS 'SELECT skip(NULL, $1)'
 LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _query( TEXT )
+RETURNS TEXT AS $$
+    SELECT CASE
+        WHEN $1 LIKE '"%' OR $1 !~ '[[:space:]]' THEN 'EXECUTE ' || $1
+        ELSE $1
+    END;
+$$ LANGUAGE SQL;
+
 -- throws_ok ( sql, errcode, errmsg, description )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, CHAR(5), TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    query     ALIAS FOR $1;
+    query     TEXT := _query($1);
     errcode   ALIAS FOR $2;
     errmsg    ALIAS FOR $3;
     desctext  ALIAS FOR $4;
@@ -695,8 +703,8 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql;
 
--- throws_ok ( query, errcode, errmsg )
--- throws_ok ( query, errmsg, description )
+-- throws_ok ( sql, errcode, errmsg )
+-- throws_ok ( sql, errmsg, description )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 BEGIN
@@ -721,35 +729,36 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- throws_ok ( query )
+-- throws_ok ( sql )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, NULL, NULL, NULL );
 $$ LANGUAGE SQL;
 
 -- Magically cast integer error codes.
--- throws_ok ( query, errcode, errmsg, description )
+-- throws_ok ( sql, errcode, errmsg, description )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT, TEXT )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), $3, $4 );
 $$ LANGUAGE SQL;
 
--- throws_ok ( query, errcode, errmsg )
+-- throws_ok ( sql, errcode, errmsg )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4, TEXT )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), $3, NULL );
 $$ LANGUAGE SQL;
 
--- throws_ok ( query, errcode )
+-- throws_ok ( sql, errcode )
 CREATE OR REPLACE FUNCTION throws_ok ( TEXT, int4 )
 RETURNS TEXT AS $$
     SELECT throws_ok( $1, $2::char(5), NULL, NULL );
 $$ LANGUAGE SQL;
 
+-- lives_ok( sql, description )
 CREATE OR REPLACE FUNCTION lives_ok ( TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    code  ALIAS FOR $1;
+    code  TEXT := _query($1);
     descr ALIAS FOR $2;
 BEGIN
     EXECUTE code;
@@ -762,6 +771,7 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql;
 
+-- lives_ok( sql )
 CREATE OR REPLACE FUNCTION lives_ok ( TEXT )
 RETURNS TEXT AS $$
     SELECT lives_ok( $1, NULL );
@@ -771,7 +781,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION performs_ok ( TEXT, NUMERIC, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    query     ALIAS FOR $1;
+    query     TEXT := _query($1);
     max_time  ALIAS FOR $2;
     descr     ALIAS FOR $3;
     starts_at TEXT;
@@ -5756,14 +5766,6 @@ RETURNS SETOF TEXT AS $$
     SELECT * FROM runtests( '^test' );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _query( TEXT )
-RETURNS TEXT AS $$
-    SELECT CASE
-        WHEN $1 LIKE '"%' OR $1 !~ '[[:space:]]' THEN 'EXECUTE ' || $1
-        ELSE $1
-    END;
-$$ LANGUAGE SQL;
-
 CREATE OR REPLACE FUNCTION _temptable ( TEXT, TEXT )
 RETURNS TEXT AS $$
 BEGIN
@@ -5814,8 +5816,8 @@ BEGIN
         EXECUTE 'DROP TABLE ' || have;
         EXECUTE 'DROP TABLE ' || want;
     EXCEPTION WHEN syntax_error OR datatype_mismatch THEN
-        msg := diag(
-            E'\n    Columns differ between queries:\n'
+        msg := E'\n' || diag(
+            E'    Columns differ between queries:\n'
             || '        have: (' || _temptypes(have) || E')\n'
             || '        want: (' || _temptypes(want) || ')'
         );

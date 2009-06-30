@@ -1,5 +1,5 @@
 \unset ECHO
-1..28
+1..36
 ok 1 - four-argument form should pass
 ok 2 - four-argument form should have the proper description
 ok 3 - four-argument form should have the proper diagnostics
@@ -17,14 +17,22 @@ ok 14 - two-argument errmsg should have the proper diagnostics
 ok 15 - single-argument form should pass
 ok 16 - single-argument form should have the proper description
 ok 17 - single-argument form should have the proper diagnostics
-ok 18 - invalid errcode should fail
-ok 19 - invalid errcode should have the proper description
-ok 20 - invalid errcode should have the proper diagnostics
-ok 21 - throws_ok(1/0, NULL) should work
-ok 22 - throws_ok diagnostics should fail
-ok 23 - throws_ok diagnostics should have the proper description
-ok 24 - throws_ok diagnostics should have the proper diagnostics
-ok 25 - lives_ok() should work
-ok 26 - lives_ok failure diagnostics should fail
-ok 27 - lives_ok failure diagnostics should have the proper description
-ok 28 - lives_ok failure diagnostics should have the proper diagnostics
+ok 18 - prepared statement & errcode should pass
+ok 19 - prepared statement & errcode should have the proper description
+ok 20 - execute & errcode should pass
+ok 21 - execute & errcode should have the proper description
+ok 22 - invalid errcode should fail
+ok 23 - invalid errcode should have the proper description
+ok 24 - invalid errcode should have the proper diagnostics
+ok 25 - throws_ok(1/0, NULL) should work
+ok 26 - throws_ok diagnostics should fail
+ok 27 - throws_ok diagnostics should have the proper description
+ok 28 - throws_ok diagnostics should have the proper diagnostics
+ok 29 - lives_ok() should work
+ok 30 - lives_ok(prepared) should pass
+ok 31 - lives_ok(prepared) should have the proper description
+ok 32 - lives_ok(execute) should pass
+ok 33 - lives_ok(execute) should have the proper description
+ok 34 - lives_ok failure diagnostics should fail
+ok 35 - lives_ok failure diagnostics should have the proper description
+ok 36 - lives_ok failure diagnostics should have the proper diagnostics

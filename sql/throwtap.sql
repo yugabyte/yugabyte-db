@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(28);
+SELECT plan(36);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -54,6 +54,24 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Try using a prepared statement.
+PREPARE mytest AS SELECT * FROM todo_end();
+SELECT * FROM check_test(
+    throws_ok( 'mytest', 'P0001'),
+    true,
+    'prepared statement & errcode',
+    'threw P0001'
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_ok( 'EXECUTE mytest', 'P0001'),
+    true,
+    'execute & errcode',
+    'threw P0001'
+    ''
+);
+
 -- Check its diagnostics for an invalid error code.
 SELECT * FROM check_test(
     throws_ok( 'SELECT * FROM todo_end()', 97212 ),
@@ -80,6 +98,23 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- test lives_ok().
 SELECT lives_ok( 'SELECT 1', 'lives_ok() should work' );
+
+PREPARE livetest AS SELECT 1;
+SELECT * FROM check_test(
+    lives_ok( 'livetest'),
+    true,
+    'lives_ok(prepared)'
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    lives_ok( 'EXECUTE livetest'),
+    true,
+    'lives_ok(execute)'
+    '',
+    ''
+);
 
 -- Check its diagnostics when there is an exception.
 SELECT * FROM check_test(

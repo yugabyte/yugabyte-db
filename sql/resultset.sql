@@ -394,7 +394,7 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    '     Columns differ between queries:
+    '   Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -405,7 +405,7 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    '     Columns differ between queries:
+    '   Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -553,7 +553,7 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    '     Columns differ between queries:
+    '   Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -564,7 +564,7 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    '     Columns differ between queries:
+    '   Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
