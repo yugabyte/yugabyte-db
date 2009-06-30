@@ -1,5 +1,5 @@
 \unset ECHO
-1..43
+1..118
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -19,27 +19,102 @@ ok 16 - execute set test should have the proper diagnostics
 ok 17 - select set test should pass
 ok 18 - select set test should have the proper description
 ok 19 - select set test should have the proper diagnostics
-ok 20 - fail with extra record should fail
-ok 21 - fail with extra record should have the proper description
-ok 22 - fail with extra record should have the proper diagnostics
-ok 23 - fail with 2 extra records should fail
-ok 24 - fail with 2 extra records should have the proper description
-ok 25 - fail with 2 extra records should have the proper diagnostics
-ok 26 - fail with missing record should fail
-ok 27 - fail with missing record should have the proper description
-ok 28 - fail with missing record should have the proper diagnostics
-ok 29 - fail with 2 missing records should fail
-ok 30 - fail with 2 missing records should have the proper description
-ok 31 - fail with 2 missing records should have the proper diagnostics
-ok 32 - fail with extra and missing should fail
-ok 33 - fail with extra and missing should have the proper description
-ok 34 - fail with extra and missing should have the proper diagnostics
-ok 35 - fail with 2 extras and 2 missings should fail
-ok 36 - fail with 2 extras and 2 missings should have the proper description
-ok 37 - fail with 2 extras and 2 missings should have the proper diagnostics
-ok 38 - fail with column mismatch should fail
-ok 39 - fail with column mismatch should have the proper description
-ok 40 - fail with column mismatch should have the proper diagnostics
-ok 41 - fail with different col counts should fail
-ok 42 - fail with different col counts should have the proper description
-ok 43 - fail with different col counts should have the proper diagnostics
+ok 20 - dupe rows ignored in set test should pass
+ok 21 - dupe rows ignored in set test should have the proper description
+ok 22 - dupe rows ignored in set test should have the proper diagnostics
+ok 23 - fail with extra record should fail
+ok 24 - fail with extra record should have the proper description
+ok 25 - fail with extra record should have the proper diagnostics
+ok 26 - fail with 2 extra records should fail
+ok 27 - fail with 2 extra records should have the proper description
+ok 28 - fail with 2 extra records should have the proper diagnostics
+ok 29 - fail with missing record should fail
+ok 30 - fail with missing record should have the proper description
+ok 31 - fail with missing record should have the proper diagnostics
+ok 32 - fail with 2 missing records should fail
+ok 33 - fail with 2 missing records should have the proper description
+ok 34 - fail with 2 missing records should have the proper diagnostics
+ok 35 - fail with extra and missing should fail
+ok 36 - fail with extra and missing should have the proper description
+ok 37 - fail with extra and missing should have the proper diagnostics
+ok 38 - fail with 2 extras and 2 missings should fail
+ok 39 - fail with 2 extras and 2 missings should have the proper description
+ok 40 - fail with 2 extras and 2 missings should have the proper diagnostics
+ok 41 - fail with column mismatch should fail
+ok 42 - fail with column mismatch should have the proper description
+ok 43 - fail with column mismatch should have the proper diagnostics
+ok 44 - fail with different col counts should fail
+ok 45 - fail with different col counts should have the proper description
+ok 46 - fail with different col counts should have the proper diagnostics
+ok 47 - simple bag test should pass
+ok 48 - simple bag test should have the proper description
+ok 49 - simple bag test should have the proper diagnostics
+ok 50 - simple bag test without descr should pass
+ok 51 - simple bag test without descr should have the proper description
+ok 52 - simple bag test without descr should have the proper diagnostics
+ok 53 - execute bag test should pass
+ok 54 - execute bag test should have the proper description
+ok 55 - execute bag test should have the proper diagnostics
+ok 56 - select bag test should pass
+ok 57 - select bag test should have the proper description
+ok 58 - select bag test should have the proper diagnostics
+ok 59 - bag test with dupes should pass
+ok 60 - bag test with dupes should have the proper description
+ok 61 - bag test with dupes should have the proper diagnostics
+ok 62 - fail with extra record should fail
+ok 63 - fail with extra record should have the proper description
+ok 64 - fail with extra record should have the proper diagnostics
+ok 65 - fail with 2 extra records should fail
+ok 66 - fail with 2 extra records should have the proper description
+ok 67 - fail with 2 extra records should have the proper diagnostics
+ok 68 - fail with missing record should fail
+ok 69 - fail with missing record should have the proper description
+ok 70 - fail with missing record should have the proper diagnostics
+ok 71 - fail with 2 missing records should fail
+ok 72 - fail with 2 missing records should have the proper description
+ok 73 - fail with 2 missing records should have the proper diagnostics
+ok 74 - fail with extra and missing should fail
+ok 75 - fail with extra and missing should have the proper description
+ok 76 - fail with extra and missing should have the proper diagnostics
+ok 77 - fail with 2 extras and 2 missings should fail
+ok 78 - fail with 2 extras and 2 missings should have the proper description
+ok 79 - fail with 2 extras and 2 missings should have the proper diagnostics
+ok 80 - fail with column mismatch should fail
+ok 81 - fail with column mismatch should have the proper description
+ok 82 - fail with column mismatch should have the proper diagnostics
+ok 83 - fail with different col counts should fail
+ok 84 - fail with different col counts should have the proper description
+ok 85 - fail with different col counts should have the proper diagnostics
+ok 86 - bag fail with missing dupe should fail
+ok 87 - bag fail with missing dupe should have the proper description
+ok 88 - bag fail with missing dupe should have the proper diagnostics
+ok 89 - simple pobag test should pass
+ok 90 - simple pobag test should have the proper description
+ok 91 - simple pobag test should have the proper diagnostics
+ok 92 - simple pobag test without desc should pass
+ok 93 - simple pobag test without desc should have the proper description
+ok 94 - simple pobag test without desc should have the proper diagnostics
+ok 95 - execute pobag test should pass
+ok 96 - execute pobag test should have the proper description
+ok 97 - execute pobag test should have the proper diagnostics
+ok 98 - select pobag test should pass
+ok 99 - select pobag test should have the proper description
+ok 100 - select pobag test should have the proper diagnostics
+ok 101 - pobag test with dupes should pass
+ok 102 - pobag test with dupes should have the proper description
+ok 103 - pobag test with dupes should have the proper diagnostics
+ok 104 - fail with extra record should fail
+ok 105 - fail with extra record should have the proper description
+ok 106 - fail with extra record should have the proper diagnostics
+ok 107 - fail with missing record should fail
+ok 108 - fail with missing record should have the proper description
+ok 109 - fail with missing record should have the proper diagnostics
+ok 110 - fail with missing record should fail
+ok 111 - fail with missing record should have the proper description
+ok 112 - fail with missing record should have the proper diagnostics
+ok 113 - pobag fail with missing dupe should fail
+ok 114 - pobag fail with missing dupe should have the proper description
+ok 115 - pobag fail with missing dupe should have the proper diagnostics
+ok 116 - simple pobag with cursors should pass
+ok 117 - simple pobag with cursors should have the proper description
+ok 118 - simple pobag with cursors should have the proper diagnostics

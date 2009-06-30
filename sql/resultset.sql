@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(43);
+SELECT plan(118);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -221,9 +221,9 @@ SELECT id, name FROM names WHERE name like 'An%';
 
 -- We'll use these prepared statements.
 PREPARE anames AS SELECT id, name FROM names WHERE name like 'An%';
-PREPARE expect AS VALUES (11, 'Andrew'), (15, 'Anthony'), ( 44, 'Anna'),
-                         (63, 'Angel'), (86, 'Angelina'), (130, 'Andrea'),
-                         (183, 'Antonio');
+PREPARE expect AS VALUES (11, 'Andrew'), ( 44, 'Anna'),  (15, 'Anthony'),
+                         (183, 'Antonio'), (86, 'Angelina'), (130, 'Andrea'),
+                         (63, 'Angel');
 
 /****************************************************************************/
 -- First, test _temptable.
@@ -251,17 +251,17 @@ SELECT is(
 SELECT has_table('__somenames__' );
 SELECT has_table('__spacenames__' );
 
-
 /****************************************************************************/
 -- Now test set_eq().
 
 SELECT * FROM check_test(
-    set_eq( 'anames', 'expect', 'first set test' ),
+    set_eq( 'anames', 'expect', 'whatever' ),
     true,
     'simple set test',
-    'first set test',
+    'whatever',
     ''
 );
+
 SELECT * FROM check_test(
     set_eq( 'anames', 'expect' ),
     true,
@@ -287,6 +287,18 @@ SELECT * FROM check_test(
     ),
     true,
     'select set test',
+    '',
+    ''
+);
+
+-- Make sure that dupes are disregarded.
+SELECT * FROM check_test(
+    set_eq(
+        'VALUES (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (1, ''Anna'')'
+    ),
+    true,
+    'dupe rows ignored in set test',
     '',
     ''
 );
@@ -395,36 +407,302 @@ SELECT * FROM check_test(
 );
 
 
+/****************************************************************************/
+-- Now test bag_eq().
+
+SELECT * FROM check_test(
+    bag_eq( 'anames', 'expect', 'whatever' ),
+    true,
+    'simple bag test',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_eq( 'anames', 'expect' ),
+    true,
+    'simple bag test without descr',
+    '',
+    ''
+);
+
+-- Pass a full SQL statement for the prepared statements.
+SELECT * FROM check_test(
+    bag_eq( 'EXECUTE anames', 'EXECUTE expect' ),
+    true,
+    'execute bag test',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT id, name FROM names WHERE name like ''An%''',
+        'SELECT id, name FROM annames'
+    ),
+    true,
+    'select bag test',
+    '',
+    ''
+);
+
+-- Compare with dupes.
+SELECT * FROM check_test(
+    bag_eq(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    true,
+    'bag test with dupes',
+    '',
+    ''
+);
+
+-- And now some failures.
+SELECT * FROM check_test(
+    bag_eq(
+        'anames',
+        'SELECT id, name FROM annames WHERE name <> ''Anna'''
+    ),
+    false,
+    'fail with extra record',
+    '',
+    '   Extra records:
+        (44,Anna)'
+);
+
+SELECT * FROM check_test(
+    bag_eq(
+        'anames',
+        'SELECT id, name FROM annames WHERE name NOT IN (''Anna'', ''Angelina'')'
+    ),
+    false,
+    'fail with 2 extra records',
+    '',
+    E'   Extra records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
+
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT id, name FROM annames WHERE name <> ''Anna''',
+        'expect'
+    ),
+    false,
+    'fail with missing record',
+    '',
+    '   Missing records:
+        (44,Anna)'
+);
+
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT id, name FROM annames WHERE name NOT IN (''Anna'', ''Angelina'')',
+        'expect'
+    ),
+    false,
+    'fail with 2 missing records',
+    '',
+    E'   Missing records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
 
 
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT id, name FROM names WHERE name ~ ''^(An|Jacob)'' AND name <> ''Anna''',
+        'SELECT id, name FROM annames'
+    ),
+    false,
+    'fail with extra and missing',
+    '',
+    '   Extra records:
+        (1,Jacob)
+    Missing records:
+        (44,Anna)'
+);
 
--- SELECT set_eq( 'have', ARRAY[1, 2, 4] );
--- SELECT set_eq( 'have', ARRAY[[1, 2], [3, 4]] );
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT id, name FROM names WHERE name ~ ''^(An|Jacob|Jacks)'' AND name NOT IN (''Anna'', ''Angelina'')',
+        'SELECT id, name FROM annames'
+    ),
+    false,
+    'fail with 2 extras and 2 missings',
+    '',
+    E'   Extra records:
+        \\((1,Jacob|87,Jackson)\\)
+        \\((1,Jacob|87,Jackson)\\)
+    Missing records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
 
--- SELECT poset_eq( 'have', 'want' );
--- SELECT poset_eq( 'have', ARRAY[1, 2, 4] );
--- SELECT poset_eq( 'have', ARRAY[[1, 2], [3, 4]] );
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    bag_eq( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'fail with column mismatch',
+    '',
+    ' Column types do not match between the queries'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    bag_eq( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'fail with different col counts',
+    '',
+    ' Queries do not have same number of columns'
+);
+
+-- Handle failure due to missing dupe.
+SELECT * FROM check_test(
+    bag_eq(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    false,
+    'bag fail with missing dupe',
+    '',
+    '   Extra records:
+        (1,Anna)'
+);
+
+/****************************************************************************/
+-- Now test pobag_eq().
+
+PREPARE anames_ord AS SELECT id, name FROM names WHERE name like 'An%' ORDER BY id;
+PREPARE expect_ord AS VALUES (11, 'Andrew'),  (15, 'Anthony'), ( 44, 'Anna'),
+                         (63, 'Angel'), (86, 'Angelina'), (130, 'Andrea'),
+                         (183, 'Antonio');
+
+SELECT * FROM check_test(
+    pobag_eq( 'anames_ord', 'expect_ord', 'whatever' ),
+    true,
+    'simple pobag test',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    pobag_eq( 'anames_ord', 'expect_ord' ),
+    true,
+    'simple pobag test without desc',
+    '',
+    ''
+);
+
+-- Pass a full SQL statement for the prepared statements.
+SELECT * FROM check_test(
+    pobag_eq( 'EXECUTE anames_ord', 'EXECUTE expect_ord' ),
+    true,
+    'execute pobag test',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    pobag_eq(
+        'SELECT id, name FROM names WHERE name like ''An%'' ORDER BY id',
+        'SELECT id, name FROM annames ORDER BY id'
+    ),
+    true,
+    'select pobag test',
+    '',
+    ''
+);
+
+-- Compare with dupes.
+SELECT * FROM check_test(
+    pobag_eq(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')'
+    ),
+    true,
+    'pobag test with dupes',
+    '',
+    ''
+);
+
+-- And now some failures.
+SELECT * FROM check_test(
+    pobag_eq(
+        'anames_ord',
+        'SELECT id, name FROM annames WHERE name <> ''Anna'''
+    ),
+    false,
+    'fail with extra record',
+    '',
+    '   Results differ beginning at row 3:
+        have: (44,Anna)
+        want: (63,Angel)'
+);
+
+-- Now when the last row is missing.
+SELECT * FROM check_test(
+    pobag_eq(
+        'SELECT id, name FROM annames WHERE name <> ''Antonio''',
+        'anames_ord'
+    ),
+    false,
+    'fail with missing record',
+    '',
+    '   Results differ beginning at row 7:
+        have: ()
+        want: (183,Antonio)'
+);
+
+-- Invert that.
+SELECT * FROM check_test(
+    pobag_eq(
+        'anames_ord',
+        'SELECT id, name FROM annames WHERE name <> ''Antonio'''
+    ),
+    false,
+    'fail with missing record',
+    '',
+    '   Results differ beginning at row 7:
+        have: (183,Antonio)
+        want: ()'
+);
 
 
+-- Compare with missing dupe.
+SELECT * FROM check_test(
+    pobag_eq(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    false,
+    'pobag fail with missing dupe',
+    '',
+    '   Results differ beginning at row 3:
+        have: (1,Anna)
+        want: ()'
+);
 
+-- Compare with cursors.
+DECLARE cwant CURSOR FOR SELECT id, name FROM names WHERE name like 'An%' ORDER BY id;
+DECLARE chave CURSOR FOR SELECT id, name from annames ORDER BY id;
 
-
-
-
--- DECLARE want CURSOR FOR SELECT * FROM users WHERE active;
--- DECLARE have CURSOR FOR SELECT * FROM get_active_users();
--- SELECT bag_eq( 'have', 'want' );
--- SELECT bag_eq( 'have', ARRAY[1, 2, 4, 4] );
--- SELECT bag_eq( 'have', ARRAY[[1, 2], [3, 4], [1, 2]] );
-
--- SELECT pobag_eq( 'have', 'want' );
--- SELECT pobag_eq( 'have', ARRAY[1, 2, 4, 4] );
--- SELECT pobag_eq( 'have', ARRAY[[1, 2], [3, 4], [1, 2]] );
-
+SELECT * FROM check_test(
+    pobag_eq( 'cwant'::refcursor, 'chave'::refcursor ),
+    true,
+    'simple pobag with cursors',
+    '',
+    ''
+);
 
 
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-

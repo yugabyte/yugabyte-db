@@ -5847,82 +5847,6 @@ RETURNS TEXT AS $$
     SELECT _relcomp( $1, $2, NULL::text, '' );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _potemptable ( TEXT, TEXT )
-RETURNS TEXT AS $$
-BEGIN
-    EXECUTE 'CREATE TEMP SEQUENCE ' || $2 || '_seq';
-    EXECUTE 'CREATE TEMP TABLE ' || $2 || ' AS SELECT nextval(''' || $2 || '_seq'') AS __tapseq__ * FROM (' || _query($1) || ') x'; 
-    return $2;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION _tempcols ( TEXT )
-RETURNS TEXT AS $$
-    SELECT array_to_string( ARRAY(
-        SELECT quote_ident(a.attname::text)
-          FROM pg_catalog.pg_namespace n
-          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE n.nspname LIKE 'pg_temp%'
-           AND c.relname = $1
-           AND a.attnum > 0
-           AND NOT a.attisdropped
-           AND a.attname <> '__tapseq__'
-         ORDER BY a.attnum
-    ), ', ');
-$$ LANGUAGE sql;
-
-CREATE OR REPLACE FUNCTION _cmp( refcursor, refcursor, text )
-RETURNS TEXT AS $$
-DECLARE
-    have ALIAS FOR $1;
-    want ALIAS FOR $2;
-    rec_have  RECORD;
-    rec_want  RECORD;
-    rownum    INTEGER := 1;
-BEGIN
-    FETCH have INTO rec_have;
-    FETCH want INTO rec_want;
-    WHILE have IS NOT NULL OR want IS NOT NULL LOOP
-        IF have <> want THEN
-            RETURN ok( false, $3 ) || E'\n' || diag(
-                '    Records differ at row ' || rownum || E'\n' ||
-                '        have: ' || have || E'\n' ||
-                '        want: ' || want
-            );
-        END IF;
-        rownum = rownum + 1;
-        OPEN have FOR EXECUTE _query($1);
-        OPEN want FOR EXECUTE _query($2);
-    END LOOP;
-
-    RETURN ok( true, $3 );
-END;
-$$ LANGUAGE plpgsql;
-
--- poset_eq( sql, sql, description );
-CREATE OR REPLACE FUNCTION poset_eq( TEXT, TEXT, TEXT )
-RETURNS TEXT AS $$
-DECLARE
-    have_table TEXT    := _potemptable( $1, '__taphave__' );
-    want_table TEXT    := _potemptable( $2, '__tapwant__' );
-    have       REFCURSOR;
-    want       REFCURSOR;
-BEGIN
-    OPEN have FOR EXECUTE 'SELECT DISTINCT ' || _tempcols(have_table)
-         || ' FROM ' || have_table || ' ORDER BY __tapseq__';
-    OPEN want FOR EXECUTE 'SELECT DISTINCT ' || _tempcols(want_table)
-         || ' FROM ' || want_table || ' ORDER BY __tapseq__';
-    RETURN _cmp(have, want, $3);
-END;
-$$ LANGUAGE plpgsql;
-
--- poset_eq( sql, sql )
-CREATE OR REPLACE FUNCTION poset_eq( TEXT, TEXT )
-RETURNS TEXT AS $$
-    SELECT poset_eq( $1, $2, NULL::text );
-$$ LANGUAGE sql;
-
 -- bag_eq( sql, sql, description )
 CREATE OR REPLACE FUNCTION bag_eq( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
@@ -5935,6 +5859,41 @@ RETURNS TEXT AS $$
     SELECT _relcomp( $1, $2, NULL::text, 'ALL ' );
 $$ LANGUAGE sql;
 
+-- pobag_eq( cursor, cursor, description )
+CREATE OR REPLACE FUNCTION pobag_eq( refcursor, refcursor, text )
+RETURNS TEXT AS $$
+DECLARE
+    have      ALIAS FOR $1;
+    want      ALIAS FOR $2;
+    rec_have  RECORD;
+    rec_want  RECORD;
+    rownum    INTEGER := 1;
+BEGIN
+    FETCH have INTO rec_have;
+    FETCH want INTO rec_want;
+    WHILE rec_have IS NOT NULL OR rec_want IS NOT NULL LOOP
+        IF rec_have <> rec_want THEN
+            RETURN ok( false, $3 ) || E'\n' || diag(
+                '    Results differ beginning at row ' || rownum || E':\n' ||
+                '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
+                '        want: ' || CASE WHEN rec_want IS NULL THEN '()' ELSE rec_want::text END
+            );
+        END IF;
+        rownum = rownum + 1;
+        FETCH have INTO rec_have;
+        FETCH want INTO rec_want;
+    END LOOP;
+
+    RETURN ok( true, $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- pobag_eq( cursor, cursor )
+CREATE OR REPLACE FUNCTION pobag_eq( refcursor, refcursor )
+RETURNS TEXT AS $$
+    SELECT pobag_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
 -- pobag_eq( sql, sql, description )
 CREATE OR REPLACE FUNCTION pobag_eq( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
@@ -5944,7 +5903,7 @@ DECLARE
 BEGIN
     OPEN have FOR EXECUTE _query($1);
     OPEN want FOR EXECUTE _query($2);
-    RETURN _cmp(have, want, $3);
+    RETURN pobag_eq(have, want, $3);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -5953,40 +5912,5 @@ CREATE OR REPLACE FUNCTION pobag_eq( TEXT, TEXT )
 RETURNS TEXT AS $$
     SELECT pobag_eq( $1, $2, NULL::text );
 $$ LANGUAGE sql;
-
-
--- query_gets()
--- oquery_gets()
--- squery_gets()
-
--- cursor_gets()
--- ocursor_gets()
--- scursor_gets()
-
--- results_count_is
-
--- results_equal
--- results_intersect
--- results_except
-
-
-
-
--- set_equals   -- set equivalence
--- set_includes -- set intersection
--- set_excludes -- set difference
--- set_size_is
-
--- set_equals( 
-
-
--- poset_equals
--- poset_includes
--- poset_excludes
-
--- bag_equals
--- bag_includes
--- bag_excludes
--- bag_size_is
 
 
