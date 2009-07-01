@@ -754,7 +754,41 @@ instead of a query, like so:
     );
 
 In general, the use of prepared statements is highly recommended to keep your
-test code SQLish (you can even use `VALUES` statements in prepared statements!):
+test code SQLish (you can even use `VALUES` statements in prepared
+statements!). But note that, because `results_eq()` does a row-by-row
+comparision, the results of the two query arguments must be in exactly the
+same order, with exactly the same data types, in order to pass. In practical
+terms, it means that you must make sure that your results are never
+unambiguously ordered.
+
+For example, say that you want to compare queries against a `persons` table.
+The simplest way to sort is by `name`, as in:
+
+    try=# select * from people order by name;
+      name  | age 
+    --------+-----
+     Damian |  19
+     Larry  |  53
+     Tom    |  44
+     Tom    |  35
+    (4 rows)
+
+But a different run of the same query could have the rows in different order:
+
+    try=# select * from people order by name;
+      name  | age 
+    --------+-----
+     Damian |  19
+     Larry  |  53
+     Tom    |  35
+     Tom    |  44
+    (4 rows)
+
+Notice how the two "Tom" rows are reversed. The upshot is that you want to
+make sure that your rows are always fully ordered, so that they always appear
+in the same order. In a case like that, it means sorting on both the `name`
+column and the `age` column. If the sort order of your results isn't
+important, consider using `set_eq()` or `bag_eq()` instead.
 
 Internally, `results_eq()` turns your SQL statements into cursors so that it
 can iterate over them one row at a time. Conveniently, this behavior is
@@ -771,10 +805,10 @@ pass *it* in, like so:
         'Gotta have those active users!'
     );
 
-The key here is to ensure that the cursor names are passed as `refcursor`s.
-This allows `results_eq()` to disambiguate them from prepared statements. And
-of course, you can mix and match cursors, prepared statements, and SQL as much
-as you like. Here's an example using a prepared statement and a (reset) cursor
+The key is to ensure that the cursor names are passed as `refcursor`s. This
+allows `results_eq()` to disambiguate them from prepared statements. And of
+course, you can mix and match cursors, prepared statements, and SQL as much as
+you like. Here's an example using a prepared statement and a (reset) cursor
 for the expected results:
 
     PREPARE users_test AS SELECT * FROM active_users();
@@ -812,11 +846,11 @@ if results are of different data types, you'll get diagnostics like so:
     #         want: (foo,1)
 
 On PostgreSQL 8.3 and lower, the rows are cast to text for comparison, rather
-than compared as `record` objects`, so the test cannot detect
-incompatibilities in column numbers or types, or differences in columns that
-convert to the same text representation. For example, a `NULL` column will be
-equivalent to an empty string. The upshot: read failure diagnostics carefully!
-and pay attention to data types on 8.3.
+than compared as `record` objects, so the test cannot detect incompatibilities
+in column numbers or types, or differences in columns that convert to the same
+text representation. For example, a `NULL` column will be equivalent to an
+empty string. The upshot: read failure diagnostics carefully and pay attention
+to data types on 8.3.
 
 ### `set_eq( sql, sql, description )` ###
 ### `set_eq( sql, sql )` ###
