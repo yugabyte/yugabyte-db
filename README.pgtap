@@ -3548,6 +3548,7 @@ To Do
   + `set_excludes()` and `bag_excludes()`.
   + `col_eq()`
   + `row_eq()`
+  + `rowtype_is()`
 
 Supported Versions
 -----------------

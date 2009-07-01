@@ -6,6 +6,7 @@ Revision history for pgTAP
 * Fixed failing test on 8.4rc2.
 * Added `results_eq(), `set_eq()`, and `bag_eq()`, functions to test query
   results.
+* Changed some internal queries to use explicit `JOIN`s.
 
 0.21 2009-05-29T00:04:31
 -------------------------

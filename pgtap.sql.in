@@ -1013,10 +1013,10 @@ BEGIN
     RETURN ok(
         EXISTS(
             SELECT true
-              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
-             WHERE n.oid = c.relnamespace
-               AND c.oid = a.attrelid
-               AND n.nspname = $1
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+             WHERE n.nspname = $1
                AND c.relname = $2
                AND a.attnum  > 0
                AND NOT a.attisdropped
@@ -1038,9 +1038,9 @@ BEGIN
     RETURN ok(
         EXISTS(
             SELECT true
-              FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a
-             WHERE c.oid = a.attrelid
-               AND pg_catalog.pg_table_is_visible(c.oid)
+              FROM pg_catalog.pg_class c
+              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+             WHERE pg_catalog.pg_table_is_visible(c.oid)
                AND c.relname = $1
                AND a.attnum > 0
                AND NOT a.attisdropped
@@ -1101,9 +1101,9 @@ BEGIN
         END IF;
 
         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
-          FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c
-         WHERE a.attrelid = c.oid
-           AND pg_table_is_visible(c.oid)
+          FROM pg_catalog.pg_attribute a
+          JOIN pg_catalog.pg_class c ON  a.attrelid = c.oid
+         WHERE pg_table_is_visible(c.oid)
            AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
            AND c.relname = $2
            AND attnum > 0
@@ -1115,14 +1115,14 @@ BEGIN
         END IF;
 
         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
-          FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a
-         WHERE n.oid = c.relnamespace
-           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
-           AND c.oid = a.attrelid
-           AND n.nspname = $1
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+         WHERE n.nspname = $1
            AND c.relname = $2
            AND attnum > 0
-           AND a.attname = $3;
+           AND a.attname = $3
+           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END;
     END IF;
 
     IF actual_type = LOWER($4) THEN
@@ -5778,12 +5778,12 @@ CREATE OR REPLACE FUNCTION _temptypes( TEXT )
 RETURNS TEXT AS $$
     SELECT array_to_string(ARRAY(
         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
-          FROM pg_catalog.pg_attribute a, pg_catalog.pg_class c
-         WHERE a.attrelid = c.oid
-           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
-           AND c.relname = $1
+          FROM pg_catalog.pg_attribute a
+          JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+         WHERE c.relname = $1
            AND c.relistemp
            AND attnum > 0
+           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
          ORDER BY attnum
     ), ',');
 $$ LANGUAGE sql;
