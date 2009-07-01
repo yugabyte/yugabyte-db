@@ -3543,6 +3543,11 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
+* Useful result tsting functions to consider adding:
+  + `set_includes()` and `bag_includes()`.
+  + `set_excludes()` and `bag_excludes()`.
+  + `col_eq()`
+  + `row_eq()`
 
 Supported Versions
 -----------------
