@@ -729,24 +729,41 @@ SELECT * FROM check_test(
     false,
     'fail with column mismatch',
     '',
-    '   Columns differ between queries:
+    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
         have: (1,foo)
         want: (foo,1)'
 );
 
--- Handle falure due to more subtle column mismatch.
-SELECT * FROM check_test(
-    results_eq(
-        'VALUES (1, ''foo''::varchar), (2, ''bar''::varchar)',
-        'VALUES (1, ''foo''), (2, ''bar'')'
-    ),
-    false,
-    'fail with subtle column mismatch',
-    '',
-    '   Columns differ between queries:
+-- Handle falure due to more subtle column mismatch, valid only on 8.4.
+CREATE OR REPLACE FUNCTION subtlefail() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() < 80400 THEN
+        -- 8.3 and earlier cast records to text, so subtlety is out.
+        RETURN NEXT pass('fail with subtle column mismatch should fail');
+        RETURN NEXT pass('fail with subtle column mismatch should have the proper description');
+        RETURN NEXT pass('fail with subtle column mismatch should have the proper diagnostics');
+    ELSE
+        -- 8.4 does true record comparisions, yay!
+        FOR tap IN SELECT * FROM check_test(
+            results_eq(
+                'VALUES (1, ''foo''::varchar), (2, ''bar''::varchar)',
+                'VALUES (1, ''foo''), (2, ''bar'')'
+            ),
+            false,
+            'fail with subtle column mismatch',
+            '',
+            '   Columns differ between queries:
         have: (1,foo)
-        want: (1,foo)'
-);
+        want: (1,foo)' ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM subtlefail();
 
 -- Handle falure due to column count mismatch.
 SELECT * FROM check_test(
@@ -754,7 +771,7 @@ SELECT * FROM check_test(
     false,
     'fail with different col counts',
     '',
-    '   Columns differ between queries:
+    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
         have: (1)
         want: (foo,1)'
 );

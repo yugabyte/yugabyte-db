@@ -142,6 +142,7 @@ else
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 4)
+	patch -p0 < compat/install-8.3.patch
 ifneq ($(PGVER_MINOR), 3)
 	cat compat/install-8.2.sql >> pgtap.sql
 ifeq ($(PGVER_MINOR), 2)

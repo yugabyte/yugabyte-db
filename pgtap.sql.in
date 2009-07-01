@@ -5901,7 +5901,7 @@ BEGIN
 EXCEPTION
     WHEN datatype_mismatch THEN
         RETURN ok( false, $3 ) || E'\n' || diag(
-            E'    Columns differ between queries:\n'
+            E'    Columns differ between queries:\n' ||
             '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
             '        want: ' || CASE WHEN rec_want IS NULL THEN '()' ELSE rec_want::text END
         );
