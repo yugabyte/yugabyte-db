@@ -9,6 +9,8 @@ Revision history for pgTAP
 * Changed some internal queries to use explicit `JOIN`s.
 * Fixed capitalization of `TAP::Harness` in the `Makefile`. Thanks to
   Quinn Weaver.
+* Fixed a syntax error that caused uninstall_pgtap.sql to fail on older
+  PostgreSQL versions (fix by Quinn Weaver)
 
 0.21 2009-05-29T00:04:31
 -------------------------
