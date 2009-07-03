@@ -41,9 +41,9 @@ ifndef PERL
 PERL := $(shell which foo)
 endif
 
-# Is Tap::Harness installed?
+# Is TAP::Harness installed?
 ifdef PERL
-HAVE_HARNESS := $(shell $(PERL) -le 'eval { require Tap::Harness }; print 1 unless $$@' )
+HAVE_HARNESS := $(shell $(PERL) -le 'eval { require TAP::Harness }; print 1 unless $$@' )
 endif
 
 # We support 8.0 and later.
@@ -183,7 +183,7 @@ endif
 endif
 endif
 
-# Build pg_prove and holler if there's no Perl or Tap::Harness.
+# Build pg_prove and holler if there's no Perl or TAP::Harness.
 bbin/pg_prove:
 	mkdir bbin
 #	sed -e "s,\\('\\|F<\\)psql\\(['>]\\),\\1$(bindir)/psql\\2,g" bin/pg_prove > bbin/pg_prove
@@ -191,7 +191,7 @@ bbin/pg_prove:
 ifdef PERL
 	$(PERL) '-MExtUtils::MY' -e 'MY->fixin(shift)' bbin/pg_prove
 ifndef HAVE_HARNESS
-	$(warning To use pg_prove, Tap::Harness Perl module must be installed from CPAN.)
+	$(warning To use pg_prove, TAP::Harness Perl module must be installed from CPAN.)
 endif
 else
 	$(warning Could not find perl (required by pg_prove). Install it or set the PERL variable.)

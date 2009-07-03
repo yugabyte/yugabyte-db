@@ -7,6 +7,8 @@ Revision history for pgTAP
 * Added `results_eq(), `set_eq()`, and `bag_eq()`, functions to test query
   results.
 * Changed some internal queries to use explicit `JOIN`s.
+* Fixed capitalization of `TAP::Harness` in the `Makefile`. Thanks to
+  Quinn Weaver.
 
 0.21 2009-05-29T00:04:31
 -------------------------
@@ -145,7 +147,7 @@ Revision history for pgTAP
 * Updated the `Makefile` to fix the shebang line in `pg_prove` if
   Perl is found, and to emit a warning if the `$PERL` variable is not
   set. - Updated the `Makefile` so that if `$PERL` is set and
-  Tap::Harness is not installed, it warns the user to install it in
+  TAP::Harness is not installed, it warns the user to install it in
   order to use `pg_prove`. - Updated the `Makefile` to set the location
   of the `psql` binary to the bin directory specified for PostgreSQL
   when it was built.
