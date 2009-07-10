@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(145);
+SELECT plan(274);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -221,7 +221,7 @@ SELECT id, name FROM names WHERE name like 'An%';
 
 -- We'll use these prepared statements.
 PREPARE anames AS SELECT id, name FROM names WHERE name like 'An%';
-PREPARE expect AS VALUES (11, 'Andrew'), ( 44, 'Anna'),  (15, 'Anthony'),
+PREPARE expect AS VALUES (11, 'Andrew'), ( 44, 'Anna'), (15, 'Anthony'),
                          (183, 'Antonio'), (86, 'Angelina'), (130, 'Andrea'),
                          (63, 'Angel');
 
@@ -826,6 +826,460 @@ SELECT * FROM check_test(
     'results_eq(sql, cursor)',
     '',
     ''
+);
+
+/****************************************************************************/
+-- Now test set_has().
+SELECT * FROM check_test(
+    set_has( 'anames', 'expect', 'whatever' ),
+    true,
+    'set_has( prepared, prepared, description )',
+    'whatever',
+    ''
+);
+
+PREPARE subset AS VALUES (11, 'Andrew'), ( 44, 'Anna'), (63, 'Angel');
+
+SELECT * FROM check_test(
+    set_has( 'anames', 'subset' ),
+    true,
+    'set_has( prepared, subprepared )',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_has( 'EXECUTE anames', 'EXECUTE subset' ),
+    true,
+    'set_has( execute, execute )',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    set_has(
+        'SELECT id, name FROM names WHERE name like ''An%''',
+        'SELECT id, name FROM annames'
+    ),
+    true,
+    'set_has( select, select )',
+    '',
+    ''
+);
+
+-- Try an empty set in the second arg.
+SELECT * FROM check_test(
+    set_has( 'anames', 'SELECT id, name FROM annames WHERE false' ),
+    true,
+    'set_has( prepared, empty )',
+    '',
+    ''
+);
+
+-- Make sure that dupes are ignored.
+SELECT * FROM check_test(
+    set_has( 'anames', 'VALUES (44, ''Anna''), (44, ''Anna'')' ),
+    true,
+    'set_has( prepared, dupes )',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_has( 'VALUES (44, ''Anna''), (44, ''Anna'')', 'VALUES(44, ''Anna'')' ),
+    true,
+    'set_has( dupes, values )',
+    '',
+    ''
+);
+
+-- Check failures.
+SELECT * FROM check_test(
+    set_has(
+        'SELECT id, name FROM annames WHERE name <> ''Anna''',
+        'expect'
+    ),
+    false,
+    'set_has( missing1, expect )',
+    '',
+    '   Missing records:
+        (44,Anna)'
+);
+
+SELECT * FROM check_test(
+    set_has(
+        'SELECT id, name FROM annames WHERE name NOT IN (''Anna'', ''Angelina'')',
+        'expect'
+    ),
+    false,
+    'set_has(missing2, expect )',
+    '',
+    E'   Missing records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
+
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    set_has( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'set_has((int,text), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    set_has( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'set_has((int), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
+);
+
+
+/****************************************************************************/
+-- Now test bag_has().
+SELECT * FROM check_test(
+    bag_has( 'anames', 'expect', 'whatever' ),
+    true,
+    'bag_has( prepared, prepared, description )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_has( 'anames', 'subset' ),
+    true,
+    'bag_has( prepared, subprepared )',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_has( 'EXECUTE anames', 'EXECUTE subset' ),
+    true,
+    'bag_has( execute, execute )',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    bag_has(
+        'SELECT id, name FROM names WHERE name like ''An%''',
+        'SELECT id, name FROM annames'
+    ),
+    true,
+    'bag_has( select, select )',
+    '',
+    ''
+);
+
+-- Try an empty set in the second arg.
+SELECT * FROM check_test(
+    bag_has( 'anames', 'SELECT id, name FROM annames WHERE false' ),
+    true,
+    'bag_has( prepared, empty )',
+    '',
+    ''
+);
+
+-- Make sure that dupes are not ignored.
+SELECT * FROM check_test(
+    bag_has( 'anames', 'VALUES (44, ''Anna''), (44, ''Anna'')' ),
+    false,
+    'bag_has( prepared, dupes )',
+    '',
+    '   Missing records:
+        (44,Anna)'
+);
+
+SELECT * FROM check_test(
+    bag_has( 'VALUES (44, ''Anna''), (44, ''Anna'')', 'VALUES(44, ''Anna'')' ),
+    true,
+    'bag_has( dupes, values )',
+    '',
+    ''
+);
+
+
+SELECT * FROM check_test(
+    bag_has(
+        'SELECT id, name FROM annames WHERE name <> ''Anna''',
+        'expect'
+    ),
+    false,
+    'bag_has( missing1, expect )',
+    '',
+    '   Missing records:
+        (44,Anna)'
+);
+
+SELECT * FROM check_test(
+    bag_has(
+        'SELECT id, name FROM annames WHERE name NOT IN (''Anna'', ''Angelina'')',
+        'expect'
+    ),
+    false,
+    'bag_has(missing2, expect )',
+    '',
+    E'   Missing records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
+
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    bag_has( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_has((int,text), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    bag_has( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_has((int), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
+);
+
+
+/****************************************************************************/
+-- Now test set_hasnt().
+
+PREPARE others AS VALUES ( 44, 'Larry' ), (52, 'Tom'), (23, 'Damian' );
+
+SELECT * FROM check_test(
+    set_hasnt( 'anames', 'others', 'whatever' ),
+    true,
+    'set_hasnt( prepared, prepared, description )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_hasnt( 'anames', 'others' ),
+    true,
+    'set_hasnt( prepared, prepared, description )',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_hasnt( 'EXECUTE anames', 'EXECUTE others' ),
+    true,
+    'set_hasnt( execute, execute )',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    set_hasnt(
+        'SELECT id, name FROM names WHERE name like ''An%''',
+        'SELECT id, name FROM names WHERE name like ''B%'''
+    ),
+    true,
+    'set_hasnt( select, select )',
+    '',
+    ''
+);
+
+-- Try an empty set in the second arg.
+SELECT * FROM check_test(
+    set_hasnt( 'anames', 'SELECT id, name FROM annames WHERE false' ),
+    true,
+    'set_hasnt( prepared, empty )',
+    '',
+    ''
+);
+
+-- Make sure that dupes are ignored.
+SELECT * FROM check_test(
+    set_hasnt( 'anames', 'VALUES (44, ''Bob''), (44, ''Bob'')' ),
+    true,
+    'set_hasnt( prepared, dupes )',
+    '',
+    ''
+);
+
+PREPARE overlap AS VALUES ( 44, 'Larry' ), (52, 'Tom'), (23, 'Damian' );
+
+SELECT * FROM check_test(
+    set_hasnt( 'anames', 'VALUES (44,''Anna'')' ),
+    false,
+    'set_hasnt( prepared, value )',
+    '',
+    '   Extra records:
+        (44,Anna)'
+);
+
+
+SELECT * FROM check_test(
+    set_hasnt( 'anames', 'VALUES (44, ''Anna''), (86, ''Angelina'')' ),
+    false,
+    'set_hasnt( prepared, values )',
+    '',
+    E'   Extra records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
+
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    set_hasnt( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'set_hasnt((int,text), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    set_hasnt( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'set_hasnt((int), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
+);
+
+
+/****************************************************************************/
+-- Now test bag_hasnt().
+
+SELECT * FROM check_test(
+    bag_hasnt( 'anames', 'others', 'whatever' ),
+    true,
+    'bag_hasnt( prepared, prepared, description )',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_hasnt( 'anames', 'others' ),
+    true,
+    'bag_hasnt( prepared, prepared, description )',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_hasnt( 'EXECUTE anames', 'EXECUTE others' ),
+    true,
+    'bag_hasnt( execute, execute )',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    bag_hasnt(
+        'SELECT id, name FROM names WHERE name like ''An%''',
+        'SELECT id, name FROM names WHERE name like ''B%'''
+    ),
+    true,
+    'bag_hasnt( select, select )',
+    '',
+    ''
+);
+
+-- Try an empty bag in the second arg.
+SELECT * FROM check_test(
+    bag_hasnt( 'anames', 'SELECT id, name FROM annames WHERE false' ),
+    true,
+    'bag_hasnt( prepared, empty )',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_hasnt( 'anames', 'VALUES (44,''Anna'')' ),
+    false,
+    'bag_hasnt( prepared, value )',
+    '',
+    '   Extra records:
+        (44,Anna)'
+);
+
+
+SELECT * FROM check_test(
+    bag_hasnt( 'anames', 'VALUES (44, ''Anna''), (86, ''Angelina'')' ),
+    false,
+    'bag_hasnt( prepared, values )',
+    '',
+    E'   Extra records:
+        \\((44,Anna|86,Angelina)\\)
+        \\((44,Anna|86,Angelina)\\)',
+    true
+);
+
+-- Handle falure due to column mismatch.
+SELECT * FROM check_test(
+    bag_hasnt( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_hasnt((int,text), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    bag_hasnt( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_hasnt((int), (text,int))',
+    '',
+    '   Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
+);
+
+-- Make sure that dupes are not ignored.
+SELECT * FROM check_test(
+    bag_hasnt(
+        'VALUES (44, ''Anna''), (44, ''Anna'')',
+        'VALUES (44, ''Anna''), (44, ''Anna'')'
+    ),
+    false,
+    'bag_hasnt( dupes, dupes )',
+    '',
+    '   Extra records:
+        (44,Anna)
+        (44,Anna)'
+);
+
+-- But a dupe that appears only once should be in the list only once.
+SELECT * FROM check_test(
+    bag_hasnt(
+        'VALUES (44, ''Anna'')',
+        'VALUES (44, ''Anna''), (44, ''Anna'')'
+    ),
+    false,
+    'bag_hasnt( value, dupes )',
+    '',
+    '   Extra records:
+        (44,Anna)'
 );
 
 /****************************************************************************/

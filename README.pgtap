@@ -902,12 +902,94 @@ This of course extends to sets with different numbers of columns:
 The `bag_eq()` function is just like `set_eq()`, except that it considers the
 results as bags rather than as sets. A bag is a set with duplicates. What this
 means, effectively, is that you can use `bag_eq()` to test result sets where
-order doesn't matter, but duplication does. In other words if a two rows are
+order doesn't matter, but duplication does. In other words, if a two rows are
 the same in the first result set, the same row must appear twice in the second
 result set.
 
 Otherwise, this function behaves exactly like `set_eq()`, including the
 utility of its diagnostics.
+
+### `set_has( sql, sql, description )` ###
+### `set_has( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE subset AS SELECT * FROM USERS where name LIKE 'a%';
+    SELECT set_has( 'testq', 'subset', 'gotta have at least the A listers' );
+
+When you need to test that a query returns at least some subset of records,
+`set_has()` is the hammer you're looking for. It tests that the the results of
+a query contain at least the results returned by another query, if not more.
+That is, the test passes if the second query's results are a subset of the
+first query's results. The second query can even return an empty set, in which
+case the test will pass no matter what the first query returns. Not very
+useful perhaps, but set-theoretically correct.
+
+As with `set_eq()`. the SQL arguments can be the names of prepared statements
+or strings containing an SQL query (see the [summary](#Submit+Your+Query) for
+query argument details), or one of each. In whatever case, a failing test will
+yield useful diagnostics just like:
+
+    # Failed test 122
+    #     Missing records:
+    #         (44,Anna)
+    #         (86,Angelina)
+
+As with `set_eq()`, it will also provide useful diagnostics when the queries
+return incompatible columns. Internally, it uses an `EXCEPT` query to
+determine if there any any unexpectedly missing results.
+
+### `bag_has( sql, sql, description )` ###
+### `bag_has( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE subset AS SELECT * FROM USERS where name LIKE 'a%';
+    SELECT bag_has( 'testq', 'subset', 'gotta have at least the A listers' );
+
+The `bag_has()` function is just like `set_has()`, except that it considers
+the results as bags rather than as sets. A bag is a set with duplicates. What
+this means, effectively, is that you can use `bag_has()` to test result sets
+where order doesn't matter, but duplication does. Internally, it uses an
+`EXCEPT ALL` query to determine if there any any unexpectedly missing results.
+
+### `set_hasnt( sql, sql, description )` ###
+### `set_hasnt( sql, sql )` ###
+
+    PREPARE testq   AS SELECT * FROM users('a%');
+    PREPARE exclude AS SELECT * FROM USERS where name LIKE 'b%';
+    SELECT set_has( 'testq', 'exclude', 'Must not have the Bs' );
+
+This test function is the inverse of `set_has()`: the test passes when the
+results of the first query have none of the results of the second query.
+Diagnostics are similarly useful:
+
+    # Failed test 198
+    #     Extra records:
+    #         (44,Anna)
+    #         (86,Angelina)
+
+Internally, the function uses an `INTERSECT` query to determine if there is
+any unexpected overlap between the query results.
+
+### `bag_hasnt( sql, sql, description )` ###
+### `bag_hasnt( sql, sql )` ###
+
+    PREPARE testq   AS SELECT * FROM users('a%');
+    PREPARE exclude AS SELECT * FROM USERS where name LIKE 'b%';
+    SELECT bag_has( 'testq', 'exclude', 'Must not have the Bs' );
+
+This test function is the inverse of `bag_hasnt()`: the test passes when the
+results of the first query have none of the results of the second query.
+Diagnostics are similarly useful:
+
+    # Failed test 198
+    #     Extra records:
+    #         (44,Anna)
+    #         (86,Angelina)
+
+Internally, the function uses an `INTERSECT ALL` query to determine if there
+is any unexpected overlap between the query results. This means that a
+duplicate row in the first query will appear twice in the diagnostics if it is
+also duplicated in the second query.
 
 The Schema Things
 =================
@@ -3592,8 +3674,6 @@ To Do
   + `sequence_starts_at()`
   + `sequence_cycles()`
 * Useful result tsting functions to consider adding:
-  + `set_includes()` and `bag_includes()`.
-  + `set_excludes()` and `bag_excludes()`.
   + `col_eq()`
   + `row_eq()`
   + `rowtype_is()`

@@ -4,8 +4,8 @@ Revision history for pgTAP
 0.22
 -------------------------
 * Fixed failing test on 8.4rc2.
-* Added `results_eq(), `set_eq()`, and `bag_eq()`, functions to test query
-  results.
+* Added `results_eq(), `set_eq()`, `bag_eq()`, `set_has()`, `bag_has()`,
+  `set_hasnt()`, and `bag_hasnt()` functions to test query results.
 * Changed some internal queries to use explicit `JOIN`s.
 * Fixed capitalization of `TAP::Harness` in the `Makefile`. Thanks to
   Quinn Weaver.
