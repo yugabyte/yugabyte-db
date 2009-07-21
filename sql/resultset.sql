@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(274);
+SELECT plan(313);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -580,6 +580,153 @@ SELECT * FROM check_test(
     '',
     '   Extra records:
         (1,Anna)'
+);
+
+/****************************************************************************/
+-- Now test set_eq().
+
+SELECT * FROM check_test(
+    set_ne(
+        'anames',
+        'SELECT id, name FROM annames WHERE name <> ''Anna''',
+        'whatever'
+    ),
+    true,
+    'set_ne(prepared, select, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_ne(
+        'anames',
+        'SELECT id, name FROM annames WHERE name <> ''Anna'''
+    ),
+    true,
+    'set_ne(prepared, select)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_ne( 'anames', 'expect' ),
+    false,
+    'set_ne(prepared, prepared) fail',
+    '',
+    ''
+);
+
+-- Handle fail with column mismatch.
+SELECT * FROM check_test(
+    set_ne( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'set_ne fail with column mismatch',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    set_ne( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'set_ne fail with different col counts',
+    '',
+    '   Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
+);
+
+-- Handle fail with a dupe.
+SELECT * FROM check_test(
+    set_ne(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    false,
+    'set_ne fail with dupe',
+    '',
+    ''
+);
+
+/****************************************************************************/
+-- Now test bag_ne().
+
+SELECT * FROM check_test(
+    bag_ne(
+        'anames',
+        'SELECT id, name FROM annames WHERE name <> ''Anna''',
+        'whatever'
+    ),
+    true,
+    'bag_ne(prepared, select, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_ne(
+        'anames',
+        'SELECT id, name FROM annames WHERE name <> ''Anna'''
+    ),
+    true,
+    'bag_ne(prepared, select)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_ne( 'anames', 'expect' ),
+    false,
+    'bag_ne(prepared, prepared) fail',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_ne( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_ne fail with column mismatch',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+
+-- Handle pass with a dupe.
+SELECT * FROM check_test(
+    bag_ne(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    true,
+    'set_ne pass with dupe',
+    '',
+    ''
+);
+
+-- Handle fail with column mismatch.
+SELECT * FROM check_test(
+    bag_ne( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_ne fail with column mismatch',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text,integer)'
+);
+
+-- Handle falure due to column count mismatch.
+SELECT * FROM check_test(
+    bag_ne( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'bag_ne fail with different col counts',
+    '',
+    '   Columns differ between queries:
+        have: (integer)
+        want: (text,integer)'
 );
 
 /****************************************************************************/

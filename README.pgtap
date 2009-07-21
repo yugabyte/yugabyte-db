@@ -909,6 +909,36 @@ result set.
 Otherwise, this function behaves exactly like `set_eq()`, including the
 utility of its diagnostics.
 
+### `set_ne( sql, sql, description )` ###
+### `set_ne( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
+    SELECT set_ne( 'testq', 'expect', 'gotta have the A listers' );
+
+The inverse of `set_eq()`, this function tests that the results of two queries
+are *not* the same. The two queries, which The can of course be the names of
+prepared statements or strings containing an SQL query (see the
+[summary](#Submit+Your+Query) for query argument details), or even one of
+each. The two queries, however, must return results that are directly
+comparable -- that is, with the same number and types of columns in the same
+orders.
+
+### `bag_ne( sql, sql, description )` ###
+### `bag_ne( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
+    SELECT bag_ne( 'testq', 'expect', 'gotta have the A listers' );
+
+The inverse of `bag_eq()`, this function tests that the results of two queries
+are *not* the same, including duplicates. The two queries, which The can of
+course be the names of prepared statements or strings containing an SQL query
+(see the [summary](#Submit+Your+Query) for query argument details), or even
+one of each. The two queries, however, must return results that are directly
+comparable -- that is, with the same number and types of columns in the same
+orders.
+
 ### `set_has( sql, sql, description )` ###
 ### `set_has( sql, sql )` ###
 

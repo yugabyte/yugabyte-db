@@ -5872,6 +5872,70 @@ RETURNS TEXT AS $$
     SELECT _relcomp( $1, $2, NULL::text, 'ALL ' );
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _relne( TEXT, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have    TEXT    := _temptable( $1, '__taphave__' );
+    want    TEXT    := _temptable( $2, '__tapwant__' );
+    extras  TEXT[]  := '{}';
+    missing TEXT[]  := '{}';
+    res     BOOLEAN := TRUE;
+    msg     TEXT    := '';
+    rec     RECORD;
+BEGIN
+    BEGIN
+        -- Find extra records.
+        EXECUTE 'SELECT EXISTS ( '
+             || '( SELECT * FROM ' || have || ' EXCEPT ' || $4
+             || '  SELECT * FROM ' || want
+             || ' ) UNION ( '
+             || '  SELECT * FROM ' || want || ' EXCEPT ' || $4
+             || '  SELECT * FROM ' || have
+             || ' ) LIMIT 1 )' INTO res;
+
+        -- Drop the temporary tables.
+        EXECUTE 'DROP TABLE ' || have;
+        EXECUTE 'DROP TABLE ' || want;
+    EXCEPTION WHEN syntax_error OR datatype_mismatch THEN
+        msg := E'\n' || diag(
+            E'    Columns differ between queries:\n'
+            || '        have: (' || _temptypes(have) || E')\n'
+            || '        want: (' || _temptypes(want) || ')'
+        );
+        EXECUTE 'DROP TABLE ' || have;
+        EXECUTE 'DROP TABLE ' || want;
+        RETURN ok(FALSE, $3) || msg;
+    END;
+
+    -- Return the value from the query.
+    RETURN ok(res, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- set_ne( sql, sql, description )
+CREATE OR REPLACE FUNCTION set_ne( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, $3, '' );
+$$ LANGUAGE sql;
+
+-- set_ne( sql, sql )
+CREATE OR REPLACE FUNCTION set_ne( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, NULL::text, '' );
+$$ LANGUAGE sql;
+
+-- bag_ne( sql, sql, description )
+CREATE OR REPLACE FUNCTION bag_ne( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, $3, 'ALL ' );
+$$ LANGUAGE sql;
+
+-- bag_ne( sql, sql )
+CREATE OR REPLACE FUNCTION bag_ne( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, NULL::text, 'ALL ' );
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION _relcomp( TEXT, TEXT, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE

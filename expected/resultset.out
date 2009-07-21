@@ -1,5 +1,5 @@
 \unset ECHO
-1..274
+1..313
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -88,189 +88,228 @@ ok 85 - fail with different col counts should have the proper diagnostics
 ok 86 - bag fail with missing dupe should fail
 ok 87 - bag fail with missing dupe should have the proper description
 ok 88 - bag fail with missing dupe should have the proper diagnostics
-ok 89 - simple results test should pass
-ok 90 - simple results test should have the proper description
-ok 91 - simple results test should have the proper diagnostics
-ok 92 - simple results test without desc should pass
-ok 93 - simple results test without desc should have the proper description
-ok 94 - simple results test without desc should have the proper diagnostics
-ok 95 - execute results test should pass
-ok 96 - execute results test should have the proper description
-ok 97 - execute results test should have the proper diagnostics
-ok 98 - select results test should pass
-ok 99 - select results test should have the proper description
-ok 100 - select results test should have the proper diagnostics
-ok 101 - results test with dupes should pass
-ok 102 - results test with dupes should have the proper description
-ok 103 - results test with dupes should have the proper diagnostics
-ok 104 - results test with nulls should pass
-ok 105 - results test with nulls should have the proper description
-ok 106 - results test with nulls should have the proper diagnostics
-ok 107 - fail with extra record should fail
-ok 108 - fail with extra record should have the proper description
-ok 109 - fail with extra record should have the proper diagnostics
-ok 110 - fail with missing record should fail
-ok 111 - fail with missing record should have the proper description
-ok 112 - fail with missing record should have the proper diagnostics
-ok 113 - fail with missing record should fail
-ok 114 - fail with missing record should have the proper description
-ok 115 - fail with missing record should have the proper diagnostics
-ok 116 - results fail with missing dupe should fail
-ok 117 - results fail with missing dupe should have the proper description
-ok 118 - results fail with missing dupe should have the proper diagnostics
-ok 119 - fail with NULL should fail
-ok 120 - fail with NULL should have the proper description
-ok 121 - fail with NULL should have the proper diagnostics
-ok 122 - fail with column mismatch should fail
-ok 123 - fail with column mismatch should have the proper description
-ok 124 - fail with column mismatch should have the proper diagnostics
-ok 125 - fail with subtle column mismatch should fail
-ok 126 - fail with subtle column mismatch should have the proper description
-ok 127 - fail with subtle column mismatch should have the proper diagnostics
-ok 128 - fail with different col counts should fail
-ok 129 - fail with different col counts should have the proper description
-ok 130 - fail with different col counts should have the proper diagnostics
-ok 131 - simple results with cursors should pass
-ok 132 - simple results with cursors should have the proper description
-ok 133 - simple results with cursors should have the proper diagnostics
-ok 134 - results_eq(cursor, prepared) should pass
-ok 135 - results_eq(cursor, prepared) should have the proper description
-ok 136 - results_eq(cursor, prepared) should have the proper diagnostics
-ok 137 - results_eq(prepared, cursor) should pass
-ok 138 - results_eq(prepared, cursor) should have the proper description
-ok 139 - results_eq(prepared, cursor) should have the proper diagnostics
-ok 140 - results_eq(cursor, sql) should pass
-ok 141 - results_eq(cursor, sql) should have the proper description
-ok 142 - results_eq(cursor, sql) should have the proper diagnostics
-ok 143 - results_eq(sql, cursor) should pass
-ok 144 - results_eq(sql, cursor) should have the proper description
-ok 145 - results_eq(sql, cursor) should have the proper diagnostics
-ok 146 - set_has( prepared, prepared, description ) should pass
-ok 147 - set_has( prepared, prepared, description ) should have the proper description
-ok 148 - set_has( prepared, prepared, description ) should have the proper diagnostics
-ok 149 - set_has( prepared, subprepared ) should pass
-ok 150 - set_has( prepared, subprepared ) should have the proper description
-ok 151 - set_has( prepared, subprepared ) should have the proper diagnostics
-ok 152 - set_has( execute, execute ) should pass
-ok 153 - set_has( execute, execute ) should have the proper description
-ok 154 - set_has( execute, execute ) should have the proper diagnostics
-ok 155 - set_has( select, select ) should pass
-ok 156 - set_has( select, select ) should have the proper description
-ok 157 - set_has( select, select ) should have the proper diagnostics
-ok 158 - set_has( prepared, empty ) should pass
-ok 159 - set_has( prepared, empty ) should have the proper description
-ok 160 - set_has( prepared, empty ) should have the proper diagnostics
-ok 161 - set_has( prepared, dupes ) should pass
-ok 162 - set_has( prepared, dupes ) should have the proper description
-ok 163 - set_has( prepared, dupes ) should have the proper diagnostics
-ok 164 - set_has( dupes, values ) should pass
-ok 165 - set_has( dupes, values ) should have the proper description
-ok 166 - set_has( dupes, values ) should have the proper diagnostics
-ok 167 - set_has( missing1, expect ) should fail
-ok 168 - set_has( missing1, expect ) should have the proper description
-ok 169 - set_has( missing1, expect ) should have the proper diagnostics
-ok 170 - set_has(missing2, expect ) should fail
-ok 171 - set_has(missing2, expect ) should have the proper description
-ok 172 - set_has(missing2, expect ) should have the proper diagnostics
-ok 173 - set_has((int,text), (text,int)) should fail
-ok 174 - set_has((int,text), (text,int)) should have the proper description
-ok 175 - set_has((int,text), (text,int)) should have the proper diagnostics
-ok 176 - set_has((int), (text,int)) should fail
-ok 177 - set_has((int), (text,int)) should have the proper description
-ok 178 - set_has((int), (text,int)) should have the proper diagnostics
-ok 179 - bag_has( prepared, prepared, description ) should pass
-ok 180 - bag_has( prepared, prepared, description ) should have the proper description
-ok 181 - bag_has( prepared, prepared, description ) should have the proper diagnostics
-ok 182 - bag_has( prepared, subprepared ) should pass
-ok 183 - bag_has( prepared, subprepared ) should have the proper description
-ok 184 - bag_has( prepared, subprepared ) should have the proper diagnostics
-ok 185 - bag_has( execute, execute ) should pass
-ok 186 - bag_has( execute, execute ) should have the proper description
-ok 187 - bag_has( execute, execute ) should have the proper diagnostics
-ok 188 - bag_has( select, select ) should pass
-ok 189 - bag_has( select, select ) should have the proper description
-ok 190 - bag_has( select, select ) should have the proper diagnostics
-ok 191 - bag_has( prepared, empty ) should pass
-ok 192 - bag_has( prepared, empty ) should have the proper description
-ok 193 - bag_has( prepared, empty ) should have the proper diagnostics
-ok 194 - bag_has( prepared, dupes ) should fail
-ok 195 - bag_has( prepared, dupes ) should have the proper description
-ok 196 - bag_has( prepared, dupes ) should have the proper diagnostics
-ok 197 - bag_has( dupes, values ) should pass
-ok 198 - bag_has( dupes, values ) should have the proper description
-ok 199 - bag_has( dupes, values ) should have the proper diagnostics
-ok 200 - bag_has( missing1, expect ) should fail
-ok 201 - bag_has( missing1, expect ) should have the proper description
-ok 202 - bag_has( missing1, expect ) should have the proper diagnostics
-ok 203 - bag_has(missing2, expect ) should fail
-ok 204 - bag_has(missing2, expect ) should have the proper description
-ok 205 - bag_has(missing2, expect ) should have the proper diagnostics
-ok 206 - bag_has((int,text), (text,int)) should fail
-ok 207 - bag_has((int,text), (text,int)) should have the proper description
-ok 208 - bag_has((int,text), (text,int)) should have the proper diagnostics
-ok 209 - bag_has((int), (text,int)) should fail
-ok 210 - bag_has((int), (text,int)) should have the proper description
-ok 211 - bag_has((int), (text,int)) should have the proper diagnostics
-ok 212 - set_hasnt( prepared, prepared, description ) should pass
-ok 213 - set_hasnt( prepared, prepared, description ) should have the proper description
-ok 214 - set_hasnt( prepared, prepared, description ) should have the proper diagnostics
-ok 215 - set_hasnt( prepared, prepared, description ) should pass
-ok 216 - set_hasnt( prepared, prepared, description ) should have the proper description
-ok 217 - set_hasnt( prepared, prepared, description ) should have the proper diagnostics
-ok 218 - set_hasnt( execute, execute ) should pass
-ok 219 - set_hasnt( execute, execute ) should have the proper description
-ok 220 - set_hasnt( execute, execute ) should have the proper diagnostics
-ok 221 - set_hasnt( select, select ) should pass
-ok 222 - set_hasnt( select, select ) should have the proper description
-ok 223 - set_hasnt( select, select ) should have the proper diagnostics
-ok 224 - set_hasnt( prepared, empty ) should pass
-ok 225 - set_hasnt( prepared, empty ) should have the proper description
-ok 226 - set_hasnt( prepared, empty ) should have the proper diagnostics
-ok 227 - set_hasnt( prepared, dupes ) should pass
-ok 228 - set_hasnt( prepared, dupes ) should have the proper description
-ok 229 - set_hasnt( prepared, dupes ) should have the proper diagnostics
-ok 230 - set_hasnt( prepared, value ) should fail
-ok 231 - set_hasnt( prepared, value ) should have the proper description
-ok 232 - set_hasnt( prepared, value ) should have the proper diagnostics
-ok 233 - set_hasnt( prepared, values ) should fail
-ok 234 - set_hasnt( prepared, values ) should have the proper description
-ok 235 - set_hasnt( prepared, values ) should have the proper diagnostics
-ok 236 - set_hasnt((int,text), (text,int)) should fail
-ok 237 - set_hasnt((int,text), (text,int)) should have the proper description
-ok 238 - set_hasnt((int,text), (text,int)) should have the proper diagnostics
-ok 239 - set_hasnt((int), (text,int)) should fail
-ok 240 - set_hasnt((int), (text,int)) should have the proper description
-ok 241 - set_hasnt((int), (text,int)) should have the proper diagnostics
-ok 242 - bag_hasnt( prepared, prepared, description ) should pass
-ok 243 - bag_hasnt( prepared, prepared, description ) should have the proper description
-ok 244 - bag_hasnt( prepared, prepared, description ) should have the proper diagnostics
-ok 245 - bag_hasnt( prepared, prepared, description ) should pass
-ok 246 - bag_hasnt( prepared, prepared, description ) should have the proper description
-ok 247 - bag_hasnt( prepared, prepared, description ) should have the proper diagnostics
-ok 248 - bag_hasnt( execute, execute ) should pass
-ok 249 - bag_hasnt( execute, execute ) should have the proper description
-ok 250 - bag_hasnt( execute, execute ) should have the proper diagnostics
-ok 251 - bag_hasnt( select, select ) should pass
-ok 252 - bag_hasnt( select, select ) should have the proper description
-ok 253 - bag_hasnt( select, select ) should have the proper diagnostics
-ok 254 - bag_hasnt( prepared, empty ) should pass
-ok 255 - bag_hasnt( prepared, empty ) should have the proper description
-ok 256 - bag_hasnt( prepared, empty ) should have the proper diagnostics
-ok 257 - bag_hasnt( prepared, value ) should fail
-ok 258 - bag_hasnt( prepared, value ) should have the proper description
-ok 259 - bag_hasnt( prepared, value ) should have the proper diagnostics
-ok 260 - bag_hasnt( prepared, values ) should fail
-ok 261 - bag_hasnt( prepared, values ) should have the proper description
-ok 262 - bag_hasnt( prepared, values ) should have the proper diagnostics
-ok 263 - bag_hasnt((int,text), (text,int)) should fail
-ok 264 - bag_hasnt((int,text), (text,int)) should have the proper description
-ok 265 - bag_hasnt((int,text), (text,int)) should have the proper diagnostics
-ok 266 - bag_hasnt((int), (text,int)) should fail
-ok 267 - bag_hasnt((int), (text,int)) should have the proper description
-ok 268 - bag_hasnt((int), (text,int)) should have the proper diagnostics
-ok 269 - bag_hasnt( dupes, dupes ) should fail
-ok 270 - bag_hasnt( dupes, dupes ) should have the proper description
-ok 271 - bag_hasnt( dupes, dupes ) should have the proper diagnostics
-ok 272 - bag_hasnt( value, dupes ) should fail
-ok 273 - bag_hasnt( value, dupes ) should have the proper description
-ok 274 - bag_hasnt( value, dupes ) should have the proper diagnostics
+ok 89 - set_ne(prepared, select, desc) should pass
+ok 90 - set_ne(prepared, select, desc) should have the proper description
+ok 91 - set_ne(prepared, select, desc) should have the proper diagnostics
+ok 92 - set_ne(prepared, select) should pass
+ok 93 - set_ne(prepared, select) should have the proper description
+ok 94 - set_ne(prepared, select) should have the proper diagnostics
+ok 95 - set_ne(prepared, prepared) fail should fail
+ok 96 - set_ne(prepared, prepared) fail should have the proper description
+ok 97 - set_ne(prepared, prepared) fail should have the proper diagnostics
+ok 98 - set_ne fail with column mismatch should fail
+ok 99 - set_ne fail with column mismatch should have the proper description
+ok 100 - set_ne fail with column mismatch should have the proper diagnostics
+ok 101 - set_ne fail with different col counts should fail
+ok 102 - set_ne fail with different col counts should have the proper description
+ok 103 - set_ne fail with different col counts should have the proper diagnostics
+ok 104 - set_ne fail with dupe should fail
+ok 105 - set_ne fail with dupe should have the proper description
+ok 106 - set_ne fail with dupe should have the proper diagnostics
+ok 107 - bag_ne(prepared, select, desc) should pass
+ok 108 - bag_ne(prepared, select, desc) should have the proper description
+ok 109 - bag_ne(prepared, select, desc) should have the proper diagnostics
+ok 110 - bag_ne(prepared, select) should pass
+ok 111 - bag_ne(prepared, select) should have the proper description
+ok 112 - bag_ne(prepared, select) should have the proper diagnostics
+ok 113 - bag_ne(prepared, prepared) fail should fail
+ok 114 - bag_ne(prepared, prepared) fail should have the proper description
+ok 115 - bag_ne(prepared, prepared) fail should have the proper diagnostics
+ok 116 - bag_ne fail with column mismatch should fail
+ok 117 - bag_ne fail with column mismatch should have the proper description
+ok 118 - bag_ne fail with column mismatch should have the proper diagnostics
+ok 119 - set_ne pass with dupe should pass
+ok 120 - set_ne pass with dupe should have the proper description
+ok 121 - set_ne pass with dupe should have the proper diagnostics
+ok 122 - bag_ne fail with column mismatch should fail
+ok 123 - bag_ne fail with column mismatch should have the proper description
+ok 124 - bag_ne fail with column mismatch should have the proper diagnostics
+ok 125 - bag_ne fail with different col counts should fail
+ok 126 - bag_ne fail with different col counts should have the proper description
+ok 127 - bag_ne fail with different col counts should have the proper diagnostics
+ok 128 - simple results test should pass
+ok 129 - simple results test should have the proper description
+ok 130 - simple results test should have the proper diagnostics
+ok 131 - simple results test without desc should pass
+ok 132 - simple results test without desc should have the proper description
+ok 133 - simple results test without desc should have the proper diagnostics
+ok 134 - execute results test should pass
+ok 135 - execute results test should have the proper description
+ok 136 - execute results test should have the proper diagnostics
+ok 137 - select results test should pass
+ok 138 - select results test should have the proper description
+ok 139 - select results test should have the proper diagnostics
+ok 140 - results test with dupes should pass
+ok 141 - results test with dupes should have the proper description
+ok 142 - results test with dupes should have the proper diagnostics
+ok 143 - results test with nulls should pass
+ok 144 - results test with nulls should have the proper description
+ok 145 - results test with nulls should have the proper diagnostics
+ok 146 - fail with extra record should fail
+ok 147 - fail with extra record should have the proper description
+ok 148 - fail with extra record should have the proper diagnostics
+ok 149 - fail with missing record should fail
+ok 150 - fail with missing record should have the proper description
+ok 151 - fail with missing record should have the proper diagnostics
+ok 152 - fail with missing record should fail
+ok 153 - fail with missing record should have the proper description
+ok 154 - fail with missing record should have the proper diagnostics
+ok 155 - results fail with missing dupe should fail
+ok 156 - results fail with missing dupe should have the proper description
+ok 157 - results fail with missing dupe should have the proper diagnostics
+ok 158 - fail with NULL should fail
+ok 159 - fail with NULL should have the proper description
+ok 160 - fail with NULL should have the proper diagnostics
+ok 161 - fail with column mismatch should fail
+ok 162 - fail with column mismatch should have the proper description
+ok 163 - fail with column mismatch should have the proper diagnostics
+ok 164 - fail with subtle column mismatch should fail
+ok 165 - fail with subtle column mismatch should have the proper description
+ok 166 - fail with subtle column mismatch should have the proper diagnostics
+ok 167 - fail with different col counts should fail
+ok 168 - fail with different col counts should have the proper description
+ok 169 - fail with different col counts should have the proper diagnostics
+ok 170 - simple results with cursors should pass
+ok 171 - simple results with cursors should have the proper description
+ok 172 - simple results with cursors should have the proper diagnostics
+ok 173 - results_eq(cursor, prepared) should pass
+ok 174 - results_eq(cursor, prepared) should have the proper description
+ok 175 - results_eq(cursor, prepared) should have the proper diagnostics
+ok 176 - results_eq(prepared, cursor) should pass
+ok 177 - results_eq(prepared, cursor) should have the proper description
+ok 178 - results_eq(prepared, cursor) should have the proper diagnostics
+ok 179 - results_eq(cursor, sql) should pass
+ok 180 - results_eq(cursor, sql) should have the proper description
+ok 181 - results_eq(cursor, sql) should have the proper diagnostics
+ok 182 - results_eq(sql, cursor) should pass
+ok 183 - results_eq(sql, cursor) should have the proper description
+ok 184 - results_eq(sql, cursor) should have the proper diagnostics
+ok 185 - set_has( prepared, prepared, description ) should pass
+ok 186 - set_has( prepared, prepared, description ) should have the proper description
+ok 187 - set_has( prepared, prepared, description ) should have the proper diagnostics
+ok 188 - set_has( prepared, subprepared ) should pass
+ok 189 - set_has( prepared, subprepared ) should have the proper description
+ok 190 - set_has( prepared, subprepared ) should have the proper diagnostics
+ok 191 - set_has( execute, execute ) should pass
+ok 192 - set_has( execute, execute ) should have the proper description
+ok 193 - set_has( execute, execute ) should have the proper diagnostics
+ok 194 - set_has( select, select ) should pass
+ok 195 - set_has( select, select ) should have the proper description
+ok 196 - set_has( select, select ) should have the proper diagnostics
+ok 197 - set_has( prepared, empty ) should pass
+ok 198 - set_has( prepared, empty ) should have the proper description
+ok 199 - set_has( prepared, empty ) should have the proper diagnostics
+ok 200 - set_has( prepared, dupes ) should pass
+ok 201 - set_has( prepared, dupes ) should have the proper description
+ok 202 - set_has( prepared, dupes ) should have the proper diagnostics
+ok 203 - set_has( dupes, values ) should pass
+ok 204 - set_has( dupes, values ) should have the proper description
+ok 205 - set_has( dupes, values ) should have the proper diagnostics
+ok 206 - set_has( missing1, expect ) should fail
+ok 207 - set_has( missing1, expect ) should have the proper description
+ok 208 - set_has( missing1, expect ) should have the proper diagnostics
+ok 209 - set_has(missing2, expect ) should fail
+ok 210 - set_has(missing2, expect ) should have the proper description
+ok 211 - set_has(missing2, expect ) should have the proper diagnostics
+ok 212 - set_has((int,text), (text,int)) should fail
+ok 213 - set_has((int,text), (text,int)) should have the proper description
+ok 214 - set_has((int,text), (text,int)) should have the proper diagnostics
+ok 215 - set_has((int), (text,int)) should fail
+ok 216 - set_has((int), (text,int)) should have the proper description
+ok 217 - set_has((int), (text,int)) should have the proper diagnostics
+ok 218 - bag_has( prepared, prepared, description ) should pass
+ok 219 - bag_has( prepared, prepared, description ) should have the proper description
+ok 220 - bag_has( prepared, prepared, description ) should have the proper diagnostics
+ok 221 - bag_has( prepared, subprepared ) should pass
+ok 222 - bag_has( prepared, subprepared ) should have the proper description
+ok 223 - bag_has( prepared, subprepared ) should have the proper diagnostics
+ok 224 - bag_has( execute, execute ) should pass
+ok 225 - bag_has( execute, execute ) should have the proper description
+ok 226 - bag_has( execute, execute ) should have the proper diagnostics
+ok 227 - bag_has( select, select ) should pass
+ok 228 - bag_has( select, select ) should have the proper description
+ok 229 - bag_has( select, select ) should have the proper diagnostics
+ok 230 - bag_has( prepared, empty ) should pass
+ok 231 - bag_has( prepared, empty ) should have the proper description
+ok 232 - bag_has( prepared, empty ) should have the proper diagnostics
+ok 233 - bag_has( prepared, dupes ) should fail
+ok 234 - bag_has( prepared, dupes ) should have the proper description
+ok 235 - bag_has( prepared, dupes ) should have the proper diagnostics
+ok 236 - bag_has( dupes, values ) should pass
+ok 237 - bag_has( dupes, values ) should have the proper description
+ok 238 - bag_has( dupes, values ) should have the proper diagnostics
+ok 239 - bag_has( missing1, expect ) should fail
+ok 240 - bag_has( missing1, expect ) should have the proper description
+ok 241 - bag_has( missing1, expect ) should have the proper diagnostics
+ok 242 - bag_has(missing2, expect ) should fail
+ok 243 - bag_has(missing2, expect ) should have the proper description
+ok 244 - bag_has(missing2, expect ) should have the proper diagnostics
+ok 245 - bag_has((int,text), (text,int)) should fail
+ok 246 - bag_has((int,text), (text,int)) should have the proper description
+ok 247 - bag_has((int,text), (text,int)) should have the proper diagnostics
+ok 248 - bag_has((int), (text,int)) should fail
+ok 249 - bag_has((int), (text,int)) should have the proper description
+ok 250 - bag_has((int), (text,int)) should have the proper diagnostics
+ok 251 - set_hasnt( prepared, prepared, description ) should pass
+ok 252 - set_hasnt( prepared, prepared, description ) should have the proper description
+ok 253 - set_hasnt( prepared, prepared, description ) should have the proper diagnostics
+ok 254 - set_hasnt( prepared, prepared, description ) should pass
+ok 255 - set_hasnt( prepared, prepared, description ) should have the proper description
+ok 256 - set_hasnt( prepared, prepared, description ) should have the proper diagnostics
+ok 257 - set_hasnt( execute, execute ) should pass
+ok 258 - set_hasnt( execute, execute ) should have the proper description
+ok 259 - set_hasnt( execute, execute ) should have the proper diagnostics
+ok 260 - set_hasnt( select, select ) should pass
+ok 261 - set_hasnt( select, select ) should have the proper description
+ok 262 - set_hasnt( select, select ) should have the proper diagnostics
+ok 263 - set_hasnt( prepared, empty ) should pass
+ok 264 - set_hasnt( prepared, empty ) should have the proper description
+ok 265 - set_hasnt( prepared, empty ) should have the proper diagnostics
+ok 266 - set_hasnt( prepared, dupes ) should pass
+ok 267 - set_hasnt( prepared, dupes ) should have the proper description
+ok 268 - set_hasnt( prepared, dupes ) should have the proper diagnostics
+ok 269 - set_hasnt( prepared, value ) should fail
+ok 270 - set_hasnt( prepared, value ) should have the proper description
+ok 271 - set_hasnt( prepared, value ) should have the proper diagnostics
+ok 272 - set_hasnt( prepared, values ) should fail
+ok 273 - set_hasnt( prepared, values ) should have the proper description
+ok 274 - set_hasnt( prepared, values ) should have the proper diagnostics
+ok 275 - set_hasnt((int,text), (text,int)) should fail
+ok 276 - set_hasnt((int,text), (text,int)) should have the proper description
+ok 277 - set_hasnt((int,text), (text,int)) should have the proper diagnostics
+ok 278 - set_hasnt((int), (text,int)) should fail
+ok 279 - set_hasnt((int), (text,int)) should have the proper description
+ok 280 - set_hasnt((int), (text,int)) should have the proper diagnostics
+ok 281 - bag_hasnt( prepared, prepared, description ) should pass
+ok 282 - bag_hasnt( prepared, prepared, description ) should have the proper description
+ok 283 - bag_hasnt( prepared, prepared, description ) should have the proper diagnostics
+ok 284 - bag_hasnt( prepared, prepared, description ) should pass
+ok 285 - bag_hasnt( prepared, prepared, description ) should have the proper description
+ok 286 - bag_hasnt( prepared, prepared, description ) should have the proper diagnostics
+ok 287 - bag_hasnt( execute, execute ) should pass
+ok 288 - bag_hasnt( execute, execute ) should have the proper description
+ok 289 - bag_hasnt( execute, execute ) should have the proper diagnostics
+ok 290 - bag_hasnt( select, select ) should pass
+ok 291 - bag_hasnt( select, select ) should have the proper description
+ok 292 - bag_hasnt( select, select ) should have the proper diagnostics
+ok 293 - bag_hasnt( prepared, empty ) should pass
+ok 294 - bag_hasnt( prepared, empty ) should have the proper description
+ok 295 - bag_hasnt( prepared, empty ) should have the proper diagnostics
+ok 296 - bag_hasnt( prepared, value ) should fail
+ok 297 - bag_hasnt( prepared, value ) should have the proper description
+ok 298 - bag_hasnt( prepared, value ) should have the proper diagnostics
+ok 299 - bag_hasnt( prepared, values ) should fail
+ok 300 - bag_hasnt( prepared, values ) should have the proper description
+ok 301 - bag_hasnt( prepared, values ) should have the proper diagnostics
+ok 302 - bag_hasnt((int,text), (text,int)) should fail
+ok 303 - bag_hasnt((int,text), (text,int)) should have the proper description
+ok 304 - bag_hasnt((int,text), (text,int)) should have the proper diagnostics
+ok 305 - bag_hasnt((int), (text,int)) should fail
+ok 306 - bag_hasnt((int), (text,int)) should have the proper description
+ok 307 - bag_hasnt((int), (text,int)) should have the proper diagnostics
+ok 308 - bag_hasnt( dupes, dupes ) should fail
+ok 309 - bag_hasnt( dupes, dupes ) should have the proper description
+ok 310 - bag_hasnt( dupes, dupes ) should have the proper diagnostics
+ok 311 - bag_hasnt( value, dupes ) should fail
+ok 312 - bag_hasnt( value, dupes ) should have the proper description
+ok 313 - bag_hasnt( value, dupes ) should have the proper diagnostics
