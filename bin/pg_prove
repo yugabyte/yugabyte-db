@@ -221,9 +221,9 @@ and I<ending> with “test,” run the tests like so:
   -p --port PORT            Port to which to connect.
   -P --pset OPTION=VALUE    Set psql printing option.
   -v --verbose              Display output of test scripts while running them.
-  -r --runtests             Run tests using C<runtests()>.
-  -s --schema               Schema in which to find test functions.
-  -x --match                Regular expression to find test functions.
+  -r --runtests             Run xUnit test using C<runtests()>.
+  -s --schema               Schema in which to find xUnit tests.
+  -x --match                Regular expression to find xUnit tests.
   -t --timer                Print elapsed time after each test file.
   -c --color                Display colored test ouput.
      --nocolor              Do not display colored test ouput.

@@ -11,7 +11,10 @@ Revision history for pgTAP
 * Fixed capitalization of `TAP::Harness` in the `Makefile`. Thanks to
   Quinn Weaver.
 * Fixed a syntax error that caused uninstall_pgtap.sql to fail on older
-  PostgreSQL versions (fix by Quinn Weaver)
+  PostgreSQL versions (fix by Quinn Weaver).
+* Modified the summary documentation for the `--schema` and `--match` options
+  to better reflect that they are for finding xUnit tests, rather than for
+  finding pgTAP functions.
 
 0.21 2009-05-29T00:04:31
 -------------------------
