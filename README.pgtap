@@ -713,12 +713,16 @@ test? We've got your relation-testing functions right here.
 
 ### `results_eq( sql, sql, description )` ###
 ### `results_eq( sql, sql )` ###
+### `results_eq( sql, array, description )` ###
+### `results_eq( sql, array )` ###
 ### `results_eq( cursor, cursor, description )` ###
 ### `results_eq( cursor, cursor )` ###
 ### `results_eq( sql, cursor, description )` ###
 ### `results_eq( sql, cursor )` ###
 ### `results_eq( cursor, sql, description )` ###
 ### `results_eq( cursor, sql )` ###
+### `results_eq( cursor, array, description )` ###
+### `results_eq( cursor, array )` ###
 
     PREPARE users_test AS SELECT * FROM active_users();
     PREPARE users_expect AS
@@ -751,6 +755,14 @@ instead of a query, like so:
         'SELECT * FROM active_users()',
         $$VALUES ( 42, 'Anna'), (19, 'Strongrrl'), (39, 'Theory')$$,
         'active_users() should return active users'
+    );
+
+If the results returned by the first argument consist of a single column, the
+second argument may be an array:
+
+    SELECT results_eq(
+        'SELECT * FROM active_user_ids()',
+        ARRAY[ 2, 3, 4, 5]
     );
 
 In general, the use of prepared statements is highly recommended to keep your

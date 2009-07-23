@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(391);
+SELECT plan(409);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1766,6 +1766,83 @@ SELECT * FROM check_test(
     '   Columns differ between queries:
         have: (integer,text)
         want: (text)'
+);
+
+/****************************************************************************/
+-- Now test results_eq() with an array argument.
+
+PREPARE anames_only AS SELECT name FROM names WHERE name like 'An%' ORDER BY name;
+
+SELECT * FROM check_test(
+    results_eq(
+        'anames_only',
+        ARRAY['Andrea', 'Andrew', 'Angel', 'Angelina', 'Anna', 'Anthony', 'Antonio' ],
+        'whatever'
+    ),
+    true,
+    'results_eq(prepared, array, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    results_eq(
+        'anames_only',
+        ARRAY['Andrea', 'Andrew', 'Angel', 'Angelina', 'Anna', 'Anthony', 'Antonio' ]
+    ),
+    true,
+    'results_eq(prepared, array)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    results_eq(
+        'SELECT name FROM names WHERE name like ''An%'' ORDER BY name',
+        ARRAY['Andrea', 'Andrew', 'Angel', 'Angelina', 'Anna', 'Anthony', 'Antonio' ],
+        'whatever'
+    ),
+    true,
+    'results_eq(sql, array, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    results_eq(
+        'SELECT name FROM names WHERE name like ''An%'' ORDER BY name',
+        ARRAY['Andrea', 'Andrew', 'Angel', 'Angelina', 'Anna', 'Anthony', 'Antonio' ]
+    ),
+    true,
+    'results_eq(sql, array, desc)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    results_eq(
+        'anames_only',
+        ARRAY['Andrea', 'Andrew', 'Angel', 'Angelina', 'Anna', 'Anthony' ]
+    ),
+    false,
+    'results_eq(prepared, array) extra record',
+    '',
+    '   Results differ beginning at row 7:
+        have: (Antonio)
+        want: ()'
+);
+
+SELECT * FROM check_test(
+    results_eq(
+        'SELECT name FROM names WHERE name like ''An%'' AND name <> ''Anna'' ORDER BY name',
+        ARRAY['Andrea', 'Andrew', 'Angel', 'Angelina', 'Anna', 'Anthony', 'Antonio' ]
+    ),
+    false,
+    'results_eq(select, array) missing record',
+    '',
+    '   Results differ beginning at row 5:
+        have: (Anthony)
+        want: (Anna)'
 );
 
 /****************************************************************************/

@@ -1,5 +1,5 @@
 \unset ECHO
-1..391
+1..409
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -391,3 +391,21 @@ ok 388 - bag_ne(sql, array) incompatible types should have the proper diagnostic
 ok 389 - bag_ne(sql, array) incompatible types should fail
 ok 390 - bag_ne(sql, array) incompatible types should have the proper description
 ok 391 - bag_ne(sql, array) incompatible types should have the proper diagnostics
+ok 392 - results_eq(prepared, array, desc) should pass
+ok 393 - results_eq(prepared, array, desc) should have the proper description
+ok 394 - results_eq(prepared, array, desc) should have the proper diagnostics
+ok 395 - results_eq(prepared, array) should pass
+ok 396 - results_eq(prepared, array) should have the proper description
+ok 397 - results_eq(prepared, array) should have the proper diagnostics
+ok 398 - results_eq(sql, array, desc) should pass
+ok 399 - results_eq(sql, array, desc) should have the proper description
+ok 400 - results_eq(sql, array, desc) should have the proper diagnostics
+ok 401 - results_eq(sql, array, desc) should pass
+ok 402 - results_eq(sql, array, desc) should have the proper description
+ok 403 - results_eq(sql, array, desc) should have the proper diagnostics
+ok 404 - results_eq(prepared, array) extra record should fail
+ok 405 - results_eq(prepared, array) extra record should have the proper description
+ok 406 - results_eq(prepared, array) extra record should have the proper diagnostics
+ok 407 - results_eq(select, array) missing record should fail
+ok 408 - results_eq(select, array) missing record should have the proper description
+ok 409 - results_eq(select, array) missing record should have the proper diagnostics

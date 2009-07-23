@@ -6188,6 +6188,30 @@ RETURNS TEXT AS $$
     SELECT results_eq( $1, $2, NULL::text );
 $$ LANGUAGE sql;
 
+-- results_eq( sql, array, description )
+CREATE OR REPLACE FUNCTION results_eq( TEXT, anyarray, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have REFCURSOR;
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN have FOR EXECUTE _query($1);
+    OPEN want FOR SELECT $2[i]
+    FROM generate_series(array_lower($2, 1), array_upper($2, 1)) s(i);
+    res := results_eq(have, want, $3);
+    CLOSE have;
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_eq( sql, array )
+CREATE OR REPLACE FUNCTION results_eq( TEXT, anyarray )
+RETURNS TEXT AS $$
+    SELECT results_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
 -- results_eq( sql, cursor, description )
 CREATE OR REPLACE FUNCTION results_eq( TEXT, refcursor, TEXT )
 RETURNS TEXT AS $$
@@ -6224,6 +6248,27 @@ $$ LANGUAGE plpgsql;
 
 -- results_eq( cursor, sql )
 CREATE OR REPLACE FUNCTION results_eq( refcursor, TEXT )
+RETURNS TEXT AS $$
+    SELECT results_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_eq( cursor, array, description )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, anyarray, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN want FOR SELECT $2[i]
+    FROM generate_series(array_lower($2, 1), array_upper($2, 1)) s(i);
+    res := results_eq($1, want, $3);
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_eq( cursor, array )
+CREATE OR REPLACE FUNCTION results_eq( refcursor, anyarray )
 RETURNS TEXT AS $$
     SELECT results_eq( $1, $2, NULL::text );
 $$ LANGUAGE sql;
