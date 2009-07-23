@@ -5774,6 +5774,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION _temptable ( anyarray, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    CREATE TEMP TABLE _____coltmp___ AS
+    SELECT $1[i]
+    FROM generate_series(array_lower($1, 1), array_upper($1, 1)) s(i);
+    EXECUTE 'ALTER TABLE _____coltmp___ RENAME TO ' || $2;
+    return $2;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION _temptypes( TEXT )
 RETURNS TEXT AS $$
     SELECT array_to_string(ARRAY(
@@ -5788,11 +5799,11 @@ RETURNS TEXT AS $$
     ), ',');
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _relcomp( TEXT, TEXT, TEXT, TEXT )
+CREATE OR REPLACE FUNCTION _docomp( TEXT, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    have    TEXT    := _temptable( $1, '__taphave__' );
-    want    TEXT    := _temptable( $2, '__tapwant__' );
+    have    ALIAS FOR $1;
+    want    ALIAS FOR $2;
     extras  TEXT[]  := '{}';
     missing TEXT[]  := '{}';
     res     BOOLEAN := TRUE;
@@ -5848,6 +5859,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION _relcomp( TEXT, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _docomp(
+        _temptable( $1, '__taphave__' ),
+        _temptable( $2, '__tapwant__' ),
+        $3, $4
+    );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _relcomp( TEXT, anyarray, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _docomp(
+        _temptable( $1, '__taphave__' ),
+        _temptable( $2, '__tapwant__' ),
+        $3, $4
+    );
+$$ LANGUAGE sql;
+
 -- set_eq( sql, sql, description )
 CREATE OR REPLACE FUNCTION set_eq( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
@@ -5856,6 +5885,18 @@ $$ LANGUAGE sql;
 
 -- set_eq( sql, sql )
 CREATE OR REPLACE FUNCTION set_eq( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relcomp( $1, $2, NULL::text, '' );
+$$ LANGUAGE sql;
+
+-- set_eq( sql, array, description )
+CREATE OR REPLACE FUNCTION set_eq( TEXT, anyarray, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relcomp( $1, $2, $3, '' );
+$$ LANGUAGE sql;
+
+-- set_eq( sql, array )
+CREATE OR REPLACE FUNCTION set_eq( TEXT, anyarray )
 RETURNS TEXT AS $$
     SELECT _relcomp( $1, $2, NULL::text, '' );
 $$ LANGUAGE sql;
@@ -5872,11 +5913,23 @@ RETURNS TEXT AS $$
     SELECT _relcomp( $1, $2, NULL::text, 'ALL ' );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _relne( TEXT, TEXT, TEXT, TEXT )
+-- bag_eq( sql, array, description )
+CREATE OR REPLACE FUNCTION bag_eq( TEXT, anyarray, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relcomp( $1, $2, $3, 'ALL ' );
+$$ LANGUAGE sql;
+
+-- bag_eq( sql, array )
+CREATE OR REPLACE FUNCTION bag_eq( TEXT, anyarray )
+RETURNS TEXT AS $$
+    SELECT _relcomp( $1, $2, NULL::text, 'ALL ' );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _do_ne( TEXT, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    have    TEXT    := _temptable( $1, '__taphave__' );
-    want    TEXT    := _temptable( $2, '__tapwant__' );
+    have    ALIAS FOR $1;
+    want    ALIAS FOR $2;
     extras  TEXT[]  := '{}';
     missing TEXT[]  := '{}';
     res     BOOLEAN := TRUE;
@@ -5912,6 +5965,24 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION _relne( TEXT, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _do_ne(
+        _temptable( $1, '__taphave__' ),
+        _temptable( $2, '__tapwant__' ),
+        $3, $4
+    );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _relne( TEXT, anyarray, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _do_ne(
+        _temptable( $1, '__taphave__' ),
+        _temptable( $2, '__tapwant__' ),
+        $3, $4
+    );
+$$ LANGUAGE sql;
+
 -- set_ne( sql, sql, description )
 CREATE OR REPLACE FUNCTION set_ne( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
@@ -5924,6 +5995,18 @@ RETURNS TEXT AS $$
     SELECT _relne( $1, $2, NULL::text, '' );
 $$ LANGUAGE sql;
 
+-- set_ne( sql, array, description )
+CREATE OR REPLACE FUNCTION set_ne( TEXT, anyarray, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, $3, '' );
+$$ LANGUAGE sql;
+
+-- set_ne( sql, array )
+CREATE OR REPLACE FUNCTION set_ne( TEXT, anyarray )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, NULL::text, '' );
+$$ LANGUAGE sql;
+
 -- bag_ne( sql, sql, description )
 CREATE OR REPLACE FUNCTION bag_ne( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
@@ -5932,6 +6015,18 @@ $$ LANGUAGE sql;
 
 -- bag_ne( sql, sql )
 CREATE OR REPLACE FUNCTION bag_ne( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, NULL::text, 'ALL ' );
+$$ LANGUAGE sql;
+
+-- bag_ne( sql, array, description )
+CREATE OR REPLACE FUNCTION bag_ne( TEXT, anyarray, TEXT )
+RETURNS TEXT AS $$
+    SELECT _relne( $1, $2, $3, 'ALL ' );
+$$ LANGUAGE sql;
+
+-- bag_ne( sql, array )
+CREATE OR REPLACE FUNCTION bag_ne( TEXT, anyarray )
 RETURNS TEXT AS $$
     SELECT _relne( $1, $2, NULL::text, 'ALL ' );
 $$ LANGUAGE sql;

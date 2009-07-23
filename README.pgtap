@@ -854,6 +854,8 @@ to data types on 8.3.
 
 ### `set_eq( sql, sql, description )` ###
 ### `set_eq( sql, sql )` ###
+### `set_eq( sql, array, description )` ###
+### `set_eq( sql, array )` ###
 
     PREPARE testq  AS SELECT * FROM users('a%');
     PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
@@ -866,8 +868,16 @@ of duplicates or ordering, a `set_eq()` test will pass.
 
 The SQL arguments can be the names of prepared statements or strings
 containing an SQL query (see the [summary](#Submit+Your+Query) for query
-argument details), or even one of each. In whatever case, a failing test
-will yield useful diagnostics, such as:
+argument details), or even one of each. If the results returned by the first
+argument consist of a single column, the second argument may be an array:
+
+    SELECT set_eq(
+        'SELECT * FROM active_user_ids()',
+        ARRAY[ 2, 3, 4, 5]
+    );
+
+In whatever case you choose to pass arguments, a failing test will yield
+useful diagnostics, such as:
 
     # Failed test 146
     #     Extra records:
@@ -894,6 +904,8 @@ This of course extends to sets with different numbers of columns:
 
 ### `bag_eq( sql, sql, description )` ###
 ### `bag_eq( sql, sql )` ###
+### `bag_eq( sql, array, description )` ###
+### `bag_eq( sql, array )` ###
 
     PREPARE testq  AS SELECT * FROM users('a%');
     PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
@@ -911,6 +923,8 @@ utility of its diagnostics.
 
 ### `set_ne( sql, sql, description )` ###
 ### `set_ne( sql, sql )` ###
+### `set_ne( sql, array, description )` ###
+### `set_ne( sql, array )` ###
 
     PREPARE testq  AS SELECT * FROM users('a%');
     PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
@@ -926,6 +940,8 @@ orders.
 
 ### `bag_ne( sql, sql, description )` ###
 ### `bag_ne( sql, sql )` ###
+### `bag_ne( sql, array, description )` ###
+### `bag_ne( sql, array )` ###
 
     PREPARE testq  AS SELECT * FROM users('a%');
     PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
@@ -3703,8 +3719,7 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-* Useful result tsting functions to consider adding:
-  + `col_eq()`
+* Useful result testing functions to consider adding:
   + `row_eq()`
   + `rowtype_is()`
 

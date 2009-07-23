@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(313);
+SELECT plan(391);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -257,7 +257,7 @@ SELECT has_table('__spacenames__' );
 SELECT * FROM check_test(
     set_eq( 'anames', 'expect', 'whatever' ),
     true,
-    'simple set test',
+    'set_eq(prepared, prepared, desc)',
     'whatever',
     ''
 );
@@ -265,7 +265,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     set_eq( 'anames', 'expect' ),
     true,
-    'simple set test without descr',
+    'set_eq(prepared, prepared)',
     '',
     ''
 );
@@ -274,7 +274,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     set_eq( 'EXECUTE anames', 'EXECUTE expect' ),
     true,
-    'execute set test',
+    'set_eq(execute, execute, desc)',
     '',
     ''
 );
@@ -286,7 +286,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames'
     ),
     true,
-    'select set test',
+    'set_eq(select, select)',
     '',
     ''
 );
@@ -298,7 +298,7 @@ SELECT * FROM check_test(
         'VALUES (1, ''Anna''), (1, ''Anna'')'
     ),
     true,
-    'dupe rows ignored in set test',
+    'set_eq(values, dupe values)',
     '',
     ''
 );
@@ -310,7 +310,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames WHERE name <> ''Anna'''
     ),
     false,
-    'fail with extra record',
+    'set_eq(prepared, select) fail extra',
     '',
     '   Extra records:
         (44,Anna)'
@@ -322,7 +322,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames WHERE name NOT IN (''Anna'', ''Angelina'')'
     ),
     false,
-    'fail with 2 extra records',
+    'set_eq(prepared, select) fail extras',
     '',
     E'   Extra records:
         \\((44,Anna|86,Angelina)\\)
@@ -336,7 +336,7 @@ SELECT * FROM check_test(
         'expect'
     ),
     false,
-    'fail with missing record',
+    'set_eq(select, prepared) fail missing',
     '',
     '   Missing records:
         (44,Anna)'
@@ -348,7 +348,7 @@ SELECT * FROM check_test(
         'expect'
     ),
     false,
-    'fail with 2 missing records',
+    'set_eq(select, prepared) fail missings',
     '',
     E'   Missing records:
         \\((44,Anna|86,Angelina)\\)
@@ -363,7 +363,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames'
     ),
     false,
-    'fail with extra and missing',
+    'set_eq(select, select) fail extra & missing',
     '',
     '   Extra records:
         (1,Jacob)
@@ -377,7 +377,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames'
     ),
     false,
-    'fail with 2 extras and 2 missings',
+    'set_eq(select, select) fail extras & missings',
     '',
     E'   Extra records:
         \\((1,Jacob|87,Jackson)\\)
@@ -388,22 +388,22 @@ SELECT * FROM check_test(
     true
 );
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     set_eq( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
-    'fail with column mismatch',
+    'set_eq(values, values) fail mismatch',
     '',
     '   Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     set_eq( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
-    'fail with different col counts',
+    'set_eq(values, values) fail column count',
     '',
     '   Columns differ between queries:
         have: (integer)
@@ -416,7 +416,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     bag_eq( 'anames', 'expect', 'whatever' ),
     true,
-    'simple bag test',
+    'bag_eq(prepared, prepared, desc)',
     'whatever',
     ''
 );
@@ -424,7 +424,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     bag_eq( 'anames', 'expect' ),
     true,
-    'simple bag test without descr',
+    'bag_eq(prepared, prepared)',
     '',
     ''
 );
@@ -433,7 +433,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     bag_eq( 'EXECUTE anames', 'EXECUTE expect' ),
     true,
-    'execute bag test',
+    'bag_eq(execute, execute)',
     '',
     ''
 );
@@ -445,7 +445,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames'
     ),
     true,
-    'select bag test',
+    'bag_eq(select, select)',
     '',
     ''
 );
@@ -457,7 +457,7 @@ SELECT * FROM check_test(
         'VALUES (1, ''Anna''), (1, ''Anna''), (86, ''Angelina'')'
     ),
     true,
-    'bag test with dupes',
+    'bag_eq(dupe values, dupe values)',
     '',
     ''
 );
@@ -469,7 +469,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames WHERE name <> ''Anna'''
     ),
     false,
-    'fail with extra record',
+    'bag_eq(prepared, select) fail extra',
     '',
     '   Extra records:
         (44,Anna)'
@@ -481,7 +481,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames WHERE name NOT IN (''Anna'', ''Angelina'')'
     ),
     false,
-    'fail with 2 extra records',
+    'bag_eq(prepared, select) fail extras',
     '',
     E'   Extra records:
         \\((44,Anna|86,Angelina)\\)
@@ -495,7 +495,7 @@ SELECT * FROM check_test(
         'expect'
     ),
     false,
-    'fail with missing record',
+    'bag_eq(select, prepared) fail missing',
     '',
     '   Missing records:
         (44,Anna)'
@@ -507,7 +507,7 @@ SELECT * FROM check_test(
         'expect'
     ),
     false,
-    'fail with 2 missing records',
+    'bag_eq(select, prepared) fail missings',
     '',
     E'   Missing records:
         \\((44,Anna|86,Angelina)\\)
@@ -522,7 +522,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames'
     ),
     false,
-    'fail with extra and missing',
+    'bag_eq(select, select) fail extra & missing',
     '',
     '   Extra records:
         (1,Jacob)
@@ -536,7 +536,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames'
     ),
     false,
-    'fail with 2 extras and 2 missings',
+    'bag_eq(select, select) fail extras & missings',
     '',
     E'   Extra records:
         \\((1,Jacob|87,Jackson)\\)
@@ -547,22 +547,22 @@ SELECT * FROM check_test(
     true
 );
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     bag_eq( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
-    'fail with column mismatch',
+    'bag_eq(values, values) fail mismatch',
     '',
     '   Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     bag_eq( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
-    'fail with different col counts',
+    'bag_eq(values, values) fail column count',
     '',
     '   Columns differ between queries:
         have: (integer)
@@ -576,7 +576,7 @@ SELECT * FROM check_test(
         'VALUES (1, ''Anna''), (86, ''Angelina'')'
     ),
     false,
-    'bag fail with missing dupe',
+    'bag_eq(values, values) fail missing dupe',
     '',
     '   Extra records:
         (1,Anna)'
@@ -627,7 +627,7 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     set_ne( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -718,7 +718,7 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     bag_ne( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -740,7 +740,7 @@ PREPARE expect_ord AS VALUES (11, 'Andrew'),  (15, 'Anthony'), ( 44, 'Anna'),
 SELECT * FROM check_test(
     results_eq( 'anames_ord', 'expect_ord', 'whatever' ),
     true,
-    'simple results test',
+    'results_eq(prepared, prepared, desc)',
     'whatever',
     ''
 );
@@ -748,7 +748,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     results_eq( 'anames_ord', 'expect_ord' ),
     true,
-    'simple results test without desc',
+    'results_eq(prepared, prepared)',
     '',
     ''
 );
@@ -757,7 +757,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     results_eq( 'EXECUTE anames_ord', 'EXECUTE expect_ord' ),
     true,
-    'execute results test',
+    'results_eq(execute, execute)',
     '',
     ''
 );
@@ -769,7 +769,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames ORDER BY id'
     ),
     true,
-    'select results test',
+    'results_eq(select, select)',
     '',
     ''
 );
@@ -781,7 +781,7 @@ SELECT * FROM check_test(
         'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')'
     ),
     true,
-    'results test with dupes',
+    'results_eq(dupe values, dupe values)',
     '',
     ''
 );
@@ -793,7 +793,7 @@ SELECT * FROM check_test(
         'VALUES (4, NULL), (86, ''Angelina''), (1, ''Anna'')'
     ),
     true,
-    'results test with nulls',
+    'results_eq(values with null, values with null)',
     '',
     ''
 );
@@ -805,7 +805,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames WHERE name <> ''Anna'''
     ),
     false,
-    'fail with extra record',
+    'results_eq(prepared, select) fail',
     '',
     '   Results differ beginning at row 3:
         have: (44,Anna)
@@ -819,7 +819,7 @@ SELECT * FROM check_test(
         'anames_ord'
     ),
     false,
-    'fail with missing record',
+    'results_eq(select, prepared) fail missing last row',
     '',
     '   Results differ beginning at row 7:
         have: ()
@@ -833,7 +833,7 @@ SELECT * FROM check_test(
         'SELECT id, name FROM annames WHERE name <> ''Antonio'''
     ),
     false,
-    'fail with missing record',
+    'results_eq(prepared, select) fail missing first row',
     '',
     '   Results differ beginning at row 7:
         have: (183,Antonio)
@@ -848,7 +848,7 @@ SELECT * FROM check_test(
         'VALUES (1, ''Anna''), (86, ''Angelina'')'
     ),
     false,
-    'results fail with missing dupe',
+    'results_eq(values dupe, values)',
     '',
     '   Results differ beginning at row 3:
         have: (1,Anna)
@@ -862,7 +862,7 @@ SELECT * FROM check_test(
         'VALUES (1, ''Anna''), (86, ''Angelina'')'
     ),
     false,
-    'fail with NULL',
+    'results_eq(values null, values)',
     '',
     '   Results differ beginning at row 1:
         have: (1,)
@@ -870,27 +870,27 @@ SELECT * FROM check_test(
 );
 
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     results_eq( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
-    'fail with column mismatch',
+    'results_eq(values, values) mismatch',
     '',
     CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
         have: (1,foo)
         want: (foo,1)'
 );
 
--- Handle falure due to more subtle column mismatch, valid only on 8.4.
+-- Handle failure due to more subtle column mismatch, valid only on 8.4.
 CREATE OR REPLACE FUNCTION subtlefail() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
     IF pg_version_num() < 80400 THEN
         -- 8.3 and earlier cast records to text, so subtlety is out.
-        RETURN NEXT pass('fail with subtle column mismatch should fail');
-        RETURN NEXT pass('fail with subtle column mismatch should have the proper description');
-        RETURN NEXT pass('fail with subtle column mismatch should have the proper diagnostics');
+        RETURN NEXT pass('results_eq(values, values) subtle mismatch should fail');
+        RETURN NEXT pass('results_eq(values, values) subtle mismatch should have the proper description');
+        RETURN NEXT pass('results_eq(values, values) subtle mismatch should have the proper diagnostics');
     ELSE
         -- 8.4 does true record comparisions, yay!
         FOR tap IN SELECT * FROM check_test(
@@ -899,7 +899,7 @@ BEGIN
                 'VALUES (1, ''foo''), (2, ''bar'')'
             ),
             false,
-            'fail with subtle column mismatch',
+            'results_eq(values, values) subtle mismatch',
             '',
             '   Columns differ between queries:
         have: (1,foo)
@@ -912,11 +912,11 @@ END;
 $$ LANGUAGE plpgsql;
 SELECT * FROM subtlefail();
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     results_eq( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
-    'fail with different col counts',
+    'results_eq(values, values) fail column count',
     '',
     CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
         have: (1)
@@ -930,7 +930,7 @@ DECLARE chave CURSOR FOR SELECT id, name from annames ORDER BY id;
 SELECT * FROM check_test(
     results_eq( 'cwant'::refcursor, 'chave'::refcursor ),
     true,
-    'simple results with cursors',
+    'results_eq(cursor, cursor)',
     '',
     ''
 );
@@ -1068,7 +1068,7 @@ SELECT * FROM check_test(
     true
 );
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     set_has( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1079,7 +1079,7 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     set_has( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1183,7 +1183,7 @@ SELECT * FROM check_test(
     true
 );
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     bag_has( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1194,7 +1194,7 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     bag_has( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1288,7 +1288,7 @@ SELECT * FROM check_test(
     true
 );
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     set_hasnt( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1299,7 +1299,7 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     set_hasnt( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1380,7 +1380,7 @@ SELECT * FROM check_test(
     true
 );
 
--- Handle falure due to column mismatch.
+-- Handle failure due to column mismatch.
 SELECT * FROM check_test(
     bag_hasnt( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1391,7 +1391,7 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
--- Handle falure due to column count mismatch.
+-- Handle failure due to column count mismatch.
 SELECT * FROM check_test(
     bag_hasnt( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
     false,
@@ -1427,6 +1427,345 @@ SELECT * FROM check_test(
     '',
     '   Extra records:
         (44,Anna)'
+);
+
+
+/****************************************************************************/
+-- Test set_eq() with an array argument.
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ],
+        'whatever'
+    ),
+    true,
+    'set_eq(sql, array, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    true,
+    'set_eq(sql, array)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel', 'Andrew', 'Anna' ]
+    ),
+    true,
+    'set_eq(sql, dupe array)',
+    '',
+    ''
+);
+
+-- Fail with an extra record.
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'set_eq(sql, array) extra record',
+    '',
+    '   Extra records:
+        (Anthony)'
+);
+
+
+-- Fail with an extra record.
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Alan', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'set_eq(sql, array) missing record',
+    '',
+    '   Missing records:
+        (Alan)'
+);
+
+-- Fail with incompatible columns.
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY[1, 2, 3]
+    ),
+    false,
+    'set_eq(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (text)
+        want: (integer)'
+);
+
+-- Fail with invalid column counts.
+SELECT * FROM check_test(
+    set_eq(
+        'anames',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'set_eq(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text)'
+);
+
+/****************************************************************************/
+-- Test bag_eq() with an array argument.
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ],
+        'whatever'
+    ),
+    true,
+    'bag_eq(sql, array, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    true,
+    'bag_eq(sql, array)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel', 'Anna' ]
+    ),
+    false,
+    'bag_eq(sql, dupe array) fail',
+    '',
+    '   Missing records:
+        (Anna)'
+);
+
+-- Fail with an extra record.
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'bag_eq(sql, array) extra record',
+    '',
+    '   Extra records:
+        (Anthony)'
+);
+
+
+-- Fail with an extra record.
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Alan', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'bag_eq(sql, array) missing record',
+    '',
+    '   Missing records:
+        (Alan)'
+);
+
+-- Fail with incompatible columns.
+SELECT * FROM check_test(
+    bag_eq(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY[1, 2, 3]
+    ),
+    false,
+    'bag_eq(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (text)
+        want: (integer)'
+);
+
+-- Fail with invalid column counts.
+SELECT * FROM check_test(
+    bag_eq(
+        'anames',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'bag_eq(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text)'
+);
+
+
+/****************************************************************************/
+-- Test set_ne() with an array argument.
+SELECT * FROM check_test(
+    set_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna' ],
+        'whatever'
+    ),
+    true,
+    'set_ne(sql, array, desc)',
+    'whatever',
+    ''
+);
+
+
+SELECT * FROM check_test(
+    set_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna' ]
+    ),
+    true,
+    'set_ne(sql, array)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    set_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'set_ne(sql, array) fail',
+    '',
+    ''
+);
+
+-- Fail with dupes.
+SELECT * FROM check_test(
+    set_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel', 'Anna' ]
+    ),
+    false,
+    'set_ne(sql, dupes array) fail',
+    '',
+    ''
+);
+
+-- Fail with incompatible columns.
+SELECT * FROM check_test(
+    set_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY[1, 2, 3]
+    ),
+    false,
+    'set_ne(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (text)
+        want: (integer)'
+);
+
+-- Fail with invalid column counts.
+SELECT * FROM check_test(
+    set_ne(
+        'anames',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'set_ne(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text)'
+);
+
+/****************************************************************************/
+-- Test bag_ne() with an array argument.
+SELECT * FROM check_test(
+    bag_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna' ],
+        'whatever'
+    ),
+    true,
+    'bag_ne(sql, array, desc)',
+    'whatever',
+    ''
+);
+
+
+SELECT * FROM check_test(
+    bag_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna' ]
+    ),
+    true,
+    'bag_ne(sql, array)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    bag_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'bag_ne(sql, array) fail',
+    '',
+    ''
+);
+
+-- Pass with dupes.
+SELECT * FROM check_test(
+    bag_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel', 'Anna' ]
+    ),
+    true,
+    'bag_ne(sql, dupes array)',
+    '',
+    ''
+);
+
+-- Fail with incompatible columns.
+SELECT * FROM check_test(
+    bag_ne(
+        'SELECT name FROM names WHERE name like ''An%''',
+        ARRAY[1, 2, 3]
+    ),
+    false,
+    'bag_ne(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (text)
+        want: (integer)'
+);
+
+-- Fail with invalid column counts.
+SELECT * FROM check_test(
+    bag_ne(
+        'anames',
+        ARRAY['Andrew', 'Anna', 'Anthony', 'Antonio', 'Angelina', 'Andrea', 'Angel' ]
+    ),
+    false,
+    'bag_ne(sql, array) incompatible types',
+    '',
+    '   Columns differ between queries:
+        have: (integer,text)
+        want: (text)'
 );
 
 /****************************************************************************/

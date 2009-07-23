@@ -1,5 +1,5 @@
 \unset ECHO
-1..313
+1..391
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -7,87 +7,87 @@ ok 4 - Table __somenames__ should exist
 ok 5 - Should create a temp table for a prepared statement with space
 ok 6 - Table __somenames__ should exist
 ok 7 - Table __spacenames__ should exist
-ok 8 - simple set test should pass
-ok 9 - simple set test should have the proper description
-ok 10 - simple set test should have the proper diagnostics
-ok 11 - simple set test without descr should pass
-ok 12 - simple set test without descr should have the proper description
-ok 13 - simple set test without descr should have the proper diagnostics
-ok 14 - execute set test should pass
-ok 15 - execute set test should have the proper description
-ok 16 - execute set test should have the proper diagnostics
-ok 17 - select set test should pass
-ok 18 - select set test should have the proper description
-ok 19 - select set test should have the proper diagnostics
-ok 20 - dupe rows ignored in set test should pass
-ok 21 - dupe rows ignored in set test should have the proper description
-ok 22 - dupe rows ignored in set test should have the proper diagnostics
-ok 23 - fail with extra record should fail
-ok 24 - fail with extra record should have the proper description
-ok 25 - fail with extra record should have the proper diagnostics
-ok 26 - fail with 2 extra records should fail
-ok 27 - fail with 2 extra records should have the proper description
-ok 28 - fail with 2 extra records should have the proper diagnostics
-ok 29 - fail with missing record should fail
-ok 30 - fail with missing record should have the proper description
-ok 31 - fail with missing record should have the proper diagnostics
-ok 32 - fail with 2 missing records should fail
-ok 33 - fail with 2 missing records should have the proper description
-ok 34 - fail with 2 missing records should have the proper diagnostics
-ok 35 - fail with extra and missing should fail
-ok 36 - fail with extra and missing should have the proper description
-ok 37 - fail with extra and missing should have the proper diagnostics
-ok 38 - fail with 2 extras and 2 missings should fail
-ok 39 - fail with 2 extras and 2 missings should have the proper description
-ok 40 - fail with 2 extras and 2 missings should have the proper diagnostics
-ok 41 - fail with column mismatch should fail
-ok 42 - fail with column mismatch should have the proper description
-ok 43 - fail with column mismatch should have the proper diagnostics
-ok 44 - fail with different col counts should fail
-ok 45 - fail with different col counts should have the proper description
-ok 46 - fail with different col counts should have the proper diagnostics
-ok 47 - simple bag test should pass
-ok 48 - simple bag test should have the proper description
-ok 49 - simple bag test should have the proper diagnostics
-ok 50 - simple bag test without descr should pass
-ok 51 - simple bag test without descr should have the proper description
-ok 52 - simple bag test without descr should have the proper diagnostics
-ok 53 - execute bag test should pass
-ok 54 - execute bag test should have the proper description
-ok 55 - execute bag test should have the proper diagnostics
-ok 56 - select bag test should pass
-ok 57 - select bag test should have the proper description
-ok 58 - select bag test should have the proper diagnostics
-ok 59 - bag test with dupes should pass
-ok 60 - bag test with dupes should have the proper description
-ok 61 - bag test with dupes should have the proper diagnostics
-ok 62 - fail with extra record should fail
-ok 63 - fail with extra record should have the proper description
-ok 64 - fail with extra record should have the proper diagnostics
-ok 65 - fail with 2 extra records should fail
-ok 66 - fail with 2 extra records should have the proper description
-ok 67 - fail with 2 extra records should have the proper diagnostics
-ok 68 - fail with missing record should fail
-ok 69 - fail with missing record should have the proper description
-ok 70 - fail with missing record should have the proper diagnostics
-ok 71 - fail with 2 missing records should fail
-ok 72 - fail with 2 missing records should have the proper description
-ok 73 - fail with 2 missing records should have the proper diagnostics
-ok 74 - fail with extra and missing should fail
-ok 75 - fail with extra and missing should have the proper description
-ok 76 - fail with extra and missing should have the proper diagnostics
-ok 77 - fail with 2 extras and 2 missings should fail
-ok 78 - fail with 2 extras and 2 missings should have the proper description
-ok 79 - fail with 2 extras and 2 missings should have the proper diagnostics
-ok 80 - fail with column mismatch should fail
-ok 81 - fail with column mismatch should have the proper description
-ok 82 - fail with column mismatch should have the proper diagnostics
-ok 83 - fail with different col counts should fail
-ok 84 - fail with different col counts should have the proper description
-ok 85 - fail with different col counts should have the proper diagnostics
-ok 86 - bag fail with missing dupe should fail
-ok 87 - bag fail with missing dupe should have the proper description
-ok 88 - bag fail with missing dupe should have the proper diagnostics
+ok 8 - set_eq(prepared, prepared, desc) should pass
+ok 9 - set_eq(prepared, prepared, desc) should have the proper description
+ok 10 - set_eq(prepared, prepared, desc) should have the proper diagnostics
+ok 11 - set_eq(prepared, prepared) should pass
+ok 12 - set_eq(prepared, prepared) should have the proper description
+ok 13 - set_eq(prepared, prepared) should have the proper diagnostics
+ok 14 - set_eq(execute, execute, desc) should pass
+ok 15 - set_eq(execute, execute, desc) should have the proper description
+ok 16 - set_eq(execute, execute, desc) should have the proper diagnostics
+ok 17 - set_eq(select, select) should pass
+ok 18 - set_eq(select, select) should have the proper description
+ok 19 - set_eq(select, select) should have the proper diagnostics
+ok 20 - set_eq(values, dupe values) should pass
+ok 21 - set_eq(values, dupe values) should have the proper description
+ok 22 - set_eq(values, dupe values) should have the proper diagnostics
+ok 23 - set_eq(prepared, select) fail extra should fail
+ok 24 - set_eq(prepared, select) fail extra should have the proper description
+ok 25 - set_eq(prepared, select) fail extra should have the proper diagnostics
+ok 26 - set_eq(prepared, select) fail extras should fail
+ok 27 - set_eq(prepared, select) fail extras should have the proper description
+ok 28 - set_eq(prepared, select) fail extras should have the proper diagnostics
+ok 29 - set_eq(select, prepared) fail missing should fail
+ok 30 - set_eq(select, prepared) fail missing should have the proper description
+ok 31 - set_eq(select, prepared) fail missing should have the proper diagnostics
+ok 32 - set_eq(select, prepared) fail missings should fail
+ok 33 - set_eq(select, prepared) fail missings should have the proper description
+ok 34 - set_eq(select, prepared) fail missings should have the proper diagnostics
+ok 35 - set_eq(select, select) fail extra & missing should fail
+ok 36 - set_eq(select, select) fail extra & missing should have the proper description
+ok 37 - set_eq(select, select) fail extra & missing should have the proper diagnostics
+ok 38 - set_eq(select, select) fail extras & missings should fail
+ok 39 - set_eq(select, select) fail extras & missings should have the proper description
+ok 40 - set_eq(select, select) fail extras & missings should have the proper diagnostics
+ok 41 - set_eq(values, values) fail mismatch should fail
+ok 42 - set_eq(values, values) fail mismatch should have the proper description
+ok 43 - set_eq(values, values) fail mismatch should have the proper diagnostics
+ok 44 - set_eq(values, values) fail column count should fail
+ok 45 - set_eq(values, values) fail column count should have the proper description
+ok 46 - set_eq(values, values) fail column count should have the proper diagnostics
+ok 47 - bag_eq(prepared, prepared, desc) should pass
+ok 48 - bag_eq(prepared, prepared, desc) should have the proper description
+ok 49 - bag_eq(prepared, prepared, desc) should have the proper diagnostics
+ok 50 - bag_eq(prepared, prepared) should pass
+ok 51 - bag_eq(prepared, prepared) should have the proper description
+ok 52 - bag_eq(prepared, prepared) should have the proper diagnostics
+ok 53 - bag_eq(execute, execute) should pass
+ok 54 - bag_eq(execute, execute) should have the proper description
+ok 55 - bag_eq(execute, execute) should have the proper diagnostics
+ok 56 - bag_eq(select, select) should pass
+ok 57 - bag_eq(select, select) should have the proper description
+ok 58 - bag_eq(select, select) should have the proper diagnostics
+ok 59 - bag_eq(dupe values, dupe values) should pass
+ok 60 - bag_eq(dupe values, dupe values) should have the proper description
+ok 61 - bag_eq(dupe values, dupe values) should have the proper diagnostics
+ok 62 - bag_eq(prepared, select) fail extra should fail
+ok 63 - bag_eq(prepared, select) fail extra should have the proper description
+ok 64 - bag_eq(prepared, select) fail extra should have the proper diagnostics
+ok 65 - bag_eq(prepared, select) fail extras should fail
+ok 66 - bag_eq(prepared, select) fail extras should have the proper description
+ok 67 - bag_eq(prepared, select) fail extras should have the proper diagnostics
+ok 68 - bag_eq(select, prepared) fail missing should fail
+ok 69 - bag_eq(select, prepared) fail missing should have the proper description
+ok 70 - bag_eq(select, prepared) fail missing should have the proper diagnostics
+ok 71 - bag_eq(select, prepared) fail missings should fail
+ok 72 - bag_eq(select, prepared) fail missings should have the proper description
+ok 73 - bag_eq(select, prepared) fail missings should have the proper diagnostics
+ok 74 - bag_eq(select, select) fail extra & missing should fail
+ok 75 - bag_eq(select, select) fail extra & missing should have the proper description
+ok 76 - bag_eq(select, select) fail extra & missing should have the proper diagnostics
+ok 77 - bag_eq(select, select) fail extras & missings should fail
+ok 78 - bag_eq(select, select) fail extras & missings should have the proper description
+ok 79 - bag_eq(select, select) fail extras & missings should have the proper diagnostics
+ok 80 - bag_eq(values, values) fail mismatch should fail
+ok 81 - bag_eq(values, values) fail mismatch should have the proper description
+ok 82 - bag_eq(values, values) fail mismatch should have the proper diagnostics
+ok 83 - bag_eq(values, values) fail column count should fail
+ok 84 - bag_eq(values, values) fail column count should have the proper description
+ok 85 - bag_eq(values, values) fail column count should have the proper diagnostics
+ok 86 - bag_eq(values, values) fail missing dupe should fail
+ok 87 - bag_eq(values, values) fail missing dupe should have the proper description
+ok 88 - bag_eq(values, values) fail missing dupe should have the proper diagnostics
 ok 89 - set_ne(prepared, select, desc) should pass
 ok 90 - set_ne(prepared, select, desc) should have the proper description
 ok 91 - set_ne(prepared, select, desc) should have the proper diagnostics
@@ -127,51 +127,51 @@ ok 124 - bag_ne fail with column mismatch should have the proper diagnostics
 ok 125 - bag_ne fail with different col counts should fail
 ok 126 - bag_ne fail with different col counts should have the proper description
 ok 127 - bag_ne fail with different col counts should have the proper diagnostics
-ok 128 - simple results test should pass
-ok 129 - simple results test should have the proper description
-ok 130 - simple results test should have the proper diagnostics
-ok 131 - simple results test without desc should pass
-ok 132 - simple results test without desc should have the proper description
-ok 133 - simple results test without desc should have the proper diagnostics
-ok 134 - execute results test should pass
-ok 135 - execute results test should have the proper description
-ok 136 - execute results test should have the proper diagnostics
-ok 137 - select results test should pass
-ok 138 - select results test should have the proper description
-ok 139 - select results test should have the proper diagnostics
-ok 140 - results test with dupes should pass
-ok 141 - results test with dupes should have the proper description
-ok 142 - results test with dupes should have the proper diagnostics
-ok 143 - results test with nulls should pass
-ok 144 - results test with nulls should have the proper description
-ok 145 - results test with nulls should have the proper diagnostics
-ok 146 - fail with extra record should fail
-ok 147 - fail with extra record should have the proper description
-ok 148 - fail with extra record should have the proper diagnostics
-ok 149 - fail with missing record should fail
-ok 150 - fail with missing record should have the proper description
-ok 151 - fail with missing record should have the proper diagnostics
-ok 152 - fail with missing record should fail
-ok 153 - fail with missing record should have the proper description
-ok 154 - fail with missing record should have the proper diagnostics
-ok 155 - results fail with missing dupe should fail
-ok 156 - results fail with missing dupe should have the proper description
-ok 157 - results fail with missing dupe should have the proper diagnostics
-ok 158 - fail with NULL should fail
-ok 159 - fail with NULL should have the proper description
-ok 160 - fail with NULL should have the proper diagnostics
-ok 161 - fail with column mismatch should fail
-ok 162 - fail with column mismatch should have the proper description
-ok 163 - fail with column mismatch should have the proper diagnostics
-ok 164 - fail with subtle column mismatch should fail
-ok 165 - fail with subtle column mismatch should have the proper description
-ok 166 - fail with subtle column mismatch should have the proper diagnostics
-ok 167 - fail with different col counts should fail
-ok 168 - fail with different col counts should have the proper description
-ok 169 - fail with different col counts should have the proper diagnostics
-ok 170 - simple results with cursors should pass
-ok 171 - simple results with cursors should have the proper description
-ok 172 - simple results with cursors should have the proper diagnostics
+ok 128 - results_eq(prepared, prepared, desc) should pass
+ok 129 - results_eq(prepared, prepared, desc) should have the proper description
+ok 130 - results_eq(prepared, prepared, desc) should have the proper diagnostics
+ok 131 - results_eq(prepared, prepared) should pass
+ok 132 - results_eq(prepared, prepared) should have the proper description
+ok 133 - results_eq(prepared, prepared) should have the proper diagnostics
+ok 134 - results_eq(execute, execute) should pass
+ok 135 - results_eq(execute, execute) should have the proper description
+ok 136 - results_eq(execute, execute) should have the proper diagnostics
+ok 137 - results_eq(select, select) should pass
+ok 138 - results_eq(select, select) should have the proper description
+ok 139 - results_eq(select, select) should have the proper diagnostics
+ok 140 - results_eq(dupe values, dupe values) should pass
+ok 141 - results_eq(dupe values, dupe values) should have the proper description
+ok 142 - results_eq(dupe values, dupe values) should have the proper diagnostics
+ok 143 - results_eq(values with null, values with null) should pass
+ok 144 - results_eq(values with null, values with null) should have the proper description
+ok 145 - results_eq(values with null, values with null) should have the proper diagnostics
+ok 146 - results_eq(prepared, select) fail should fail
+ok 147 - results_eq(prepared, select) fail should have the proper description
+ok 148 - results_eq(prepared, select) fail should have the proper diagnostics
+ok 149 - results_eq(select, prepared) fail missing last row should fail
+ok 150 - results_eq(select, prepared) fail missing last row should have the proper description
+ok 151 - results_eq(select, prepared) fail missing last row should have the proper diagnostics
+ok 152 - results_eq(prepared, select) fail missing first row should fail
+ok 153 - results_eq(prepared, select) fail missing first row should have the proper description
+ok 154 - results_eq(prepared, select) fail missing first row should have the proper diagnostics
+ok 155 - results_eq(values dupe, values) should fail
+ok 156 - results_eq(values dupe, values) should have the proper description
+ok 157 - results_eq(values dupe, values) should have the proper diagnostics
+ok 158 - results_eq(values null, values) should fail
+ok 159 - results_eq(values null, values) should have the proper description
+ok 160 - results_eq(values null, values) should have the proper diagnostics
+ok 161 - results_eq(values, values) mismatch should fail
+ok 162 - results_eq(values, values) mismatch should have the proper description
+ok 163 - results_eq(values, values) mismatch should have the proper diagnostics
+ok 164 - results_eq(values, values) subtle mismatch should fail
+ok 165 - results_eq(values, values) subtle mismatch should have the proper description
+ok 166 - results_eq(values, values) subtle mismatch should have the proper diagnostics
+ok 167 - results_eq(values, values) fail column count should fail
+ok 168 - results_eq(values, values) fail column count should have the proper description
+ok 169 - results_eq(values, values) fail column count should have the proper diagnostics
+ok 170 - results_eq(cursor, cursor) should pass
+ok 171 - results_eq(cursor, cursor) should have the proper description
+ok 172 - results_eq(cursor, cursor) should have the proper diagnostics
 ok 173 - results_eq(cursor, prepared) should pass
 ok 174 - results_eq(cursor, prepared) should have the proper description
 ok 175 - results_eq(cursor, prepared) should have the proper diagnostics
@@ -313,3 +313,81 @@ ok 310 - bag_hasnt( dupes, dupes ) should have the proper diagnostics
 ok 311 - bag_hasnt( value, dupes ) should fail
 ok 312 - bag_hasnt( value, dupes ) should have the proper description
 ok 313 - bag_hasnt( value, dupes ) should have the proper diagnostics
+ok 314 - set_eq(sql, array, desc) should pass
+ok 315 - set_eq(sql, array, desc) should have the proper description
+ok 316 - set_eq(sql, array, desc) should have the proper diagnostics
+ok 317 - set_eq(sql, array) should pass
+ok 318 - set_eq(sql, array) should have the proper description
+ok 319 - set_eq(sql, array) should have the proper diagnostics
+ok 320 - set_eq(sql, dupe array) should pass
+ok 321 - set_eq(sql, dupe array) should have the proper description
+ok 322 - set_eq(sql, dupe array) should have the proper diagnostics
+ok 323 - set_eq(sql, array) extra record should fail
+ok 324 - set_eq(sql, array) extra record should have the proper description
+ok 325 - set_eq(sql, array) extra record should have the proper diagnostics
+ok 326 - set_eq(sql, array) missing record should fail
+ok 327 - set_eq(sql, array) missing record should have the proper description
+ok 328 - set_eq(sql, array) missing record should have the proper diagnostics
+ok 329 - set_eq(sql, array) incompatible types should fail
+ok 330 - set_eq(sql, array) incompatible types should have the proper description
+ok 331 - set_eq(sql, array) incompatible types should have the proper diagnostics
+ok 332 - set_eq(sql, array) incompatible types should fail
+ok 333 - set_eq(sql, array) incompatible types should have the proper description
+ok 334 - set_eq(sql, array) incompatible types should have the proper diagnostics
+ok 335 - bag_eq(sql, array, desc) should pass
+ok 336 - bag_eq(sql, array, desc) should have the proper description
+ok 337 - bag_eq(sql, array, desc) should have the proper diagnostics
+ok 338 - bag_eq(sql, array) should pass
+ok 339 - bag_eq(sql, array) should have the proper description
+ok 340 - bag_eq(sql, array) should have the proper diagnostics
+ok 341 - bag_eq(sql, dupe array) fail should fail
+ok 342 - bag_eq(sql, dupe array) fail should have the proper description
+ok 343 - bag_eq(sql, dupe array) fail should have the proper diagnostics
+ok 344 - bag_eq(sql, array) extra record should fail
+ok 345 - bag_eq(sql, array) extra record should have the proper description
+ok 346 - bag_eq(sql, array) extra record should have the proper diagnostics
+ok 347 - bag_eq(sql, array) missing record should fail
+ok 348 - bag_eq(sql, array) missing record should have the proper description
+ok 349 - bag_eq(sql, array) missing record should have the proper diagnostics
+ok 350 - bag_eq(sql, array) incompatible types should fail
+ok 351 - bag_eq(sql, array) incompatible types should have the proper description
+ok 352 - bag_eq(sql, array) incompatible types should have the proper diagnostics
+ok 353 - bag_eq(sql, array) incompatible types should fail
+ok 354 - bag_eq(sql, array) incompatible types should have the proper description
+ok 355 - bag_eq(sql, array) incompatible types should have the proper diagnostics
+ok 356 - set_ne(sql, array, desc) should pass
+ok 357 - set_ne(sql, array, desc) should have the proper description
+ok 358 - set_ne(sql, array, desc) should have the proper diagnostics
+ok 359 - set_ne(sql, array) should pass
+ok 360 - set_ne(sql, array) should have the proper description
+ok 361 - set_ne(sql, array) should have the proper diagnostics
+ok 362 - set_ne(sql, array) fail should fail
+ok 363 - set_ne(sql, array) fail should have the proper description
+ok 364 - set_ne(sql, array) fail should have the proper diagnostics
+ok 365 - set_ne(sql, dupes array) fail should fail
+ok 366 - set_ne(sql, dupes array) fail should have the proper description
+ok 367 - set_ne(sql, dupes array) fail should have the proper diagnostics
+ok 368 - set_ne(sql, array) incompatible types should fail
+ok 369 - set_ne(sql, array) incompatible types should have the proper description
+ok 370 - set_ne(sql, array) incompatible types should have the proper diagnostics
+ok 371 - set_ne(sql, array) incompatible types should fail
+ok 372 - set_ne(sql, array) incompatible types should have the proper description
+ok 373 - set_ne(sql, array) incompatible types should have the proper diagnostics
+ok 374 - bag_ne(sql, array, desc) should pass
+ok 375 - bag_ne(sql, array, desc) should have the proper description
+ok 376 - bag_ne(sql, array, desc) should have the proper diagnostics
+ok 377 - bag_ne(sql, array) should pass
+ok 378 - bag_ne(sql, array) should have the proper description
+ok 379 - bag_ne(sql, array) should have the proper diagnostics
+ok 380 - bag_ne(sql, array) fail should fail
+ok 381 - bag_ne(sql, array) fail should have the proper description
+ok 382 - bag_ne(sql, array) fail should have the proper diagnostics
+ok 383 - bag_ne(sql, dupes array) should pass
+ok 384 - bag_ne(sql, dupes array) should have the proper description
+ok 385 - bag_ne(sql, dupes array) should have the proper diagnostics
+ok 386 - bag_ne(sql, array) incompatible types should fail
+ok 387 - bag_ne(sql, array) incompatible types should have the proper description
+ok 388 - bag_ne(sql, array) incompatible types should have the proper diagnostics
+ok 389 - bag_ne(sql, array) incompatible types should fail
+ok 390 - bag_ne(sql, array) incompatible types should have the proper description
+ok 391 - bag_ne(sql, array) incompatible types should have the proper diagnostics
