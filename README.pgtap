@@ -538,9 +538,9 @@ Submit Your Query
 =================
 
 Sometimes, you've just gotta run tests on a query. I mean a full blown query,
-not just the scalare type assertion functions we've seen so far. pgTAP provides
-a number of functions to help you test your queries, each of which takes one
-or two SQL statements as arguments. Yes, as strings:
+not just the scalar assertion functions we've seen so far. pgTAP provides a
+number of functions to help you test your queries, each of which takes one or
+two SQL statements as arguments. Yes, as strings:
 
     SELECT throws_ok('SELECT divide_by(0)');
 
@@ -555,12 +555,12 @@ statement names. For example, the above example can be rewritten as:
     PREPARE mythrow AS SELECT divide_by(0);
     SELECT throws_ok('mythrow');
 
-pgTAP assumes that an SQL argument with no space or starting with a double
-quote character is a prepared statement and simply `EXECUTE`s it. If you need
-to pass arguments to a prepared statement, perhaps because you plan to use it
-in multiple tests to return different values, just include `EXECUTE` in the
-SQL string. Here's an example with a prepared statement with a space in its
-name, and one where arguments need to be passed:
+pgTAP assumes that an SQL argument without space characters or starting with a
+double quote character is a prepared statement and simply `EXECUTE`s it. If
+you need to pass arguments to a prepared statement, perhaps because you plan
+to use it in multiple tests to return different values, just include `EXECUTE`
+in the SQL string. Here's an example with a prepared statement with a space in
+its name, and one where arguments need to be passed:
 
     PREPARE "my test" AS SELECT * FROM active_users() WHERE name LIKE 'A%';
     PREPARE expect AS SELECT * FROM users WHERE active = $1 AND name LIKE $2;
@@ -797,10 +797,10 @@ But a different run of the same query could have the rows in different order:
     (4 rows)
 
 Notice how the two "Tom" rows are reversed. The upshot is that you want to
-make sure that your rows are always fully ordered, so that they always appear
-in the same order. In a case like that, it means sorting on both the `name`
-column and the `age` column. If the sort order of your results isn't
-important, consider using `set_eq()` or `bag_eq()` instead.
+make sure that your rows are always fully ordered. In a case like the above,
+it means sorting on both the `name` column and the `age` column. If the sort
+order of your results isn't important, consider using `set_eq()` or `bag_eq()`
+instead.
 
 Internally, `results_eq()` turns your SQL statements into cursors so that it
 can iterate over them one row at a time. Conveniently, this behavior is
@@ -841,16 +841,17 @@ message to tell you at what row the results differ, something like:
     #         have: (1,Anna)
     #         want: (22,Betty)
 
-On PostgreSQL 8.4 or higher, if there are different numbers of rows in each
-result set, you'll see an empty row in the comparison:
+If there are different numbers of rows in each result set, an non-existent row
+will be represented as "NULL":
 
     # Failed test 147
     #     Results differ beginning at row 5:
     #         have: (1,Anna)
-    #         want: ()
+    #         want: NULL
 
-Also on 8.4 or higher, if the number of columns varies between result sets, or
-if results are of different data types, you'll get diagnostics like so:
+On PostgreSQL 8.4 or higher, if the number of columns varies between result
+sets, or if results are of different data types, you'll get diagnostics like
+so:
 
     # Failed test 148
     #     Column types differ between queries:

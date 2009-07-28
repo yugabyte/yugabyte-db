@@ -6143,8 +6143,8 @@ BEGIN
         IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
             RETURN ok( false, $3 ) || E'\n' || diag(
                 '    Results differ beginning at row ' || rownum || E':\n' ||
-                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE '()' END || E'\n' ||
-                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE '()' END
+                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
             );
         END IF;
         rownum = rownum + 1;
@@ -6159,8 +6159,8 @@ EXCEPTION
     WHEN datatype_mismatch THEN
         RETURN ok( false, $3 ) || E'\n' || diag(
             E'    Columns differ between queries:\n' ||
-            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE '()' END || E'\n' ||
-            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE '()' END
+            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
         );
 END;
 $$ LANGUAGE plpgsql;
@@ -6309,8 +6309,8 @@ EXCEPTION
     WHEN datatype_mismatch THEN
         RETURN ok( false, $3 ) || E'\n' || diag(
             E'    Columns differ between queries:\n' ||
-            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE '()' END || E'\n' ||
-            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE '()' END
+            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
         );
 END;
 $$ LANGUAGE plpgsql;

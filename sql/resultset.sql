@@ -818,7 +818,7 @@ SELECT * FROM check_test(
     '',
     '   Results differ beginning at row 2:
         have: (,)
-        want: ()'
+        want: NULL'
 );
 
 -- And now some failures.
@@ -845,7 +845,7 @@ SELECT * FROM check_test(
     'results_eq(select, prepared) fail missing last row',
     '',
     '   Results differ beginning at row 7:
-        have: ()
+        have: NULL
         want: (183,Antonio)'
 );
 
@@ -860,7 +860,7 @@ SELECT * FROM check_test(
     '',
     '   Results differ beginning at row 7:
         have: (183,Antonio)
-        want: ()'
+        want: NULL'
 );
 
 -- Compare with missing dupe.
@@ -874,7 +874,7 @@ SELECT * FROM check_test(
     '',
     '   Results differ beginning at row 3:
         have: (1,Anna)
-        want: ()'
+        want: NULL'
 );
 
 -- Handle failure with null.
@@ -1838,7 +1838,7 @@ SELECT * FROM check_test(
     '',
     '   Results differ beginning at row 7:
         have: (Antonio)
-        want: ()'
+        want: NULL'
 );
 
 SELECT * FROM check_test(
