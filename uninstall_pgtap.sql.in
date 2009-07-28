@@ -1,4 +1,16 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION results_ne( refcursor, anyarray );
+DROP FUNCTION results_ne( refcursor, anyarray, TEXT );
+DROP FUNCTION results_ne( refcursor, TEXT );
+DROP FUNCTION results_ne( refcursor, TEXT, TEXT );
+DROP FUNCTION results_ne( TEXT, refcursor );
+DROP FUNCTION results_ne( TEXT, refcursor, TEXT );
+DROP FUNCTION results_ne( TEXT, anyarray );
+DROP FUNCTION results_ne( TEXT, anyarray, TEXT );
+DROP FUNCTION results_ne( TEXT, TEXT );
+DROP FUNCTION results_ne( TEXT, TEXT, TEXT );
+DROP FUNCTION results_ne( refcursor, refcursor );
+DROP FUNCTION results_ne( refcursor, refcursor, text );
 DROP FUNCTION results_eq( refcursor, anyarray );
 DROP FUNCTION results_eq( refcursor, anyarray, TEXT );
 DROP FUNCTION results_eq( refcursor, TEXT );

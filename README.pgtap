@@ -864,6 +864,35 @@ text representation. For example, a `NULL` column will be equivalent to an
 empty string. The upshot: read failure diagnostics carefully and pay attention
 to data types on 8.3.
 
+### `results_ne( sql, sql, description )` ###
+### `results_ne( sql, sql )` ###
+### `results_ne( sql, array, description )` ###
+### `results_ne( sql, array )` ###
+### `results_ne( cursor, cursor, description )` ###
+### `results_ne( cursor, cursor )` ###
+### `results_ne( sql, cursor, description )` ###
+### `results_ne( sql, cursor )` ###
+### `results_ne( cursor, sql, description )` ###
+### `results_ne( cursor, sql )` ###
+### `results_ne( cursor, array, description )` ###
+### `results_ne( cursor, array )` ###
+
+    PREPARE users_test AS SELECT * FROM active_users();
+    PREPARE not_users AS
+    VALUES ( 42, 'Anna'), (19, 'Strongrrl'),  (39, 'Theory');
+
+    SELECT results_ne( 'users_test', 'not_users', 'We should get only users' );
+
+The inverse of `results_eq()`, this function tests that query results are not
+equivalent. Note that, like `results_ne()`, order matters, so you can actually
+have the same sets of results in the two query arguments and the test will
+pass if they're merely in a different order. More than likely what you really
+want is `results_eq()` or `set_ne()`. But this function is included for
+completeness and is kind of cute, so enjoy. If a `results_ne()` test fails,
+however, there will be no diagnostics, becaus, well, the results will be the
+same!
+
+
 ### `set_eq( sql, sql, description )` ###
 ### `set_eq( sql, sql )` ###
 ### `set_eq( sql, array, description )` ###

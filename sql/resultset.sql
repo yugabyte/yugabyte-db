@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(409);
+SELECT plan(475);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -356,7 +356,6 @@ SELECT * FROM check_test(
     true
 );
 
-
 SELECT * FROM check_test(
     set_eq(
         'SELECT id, name FROM names WHERE name ~ ''^(An|Jacob)'' AND name <> ''Anna''',
@@ -514,7 +513,6 @@ SELECT * FROM check_test(
         \\((44,Anna|86,Angelina)\\)',
     true
 );
-
 
 SELECT * FROM check_test(
     bag_eq(
@@ -694,7 +692,6 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
-
 -- Handle pass with a dupe.
 SELECT * FROM check_test(
     bag_ne(
@@ -798,6 +795,32 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Compare only NULLs
+SELECT * FROM check_test(
+    results_eq(
+        'VALUES (NULL, NULL), (NULL, NULL)',
+        'VALUES (NULL, NULL), (NULL, NULL)'
+    ),
+    true,
+    'results_eq(nulls, nulls)',
+    '',
+    ''
+);
+
+-- Compare only NULLs
+SELECT * FROM check_test(
+    results_eq(
+        'VALUES (NULL, NULL), (NULL, NULL)',
+        'VALUES (NULL, NULL)'
+    ),
+    false,
+    'results_eq(nulls, nulls) fail',
+    '',
+    '   Results differ beginning at row 2:
+        have: (,)
+        want: ()'
+);
+
 -- And now some failures.
 SELECT * FROM check_test(
     results_eq(
@@ -840,7 +863,6 @@ SELECT * FROM check_test(
         want: ()'
 );
 
-
 -- Compare with missing dupe.
 SELECT * FROM check_test(
     results_eq(
@@ -868,7 +890,6 @@ SELECT * FROM check_test(
         have: (1,)
         want: (1,Anna)'
 );
-
 
 -- Handle failure due to column mismatch.
 SELECT * FROM check_test(
@@ -1090,7 +1111,6 @@ SELECT * FROM check_test(
         want: (text,integer)'
 );
 
-
 /****************************************************************************/
 -- Now test bag_has().
 SELECT * FROM check_test(
@@ -1156,7 +1176,6 @@ SELECT * FROM check_test(
     ''
 );
 
-
 SELECT * FROM check_test(
     bag_has(
         'SELECT id, name FROM annames WHERE name <> ''Anna''',
@@ -1204,7 +1223,6 @@ SELECT * FROM check_test(
         have: (integer)
         want: (text,integer)'
 );
-
 
 /****************************************************************************/
 -- Now test set_hasnt().
@@ -1276,7 +1294,6 @@ SELECT * FROM check_test(
         (44,Anna)'
 );
 
-
 SELECT * FROM check_test(
     set_hasnt( 'anames', 'VALUES (44, ''Anna''), (86, ''Angelina'')' ),
     false,
@@ -1309,7 +1326,6 @@ SELECT * FROM check_test(
         have: (integer)
         want: (text,integer)'
 );
-
 
 /****************************************************************************/
 -- Now test bag_hasnt().
@@ -1367,7 +1383,6 @@ SELECT * FROM check_test(
     '   Extra records:
         (44,Anna)'
 );
-
 
 SELECT * FROM check_test(
     bag_hasnt( 'anames', 'VALUES (44, ''Anna''), (86, ''Angelina'')' ),
@@ -1429,7 +1444,6 @@ SELECT * FROM check_test(
         (44,Anna)'
 );
 
-
 /****************************************************************************/
 -- Test set_eq() with an array argument.
 SELECT * FROM check_test(
@@ -1478,7 +1492,6 @@ SELECT * FROM check_test(
     '   Extra records:
         (Anthony)'
 );
-
 
 -- Fail with an extra record.
 SELECT * FROM check_test(
@@ -1571,7 +1584,6 @@ SELECT * FROM check_test(
         (Anthony)'
 );
 
-
 -- Fail with an extra record.
 SELECT * FROM check_test(
     bag_eq(
@@ -1613,7 +1625,6 @@ SELECT * FROM check_test(
         want: (text)'
 );
 
-
 /****************************************************************************/
 -- Test set_ne() with an array argument.
 SELECT * FROM check_test(
@@ -1627,7 +1638,6 @@ SELECT * FROM check_test(
     'whatever',
     ''
 );
-
 
 SELECT * FROM check_test(
     set_ne(
@@ -1704,7 +1714,6 @@ SELECT * FROM check_test(
     'whatever',
     ''
 );
-
 
 SELECT * FROM check_test(
     bag_ne(
@@ -1843,6 +1852,254 @@ SELECT * FROM check_test(
     '   Results differ beginning at row 5:
         have: (Anthony)
         want: (Anna)'
+);
+
+/****************************************************************************/
+-- Now test results_eq().
+
+PREPARE nenames_ord AS SELECT id, name FROM names WHERE name like 'An%' ORDER BY id;
+PREPARE nexpect_ord AS VALUES (15, 'Anthony'), ( 44, 'Anna'), (11, 'Andrew'),
+                         (63, 'Angel'), (86, 'Angelina'), (130, 'Andrea'),
+                         (183, 'Antonio');
+
+SELECT * FROM check_test(
+    results_ne( 'nenames_ord', 'nexpect_ord', 'whatever' ),
+    true,
+    'results_ne(prepared, prepared, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    results_ne( 'nenames_ord', 'nexpect_ord' ),
+    true,
+    'results_ne(prepared, prepared)',
+    '',
+    ''
+);
+
+-- Pass a full SQL statement for the prepared statements.
+SELECT * FROM check_test(
+    results_ne( 'EXECUTE nenames_ord', 'EXECUTE nexpect_ord' ),
+    true,
+    'results_ne(execute, execute)',
+    '',
+    ''
+);
+
+-- Compare actual SELECT statements.
+SELECT * FROM check_test(
+    results_ne(
+        'SELECT id, name FROM names WHERE name like ''An%'' ORDER BY id',
+        'SELECT id, name FROM annames WHERE name <> ''Anna'' ORDER BY id'
+    ),
+    true,
+    'results_ne(select, select)',
+    '',
+    ''
+);
+
+-- Compare with dupes.
+SELECT * FROM check_test(
+    results_ne(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (2, ''Anna''), (86, ''Angelina''), (2, ''Anna'')'
+    ),
+    true,
+    'results_ne(dupe values, dupe values)',
+    '',
+    ''
+);
+
+-- Compare with nulls.
+SELECT * FROM check_test(
+    results_ne(
+        'VALUES (4, NULL), (86, ''Angelina''), (1, NULL)',
+        'VALUES (4, NULL), (86, ''Angelina''), (1, ''Anna'')'
+    ),
+    true,
+    'results_ne(values with null, values with null)',
+    '',
+    ''
+);
+
+-- Compare only NULLs
+SELECT * FROM check_test(
+    results_ne(
+        'VALUES (NULL, NULL), (NULL, NULL), (NULL, NULL)',
+        'VALUES (NULL, NULL), (NULL, NULL)'
+    ),
+    true,
+    'results_ne(nulls, nulls)',
+    '',
+    ''
+);
+
+-- And now a failure.
+SELECT * FROM check_test(
+    results_ne(
+        'nenames_ord',
+        'SELECT id, name FROM annames'
+    ),
+    false,
+    'results_ne(prepared, select) fail',
+    '',
+    ''
+);
+
+-- -- Now when the last row is missing.
+SELECT * FROM check_test(
+    results_ne(
+        'SELECT id, name FROM annames WHERE name <> ''Antonio''',
+        'nenames_ord'
+    ),
+    true,
+    'results_ne(select, prepared) missing last row',
+    '',
+    ''
+);
+
+-- Invert that.
+SELECT * FROM check_test(
+    results_ne(
+        'nenames_ord',
+        'SELECT id, name FROM annames WHERE name <> ''Antonio'''
+    ),
+    true,
+    'results_ne(prepared, select) missing first row',
+    '',
+    ''
+);
+
+-- Compare with missing dupe.
+SELECT * FROM check_test(
+    results_ne(
+        'VALUES (1, ''Anna''), (86, ''Angelina''), (1, ''Anna'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    true,
+    'results_ne(values dupe, values)',
+    '',
+    ''
+);
+
+-- Handle pass with null.
+SELECT * FROM check_test(
+    results_ne(
+        'VALUES (1, NULL), (86, ''Angelina'')',
+        'VALUES (1, ''Anna''), (86, ''Angelina'')'
+    ),
+    true,
+    'results_ne(values null, values)',
+    '',
+    ''
+);
+
+-- Handle failure due to column mismatch.
+SELECT * FROM check_test(
+    results_ne( 'VALUES (1, ''foo''), (2, ''bar'')', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'results_ne(values, values) mismatch',
+    '',
+    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
+        have: (1,foo)
+        want: (foo,1)'
+);
+
+-- -- Handle failure due to more subtle column mismatch, valid only on 8.4.
+CREATE OR REPLACE FUNCTION subtlefail() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() < 80400 THEN
+        -- 8.3 and earlier cast records to text, so subtlety is out.
+        RETURN NEXT pass('results_ne(values, values) subtle mismatch should fail');
+        RETURN NEXT pass('results_ne(values, values) subtle mismatch should have the proper description');
+        RETURN NEXT pass('results_ne(values, values) subtle mismatch should have the proper diagnostics');
+    ELSE
+        -- 8.4 does true record comparisions, yay!
+        FOR tap IN SELECT * FROM check_test(
+            results_ne(
+                'VALUES (1, ''foo''::varchar), (2, ''bar''::varchar)',
+                'VALUES (1, ''foo''), (2, ''bar'')'
+            ),
+            false,
+            'results_ne(values, values) subtle mismatch',
+            '',
+            '   Columns differ between queries:
+        have: (1,foo)
+        want: (1,foo)' ) AS a(b) LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM subtlefail();
+
+-- Handle failure due to column count mismatch.
+SELECT * FROM check_test(
+    results_ne( 'VALUES (1), (2)', 'VALUES (''foo'', 1), (''bar'', 2)' ),
+    false,
+    'results_ne(values, values) fail column count',
+    '',
+    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
+        have: (1)
+        want: (foo,1)'
+);
+
+-- Compare with cursors.
+CLOSE cwant;
+CLOSE chave;
+DECLARE cwant CURSOR FOR SELECT id, name FROM names WHERE name like 'An%' ORDER BY id;
+DECLARE chave CURSOR FOR SELECT id, name from annames ORDER BY id;
+
+SELECT * FROM check_test(
+    results_ne( 'cwant'::refcursor, 'chave'::refcursor ),
+    false,
+    'results_ne(cursor, cursor)',
+    '',
+    ''
+);
+
+-- Mix cursors and prepared statements
+DEALLOCATE annames_ord;
+PREPARE annames_ord AS SELECT id, name FROM annames ORDER BY id;
+MOVE BACKWARD ALL IN cwant;
+
+SELECT * FROM check_test(
+    results_ne( 'cwant'::refcursor, 'annames_ord' ),
+    false,
+    'results_ne(cursor, prepared)',
+    '',
+    ''
+);
+
+MOVE BACKWARD ALL IN chave;
+SELECT * FROM check_test(
+    results_ne( 'annames_ord', 'chave'::refcursor ),
+    false,
+    'results_ne(prepared, cursor)',
+    '',
+    ''
+);
+
+-- Mix cursor and SQL.
+SELECT * FROM check_test(
+    results_ne( 'cwant'::refcursor, 'SELECT id, name FROM annames ORDER BY id' ),
+    true,
+    'results_ne(cursor, sql)',
+    '',
+    ''
+);
+
+MOVE BACKWARD ALL IN chave;
+SELECT * FROM check_test(
+    results_ne( 'SELECT id, name FROM annames ORDER BY id', 'chave'::refcursor ),
+    false,
+    'results_ne(sql, cursor)',
+    '',
+    ''
 );
 
 /****************************************************************************/

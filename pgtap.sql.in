@@ -6127,25 +6127,31 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION results_eq( refcursor, refcursor, text )
 RETURNS TEXT AS $$
 DECLARE
-    have      ALIAS FOR $1;
-    want      ALIAS FOR $2;
-    rec_have  RECORD;
-    rec_want  RECORD;
-    rownum    INTEGER := 1;
+    have       ALIAS FOR $1;
+    want       ALIAS FOR $2;
+    have_rec   RECORD;
+    want_rec   RECORD;
+    have_found BOOLEAN;
+    want_found BOOLEAN;
+    rownum     INTEGER := 1;
 BEGIN
-    FETCH have INTO rec_have;
-    FETCH want INTO rec_want;
-    WHILE rec_have IS NOT NULL OR rec_want IS NOT NULL LOOP
-        IF rec_have IS DISTINCT FROM rec_want THEN
+    FETCH have INTO have_rec;
+    have_found := FOUND;
+    FETCH want INTO want_rec;
+    want_found := FOUND;
+    WHILE have_found OR want_found LOOP
+        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
             RETURN ok( false, $3 ) || E'\n' || diag(
                 '    Results differ beginning at row ' || rownum || E':\n' ||
-                '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
-                '        want: ' || CASE WHEN rec_want IS NULL THEN '()' ELSE rec_want::text END
+                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE '()' END || E'\n' ||
+                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE '()' END
             );
         END IF;
         rownum = rownum + 1;
-        FETCH have INTO rec_have;
-        FETCH want INTO rec_want;
+        FETCH have INTO have_rec;
+        have_found := FOUND;
+        FETCH want INTO want_rec;
+        want_found := FOUND;
     END LOOP;
 
     RETURN ok( true, $3 );
@@ -6153,8 +6159,8 @@ EXCEPTION
     WHEN datatype_mismatch THEN
         RETURN ok( false, $3 ) || E'\n' || diag(
             E'    Columns differ between queries:\n' ||
-            '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
-            '        want: ' || CASE WHEN rec_want IS NULL THEN '()' ELSE rec_want::text END
+            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE '()' END || E'\n' ||
+            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE '()' END
         );
 END;
 $$ LANGUAGE plpgsql;
@@ -6271,4 +6277,154 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION results_eq( refcursor, anyarray )
 RETURNS TEXT AS $$
     SELECT results_eq( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_ne( cursor, cursor, description )
+CREATE OR REPLACE FUNCTION results_ne( refcursor, refcursor, text )
+RETURNS TEXT AS $$
+DECLARE
+    have       ALIAS FOR $1;
+    want       ALIAS FOR $2;
+    have_rec   RECORD;
+    want_rec   RECORD;
+    have_found BOOLEAN;
+    want_found BOOLEAN;
+BEGIN
+    FETCH have INTO have_rec;
+    have_found := FOUND;
+    FETCH want INTO want_rec;
+    want_found := FOUND;
+    WHILE have_found OR want_found LOOP
+        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
+            RETURN ok( true, $3 );
+        ELSE
+            FETCH have INTO have_rec;
+            have_found := FOUND;
+            FETCH want INTO want_rec;
+            want_found := FOUND;
+        END IF;
+    END LOOP;
+    RETURN ok( false, $3 );
+EXCEPTION
+    WHEN datatype_mismatch THEN
+        RETURN ok( false, $3 ) || E'\n' || diag(
+            E'    Columns differ between queries:\n' ||
+            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE '()' END || E'\n' ||
+            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE '()' END
+        );
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_ne( cursor, cursor )
+CREATE OR REPLACE FUNCTION results_ne( refcursor, refcursor )
+RETURNS TEXT AS $$
+    SELECT results_ne( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_ne( sql, sql, description )
+CREATE OR REPLACE FUNCTION results_ne( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have REFCURSOR;
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN have FOR EXECUTE _query($1);
+    OPEN want FOR EXECUTE _query($2);
+    res := results_ne(have, want, $3);
+    CLOSE have;
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_ne( sql, sql )
+CREATE OR REPLACE FUNCTION results_ne( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT results_ne( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_ne( sql, array, description )
+CREATE OR REPLACE FUNCTION results_ne( TEXT, anyarray, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have REFCURSOR;
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN have FOR EXECUTE _query($1);
+    OPEN want FOR SELECT $2[i]
+    FROM generate_series(array_lower($2, 1), array_upper($2, 1)) s(i);
+    res := results_ne(have, want, $3);
+    CLOSE have;
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_ne( sql, array )
+CREATE OR REPLACE FUNCTION results_ne( TEXT, anyarray )
+RETURNS TEXT AS $$
+    SELECT results_ne( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_ne( sql, cursor, description )
+CREATE OR REPLACE FUNCTION results_ne( TEXT, refcursor, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    have REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN have FOR EXECUTE _query($1);
+    res := results_ne(have, $2, $3);
+    CLOSE have;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_ne( sql, cursor )
+CREATE OR REPLACE FUNCTION results_ne( TEXT, refcursor )
+RETURNS TEXT AS $$
+    SELECT results_ne( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_ne( cursor, sql, description )
+CREATE OR REPLACE FUNCTION results_ne( refcursor, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN want FOR EXECUTE _query($2);
+    res := results_ne($1, want, $3);
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_ne( cursor, sql )
+CREATE OR REPLACE FUNCTION results_ne( refcursor, TEXT )
+RETURNS TEXT AS $$
+    SELECT results_ne( $1, $2, NULL::text );
+$$ LANGUAGE sql;
+
+-- results_ne( cursor, array, description )
+CREATE OR REPLACE FUNCTION results_ne( refcursor, anyarray, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    want REFCURSOR;
+    res  TEXT;
+BEGIN
+    OPEN want FOR SELECT $2[i]
+    FROM generate_series(array_lower($2, 1), array_upper($2, 1)) s(i);
+    res := results_ne($1, want, $3);
+    CLOSE want;
+    RETURN res;
+END;
+$$ LANGUAGE plpgsql;
+
+-- results_ne( cursor, array )
+CREATE OR REPLACE FUNCTION results_ne( refcursor, anyarray )
+RETURNS TEXT AS $$
+    SELECT results_ne( $1, $2, NULL::text );
 $$ LANGUAGE sql;
