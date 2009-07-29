@@ -6428,3 +6428,4 @@ CREATE OR REPLACE FUNCTION results_ne( refcursor, anyarray )
 RETURNS TEXT AS $$
     SELECT results_ne( $1, $2, NULL::text );
 $$ LANGUAGE sql;
+

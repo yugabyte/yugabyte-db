@@ -3761,7 +3761,7 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-* Useful result testing functions to consider adding:
+* Useful result testing functions to consider adding (but might require C code):
   + `row_eq()`
   + `rowtype_is()`
 
