@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-07-29 21:23:40.000000000 -0700
-+++ pgtap.sql	2009-07-29 21:23:57.000000000 -0700
+--- pgtap.sql.orig	2009-07-30 14:14:11.000000000 -0700
++++ pgtap.sql	2009-07-30 14:14:20.000000000 -0700
 @@ -194,11 +194,11 @@
  RETURNS integer AS $$
  BEGIN
@@ -109,7 +109,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6046,7 +5989,7 @@
+@@ -6045,7 +5988,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
@@ -118,7 +118,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6141,11 +6084,11 @@
+@@ -6140,11 +6083,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -133,7 +133,7 @@
              );
          END IF;
          rownum = rownum + 1;
-@@ -6160,8 +6103,8 @@
+@@ -6159,8 +6102,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -144,7 +144,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6296,7 +6239,7 @@
+@@ -6295,7 +6238,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -153,7 +153,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6310,8 +6253,8 @@
+@@ -6309,8 +6252,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
