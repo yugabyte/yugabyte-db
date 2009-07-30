@@ -766,11 +766,11 @@ second argument may be an array:
     );
 
 In general, the use of prepared statements is highly recommended to keep your
-test code SQLish (you can even use `VALUES` statements in prepared
-statements!). But note that, because `results_eq()` does a row-by-row
-comparision, the results of the two query arguments must be in exactly the
-same order, with exactly the same data types, in order to pass. In practical
-terms, it means that you must make sure that your results are never
+test code SQLish (you can even use `VALUES` statements in prepared statements
+in PostgreSQL 8.2 and up!). But note that, because `results_eq()` does a
+row-by-row comparision, the results of the two query arguments must be in
+exactly the same order, with exactly the same data types, in order to pass. In
+practical terms, it means that you must make sure that your results are never
 unambiguously ordered.
 
 For example, say that you want to compare queries against a `persons` table.

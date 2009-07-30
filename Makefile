@@ -64,9 +64,14 @@ ifeq ($(PGVER_MINOR), 4)
 # Do nothing.
 else
 ifneq ($(PGVER_MINOR), 3)
-# Enum test not supported by 8.2 and earlier.
+# Enum tests not supported by 8.2 and earlier.
 TESTS := $(filter-out sql/enumtap.sql,$(TESTS))
 REGRESS := $(filter-out enumtap,$(REGRESS))
+endif
+ifneq ($(PGVER_MINOR), 2)
+# Values tests not supported by 8.1 and earlier.
+TESTS := $(filter-out sql/valueset.sql,$(TESTS))
+REGRESS := $(filter-out valueset,$(REGRESS))
 endif
 endif
 endif
