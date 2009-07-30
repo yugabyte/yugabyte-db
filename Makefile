@@ -180,7 +180,7 @@ ifneq ($(PGVER_MINOR), 3)
 	rm uninstall_pgtap.tmp
 endif
 ifeq ($(PGVER_MINOR), 0)
-#	patch -p0 < compat/uninstall-8.0.patch
+	patch -p0 < compat/uninstall-8.0.patch
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp
 	cat compat/uninstall-8.0.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
 	rm uninstall_pgtap.tmp
