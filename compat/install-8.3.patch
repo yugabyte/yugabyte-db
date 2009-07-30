@@ -1,6 +1,6 @@
---- pgtap.sql.orig	2009-07-01 10:24:04.000000000 -0700
-+++ pgtap.sql	2009-07-01 10:35:45.000000000 -0700
-@@ -5780,8 +5780,9 @@
+--- pgtap.sql.orig	2009-07-29 17:03:30.000000000 -0700
++++ pgtap.sql	2009-07-29 17:05:34.000000000 -0700
+@@ -5791,8 +5791,9 @@
          SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
            FROM pg_catalog.pg_attribute a
            JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
@@ -11,12 +11,21 @@
             AND attnum > 0
             AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
           ORDER BY attnum
-@@ -5885,7 +5886,7 @@
-     FETCH have INTO rec_have;
-     FETCH want INTO rec_want;
-     WHILE rec_have IS NOT NULL OR rec_want IS NOT NULL LOOP
--        IF rec_have IS DISTINCT FROM rec_want THEN
-+        IF rec_have::text IS DISTINCT FROM rec_want::text THEN
+@@ -6140,7 +6141,7 @@
+     FETCH want INTO want_rec;
+     want_found := FOUND;
+     WHILE have_found OR want_found LOOP
+-        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
++        IF have_rec::text IS DISTINCT FROM want_rec::text OR have_found <> want_found THEN
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
-                 '        have: ' || CASE WHEN rec_have IS NULL THEN '()' ELSE rec_have::text END || E'\n' ||
+                 '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+@@ -6295,7 +6296,7 @@
+     FETCH want INTO want_rec;
+     want_found := FOUND;
+     WHILE have_found OR want_found LOOP
+-        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
++        IF have_rec::text IS DISTINCT FROM want_rec::text OR have_found <> want_found THEN
+             RETURN ok( true, $3 );
+         ELSE
+             FETCH have INTO have_rec;
