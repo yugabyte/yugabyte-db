@@ -5929,7 +5929,6 @@ DECLARE
     missing TEXT[]  := '{}';
     res     BOOLEAN := TRUE;
     msg     TEXT    := '';
-    rec     RECORD;
 BEGIN
     BEGIN
         -- Find extra records.

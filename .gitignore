@@ -1,5 +1,9 @@
 pgtap.sql
+pgtap.sql.reg
+pgtap.sql.orig
 uninstall_pgtap.sql
+uninstall_pgtap.sql.rej
+uninstall_pgtap.sql.orig
 test_setup.sql
 results
 pgtap.so

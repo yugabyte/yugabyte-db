@@ -330,7 +330,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(prepared, select) fail extras',
     '',
-    E'   Extra records:
+    '   Extra records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -356,7 +356,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(select, prepared) fail missings',
     '',
-    E'   Missing records:
+    '   Missing records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -384,7 +384,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(select, select) fail extras & missings',
     '',
-    E'   Extra records:
+    '   Extra records:
         \\((1,Jacob|87,Jackson)\\)
         \\((1,Jacob|87,Jackson)\\)
     Missing records:
@@ -493,7 +493,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(prepared, select) fail extras',
     '',
-    E'   Extra records:
+    '   Extra records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -519,7 +519,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(select, prepared) fail missings',
     '',
-    E'   Missing records:
+    '   Missing records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -547,7 +547,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(select, select) fail extras & missings',
     '',
-    E'   Extra records:
+    '   Extra records:
         \\((1,Jacob|87,Jackson)\\)
         \\((1,Jacob|87,Jackson)\\)
     Missing records:
@@ -1142,7 +1142,7 @@ SELECT * FROM check_test(
     false,
     'set_has(missing2, expect )',
     '',
-    E'   Missing records:
+    '   Missing records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -1266,7 +1266,7 @@ SELECT * FROM check_test(
     false,
     'bag_has(missing2, expect )',
     '',
-    E'   Missing records:
+    '   Missing records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -1377,7 +1377,7 @@ SELECT * FROM check_test(
     false,
     'set_hasnt( prepared, values )',
     '',
-    E'   Extra records:
+    '   Extra records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true
@@ -1473,7 +1473,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt( prepared, values )',
     '',
-    E'   Extra records:
+    '   Extra records:
         \\((44,Anna|86,Angelina)\\)
         \\((44,Anna|86,Angelina)\\)',
     true

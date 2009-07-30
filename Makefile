@@ -59,7 +59,7 @@ EXTRA_SUBS := -e "s/ E'/ '/g"
 # Throw, runtests, enums, and roles aren't supported in 8.0.
 TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/roletap.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests enumtap roletap,$(REGRESS))
-else
+endif
 ifeq ($(PGVER_MINOR), 4)
 # Do nothing.
 else
@@ -72,7 +72,6 @@ ifneq ($(PGVER_MINOR), 2)
 # Values tests not supported by 8.1 and earlier.
 TESTS := $(filter-out sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out valueset,$(REGRESS))
-endif
 endif
 endif
 endif
@@ -146,7 +145,9 @@ else
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 4)
+ifneq ($(PGVER_MINOR), 0)
 	patch -p0 < compat/install-8.3.patch
+endif
 ifneq ($(PGVER_MINOR), 3)
 	cat compat/install-8.2.sql >> pgtap.sql
 ifeq ($(PGVER_MINOR), 2)
@@ -156,7 +157,6 @@ ifeq ($(PGVER_MINOR), 1)
 	patch -p0 < compat/install-8.2.patch
 	patch -p0 < compat/install-8.1.patch
 else
-	patch -p0 < compat/install-8.2.patch
 	patch -p0 < compat/install-8.0.patch
 endif
 endif
@@ -180,7 +180,7 @@ ifneq ($(PGVER_MINOR), 3)
 	rm uninstall_pgtap.tmp
 endif
 ifeq ($(PGVER_MINOR), 0)
-	patch -p0 < compat/uninstall-8.0.patch
+#	patch -p0 < compat/uninstall-8.0.patch
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp
 	cat compat/uninstall-8.0.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
 	rm uninstall_pgtap.tmp
