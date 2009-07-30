@@ -4,21 +4,21 @@ CREATE OR REPLACE FUNCTION booltext(boolean)
 RETURNS text AS 'SELECT CASE WHEN $1 then ''true'' ELSE ''false'' END;'
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE CAST (boolean AS text) WITH FUNCTION booltext(boolean) AS IMPLICIT;
+CREATE CAST (boolean AS text) WITH FUNCTION booltext(boolean) AS ASSIGNMENT;
 
 -- Cast text[]s to text like 8.3 does.
 CREATE OR REPLACE FUNCTION textarray_text(text[])
 RETURNS TEXT AS 'SELECT textin(array_out($1));'
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE CAST (text[] AS text) WITH FUNCTION textarray_text(text[]) AS IMPLICIT;
+CREATE CAST (text[] AS text) WITH FUNCTION textarray_text(text[]) AS ASSIGNMENT;
 
 -- Cast name[]s to text like 8.3 does.
 CREATE OR REPLACE FUNCTION namearray_text(name[])
 RETURNS TEXT AS 'SELECT textin(array_out($1));'
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE CAST (name[] AS text) WITH FUNCTION namearray_text(name[]) AS IMPLICIT;
+CREATE CAST (name[] AS text) WITH FUNCTION namearray_text(name[]) AS ASSIGNMENT;
 
 -- Compare name[]s more or less like 8.3 does.
 CREATE OR REPLACE FUNCTION namearray_eq( name[], name[] )
@@ -50,4 +50,4 @@ CREATE OR REPLACE FUNCTION regtypetext(regtype)
 RETURNS text AS 'SELECT textin(regtypeout($1))'
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE CAST (regtype AS text) WITH FUNCTION regtypetext(regtype) AS IMPLICIT;
+CREATE CAST (regtype AS text) WITH FUNCTION regtypetext(regtype) AS ASSIGNMENT;

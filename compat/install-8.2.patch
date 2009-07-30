@@ -1,5 +1,34 @@
---- pgtap.sql.orig	2009-07-29 17:45:37.000000000 -0700
-+++ pgtap.sql	2009-07-29 17:46:25.000000000 -0700
+--- pgtap.sql.orig	2009-07-29 21:23:40.000000000 -0700
++++ pgtap.sql	2009-07-29 21:23:57.000000000 -0700
+@@ -194,11 +194,11 @@
+ RETURNS integer AS $$
+ BEGIN
+     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
+-    VALUES( ' || $1 || ', '
+-              || $2 || ', '
+-              || quote_literal(COALESCE($3, '')) || ', '
+-              || quote_literal($4) || ', '
+-              || quote_literal($5) || ' )';
++    VALUES( ' || $1::text || ', '
++              || $2::text || ', '
++              || quote_literal(COALESCE($3, '')::text) || ', '
++              || quote_literal($4::text) || ', '
++              || quote_literal($5::text) || ' )';
+     RETURN currval('__tresults___numb_seq');
+ END;
+ $$ LANGUAGE plpgsql;
+@@ -486,9 +486,9 @@
+     output TEXT;
+ BEGIN
+     EXECUTE 'SELECT ' ||
+-            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
++            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have)::text || ' '
+             || op || ' ' ||
+-            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
++            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)::text
+        INTO result;
+     output := ok( COALESCE(result, FALSE), descr );
+     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
 @@ -3298,63 +3298,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
@@ -64,3 +93,74 @@
  CREATE OR REPLACE FUNCTION _has_role( NAME )
  RETURNS BOOLEAN AS $$
      SELECT EXISTS(
+@@ -5815,13 +5758,13 @@
+         -- Find extra records.
+         FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
+                         || 'SELECT * FROM ' || want LOOP
+-            extras := extras || rec::text;
++            extras := array_append(extras, textin(record_out(rec)));
+         END LOOP;
+ 
+         -- Find missing records.
+         FOR rec in EXECUTE 'SELECT * FROM ' || want || ' EXCEPT ' || $4
+                         || 'SELECT * FROM ' || have LOOP
+-            missing := missing || rec::text;
++            missing := array_append(missing, textin(record_out(rec)));
+         END LOOP;
+ 
+         -- Drop the temporary tables.
+@@ -6046,7 +5989,7 @@
+         -- Find relevant records.
+         FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
+                        || ' SELECT * FROM ' || have LOOP
+-            results := results || rec::text;
++            results := array_append(results, textin(record_out(rec)));
+         END LOOP;
+ 
+         -- Drop the temporary tables.
+@@ -6141,11 +6084,11 @@
+     FETCH want INTO want_rec;
+     want_found := FOUND;
+     WHILE have_found OR want_found LOOP
+-        IF have_rec::text IS DISTINCT FROM want_rec::text OR have_found <> want_found THEN
++        IF textin(record_out(have_rec)) IS DISTINCT FROM textin(record_out(want_rec)) OR have_found <> want_found THEN
+             RETURN ok( false, $3 ) || E'\n' || diag(
+                 '    Results differ beginning at row ' || rownum || E':\n' ||
+-                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+-                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
++                '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec)) ELSE 'NULL' END || E'\n' ||
++                '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec)) ELSE 'NULL' END
+             );
+         END IF;
+         rownum = rownum + 1;
+@@ -6160,8 +6103,8 @@
+     WHEN datatype_mismatch THEN
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Columns differ between queries:\n' ||
+-            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+-            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
++            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec)) ELSE 'NULL' END || E'\n' ||
++            '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec)) ELSE 'NULL' END
+         );
+ END;
+ $$ LANGUAGE plpgsql;
+@@ -6296,7 +6239,7 @@
+     FETCH want INTO want_rec;
+     want_found := FOUND;
+     WHILE have_found OR want_found LOOP
+-        IF have_rec::text IS DISTINCT FROM want_rec::text OR have_found <> want_found THEN
++        IF textin(record_out(have_rec)) IS DISTINCT FROM textin(record_out(want_rec)) OR have_found <> want_found THEN
+             RETURN ok( true, $3 );
+         ELSE
+             FETCH have INTO have_rec;
+@@ -6310,8 +6253,8 @@
+     WHEN datatype_mismatch THEN
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Columns differ between queries:\n' ||
+-            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+-            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
++            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec)) ELSE 'NULL' END || E'\n' ||
++            '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec)) ELSE 'NULL' END
+         );
+ END;
+ $$ LANGUAGE plpgsql;
