@@ -61,8 +61,7 @@ TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/role
 REGRESS := $(filter-out throwtap runtests enumtap roletap,$(REGRESS))
 else
 ifeq ($(PGVER_MINOR), 4)
-# Remove lines 15-20, which define pg_typeof().
-EXTRA_SUBS := -e '14,18d'
+# Do nothing.
 else
 ifneq ($(PGVER_MINOR), 3)
 # Enum test not supported by 8.2 and earlier.

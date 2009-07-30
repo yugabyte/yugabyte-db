@@ -11,11 +11,6 @@
 -- ## CREATE SCHEMA TAPSCHEMA;
 -- ## SET search_path TO TAPSCHEMA, public;
 
-CREATE OR REPLACE FUNCTION pg_typeof("any")
-RETURNS regtype
-AS 'MODULE_PATHNAME'
-LANGUAGE C STABLE;
-
 CREATE OR REPLACE FUNCTION pg_version()
 RETURNS text AS 'SELECT current_setting(''server_version'')'
 LANGUAGE SQL IMMUTABLE;
