@@ -70,7 +70,7 @@ schema you'd like to be created, for example:
 Testing pgTAP with pgTAP
 ------------------------
 
-In addition to the PostgreSQL-standared `installcheck` target, the `test`
+In addition to the PostgreSQL-standard `installcheck` target, the `test`
 target uses the included `pg_prove` Perl program to do its testing, which
 requires that TAP::Harness, included in
 [Test::Harness](http://search.cpan.org/dist/Test-Harness/ "Test::Harness on
@@ -534,23 +534,26 @@ you've got some complicated condition that is difficult to wedge into an
 
 Use these functions very, very, very sparingly.
 
-Submit Your Query
-=================
+Pursuing Your Query
+===================
 
-Sometimes, you've just gotta run tests on a query. I mean a full blown query,
-not just the scalar assertion functions we've seen so far. pgTAP provides a
-number of functions to help you test your queries, each of which takes one or
-two SQL statements as arguments. Yes, as strings:
+Sometimes, you've just gotta test a query. I mean the results of a full blown
+query, not just the scalar assertion functions we've seen so far. pgTAP
+provides a number of functions to help you test your queries, each of which
+takes one or two SQL statements as arguments. For example:
 
     SELECT throws_ok('SELECT divide_by(0)');
 
-Of course, you'll often need to do something complex in your SQL, and quoting
-SQL in strings in what is, after all, an SQL application, is an unnecessary
-PITA. Each of the query-executing functions in this section thus support an
-alternative to make your tests more SQLish: using prepared statements.
+Yes, as strings. Of course, you'll often need to do something complex in your
+SQL, and quoting SQL in strings in what is, after all, an SQL application, is
+an unnecessary PITA. Each of the query-executing functions in this section
+thus support an alternative to make your tests more SQLish: using prepared
+statements.
 
-Prepared statements allow you to just write SQL and simply pass the prepared
-statement names. For example, the above example can be rewritten as:
+[Prepared statements](http://www.postgresql.org/docs/current/static/sql-prepare.html
+"PostgreSQL Documentation: `PREPARE`") allow you to just write SQL and simply
+pass the prepared statement names to test functions. For example, the above
+example can be rewritten as:
 
     PREPARE mythrow AS SELECT divide_by(0);
     SELECT throws_ok('mythrow');
@@ -558,9 +561,9 @@ statement names. For example, the above example can be rewritten as:
 pgTAP assumes that an SQL argument without space characters or starting with a
 double quote character is a prepared statement and simply `EXECUTE`s it. If
 you need to pass arguments to a prepared statement, perhaps because you plan
-to use it in multiple tests to return different values, just include `EXECUTE`
-in the SQL string. Here's an example with a prepared statement with a space in
-its name, and one where arguments need to be passed:
+to use it in multiple tests to return different values, just `EXECUTE` it
+yourself. Here's an example with a prepared statement with a space in its
+name, and one where arguments need to be passed:
 
     PREPARE "my test" AS SELECT * FROM active_users() WHERE name LIKE 'A%';
     PREPARE expect AS SELECT * FROM users WHERE active = $1 AND name LIKE $2;
@@ -574,7 +577,44 @@ Since "my test" was declared with double quotes, it must be passed with double
 quotes. And since the call to "expect" included spaces (to keep it legible),
 the `EXECUTE` keyword was required.
 
-So keeping these techniques in mind, read on for all of the query-testing
+In PostgreSQL 8.2 and up, you can also use a `VALUES` statement, both in
+the query string or in a prepared statement. A useless example:
+
+    PREPARE myvals AS VALUES (1, 2), (3, 4);
+    SELECT set_eq(
+        'myvals',
+        'VALUES (1, 2), (3, 4)'
+    );
+
+On PostgreSQL 8.1 and down, you'll have to use `UNION` queries (if order
+doesn't matter) or temporary tables to pass arbitrary values:
+
+    SET client_min_messages = warning;
+    CREATE TEMPORARY TABLE stuff (a int, b int);
+    INSERT INTO stuff VALUES(1, 2);
+    INSERT INTO stuff VALUES(3, 4);
+    RESET client_min_messages;
+    PREPARE myvals AS SELECT a, b FROM stuff;
+
+    SELECT set_eq(
+        'myvals',
+        'SELECT 1, 2 UNION SELECT 3, 4'
+    );
+
+Here's a bonus if you need to check the results from a query that returns a
+single column: for those functions that take two query arguments, the second
+can be an array. Check it out:
+
+    SELECT results_eq(
+        'SELECT * FROM active_user_ids()',
+        ARRAY[ 2, 3, 4, 5]
+    );
+
+The first query *must* return only one column of the same type as the values
+in the array. If you need to test more columns, you'll need to use two
+queries.
+
+Keeping these techniques in mind, read on for all of the query-testing
 goodness.
 
 To Error is Human
@@ -600,14 +640,13 @@ error-prone as you think they should be.
         'We should get a unique violation for a duplicate PK'
     );
 
-When you want to make sure that an exception is thrown by PostgreSQL under
-certain circumstances, use `throws_ok()` to test for those circumstances.
-Supported by 8.1 or higher.
+When you want to make sure that an exception is thrown by PostgreSQL, use
+`throws_ok()` to test for it. Supported by 8.1 and up.
 
 The first argument should be the name of a prepared statement or else a string
 representing the query to be executed (see the [summary](#Submit+Your+Query) for
 query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
-statement to execute it and catch any exception.
+statement to execute the query and catch any exception.
 
 The second argument should be an exception error code, which is a
 five-character string (if it happens to consist only of numbers and you pass
@@ -625,17 +664,17 @@ careful of localized error messages.
 
 The fourth argument is of course a brief test description.
 
-For the three- and two-argument forms of `throws_ok()`, if the second argument
+For the two- and three-argument forms of `throws_ok()`, if the second argument
 is exactly five bytes long, it is assumed to be an error code and the optional
 third argument is the error message. Otherwise, the second argument is assumed
 to be an error message and the third argument is a description. If for some
 reason you need to test an error message that is five bytes long, use the
 four-argument form.
 
-Should a `throws_ok()` test fail it produces appropriate diagnostic messages.
-For example:
+A failing `throws_ok()` test produces an appropriate diagnostic message. For
+example:
 
-    # Failed test 81: "This should not die"
+    # Failed test 81: "This should die a glorious death"
     #       caught: 23505: duplicate key value violates unique constraint "try_pkey"
     #       wanted: 23502: null value in column "id" violates not-null constraint
 
@@ -649,16 +688,16 @@ Idea borrowed from the Test::Exception Perl module.
         'We should not get a unique violation for a new PK'
     );
 
-The inverse of `throws_ok()`, these functions test to ensure that an SQL
-statement does *not* throw an exception. Supported by 8.1 or higher. Pass in
-the name of a prepared statement or string of SQL code (see the
+The inverse of `throws_ok()`, `lives_ok()` ensures that an SQL statement does
+*not* throw an exception. Supported by 8.1 and up. Pass in the name of a
+prepared statement or string of SQL code (see the
 [summary](#Submit+Your+Query) for query argument details). The optional second
 argument is the test description.
 
-Should a `lives_ok()` test fail, it produces appropriate diagnostic messages.
-For example:
+A failing `lives_ok()` test produces an appropriate diagnostic message. For
+example:
 
-    # Failed test 85: "simple success"
+    # Failed test 85: "don't die, little buddy!"
     #         died: 23505: duplicate key value violates unique constraint "try_pkey"
 
 Idea borrowed from the Test::Exception Perl module.
@@ -674,22 +713,22 @@ Idea borrowed from the Test::Exception Perl module.
     );
 
 This function makes sure that an SQL statement performs well. It does so by
-timing its execution, and failing if execution takes longer than the specified
-amount of time.
+timing its execution and failing if execution takes longer than the specified
+number of milliseconds.
 
 The first argument should be the name of a prepared statement or a string
 representing the query to be executed (see the [summary](#Submit+Your+Query) for
 query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
-statement to execute it and catch any exception.
+statement to execute the query.
 
 The second argument is the maximum number of milliseconds it should take for
 the SQL statement to execute. This argument is numeric, so you can even use
 fractions of milliseconds if it floats your boat.
 
 The third argument is the usual description. If not provided, `performs_ok()`
-will generate a placeholder description "Should run in less than $milliseconds
-ms". You'll likely want to provide your own description if you have more than
-a couple of these in a test script or function.
+will generate the description "Should run in less than $milliseconds ms".
+You'll likely want to provide your own description if you have more than a
+couple of these in a test script or function.
 
 Should a `performs_ok()` test fail it produces appropriate diagnostic
 messages. For example:
@@ -707,8 +746,8 @@ to ensure that a query is not *really* slow (think seconds).
 Can You Relate?
 ---------------
 
-So you've got your basic scalar comparison funtions, what about relations?
-Mabye you have some pretty hairy `SELECT` statements in views or functions to
+So you've got your basic scalar comparison functions, what about relations?
+Maybe you have some pretty hairy `SELECT` statements in views or functions to
 test? We've got your relation-testing functions right here.
 
 ### `results_eq( sql, sql, description )` ###
@@ -730,11 +769,11 @@ test? We've got your relation-testing functions right here.
 
     SELECT results_eq( 'users_test', 'users_expect', 'We should have users' );
 
-There are three ways to test result sets in pgTAP. The most intuitive is to do
-a direct row-by-row comparison of results to ensure that they are exactly what
-you expect, in the order you expect. Coincidentally, this is exactly how
-`results_eq()` behaves. Here's how you use it: simply pass in two SQL
-statements or prepared statement names (or some combination; (see the
+There are three ways to test result sets in pgTAP. Perhaps the most intuitive
+is to do a direct row-by-row comparison of results to ensure that they are
+exactly what you expect, in the order you expect. Coincidentally, this is
+exactly how `results_eq()` behaves. Here's how you use it: simply pass in two
+SQL statements or prepared statement names (or some combination; (see the
 [summary](#Submit+Your+Query) for query argument details) and an optional
 description. Yep, that's it. It will do the rest.
 
@@ -748,8 +787,8 @@ expect, you might do something like this:
         'active_users() should return active users'
     );
 
-Tip: If you want to hard-code the values to compare, use a `VALUES` statement
-instead of a query, like so:
+Tip: If you're using PostgreSQL 8.2 and up and want to hard-code the values to
+compare, use a `VALUES` statement instead of a query, like so:
 
     SELECT results_eq(
         'SELECT * FROM active_users()',
@@ -766,9 +805,9 @@ second argument may be an array:
     );
 
 In general, the use of prepared statements is highly recommended to keep your
-test code SQLish (you can even use `VALUES` statements in prepared statements
-in PostgreSQL 8.2 and up!). But note that, because `results_eq()` does a
-row-by-row comparision, the results of the two query arguments must be in
+test code SQLish (you can even use `VALUES` in prepared statements in
+PostgreSQL 8.2 and up!). But note that, because `results_eq()` does a
+row-by-row comparison, the results of the two query arguments must be in
 exactly the same order, with exactly the same data types, in order to pass. In
 practical terms, it means that you must make sure that your results are never
 unambiguously ordered.
@@ -796,17 +835,16 @@ But a different run of the same query could have the rows in different order:
      Tom    |  44
     (4 rows)
 
-Notice how the two "Tom" rows are reversed. The upshot is that you want to
-make sure that your rows are always fully ordered. In a case like the above,
-it means sorting on both the `name` column and the `age` column. If the sort
-order of your results isn't important, consider using `set_eq()` or `bag_eq()`
-instead.
+Notice how the two "Tom" rows are reversed. The upshot is that you must ensure
+that your queries are always fully ordered. In a case like the above, it means
+sorting on both the `name` column and the `age` column. If the sort order of
+your results isn't important, consider using `set_eq()` or `bag_eq()` instead.
 
 Internally, `results_eq()` turns your SQL statements into cursors so that it
 can iterate over them one row at a time. Conveniently, this behavior is
 directly available to you, too. Rather than pass in some arbitrary SQL
-statement or the name of a prepared statement, simply create a cursor and just
-pass *it* in, like so:
+statement or the name of a prepared statement, simply create a cursor and pass
+*it* in, like so:
 
     DECLARE cwant CURSOR FOR SELECT * FROM active_users();
     DECLARE chave CURSOR FOR SELECT * FROM users WHERE active ORDER BY name;
@@ -833,15 +871,15 @@ for the expected results:
     );
 
 Regardless of which types of arguments you pass, in the event of a test
-failure due to different results, `results_eq()` will offer a nice diagnostic
-message to tell you at what row the results differ, something like:
+failure, `results_eq()` will offer a nice diagnostic message to tell you at
+what row the results differ, something like:
 
     # Failed test 146
     #     Results differ beginning at row 3:
     #         have: (1,Anna)
     #         want: (22,Betty)
 
-If there are different numbers of rows in each result set, an non-existent row
+If there are different numbers of rows in each result set, a non-existent row
 will be represented as "NULL":
 
     # Failed test 147
@@ -858,12 +896,13 @@ so:
     #         have: (1)
     #         want: (foo,1)
 
-On PostgreSQL 8.3 and lower, the rows are cast to text for comparison, rather
-than compared as `record` objects, so the test cannot detect incompatibilities
-in column numbers or types, or differences in columns that convert to the same
-text representation. For example, a `NULL` column will be equivalent to an
-empty string. The upshot: read failure diagnostics carefully and pay attention
-to data types on 8.3.
+On PostgreSQL 8.3 and down, the rows are cast to text for comparison, rather
+than compared as `record` objects. The downside to this necessity is that the
+test cannot detect incompatibilities in column numbers or types, or
+differences in columns that convert to the same text representation. For
+example, a `NULL` column will be equivalent to an empty string. The upshot:
+read failure diagnostics carefully and pay attention to data types on 8.3 and
+down.
 
 ### `results_ne( sql, sql, description )` ###
 ### `results_ne( sql, sql )` ###
@@ -890,9 +929,11 @@ have the same sets of results in the two query arguments and the test will
 pass if they're merely in a different order. More than likely what you really
 want is `results_eq()` or `set_ne()`. But this function is included for
 completeness and is kind of cute, so enjoy. If a `results_ne()` test fails,
-however, there will be no diagnostics, becaus, well, the results will be the
+however, there will be no diagnostics, because, well, the results will be the
 same!
 
+Note that the caveats for `results_ne()` on PostgreSQL 8.3 and down apply to
+`results_ne()` as well.
 
 ### `set_eq( sql, sql, description )` ###
 ### `set_eq( sql, sql )` ###
@@ -954,10 +995,10 @@ This of course extends to sets with different numbers of columns:
     SELECT bag_eq( 'testq', 'expect', 'gotta have the A listers' );
 
 The `bag_eq()` function is just like `set_eq()`, except that it considers the
-results as bags rather than as sets. A bag is a set with duplicates. What this
-means, effectively, is that you can use `bag_eq()` to test result sets where
-order doesn't matter, but duplication does. In other words, if a two rows are
-the same in the first result set, the same row must appear twice in the second
+results as bags rather than as sets. A bag is a set that allows duplicates. In
+practice, it mean that you can use `bag_eq()` to test result sets where order
+doesn't matter, but duplication does. In other words, if a two rows are the
+same in the first result set, the same row must appear twice in the second
 result set.
 
 Otherwise, this function behaves exactly like `set_eq()`, including the
@@ -973,12 +1014,13 @@ utility of its diagnostics.
     SELECT set_ne( 'testq', 'expect', 'gotta have the A listers' );
 
 The inverse of `set_eq()`, this function tests that the results of two queries
-are *not* the same. The two queries, which The can of course be the names of
-prepared statements or strings containing an SQL query (see the
+are *not* the same. The two queries can as usual be the names of prepared
+statements or strings containing an SQL query (see the
 [summary](#Submit+Your+Query) for query argument details), or even one of
 each. The two queries, however, must return results that are directly
 comparable -- that is, with the same number and types of columns in the same
-orders.
+orders. If it happens that the query you're testing returns a single column,
+the second argument may be an array.
 
 ### `bag_ne( sql, sql, description )` ###
 ### `bag_ne( sql, sql )` ###
@@ -990,12 +1032,13 @@ orders.
     SELECT bag_ne( 'testq', 'expect', 'gotta have the A listers' );
 
 The inverse of `bag_eq()`, this function tests that the results of two queries
-are *not* the same, including duplicates. The two queries, which The can of
-course be the names of prepared statements or strings containing an SQL query
-(see the [summary](#Submit+Your+Query) for query argument details), or even
-one of each. The two queries, however, must return results that are directly
+are *not* the same, including duplicates. The two queries can as usual be the
+names of prepared statements or strings containing an SQL query (see the
+[summary](#Submit+Your+Query) for query argument details), or even one of
+each. The two queries, however, must return results that are directly
 comparable -- that is, with the same number and types of columns in the same
-orders.
+orders. If it happens that the query you're testing returns a single column,
+the second argument may be an array.
 
 ### `set_has( sql, sql, description )` ###
 ### `set_has( sql, sql )` ###
@@ -1014,16 +1057,18 @@ useful perhaps, but set-theoretically correct.
 
 As with `set_eq()`. the SQL arguments can be the names of prepared statements
 or strings containing an SQL query (see the [summary](#Submit+Your+Query) for
-query argument details), or one of each. In whatever case, a failing test will
-yield useful diagnostics just like:
+query argument details), or one of each. If it happens that the query you're
+testing returns a single column, the second argument may be an array.
+
+In whatever case, a failing test will yield useful diagnostics just like:
 
     # Failed test 122
     #     Missing records:
     #         (44,Anna)
     #         (86,Angelina)
 
-As with `set_eq()`, it will also provide useful diagnostics when the queries
-return incompatible columns. Internally, it uses an `EXCEPT` query to
+As with `set_eq()`, `set_has()` will also provide useful diagnostics when the
+queries return incompatible columns. Internally, it uses an `EXCEPT` query to
 determine if there any any unexpectedly missing results.
 
 ### `bag_has( sql, sql, description )` ###
@@ -1035,9 +1080,9 @@ determine if there any any unexpectedly missing results.
 
 The `bag_has()` function is just like `set_has()`, except that it considers
 the results as bags rather than as sets. A bag is a set with duplicates. What
-this means, effectively, is that you can use `bag_has()` to test result sets
-where order doesn't matter, but duplication does. Internally, it uses an
-`EXCEPT ALL` query to determine if there any any unexpectedly missing results.
+practice this means that you can use `bag_has()` to test result sets where
+order doesn't matter, but duplication does. Internally, it uses an `EXCEPT
+ALL` query to determine if there any any unexpectedly missing results.
 
 ### `set_hasnt( sql, sql, description )` ###
 ### `set_hasnt( sql, sql )` ###
@@ -2898,7 +2943,7 @@ But then you check with `has_function()` first, right?
     SELECT volatility_is( 'do_something', ARRAY['integer'], 'stable' );
     SELECT volatility_is( 'do_something', ARRAY['numeric'], 'volatile' );
 
-Tests the volatility of a function. Supported volailities are "volatile",
+Tests the volatility of a function. Supported volatilities are "volatile",
 "stable", and "immutable". Consult the [`CREATE FUNCTION` documentation
 A.](http://www.postgresql.org/docs/current/static/sql-createfunction.html) for
 details. The function name is required. If the `:schema` argument is omitted,
@@ -3705,53 +3750,42 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
-8.4 and Higher
---------------
-
-The `pg_typeof()` function will not be built, as it is included in PostgreSQL
-8.4.
-
-8.4 and Higher
---------------
+8.4 and Up
+----------
 
 No changes. Everything should just work.
 
-8.3 and Lower
--------------
-A patch is applied to modify `results_eq()` to cast records to text before
-comparing them. This means that things will mainly be correct, but it also
-means that two queries with incopatible types that convert to the same text
-string may be considered incorrectly equivalent.
+8.3 and Down
+------------
+* A patch is applied to modify `results_eq()` to cast records to text before
+  comparing them. This means that things will mainly be correct, but it also
+  means that two queries with incompatible types that convert to the same text
+  string may be considered incorrectly equivalent.
+* A C function, `pg_typeof()`, is built and installed in a DSO. This is for
+  compatibility with the same function that ships in 8.4 core, and is required
+  for `cmp_ok()` to work.
 
-
-8.2 and Lower
--------------
-
-A patch is applied that removes the `enum_has_labels()` function, and
-`col_has_default()` cannot be used to test for columns specified with `DEFAULT
-NULL` (even though that's the implied default default). Also, a number of
-casts are added to increase compatibility. The casts are:
-
-* `boolean` to `text`
-* `text[]` to `text`
-* `name[]` to `text`
-* `regtype` to `text`
-
-An `=` operator is also added that compares `name[]` values.
+8.2 and Down
+------------
+* A patch is applied that removes the `enum_has_labels()` function, and
+  `col_has_default()` cannot be used to test for columns specified with
+  `DEFAULT NULL` (even though that's the implied default default). Also, a
+  number of assignments casts are added to increase compatibility. The casts
+  are:
+  + `boolean` to `text`
+  + `text[]` to `text`
+  + `name[]` to `text`
+  + `regtype` to `text`
+* Two operators, `=` and `<>`, are added to compare `name[]` values.
 
 8.0 and Lower
 -------------
-
-A patch is applied that changes how some of the test functions are written and
-removes the `runtests()` function. Also, a few casts are added for
-compatibility:
-
-* `oidvector` to `regtypep[]`.
-* `int2vector` to `integer[]`.
-
-Otherwise, all is the same as for 8.2 Do note, however, that the
-`throws_ok()`, `lives_ok()`, `runtests()`, `has_role()`, and `hasnt_role()`
-functions do not work under 8.0. Don't even use them there.
+* A patch is applied that changes how some of the test functions are written.
+* A few casts are added for compatibility:
+  + `oidvector` to `regtypep[]`.
+  + `int2vector` to `integer[]`.
+* The `throws_ok()`, `lives_ok()`, `runtests()`, `has_role()`, and
+  `hasnt_role()` functions do not work under 8.0. Don't even use them there.
 
 To Do
 -----

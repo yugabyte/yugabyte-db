@@ -4,17 +4,27 @@ Revision history for pgTAP
 0.22
 -------------------------
 * Fixed failing test on 8.4rc2.
-* Added `results_eq(), `results_ne()`, `set_eq()`, `bag_eq()`, `set_ne()`,
-  `bag_ne()`, `set_has()`, `bag_has()`, `set_hasnt()`, and `bag_hasnt()`
-  functions to test query results.
+* Added result set testing functions. These allow testers to write queries in
+  pure SQL and check that their results are as expected. The new functions
+  are:
+  + `results_eq()`
+  + `results_ne()`
+  + `set_eq()`
+  + `bag_eq()`
+  + `set_ne()`
+  + `bag_ne()`
+  + `set_has()`
+  + `bag_has()`
+  + `set_hasnt()`
+  + `bag_hasnt()`
 * Changed some internal queries to use explicit `JOIN`s.
 * Fixed capitalization of `TAP::Harness` in the `Makefile`. Thanks to
   Quinn Weaver.
-* Fixed a syntax error that caused uninstall_pgtap.sql to fail on older
+* Fixed a syntax error that caused `uninstall_pgtap.sql` to fail on older
   PostgreSQL versions (fix by Quinn Weaver).
 * Modified the summary documentation for the `--schema` and `--match` options
-  to better reflect that they are for finding xUnit tests, rather than for
-  finding pgTAP functions.
+  to `pg_prove` to better reflect that they are for finding xUnit tests,
+  not for finding pgTAP functions.
 
 0.21 2009-05-29T00:04:31
 -------------------------
@@ -53,13 +63,13 @@ Revision history for pgTAP
 * Added `has_cast()`, `hasnt_cast()`, and `cast_context_is()`.
 * Fixed a borked function signature in `has_trigger()`.
 * Added `has_operator()`, `has_leftop()`, and `has_rightop()`.
-* Fixed a bug where the order of columns found for multicolum indexes by
+* Fixed a bug where the order of columns found for multicolumn indexes by
   `has_index()` could be wrong. Reported by Jeff Wartes. Thanks to Andrew
   Gierth for help fixing the query.
 
 0.19 2009-02-21T02:09:26
 -------------------------
-* Added a alernate versions of `col_default_is()` to better handle the common
+* Added an alternate version of `col_default_is()` to better handle the common
   case when a default is specified as a string, such as a text or expression
   default. This means that you have to do a lot less casting of default values
   specified in the arguments to `col_default_is()`. It also restores the
@@ -76,7 +86,7 @@ Revision history for pgTAP
   that it can be used to run xUnit-style test functions without an SQL script.
 * Fixed a bug in `can()` where it could sometimes report that functions
   were available in a schema when in fact they were not.
-* In the schema testing functions, removed the use ofa `quote_ident()` to
+* In the schema testing functions, removed the use of `quote_ident()` to
   compare all identifiers, such as table names, schema names, column names,
   etc, added in 0.17. This is because `quote_ident(a) = quote_ident(b)` can't
   give a different result than `a = b`, and besides, made things slower and
@@ -130,7 +140,7 @@ Revision history for pgTAP
   case-insensitive matching. This means that tests should use only
   lowercase strings to specify object names, unless mixed case objects
   were created with double quote characters.
-* Added version of `todo()` with the `why` and `how_many` arugments
+* Added version of `todo()` with the `why` and `how_many` arguments
   reversed, so that I don't have to remember a specific order.
 
 0.16  2009-02-03T17:37:03
