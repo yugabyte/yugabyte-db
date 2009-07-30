@@ -331,8 +331,8 @@ SELECT * FROM check_test(
     'set_eq(prepared, select) fail extras',
     '',
     '   Extra records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -357,8 +357,8 @@ SELECT * FROM check_test(
     'set_eq(select, prepared) fail missings',
     '',
     '   Missing records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -385,11 +385,11 @@ SELECT * FROM check_test(
     'set_eq(select, select) fail extras & missings',
     '',
     '   Extra records:
-        \\((1,Jacob|87,Jackson)\\)
-        \\((1,Jacob|87,Jackson)\\)
+        [(](1,Jacob|87,Jackson)[)]
+        [(](1,Jacob|87,Jackson)[)]
     Missing records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -494,8 +494,8 @@ SELECT * FROM check_test(
     'bag_eq(prepared, select) fail extras',
     '',
     '   Extra records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -520,8 +520,8 @@ SELECT * FROM check_test(
     'bag_eq(select, prepared) fail missings',
     '',
     '   Missing records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -548,11 +548,11 @@ SELECT * FROM check_test(
     'bag_eq(select, select) fail extras & missings',
     '',
     '   Extra records:
-        \\((1,Jacob|87,Jackson)\\)
-        \\((1,Jacob|87,Jackson)\\)
+        [(](1,Jacob|87,Jackson)[)]
+        [(](1,Jacob|87,Jackson)[)]
     Missing records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -1143,8 +1143,8 @@ SELECT * FROM check_test(
     'set_has(missing2, expect )',
     '',
     '   Missing records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -1267,8 +1267,8 @@ SELECT * FROM check_test(
     'bag_has(missing2, expect )',
     '',
     '   Missing records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -1378,8 +1378,8 @@ SELECT * FROM check_test(
     'set_hasnt( prepared, values )',
     '',
     '   Extra records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 
@@ -1474,8 +1474,8 @@ SELECT * FROM check_test(
     'bag_hasnt( prepared, values )',
     '',
     '   Extra records:
-        \\((44,Anna|86,Angelina)\\)
-        \\((44,Anna|86,Angelina)\\)',
+        [(](44,Anna|86,Angelina)[)]
+        [(](44,Anna|86,Angelina)[)]',
     true
 );
 

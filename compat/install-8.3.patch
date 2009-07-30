@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-07-29 17:31:13.000000000 -0700
-+++ pgtap.sql	2009-07-29 17:32:02.000000000 -0700
+--- pgtap.sql.orig	2009-07-30 13:51:56.000000000 -0700
++++ pgtap.sql	2009-07-30 13:52:15.000000000 -0700
 @@ -15,6 +15,11 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -23,7 +23,7 @@
             AND attnum > 0
             AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
           ORDER BY attnum
-@@ -6135,7 +6141,7 @@
+@@ -6134,7 +6140,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -32,7 +32,7 @@
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
                  '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-@@ -6290,7 +6296,7 @@
+@@ -6289,7 +6295,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
