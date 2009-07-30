@@ -630,6 +630,5 @@ DROP FUNCTION pgtap_version();
 DROP FUNCTION os_name();
 DROP FUNCTION pg_version_num();
 DROP FUNCTION pg_version();
-DROP FUNCTION pg_typeof("any");
 -- ## SET search_path TO public;
 -- ## DROP SCHEMA TAPSCHEMA;

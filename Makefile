@@ -167,6 +167,7 @@ else
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 4)
+	patch -p0 < compat/uninstall-8.3.patch
 ifneq ($(PGVER_MINOR), 3)
 	patch -p0 < compat/uninstall-8.2.patch
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp

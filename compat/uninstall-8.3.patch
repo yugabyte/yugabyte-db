@@ -1,0 +1,10 @@
+--- uninstall_pgtap.sql.orig	2009-07-29 21:51:55.000000000 -0700
++++ uninstall_pgtap.sql	2009-07-29 21:52:53.000000000 -0700
+@@ -626,6 +626,7 @@
+ DROP FUNCTION _get ( text );
+ DROP FUNCTION no_plan();
+ DROP FUNCTION plan( integer );
++DROP FUNCTION pg_typeof("any");
+ DROP FUNCTION pgtap_version();
+ DROP FUNCTION os_name();
+ DROP FUNCTION pg_version_num();
