@@ -644,8 +644,8 @@ When you want to make sure that an exception is thrown by PostgreSQL, use
 `throws_ok()` to test for it. Supported by 8.1 and up.
 
 The first argument should be the name of a prepared statement or else a string
-representing the query to be executed (see the [summary](#Submit+Your+Query) for
-query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
+representing the query to be executed (see the [summary](#Pursuing+Your+Query)
+for query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
 statement to execute the query and catch any exception.
 
 The second argument should be an exception error code, which is a
@@ -691,8 +691,8 @@ Idea borrowed from the Test::Exception Perl module.
 The inverse of `throws_ok()`, `lives_ok()` ensures that an SQL statement does
 *not* throw an exception. Supported by 8.1 and up. Pass in the name of a
 prepared statement or string of SQL code (see the
-[summary](#Submit+Your+Query) for query argument details). The optional second
-argument is the test description.
+[summary](#Pursuing+Your+Query) for query argument details). The optional
+second argument is the test description.
 
 A failing `lives_ok()` test produces an appropriate diagnostic message. For
 example:
@@ -717,8 +717,8 @@ timing its execution and failing if execution takes longer than the specified
 number of milliseconds.
 
 The first argument should be the name of a prepared statement or a string
-representing the query to be executed (see the [summary](#Submit+Your+Query) for
-query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
+representing the query to be executed (see the [summary](#Pursuing+Your+Query)
+for query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
 statement to execute the query.
 
 The second argument is the maximum number of milliseconds it should take for
@@ -774,7 +774,7 @@ is to do a direct row-by-row comparison of results to ensure that they are
 exactly what you expect, in the order you expect. Coincidentally, this is
 exactly how `results_eq()` behaves. Here's how you use it: simply pass in two
 SQL statements or prepared statement names (or some combination; (see the
-[summary](#Submit+Your+Query) for query argument details) and an optional
+[summary](#Pursuing+Your+Query) for query argument details) and an optional
 description. Yep, that's it. It will do the rest.
 
 For example, say that you have a function, `active_users()`, that returns a
@@ -950,7 +950,7 @@ your result sets. As long as both queries return the same records, regardless
 of duplicates or ordering, a `set_eq()` test will pass.
 
 The SQL arguments can be the names of prepared statements or strings
-containing an SQL query (see the [summary](#Submit+Your+Query) for query
+containing an SQL query (see the [summary](#Pursuing+Your+Query) for query
 argument details), or even one of each. If the results returned by the first
 argument consist of a single column, the second argument may be an array:
 
@@ -985,25 +985,6 @@ This of course extends to sets with different numbers of columns:
     #         have: (integer)
     #         want: (text,integer)
 
-### `bag_eq( sql, sql, description )` ###
-### `bag_eq( sql, sql )` ###
-### `bag_eq( sql, array, description )` ###
-### `bag_eq( sql, array )` ###
-
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
-    SELECT bag_eq( 'testq', 'expect', 'gotta have the A listers' );
-
-The `bag_eq()` function is just like `set_eq()`, except that it considers the
-results as bags rather than as sets. A bag is a set that allows duplicates. In
-practice, it mean that you can use `bag_eq()` to test result sets where order
-doesn't matter, but duplication does. In other words, if a two rows are the
-same in the first result set, the same row must appear twice in the second
-result set.
-
-Otherwise, this function behaves exactly like `set_eq()`, including the
-utility of its diagnostics.
-
 ### `set_ne( sql, sql, description )` ###
 ### `set_ne( sql, sql )` ###
 ### `set_ne( sql, array, description )` ###
@@ -1016,25 +997,7 @@ utility of its diagnostics.
 The inverse of `set_eq()`, this function tests that the results of two queries
 are *not* the same. The two queries can as usual be the names of prepared
 statements or strings containing an SQL query (see the
-[summary](#Submit+Your+Query) for query argument details), or even one of
-each. The two queries, however, must return results that are directly
-comparable -- that is, with the same number and types of columns in the same
-orders. If it happens that the query you're testing returns a single column,
-the second argument may be an array.
-
-### `bag_ne( sql, sql, description )` ###
-### `bag_ne( sql, sql )` ###
-### `bag_ne( sql, array, description )` ###
-### `bag_ne( sql, array )` ###
-
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
-    SELECT bag_ne( 'testq', 'expect', 'gotta have the A listers' );
-
-The inverse of `bag_eq()`, this function tests that the results of two queries
-are *not* the same, including duplicates. The two queries can as usual be the
-names of prepared statements or strings containing an SQL query (see the
-[summary](#Submit+Your+Query) for query argument details), or even one of
+[summary](#Pursuing+Your+Query) for query argument details), or even one of
 each. The two queries, however, must return results that are directly
 comparable -- that is, with the same number and types of columns in the same
 orders. If it happens that the query you're testing returns a single column,
@@ -1056,9 +1019,9 @@ case the test will pass no matter what the first query returns. Not very
 useful perhaps, but set-theoretically correct.
 
 As with `set_eq()`. the SQL arguments can be the names of prepared statements
-or strings containing an SQL query (see the [summary](#Submit+Your+Query) for
-query argument details), or one of each. If it happens that the query you're
-testing returns a single column, the second argument may be an array.
+or strings containing an SQL query (see the [summary](#Pursuing+Your+Query)
+for query argument details), or one of each. If it happens that the query
+you're testing returns a single column, the second argument may be an array.
 
 In whatever case, a failing test will yield useful diagnostics just like:
 
@@ -1070,19 +1033,6 @@ In whatever case, a failing test will yield useful diagnostics just like:
 As with `set_eq()`, `set_has()` will also provide useful diagnostics when the
 queries return incompatible columns. Internally, it uses an `EXCEPT` query to
 determine if there any any unexpectedly missing results.
-
-### `bag_has( sql, sql, description )` ###
-### `bag_has( sql, sql )` ###
-
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE subset AS SELECT * FROM USERS where name LIKE 'a%';
-    SELECT bag_has( 'testq', 'subset', 'gotta have at least the A listers' );
-
-The `bag_has()` function is just like `set_has()`, except that it considers
-the results as bags rather than as sets. A bag is a set with duplicates. What
-practice this means that you can use `bag_has()` to test result sets where
-order doesn't matter, but duplication does. Internally, it uses an `EXCEPT
-ALL` query to determine if there any any unexpectedly missing results.
 
 ### `set_hasnt( sql, sql, description )` ###
 ### `set_hasnt( sql, sql )` ###
@@ -1102,6 +1052,56 @@ Diagnostics are similarly useful:
 
 Internally, the function uses an `INTERSECT` query to determine if there is
 any unexpected overlap between the query results.
+
+### `bag_eq( sql, sql, description )` ###
+### `bag_eq( sql, sql )` ###
+### `bag_eq( sql, array, description )` ###
+### `bag_eq( sql, array )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
+    SELECT bag_eq( 'testq', 'expect', 'gotta have the A listers' );
+
+The `bag_eq()` function is just like `set_eq()`, except that it considers the
+results as bags rather than as sets. A bag is a set that allows duplicates. In
+practice, it mean that you can use `bag_eq()` to test result sets where order
+doesn't matter, but duplication does. In other words, if a two rows are the
+same in the first result set, the same row must appear twice in the second
+result set.
+
+Otherwise, this function behaves exactly like `set_eq()`, including the
+utility of its diagnostics.
+
+### `bag_ne( sql, sql, description )` ###
+### `bag_ne( sql, sql )` ###
+### `bag_ne( sql, array, description )` ###
+### `bag_ne( sql, array )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
+    SELECT bag_ne( 'testq', 'expect', 'gotta have the A listers' );
+
+The inverse of `bag_eq()`, this function tests that the results of two queries
+are *not* the same, including duplicates. The two queries can as usual be the
+names of prepared statements or strings containing an SQL query (see the
+[summary](#Pursuing+Your+Query) for query argument details), or even one of
+each. The two queries, however, must return results that are directly
+comparable -- that is, with the same number and types of columns in the same
+orders. If it happens that the query you're testing returns a single column,
+the second argument may be an array.
+
+### `bag_has( sql, sql, description )` ###
+### `bag_has( sql, sql )` ###
+
+    PREPARE testq  AS SELECT * FROM users('a%');
+    PREPARE subset AS SELECT * FROM USERS where name LIKE 'a%';
+    SELECT bag_has( 'testq', 'subset', 'gotta have at least the A listers' );
+
+The `bag_has()` function is just like `set_has()`, except that it considers
+the results as bags rather than as sets. A bag is a set with duplicates. What
+practice this means that you can use `bag_has()` to test result sets where
+order doesn't matter, but duplication does. Internally, it uses an `EXCEPT
+ALL` query to determine if there any any unexpectedly missing results.
 
 ### `bag_hasnt( sql, sql, description )` ###
 ### `bag_hasnt( sql, sql )` ###
