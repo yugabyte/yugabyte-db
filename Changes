@@ -3,6 +3,8 @@ Revision history for pgTAP
 
 0.23 
 -------------------------
+* Fixed broken Perl detection in `Makefile`.
+* Fixed Cygwin detection.
 
 
 0.22 2009-07-31T00:26:16

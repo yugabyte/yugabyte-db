@@ -38,7 +38,7 @@ endif
 
 # We need Perl.
 ifndef PERL
-PERL := $(shell which foo)
+PERL := $(shell which perl)
 endif
 
 # Is TAP::Harness installed?
@@ -126,6 +126,12 @@ endif
 # Fallback on uname, if it's available.
 ifndef OSNAME
 OSNAME = $(shell uname | awk '{print tolower($$1)}')
+
+# Clean up the OS name.
+ifeq ($(findstring cygwin,$(OSNAME)), cygwin)
+OSNAME=cygwin
+endif
+
 endif
 
 # Override how .sql targets are processed to add the schema info, if
