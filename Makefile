@@ -77,62 +77,7 @@ endif
 endif
 
 # Determine the OS. Borrowed from Perl's Configure.
-ifeq ($(wildcard /irix), /irix)
-OSNAME=irix
-endif
-ifeq ($(wildcard /xynix), /xynix)
-OSNAME=sco_xenix
-endif
-ifeq ($(wildcard /dynix), /dynix)
-OSNAME=dynix
-endif
-ifeq ($(wildcard /dnix), /dnix)
-OSNAME=dnxi
-endif
-ifeq ($(wildcard /lynx.os), /lynx.os)
-OSNAME=lynxos
-endif
-ifeq ($(wildcard /unicos), /unicox)
-OSNAME=unicos
-endif
-ifeq ($(wildcard /unicosmk), /unicosmk)
-OSNAME=unicosmk
-endif
-ifeq ($(wildcard /unicosmk.ar), /unicosmk.ar)
-OSNAME=unicosmk
-endif
-ifeq ($(wildcard /bin/mips), /bin/mips)
-OSNAME=mips
-endif
-ifeq ($(wildcard /usr/apollo/bin), /usr/apollo/bin)
-OSNAME=apollo
-endif
-ifeq ($(wildcard /etc/saf/_sactab), /etc/saf/_sactab)
-OSNAME=svr4
-endif
-ifeq ($(wildcard /usr/include/minix), /usr/include/minix)
-OSNAME=minix
-endif
-ifeq ($(wildcard /system/gnu_library/bin/ar.pm), /system/gnu_library/bin/ar.pm)
-OSNAME=vos
-endif
-ifeq ($(wildcard /MachTen), /MachTen)
-OSNAME=machten
-endif
-ifeq ($(wildcard /sys/posix.dll), /sys/posix.dll)
-OSNAME=uwin
-endif
-
-# Fallback on uname, if it's available.
-ifndef OSNAME
-OSNAME = $(shell uname | awk '{print tolower($$1)}')
-
-# Clean up the OS name.
-ifeq ($(findstring cygwin,$(OSNAME)), cygwin)
-OSNAME=cygwin
-endif
-
-endif
+OSNAME := $(shell ./getos.sh)
 
 # Override how .sql targets are processed to add the schema info, if
 # necessary. Otherwise just copy the files.
