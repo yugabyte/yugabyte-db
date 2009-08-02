@@ -7,7 +7,6 @@ Revision history for pgTAP
 * Copied OS detection from Perl's `Configure` script to new script,
   `getos.sh`. OS detection should now be much more accurate.
 
-
 0.22 2009-07-31T00:26:16
 -------------------------
 * Fixed failing test on 8.4rc2.
