@@ -81,7 +81,7 @@ static int __len;
 
 /* Finding triplet a.b --> a */
 
-#define IsType(node, type)	(node->typenode == type)
+#define IsType(node, type)	(node->typenode == X_##type)
 #define APPEND_NODE(list,nd)	\
 	if (nd) \
 	{ \
@@ -95,7 +95,7 @@ static int __len;
 #define NEWNODE(type) \
 	( \
 	__node = (orafce_lexnode *) palloc(sizeof(orafce_lexnode)), \
-	__node->typenode = type, \
+	__node->typenode = X_##type, \
 	__node->modificator = NULL, \
 	__node->sep = NULL, \
 	__node->keycode = -1, \
@@ -148,7 +148,7 @@ filterList(List *list, bool skip_spaces, bool qnames)
 
 		if (qnames)
 		{
-			isdot = (IsType(nd,OTHERS) && (nd->str[0] == '.'));
+			isdot = (IsType(nd, OTHERS) && (nd->str[0] == '.'));
 
 			if (IsType(nd, IDENT) && dot && a)
 			{
@@ -172,7 +172,7 @@ filterList(List *list, bool skip_spaces, bool qnames)
 		APPEND_NODE(result,a);
 		APPEND_NODE(result,dot);
 
-		if (!(skip_spaces && IsType(nd,WHITESPACE)))
+		if (!(skip_spaces && IsType(nd, WHITESPACE)))
 		{
 			result = lappend(result, COPY_NODE(nd));
 		}

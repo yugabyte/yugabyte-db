@@ -15,6 +15,14 @@
 #include "parser/scansup.h"      
 #include "mb/pg_wchar.h"
 
+#if PG_VERSION_NUM >= 80500
+extern PGDLLIMPORT const ScanKeyword ScanKeywords[];
+extern PGDLLIMPORT const int	NumScanKeywords;
+#define ScanKeywordLookupArgs	, ScanKeywords, NumScanKeywords
+#else
+#define ScanKeywordLookupArgs
+#endif
+
 #undef fprintf
 #define fprintf(file, fmt, msg)  ereport(ERROR, (errmsg_internal("%s", msg)))
 
@@ -312,7 +320,7 @@ other			.
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return WHITESPACE;
+					return X_WHITESPACE;
 				}
 
 {comment}	{
@@ -321,7 +329,7 @@ other			.
 					yylval.val.modificator = "sc";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return COMMENT;
+					return X_COMMENT;
 				}
 
 
@@ -358,7 +366,7 @@ other			.
 						yylval.val.modificator = "ec";
 						yylval.val.keycode = -1;
 						yylval.val.sep = NULL;
-						return COMMENT;
+						return X_COMMENT;
 					}
 					else
 					{
@@ -386,7 +394,7 @@ other			.
 					yylval.val.modificator = "ecu";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return COMMENT;
+					return X_COMMENT;
 
 				}
 
@@ -410,7 +418,7 @@ other			.
 					yylval.val.modificator = "b";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 <xh>{xhinside}	|
 <xb>{xbinside}	{
@@ -425,7 +433,7 @@ other			.
 					yylval.val.modificator = "bu";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 
 {xhstart}		{
@@ -448,14 +456,14 @@ other			.
 					yylval.val.modificator = "x";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 <xh><<EOF>>		{ 
 					yylval.val.str = litbufdup();
 					yylval.val.modificator = "xu";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 
 {xnstart}		{
@@ -468,13 +476,13 @@ other			.
 					SET_YYLLOC();
 					yyless(1);				/* eat only 'n' this time */
 					/* nchar had better be a keyword! */
-					keyword = ScanKeywordLookup("nchar");
+					keyword = ScanKeywordLookup("nchar" ScanKeywordLookupArgs);
 					Assert(keyword != NULL);
 					yylval.val.str = (char*) keyword->name;
 					yylval.val.keycode = keyword->value;
 					yylval.val.modificator = NULL;
 					yylval.val.sep = NULL;
-					return KEYWORD;
+					return X_KEYWORD;
 				}
 
 {xqstart}		{
@@ -497,7 +505,7 @@ other			.
 					yylval.val.modificator = extended_string ? "es" : "qs";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return SCONST;
+					return X_SCONST;
 				}
 <xq,xe>{xqdouble} {
 					addlitchar('\'');
@@ -533,7 +541,7 @@ other			.
 					yylval.val.modificator = extended_string ? "esu" : "qsu";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return SCONST;
+					return X_SCONST;
 				}    
 
 {dolqdelim}		{
@@ -550,7 +558,7 @@ other			.
 					yylval.val.modificator = "dolqf";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return OTHERS;
+					return X_OTHERS;
 				}
 <xdolq>{dolqdelim} {
 					if (strcmp(yytext, dolqstart) == 0)
@@ -560,7 +568,7 @@ other			.
 						BEGIN(INITIAL);
 						yylval.val.str = litbufdup();
 						yylval.val.keycode = -1;
-						return SCONST;
+						return X_SCONST;
 					}
 					else
 					{
@@ -589,7 +597,7 @@ other			.
 					yylval.val.str = litbufdup();
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return SCONST;
+					return X_SCONST;
 				}
 
 {xdstart}		{
@@ -610,7 +618,7 @@ other			.
 					yylval.val.str = ident;
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return IDENT;
+					return X_IDENT;
 				}
 <xd>{xddouble}	{
 					addlitchar('"');
@@ -623,14 +631,14 @@ other			.
 					yylval.val.str = litbufdup();
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return IDENT;
+					return X_IDENT;
 				}
 {typecast}		{
 					SET_YYLLOC();
 					yylval.val.modificator = "typecast";
-					yylval.val.keycode = TYPECAST;
+					yylval.val.keycode = X_TYPECAST;
 					yylval.val.sep = NULL;
-					return OTHERS;
+					return X_OTHERS;
 				}
 
 {self}			{
@@ -639,7 +647,7 @@ other			.
 					yylval.val.modificator = "self";
 					yylval.val.keycode = yytext[0];
 					yylval.val.sep = NULL;
-					return OTHERS;
+					return X_OTHERS;
 				}
 
 {operator}		{
@@ -707,7 +715,7 @@ other			.
 							yylval.val.modificator = NULL;
 							yylval.val.keycode = yytext[0];
 							yylval.val.sep = NULL;
-							return OTHERS;
+							return X_OTHERS;
 						}
 					}
 
@@ -728,7 +736,7 @@ other			.
 						yylval.val.str = pstrdup(yytext);
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return OP;
+					return X_OP;
 				}
 
 {param}			{
@@ -737,7 +745,7 @@ other			.
 					yylval.val.str = yytext;
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return PARAM;
+					return X_PARAM;
 				}
 
 {integer}		{
@@ -759,13 +767,13 @@ other			.
 						yylval.val.modificator = "f";
 						yylval.val.keycode = -1;
 	    					yylval.val.sep = NULL;
-						return NCONST;
+						return X_NCONST;
 					}
 					yylval.val.str = yytext;
 					yylval.val.modificator = "i";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 {decimal}		{
 					SET_YYLLOC();
@@ -773,7 +781,7 @@ other			.
 					yylval.val.modificator = "f";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 {real}			{
 					SET_YYLLOC();
@@ -781,7 +789,7 @@ other			.
 					yylval.val.modificator = "f";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 {realfail1}		{
 					/*
@@ -796,7 +804,7 @@ other			.
 					yylval.val.modificator = "f";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 {realfail2}		{
 					/* throw back the [Ee][+-], and proceed as above */
@@ -806,7 +814,7 @@ other			.
 					yylval.val.modificator = "f";
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return NCONST;
+					return X_NCONST;
 				}
 
 
@@ -817,14 +825,14 @@ other			.
 					SET_YYLLOC();
 
 					/* Is it a keyword? */
-					keyword = ScanKeywordLookup(yytext);
+					keyword = ScanKeywordLookup(yytext ScanKeywordLookupArgs);
 					if (keyword != NULL)
 					{
 						yylval.val.str = (char*) keyword->name;
 						yylval.val.keycode = keyword->value;
 						yylval.val.modificator = NULL;
 						yylval.val.sep = NULL;
-						return KEYWORD;
+						return X_KEYWORD;
 					}
 
 					/*
@@ -836,7 +844,7 @@ other			.
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = -1;
 					yylval.val.sep = NULL;
-					return IDENT;
+					return X_IDENT;
 				}
 
 {other}			{
@@ -845,7 +853,7 @@ other			.
 					yylval.val.modificator = NULL;
 					yylval.val.keycode = yytext[0];
 					yylval.val.sep = NULL;
-					return OTHERS;
+					return X_OTHERS;
 				}
 
 <<EOF>>			{

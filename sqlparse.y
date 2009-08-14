@@ -32,7 +32,7 @@ static orafce_lexnode *__node;
 #define CREATE_NODE(src,type) 	\
   ( \
     __node = (orafce_lexnode*) palloc(sizeof(orafce_lexnode)), \
-    __node->typenode = type, \
+    __node->typenode = X_##type, \
     __node->classname = #type, \
     FILL_NODE(src,__node), \
     __node)
@@ -72,7 +72,7 @@ void orafce_sql_yyerror(const char *message);
 }
     
 /* BISON Declarations */
-%token <val>    IDENT NCONST SCONST OP PARAM COMMENT WHITESPACE KEYWORD OTHERS TYPECAST
+%token <val>    X_IDENT X_NCONST X_SCONST X_OP X_PARAM X_COMMENT X_WHITESPACE X_KEYWORD X_OTHERS X_TYPECAST
 
 %type <list> elements
 %type <node> anyelement
@@ -94,15 +94,15 @@ elements:
 	;
 
 anyelement:
-		IDENT		{ $$ = (orafce_lexnode*) CREATE_NODE($1, IDENT);  }
-		| NCONST	{ $$ = (orafce_lexnode*) CREATE_NODE($1, NCONST); }
-		| SCONST	{ $$ = (orafce_lexnode*) CREATE_NODE($1, SCONST); }
-		| OP		{ $$ = (orafce_lexnode*) CREATE_NODE($1, OP);    }
-		| PARAM		{ $$ = (orafce_lexnode*) CREATE_NODE($1, PARAM); }
-		| COMMENT	{ $$ = (orafce_lexnode*) CREATE_NODE($1, COMMENT);    }
-		| WHITESPACE	{ $$ = (orafce_lexnode*) CREATE_NODE($1, WHITESPACE); }
-		| KEYWORD	{ $$ = (orafce_lexnode*) CREATE_NODE($1, KEYWORD); }
-		| OTHERS	{ $$ = (orafce_lexnode*) CREATE_NODE($1, OTHERS);  }
+		X_IDENT		{ $$ = (orafce_lexnode*) CREATE_NODE($1, IDENT);  }
+		| X_NCONST	{ $$ = (orafce_lexnode*) CREATE_NODE($1, NCONST); }
+		| X_SCONST	{ $$ = (orafce_lexnode*) CREATE_NODE($1, SCONST); }
+		| X_OP		{ $$ = (orafce_lexnode*) CREATE_NODE($1, OP);    }
+		| X_PARAM		{ $$ = (orafce_lexnode*) CREATE_NODE($1, PARAM); }
+		| X_COMMENT	{ $$ = (orafce_lexnode*) CREATE_NODE($1, COMMENT);    }
+		| X_WHITESPACE	{ $$ = (orafce_lexnode*) CREATE_NODE($1, WHITESPACE); }
+		| X_KEYWORD	{ $$ = (orafce_lexnode*) CREATE_NODE($1, KEYWORD); }
+		| X_OTHERS	{ $$ = (orafce_lexnode*) CREATE_NODE($1, OTHERS);  }
 	;
 %%
 
