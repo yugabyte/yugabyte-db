@@ -116,7 +116,7 @@ if ( $opts->{archive} ) {
 my $verbosity = $opts->{verbose} || $ENV{TEST_VERBOSE};
 
 # Make it so!
-$harness_class->new({
+my $return = $harness_class->new({
     verbosity => $verbosity,
     failures  => !$verbosity,
     ( TAP::Harness->VERSION ge '3.17' ? (comments  => !$verbosity) : ()),
@@ -126,6 +126,13 @@ $harness_class->new({
     ($opts->{archive} ? (archive => $opts->{archive}) : ()),
     exec            => \@command,
 })->runtests( @{ $tests } );
+
+if ( $return->{'failed'} > 0 ) {
+  exit 1;
+} else {
+  exit 0;
+}
+
 
 __END__
 
