@@ -127,12 +127,8 @@ my $return = $harness_class->new({
     exec            => \@command,
 })->runtests( @{ $tests } );
 
-if ( $return->{'failed'} > 0 ) {
-  exit 1;
-} else {
-  exit 0;
-}
-
+# Exit with non-zero status if tests failed.
+exit 1 if $return->{failed};
 
 __END__
 
