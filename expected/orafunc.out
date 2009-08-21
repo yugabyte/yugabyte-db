@@ -1006,25 +1006,25 @@ select decode(NULL, 1, 100, NULL, 200, 300);
     200
 (1 row)
 
-select decode('1', '1', 100, '2', 200);
+select decode('1'::text, '1', 100, '2', 200);
  decode 
 --------
     100
 (1 row)
 
-select decode(2, 1, 'ABC'::text, 2, 'DEF');
+select decode(2, 1, 'ABC', 2, 'DEF');
  decode 
 --------
  DEF
 (1 row)
 
-select decode('2009-02-05'::date, '2009-02-05', 'ok'::text);
+select decode('2009-02-05'::date, '2009-02-05', 'ok');
  decode 
 --------
  ok
 (1 row)
 
-select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok'::text);
+select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
  decode 
 --------
  ok
@@ -1313,67 +1313,67 @@ select plunit.fail('custom exception');
 ERROR:  custom exception
 DETAIL:  Plunit.assertation (assert_fail).
 SELECT dump('Yellow dog'::text) ~ E'^Typ=25 Len=(\\d+): \\d+(,\\d+)*$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump('Yellow dog'::text, 10) ~ E'^Typ=25 Len=(\\d+): \\d+(,\\d+)*$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump('Yellow dog'::text, 17) ~ E'^Typ=25 Len=(\\d+): .(,.)*$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump(10::int2) ~ E'^Typ=21 Len=2: \\d+(,\\d+){1}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump(10::int4) ~ E'^Typ=23 Len=4: \\d+(,\\d+){3}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump(10::int8) ~ E'^Typ=20 Len=8: \\d+(,\\d+){7}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump(10.23::float4) ~ E'^Typ=700 Len=4: \\d+(,\\d+){3}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump(10.23::float8) ~ E'^Typ=701 Len=8: \\d+(,\\d+){7}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
 
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
- t
+ t 
 ---
  t
 (1 row)
