@@ -3789,6 +3789,7 @@ No changes. Everything should just work.
 
 To Do
 -----
+* Have `has_function()` manage OUT, INOUT, and VARIATIC arguments.
 * Useful schema testing functions to consider adding:
   + `throws_like()`
   + `sequence_has_range()`
