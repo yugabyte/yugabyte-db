@@ -8,7 +8,7 @@ Revision history for pgTAP
   `getos.sh`. OS detection should now be much more accurate.
 * Fixed `pg_prove` to exit with non-zero status if tests failed, as it works
   better in automated testing environments and consistent with `prove` (fix by
-  darrell).
+  Darrell Fuhriman).
 
 0.22 2009-07-31T00:26:16
 -------------------------
