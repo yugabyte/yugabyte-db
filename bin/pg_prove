@@ -257,8 +257,8 @@ Defaults to F<psql>.
   pg_prove --dbname try
   pg_prove -d postgres
 
-The name of database to which to connect. Defaults to be the same as the user
-name.
+The name of database to which to connect. Defaults to the value of the
+C<$PGDATABASE> environment variable or to the system username.
 
 =item C<-U>
 
@@ -267,8 +267,9 @@ name.
   pg_prove --username foo
   pg_prove -U postgres
 
-PostgreSQL user name to connect as. Defaults to be the same as the operating
-system name of the user running the application.
+PostgreSQL user name to connect as. Defaults to the value of the C<$PGUSER>
+environment variable or to the operating system name of the user running the
+application.
 
 =item C<-h>
 
@@ -279,7 +280,8 @@ system name of the user running the application.
 
 Specifies the host name of the machine on which the server is running. If the
 value begins with a slash, it is used as the directory for the Unix-domain
-socket.
+socket. Defaults to the value of the C<$PGHOST> environment variable or
+localhost.
 
 =item C<-p>
 
