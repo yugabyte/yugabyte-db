@@ -2791,17 +2791,22 @@ But then you check with `has_function()` first, right?
     );
 
     SELECT function_returns( 'do_something', 'setof bool' );
-    SELECT function_returns( 'do_something', ARRAY['integer'], 'bool' );
+    SELECT function_returns( 'do_something', ARRAY['integer'], 'boolean' );
     SELECT function_returns( 'do_something', ARRAY['numeric'], 'numeric' );
 
-Tests that a particular function returns a particular data type. For set
-returning functions, the `:type` argument should start with "setof " (yes,
-lowercase). If the `:schema` argument is omitted, then the function must be
-visible in the search path. If the `:args[]` argument is passed, then the
-function with that argument signature will be the one tested; otherwise, a
-function with any signature will be checked (pass an empty array to specify a
-function with an empty signature). If the `:description` is omitted, a
-reasonable substitute will be created.
+Tests that a particular function returns a particular data type. The `:args[]`
+and `:type` arguments should be formatted as they would be displayed in the
+view of a function using the `\df` command in `psql`. For example, use
+"character varying" rather than "varchar", and "boolean" rather than "bool".
+For set returning functions, the `:type` argument should start with "setof "
+(yes, lowercase).
+
+If the `:schema` argument is omitted, then the function must be visible in the
+search path. If the `:args[]` argument is passed, then the function with that
+argument signature will be the one tested; otherwise, a function with any
+signature will be checked (pass an empty array to specify a function with an
+empty signature). If the `:description` is omitted, a reasonable substitute
+will be created.
 
 In the event of a failure, you'll useful diagnostics will tell you what went
 wrong, for example:
