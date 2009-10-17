@@ -3825,6 +3825,19 @@ To Do
 * Useful result testing functions to consider adding (but might require C code):
   + `row_eq()`
   + `rowtype_is()`
+* Add a function to collect multiple tests in one call, someting like
+  `collect_tests()`. Will be useful when used in combination with `skip()`:
+
+      SELECT CASE os_name() WHEN 'darwin' THEN
+          collect_tests(
+              cmp_ok( 'Bjørn'::text, '>', 'Bjorn', 'ø > o' ),
+              cmp_ok( 'Pınar'::text, '>', 'Pinar', 'ı > i' ),
+              cmp_ok( 'José'::text,  '>', 'Jose',  'é > e' ),
+              cmp_ok( 'Täp'::text,   '>', 'Tap',   'ä > a' )
+          )
+      ELSE
+           skip('Collation-specific test', 4)
+      END;
 
 Supported Versions
 -----------------
