@@ -1,4 +1,6 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION isa_ok( anyelement, regtype );
+DROP FUNCTION isa_ok( anyelement, regtype, TEXT );
 DROP FUNCTION results_ne( refcursor, anyarray );
 DROP FUNCTION results_ne( refcursor, anyarray, TEXT );
 DROP FUNCTION results_ne( refcursor, TEXT );

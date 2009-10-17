@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(20);
+SELECT plan(38);
 
 /****************************************************************************/
 
@@ -82,10 +82,58 @@ SELECT * FROM check_test(
     NULL'
 );
 
+
+/****************************************************************************/
+-- Test isa_ok().
+SELECT * FROM check_test(
+    isa_ok( ''::text, 'text', 'an empty string' ),
+    true,
+    'isa_ok("", text, desc)',
+    'an empty string isa text',
+    ''
+);
+
+SELECT * FROM check_test(
+    isa_ok( ''::text, 'text', 'an empty string' ),
+    true,
+    'isa_ok("", text, desc)',
+    'an empty string isa text',
+    ''
+);
+
+SELECT * FROM check_test(
+    isa_ok( false, 'bool' ),
+    true,
+    'isa_ok(false, boolean)',
+    'the value isa boolean',
+    ''
+);
+
+SELECT * FROM check_test(
+    isa_ok( NULL::boolean, 'bool' ),
+    true,
+    'isa_ok(NULL, boolean)',
+    'the value isa boolean',
+    ''
+);
+
+SELECT * FROM check_test(
+    isa_ok( ARRAY[false], 'bool[]' ),
+    true,
+    'isa_ok(ARRAY, boolean[])',
+    'the value isa boolean[]',
+    ''
+);
+
+SELECT * FROM check_test(
+    isa_ok( true, 'int[]' ),
+    false,
+    'isa_ok(bool, int[])',
+    'the value isa integer[]',
+    '    the value isn''t a "integer[]" it''s a "boolean"'
+);
+
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-
--- Spam fingerprints: Contains an exact font color, and the words in the title are the same as in the body.
--- rule that extracts the existing google ad ID, a string, get from original special features script.

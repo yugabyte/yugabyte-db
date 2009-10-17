@@ -534,6 +534,27 @@ you've got some complicated condition that is difficult to wedge into an
 
 Use these functions very, very, very sparingly.
 
+### `isa_ok( value, regtype, name )` ###
+### `isa_ok( value, regtype )` ###
+
+    SELECT isa_ok( :value, :regtype, name );
+
+Checks to see if the given value is of a particular type. The description and
+diagnostics of this test normally just refer to "the value". If you'd like
+them to be more specific, you can supply a `:name`. For example you might say
+"the return value" when yo're examing the result of a function call:
+
+    SELECT isa_ok( length('foo'), 'integer', 'The return value from length()' );
+
+In which case the description will be "The return value from length() isa
+integer".
+
+In the event of a failure, the diagnostic message will tell you what the type
+of the value actually is:
+
+    not ok 12 - the value isa integer[]
+    #     the value isn't a "integer[]" it's a "boolean"
+
 Pursuing Your Query
 ===================
 

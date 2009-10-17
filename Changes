@@ -13,6 +13,7 @@ Revision history for pgTAP
 * Fixed a bug in the function tests where the return value of a function was
   not always consistently formatted. For example, `function_returns()` would
   find "bool" instead of "boolean".
+* Added `isa_ok()`.
 
 0.22 2009-07-31T00:26:16
 -------------------------
