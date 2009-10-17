@@ -159,11 +159,11 @@ Of course, if you already have the pgTAP functions in your testing database,
 you should skip `\i pgtap.sql` at the beginning of the script.
 
 The only other limitation is that the `pg_typoeof()` function, which is
-written in C, will not be available. You'll want to comment-out its
-declaration in the bundled copy of `pgtap.sql` and then avoid using
-`cmp_ok()`, since that function relies on `pg_typeof()`. Note that
-`pg_typeof()` will be included in PostgreSQL 8.4, in which case you wouldn't
-need to avoid it.
+written in C, will not be available in 8.3 and lower. You'll want to
+comment-out its declaration in the bundled copy of `pgtap.sql` and then avoid
+using `cmp_ok()`, since that function relies on `pg_typeof()`. Note that
+`pg_typeof()` is included in PostgreSQL 8.4, so ou won't need to avoid it on
+that version or higher.
 
 Now you're ready to run your test script!
 
@@ -3789,7 +3789,7 @@ No changes. Everything should just work.
   string may be considered incorrectly equivalent.
 * A C function, `pg_typeof()`, is built and installed in a DSO. This is for
   compatibility with the same function that ships in 8.4 core, and is required
-  for `cmp_ok()` to work.
+  for `cmp_ok()` and `isa_ok()` to work.
 
 8.2 and Down
 ------------
