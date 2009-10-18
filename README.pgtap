@@ -1202,8 +1202,8 @@ the next section.
 ### `tablespaces_are( tablespaces )` ###
 
     SELECT tablespaces_are(
-        ARRAY[ 'public, 'contrib, 'tap' ],
-        'Should have the correct tablespaces
+        ARRAY[ 'dbspace, 'indexspace' ],
+        'Should have the correct tablespaces'
     );
 
 This function tests that all of the tablespaces in the database only the
@@ -1212,16 +1212,16 @@ diagnostics listing the extra and/or missing tablespaces, like so:
 
     # Failed test 121: "There should be the correct tablespaces"
     #     Extra tablespaces:
-    #         pg_default
+    #         trigspace
     #     Missing tablespaces:
-    #         __booya__
+    #         indexspace
 
 ### `schemas_are( schemas, description )` ###
 ### `schemas_are( schemas )` ###
 
     SELECT schemas_are(
         ARRAY[ 'public, 'contrib, 'tap' ],
-        'Should have the correct schemas
+        'Should have the correct schemas'
     );
 
 This function tests that all of the schemas in the database only the schemas
@@ -1377,7 +1377,7 @@ missing functions, like so:
 
     SELECT users_are(
         ARRAY[ 'postgres', 'someone', 'root' ],
-        'Should have the correct users
+        'Should have the correct users'
     );
 
 This function tests that all of the users in the database only the users that
@@ -1395,7 +1395,7 @@ the extra and/or missing users, like so:
 
     SELECT groups_are(
         ARRAY[ 'postgres', 'admins, 'l0s3rs' ],
-        'Should have the correct groups
+        'Should have the correct groups'
     );
 
 This function tests that all of the groups in the database only the groups
@@ -1413,7 +1413,7 @@ listing the extra and/or missing groups, like so:
 
     SELECT languages_are(
         ARRAY[ 'plpgsql', 'plperl', 'pllolcode' ],
-        'Should have the correct procedural languages
+        'Should have the correct procedural languages'
     );
 
 This function tests that all of the procedural languages in the database only
