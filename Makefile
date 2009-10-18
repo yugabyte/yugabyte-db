@@ -60,6 +60,7 @@ EXTRA_SUBS := -e "s/ E'/ '/g"
 TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/roletap.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests enumtap roletap,$(REGRESS))
 endif
+ifeq ($(PGVER_MINOR), 5)
 ifeq ($(PGVER_MINOR), 4)
 # Do nothing.
 else
@@ -71,6 +72,7 @@ ifneq ($(PGVER_MINOR), 2)
 # Values tests not supported by 8.1 and earlier.
 TESTS := $(filter-out sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out valueset,$(REGRESS))
+endif
 endif
 endif
 endif
@@ -95,6 +97,7 @@ else
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(EXTRA_SUBS) pgtap.sql.in > pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
+ifneq ($(PGVER_MINOR), 5)
 ifneq ($(PGVER_MINOR), 4)
 ifneq ($(PGVER_MINOR), 0)
 	patch -p0 < compat/install-8.3.patch
@@ -114,6 +117,7 @@ endif
 endif
 endif
 endif
+endif
 
 uninstall_pgtap.sql: uninstall_pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
@@ -122,6 +126,7 @@ else
 	cp uninstall_pgtap.sql.in uninstall_pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
+ifneq ($(PGVER_MINOR), 5)
 ifneq ($(PGVER_MINOR), 4)
 	patch -p0 < compat/uninstall-8.3.patch
 ifneq ($(PGVER_MINOR), 3)
@@ -135,6 +140,7 @@ ifeq ($(PGVER_MINOR), 0)
 	mv uninstall_pgtap.sql uninstall_pgtap.tmp
 	cat compat/uninstall-8.0.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
 	rm uninstall_pgtap.tmp
+endif
 endif
 endif
 endif
