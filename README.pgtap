@@ -1220,7 +1220,7 @@ diagnostics listing the extra and/or missing tablespaces, like so:
 ### `schemas_are( schemas )` ###
 
     SELECT schemas_are(
-        ARRAY[ 'public, 'contrib, 'tap' ],
+        ARRAY[ 'public', 'contrib', 'tap' ],
         'Should have the correct schemas'
     );
 
