@@ -14,6 +14,7 @@ Revision history for pgTAP
   not always consistently formatted. For example, `function_returns()` would
   find "bool" instead of "boolean".
 * Added `isa_ok()`.
+* Added support for building against 8.5 [Dan Colish].
 
 0.22 2009-07-31T00:26:16
 -------------------------
