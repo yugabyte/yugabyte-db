@@ -1202,7 +1202,7 @@ the next section.
 ### `tablespaces_are( tablespaces )` ###
 
     SELECT tablespaces_are(
-        ARRAY[ 'dbspace, 'indexspace' ],
+        ARRAY[ 'dbspace', 'indexspace' ],
         'Should have the correct tablespaces'
     );
 
@@ -3822,6 +3822,14 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
+  + `roles_are()`
+  + `types_are()`
+  + `domains_are()`
+  + `enums_are()`
+  + `triggers_are()`
+  + `casts_are()`
+  + `operators_are()`
+  + `columns_are()`
 * Useful result testing functions to consider adding (but might require C code):
   + `row_eq()`
   + `rowtype_is()`
