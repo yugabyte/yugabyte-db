@@ -53,7 +53,7 @@ unless ($opts->{runtests} or @ARGV) {
         '-message'  => "\nOops! You didn't say what test scripts to run or specify --runtests.\n",
         '-sections' => '(?i:(Usage|Options))',
         '-verbose'  => 99,
-        '-exitval' => 1,
+        '-exitval'  => 1,
     )
 }
 

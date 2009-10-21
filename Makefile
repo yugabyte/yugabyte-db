@@ -2,7 +2,7 @@ TESTS = $(wildcard sql/*.sql)
 EXTRA_CLEAN = test_setup.sql *.html
 DATA_built = pgtap.sql uninstall_pgtap.sql
 DOCS = README.pgtap
-SCRIPTS = bbin/pg_prove
+SCRIPTS = bbin/pg_prove bbin/pg_tapgen
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --load-language=plpgsql
 
@@ -160,11 +160,20 @@ else
 endif
 	chmod +x bbin/pg_prove
 
+bbin/pg_tapgen:
+	cp bin/pg_tapgen bbin
+ifdef PERL
+	$(PERL) '-MExtUtils::MY' -e 'MY->fixin(shift)' bbin/pg_tapgen
+else
+	$(warning Could not find perl (required by pg_tapgen). Install it or set the PERL variable.)
+endif
+	chmod +x bbin/pg_tapgen
+
 # Make sure that we build the regression tests.
 installcheck: test_setup.sql
 
 # Make sure we build pg_prove.
-all: bbin/pg_prove
+all: bbin/pg_prove bbin/pg_tapgen
 
 # Make sure we remove bbin.
 clean: extraclean
