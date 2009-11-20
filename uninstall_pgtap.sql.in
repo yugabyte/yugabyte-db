@@ -1,8 +1,18 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION enums_are ( NAME[] );
+DROP FUNCTION enums_are ( NAME[], TEXT );
+DROP FUNCTION enums_are ( NAME, NAME[] );
+DROP FUNCTION enums_are ( NAME, NAME[], TEXT );
+DROP FUNCTION domains_are ( NAME[] );
+DROP FUNCTION domains_are ( NAME[], TEXT );
+DROP FUNCTION domains_are ( NAME, NAME[] );
+DROP FUNCTION domains_are ( NAME, NAME[], TEXT );
 DROP FUNCTION types_are ( NAME[] );
 DROP FUNCTION types_are ( NAME[], TEXT );
+DROP FUNCTION _types_are ( NAME[], TEXT, CHAR[] );
 DROP FUNCTION types_are ( NAME, NAME[] );
 DROP FUNCTION types_are ( NAME, NAME[], TEXT );
+DROP FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] );
 DROP FUNCTION roles_are( NAME[] );
 DROP FUNCTION roles_are( NAME[], TEXT );
 DROP FUNCTION throws_imatching ( TEXT, TEXT );

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(72);
+SELECT plan(96);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -197,6 +197,102 @@ SELECT * FROM check_test(
     'mydesc',
     '        have: {new,open,closed}
         want: {new,closed,open}'
+);
+
+/****************************************************************************/
+-- Test enums_are().
+
+SELECT * FROM check_test(
+    enums_are( 'public', ARRAY['bug_status'], 'whatever' ),
+    true,
+    'enums_are(schema, enums, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    enums_are( 'public', ARRAY['bug_status'] ),
+    true,
+    'enums_are(schema, enums)',
+    'Schema public should have the correct enums',
+    ''
+);
+
+SELECT * FROM check_test(
+    enums_are( 'public', ARRAY['freddy'], 'whatever' ),
+    false,
+    'enums_are(schema, enums, desc) fail',
+    'whatever',
+    '    Extra types:
+        bug_status
+    Missing types:
+        freddy'
+);
+
+SELECT * FROM check_test(
+    enums_are( 'public', ARRAY['freddy'] ),
+    false,
+    'enums_are(schema, enums) fail',
+    'Schema public should have the correct enums',
+    '    Extra types:
+        bug_status
+    Missing types:
+        freddy'
+);
+
+CREATE FUNCTION ___myenum(ex text) RETURNS NAME[] AS $$
+    SELECT COALESCE(ARRAY(
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname NOT IN('pg_catalog', 'information_schema')
+           AND t.typname <> $1
+           AND pg_catalog.pg_type_is_visible(t.oid)
+           AND t.typtype = 'e'
+    ), '{}'::name[]);
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    enums_are( ___myenum(''), 'whatever' ),
+    true,
+    'enums_are(enums, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    enums_are( ___myenum('') ),
+    true,
+    'enums_are(enums)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct enums',
+    ''
+);
+
+SELECT * FROM check_test(
+    enums_are( array_append(___myenum('bug_status'), 'fredy'), 'whatever' ),
+    false,
+    'enums_are(enums, desc) fail',
+    'whatever',
+    '    Extra types:
+        bug_status
+    Missing types:
+        fredy'
+);
+
+SELECT * FROM check_test(
+    enums_are( array_append(___myenum('bug_status'), 'fredy') ),
+    false,
+    'enums_are(enums) fail',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct enums',
+    '    Extra types:
+        bug_status
+    Missing types:
+        fredy'
 );
 
 /****************************************************************************/

@@ -1592,8 +1592,9 @@ missing rules, like so:
     );
 
 Tests that all of the types in the named schema are the only types in that
-schema. If the `:schema` argument is omitted, the types must be visible in the
-search path, excluding `pg_catalog` and `information_schema`. If the
+schema, including base types, composite types, domains, enums, and
+pseudo-types. If the `:schema` argument is omitted, the types must be visible
+in the search path, excluding `pg_catalog` and `information_schema`. If the
 description is omitted, a generally useful default description will be
 generated.
 
@@ -1605,6 +1606,58 @@ missing types, like so:
     #         sometype
     #     Missing types:
     #         timezone
+
+### `domains_are( schema, domains[], description )` ###
+### `domains_are( schema, domains[] )` ###
+### `domains_are( domains[], description )` ###
+### `domains_are( domains[] )` ###
+
+    SELECT domains_are(
+        'myschema',
+        ARRAY[ 'timezone', 'state' ],
+        'Should have the correct domains in myschema'
+    );
+
+Tests that all of the domains in the named schema are the only domains in that
+schema. If the `:schema` argument is omitted, the domains must be visible in
+the search path, excluding `pg_catalog` and `information_schema`. If the
+description is omitted, a generally useful default description will be
+generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing domains, like so:
+
+    # Failed test 327: "Schema someschema should have the correct domains"
+    #     Extra domains:
+    #         somedomain
+    #     Missing domains:
+    #         timezone
+
+### `enums_are( schema, enums[], description )` ###
+### `enums_are( schema, enums[] )` ###
+### `enums_are( enums[], description )` ###
+### `enums_are( enums[] )` ###
+
+    SELECT enums_are(
+        'myschema',
+        ARRAY[ 'timezone', 'state' ],
+        'Should have the correct enums in myschema'
+    );
+
+Tests that all of the enums in the named schema are the only enums in that
+schema. Enums are supported in PostgreSQL 8.3 and up. If the `:schema`
+argument is omitted, the enums must be visible in the search path, excluding
+`pg_catalog` and `information_schema`. If the description is omitted, a
+generally useful default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing enums, like so:
+
+    # Failed test 333: "Schema someschema should have the correct enums"
+    #     Extra enums:
+    #         someenum
+    #     Missing enums:
+    #         bug_status
 
 To Have or Have Not
 -------------------
@@ -3951,9 +4004,9 @@ No changes. Everything should just work.
 ------------
 * A patch is applied that removes the `enum_has_labels()` function, and
   `col_has_default()` cannot be used to test for columns specified with
-  `DEFAULT NULL` (even though that's the implied default default). Also, a
-  number of assignments casts are added to increase compatibility. The casts
-  are:
+  `DEFAULT NULL` (even though that's the implied default default). The
+  `has_enums()` function won't work. Also, a number of assignments casts are
+  added to increase compatibility. The casts are:
   + `boolean` to `text`
   + `text[]` to `text`
   + `name[]` to `text`
@@ -3985,8 +4038,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `domains_are()`
-  + `enums_are()`
   + `triggers_are()`
   + `casts_are()`
   + `operators_are()`

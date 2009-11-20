@@ -1,5 +1,5 @@
 \unset ECHO
-1..72
+1..96
 ok 1 - has_type(enum) should pass
 ok 2 - has_type(enum) should have the proper description
 ok 3 - has_type(enum) should have the proper diagnostics
@@ -72,3 +72,27 @@ ok 69 - enum_has_labels(schema, enum, labels, desc) fail should have the proper 
 ok 70 - enum_has_labels(enum, labels, desc) fail should fail
 ok 71 - enum_has_labels(enum, labels, desc) fail should have the proper description
 ok 72 - enum_has_labels(enum, labels, desc) fail should have the proper diagnostics
+ok 73 - enums_are(schema, enums, desc) should pass
+ok 74 - enums_are(schema, enums, desc) should have the proper description
+ok 75 - enums_are(schema, enums, desc) should have the proper diagnostics
+ok 76 - enums_are(schema, enums) should pass
+ok 77 - enums_are(schema, enums) should have the proper description
+ok 78 - enums_are(schema, enums) should have the proper diagnostics
+ok 79 - enums_are(schema, enums, desc) fail should fail
+ok 80 - enums_are(schema, enums, desc) fail should have the proper description
+ok 81 - enums_are(schema, enums, desc) fail should have the proper diagnostics
+ok 82 - enums_are(schema, enums) fail should fail
+ok 83 - enums_are(schema, enums) fail should have the proper description
+ok 84 - enums_are(schema, enums) fail should have the proper diagnostics
+ok 85 - enums_are(enums, desc) should pass
+ok 86 - enums_are(enums, desc) should have the proper description
+ok 87 - enums_are(enums, desc) should have the proper diagnostics
+ok 88 - enums_are(enums) should pass
+ok 89 - enums_are(enums) should have the proper description
+ok 90 - enums_are(enums) should have the proper diagnostics
+ok 91 - enums_are(enums, desc) fail should fail
+ok 92 - enums_are(enums, desc) fail should have the proper description
+ok 93 - enums_are(enums, desc) fail should have the proper diagnostics
+ok 94 - enums_are(enums) fail should fail
+ok 95 - enums_are(enums) fail should have the proper description
+ok 96 - enums_are(enums) fail should have the proper diagnostics

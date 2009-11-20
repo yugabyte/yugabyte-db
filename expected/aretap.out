@@ -1,5 +1,5 @@
 \unset ECHO
-1..306
+1..330
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -306,3 +306,27 @@ ok 303 - types_are(types, desc) + extra should have the proper diagnostics
 ok 304 - types_are(types, desc) + extra & missing should fail
 ok 305 - types_are(types, desc) + extra & missing should have the proper description
 ok 306 - types_are(types, desc) + extra & missing should have the proper diagnostics
+ok 307 - domains_are(schema, domains, desc) should pass
+ok 308 - domains_are(schema, domains, desc) should have the proper description
+ok 309 - domains_are(schema, domains, desc) should have the proper diagnostics
+ok 310 - domains_are(schema, domains) should pass
+ok 311 - domains_are(schema, domains) should have the proper description
+ok 312 - domains_are(schema, domains) should have the proper diagnostics
+ok 313 - domains_are(schema, domains, desc) fail should fail
+ok 314 - domains_are(schema, domains, desc) fail should have the proper description
+ok 315 - domains_are(schema, domains, desc) fail should have the proper diagnostics
+ok 316 - domains_are(schema, domains) fail should fail
+ok 317 - domains_are(schema, domains) fail should have the proper description
+ok 318 - domains_are(schema, domains) fail should have the proper diagnostics
+ok 319 - domains_are(domains, desc) should pass
+ok 320 - domains_are(domains, desc) should have the proper description
+ok 321 - domains_are(domains, desc) should have the proper diagnostics
+ok 322 - domains_are(domains) should pass
+ok 323 - domains_are(domains) should have the proper description
+ok 324 - domains_are(domains) should have the proper diagnostics
+ok 325 - domains_are(domains, desc) fail should fail
+ok 326 - domains_are(domains, desc) fail should have the proper description
+ok 327 - domains_are(domains, desc) fail should have the proper diagnostics
+ok 328 - domains_are(domains) fail should fail
+ok 329 - domains_are(domains) fail should have the proper description
+ok 330 - domains_are(domains) fail should have the proper diagnostics

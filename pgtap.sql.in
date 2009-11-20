@@ -6587,8 +6587,7 @@ RETURNS TEXT AS $$
     SELECT roles_are( $1, 'There should be the correct roles' );
 $$ LANGUAGE SQL;
 
--- types_are( schema, types[], description )
-CREATE OR REPLACE FUNCTION types_are ( NAME, NAME[], TEXT )
+CREATE OR REPLACE FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] )
 RETURNS TEXT AS $$
     SELECT _are(
         'types',
@@ -6602,6 +6601,7 @@ RETURNS TEXT AS $$
              )
                AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
                AND n.nspname = $1
+               AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
             EXCEPT
             SELECT $2[i]
               FROM generate_series(1, array_upper($2, 1)) s(i)
@@ -6619,19 +6619,26 @@ RETURNS TEXT AS $$
              )
                AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
                AND n.nspname = $1
+               AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
         ),
         $3
     );
 $$ LANGUAGE SQL;
 
+-- types_are( schema, types[], description )
+CREATE OR REPLACE FUNCTION types_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, $3, NULL );
+$$ LANGUAGE SQL;
+
 -- types_are( schema, types[] )
 CREATE OR REPLACE FUNCTION types_are ( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT types_are( $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct types' );
+    SELECT _types_are( $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct types', NULL );
 $$ LANGUAGE SQL;
 
 -- types_are( types[], description )
-CREATE OR REPLACE FUNCTION types_are ( NAME[], TEXT )
+CREATE OR REPLACE FUNCTION _types_are ( NAME[], TEXT, CHAR[] )
 RETURNS TEXT AS $$
     SELECT _are(
         'types',
@@ -6646,6 +6653,7 @@ RETURNS TEXT AS $$
                AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
                AND n.nspname NOT IN('pg_catalog', 'information_schema')
                AND pg_catalog.pg_type_is_visible(t.oid)
+               AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
             EXCEPT
             SELECT $1[i]
               FROM generate_series(1, array_upper($1, 1)) s(i)
@@ -6664,14 +6672,70 @@ RETURNS TEXT AS $$
                AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
                AND n.nspname NOT IN('pg_catalog', 'information_schema')
                AND pg_catalog.pg_type_is_visible(t.oid)
+               AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
         ),
         $2
     );
 $$ LANGUAGE SQL;
 
+
+-- types_are( types[], description )
+CREATE OR REPLACE FUNCTION types_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, NULL );
+$$ LANGUAGE SQL;
+
 -- types_are( types[] )
 CREATE OR REPLACE FUNCTION types_are ( NAME[] )
 RETURNS TEXT AS $$
-    SELECT types_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct types' );
+    SELECT _types_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct types', NULL );
+$$ LANGUAGE SQL;
+
+-- domains_are( schema, domains[], description )
+CREATE OR REPLACE FUNCTION domains_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, $3, ARRAY['d'] );
+$$ LANGUAGE SQL;
+
+-- domains_are( schema, domains[] )
+CREATE OR REPLACE FUNCTION domains_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct domains', ARRAY['d'] );
+$$ LANGUAGE SQL;
+
+-- domains_are( domains[], description )
+CREATE OR REPLACE FUNCTION domains_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, ARRAY['d'] );
+$$ LANGUAGE SQL;
+
+-- domains_are( domains[] )
+CREATE OR REPLACE FUNCTION domains_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct domains', ARRAY['d'] );
+$$ LANGUAGE SQL;
+
+-- enums_are( schema, enums[], description )
+CREATE OR REPLACE FUNCTION enums_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, $3, ARRAY['e'] );
+$$ LANGUAGE SQL;
+
+-- enums_are( schema, enums[] )
+CREATE OR REPLACE FUNCTION enums_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, 'Schema ' || quote_ident($1) || ' should have the correct enums', ARRAY['e'] );
+$$ LANGUAGE SQL;
+
+-- enums_are( enums[], description )
+CREATE OR REPLACE FUNCTION enums_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, $2, ARRAY['e'] );
+$$ LANGUAGE SQL;
+
+-- enums_are( enums[] )
+CREATE OR REPLACE FUNCTION enums_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _types_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct enums', ARRAY['e'] );
 $$ LANGUAGE SQL;
 

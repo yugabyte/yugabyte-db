@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(306);
+SELECT plan(330);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1112,6 +1112,102 @@ SELECT * FROM check_test(
         goofy
     Missing types:
         silltypo'
+);
+
+/****************************************************************************/
+-- Test domains_are().
+
+SELECT * FROM check_test(
+    domains_are( 'public', ARRAY['goofy'], 'whatever' ),
+    true,
+    'domains_are(schema, domains, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domains_are( 'public', ARRAY['goofy'] ),
+    true,
+    'domains_are(schema, domains)',
+    'Schema public should have the correct domains',
+    ''
+);
+
+SELECT * FROM check_test(
+    domains_are( 'public', ARRAY['freddy'], 'whatever' ),
+    false,
+    'domains_are(schema, domains, desc) fail',
+    'whatever',
+    '    Extra types:
+        goofy
+    Missing types:
+        freddy'
+);
+
+SELECT * FROM check_test(
+    domains_are( 'public', ARRAY['freddy'] ),
+    false,
+    'domains_are(schema, domains) fail',
+    'Schema public should have the correct domains',
+    '    Extra types:
+        goofy
+    Missing types:
+        freddy'
+);
+
+CREATE FUNCTION ___mydo(ex text) RETURNS NAME[] AS $$
+    SELECT COALESCE(ARRAY(
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname NOT IN('pg_catalog', 'information_schema')
+           AND t.typname <> $1
+           AND pg_catalog.pg_type_is_visible(t.oid)
+           AND t.typtype = 'd'
+    ), '{}'::name[]);
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    domains_are( ___mydo(''), 'whatever' ),
+    true,
+    'domains_are(domains, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domains_are( ___mydo('') ),
+    true,
+    'domains_are(domains)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct domains',
+    ''
+);
+
+SELECT * FROM check_test(
+    domains_are( array_append(___mydo('goofy'), 'fredy'), 'whatever' ),
+    false,
+    'domains_are(domains, desc) fail',
+    'whatever',
+    '    Extra types:
+        goofy
+    Missing types:
+        fredy'
+);
+
+SELECT * FROM check_test(
+    domains_are( array_append(___mydo('goofy'), 'fredy') ),
+    false,
+    'domains_are(domains) fail',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct domains',
+    '    Extra types:
+        goofy
+    Missing types:
+        fredy'
 );
 
 /****************************************************************************/
