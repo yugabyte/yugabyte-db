@@ -1567,9 +1567,9 @@ missing opclasses, like so:
 
 This function tests that all of the rules on the named relation are only the
 rules that *should* be on that relation (a table or a view). If the `:schema`
-argument is omitted, the relation must be visible in the search path,
-excluding `pg_catalog`. If the description is omitted, a generally useful
-default description will be generated.
+argument is omitted, the rules must be visible in the search path, excluding
+`pg_catalog`. If the description is omitted, a generally useful default
+description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing rules, like so:
@@ -1579,6 +1579,32 @@ missing rules, like so:
     #         on_select
     #     Missing rules:
     #         on_delete
+
+### `types_are( schema, types[], description )` ###
+### `types_are( schema, types[] )` ###
+### `types_are( types[], description )` ###
+### `types_are( types[] )` ###
+
+    SELECT types_are(
+        'myschema',
+        ARRAY[ 'timezone', 'state' ],
+        'Should have the correct types in myschema'
+    );
+
+Tests that all of the types in the named schema are the only types in that
+schema. If the `:schema` argument is omitted, the types must be visible in the
+search path, excluding `pg_catalog` and `information_schema`. If the
+description is omitted, a generally useful default description will be
+generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing types, like so:
+
+    # Failed test 307: "Schema someschema should have the correct types"
+    #     Extra types:
+    #         sometype
+    #     Missing types:
+    #         timezone
 
 To Have or Have Not
 -------------------
@@ -3959,7 +3985,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `types_are()`
   + `domains_are()`
   + `enums_are()`
   + `triggers_are()`

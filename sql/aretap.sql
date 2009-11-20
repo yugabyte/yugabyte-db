@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(280);
+SELECT plan(306);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -54,6 +54,11 @@ DEFAULT FOR TYPE goofy USING BTREE AS
 	OPERATOR 1 =,
 	FUNCTION 1 goofy_cmp(goofy,goofy)
 ;
+
+CREATE TYPE someschema.sometype AS (
+    id    INT,
+    name  TEXT
+);
 
 RESET client_min_messages;
 
@@ -1006,6 +1011,107 @@ SELECT * FROM check_test(
         upd_me
     Missing rules:
         del_me'
+);
+
+/****************************************************************************/
+-- Test types_are().
+
+SELECT * FROM check_test(
+    types_are( 'someschema', ARRAY['sometype'], 'whatever' ),
+    true,
+    'types_are(schema, types, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    types_are( 'someschema', ARRAY['sometype'] ),
+    true,
+    'types_are(schema, types)',
+    'Schema someschema should have the correct types'
+    ''
+);
+
+SELECT * FROM check_test(
+    types_are( 'someschema', ARRAY['sometype', 'typo'], 'whatever' ),
+    false,
+    'types_are(schema, types, desc) + missing',
+    'whatever',
+    '    Missing types:
+        typo'
+);
+
+SELECT * FROM check_test(
+    types_are( 'someschema', '{}'::name[], 'whatever' ),
+    false,
+    'types_are(schema, types, desc) + extra',
+    'whatever',
+    '    Extra types:
+        sometype'
+);
+
+SELECT * FROM check_test(
+    types_are( 'someschema', ARRAY['typo'], 'whatever' ),
+    false,
+    'types_are(schema, types, desc) + extra & missing',
+    'whatever',
+    '    Extra types:
+        sometype
+    Missing types:
+        typo'
+);
+
+CREATE FUNCTION ___mytype(ex text) RETURNS NAME[] AS $$
+    SELECT COALESCE(ARRAY(
+            SELECT t.typname
+              FROM pg_catalog.pg_type t
+              LEFT JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+             WHERE (
+                     t.typrelid = 0
+                 OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
+             )
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND n.nspname NOT IN('pg_catalog', 'information_schema')
+           AND t.typname <> $1
+           AND pg_catalog.pg_type_is_visible(t.oid)
+    ), '{}'::name[]);;
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    types_are( ___mytype('') ),
+    true,
+    'types_are(types)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct types',
+    ''
+);
+
+SELECT * FROM check_test(
+    types_are( array_append(___mytype(''), 'silltypo'), 'whatever' ),
+    false,
+    'types_are(types, desc) + missing',
+    'whatever',
+    '    Missing types:
+        silltypo'
+);
+
+SELECT * FROM check_test(
+    types_are( ___mytype('goofy'), 'whatever' ),
+    false,
+    'types_are(types, desc) + extra',
+    'whatever',
+    '    Extra types:
+        goofy'
+);
+
+SELECT * FROM check_test(
+    types_are( array_append(___mytype('goofy'), 'silltypo'), 'whatever' ),
+    false,
+    'types_are(types, desc) + extra & missing',
+    'whatever',
+    '    Extra types:
+        goofy
+    Missing types:
+        silltypo'
 );
 
 /****************************************************************************/

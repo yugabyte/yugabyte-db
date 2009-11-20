@@ -1,5 +1,5 @@
 \unset ECHO
-1..280
+1..306
 ok 1 - tablespaces_are(schemas, desc) should pass
 ok 2 - tablespaces_are(schemas, desc) should have the proper description
 ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
@@ -280,3 +280,29 @@ ok 277 - rules_are(table, rules) + missing should have the proper diagnostics
 ok 278 - rules_are(table, rules) + extra & missing should fail
 ok 279 - rules_are(table, rules) + extra & missing should have the proper description
 ok 280 - rules_are(table, rules) + extra & missing should have the proper diagnostics
+ok 281 - types_are(schema, types, desc) should pass
+ok 282 - types_are(schema, types, desc) should have the proper description
+ok 283 - types_are(schema, types, desc) should have the proper diagnostics
+ok 284 - types_are(schema, types) should pass
+ok 285 - types_are(schema, types) should have the proper description
+ok 286 - types_are(schema, types, desc) + missing should fail
+ok 287 - types_are(schema, types, desc) + missing should have the proper description
+ok 288 - types_are(schema, types, desc) + missing should have the proper diagnostics
+ok 289 - types_are(schema, types, desc) + extra should fail
+ok 290 - types_are(schema, types, desc) + extra should have the proper description
+ok 291 - types_are(schema, types, desc) + extra should have the proper diagnostics
+ok 292 - types_are(schema, types, desc) + extra & missing should fail
+ok 293 - types_are(schema, types, desc) + extra & missing should have the proper description
+ok 294 - types_are(schema, types, desc) + extra & missing should have the proper diagnostics
+ok 295 - types_are(types) should pass
+ok 296 - types_are(types) should have the proper description
+ok 297 - types_are(types) should have the proper diagnostics
+ok 298 - types_are(types, desc) + missing should fail
+ok 299 - types_are(types, desc) + missing should have the proper description
+ok 300 - types_are(types, desc) + missing should have the proper diagnostics
+ok 301 - types_are(types, desc) + extra should fail
+ok 302 - types_are(types, desc) + extra should have the proper description
+ok 303 - types_are(types, desc) + extra should have the proper diagnostics
+ok 304 - types_are(types, desc) + extra & missing should fail
+ok 305 - types_are(types, desc) + extra & missing should have the proper description
+ok 306 - types_are(types, desc) + extra & missing should have the proper diagnostics

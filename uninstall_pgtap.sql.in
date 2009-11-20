@@ -1,4 +1,8 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION types_are ( NAME[] );
+DROP FUNCTION types_are ( NAME[], TEXT );
+DROP FUNCTION types_are ( NAME, NAME[] );
+DROP FUNCTION types_are ( NAME, NAME[], TEXT );
 DROP FUNCTION roles_are( NAME[] );
 DROP FUNCTION roles_are( NAME[], TEXT );
 DROP FUNCTION throws_imatching ( TEXT, TEXT );
