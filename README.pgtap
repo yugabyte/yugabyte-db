@@ -701,6 +701,72 @@ example:
 
 Idea borrowed from the Test::Exception Perl module.
 
+### `throws_like( query, pattern, description )` ###
+### `throws_like( query, pattern )` ###
+
+    PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
+    SELECT throws_like(
+        'my_thrower',
+        '%"timezone_check"',
+        'We should error for invalid time zone'
+    );
+
+Like `throws_ok()`, but tests that an exception error message matches an SQL
+`LIKE` pattern. Supported by 8.1 and up.
+
+A failing `throws_like()` test produces an appropriate diagnostic message. For
+example:
+
+    # Failed test 85: "We should error for invalid time zone"
+    #     error message: 'value for domain timezone violates check constraint "tz_check"'
+    #     doesn't match: '%"timezone_check"'
+
+### `throws_ilike( query, pattern, description )` ###
+### `throws_ilike( query, pattern )` ###
+
+    PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
+    SELECT throws_ilike(
+        'my_thrower',
+        '%"TZ_check"',
+        'We should error for invalid time zone'
+    );
+
+Like `throws_like()`, but case-insensitively compares the exception message to
+the SQL `LIKE` pattern.
+
+### `throws_matching( query, regex, description )` ###
+### `throws_matching( query, regex )` ###
+
+    PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
+    SELECT throws_matching(
+        'my_thrower',
+        '.+"timezone_check"',
+        'We should error for invalid time zone'
+    );
+
+Like `throws_ok()`, but tests that an exception error message matches a
+regular expression. Supported by 8.1 and up.
+
+A failing `throws_matching()` test produces an appropriate diagnostic message. For
+example:
+
+    # Failed test 85: "We should error for invalid time zone"
+    #     error message: 'value for domain timezone violates check constraint "tz_check"'
+    #     doesn't match: '.+"timezone_check"'
+
+### `throws_imatching( query, regex, description )` ###
+### `throws_imatching( query, regex )` ###
+
+    PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
+    SELECT throws_imatching(
+        'my_thrower',
+        '.+"TZ_check"',
+        'We should error for invalid time zone'
+    );
+
+Like `throws_matching()`, but case-insensitively compares the exception
+message to the regular expression.
+
 ### `lives_ok( query, description )` ###
 ### `lives_ok( query )` ###
 
@@ -3860,9 +3926,8 @@ No changes. Everything should just work.
 
 To Do
 -----
-* Have `has_function()` manage OUT, INOUT, and VARIATIC arguments.
+* Have `has_function()` manage OUT, INOUT, and VARIADIC arguments.
 * Useful schema testing functions to consider adding:
-  + `throws_like()`
   + `sequence_has_range()`
   + `sequence_increments_by()`
   + `sequence_starts_at()`

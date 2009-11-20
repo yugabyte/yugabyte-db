@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(36);
+SELECT plan(84);
 --SELECT * FROM no_plan();
 
 /****************************************************************************/
@@ -123,6 +123,176 @@ SELECT * FROM check_test(
     'lives_ok failure diagnostics',
     '',
     '       died: P0001: todo_end() called without todo_start()'
+);
+
+/****************************************************************************/
+-- test throws_like().
+SELECT * FROM check_test(
+    throws_like( 'SELECT * FROM todo_end()', '%end() called without todo%', 'whatever' ),
+    true,
+    'throws_like(sql, pattern, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_like( 'SELECT * FROM todo_end()', '%end() called without todo%' ),
+    true,
+    'throws_like(sql, pattern)',
+    'Should throw exception like ''%end() called without todo%''',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_like( 'SELECT * FROM todo_end()', '%huh%', 'whatever' ),
+    false,
+    'throws_like(sql, pattern, desc) fail',
+    'whatever',
+    '   error message: ''todo_end() called without todo_start()''
+   doesn''t match: ''%huh%'''
+);
+
+SELECT * FROM check_test(
+    throws_like( 'SELECT 1', '%huh%', 'whatever' ),
+    false,
+    'throws_like(valid sql, pattern, desc)',
+    'whatever',
+    '    no exception thrown'
+);
+
+/****************************************************************************/
+-- test throws_ilike().
+SELECT * FROM check_test(
+    throws_ilike( 'SELECT * FROM todo_end()', '%END() called without todo%', 'whatever' ),
+    true,
+    'throws_ilike(sql, pattern, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_ilike( 'SELECT * FROM todo_end()', '%END() called without todo%' ),
+    true,
+    'throws_ilike(sql, pattern)',
+    'Should throw exception like ''%END() called without todo%''',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_ilike( 'SELECT * FROM todo_end()', '%HUH%', 'whatever' ),
+    false,
+    'throws_ilike(sql, pattern, desc) fail',
+    'whatever',
+    '   error message: ''todo_end() called without todo_start()''
+   doesn''t match: ''%HUH%'''
+);
+
+SELECT * FROM check_test(
+    throws_ilike( 'SELECT 1', '%HUH%', 'whatever' ),
+    false,
+    'throws_ilike(valid sql, pattern, desc)',
+    'whatever',
+    '    no exception thrown'
+);
+
+/****************************************************************************/
+-- test throws_matching().
+SELECT * FROM check_test(
+    throws_matching(
+        'SELECT * FROM todo_end()',
+        '.*end[(][)] called without todo.+',
+        'whatever'
+    ),
+    true,
+    'throws_matching(sql, regex, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_matching(
+        'SELECT * FROM todo_end()',
+        '.*end[(][)] called without todo.+'
+    ),
+    true,
+    'throws_matching(sql, regex, desc)',
+    'Should throw exception matching ''.*end[(][)] called without todo.+''',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_matching(
+        'SELECT * FROM todo_end()',
+        'huh.+',
+        'whatever'
+    ),
+    false,
+    'throws_matching(sql, regex, desc)',
+    'whatever',
+    '   error message: ''todo_end() called without todo_start()''
+   doesn''t match: ''huh.+'''
+);
+
+SELECT * FROM check_test(
+    throws_matching(
+        'SELECT 1',
+        'huh.+',
+        'whatever'
+    ),
+    false,
+    'throws_matching(valid sql, regex, desc)',
+    'whatever',
+    '    no exception thrown'
+);
+
+/****************************************************************************/
+-- test throws_imatching().
+SELECT * FROM check_test(
+    throws_imatching(
+        'SELECT * FROM todo_end()',
+        '.*end[(][)] CALLED without todo.+',
+        'whatever'
+    ),
+    true,
+    'throws_imatching(sql, regex, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_imatching(
+        'SELECT * FROM todo_end()',
+        '.*end[(][)] CALLED without todo.+'
+    ),
+    true,
+    'throws_imatching(sql, regex, desc)',
+    'Should throw exception matching ''.*end[(][)] CALLED without todo.+''',
+    ''
+);
+
+SELECT * FROM check_test(
+    throws_imatching(
+        'SELECT * FROM todo_end()',
+        'HUH.+',
+        'whatever'
+    ),
+    false,
+    'throws_imatching(sql, regex, desc)',
+    'whatever',
+    '   error message: ''todo_end() called without todo_start()''
+   doesn''t match: ''HUH.+'''
+);
+
+SELECT * FROM check_test(
+    throws_imatching(
+        'SELECT 1',
+        'HUH.+',
+        'whatever'
+    ),
+    false,
+    'throws_imatching(valid sql, regex, desc)',
+    'whatever',
+    '    no exception thrown'
 );
 
 /****************************************************************************/

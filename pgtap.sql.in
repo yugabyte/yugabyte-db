@@ -688,7 +688,7 @@ EXCEPTION WHEN OTHERS THEN
         -- The expected errcode and/or message was thrown.
         RETURN ok( TRUE, descr );
     ELSE
-        -- This was not the expected errcodeor.
+        -- This was not the expected errcode or errmsg.
         RETURN ok( FALSE, descr ) || E'\n' || diag(
                '      caught: ' || SQLSTATE || ': ' || SQLERRM ||
             E'\n      wanted: ' || COALESCE( errcode, 'an exception' ) ||
@@ -6480,3 +6480,81 @@ CREATE OR REPLACE FUNCTION collect_tap(
 ) RETURNS TEXT AS $$
     SELECT array_to_string($1, E'\n');
 $$ LANGUAGE sql;
+
+
+CREATE OR REPLACE FUNCTION _tlike ( BOOLEAN, TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( $1, $4 ) || CASE WHEN $1 THEN '' ELSE E'\n' || diag(
+           '   error message: ' || COALESCE( quote_literal($2), 'NULL' ) ||
+       E'\n   doesn''t match: ' || COALESCE( quote_literal($3), 'NULL' )
+    ) END;
+$$ LANGUAGE sql;
+
+-- throws_like ( sql, pattern, description )
+CREATE OR REPLACE FUNCTION throws_like ( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    EXECUTE _query($1);
+    RETURN ok( FALSE, $3 ) || E'\n' || diag( '    no exception thrown' );
+EXCEPTION WHEN OTHERS THEN
+    return _tlike( SQLERRM ~~ $2, SQLERRM, $2, $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- throws_like ( sql, pattern )
+CREATE OR REPLACE FUNCTION throws_like ( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT throws_like($1, $2, 'Should throw exception like ' || quote_literal($2) );
+$$ LANGUAGE sql;
+
+-- throws_ilike ( sql, pattern, description )
+CREATE OR REPLACE FUNCTION throws_ilike ( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    EXECUTE _query($1);
+    RETURN ok( FALSE, $3 ) || E'\n' || diag( '    no exception thrown' );
+EXCEPTION WHEN OTHERS THEN
+    return _tlike( SQLERRM ~~* $2, SQLERRM, $2, $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- throws_ilike ( sql, pattern )
+CREATE OR REPLACE FUNCTION throws_ilike ( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT throws_ilike($1, $2, 'Should throw exception like ' || quote_literal($2) );
+$$ LANGUAGE sql;
+
+-- throws_matching ( sql, pattern, description )
+CREATE OR REPLACE FUNCTION throws_matching ( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    EXECUTE _query($1);
+    RETURN ok( FALSE, $3 ) || E'\n' || diag( '    no exception thrown' );
+EXCEPTION WHEN OTHERS THEN
+    return _tlike( SQLERRM ~ $2, SQLERRM, $2, $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- throws_matching ( sql, pattern )
+CREATE OR REPLACE FUNCTION throws_matching ( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT throws_matching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
+$$ LANGUAGE sql;
+
+-- throws_imatching ( sql, pattern, description )
+CREATE OR REPLACE FUNCTION throws_imatching ( TEXT, TEXT, TEXT )
+RETURNS TEXT AS $$
+BEGIN
+    EXECUTE _query($1);
+    RETURN ok( FALSE, $3 ) || E'\n' || diag( '    no exception thrown' );
+EXCEPTION WHEN OTHERS THEN
+    return _tlike( SQLERRM ~* $2, SQLERRM, $2, $3 );
+END;
+$$ LANGUAGE plpgsql;
+
+-- throws_imatching ( sql, pattern )
+CREATE OR REPLACE FUNCTION throws_imatching ( TEXT, TEXT )
+RETURNS TEXT AS $$
+    SELECT throws_imatching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
+$$ LANGUAGE sql;
+
