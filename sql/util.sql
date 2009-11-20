@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(12);
+SELECT plan(13);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -58,8 +58,19 @@ SELECT matches(
     'pgtap_version() should work'
 );
 
-
 /****************************************************************************/
+-- Test collect_tap().
+SELECT is(
+    CASE WHEN pg_version_num() >= 80400
+    THEN collect_tap('foo', 'bar', 'baz')
+    ELSE collect_tap('{foo, bar, baz}')
+    END,
+    'foo
+bar
+baz',
+    'collect_tap() should simply collect tap'
+);
+
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();

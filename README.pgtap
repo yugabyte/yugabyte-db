@@ -3266,16 +3266,16 @@ have run.
 
     SELECT CASE WHEN pg_version_num() < 80100
         THEN skip('throws_ok() not supported before 8.1', 2 )
-        ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
-             || E'\n'
-             || throws_ok( 'INSERT INTO try (id) VALUES (1)', '23505' )
-        END;
+        ELSE collect_tap(
+            throws_ok( 'SELECT 1/0', 22012, 'division by zero' ),
+            throws_ok( 'INSERT INTO try (id) VALUES (1)', '23505' )
+        ) END;
 
 Note how use of the conditional `CASE` statement has been used to determine
-whether or not to run a couple of tests. If they are to be run, they are
-concatenated with newlines, so that we can run a few tests in the same query.
-If we don't want to run them, we call `skip()` and tell it how many tests
-we're skipping.
+whether or not to run a couple of tests. If they are to be run, they are run
+through `collect_tap()`, so that we can run a few tests in the same query. If
+we don't want to run them, we call `skip()` and tell it how many tests we're
+skipping.
 
 If you don't specify how many tests to skip, `skip()` will assume that you're
 skipping only one. This is useful for the simple case, of course:
@@ -3444,6 +3444,35 @@ appreciated.
 
 **NOTE:** The values returned by this function may change in the future,
 depending on how good the pgTAP build process gets at detecting a OS.
+
+### `collect_tap(tap[])` ###
+
+    SELECT collect_tap(
+        ok(true, 'This should pass'),
+        ok(false, 'This should fail)
+    );
+
+Collects the results of one or more pgTAP tests and returns them all. Useful
+when used in combination with `skip()`:
+
+      SELECT CASE os_name() WHEN 'darwin' THEN
+          collect_tap(
+              cmp_ok( 'Bjørn'::text, '>', 'Bjorn', 'ø > o' ),
+              cmp_ok( 'Pınar'::text, '>', 'Pinar', 'ı > i' ),
+              cmp_ok( 'José'::text,  '>', 'Jose',  'é > e' ),
+              cmp_ok( 'Täp'::text,   '>', 'Tap',   'ä > a' )
+          )
+      ELSE
+           skip('Collation-specific test', 4)
+      END;
+
+On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
+8.4 requires the explicit use of an array:
+
+    SELECT collect_tap(ARRAY[
+        ok(true, 'This should pass'),
+        ok(false, 'This should fail)
+    ]);
 
 ### `pg_typeof(any)` ###
 
@@ -3849,19 +3878,6 @@ To Do
 * Useful result testing functions to consider adding (but might require C code):
   + `row_eq()`
   + `rowtype_is()`
-* Add a function to collect multiple tests in one call, someting like
-  `collect_tests()`. Will be useful when used in combination with `skip()`:
-
-      SELECT CASE os_name() WHEN 'darwin' THEN
-          collect_tests(
-              cmp_ok( 'Bjørn'::text, '>', 'Bjorn', 'ø > o' ),
-              cmp_ok( 'Pınar'::text, '>', 'Pinar', 'ı > i' ),
-              cmp_ok( 'José'::text,  '>', 'Jose',  'é > e' ),
-              cmp_ok( 'Täp'::text,   '>', 'Tap',   'ä > a' )
-          )
-      ELSE
-           skip('Collation-specific test', 4)
-      END;
 
 Supported Versions
 -----------------

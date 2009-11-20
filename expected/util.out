@@ -1,5 +1,5 @@
 \unset ECHO
-1..12
+1..13
 ok 1 - pg_type(int) should work
 ok 2 - pg_type(numeric) should work
 ok 3 - pg_type(text) should work
@@ -12,3 +12,4 @@ ok 9 - pg_version_num() should be correct
 ok 10 - os_name() should output something like an OS name
 ok 11 - findfincs() should return distinct values
 ok 12 - pgtap_version() should work
+ok 13 - collect_tap() should simply collect tap

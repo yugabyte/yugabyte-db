@@ -18,6 +18,8 @@ Revision history for pgTAP
 * Added `pg_tapgen`, which is a start and automating pgTAP schema validation
   tests.
 * Added `is_empty()` to test that a query returns an empty set (no results).
+* Added `collect_tap()`, which makes it easier to run multiple tests in a
+  single `SELECT` statement in combination with `skip()`.
 
 0.22 2009-07-31T00:26:16
 -------------------------

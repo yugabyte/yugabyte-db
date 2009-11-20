@@ -1,4 +1,5 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION collect_tap( TEXT[] );
 DROP FUNCTION is_empty( TEXT );
 DROP FUNCTION is_empty( TEXT, TEXT );
 DROP FUNCTION isa_ok( anyelement, regtype );
