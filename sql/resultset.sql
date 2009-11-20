@@ -2268,7 +2268,7 @@ SELECT * FROM check_test(
     false,
     'is_empty(prepared, desc) fail',
     'whatever',
-    '    Records returned:
+    '    Unexpected records:
         (1,Jacob)
         (2,Emily)'
 );
@@ -2278,7 +2278,7 @@ SELECT * FROM check_test(
     false,
     'is_empty(prepared) fail',
     '',
-    '   Records returned:
+    '   Unexpected records:
         (1,Jacob)
         (2,Emily)'
 );

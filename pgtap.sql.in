@@ -6459,7 +6459,7 @@ BEGIN
     IF extras[1] IS NOT NULL THEN
         res := FALSE;
         msg := E'\n' || diag(
-            E'    Records returned:\n        '
+            E'    Unexpected records:\n        '
             ||  array_to_string( extras, E'\n        ' )
         );
     END IF;
