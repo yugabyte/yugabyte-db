@@ -6440,3 +6440,36 @@ CREATE OR REPLACE FUNCTION isa_ok( anyelement, regtype )
 RETURNS TEXT AS $$
     SELECT isa_ok($1, $2, 'the value');
 $$ LANGUAGE sql;
+
+-- is_empty( sql, description )
+CREATE OR REPLACE FUNCTION is_empty( TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  TEXT[]  := '{}';
+    res     BOOLEAN := TRUE;
+    msg     TEXT    := '';
+    rec     RECORD;
+BEGIN
+    -- Find extra records.
+    FOR rec in EXECUTE _query($1) LOOP
+        extras := extras || rec::text;
+    END LOOP;
+
+    -- What extra records do we have?
+    IF extras[1] IS NOT NULL THEN
+        res := FALSE;
+        msg := E'\n' || diag(
+            E'    Records returned:\n        '
+            ||  array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $2) || msg;
+END;
+$$ LANGUAGE plpgsql;
+
+-- is_empty( sql )
+CREATE OR REPLACE FUNCTION is_empty( TEXT )
+RETURNS TEXT AS $$
+    SELECT is_empty( $1, NULL );
+$$ LANGUAGE sql;

@@ -1,5 +1,5 @@
 \unset ECHO
-1..475
+1..493
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -475,3 +475,21 @@ ok 472 - results_ne(cursor, sql) should have the proper diagnostics
 ok 473 - results_ne(sql, cursor) should fail
 ok 474 - results_ne(sql, cursor) should have the proper description
 ok 475 - results_ne(sql, cursor) should have the proper diagnostics
+ok 476 - is_empty(sql, desc) should pass
+ok 477 - is_empty(sql, desc) should have the proper description
+ok 478 - is_empty(sql, desc) should have the proper diagnostics
+ok 479 - is_empty(sql) should pass
+ok 480 - is_empty(sql) should have the proper description
+ok 481 - is_empty(sql) should have the proper diagnostics
+ok 482 - is_empty(prepared, desc) should pass
+ok 483 - is_empty(prepared, desc) should have the proper description
+ok 484 - is_empty(prepared, desc) should have the proper diagnostics
+ok 485 - is_empty(prepared) should pass
+ok 486 - is_empty(prepared) should have the proper description
+ok 487 - is_empty(prepared) should have the proper diagnostics
+ok 488 - is_empty(prepared, desc) fail should fail
+ok 489 - is_empty(prepared, desc) fail should have the proper description
+ok 490 - is_empty(prepared, desc) fail should have the proper diagnostics
+ok 491 - is_empty(prepared) fail should fail
+ok 492 - is_empty(prepared) fail should have the proper description
+ok 493 - is_empty(prepared) fail should have the proper diagnostics

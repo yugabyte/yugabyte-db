@@ -1145,6 +1145,22 @@ is any unexpected overlap between the query results. This means that a
 duplicate row in the first query will appear twice in the diagnostics if it is
 also duplicated in the second query.
 
+### `is_empty( sql, description )` ###
+### `is_empty( sql )` ###
+
+    PREPARE emptyset  AS SELECT * FROM users(FALSE);
+    SELECT is_empty( 'emptyset', 'Should have no inactive users' );
+
+The `is_empty()` function takes a single query string or prepared statement
+name as its first argument, and tests that said query returns no records.
+Internally it simply executes the query and if there are any results, the test
+fails and the results are displayed in the failure diagnostics, like so:
+
+    # Failed test 494: "Should have no inactive users"
+    #     Records returned:
+    #         (1,Jacob,false)
+    #         (2,Emily,false)
+
 The Schema Things
 =================
 

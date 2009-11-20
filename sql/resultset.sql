@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(475);
+SELECT plan(493);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -2225,6 +2225,62 @@ SELECT * FROM check_test(
     'results_ne(sql, cursor)',
     '',
     ''
+);
+
+/****************************************************************************/
+-- Now test is_empty().
+SELECT * FROM check_test(
+    is_empty( 'SELECT 1 WHERE FALSE', 'whatever' ),
+    true,
+    'is_empty(sql, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_empty( 'SELECT 1 WHERE FALSE' ),
+    true,
+    'is_empty(sql)',
+    '',
+    ''
+);
+
+PREPARE emptyset AS SELECT * FROM names WHERE FALSE;
+SELECT * FROM check_test(
+    is_empty( 'emptyset', 'whatever' ),
+    true,
+    'is_empty(prepared, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    is_empty( 'emptyset' ),
+    true,
+    'is_empty(prepared)',
+    '',
+    ''
+);
+
+PREPARE notempty AS SELECT id, name FROM names WHERE name IN ('Jacob', 'Emily') ORDER BY ID;
+SELECT * FROM check_test(
+    is_empty( 'notempty', 'whatever' ),
+    false,
+    'is_empty(prepared, desc) fail',
+    'whatever',
+    '    Records returned:
+        (1,Jacob)
+        (2,Emily)'
+);
+
+SELECT * FROM check_test(
+    is_empty( 'notempty' ),
+    false,
+    'is_empty(prepared) fail',
+    '',
+    '   Records returned:
+        (1,Jacob)
+        (2,Emily)'
 );
 
 /****************************************************************************/

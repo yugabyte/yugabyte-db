@@ -1,4 +1,6 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION is_empty( TEXT );
+DROP FUNCTION is_empty( TEXT, TEXT );
 DROP FUNCTION isa_ok( anyelement, regtype );
 DROP FUNCTION isa_ok( anyelement, regtype, TEXT );
 DROP FUNCTION results_ne( refcursor, anyarray );
