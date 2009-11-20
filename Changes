@@ -23,6 +23,7 @@ Revision history for pgTAP
 * Added `throws_like()`, `throws_ilike()`, `throws_matching()`, and
   `throws_imatching()` to test that an SQL statement throws an error message
   matching a `LIKE` pattern or a regular expression.
+* Added `roles_are()`.
 
 0.22 2009-07-31T00:26:16
 -------------------------

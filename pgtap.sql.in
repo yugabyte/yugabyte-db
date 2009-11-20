@@ -6558,3 +6558,32 @@ RETURNS TEXT AS $$
     SELECT throws_imatching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
 $$ LANGUAGE sql;
 
+-- roles_are( roles[], description )
+CREATE OR REPLACE FUNCTION roles_are( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'roles',
+        ARRAY(
+            SELECT rolname
+              FROM pg_catalog.pg_roles
+            EXCEPT
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $1[i]
+              FROM generate_series(1, array_upper($1, 1)) s(i)
+            EXCEPT
+            SELECT rolname
+              FROM pg_catalog.pg_roles
+        ),
+        $2
+    );
+$$ LANGUAGE SQL;
+
+-- roles_are( roles[] )
+CREATE OR REPLACE FUNCTION roles_are( NAME[] )
+RETURNS TEXT AS $$
+    SELECT roles_are( $1, 'There should be the correct roles' );
+$$ LANGUAGE SQL;
+

@@ -1454,6 +1454,25 @@ missing functions, like so:
     #     Missing functions:
     #         frobnitz
 
+### `roles_are( roles[], description )` ###
+### `roles_are( roles[] )` ###
+
+    SELECT roles_are(
+        ARRAY[ 'postgres', 'someone', 'root' ],
+        'Should have the correct roles'
+    );
+
+This function tests that all of the roles in the database only the roles that
+*should* be there. Supported in PostgreSQL 8.1 and higher. In the event of a
+failure, you'll see diagnostics listing the extra and/or missing roles, like
+so:
+
+    # Failed test 195: "There should be the correct roles"
+    #     Extra roles:
+    #         root
+    #     Missing roles:
+    #         bobby
+
 ### `users_are( users[], description )` ###
 ### `users_are( users[] )` ###
 
@@ -3915,14 +3934,22 @@ No changes. Everything should just work.
   + `regtype` to `text`
 * Two operators, `=` and `<>`, are added to compare `name[]` values.
 
-8.0 and Lower
--------------
+8.0
+---
 * A patch is applied that changes how some of the test functions are written.
 * A few casts are added for compatibility:
   + `oidvector` to `regtypep[]`.
   + `int2vector` to `integer[]`.
-* The `throws_ok()`, `lives_ok()`, `runtests()`, `has_role()`, and
-  `hasnt_role()` functions do not work under 8.0. Don't even use them there.
+* The following functions do not work under 8.0. Don't even use them there:
+* `throws_ok()`
+* `throws_like()`
+* `throws_ilike()`
+* `throws_matching()`
+* `throws_imatching()`
+* `lives_ok()`
+* `runtests()`
+* `has_role()`
+* `hasnt_role()`
 
 To Do
 -----
@@ -3932,7 +3959,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `roles_are()`
   + `types_are()`
   + `domains_are()`
   + `enums_are()`

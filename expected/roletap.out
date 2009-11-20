@@ -1,5 +1,5 @@
 \unset ECHO
-1..24
+1..39
 ok 1 - has_role(current role) should pass
 ok 2 - has_role(current role) should have the proper description
 ok 3 - has_role(current role) should have the proper diagnostics
@@ -24,3 +24,18 @@ ok 21 - hasnt_role(nonexistent role) should have the proper diagnostics
 ok 22 - hasnt_role(nonexistent role, desc) should pass
 ok 23 - hasnt_role(nonexistent role, desc) should have the proper description
 ok 24 - hasnt_role(nonexistent role, desc) should have the proper diagnostics
+ok 25 - roles_are(roles, desc) should pass
+ok 26 - roles_are(roles, desc) should have the proper description
+ok 27 - roles_are(roles, desc) should have the proper diagnostics
+ok 28 - roles_are(roles) should pass
+ok 29 - roles_are(roles) should have the proper description
+ok 30 - roles_are(roles) should have the proper diagnostics
+ok 31 - roles_are(roles, desc) missing should fail
+ok 32 - roles_are(roles, desc) missing should have the proper description
+ok 33 - roles_are(roles, desc) missing should have the proper diagnostics
+ok 34 - roles_are(roles, desc) extras should fail
+ok 35 - roles_are(roles, desc) extras should have the proper description
+ok 36 - roles_are(roles, desc) extras should have the proper diagnostics
+ok 37 - roles_are(roles, desc) missing and extras should fail
+ok 38 - roles_are(roles, desc) missing and extras should have the proper description
+ok 39 - roles_are(roles, desc) missing and extras should have the proper diagnostics
