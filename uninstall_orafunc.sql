@@ -25,6 +25,14 @@ DROP FUNCTION pg_catalog.to_number(str text);
 DROP FUNCTION pg_catalog.to_date(str text);
 DROP FUNCTION pg_catalog.reverse(str text);
 DROP FUNCTION pg_catalog.lnnvl(bool);
+
+DROP AGGREGATE pg_catalog.listagg(text);
+DROP AGGREGATE pg_catalog.listagg(text, text);
+
+DROP FUNCTION pg_catalog.listagg1_transfn(internal, text);
+DROP FUNCTION pg_catalog.listagg2_transfn(internal, text, text);
+DROP FUNCTION pg_catalog.listagg_finalfn(internal);
+
 DROP FUNCTION dump("any");
 DROP FUNCTION dump(text);
 DROP FUNCTION dump("any", integer);

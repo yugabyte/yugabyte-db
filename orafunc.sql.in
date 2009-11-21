@@ -247,6 +247,32 @@ AS 'MODULE_PATHNAME','ora_lnnvl'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
+CREATE OR REPLACE FUNCTION pg_catalog.listagg1_transfn(internal, text)
+RETURNS internal 
+AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.listagg2_transfn(internal, text, text)
+RETURNS internal 
+AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.listagg_finalfn(internal)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_listagg_finalfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE AGGREGATE pg_catalog.listagg(text) (
+  SFUNC=pg_catalog.listagg1_transfn, 
+  STYPE=internal, 
+  FINALFUNC=pg_catalog.listagg_finalfn
+);
+
+CREATE AGGREGATE pg_catalog.listagg(text, text) (
+  SFUNC=pg_catalog.listagg2_transfn, 
+  STYPE=internal, 
+  FINALFUNC=pg_catalog.listagg_finalfn
+);
 
 -- can't overwrite PostgreSQL functions!!!!
 

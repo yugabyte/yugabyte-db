@@ -19,7 +19,7 @@
 #include "stdlib.h"
 #include "utils/pg_locale.h"
 #include "mb/pg_wchar.h"
-
+#include "nodes/execnodes.h"
 
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
@@ -58,6 +58,11 @@ PG_FUNCTION_INFO_V1(plvchr_char_name);
 PG_FUNCTION_INFO_V1(oracle_substr2);
 PG_FUNCTION_INFO_V1(oracle_substr3);
 
+PG_FUNCTION_INFO_V1(orafce_listagg1_transfn);
+PG_FUNCTION_INFO_V1(orafce_listagg2_transfn);
+PG_FUNCTION_INFO_V1(orafce_listagg_finalfn);
+
+
 static text *ora_substr(Datum str, int start, int len);
 
 #define ora_substr_text(str, start, len) \
@@ -94,6 +99,14 @@ typedef enum
 	FIRST,
 	LAST
 }  position_mode;
+
+typedef struct
+{
+	StringInfo	strInfo;
+	bool	is_empty;
+	char	separator[1];
+} ListAggState;
+
 
 #if PG_VERSION_NUM < 80400
 text *
@@ -1340,4 +1353,158 @@ plvstr_betwn_c(PG_FUNCTION_ARGS)
 	PG_RETURN_TEXT_P(ora_substr_text(string_in,
 									 v_start,
 									 v_end - v_start + 1));
+}
+
+/****************************************************************
+ * listagg
+ *  
+ * Concates values and returns string.
+ *
+ * Syntax:
+ *     FUNCTION listagg(string varchar, delimiter varchar = '')
+ *      RETURNS varchar;
+ *
+ * Note: any NULL value is ignored.
+ *
+ ****************************************************************/
+static ListAggState *
+accumStringResult(ListAggState *state, text *elem, text *separator, 
+						    MemoryContext aggcontext)
+{
+	MemoryContext	oldcontext;
+	
+	if (state == NULL)
+	{
+		if (separator != NULL)
+		{
+			char *cseparator = text_to_cstring(separator);
+			int	len = strlen(cseparator);
+			
+			oldcontext = MemoryContextSwitchTo(aggcontext);
+			state = palloc(sizeof(ListAggState) + len);
+			
+			/* copy delimiter to state var */
+			memcpy(&state->separator, cseparator, len + 1);
+		}
+		else
+		{
+			oldcontext = MemoryContextSwitchTo(aggcontext);
+			state = palloc(sizeof(ListAggState));
+			state->separator[0] = '\0';
+		}
+		
+		/* Initialise StringInfo */
+		state->strInfo = makeStringInfo();
+		state->is_empty = true;
+		
+		MemoryContextSwitchTo(oldcontext);
+	}
+	
+	/* only when element isn't null */
+	if (elem != NULL)
+	{
+		char	*cstr = text_to_cstring(elem);
+
+		oldcontext = MemoryContextSwitchTo(aggcontext);
+		if (!state->is_empty)
+			appendStringInfoString(state->strInfo, state->separator);
+		appendStringInfoString(state->strInfo, cstr);
+		MemoryContextSwitchTo(oldcontext);
+		
+		state->is_empty = false;
+	}
+	
+	return state;
+}
+
+Datum
+orafce_listagg1_transfn(PG_FUNCTION_ARGS)
+{
+	MemoryContext	aggcontext;
+	ListAggState *state;
+	text *elem;
+
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+		aggcontext = ((AggState *) fcinfo->context)->aggcontext;
+	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
+		aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
+	else
+	{
+		/* cannot be called directly because of internal-type argument */
+		elog(ERROR, "listagg2_transfn called in non-aggregate context");
+		aggcontext = NULL;		/* keep compiler quiet */
+	}
+	
+	state = PG_ARGISNULL(0) ? NULL : (ListAggState *) PG_GETARG_POINTER(0);
+	elem = PG_ARGISNULL(1) ? NULL : PG_GETARG_TEXT_P(1);
+	
+	state = accumStringResult(state,
+					    elem,
+					    NULL,
+					    aggcontext);
+	/*
+	 * The transition type for array_agg() is declared to be "internal", which
+	 * is a pass-by-value type the same size as a pointer.	So we can safely
+	 * pass the ArrayBuildState pointer through nodeAgg.c's machinations.
+	 */
+	PG_RETURN_POINTER(state);
+}
+
+
+ 
+Datum 
+orafce_listagg2_transfn(PG_FUNCTION_ARGS)
+{
+	MemoryContext	aggcontext;
+	ListAggState *state;
+	text *elem;
+	text *separator = NULL;
+
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+		aggcontext = ((AggState *) fcinfo->context)->aggcontext;
+	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
+		aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
+	else
+	{
+		/* cannot be called directly because of internal-type argument */
+		elog(ERROR, "listagg2_transfn called in non-aggregate context");
+		aggcontext = NULL;		/* keep compiler quiet */
+	}
+	
+	state = PG_ARGISNULL(0) ? NULL : (ListAggState *) PG_GETARG_POINTER(0);
+	elem = PG_ARGISNULL(1) ? NULL : PG_GETARG_TEXT_P(1);
+	
+	if (PG_NARGS() > 2)
+		separator = PG_ARGISNULL(2) ? NULL : PG_GETARG_TEXT_P(2);
+	
+	state = accumStringResult(state,
+					    elem,
+					    separator,
+					    aggcontext);
+	/*
+	 * The transition type for array_agg() is declared to be "internal", which
+	 * is a pass-by-value type the same size as a pointer.	So we can safely
+	 * pass the ArrayBuildState pointer through nodeAgg.c's machinations.
+	 */
+	PG_RETURN_POINTER(state);	
+}
+
+Datum
+orafce_listagg_finalfn(PG_FUNCTION_ARGS)
+{
+	ListAggState *state;
+
+	if (PG_ARGISNULL(0))
+		PG_RETURN_NULL();
+		
+	/* cannot be called directly because of internal-type argument */
+	Assert(fcinfo->context &&
+		    (IsA(fcinfo->context, AggState) ||
+			    IsA(fcinfo->context, WindowAggState)));
+	
+	state = (ListAggState *) PG_GETARG_POINTER(0);
+	if (!state->is_empty)
+		PG_RETURN_TEXT_P(cstring_to_text(state->strInfo->data));
+	else
+		PG_RETURN_NULL();    
 }
