@@ -6,6 +6,8 @@
 #include "postgres.h"
 #include "parser/keywords.h"
 
+
+
 #undef yyparse  /* don't need it now and solve problems with 8.1 */
 
 #include "parser/gramparse.h"                                                                                               

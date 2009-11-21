@@ -17,7 +17,6 @@
 #include "utils/nabstime.h"
 #include <sys/time.h>
 #include <stdlib.h>
-#include "parser/gramparse.h"
 #include "lib/stringinfo.h"
 
 #include "plvlex.h"
@@ -38,7 +37,6 @@ typedef struct {
 Datum plvlex_tokens(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(plvlex_tokens);
-
 
 extern int      orafce_sql_yyparse();
 extern void orafce_sql_yyerror(const char *message);

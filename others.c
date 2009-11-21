@@ -409,7 +409,7 @@ appendDatum(StringInfo str, const void *ptr, size_t length, int format)
 		appendStringInfoChar(str, ':');
 	else
 	{
-		const unsigned char *s = (const char *) ptr;
+		const unsigned char *s = (const unsigned char *) ptr;
 		const char *formatstr;
 		size_t	i;
 
