@@ -1777,34 +1777,34 @@ COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
 -- dbms_random
 CREATE SCHEMA dbms_random;
 
-CREATE FUNCTION dbms_random.initialize()
+CREATE FUNCTION dbms_random.initialize(int)
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_random_initialize'
-LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION dbms_random.initialize() IS 'Initialize package with a seed value';
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION dbms_random.initialize(int) IS 'Initialize package with a seed value';
 
 CREATE FUNCTION dbms_random.normal()
 RETURNS double precision
 AS 'MODULE_PATHNAME','dbms_random_normal'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.normal() IS 'Returns random numbers in a standard normal distribution';
 
 CREATE FUNCTION dbms_random.random()
-RETURNS double precision
+RETURNS integer
 AS 'MODULE_PATHNAME','dbms_random_random'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.random() IS 'Generate Random Numeric Values';
 
 CREATE FUNCTION dbms_random.seed(integer)
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_random_seed_int'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.seed(int) IS 'Reset the seed value';
 
 CREATE FUNCTION dbms_random.seed(text)
 RETURNS void 
 AS 'MODULE_PATHNAME','dbms_random_seed_varchar'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.seed(text) IS 'Reset the seed value';
 
 CREATE FUNCTION dbms_random.string(opt text, len int)
@@ -1820,15 +1820,15 @@ LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_random.terminate() IS 'Terminate use of the Package';
 
 CREATE FUNCTION dbms_random.value(low double precision, high double precision)
-RETURNS void 
+RETURNS double precision
 AS 'MODULE_PATHNAME','dbms_random_value_range'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION dbms_random.value(double precision, double precision) IS 'Generate Random number x, where x is greather or equal to low and less then high';
 
 CREATE FUNCTION dbms_random.value()
-RETURNS void 
+RETURNS double precision 
 AS 'MODULE_PATHNAME','dbms_random_value'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greather or equal to 0 and less then 1';
 
 /*
