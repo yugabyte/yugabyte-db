@@ -110,10 +110,21 @@ DROP FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestampt
 DROP FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz);
 DROP FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz);
 
+DROP FUNCTION dbms_random.initialize();
+DROP FUNCTION dbms_random.normal();
+DROP FUNCTION dbms_random.random();
+DROP FUNCTION dbms_random.seed(integer);
+DROP FUNCTION dbms_random.seed(text);
+DROP FUNCTION dbms_random.string(opt text, len int);
+DROP FUNCTION dbms_random.terminate();
+DROP FUNCTION dbms_random.value(low double precision, high double precision);
+DROP FUNCTION dbms_random.value();
+
 DROP SCHEMA dbms_alert CASCADE;
 DROP SCHEMA dbms_assert CASCADE;
 DROP SCHEMA dbms_output CASCADE;
 DROP SCHEMA dbms_pipe CASCADE;
+DROP SCHEMA dbms_random CASCADE;
 DROP SCHEMA dbms_utility CASCADE;
 DROP SCHEMA oracle CASCADE;
 DROP SCHEMA plunit CASCADE;
