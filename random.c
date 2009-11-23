@@ -5,9 +5,6 @@
  * This library is based on ANSI C implementation.
  */
 
-
-
-
 #include "postgres.h"
 #include "access/hash.h"
 #include "lib/stringinfo.h"
@@ -302,7 +299,6 @@ dbms_random_value_range(PG_FUNCTION_ARGS)
 	
 	PG_RETURN_FLOAT8(result);
 }
-
 
 
 /*
