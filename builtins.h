@@ -6,6 +6,10 @@
 extern Datum orafce_listagg1_transfn(PG_FUNCTION_ARGS);
 extern Datum orafce_listagg2_transfn(PG_FUNCTION_ARGS);
 extern Datum orafce_listagg_finalfn(PG_FUNCTION_ARGS);
+extern Datum orafce_median4_transfn(PG_FUNCTION_ARGS);
+extern Datum orafce_median4_finalfn(PG_FUNCTION_ARGS);
+extern Datum orafce_median8_transfn(PG_FUNCTION_ARGS);
+extern Datum orafce_median8_finalfn(PG_FUNCTION_ARGS);
 
 /* from alert.c */
 extern Datum dbms_alert_register(PG_FUNCTION_ARGS);

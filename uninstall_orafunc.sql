@@ -33,6 +33,14 @@ DROP FUNCTION pg_catalog.listagg1_transfn(internal, text);
 DROP FUNCTION pg_catalog.listagg2_transfn(internal, text, text);
 DROP FUNCTION pg_catalog.listagg_finalfn(internal);
 
+DROP AGGREGATE pg_catalog.median(real);
+DROP AGGREGATE pg_catalog.median(double precision);
+
+DROP FUNCTION pg_catalog.median4_transfn(internal, real);
+DROP FUNCTION pg_catalog.median8_transfn(internal, double precision);
+DROP FUNCTION pg_catalog.median4_finalfn(internal);
+DROP FUNCTION pg_catalog.median8_finalfn(internal);
+
 DROP FUNCTION dump("any");
 DROP FUNCTION dump(text);
 DROP FUNCTION dump("any", integer);

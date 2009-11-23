@@ -274,6 +274,38 @@ CREATE AGGREGATE pg_catalog.listagg(text, text) (
   FINALFUNC=pg_catalog.listagg_finalfn
 );
 
+CREATE OR REPLACE FUNCTION pg_catalog.median4_transfn(internal, real)
+RETURNS internal
+AS 'MODULE_PATHNAME','orafce_median4_transfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.median4_finalfn(internal)
+RETURNS real
+AS 'MODULE_PATHNAME','orafce_median4_finalfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.median8_transfn(internal, double precision)
+RETURNS internal
+AS 'MODULE_PATHNAME','orafce_median8_transfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.median8_finalfn(internal)
+RETURNS double precision
+AS 'MODULE_PATHNAME','orafce_median8_finalfn'
+LANGUAGE C IMMUTABLE;
+
+CREATE AGGREGATE pg_catalog.median(real) (
+  SFUNC=pg_catalog.median4_transfn, 
+  STYPE=internal, 
+  FINALFUNC=pg_catalog.median4_finalfn
+);
+
+CREATE AGGREGATE pg_catalog.median(double precision) (
+  SFUNC=pg_catalog.median8_transfn, 
+  STYPE=internal, 
+  FINALFUNC=pg_catalog.median8_finalfn
+);
+
 -- can't overwrite PostgreSQL functions!!!!
 
 CREATE SCHEMA oracle;

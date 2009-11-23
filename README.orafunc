@@ -529,7 +529,24 @@ o plunit.assert_not_equals(anyelement, anyelement [, double precision] [, varcha
 
 o plunit.fail([varchar]) -				Fail can be used to cause a test procedure to fail immediately using the supplied message. 
 
+Package DBMS_random
+===================
+o dbms_random.initialize(int) - Initialize package with a seed value.
 
+o dbms_random.normal() - Returns random numbers in a standard normal distribution.
+
+o dbms_random.random() - Returns random number from -2^31 .. 2^31.
+
+o dbms_random.seed(int)
+o dbms_random.seed(text) - Reset seed value.
+
+o dbms_random.string(opt text(1), len int) - Create random string
+
+o dbms_random.terminate() - Terminate package (do nothing in Pg)
+
+o dbms_random.value() - Returns a random number from [0.0 - 1.0) 
+
+o dbms_random.value(low double precision, high double precision) - Returns a random number from [low - high)
 
 Others functions
 ================
@@ -540,6 +557,8 @@ o oracle.substr(str text, start int, len int) - Oracle compatible substring
 o oracle.substr(str text, start int)          - Oracle compatible substring
 
 o pg_catalog.listagg(str text [, separator text]) - aggregate values to list
+o pg_catalog.median(float4) - calculate a median
+o pg_catalog.median(float8) - calculate a median
 
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr is installed side-by-side with pg_catalog.substr.
