@@ -28,13 +28,9 @@
 #include "utils/lsyscache.h"
 #include "access/tupmacs.h"
 #include "orafunc.h"
+#include "builtins.h"
 
-#include "plvstr.h"
 #include "utils/elog.h"
-
-
-Datum dbms_utility_format_call_stack0(PG_FUNCTION_ARGS);
-Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack0);
 PG_FUNCTION_INFO_V1(dbms_utility_format_call_stack1);

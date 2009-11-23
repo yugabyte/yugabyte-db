@@ -6,6 +6,7 @@
 #include "utils/numeric.h"
 #include <sys/time.h>
 #include "orafunc.h"
+#include "builtins.h"
 
 #define ENABLE_INTERNATIONALIZED_WEEKDAY
 
@@ -95,21 +96,6 @@ do { \
 	} \
 } while (0)
 
-/*
- * Search const value in char array
- *
- */
-
-Datum next_day(PG_FUNCTION_ARGS);
-Datum next_day_by_index(PG_FUNCTION_ARGS);
-Datum last_day(PG_FUNCTION_ARGS);
-Datum months_between(PG_FUNCTION_ARGS);
-Datum add_months(PG_FUNCTION_ARGS);
-Datum ora_date_trunc(PG_FUNCTION_ARGS);
-Datum ora_date_round(PG_FUNCTION_ARGS);
-Datum ora_timestamptz_trunc(PG_FUNCTION_ARGS);
-Datum ora_timestamptz_round(PG_FUNCTION_ARGS);
-
 PG_FUNCTION_INFO_V1(next_day);
 PG_FUNCTION_INFO_V1(next_day_by_index);
 PG_FUNCTION_INFO_V1(last_day);
@@ -120,6 +106,10 @@ PG_FUNCTION_INFO_V1(ora_date_round);
 PG_FUNCTION_INFO_V1(ora_timestamptz_trunc);
 PG_FUNCTION_INFO_V1(ora_timestamptz_round);
 
+/*
+ * Search const value in char array
+ *
+ */
 int ora_seq_search(const char *name, /*const*/ char **array, int max);
 
 int

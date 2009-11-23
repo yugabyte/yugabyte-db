@@ -24,8 +24,7 @@
 #include "catalog/pg_type.h"
 #include "libpq/pqformat.h"
 #include "orafunc.h"
-
-#include "plvstr.h"
+#include "builtins.h"
 
 PG_FUNCTION_INFO_V1(plvstr_rvrs);
 PG_FUNCTION_INFO_V1(plvstr_normalize);

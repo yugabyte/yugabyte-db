@@ -16,6 +16,7 @@
 #include "shmmc.h"
 #include "pipe.h"
 #include "orafunc.h"
+#include "builtins.h"
 
 /*
  * @ Pavel Stehule 2006
@@ -38,32 +39,6 @@
 
 #define NOT_INITIALIZED -1
 #define ONE_YEAR (60*60*24*365)
-
-Datum dbms_pipe_pack_message_text(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message_text(PG_FUNCTION_ARGS);
-Datum dbms_pipe_send_message(PG_FUNCTION_ARGS);
-Datum dbms_pipe_receive_message(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unique_session_name (PG_FUNCTION_ARGS);
-Datum dbms_pipe_list_pipes (PG_FUNCTION_ARGS);
-Datum dbms_pipe_next_item_type (PG_FUNCTION_ARGS);
-Datum dbms_pipe_create_pipe(PG_FUNCTION_ARGS);
-Datum dbms_pipe_create_pipe_2(PG_FUNCTION_ARGS);
-Datum dbms_pipe_create_pipe_1(PG_FUNCTION_ARGS);
-Datum dbms_pipe_reset_buffer(PG_FUNCTION_ARGS);
-Datum dbms_pipe_purge(PG_FUNCTION_ARGS);
-Datum dbms_pipe_remove_pipe(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_date(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message_date(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_timestamp(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message_timestamp(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_number(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message_number(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_bytea(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message_bytea(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_record(PG_FUNCTION_ARGS);
-Datum dbms_pipe_unpack_message_record(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_integer(PG_FUNCTION_ARGS);
-Datum dbms_pipe_pack_message_bigint(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(dbms_pipe_pack_message_text);
 PG_FUNCTION_INFO_V1(dbms_pipe_unpack_message_text);

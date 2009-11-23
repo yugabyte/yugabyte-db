@@ -7,14 +7,7 @@
 #include "utils/pg_locale.h"
 
 #include "orafunc.h"
-
-Datum orafce_to_char_int4(PG_FUNCTION_ARGS);
-Datum orafce_to_char_int8(PG_FUNCTION_ARGS);
-Datum orafce_to_char_float4(PG_FUNCTION_ARGS);
-Datum orafce_to_char_float8(PG_FUNCTION_ARGS);
-Datum orafce_to_char_numeric(PG_FUNCTION_ARGS);
-Datum orafce_to_number(PG_FUNCTION_ARGS);
-Datum orafce_to_multi_byte(PG_FUNCTION_ARGS);
+#include "builtins.h"
 
 PG_FUNCTION_INFO_V1(orafce_to_char_int4);
 PG_FUNCTION_INFO_V1(orafce_to_char_int8);

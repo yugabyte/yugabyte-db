@@ -28,14 +28,7 @@
 #include "utils/lsyscache.h"
 #include "access/tupmacs.h"
 #include "orafunc.h"
-
-#include "plvstr.h"
-
-Datum plvsubst_string_array(PG_FUNCTION_ARGS);
-Datum plvsubst_string_string(PG_FUNCTION_ARGS);
-Datum plvsubst_setsubst(PG_FUNCTION_ARGS);
-Datum plvsubst_setsubst_default(PG_FUNCTION_ARGS);
-Datum plvsubst_subst(PG_FUNCTION_ARGS);
+#include "builtins.h"
 
 PG_FUNCTION_INFO_V1(plvsubst_string_array);
 PG_FUNCTION_INFO_V1(plvsubst_string_string);

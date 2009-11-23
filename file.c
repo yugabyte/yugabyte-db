@@ -15,6 +15,7 @@
 #include "utils/builtins.h"
 #include "utils/memutils.h"
 #include "orafunc.h"
+#include "builtins.h"
 
 #ifndef ERRCODE_NO_DATA_FOUND
 #define ERRCODE_NO_DATA_FOUND				MAKE_SQLSTATE('P','0', '0','0','2')
@@ -28,24 +29,6 @@
 #define INVALID_MODE			"UTL_FILE_INVALID_MODE"
 #define	INVALID_PATH			"UTL_FILE_INVALID_PATH"
 #define VALUE_ERROR				"UTL_FILE_VALUE_ERROR"
-
-
-Datum utl_file_fopen(PG_FUNCTION_ARGS);
-Datum utl_file_is_open(PG_FUNCTION_ARGS);
-Datum utl_file_get_line(PG_FUNCTION_ARGS);
-Datum utl_file_get_nextline(PG_FUNCTION_ARGS);
-Datum utl_file_put(PG_FUNCTION_ARGS);
-Datum utl_file_put_line(PG_FUNCTION_ARGS);
-Datum utl_file_new_line(PG_FUNCTION_ARGS);
-Datum utl_file_putf(PG_FUNCTION_ARGS);
-Datum utl_file_fflush(PG_FUNCTION_ARGS);
-Datum utl_file_fclose(PG_FUNCTION_ARGS);
-Datum utl_file_fclose_all(PG_FUNCTION_ARGS);
-Datum utl_file_fremove(PG_FUNCTION_ARGS);
-Datum utl_file_frename(PG_FUNCTION_ARGS);
-Datum utl_file_fcopy(PG_FUNCTION_ARGS);
-Datum utl_file_fgetattr(PG_FUNCTION_ARGS);
-Datum utl_file_tmpdir(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(utl_file_fopen);
 PG_FUNCTION_INFO_V1(utl_file_is_open);

@@ -25,6 +25,7 @@
 #include "funcapi.h"
 #include "catalog/pg_type.h"
 #include "orafunc.h"
+#include "builtins.h"
 
 typedef struct {
 	List	*nodes;
@@ -32,9 +33,6 @@ typedef struct {
 	int	cnode;
 	char **values;
 } tokensFctx;
-
-
-Datum plvlex_tokens(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(plvlex_tokens);
 

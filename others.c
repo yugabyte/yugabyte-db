@@ -16,21 +16,12 @@
 #include "utils/memutils.h"
 #include "utils/syscache.h"
 #include "orafunc.h"
+#include "builtins.h"
 
 /*
  * Source code for nlssort is taken from postgresql-nls-string
  * package by Jan Pazdziora
  */
-
-Datum ora_nvl(PG_FUNCTION_ARGS);
-Datum ora_nvl2(PG_FUNCTION_ARGS);
-Datum ora_concat(PG_FUNCTION_ARGS);
-Datum ora_nlssort(PG_FUNCTION_ARGS);
-Datum ora_set_nls_sort(PG_FUNCTION_ARGS);
-Datum ora_lnnvl(PG_FUNCTION_ARGS);
-Datum ora_decode(PG_FUNCTION_ARGS);
-Datum orafce_dump(PG_FUNCTION_ARGS);
-
 
 static char *lc_collate_cache = NULL;
 static int multiplication = 1;

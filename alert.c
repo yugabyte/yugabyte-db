@@ -10,17 +10,9 @@
 #include "utils/timestamp.h"
 
 #include "orafunc.h"
+#include "builtins.h"
 #include "pipe.h"
 #include "shmmc.h"
-
-Datum dbms_alert_register(PG_FUNCTION_ARGS);
-Datum dbms_alert_remove(PG_FUNCTION_ARGS);
-Datum dbms_alert_removeall(PG_FUNCTION_ARGS);
-Datum dbms_alert_set_defaults(PG_FUNCTION_ARGS);
-Datum dbms_alert_signal(PG_FUNCTION_ARGS);
-Datum dbms_alert_waitany(PG_FUNCTION_ARGS);
-Datum dbms_alert_waitone(PG_FUNCTION_ARGS);
-Datum dbms_alert_defered_signal(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(dbms_alert_register);
 PG_FUNCTION_INFO_V1(dbms_alert_remove);

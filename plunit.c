@@ -8,25 +8,7 @@
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
 #include "orafunc.h"
-
-Datum plunit_assert_true(PG_FUNCTION_ARGS);
-Datum plunit_assert_true_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_false(PG_FUNCTION_ARGS);
-Datum plunit_assert_false_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_null(PG_FUNCTION_ARGS);
-Datum plunit_assert_null_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_not_null(PG_FUNCTION_ARGS);
-Datum plunit_assert_not_null_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_equals(PG_FUNCTION_ARGS);
-Datum plunit_assert_equals_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_equals_range(PG_FUNCTION_ARGS);
-Datum plunit_assert_equals_range_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_not_equals(PG_FUNCTION_ARGS);
-Datum plunit_assert_not_equals_message(PG_FUNCTION_ARGS);
-Datum plunit_assert_not_equals_range(PG_FUNCTION_ARGS);
-Datum plunit_assert_not_equals_range_message(PG_FUNCTION_ARGS);
-Datum plunit_fail(PG_FUNCTION_ARGS);
-Datum plunit_fail_message(PG_FUNCTION_ARGS);
+#include "builtins.h"
 
 PG_FUNCTION_INFO_V1(plunit_assert_true);
 PG_FUNCTION_INFO_V1(plunit_assert_true_message);
@@ -46,7 +28,6 @@ PG_FUNCTION_INFO_V1(plunit_assert_not_equals_range);
 PG_FUNCTION_INFO_V1(plunit_assert_not_equals_range_message);
 PG_FUNCTION_INFO_V1(plunit_fail);
 PG_FUNCTION_INFO_V1(plunit_fail_message);
-
 
 static bool assert_equals_base(FunctionCallInfo fcinfo);
 static bool assert_equals_range_base(FunctionCallInfo fcinfo);

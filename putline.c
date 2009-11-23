@@ -12,6 +12,7 @@
 #include "utils/lsyscache.h"
 
 #include "orafunc.h"
+#include "builtins.h"
 
 extern PGDLLIMPORT ProtocolVersion FrontendProtocol;
 
@@ -35,20 +36,9 @@ static void add_text(text *str);
 static void add_newline(void);
 static void send_buffer(void);
 
-Datum dbms_output_enable(PG_FUNCTION_ARGS);
-Datum dbms_output_enable_default(PG_FUNCTION_ARGS);
-Datum dbms_output_disable(PG_FUNCTION_ARGS);
-Datum dbms_output_serveroutput(PG_FUNCTION_ARGS);
-Datum dbms_output_put(PG_FUNCTION_ARGS);
-Datum dbms_output_put_line(PG_FUNCTION_ARGS);
-Datum dbms_output_new_line(PG_FUNCTION_ARGS);
-Datum dbms_output_get_line(PG_FUNCTION_ARGS);
-Datum dbms_output_get_lines(PG_FUNCTION_ARGS);
-
 /*
  * Aux. buffer functionality
  */
-
 static void
 add_str(const char *str, int len)
 {

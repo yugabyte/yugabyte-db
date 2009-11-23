@@ -16,16 +16,7 @@
 #include <errno.h>
 
 #include "orafunc.h"
-
-Datum dbms_random_initialize(PG_FUNCTION_ARGS);
-Datum dbms_random_normal(PG_FUNCTION_ARGS);
-Datum dbms_random_random(PG_FUNCTION_ARGS);
-Datum dbms_random_seed_int(PG_FUNCTION_ARGS);
-Datum dbms_random_seed_varchar(PG_FUNCTION_ARGS);
-Datum dbms_random_string(PG_FUNCTION_ARGS);
-Datum dbms_random_terminate(PG_FUNCTION_ARGS);
-Datum dbms_random_value(PG_FUNCTION_ARGS);
-Datum dbms_random_value_range(PG_FUNCTION_ARGS);
+#include "builtins.h"
 
 PG_FUNCTION_INFO_V1(dbms_random_initialize);
 PG_FUNCTION_INFO_V1(dbms_random_normal);
