@@ -31,8 +31,4 @@ Datum plvchr_char_name(PG_FUNCTION_ARGS);
 Datum oracle_substr2(PG_FUNCTION_ARGS);
 Datum oracle_substr3(PG_FUNCTION_ARGS);
 
-Datum orafce_listagg1_transfn(PG_FUNCTION_ARGS);
-Datum orafce_listagg2_transfn(PG_FUNCTION_ARGS);
-Datum orafce_listagg_finalfn(PG_FUNCTION_ARGS);
-
 #endif
