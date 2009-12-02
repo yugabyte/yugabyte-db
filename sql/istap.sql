@@ -17,9 +17,8 @@ SELECT * FROM check_test( is( 1, 2 ), false, 'is(1, 2)', '', '       have: 1
 /****************************************************************************/
 -- Test isnt().
 SELECT * FROM check_test( isnt(1, 2), true, 'isnt(1, 2)', '', '' );
-SELECT * FROM check_test( isnt( 1, 1 ), false, 'isnt(1, 1)', '', '   1
-      <>
-    1' );
+SELECT * FROM check_test( isnt( 1, 1 ), false, 'isnt(1, 1)', '', '       have: 1
+        want: anything else' );
 
 /****************************************************************************/
 -- Try using variables.

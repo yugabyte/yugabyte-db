@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(558);
+SELECT plan(630);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1559,6 +1559,206 @@ SELECT * FROM check_test(
   'hasnt_opclass( name, desc ) fail',
   'whatever',
   ''
+);
+
+/****************************************************************************/
+-- Test domain_type_is() and domain_type_isnt().
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'us_postal_code', 'public', 'text', 'whatever'),
+    true,
+    'domain_type_is(schema, domain, schema, type, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'us_postal_code', 'public'::name, 'text'),
+    true,
+    'domain_type_is(schema, domain, schema, type)',
+    'Domain public.us_postal_code should extend type public.text',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'us_postal_code', 'public', 'integer', 'whatever'),
+    false,
+    'domain_type_is(schema, domain, schema, type, desc) fail',
+    'whatever',
+    '        have: public.text
+        want: public.integer'
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'zip_code', 'public', 'integer', 'whatever'),
+    false,
+    'domain_type_is(schema, nondomain, schema, type, desc)',
+    'whatever',
+    '   Domain public.zip_code does not exist'
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'us_postal_code', 'text', 'whatever'),
+    true,
+    'domain_type_is(schema, domain, type, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public'::name, 'us_postal_code', 'text'),
+    true,
+    'domain_type_is(schema, domain, type)',
+    'Domain public.us_postal_code should extend type text', 
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'us_postal_code', 'integer', 'whatever'),
+    false,
+    'domain_type_is(schema, domain, type, desc) fail',
+    'whatever',
+    '        have: text
+        want: integer'
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'public', 'zip_code', 'integer', 'whatever'),
+    false,
+    'domain_type_is(schema, nondomain, type, desc)',
+    'whatever',
+    '   Domain public.zip_code does not exist'
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'us_postal_code', 'text', 'whatever'),
+    true,
+    'domain_type_is(domain, type, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'us_postal_code', 'text'),
+    true,
+    'domain_type_is(domain, type)',
+    'Domain us_postal_code should extend type text', 
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'us_postal_code', 'integer', 'whatever'),
+    false,
+    'domain_type_is(domain, type, desc) fail',
+    'whatever',
+    '        have: text
+        want: integer'
+);
+
+SELECT * FROM check_test(
+    domain_type_is( 'zip_code', 'integer', 'whatever'),
+    false,
+    'domain_type_is(nondomain, type, desc)',
+    'whatever',
+    '   Domain zip_code does not exist'
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'us_postal_code', 'public', 'integer', 'whatever'),
+    true,
+    'domain_type_isnt(schema, domain, schema, type, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'us_postal_code', 'public'::name, 'integer'),
+    true,
+    'domain_type_isnt(schema, domain, schema, type)',
+    'Domain public.us_postal_code should not extend type public.integer',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'us_postal_code', 'public', 'text', 'whatever'),
+    false,
+    'domain_type_isnt(schema, domain, schema, type, desc) fail',
+    'whatever',
+    '        have: public.text
+        want: anything else'
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'zip_code', 'public', 'text', 'whatever'),
+    false,
+    'domain_type_isnt(schema, nondomain, schema, type, desc)',
+    'whatever',
+    '   Domain public.zip_code does not exist'
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'us_postal_code', 'integer', 'whatever'),
+    true,
+    'domain_type_isnt(schema, domain, type, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public'::name, 'us_postal_code', 'integer'),
+    true,
+    'domain_type_isnt(schema, domain, type)',
+    'Domain public.us_postal_code should not extend type integer', 
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'us_postal_code', 'text', 'whatever'),
+    false,
+    'domain_type_isnt(schema, domain, type, desc) fail',
+    'whatever',
+    '        have: text
+        want: anything else'
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'public', 'zip_code', 'text', 'whatever'),
+    false,
+    'domain_type_isnt(schema, nondomain, type, desc)',
+    'whatever',
+    '   Domain public.zip_code does not exist'
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'us_postal_code', 'integer', 'whatever'),
+    true,
+    'domain_type_isnt(domain, type, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'us_postal_code', 'integer'),
+    true,
+    'domain_type_isnt(domain, type)',
+    'Domain us_postal_code should not extend type integer', 
+    ''
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'us_postal_code', 'text', 'whatever'),
+    false,
+    'domain_type_isnt(domain, type, desc) fail',
+    'whatever',
+    '        have: text
+        want: anything else'
+);
+
+SELECT * FROM check_test(
+    domain_type_isnt( 'zip_code', 'text', 'whatever'),
+    false,
+    'domain_type_isnt(nondomain, type, desc)',
+    'whatever',
+    '   Domain zip_code does not exist'
 );
 
 /****************************************************************************/

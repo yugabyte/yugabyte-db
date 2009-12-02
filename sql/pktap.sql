@@ -188,9 +188,8 @@ SELECT * FROM check_test(
     false,
     'col_isnt_pk( schema, table, column, description )',
     'public.sometab.id should not be a pk',
-    '    {id}
-      <>
-    {id}'
+    '        have: {id}
+        want: anything else'
 );
 
 SELECT * FROM check_test(
@@ -198,9 +197,8 @@ SELECT * FROM check_test(
     false,
     'col_isnt_pk( table, column, description )',
     'sometab.id should not be a pk',
-    '    {id}
-      <>
-    {id}'
+    '        have: {id}
+        want: anything else'
 );
 
 SELECT * FROM check_test(
@@ -208,9 +206,8 @@ SELECT * FROM check_test(
     false,
     'col_isnt_pk( table, column )',
     'Column sometab(id) should not be a primary key',
-    '    {id}
-      <>
-    {id}'
+    '        have: {id}
+        want: anything else'
 );
 
 SELECT * FROM check_test(
