@@ -105,7 +105,7 @@ line size is 32K. This package contains functions:
 * utl_file.fcopy(src_location, src_filename, dest_location, dest_filename[, start_line][, end_line]) - copy text file
 * utl_file.fflush(file utl_file.file_type)  - flushes all data from buffers
 * utl_file.fgetattr(location, filename) - get file attributes
-* utl_file.fopen(location text, filename text, file_mode text [, maxlinesize int]) utl_file.file_type  - open file
+* utl_file.fopen(location text, filename text, file_mode text [, maxlinesize int] [, encoding name]) utl_file.file_type  - open file
 * utl_file.fremove(location, filename) - remove file
 * utl_file.frename(location, filename, dest_dir, dest_file[, overwrite]) - rename file
 * utl_file.get_line(file utl_file.file_type) text  - read one line from file
