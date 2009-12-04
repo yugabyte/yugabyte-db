@@ -467,7 +467,7 @@ orafce_dump(PG_FUNCTION_ARGS)
 	length = datumGetSize(value, typbyval, typlen);
 
 	initStringInfo(&str);
-	appendStringInfo(&str, "Typ=%d Len=%d: ", valtype, length);
+	appendStringInfo(&str, "Typ=%d Len=%d: ", valtype, (int) length);
 
 	if (!typbyval)
 	{

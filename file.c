@@ -85,6 +85,7 @@ typedef struct FileSlot
 {
 	FILE   *file;
 	int		max_linesize;
+	int		encoding;
 	int32	id;
 } FileSlot;
 
@@ -105,7 +106,7 @@ static int copy_text_file(FILE *srcfile, FILE *dstfile,
  *
  */
 static int
-get_descriptor(FILE *file, int max_linesize)
+get_descriptor(FILE *file, int max_linesize, int encoding)
 {
 	int i;
 
@@ -118,6 +119,7 @@ get_descriptor(FILE *file, int max_linesize)
 				slots[i].id = ++slotid;	/* skip INVALID_SLOTID */
 			slots[i].file = file;
 			slots[i].max_linesize = max_linesize;
+			slots[i].encoding = encoding;
 			return slots[i].id;
 		}
 	}
@@ -127,7 +129,7 @@ get_descriptor(FILE *file, int max_linesize)
 
 /* return stored pointer to FILE */
 static FILE *
-get_stream(int d, int *max_linesize)
+get_stream(int d, int *max_linesize, int *encoding)
 {
 	int i;
 
@@ -140,6 +142,8 @@ get_stream(int d, int *max_linesize)
 		{
 			if (max_linesize)
 				*max_linesize = slots[i].max_linesize;
+			if (encoding)
+				*encoding = slots[i].encoding;
 			return slots[i].file;
 		}
 	}
@@ -184,6 +188,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 {
 	text	   *open_mode;
 	int			max_linesize;
+	int			encoding;
 	const char *mode = NULL;
 	FILE	   *file;
 	char	   *fullname;
@@ -200,6 +205,18 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 
 	max_linesize = PG_GETARG_INT32(3);
 	CHECK_LINESIZE(max_linesize);
+
+	if (PG_NARGS() > 4 && !PG_ARGISNULL(4))
+	{
+		const char *encname = NameStr(*PG_GETARG_NAME(4));
+		encoding = pg_char_to_encoding(encname);
+		if (encoding < 0)
+			ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid encoding name \"%s\"", encname)));
+	}
+	else
+		encoding = GetDatabaseEncoding();
 
 	if (VARSIZE(open_mode) - VARHDRSZ != 1)
 		CUSTOM_EXCEPTION(INVALID_MODE, "open mode is different than [R,W,A]");
@@ -240,7 +257,7 @@ utl_file_fopen(PG_FUNCTION_ARGS)
 	if (!file)
 		IO_EXCEPTION();
 
-	d = get_descriptor(file, max_linesize);
+	d = get_descriptor(file, max_linesize, encoding);
 	if (d == INVALID_SLOTID)
 	{
 		fclose(file);
@@ -279,7 +296,7 @@ utl_file_is_open(PG_FUNCTION_ARGS)
 /* read line from file. set eof if is EOF */
 
 static text *
-get_line(FILE *f, int max_linesize, bool *iseof)
+get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 {
 	int c;
 	char *buffer = NULL;
@@ -318,10 +335,18 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 
 	if (!eof)
 	{
-		pg_verifymbstr(buffer, csize, false);
-		result = palloc(csize + VARHDRSZ);
-		memcpy(VARDATA(result), buffer, csize);
-		SET_VARSIZE(result, csize + VARHDRSZ);
+		char   *decoded;
+		int		len;
+
+		pg_verify_mbstr(encoding, buffer, csize, false);
+		decoded = (char *) pg_do_encoding_conversion((unsigned char *) buffer,
+									 csize, encoding, GetDatabaseEncoding());
+		len = (decoded == buffer ? csize : strlen(decoded));
+		result = palloc(len + VARHDRSZ);
+		memcpy(VARDATA(result), decoded, len);
+		SET_VARSIZE(result, len + VARHDRSZ);
+		if (decoded != buffer)
+			pfree(decoded);
 		*iseof = false;
 	}
 	else
@@ -360,13 +385,14 @@ get_line(FILE *f, int max_linesize, bool *iseof)
 Datum
 utl_file_get_line(PG_FUNCTION_ARGS)
 {
-	int max_linesize;
-	FILE *f;
-	text *result;
-	bool iseof;
+	int		max_linesize;
+	int		encoding;
+	FILE   *f;
+	text   *result;
+	bool	iseof;
 
 	CHECK_FILE_HANDLE();
-	f = get_stream(PG_GETARG_INT32(0), &max_linesize);
+	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
 
 	/* 'len' overwrites max_linesize, but must be smaller than max_linesize */
 	if (PG_NARGS() > 1 && !PG_ARGISNULL(1))
@@ -377,7 +403,7 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 			max_linesize = len;
 	}
 
-	result = get_line(f, max_linesize, &iseof);
+	result = get_line(f, max_linesize, encoding, &iseof);
 
 	if (iseof)
 	    	ereport(ERROR,
@@ -401,15 +427,16 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 Datum
 utl_file_get_nextline(PG_FUNCTION_ARGS)
 {
-	int max_linesize;
-	FILE *f;
-	text *result;
-	bool iseof;
+	int		max_linesize;
+	int		encoding;
+	FILE   *f;
+	text   *result;
+	bool	iseof;
 
 	CHECK_FILE_HANDLE();
-	f = get_stream(PG_GETARG_INT32(0), &max_linesize);
+	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
 
-	result = get_line(f, max_linesize, &iseof);
+	result = get_line(f, max_linesize, encoding, &iseof);
 
 	if (iseof)
 		PG_RETURN_NULL();
@@ -452,26 +479,53 @@ do_flush(FILE *f)
 			CUSTOM_EXCEPTION(WRITE_ERROR, strerror(errno)); \
 	}
 
+/* encode(t, encoding) */
+static char *
+encode_text(int encoding, text *t, int *length)
+{
+	char	   *src = VARDATA_ANY(t);
+	char	   *encoded;
+
+	encoded = (char *) pg_do_encoding_conversion((unsigned char *) src,
+					VARSIZE_ANY_EXHDR(t), GetDatabaseEncoding(), encoding);
+
+	*length = (src == encoded ? VARSIZE_ANY_EXHDR(t) : strlen(encoded));
+	return encoded;
+}
+
+/* fwrite(encode(args[n], encoding), f) */
+static int
+do_write(PG_FUNCTION_ARGS, int n, FILE *f, int max_linesize, int encoding)
+{
+	text	   *arg = PG_GETARG_TEXT_P(n);
+	char	   *str;
+	int			len;
+
+	str = encode_text(encoding, arg, &len);
+	CHECK_LENGTH(len);
+
+	if (fwrite(str, 1, len, f) != len)
+		CHECK_ERRNO_PUT();
+
+	if (VARDATA(arg) != str)
+		pfree(str);
+	PG_FREE_IF_COPY(arg, n);
+
+	return len;
+}
+
 static FILE *
 do_put(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
-	text   *buffer;
 	int		max_linesize;
-	int		len;
+	int		encoding;
 
 	CHECK_FILE_HANDLE();
-	f = get_stream(PG_GETARG_INT32(0), &max_linesize);
+	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
 
 	NOT_NULL_ARG(1);
-	buffer = PG_GETARG_TEXT_PP(1);
-
-	/* I have to check buffer's size */
-	len = VARSIZE_ANY_EXHDR(buffer);
-	CHECK_LENGTH(len);
-
-	if (fwrite(VARDATA_ANY(buffer), 1, len, f) != len)
-		CHECK_ERRNO_PUT();
+	do_write(fcinfo, 1, f, max_linesize, encoding);
 	return f;
 }
 
@@ -523,7 +577,7 @@ utl_file_new_line(PG_FUNCTION_ARGS)
 	int		lines;
 
 	CHECK_FILE_HANDLE();
-	f = get_stream(PG_GETARG_INT32(0), NULL);
+	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
 	lines = PG_GETARG_IF_EXISTS(1, INT32, 1);
 
 	do_new_line(f, lines);
@@ -549,22 +603,22 @@ utl_file_new_line(PG_FUNCTION_ARGS)
 Datum
 utl_file_putf(PG_FUNCTION_ARGS)
 {
-	FILE *f;
-	text *format;
-	int max_linesize;
-	int format_length;
-	char *fpt;
-	int cur_par = 0;
-	int cur_len = 0;
+	FILE   *f;
+	char   *format;
+	int		max_linesize;
+	int		encoding;
+	int		format_length;
+	char   *fpt;
+	int		cur_par = 0;
+	int		cur_len = 0;
 
 	CHECK_FILE_HANDLE();
-	f = get_stream(PG_GETARG_INT32(0), &max_linesize);
+	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);
 
 	NOT_NULL_ARG(1);
-	format = PG_GETARG_TEXT_P(1);
-	format_length = VARSIZE_ANY_EXHDR(format);
+	format = encode_text(encoding, PG_GETARG_TEXT_P(1), &format_length);
 
-	for (fpt = VARDATA(format); format_length > 0; fpt++, format_length--)
+	for (fpt = format; format_length > 0; fpt++, format_length--)
 	{
 		if (format_length == 1)
 		{
@@ -593,20 +647,7 @@ utl_file_putf(PG_FUNCTION_ARGS)
 			}
 			else if (fpt[1] == 's' && ++cur_par <= 5 && !PG_ARGISNULL(cur_par + 1))
 			{
-				text *buffer = PG_GETARG_TEXT_P(cur_par + 1);
-				int bfsize = VARSIZE_ANY_EXHDR(buffer);
-				char *tbuf;
-
-				cur_len += bfsize;
-				CHECK_LENGTH(cur_len);
-
-				tbuf = (char *) palloc(bfsize + 1);
-				memcpy(tbuf, VARDATA(buffer), bfsize);
-				tbuf[bfsize] = '\0';
-
-				if (fputs(tbuf, f) == EOF)
-					CHECK_ERRNO_PUT();
-
+				cur_len += do_write(fcinfo, cur_par + 1, f, max_linesize - cur_len, encoding);
 			}
 			fpt++; format_length--;
 			continue;
@@ -636,7 +677,7 @@ utl_file_fflush(PG_FUNCTION_ARGS)
 	FILE *f;
 
 	CHECK_FILE_HANDLE();
-	f = get_stream(PG_GETARG_INT32(0), NULL);
+	f = get_stream(PG_GETARG_INT32(0), NULL, NULL);
 	do_flush(f);
 
 	PG_RETURN_VOID();
