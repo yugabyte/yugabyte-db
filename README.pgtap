@@ -2415,7 +2415,10 @@ This function is the inverse of `col_has_default()`. The test passes if the
 specified column does *not* have a default. It will still fail if the column
 does not exist, and emit useful diagnostics to let you know.
 
+### `col_type_is( schema, table, column, schema, type, description )` ###
+### `col_type_is( schema, table, column, schema, type )` ###
 ### `col_type_is( schema, table, column, type, description )` ###
+### `col_type_is( schema, table, column, type )` ###
 ### `col_type_is( table, column, type, description )` ###
 ### `col_type_is( table, column, type )` ###
 
@@ -2430,11 +2433,11 @@ does not exist, and emit useful diagnostics to let you know.
 This function tests that the specified column is of a particular type. If it
 fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
-fourth the type, and the fifth is the test description. If the schema is
-omitted, the table and the type must be visible in the search path. If the
-test description is omitted, it will be set to "Column
-`:schema.:table.:column` should be type `:type`". Note that this test will
-fail if the table or column in question does not exist.
+fourth the type's schem, the fifth the type, and the sixth is the test
+description. If the table schema is omitted, the table and the type must be
+visible in the search path. If the test description is omitted, it will be set
+to "Column `:schema.:table.:column` should be type `:schema.:type`". Note that
+this test will fail if the table or column in question does not exist.
 
 The type argument should be formatted as it would be displayed in the view of
 a table using the `\d` command in `psql`. For example, if you have a numeric

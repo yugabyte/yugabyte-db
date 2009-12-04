@@ -1081,6 +1081,80 @@ RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should allow NULL', false );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+      FROM pg_catalog.pg_namespace n
+      JOIN pg_catalog.pg_class c     ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+     WHERE n.nspname = $1
+       AND c.relname = $2
+       AND a.attname = $3
+       AND attnum    > 0
+       AND NOT a.attisdropped
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON  a.attrelid = c.oid
+     WHERE pg_table_is_visible(c.oid)
+       AND c.relname = $1
+       AND a.attname = $2
+       AND attnum    > 0
+       AND NOT a.attisdropped
+       AND pg_type_is_visible(a.atttypid)
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_col_ns_type ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT quote_ident(tn.nspname) || '.' || pg_catalog.format_type(a.atttypid, a.atttypmod)
+      FROM pg_catalog.pg_namespace n
+      JOIN pg_catalog.pg_class c      ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_attribute a  ON c.oid = a.attrelid
+      JOIN pg_catalog.pg_type t       ON a.atttypid = t.oid
+      JOIN pg_catalog.pg_namespace tn ON t.typnamespace = tn.oid
+     WHERE n.nspname = $1
+       AND c.relname = $2
+       AND a.attname = $3
+       AND attnum    > 0
+       AND NOT a.attisdropped
+$$ LANGUAGE SQL;
+
+-- col_type_is( schema, table, column, schema, type, description )
+CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, NAME, TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    actual_type TEXT := _get_col_ns_type($1, $2, $3);
+BEGIN
+    IF actual_type IS NULL THEN
+        RETURN fail( $6 ) || E'\n' || diag (
+            '   Column ' || COALESCE(quote_ident($1) || '.', '')
+            || quote_ident($2) || '.' || quote_ident($3) || ' does not exist'
+        );
+    END IF;
+
+    IF actual_type = quote_ident($4) || '.' || LOWER($5) THEN
+        -- We're good to go.
+        RETURN ok( true, $6 );
+    END IF;
+
+    -- Wrong data type. tell 'em what we really got.
+    RETURN ok( false, $6 ) || E'\n' || diag(
+           '        have: ' || actual_type ||
+        E'\n        want: ' || quote_ident($4) || '.' || LOWER($5)
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- col_type_is( schema, table, column, schema, type )
+CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT col_type_is( $1, $2, $3, $4, $5, 'Column ' || quote_ident($1) || '.' || quote_ident($2)
+        || '.' || quote_ident($3) || ' should be type ' || quote_ident($4) || '.' || quote_ident($5));
+$$ LANGUAGE SQL;
+
 -- col_type_is( schema, table, column, type, description )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
@@ -1089,34 +1163,16 @@ DECLARE
 BEGIN
     -- Get the data type.
     IF $1 IS NULL THEN
-        IF NOT _cexists( $2, $3 ) THEN
-            RETURN fail( $5 ) || E'\n'
-            || diag ('   Column ' || quote_ident($2) || '.' || quote_ident($3) || ' does not exist' );
-        END IF;
-
-        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
-          FROM pg_catalog.pg_attribute a
-          JOIN pg_catalog.pg_class c ON  a.attrelid = c.oid
-         WHERE pg_table_is_visible(c.oid)
-           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
-           AND c.relname = $2
-           AND attnum > 0
-           AND a.attname = $3;
+        actual_type := _get_col_type($2, $3);
     ELSE
-        IF NOT _cexists( $1, $2, $3 ) THEN
-            RETURN fail( $5 ) || E'\n'
-            || diag ('   Column ' || quote_ident($1) || '.' || quote_ident($2) || '.' || quote_ident($3) || ' does not exist' );
-        END IF;
+        actual_type := _get_col_type($1, $2, $3);
+    END IF;
 
-        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod) into actual_type
-          FROM pg_catalog.pg_namespace n
-          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
-          JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
-         WHERE n.nspname = $1
-           AND c.relname = $2
-           AND attnum > 0
-           AND a.attname = $3
-           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END;
+    IF actual_type IS NULL THEN
+        RETURN fail( $5 ) || E'\n' || diag (
+            '   Column ' || COALESCE(quote_ident($1) || '.', '')
+            || quote_ident($2) || '.' || quote_ident($3) || ' does not exist'
+        );
     END IF;
 
     IF actual_type = LOWER($4) THEN
@@ -1126,11 +1182,17 @@ BEGIN
 
     -- Wrong data type. tell 'em what we really got.
     RETURN ok( false, $5 ) || E'\n' || diag(
-           '        have: ' || COALESCE( actual_type::text, 'NULL' ) ||
+           '        have: ' || actual_type ||
         E'\n        want: ' || $4::text
     );
 END;
 $$ LANGUAGE plpgsql;
+
+-- col_type_is( schema, table, column, type )
+CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT col_type_is( $1, $2, $3, $4, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should be type ' || $3 );
+$$ LANGUAGE SQL;
 
 -- col_type_is( table, column, type, description )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, TEXT, TEXT )
@@ -6761,7 +6823,7 @@ RETURNS BOOLEAN AS $$
    );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _get_type( NAME, NAME, CHAR[] )
+CREATE OR REPLACE FUNCTION _get_dtype( NAME, NAME )
 RETURNS TEXT[] AS $$
     SELECT ARRAY[quote_ident(tn.nspname), pg_catalog.format_type(t.oid, t.typtypmod)]
       FROM pg_catalog.pg_type d
@@ -6770,25 +6832,25 @@ RETURNS TEXT[] AS $$
       JOIN pg_catalog.pg_namespace tn ON d.typnamespace = tn.oid
      WHERE d.typisdefined
        AND dn.nspname = $1
-       AND d.typname  = $2
-       AND t.typtype  = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
+       AND d.typname  = LOWER($2)
+       AND d.typtype  = 'd'
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _get_type( NAME, CHAR[] )
+CREATE OR REPLACE FUNCTION _get_dtype( NAME )
 RETURNS TEXT AS $$
     SELECT pg_catalog.format_type(t.oid, t.typtypmod)
       FROM pg_catalog.pg_type d
-      JOIN pg_catalog.pg_type t       ON d.typbasetype  = t.oid
+      JOIN pg_catalog.pg_type t  ON d.typbasetype  = t.oid
      WHERE d.typisdefined
-       AND d.typname = $1
-       AND t.typtype = ANY( COALESCE($2, ARRAY['b', 'c', 'd', 'p', 'e']) )
+       AND d.typname = LOWER($1)
+       AND d.typtype = 'd'
 $$ LANGUAGE sql;
 
 -- domain_type_is( schema, domain, schema, type, description )
 CREATE OR REPLACE FUNCTION domain_type_is( NAME, TEXT, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_type($1, $2, ARRAY['b']);
+    actual_type TEXT[] := _get_dtype($1, $2);
 BEGIN
     IF actual_type[1] IS NULL THEN
         RETURN fail( $5 ) || E'\n' || diag (
@@ -6799,7 +6861,7 @@ BEGIN
 
     RETURN is(
         actual_type[1]  || '.' || actual_type[2],
-        quote_ident($3) || '.' || $4,
+        quote_ident($3) || '.' || LOWER($4),
         $5
     );
 END;
@@ -6819,7 +6881,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_is( NAME, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_type($1, $2, ARRAY['b']);
+    actual_type TEXT[] := _get_dtype($1, $2);
 BEGIN
     IF actual_type[1] IS NULL THEN
         RETURN fail( $4 ) || E'\n' || diag (
@@ -6828,7 +6890,7 @@ BEGIN
         );
     END IF;
 
-    RETURN is( actual_type[2], $3, $4 );
+    RETURN is( actual_type[2], LOWER($3), $4 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6846,7 +6908,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_is( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT := _get_type($1, ARRAY['b']);
+    actual_type TEXT := _get_dtype($1);
 BEGIN
     IF actual_type IS NULL THEN
         RETURN fail( $3 ) || E'\n' || diag (
@@ -6854,7 +6916,7 @@ BEGIN
         );
     END IF;
 
-    RETURN is( actual_type, $2, $3 );
+    RETURN is( actual_type, LOWER($2), $3 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6871,7 +6933,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_isnt( NAME, TEXT, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_type($1, $2, ARRAY['b']);
+    actual_type TEXT[] := _get_dtype($1, $2);
 BEGIN
     IF actual_type[1] IS NULL THEN
         RETURN fail( $5 ) || E'\n' || diag (
@@ -6882,7 +6944,8 @@ BEGIN
 
     RETURN isnt(
         actual_type[1]  || '.' || actual_type[2],
-        quote_ident($3) || '.' || $4,
+        quote_ident($3) || '.' || LOWER($4),
+
         $5
     );
 END;
@@ -6902,7 +6965,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_isnt( NAME, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_type($1, $2, ARRAY['b']);
+    actual_type TEXT[] := _get_dtype($1, $2);
 BEGIN
     IF actual_type[1] IS NULL THEN
         RETURN fail( $4 ) || E'\n' || diag (
@@ -6911,7 +6974,7 @@ BEGIN
         );
     END IF;
 
-    RETURN isnt( actual_type[2], $3, $4 );
+    RETURN isnt( actual_type[2], LOWER($3), $4 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6929,7 +6992,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_isnt( TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT := _get_type($1, ARRAY['b']);
+    actual_type TEXT := _get_dtype($1);
 BEGIN
     IF actual_type IS NULL THEN
         RETURN fail( $3 ) || E'\n' || diag (
@@ -6937,7 +7000,7 @@ BEGIN
         );
     END IF;
 
-    RETURN isnt( actual_type, $2, $3 );
+    RETURN isnt( actual_type, LOWER($2), $3 );
 END;
 $$ LANGUAGE plpgsql;
 

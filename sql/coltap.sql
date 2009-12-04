@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(171);
+SELECT plan(192);
 --SELECT * from no_plan();
 
 -- This will be rolled back. :-)
@@ -135,10 +135,69 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test col_type_is().
 SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'text', 'name is text' ),
+    true,
+    'col_type_is( sch, tab, col, sch, type, desc )',
+    'name is text',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'pg_catalog'::name, 'text' ),
+    true,
+    'col_type_is( sch, tab, col, sch, type, desc )',
+    'Column public.sometab.name should be type pg_catalog.text',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'integer', 'whatever' ),
+    false,
+    'col_type_is( sch, tab, col, sch, type, desc ) fail',
+    'whatever',
+    '        have: pg_catalog.text
+        want: pg_catalog.integer'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'blech', 'whatever' ),
+    false,
+    'col_type_is( sch, tab, col, sch, non-type, desc )',
+    'whatever',
+    '        have: pg_catalog.text
+        want: pg_catalog.blech'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name', 'fooey', 'text', 'whatever' ),
+    false,
+    'col_type_is( sch, tab, col, non-sch, type, desc )',
+    'whatever',
+    '        have: pg_catalog.text
+        want: fooey.text'
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'nonesuch', 'pg_catalog', 'text', 'whatever' ),
+    false,
+    'col_type_is( sch, tab, non-col, sch, type, desc )',
+    'whatever',
+    '   Column public.sometab.nonesuch does not exist'
+);
+
+SELECT * FROM check_test(
     col_type_is( 'public', 'sometab', 'name', 'text', 'name is text' ),
     true,
     'col_type_is( sch, tab, col, type, desc )',
     'name is text',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'name'::name, 'text' ),
+    true,
+    'col_type_is( sch, tab, col, type )',
+    'Column public.sometab should be type name',
     ''
 );
 

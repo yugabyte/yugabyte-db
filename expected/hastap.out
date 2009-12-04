@@ -1,5 +1,5 @@
 \unset ECHO
-1..630
+1..675
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -564,69 +564,114 @@ ok 561 - domain_type_is(schema, domain, schema, type, desc) should have the prop
 ok 562 - domain_type_is(schema, domain, schema, type) should pass
 ok 563 - domain_type_is(schema, domain, schema, type) should have the proper description
 ok 564 - domain_type_is(schema, domain, schema, type) should have the proper diagnostics
-ok 565 - domain_type_is(schema, domain, schema, type, desc) fail should fail
-ok 566 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper description
-ok 567 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper diagnostics
-ok 568 - domain_type_is(schema, nondomain, schema, type, desc) should fail
-ok 569 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper description
-ok 570 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper diagnostics
-ok 571 - domain_type_is(schema, domain, type, desc) should pass
-ok 572 - domain_type_is(schema, domain, type, desc) should have the proper description
-ok 573 - domain_type_is(schema, domain, type, desc) should have the proper diagnostics
-ok 574 - domain_type_is(schema, domain, type) should pass
-ok 575 - domain_type_is(schema, domain, type) should have the proper description
-ok 576 - domain_type_is(schema, domain, type) should have the proper diagnostics
-ok 577 - domain_type_is(schema, domain, type, desc) fail should fail
-ok 578 - domain_type_is(schema, domain, type, desc) fail should have the proper description
-ok 579 - domain_type_is(schema, domain, type, desc) fail should have the proper diagnostics
-ok 580 - domain_type_is(schema, nondomain, type, desc) should fail
-ok 581 - domain_type_is(schema, nondomain, type, desc) should have the proper description
-ok 582 - domain_type_is(schema, nondomain, type, desc) should have the proper diagnostics
-ok 583 - domain_type_is(domain, type, desc) should pass
-ok 584 - domain_type_is(domain, type, desc) should have the proper description
-ok 585 - domain_type_is(domain, type, desc) should have the proper diagnostics
-ok 586 - domain_type_is(domain, type) should pass
-ok 587 - domain_type_is(domain, type) should have the proper description
-ok 588 - domain_type_is(domain, type) should have the proper diagnostics
-ok 589 - domain_type_is(domain, type, desc) fail should fail
-ok 590 - domain_type_is(domain, type, desc) fail should have the proper description
-ok 591 - domain_type_is(domain, type, desc) fail should have the proper diagnostics
-ok 592 - domain_type_is(nondomain, type, desc) should fail
-ok 593 - domain_type_is(nondomain, type, desc) should have the proper description
-ok 594 - domain_type_is(nondomain, type, desc) should have the proper diagnostics
-ok 595 - domain_type_isnt(schema, domain, schema, type, desc) should pass
-ok 596 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper description
-ok 597 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper diagnostics
-ok 598 - domain_type_isnt(schema, domain, schema, type) should pass
-ok 599 - domain_type_isnt(schema, domain, schema, type) should have the proper description
-ok 600 - domain_type_isnt(schema, domain, schema, type) should have the proper diagnostics
-ok 601 - domain_type_isnt(schema, domain, schema, type, desc) fail should fail
-ok 602 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper description
-ok 603 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper diagnostics
-ok 604 - domain_type_isnt(schema, nondomain, schema, type, desc) should fail
-ok 605 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper description
-ok 606 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper diagnostics
-ok 607 - domain_type_isnt(schema, domain, type, desc) should pass
-ok 608 - domain_type_isnt(schema, domain, type, desc) should have the proper description
-ok 609 - domain_type_isnt(schema, domain, type, desc) should have the proper diagnostics
-ok 610 - domain_type_isnt(schema, domain, type) should pass
-ok 611 - domain_type_isnt(schema, domain, type) should have the proper description
-ok 612 - domain_type_isnt(schema, domain, type) should have the proper diagnostics
-ok 613 - domain_type_isnt(schema, domain, type, desc) fail should fail
-ok 614 - domain_type_isnt(schema, domain, type, desc) fail should have the proper description
-ok 615 - domain_type_isnt(schema, domain, type, desc) fail should have the proper diagnostics
-ok 616 - domain_type_isnt(schema, nondomain, type, desc) should fail
-ok 617 - domain_type_isnt(schema, nondomain, type, desc) should have the proper description
-ok 618 - domain_type_isnt(schema, nondomain, type, desc) should have the proper diagnostics
-ok 619 - domain_type_isnt(domain, type, desc) should pass
-ok 620 - domain_type_isnt(domain, type, desc) should have the proper description
-ok 621 - domain_type_isnt(domain, type, desc) should have the proper diagnostics
-ok 622 - domain_type_isnt(domain, type) should pass
-ok 623 - domain_type_isnt(domain, type) should have the proper description
-ok 624 - domain_type_isnt(domain, type) should have the proper diagnostics
-ok 625 - domain_type_isnt(domain, type, desc) fail should fail
-ok 626 - domain_type_isnt(domain, type, desc) fail should have the proper description
-ok 627 - domain_type_isnt(domain, type, desc) fail should have the proper diagnostics
-ok 628 - domain_type_isnt(nondomain, type, desc) should fail
-ok 629 - domain_type_isnt(nondomain, type, desc) should have the proper description
-ok 630 - domain_type_isnt(nondomain, type, desc) should have the proper diagnostics
+ok 565 - domain_type_is(schema, DOMAIN, schema, TYPE, desc) should pass
+ok 566 - domain_type_is(schema, DOMAIN, schema, TYPE, desc) should have the proper description
+ok 567 - domain_type_is(schema, DOMAIN, schema, TYPE, desc) should have the proper diagnostics
+ok 568 - domain_type_is(schema, domain, schema, type, desc) fail should fail
+ok 569 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper description
+ok 570 - domain_type_is(schema, domain, schema, type, desc) fail should have the proper diagnostics
+ok 571 - domain_type_is(schema, nondomain, schema, type, desc) should fail
+ok 572 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper description
+ok 573 - domain_type_is(schema, nondomain, schema, type, desc) should have the proper diagnostics
+ok 574 - domain_type_is(schema, type, schema, type, desc) fail should fail
+ok 575 - domain_type_is(schema, type, schema, type, desc) fail should have the proper description
+ok 576 - domain_type_is(schema, type, schema, type, desc) fail should have the proper diagnostics
+ok 577 - domain_type_is(schema, domain, type, desc) should pass
+ok 578 - domain_type_is(schema, domain, type, desc) should have the proper description
+ok 579 - domain_type_is(schema, domain, type, desc) should have the proper diagnostics
+ok 580 - domain_type_is(schema, domain, type) should pass
+ok 581 - domain_type_is(schema, domain, type) should have the proper description
+ok 582 - domain_type_is(schema, domain, type) should have the proper diagnostics
+ok 583 - domain_type_is(schema, DOMAIN, TYPE, desc) should pass
+ok 584 - domain_type_is(schema, DOMAIN, TYPE, desc) should have the proper description
+ok 585 - domain_type_is(schema, DOMAIN, TYPE, desc) should have the proper diagnostics
+ok 586 - domain_type_is(schema, domain, type, desc) fail should fail
+ok 587 - domain_type_is(schema, domain, type, desc) fail should have the proper description
+ok 588 - domain_type_is(schema, domain, type, desc) fail should have the proper diagnostics
+ok 589 - domain_type_is(schema, nondomain, type, desc) should fail
+ok 590 - domain_type_is(schema, nondomain, type, desc) should have the proper description
+ok 591 - domain_type_is(schema, nondomain, type, desc) should have the proper diagnostics
+ok 592 - domain_type_is(schema, type, type, desc) fail should fail
+ok 593 - domain_type_is(schema, type, type, desc) fail should have the proper description
+ok 594 - domain_type_is(schema, type, type, desc) fail should have the proper diagnostics
+ok 595 - domain_type_is(domain, type, desc) should pass
+ok 596 - domain_type_is(domain, type, desc) should have the proper description
+ok 597 - domain_type_is(domain, type, desc) should have the proper diagnostics
+ok 598 - domain_type_is(domain, type) should pass
+ok 599 - domain_type_is(domain, type) should have the proper description
+ok 600 - domain_type_is(domain, type) should have the proper diagnostics
+ok 601 - domain_type_is(DOMAIN, TYPE, desc) should pass
+ok 602 - domain_type_is(DOMAIN, TYPE, desc) should have the proper description
+ok 603 - domain_type_is(DOMAIN, TYPE, desc) should have the proper diagnostics
+ok 604 - domain_type_is(domain, type, desc) fail should fail
+ok 605 - domain_type_is(domain, type, desc) fail should have the proper description
+ok 606 - domain_type_is(domain, type, desc) fail should have the proper diagnostics
+ok 607 - domain_type_is(nondomain, type, desc) should fail
+ok 608 - domain_type_is(nondomain, type, desc) should have the proper description
+ok 609 - domain_type_is(nondomain, type, desc) should have the proper diagnostics
+ok 610 - domain_type_is(type, type, desc) fail should fail
+ok 611 - domain_type_is(type, type, desc) fail should have the proper description
+ok 612 - domain_type_is(type, type, desc) fail should have the proper diagnostics
+ok 613 - domain_type_isnt(schema, domain, schema, type, desc) should pass
+ok 614 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper description
+ok 615 - domain_type_isnt(schema, domain, schema, type, desc) should have the proper diagnostics
+ok 616 - domain_type_isnt(schema, domain, schema, type) should pass
+ok 617 - domain_type_isnt(schema, domain, schema, type) should have the proper description
+ok 618 - domain_type_isnt(schema, domain, schema, type) should have the proper diagnostics
+ok 619 - domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) should pass
+ok 620 - domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) should have the proper description
+ok 621 - domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) should have the proper diagnostics
+ok 622 - domain_type_isnt(schema, domain, schema, type, desc) fail should fail
+ok 623 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper description
+ok 624 - domain_type_isnt(schema, domain, schema, type, desc) fail should have the proper diagnostics
+ok 625 - domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) fail should fail
+ok 626 - domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) fail should have the proper description
+ok 627 - domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) fail should have the proper diagnostics
+ok 628 - domain_type_isnt(schema, nondomain, schema, type, desc) should fail
+ok 629 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper description
+ok 630 - domain_type_isnt(schema, nondomain, schema, type, desc) should have the proper diagnostics
+ok 631 - domain_type_isnt(schema, type, schema, type, desc) should fail
+ok 632 - domain_type_isnt(schema, type, schema, type, desc) should have the proper description
+ok 633 - domain_type_isnt(schema, type, schema, type, desc) should have the proper diagnostics
+ok 634 - domain_type_isnt(schema, domain, type, desc) should pass
+ok 635 - domain_type_isnt(schema, domain, type, desc) should have the proper description
+ok 636 - domain_type_isnt(schema, domain, type, desc) should have the proper diagnostics
+ok 637 - domain_type_isnt(schema, domain, type) should pass
+ok 638 - domain_type_isnt(schema, domain, type) should have the proper description
+ok 639 - domain_type_isnt(schema, domain, type) should have the proper diagnostics
+ok 640 - domain_type_isnt(schema, DOMAIN, TYPE, desc) should pass
+ok 641 - domain_type_isnt(schema, DOMAIN, TYPE, desc) should have the proper description
+ok 642 - domain_type_isnt(schema, DOMAIN, TYPE, desc) should have the proper diagnostics
+ok 643 - domain_type_isnt(schema, domain, type, desc) fail should fail
+ok 644 - domain_type_isnt(schema, domain, type, desc) fail should have the proper description
+ok 645 - domain_type_isnt(schema, domain, type, desc) fail should have the proper diagnostics
+ok 646 - domain_type_isnt(schema, DOMAIN, TYPE, desc) fail should fail
+ok 647 - domain_type_isnt(schema, DOMAIN, TYPE, desc) fail should have the proper description
+ok 648 - domain_type_isnt(schema, DOMAIN, TYPE, desc) fail should have the proper diagnostics
+ok 649 - domain_type_isnt(schema, nondomain, type, desc) should fail
+ok 650 - domain_type_isnt(schema, nondomain, type, desc) should have the proper description
+ok 651 - domain_type_isnt(schema, nondomain, type, desc) should have the proper diagnostics
+ok 652 - domain_type_isnt(schema, type, type, desc) should fail
+ok 653 - domain_type_isnt(schema, type, type, desc) should have the proper description
+ok 654 - domain_type_isnt(schema, type, type, desc) should have the proper diagnostics
+ok 655 - domain_type_isnt(domain, type, desc) should pass
+ok 656 - domain_type_isnt(domain, type, desc) should have the proper description
+ok 657 - domain_type_isnt(domain, type, desc) should have the proper diagnostics
+ok 658 - domain_type_isnt(DOMAIN, TYPE, desc) should pass
+ok 659 - domain_type_isnt(DOMAIN, TYPE, desc) should have the proper description
+ok 660 - domain_type_isnt(DOMAIN, TYPE, desc) should have the proper diagnostics
+ok 661 - domain_type_isnt(domain, type) should pass
+ok 662 - domain_type_isnt(domain, type) should have the proper description
+ok 663 - domain_type_isnt(domain, type) should have the proper diagnostics
+ok 664 - domain_type_isnt(domain, type, desc) fail should fail
+ok 665 - domain_type_isnt(domain, type, desc) fail should have the proper description
+ok 666 - domain_type_isnt(domain, type, desc) fail should have the proper diagnostics
+ok 667 - domain_type_isnt(DOMAIN, TYPE, desc) fail should fail
+ok 668 - domain_type_isnt(DOMAIN, TYPE, desc) fail should have the proper description
+ok 669 - domain_type_isnt(DOMAIN, TYPE, desc) fail should have the proper diagnostics
+ok 670 - domain_type_isnt(nondomain, type, desc) should fail
+ok 671 - domain_type_isnt(nondomain, type, desc) should have the proper description
+ok 672 - domain_type_isnt(nondomain, type, desc) should have the proper diagnostics
+ok 673 - domain_type_isnt(type, type, desc) should fail
+ok 674 - domain_type_isnt(type, type, desc) should have the proper description
+ok 675 - domain_type_isnt(type, type, desc) should have the proper diagnostics
