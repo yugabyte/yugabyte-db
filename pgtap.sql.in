@@ -1081,9 +1081,21 @@ RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should allow NULL', false );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION display_type ( OID, INTEGER )
+RETURNS TEXT AS $$
+    SELECT $1::regtype
+        || COALESCE(substring(pg_catalog.format_type($1, $2), '[(][^)]+[)]$'), '')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION display_type ( NAME, OID, INTEGER )
+RETURNS TEXT AS $$
+    SELECT CASE WHEN $1 IS NULL THEN '' ELSE quote_ident($1) || '.' END
+        || display_type($2, $3)
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+    SELECT display_type(a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c     ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
@@ -1096,7 +1108,7 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+    SELECT display_type(a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_attribute a
       JOIN pg_catalog.pg_class c ON  a.attrelid = c.oid
      WHERE pg_table_is_visible(c.oid)
@@ -1109,7 +1121,7 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _get_col_ns_type ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT quote_ident(tn.nspname) || '.' || pg_catalog.format_type(a.atttypid, a.atttypmod)
+    SELECT display_type(tn.nspname, a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c      ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a  ON c.oid = a.attrelid
@@ -1325,7 +1337,7 @@ BEGIN
 
     RETURN _def_is(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid),
-        pg_catalog.format_type(a.atttypid, a.atttypmod),
+        display_type(a.atttypid, a.atttypmod),
         $4, $5
     )
       FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
@@ -1359,7 +1371,7 @@ BEGIN
 
     RETURN _def_is(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid),
-        pg_catalog.format_type(a.atttypid, a.atttypmod),
+        display_type(a.atttypid, a.atttypmod),
         $3, $4
     )
       FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a, pg_catalog.pg_attrdef d
@@ -3606,8 +3618,8 @@ RETURNS BOOLEAN AS $$
          FROM pg_catalog.pg_cast c
          JOIN pg_catalog.pg_proc p ON c.castfunc = p.oid
          JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-        WHERE pg_catalog.format_type(castsource, NULL) = $1
-          AND pg_catalog.format_type(casttarget, NULL) = $2
+        WHERE display_type(castsource, NULL) = $1
+          AND display_type(casttarget, NULL) = $2
           AND n.nspname   = $3
           AND p.proname   = $4
    );
@@ -3619,8 +3631,8 @@ RETURNS BOOLEAN AS $$
        SELECT TRUE
          FROM pg_catalog.pg_cast c
          JOIN pg_catalog.pg_proc p ON c.castfunc = p.oid
-        WHERE pg_catalog.format_type(castsource, NULL) = $1
-          AND pg_catalog.format_type(casttarget, NULL) = $2
+        WHERE display_type(castsource, NULL) = $1
+          AND display_type(casttarget, NULL) = $2
           AND p.proname   = $3
    );
 $$ LANGUAGE SQL;
@@ -3630,8 +3642,8 @@ RETURNS BOOLEAN AS $$
     SELECT EXISTS (
        SELECT TRUE
          FROM pg_catalog.pg_cast c
-        WHERE pg_catalog.format_type(castsource, NULL) = $1
-          AND pg_catalog.format_type(casttarget, NULL) = $2
+        WHERE display_type(castsource, NULL) = $1
+          AND display_type(casttarget, NULL) = $2
    );
 $$ LANGUAGE SQL;
 
@@ -3746,8 +3758,8 @@ CREATE OR REPLACE FUNCTION _get_context( NAME, NAME )
 RETURNS "char" AS $$
    SELECT c.castcontext
      FROM pg_catalog.pg_cast c
-    WHERE pg_catalog.format_type(castsource, NULL) = $1
-      AND pg_catalog.format_type(casttarget, NULL) = $2
+    WHERE display_type(castsource, NULL) = $1
+      AND display_type(casttarget, NULL) = $2
 $$ LANGUAGE SQL;
 
 -- cast_context_is( source_type, target_type, context, description )
@@ -3787,10 +3799,10 @@ RETURNS BOOLEAN AS $$
         WHERE n.nspname = $2
           AND o.oprname = $3
           AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
-              ELSE pg_catalog.format_type(o.oprleft, NULL) = $1 END
+              ELSE display_type(o.oprleft, NULL) = $1 END
           AND CASE o.oprkind WHEN 'r' THEN $4 IS NULL
-              ELSE pg_catalog.format_type(o.oprright, NULL) = $4 END
-          AND pg_catalog.format_type(o.oprresult, NULL) = $5
+              ELSE display_type(o.oprright, NULL) = $4 END
+          AND display_type(o.oprresult, NULL) = $5
    );
 $$ LANGUAGE SQL;
 
@@ -3802,10 +3814,10 @@ RETURNS BOOLEAN AS $$
         WHERE pg_catalog.pg_operator_is_visible(o.oid)
           AND o.oprname = $2
           AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
-              ELSE pg_catalog.format_type(o.oprleft, NULL) = $1 END
+              ELSE display_type(o.oprleft, NULL) = $1 END
           AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
-              ELSE pg_catalog.format_type(o.oprright, NULL) = $3 END
-          AND pg_catalog.format_type(o.oprresult, NULL) = $4
+              ELSE display_type(o.oprright, NULL) = $3 END
+          AND display_type(o.oprresult, NULL) = $4
    );
 $$ LANGUAGE SQL;
 
@@ -3817,9 +3829,9 @@ RETURNS BOOLEAN AS $$
         WHERE pg_catalog.pg_operator_is_visible(o.oid)
           AND o.oprname = $2
           AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
-              ELSE pg_catalog.format_type(o.oprleft, NULL) = $1 END
+              ELSE display_type(o.oprleft, NULL) = $1 END
           AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
-              ELSE pg_catalog.format_type(o.oprright, NULL) = $3 END
+              ELSE display_type(o.oprright, NULL) = $3 END
    );
 $$ LANGUAGE SQL;
 
@@ -5844,7 +5856,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION _temptypes( TEXT )
 RETURNS TEXT AS $$
     SELECT array_to_string(ARRAY(
-        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
+        SELECT display_type(a.atttypid, a.atttypmod)
           FROM pg_catalog.pg_attribute a
           JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
          WHERE c.relname = $1
@@ -6800,7 +6812,6 @@ RETURNS TEXT AS $$
     SELECT _types_are( $1, 'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct enums', ARRAY['e'] );
 $$ LANGUAGE SQL;
 
-
 -- _dexists( schema, domain )
 CREATE OR REPLACE FUNCTION _dexists ( NAME, NAME )
 RETURNS BOOLEAN AS $$
@@ -6823,9 +6834,9 @@ RETURNS BOOLEAN AS $$
    );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _get_dtype( NAME, NAME )
-RETURNS TEXT[] AS $$
-    SELECT ARRAY[quote_ident(tn.nspname), pg_catalog.format_type(t.oid, t.typtypmod)]
+CREATE OR REPLACE FUNCTION _get_dtype( NAME, TEXT, BOOLEAN )
+RETURNS TEXT AS $$
+    SELECT display_type(CASE WHEN $3 THEN tn.nspname ELSE NULL END, t.oid, t.typtypmod)
       FROM pg_catalog.pg_type d
       JOIN pg_catalog.pg_namespace dn ON d.typnamespace = dn.oid
       JOIN pg_catalog.pg_type t       ON d.typbasetype  = t.oid
@@ -6838,7 +6849,7 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _get_dtype( NAME )
 RETURNS TEXT AS $$
-    SELECT pg_catalog.format_type(t.oid, t.typtypmod)
+    SELECT display_type(t.oid, t.typtypmod)
       FROM pg_catalog.pg_type d
       JOIN pg_catalog.pg_type t  ON d.typbasetype  = t.oid
      WHERE d.typisdefined
@@ -6850,20 +6861,16 @@ $$ LANGUAGE sql;
 CREATE OR REPLACE FUNCTION domain_type_is( NAME, TEXT, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_dtype($1, $2);
+    actual_type TEXT := _get_dtype($1, $2, true);
 BEGIN
-    IF actual_type[1] IS NULL THEN
+    IF actual_type IS NULL THEN
         RETURN fail( $5 ) || E'\n' || diag (
             '   Domain ' || quote_ident($1) || '.' || $2
             || ' does not exist'
         );
     END IF;
 
-    RETURN is(
-        actual_type[1]  || '.' || actual_type[2],
-        quote_ident($3) || '.' || LOWER($4),
-        $5
-    );
+    RETURN is( actual_type, quote_ident($3) || '.' || LOWER($4), $5 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6881,16 +6888,16 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_is( NAME, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_dtype($1, $2);
+    actual_type TEXT := _get_dtype($1, $2, false);
 BEGIN
-    IF actual_type[1] IS NULL THEN
+    IF actual_type IS NULL THEN
         RETURN fail( $4 ) || E'\n' || diag (
             '   Domain ' || quote_ident($1) || '.' || $2
             || ' does not exist'
         );
     END IF;
 
-    RETURN is( actual_type[2], LOWER($3), $4 );
+    RETURN is( actual_type, LOWER($3), $4 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6933,21 +6940,16 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_isnt( NAME, TEXT, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_dtype($1, $2);
+    actual_type TEXT := _get_dtype($1, $2, true);
 BEGIN
-    IF actual_type[1] IS NULL THEN
+    IF actual_type IS NULL THEN
         RETURN fail( $5 ) || E'\n' || diag (
             '   Domain ' || quote_ident($1) || '.' || $2
             || ' does not exist'
         );
     END IF;
 
-    RETURN isnt(
-        actual_type[1]  || '.' || actual_type[2],
-        quote_ident($3) || '.' || LOWER($4),
-
-        $5
-    );
+    RETURN isnt( actual_type, quote_ident($3) || '.' || LOWER($4), $5 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6965,16 +6967,16 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION domain_type_isnt( NAME, TEXT, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT[] := _get_dtype($1, $2);
+    actual_type TEXT := _get_dtype($1, $2, false);
 BEGIN
-    IF actual_type[1] IS NULL THEN
+    IF actual_type IS NULL THEN
         RETURN fail( $4 ) || E'\n' || diag (
             '   Domain ' || quote_ident($1) || '.' || $2
             || ' does not exist'
         );
     END IF;
 
-    RETURN isnt( actual_type[2], LOWER($3), $4 );
+    RETURN isnt( actual_type, LOWER($3), $4 );
 END;
 $$ LANGUAGE plpgsql;
 

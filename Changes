@@ -32,6 +32,8 @@ Revision history for pgTAP
   implementation by Bob Lunney.
 * Added variants of `col_is_type()` to allow a schema name to be specified for
   the type.
+* Added `display_type()` and replaced all internal use of `format_type()` with
+  it. This is so that schemas are always displayed properly.
 
 0.22 2009-07-31T00:26:16
 -------------------------

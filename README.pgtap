@@ -3693,6 +3693,16 @@ On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
         ok(false, 'This should fail)
     ]);
 
+### `display_type( schema, type_oid, typemod )` ###
+### `display_type( type_oid, typemod )` ###
+
+    SELECT display_type('public', 'varchar'::regtype, NULL );
+    SELECT display_type('numeric'::regtype, 196612 );
+
+Like `pg_catalot.format_type()`, except that the returned value is not
+prepended with the schema name unless it is passed as the first argument. Used
+internally by pgTAP to compare type names, but may be more generally useful.
+
 ### `pg_typeof(any)` ###
 
     SELECT pg_typeof(:value);

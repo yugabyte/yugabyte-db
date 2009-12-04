@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(13);
+SELECT plan(23);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -70,6 +70,20 @@ bar
 baz',
     'collect_tap() should simply collect tap'
 );
+
+/****************************************************************************/
+-- Test display_type().
+SELECT is( display_type('int4'::regtype, NULL), 'integer', 'display_type(int4)');
+SELECT is( display_type('numeric'::regtype, NULL), 'numeric', 'display_type(numeric)');
+SELECT is( display_type('numeric'::regtype, 196612), 'numeric(3,0)', 'display_type(numeric, typmod)');
+SELECT is( display_type('"char"'::regtype, NULL), '"char"', 'display_type("char")');
+SELECT is( display_type('char'::regtype, NULL), 'character', 'display_type(char)');
+SELECT is( display_type('timestamp'::regtype, NULL), 'timestamp without time zone', 'display_type(timestamp)');
+SELECT is( display_type('timestamptz'::regtype, NULL), 'timestamp with time zone', 'display_type(timestamptz)');
+
+SELECT is( display_type('foo', 'int4'::regtype, NULL), 'foo.integer', 'display_type(foo, int4)');
+SELECT is( display_type('HEY', 'numeric'::regtype, NULL), '"HEY".numeric', 'display_type(HEY, numeric)');
+SELECT is( display_type('t z', 'int4'::regtype, NULL), '"t z".integer', 'display_type(t z, int4)');
 
 /****************************************************************************/
 -- Finish the tests and clean up.
