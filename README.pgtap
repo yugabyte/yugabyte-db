@@ -1227,6 +1227,58 @@ fails and the results are displayed in the failure diagnostics, like so:
     #         (1,Jacob,false)
     #         (2,Emily,false)
 
+### `row_eq( sql, record, description )` ###
+### `row_eq( sql, record )` ###
+
+    PREPARE testrow  AS SELECT * FROM users where nick = 'theory';
+    SELECT row_eq('testrow', ROW(1, 'theory', 'David Wheeler')::users);
+
+Compares the contents of a single row to a record. Due to the limitations of
+non-C functions in PostgreSQL, a bar `RECORD` value cannot be passed to the
+function. You must instead pass in a valid composite type value, and cast the
+record argument (the second argument) to the same type. Both explicitly
+created composite types and table types are supported. Thus, you can do this:
+
+    CREATE TYPE sometype AS (
+        id    INT,
+        name  TEXT
+    );
+
+    SELECT row_eq( ROW(1, 'foo')::sometype, ROW(1, 'foo')::sometype );
+
+And, of course, thins:
+
+    CREATE TABLE users (
+        id   INT,
+        name TEXT
+    );
+
+    INSERT INTO users VALUES (1, 'theory');
+
+    SELECT row_eq( id, name), ROW(1, 'theory')::users )
+      FROM users;
+
+Compatible types can be compared, though. So if the `users` table actually
+included an `active` column, for example, and you only wanted to test the
+`id` and `name`, you could do this:
+
+    SELECT row_eq( id, name), ROW(1, 'theory')::sometype )
+      FROM users;
+
+Note the use of the `sometype` composite type for the second argument. The
+upshot is that you can create composite types in your tests explicitly for
+comparing the rerutn values of your queries, if such queries don't return an
+existing valid type.
+
+Hopefully someday in the future we'll be able to support arbitrary `record`
+arguments. In the meantime, this is the 90% solution.
+
+Diagnostics on failure are similar to those from `is()`:
+
+    # Failed test 322
+    #       have: (1,Jacob)
+    #       want: (1,Larry)
+
 The Schema Things
 =================
 
@@ -4107,9 +4159,8 @@ To Do
   + `casts_are()`
   + `operators_are()`
   + `columns_are()`
-* Useful result testing functions to consider adding (but might require C code):
-  + `row_eq()`
-  + `rowtype_is()`
+* Useful result testing function to consider adding (but might require C
+  code): `rowtype_is()`
 
 Supported Versions
 -----------------

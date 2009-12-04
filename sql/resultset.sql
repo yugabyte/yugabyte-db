@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(493);
+SELECT plan(512);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -10,6 +10,12 @@ SET client_min_messages = warning;
 CREATE TABLE names (
     id    SERIAL NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT ''
+);
+
+CREATE TABLE someat (
+    id     SERIAL  PRIMARY KEY,
+    ts     timestamp DEFAULT NOW(),
+    active BOOLEAN DEFAULT TRUE
 );
 
 RESET client_min_messages;
@@ -2282,6 +2288,79 @@ SELECT * FROM check_test(
         (1,Jacob)
         (2,Emily)'
 );
+
+/****************************************************************************/
+-- Test row_eq().
+PREPARE arow AS SELECT id, name FROM names WHERE name = 'Jacob';
+
+SELECT check_test(
+    row_eq('arow', ROW(1, 'Jacob')::names, 'whatever'),
+    true,
+    'row_eq(prepared, record, desc)',
+    'whatever',
+    ''
+);
+
+SELECT check_test(
+    row_eq('SELECT id, name FROM names WHERE id = 1', ROW(1, 'Jacob')::names, 'whatever'),
+    true,
+    'row_eq(sql, record, desc)',
+    'whatever',
+    ''
+);
+
+SELECT check_test(
+    row_eq('arow', ROW(1, 'Jacob')::names),
+    true,
+    'row_eq(prepared, record, desc)',
+    '',
+    ''
+);
+
+SELECT check_test(
+    row_eq('arow', ROW(1, 'Larry')::names),
+    false,
+    'row_eq(prepared, record, desc)',
+    '',
+    '       have: (1,Jacob)
+        want: (1,Larry)'
+);
+
+CREATE TYPE sometype AS (
+    id    INT,
+    name  TEXT
+);
+
+SELECT check_test(
+    row_eq('arow', ROW(1, 'Jacob')::sometype),
+    true,
+    'row_eq(prepared, sometype, desc)',
+    '',
+    ''
+);
+
+SELECT check_test(
+    row_eq('SELECT 1, ''Jacob''::text', ROW(1, 'Jacob')::sometype),
+    true,
+    'row_eq(sqlrow, sometype, desc)',
+    '',
+    ''
+);
+
+INSERT INTO someat (ts) values ('2009-12-04T07:22:52');
+SELECT throws_ok(
+    'SELECT row_eq( ''SELECT id, ts FROM someat'', ROW(1, ''2009-12-04T07:22:52'') )',
+    '0A000'
+--  'PL/pgSQL functions cannot accept type record'
+);
+
+-- SELECT check_test(
+--     row_eq( 'SELECT id, ts FROM someat', ROW(1, '2009-12-04T07:22:52') ),
+--     true,
+--     'row_eq(sql, rec)',
+--     '',
+--     ''
+-- );
 
 /****************************************************************************/
 -- Finish the tests and clean up.

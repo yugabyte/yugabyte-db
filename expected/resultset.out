@@ -1,5 +1,5 @@
 \unset ECHO
-1..493
+1..512
 ok 1 - Should create temp table with simple query
 ok 2 - Table __foonames__ should exist
 ok 3 - Should create a temp table for a prepared statement
@@ -493,3 +493,22 @@ ok 490 - is_empty(prepared, desc) fail should have the proper diagnostics
 ok 491 - is_empty(prepared) fail should fail
 ok 492 - is_empty(prepared) fail should have the proper description
 ok 493 - is_empty(prepared) fail should have the proper diagnostics
+ok 494 - row_eq(prepared, record, desc) should pass
+ok 495 - row_eq(prepared, record, desc) should have the proper description
+ok 496 - row_eq(prepared, record, desc) should have the proper diagnostics
+ok 497 - row_eq(sql, record, desc) should pass
+ok 498 - row_eq(sql, record, desc) should have the proper description
+ok 499 - row_eq(sql, record, desc) should have the proper diagnostics
+ok 500 - row_eq(prepared, record, desc) should pass
+ok 501 - row_eq(prepared, record, desc) should have the proper description
+ok 502 - row_eq(prepared, record, desc) should have the proper diagnostics
+ok 503 - row_eq(prepared, record, desc) should fail
+ok 504 - row_eq(prepared, record, desc) should have the proper description
+ok 505 - row_eq(prepared, record, desc) should have the proper diagnostics
+ok 506 - row_eq(prepared, sometype, desc) should pass
+ok 507 - row_eq(prepared, sometype, desc) should have the proper description
+ok 508 - row_eq(prepared, sometype, desc) should have the proper diagnostics
+ok 509 - row_eq(sqlrow, sometype, desc) should pass
+ok 510 - row_eq(sqlrow, sometype, desc) should have the proper description
+ok 511 - row_eq(sqlrow, sometype, desc) should have the proper diagnostics
+ok 512 - threw 0A000

@@ -324,8 +324,8 @@ BEGIN
     result := NOT $1 IS DISTINCT FROM $2;
     output := ok( result, $3 );
     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-           '        have: ' || COALESCE( $1::text, 'NULL' ) ||
-        E'\n        want: ' || COALESCE( $2::text, 'NULL' )
+           '        have: ' || CASE WHEN $1 IS NULL THEN 'NULL' ELSE $1::text END ||
+        E'\n        want: ' || CASE WHEN $2 IS NULL THEN 'NULL' ELSE $2::text END
     ) END;
 END;
 $$ LANGUAGE plpgsql;
@@ -7014,3 +7014,26 @@ RETURNS TEXT AS $$
         'Domain ' || $1 || ' should not extend type ' || $2
     );
 $$ LANGUAGE SQL;
+
+-- row_eq( sql, record, description )
+CREATE OR REPLACE FUNCTION row_eq( TEXT, anyelement, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    rec    RECORD;
+    result BOOLEAN;
+BEGIN
+    FOR rec in EXECUTE _query($1) LOOP
+        result := NOT rec IS DISTINCT FROM $2;
+        RETURN ok(result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
+               '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE rec::text END ||
+            E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE $2::text  END
+        ) END;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- row_eq( sql, record )
+CREATE OR REPLACE FUNCTION row_eq( TEXT, anyelement )
+RETURNS TEXT AS $$
+    SELECT row_eq($1, $2, NULL );
+$$ LANGUAGE sql;

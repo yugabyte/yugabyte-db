@@ -1,7 +1,8 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(37);
+SELECT plan(47);
+--SELECT * from no_plan();
 
 /****************************************************************************/
 -- Test is().
@@ -54,6 +55,41 @@ SELECT * FROM check_test(
     '       have: foo
         want: NULL'
 );
+
+SET client_min_messages = warning;
+CREATE TABLE mumble ( id int, name text );
+RESET client_min_messages;
+INSERT INTO mumble VALUES (1, 'hey');
+
+SELECT is( mumble.*, ROW(1, 'hey')::mumble, 'with records!' )
+  FROM mumble;
+
+SELECT check_test(
+    is( mumble.*, ROW(1, 'HEY')::mumble ),
+    false,
+    'is(mumble, row) fail',
+    '',
+    '       have: (1,hey)
+        want: (1,HEY)'
+) FROM mumble;
+
+SELECT check_test(
+    is( mumble.*, ROW(1, NULL)::mumble ),
+    false,
+    'is(mumble, row) fail with NULL',
+    '',
+    '       have: (1,hey)
+        want: (1,)'
+) FROM mumble;
+
+SELECT check_test(
+    is( mumble.*, NULL::mumble ),
+    false,
+    'is(mumble, NULL)',
+    '',
+    '       have: (1,hey)
+        want: NULL'
+) FROM mumble;
 
 /****************************************************************************/
 -- Finish the tests and clean up.

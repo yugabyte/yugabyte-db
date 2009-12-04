@@ -1,5 +1,5 @@
 \unset ECHO
-1..37
+1..47
 ok 1 - is(1, 1) should pass
 ok 2 - is(1, 1) should have the proper description
 ok 3 - is(1, 1) should have the proper diagnostics
@@ -37,3 +37,13 @@ ok 34 - is(NULL, foo) should have the proper diagnostics
 ok 35 - is(foo, NULL) should fail
 ok 36 - is(foo, NULL) should have the proper description
 ok 37 - is(foo, NULL) should have the proper diagnostics
+ok 38 - with records!
+ok 39 - is(mumble, row) fail should fail
+ok 40 - is(mumble, row) fail should have the proper description
+ok 41 - is(mumble, row) fail should have the proper diagnostics
+ok 42 - is(mumble, row) fail with NULL should fail
+ok 43 - is(mumble, row) fail with NULL should have the proper description
+ok 44 - is(mumble, row) fail with NULL should have the proper diagnostics
+ok 45 - is(mumble, NULL) should fail
+ok 46 - is(mumble, NULL) should have the proper description
+ok 47 - is(mumble, NULL) should have the proper diagnostics

@@ -1,4 +1,6 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION row_eq( TEXT, anyelement );
+DROP FUNCTION row_eq( TEXT, anyelement, TEXT );
 DROP FUNCTION domain_type_isnt( TEXT, TEXT );
 DROP FUNCTION domain_type_isnt( TEXT, TEXT, TEXT );
 DROP FUNCTION domain_type_isnt( NAME, TEXT, TEXT );
