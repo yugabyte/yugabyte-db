@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(54);
+SELECT plan(84);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -18,7 +18,11 @@ END;
 ' LANGUAGE plpgsql;
 
 CREATE TRIGGER set_users_pass
-BEFORE INSERT OR UPDATE ON public.users
+BEFORE INSERT ON public.users
+FOR EACH ROW EXECUTE PROCEDURE hash_pass();
+
+CREATE TRIGGER upd_users_pass
+BEFORE UPDATE ON public.users
 FOR EACH ROW EXECUTE PROCEDURE hash_pass();
 RESET client_min_messages;
 
@@ -172,6 +176,98 @@ SELECT * FROM check_test(
     'Trigger set_users_pass should call oops()',
     '        have: hash_pass
         want: oops'
+);
+
+/****************************************************************************/
+-- Test triggers_are().
+SELECT * FROM check_test(
+    triggers_are( 'public', 'users', ARRAY['set_users_pass', 'upd_users_pass'], 'whatever' ),
+    true,
+    'triggers_are(schema, table, triggers, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'public', 'users', ARRAY['set_users_pass', 'upd_users_pass'] ),
+    true,
+    'triggers_are(schema, table, triggers)',
+    'Table public.users should have the correct triggers',
+    ''
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'public', 'users', ARRAY['set_users_pass'] ),
+    false,
+    'triggers_are(schema, table, triggers) + extra',
+    'Table public.users should have the correct triggers',
+    '    Extra triggers:
+        upd_users_pass'
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'public', 'users', ARRAY['set_users_pass', 'upd_users_pass', 'howdy'] ),
+    false,
+    'triggers_are(schema, table, triggers) + missing',
+    'Table public.users should have the correct triggers',
+    '    Missing triggers:
+        howdy'
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'public', 'users', ARRAY['set_users_pass', 'howdy'] ),
+    false,
+    'triggers_are(schema, table, triggers) + extra & missing',
+    'Table public.users should have the correct triggers',
+    '    Extra triggers:
+        upd_users_pass
+    Missing triggers:
+        howdy'
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'users', ARRAY['set_users_pass', 'upd_users_pass'], 'whatever' ),
+    true,
+    'triggers_are(table, triggers, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'users', ARRAY['set_users_pass', 'upd_users_pass'] ),
+    true,
+    'triggers_are(table, triggers)',
+    'Table users should have the correct triggers',
+    ''
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'users', ARRAY['set_users_pass'] ),
+    false,
+    'triggers_are(table, triggers) + extra',
+    'Table users should have the correct triggers',
+    '    Extra triggers:
+        upd_users_pass'
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'users', ARRAY['set_users_pass', 'upd_users_pass', 'howdy'] ),
+    false,
+    'triggers_are(table, triggers) + missing',
+    'Table users should have the correct triggers',
+    '    Missing triggers:
+        howdy'
+);
+
+SELECT * FROM check_test(
+    triggers_are( 'users', ARRAY['set_users_pass', 'howdy'] ),
+    false,
+    'triggers_are(table, triggers) + extra & missing',
+    'Table users should have the correct triggers',
+    '    Extra triggers:
+        upd_users_pass
+    Missing triggers:
+        howdy'
 );
 
 /****************************************************************************/

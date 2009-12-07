@@ -7037,3 +7037,73 @@ CREATE OR REPLACE FUNCTION row_eq( TEXT, anyelement )
 RETURNS TEXT AS $$
     SELECT row_eq($1, $2, NULL );
 $$ LANGUAGE sql;
+
+-- triggers_are( schema, table, triggers[], description )
+CREATE OR REPLACE FUNCTION triggers_are( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'triggers',
+        ARRAY(
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1
+               AND c.relname = $2
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1
+               AND c.relname = $2
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
+-- triggers_are( schema, table, triggers[] )
+CREATE OR REPLACE FUNCTION triggers_are( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT triggers_are( $1, $2, $3, 'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should have the correct triggers' );
+$$ LANGUAGE SQL;
+
+-- triggers_are( table, triggers[], description )
+CREATE OR REPLACE FUNCTION triggers_are( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'triggers',
+        ARRAY(
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+             WHERE c.relname = $1
+            EXCEPT
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- triggers_are( table, triggers[] )
+CREATE OR REPLACE FUNCTION triggers_are( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT triggers_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct triggers' );
+$$ LANGUAGE SQL;
+

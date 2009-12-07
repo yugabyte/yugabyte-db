@@ -1,5 +1,5 @@
 \unset ECHO
-1..54
+1..84
 ok 1 - has_trigger(schema, table, trigger, desc) should pass
 ok 2 - has_trigger(schema, table, trigger, desc) should have the proper description
 ok 3 - has_trigger(schema, table, trigger, desc) should have the proper diagnostics
@@ -54,3 +54,33 @@ ok 51 - trigger_is() fail should have the proper diagnostics
 ok 52 - trigger_is() no schema fail should fail
 ok 53 - trigger_is() no schema fail should have the proper description
 ok 54 - trigger_is() no schema fail should have the proper diagnostics
+ok 55 - triggers_are(schema, table, triggers, desc) should pass
+ok 56 - triggers_are(schema, table, triggers, desc) should have the proper description
+ok 57 - triggers_are(schema, table, triggers, desc) should have the proper diagnostics
+ok 58 - triggers_are(schema, table, triggers) should pass
+ok 59 - triggers_are(schema, table, triggers) should have the proper description
+ok 60 - triggers_are(schema, table, triggers) should have the proper diagnostics
+ok 61 - triggers_are(schema, table, triggers) + extra should fail
+ok 62 - triggers_are(schema, table, triggers) + extra should have the proper description
+ok 63 - triggers_are(schema, table, triggers) + extra should have the proper diagnostics
+ok 64 - triggers_are(schema, table, triggers) + missing should fail
+ok 65 - triggers_are(schema, table, triggers) + missing should have the proper description
+ok 66 - triggers_are(schema, table, triggers) + missing should have the proper diagnostics
+ok 67 - triggers_are(schema, table, triggers) + extra & missing should fail
+ok 68 - triggers_are(schema, table, triggers) + extra & missing should have the proper description
+ok 69 - triggers_are(schema, table, triggers) + extra & missing should have the proper diagnostics
+ok 70 - triggers_are(table, triggers, desc) should pass
+ok 71 - triggers_are(table, triggers, desc) should have the proper description
+ok 72 - triggers_are(table, triggers, desc) should have the proper diagnostics
+ok 73 - triggers_are(table, triggers) should pass
+ok 74 - triggers_are(table, triggers) should have the proper description
+ok 75 - triggers_are(table, triggers) should have the proper diagnostics
+ok 76 - triggers_are(table, triggers) + extra should fail
+ok 77 - triggers_are(table, triggers) + extra should have the proper description
+ok 78 - triggers_are(table, triggers) + extra should have the proper diagnostics
+ok 79 - triggers_are(table, triggers) + missing should fail
+ok 80 - triggers_are(table, triggers) + missing should have the proper description
+ok 81 - triggers_are(table, triggers) + missing should have the proper diagnostics
+ok 82 - triggers_are(table, triggers) + extra & missing should fail
+ok 83 - triggers_are(table, triggers) + extra & missing should have the proper description
+ok 84 - triggers_are(table, triggers) + extra & missing should have the proper diagnostics

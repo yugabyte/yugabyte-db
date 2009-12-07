@@ -24,7 +24,8 @@ Revision history for pgTAP
 * Added `throws_like()`, `throws_ilike()`, `throws_matching()`, and
   `throws_imatching()` to test that an SQL statement throws an error message
   matching a `LIKE` pattern or a regular expression.
-* Added `roles_are()`, `types_are()`, `domains_are()`, and `enums_are()`.
+* Added `roles_are()`, `types_are()`, `domains_are()`, `enums_are()`,
+  and `triggers_are()`.
 * Fixed the diagnostic output from `isnt()` and `col_isnt_pk()` when they
   fail. They now more closely matches what Test::More's `isnt()` outputs and
   makes much more sense.

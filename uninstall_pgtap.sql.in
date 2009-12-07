@@ -1,4 +1,8 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION triggers_are( NAME, NAME[] );
+DROP FUNCTION triggers_are( NAME, NAME[], TEXT );
+DROP FUNCTION triggers_are( NAME, NAME, NAME[] );
+DROP FUNCTION triggers_are( NAME, NAME, NAME[], TEXT );
 DROP FUNCTION row_eq( TEXT, anyelement );
 DROP FUNCTION row_eq( TEXT, anyelement, TEXT );
 DROP FUNCTION domain_type_isnt( TEXT, TEXT );

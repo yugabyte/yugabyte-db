@@ -1480,6 +1480,33 @@ missing indexes, like so:
     #     Missing indexes:
     #         idx_fou_name
 
+### `triggers_are( schema, table, triggers[], description )` ###
+### `triggers_are( schema, table, triggers[] )` ###
+### `triggers_are( table, triggers[], description )` ###
+### `triggers_are( table, triggers[] )` ###
+
+    SELECT triggers_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'atable_pkey', 'idx_atable_name' ],
+        'Should have the correct triggers on myschema.atable'
+    );
+
+This function tests that all of the triggers on the named table are only the
+triggers that *should* be on that table. If the `:schema` argument is omitted,
+the table must be visible in the search path, excluding `pg_catalog`. If the
+description is omitted, a generally useful default description will be
+generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing triggers, like so:
+
+    # Failed test 180: "Table fou should have the correct triggers"
+    #     Extra triggers:
+    #         set_user_pass
+    #     Missing triggers:
+    #         set_users_pass
+
 ### `functions_are( schema, functions[], description )` ###
 ### `functions_are( schema, functions[] )` ###
 ### `functions_are( functions[], description )` ###
@@ -4155,7 +4182,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `triggers_are()`
   + `casts_are()`
   + `operators_are()`
   + `columns_are()`
