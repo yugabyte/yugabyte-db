@@ -1,4 +1,6 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION casts_are ( TEXT[][] );
+DROP FUNCTION casts_are ( TEXT[][], TEXT );
 DROP FUNCTION triggers_are( NAME, NAME[] );
 DROP FUNCTION triggers_are( NAME, NAME[], TEXT );
 DROP FUNCTION triggers_are( NAME, NAME, NAME[] );

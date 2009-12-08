@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(330);
+SELECT plan(345);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -76,7 +76,7 @@ $$ LANGUAGE SQL;
 SELECT * FROM check_test(
     tablespaces_are( ___myts(''), 'whatever' ),
     true,
-    'tablespaces_are(schemas, desc)',
+    'tablespaces_are(tablespaces, desc)',
     'whatever',
     ''
 );
@@ -84,7 +84,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     tablespaces_are( ___myts('') ),
     true,
-    'tablespaces_are(schemas)',
+    'tablespaces_are(tablespaces)',
     'There should be the correct tablespaces',
     ''
 );
@@ -92,7 +92,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     tablespaces_are( array_append(___myts(''), '__booya__'), 'whatever' ),
     false,
-    'tablespaces_are(schemas, desc) missing',
+    'tablespaces_are(tablespaces, desc) missing',
     'whatever',
     '    Missing tablespaces:
         __booya__'
@@ -101,7 +101,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     tablespaces_are( ___myts('pg_default'), 'whatever' ),
     false,
-    'tablespaces_are(schemas, desc) extra',
+    'tablespaces_are(tablespaces, desc) extra',
     'whatever',
     '    Extra tablespaces:
         pg_default'
@@ -110,7 +110,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     tablespaces_are( array_append(___myts('pg_default'), '__booya__'), 'whatever' ),
     false,
-    'tablespaces_are(schemas, desc) extras and missing',
+    'tablespaces_are(tablespaces, desc) extras and missing',
     'whatever',
     '    Extra tablespaces:
         pg_default
@@ -1208,6 +1208,70 @@ SELECT * FROM check_test(
         goofy
     Missing types:
         fredy'
+);
+
+/****************************************************************************/
+-- Test domains_are().
+
+CREATE OR REPLACE FUNCTION ___mycasts(ex text) RETURNS TEXT[][] AS $$
+DECLARE
+    casts TEXT[][];
+    rec   TEXT[];
+BEGIN
+    FOR rec IN
+        SELECT ARRAY[ display_type(castsource, NULL), display_type(casttarget, NULL) ]
+          FROM pg_catalog.pg_cast
+         WHERE castsource::regtype::text <> $1
+    LOOP
+        casts := casts || ARRAY[rec];
+    END LOOP;
+    return casts;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM check_test(
+    casts_are( ___mycasts(''), 'whatever' ),
+    true,
+    'casts_are(casts, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    casts_are( ___mycasts('') ),
+    true,
+    'casts_are(casts)',
+    'There should be the correct casts',
+    ''
+);
+
+SELECT * FROM check_test(
+    casts_are( ___mycasts('') || ARRAY[ARRAY['__booya__', 'integer']], 'whatever' ),
+    false,
+    'casts_are(casts, desc) missing',
+    'whatever',
+    '    Missing casts:
+        __booya__ AS integer'
+);
+
+SELECT * FROM check_test(
+    casts_are( ___mycasts('lseg'), 'whatever' ),
+    false,
+    'casts_are(casts, desc) extra',
+    'whatever',
+    '    Extra casts:
+        lseg AS point'
+);
+
+SELECT * FROM check_test(
+    casts_are( ___mycasts('lseg') || ARRAY[ARRAY['__booya__', 'integer']], 'whatever' ),
+    false,
+    'casts_are(casts, desc) extras and missing',
+    'whatever',
+    '    Extra casts:
+        lseg AS point
+    Missing casts:
+        __booya__ AS integer'
 );
 
 /****************************************************************************/

@@ -1738,6 +1738,35 @@ missing enums, like so:
     #     Missing enums:
     #         bug_status
 
+### `casts_are( casts[], description )` ###
+### `casts_are( casts[] )` ###
+
+    SELECT casts_are(
+        ARRAY[
+            ARRAY[ 'integer', 'double precision' ],
+            ARRAY[ 'integer', 'reltime' ],
+            ARRAY[ 'integer', 'numeric' ],
+            -- ...
+        ]
+        'Should have the correct casts'
+    );
+
+This function tests that all of the casts in the database are only the casts
+that *should* be in that database. Casts are specified as a two dimensional
+array, where each element in the array is a two-item array containing first
+the name of source data type and then the name of the target data type. If the
+description is omitted, a generally useful default description will be
+generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing casts, like so:
+
+    # Failed test 302: "There should be the correct casts"
+    #     Extra casts:
+    #         lseg AS point
+    #     Missing casts:
+    #         lseg AS integer
+
 To Have or Have Not
 -------------------
 
@@ -4182,7 +4211,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `casts_are()`
   + `operators_are()`
   + `columns_are()`
 * Useful result testing function to consider adding (but might require C

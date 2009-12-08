@@ -7107,3 +7107,52 @@ RETURNS TEXT AS $$
     SELECT triggers_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct triggers' );
 $$ LANGUAGE SQL;
 
+-- casts_are( casts[], description )
+CREATE OR REPLACE FUNCTION casts_are ( TEXT[][], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    extras  text[][];
+    missing text[][];
+    msg     TEXT    := '';
+    res     BOOLEAN := TRUE;
+BEGIN
+    SELECT ARRAY(
+        SELECT display_type(castsource, NULL) || ' AS ' || display_type(casttarget, NULL)
+          FROM pg_catalog.pg_cast c
+        EXCEPT
+        SELECT $1[i][1] || ' AS ' || $1[i][2]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+    ) INTO extras;
+
+    SELECT ARRAY(
+        SELECT $1[i][1] || ' AS ' || $1[i][2]
+          FROM generate_series(1, array_upper($1, 1)) s(i)
+        EXCEPT
+        SELECT display_type(castsource, NULL) || ' AS ' || display_type(casttarget, NULL)
+          FROM pg_catalog.pg_cast c
+    ) INTO missing;
+
+    IF extras[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := E'\n' || diag(
+            E'    Extra casts:\n        '
+            ||  array_to_string( extras, E'\n        ' )
+        );
+    END IF;
+    IF missing[1] IS NOT NULL THEN
+        res = FALSE;
+        msg := msg || E'\n' || diag(
+            E'    Missing casts:\n        '
+            ||  array_to_string( missing, E'\n        ' )
+        );
+    END IF;
+
+    RETURN ok(res, $2) || msg;
+END;
+$$ LANGUAGE plpgsql;
+
+-- casts_are( casts[] )
+CREATE OR REPLACE FUNCTION casts_are ( TEXT[][] )
+RETURNS TEXT AS $$
+    SELECT casts_are( $1, 'There should be the correct casts');
+$$ LANGUAGE SQL;

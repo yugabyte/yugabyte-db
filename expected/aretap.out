@@ -1,20 +1,20 @@
 \unset ECHO
-1..330
-ok 1 - tablespaces_are(schemas, desc) should pass
-ok 2 - tablespaces_are(schemas, desc) should have the proper description
-ok 3 - tablespaces_are(schemas, desc) should have the proper diagnostics
-ok 4 - tablespaces_are(schemas) should pass
-ok 5 - tablespaces_are(schemas) should have the proper description
-ok 6 - tablespaces_are(schemas) should have the proper diagnostics
-ok 7 - tablespaces_are(schemas, desc) missing should fail
-ok 8 - tablespaces_are(schemas, desc) missing should have the proper description
-ok 9 - tablespaces_are(schemas, desc) missing should have the proper diagnostics
-ok 10 - tablespaces_are(schemas, desc) extra should fail
-ok 11 - tablespaces_are(schemas, desc) extra should have the proper description
-ok 12 - tablespaces_are(schemas, desc) extra should have the proper diagnostics
-ok 13 - tablespaces_are(schemas, desc) extras and missing should fail
-ok 14 - tablespaces_are(schemas, desc) extras and missing should have the proper description
-ok 15 - tablespaces_are(schemas, desc) extras and missing should have the proper diagnostics
+1..345
+ok 1 - tablespaces_are(tablespaces, desc) should pass
+ok 2 - tablespaces_are(tablespaces, desc) should have the proper description
+ok 3 - tablespaces_are(tablespaces, desc) should have the proper diagnostics
+ok 4 - tablespaces_are(tablespaces) should pass
+ok 5 - tablespaces_are(tablespaces) should have the proper description
+ok 6 - tablespaces_are(tablespaces) should have the proper diagnostics
+ok 7 - tablespaces_are(tablespaces, desc) missing should fail
+ok 8 - tablespaces_are(tablespaces, desc) missing should have the proper description
+ok 9 - tablespaces_are(tablespaces, desc) missing should have the proper diagnostics
+ok 10 - tablespaces_are(tablespaces, desc) extra should fail
+ok 11 - tablespaces_are(tablespaces, desc) extra should have the proper description
+ok 12 - tablespaces_are(tablespaces, desc) extra should have the proper diagnostics
+ok 13 - tablespaces_are(tablespaces, desc) extras and missing should fail
+ok 14 - tablespaces_are(tablespaces, desc) extras and missing should have the proper description
+ok 15 - tablespaces_are(tablespaces, desc) extras and missing should have the proper diagnostics
 ok 16 - schemas_are(schemas, desc) should pass
 ok 17 - schemas_are(schemas, desc) should have the proper description
 ok 18 - schemas_are(schemas, desc) should have the proper diagnostics
@@ -330,3 +330,18 @@ ok 327 - domains_are(domains, desc) fail should have the proper diagnostics
 ok 328 - domains_are(domains) fail should fail
 ok 329 - domains_are(domains) fail should have the proper description
 ok 330 - domains_are(domains) fail should have the proper diagnostics
+ok 331 - casts_are(casts, desc) should pass
+ok 332 - casts_are(casts, desc) should have the proper description
+ok 333 - casts_are(casts, desc) should have the proper diagnostics
+ok 334 - casts_are(casts) should pass
+ok 335 - casts_are(casts) should have the proper description
+ok 336 - casts_are(casts) should have the proper diagnostics
+ok 337 - casts_are(casts, desc) missing should fail
+ok 338 - casts_are(casts, desc) missing should have the proper description
+ok 339 - casts_are(casts, desc) missing should have the proper diagnostics
+ok 340 - casts_are(casts, desc) extra should fail
+ok 341 - casts_are(casts, desc) extra should have the proper description
+ok 342 - casts_are(casts, desc) extra should have the proper diagnostics
+ok 343 - casts_are(casts, desc) extras and missing should fail
+ok 344 - casts_are(casts, desc) extras and missing should have the proper description
+ok 345 - casts_are(casts, desc) extras and missing should have the proper diagnostics
