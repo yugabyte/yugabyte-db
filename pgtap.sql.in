@@ -4122,7 +4122,7 @@ RETURNS NAME[] AS $$
           FROM pg_catalog.pg_namespace n
           JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
          WHERE pg_catalog.pg_table_is_visible(c.oid)
-           AND n.nspname <> 'pg_catalog'
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
            AND c.relkind = $1
     );
 $$ LANGUAGE SQL;
@@ -4250,7 +4250,8 @@ RETURNS TEXT AS $$
     SELECT _are(
         'functions',
         ARRAY(
-            SELECT name FROM tap_funky WHERE is_visible AND schema <> 'pg_catalog'
+            SELECT name FROM tap_funky WHERE is_visible
+            AND schema NOT IN ('pg_catalog', 'information_schema')
             EXCEPT
             SELECT $1[i]
               FROM generate_series(1, array_upper($1, 1)) s(i)
@@ -4259,7 +4260,8 @@ RETURNS TEXT AS $$
             SELECT $1[i]
                FROM generate_series(1, array_upper($1, 1)) s(i)
             EXCEPT
-            SELECT name FROM tap_funky WHERE is_visible AND schema <> 'pg_catalog'
+            SELECT name FROM tap_funky WHERE is_visible
+            AND schema NOT IN ('pg_catalog', 'information_schema')
         ),
         $2
     );
@@ -4318,10 +4320,12 @@ RETURNS TEXT AS $$
         ARRAY(
             SELECT ci.relname
               FROM pg_catalog.pg_index x
-              JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
-              JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+              JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+              JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
              WHERE ct.relname = $1
                AND pg_catalog.pg_table_is_visible(ct.oid)
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
             EXCEPT
             SELECT $2[i]
               FROM generate_series(1, array_upper($2, 1)) s(i)
@@ -4332,10 +4336,12 @@ RETURNS TEXT AS $$
             EXCEPT
             SELECT ci.relname
               FROM pg_catalog.pg_index x
-              JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
-              JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+              JOIN pg_catalog.pg_class ct ON ct.oid = x.indrelid
+              JOIN pg_catalog.pg_class ci ON ci.oid = x.indexrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
              WHERE ct.relname = $1
                AND pg_catalog.pg_table_is_visible(ct.oid)
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         ),
         $3
     );
@@ -4585,7 +4591,7 @@ RETURNS TEXT AS $$
             SELECT oc.opcname
               FROM pg_catalog.pg_opclass oc
               JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
-             WHERE n.nspname <> 'pg_catalog'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pg_catalog.pg_opclass_is_visible(oc.oid)
             EXCEPT
             SELECT $1[i]
@@ -4598,7 +4604,7 @@ RETURNS TEXT AS $$
             SELECT oc.opcname
               FROM pg_catalog.pg_opclass oc
               JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
-             WHERE n.nspname <> 'pg_catalog'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pg_catalog.pg_opclass_is_visible(oc.oid)
         ),
         $2
@@ -4659,7 +4665,7 @@ RETURNS TEXT AS $$
               JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
               JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
              WHERE c.relname = $1
-               AND n.nspname <> 'pg_catalog'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pg_catalog.pg_table_is_visible(c.oid)
             EXCEPT
             SELECT $2[i]
@@ -4674,7 +4680,7 @@ RETURNS TEXT AS $$
               JOIN pg_catalog.pg_class c     ON c.oid = r.ev_class
               JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
                AND c.relname = $1
-             WHERE n.nspname <> 'pg_catalog'
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pg_catalog.pg_table_is_visible(c.oid)
         ),
         $3
@@ -6707,7 +6713,7 @@ RETURNS TEXT AS $$
                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
              )
                AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-               AND n.nspname NOT IN('pg_catalog', 'information_schema')
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pg_catalog.pg_type_is_visible(t.oid)
                AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
             EXCEPT
@@ -6726,7 +6732,7 @@ RETURNS TEXT AS $$
                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
              )
                AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-               AND n.nspname NOT IN('pg_catalog', 'information_schema')
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                AND pg_catalog.pg_type_is_visible(t.oid)
                AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
         ),
@@ -7067,7 +7073,9 @@ RETURNS TEXT AS $$
             SELECT t.tgname
               FROM pg_catalog.pg_trigger t
               JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
              WHERE c.relname = $1
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
             EXCEPT
             SELECT $2[i]
               FROM generate_series(1, array_upper($2, 1)) s(i)
@@ -7079,6 +7087,8 @@ RETURNS TEXT AS $$
             SELECT t.tgname
               FROM pg_catalog.pg_trigger t
               JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
         ),
         $3
     );

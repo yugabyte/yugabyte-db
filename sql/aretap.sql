@@ -525,7 +525,7 @@ CREATE FUNCTION ___myfunk(ex text) RETURNS NAME[] AS $$
           FROM pg_catalog.pg_namespace n
           JOIN pg_catalog.pg_proc p ON n.oid = p.pronamespace
          WHERE pg_catalog.pg_function_is_visible(p.oid)
-           AND n.nspname <> 'pg_catalog'
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
            AND p.proname <> $1
     );
 $$ LANGUAGE SQL;

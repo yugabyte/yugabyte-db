@@ -1383,8 +1383,8 @@ missing schemas, like so:
 This function tests that all of the tables in the named schema, or that are
 visible in the search path, are only the tables that *should* be there. If the
 `:schema` argument is omitted, tables will be sought in the search path,
-excluding `pg_catalog.` If the description is omitted, a generally useful
-default description will be generated.
+excluding `pg_catalog` and `information_schema` If the description is omitted,
+a generally useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing tables, like so:
@@ -1411,8 +1411,8 @@ missing tables, like so:
 This function tests that all of the views in the named schema, or that are
 visible in the search path, are only the views that *should* be there. If the
 `:schema` argument is omitted, views will be sought in the search path,
-excluding `pg_catalog.` If the description is omitted, a generally useful
-default description will be generated.
+excluding `pg_catalog` and `information_schema` If the description is omitted,
+a generally useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing views, like so:
@@ -1439,8 +1439,8 @@ missing views, like so:
 This function tests that all of the sequences in the named schema, or that are
 visible in the search path, are only the sequences that *should* be there. If
 the `:schema` argument is omitted, sequences will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
+path, excluding `pg_catalog` and `information_schema`. If the description is
+omitted, a generally useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing sequences, like so:
@@ -1467,9 +1467,9 @@ missing sequences, like so:
 
 This function tests that all of the indexes on the named table are only the
 indexes that *should* be on that table. If the `:schema` argument is omitted,
-the table must be visible in the search path, excluding `pg_catalog`. If the
-description is omitted, a generally useful default description will be
-generated.
+the table must be visible in the search path, excluding `pg_catalog` and
+`information_schema`. If the description is omitted, a generally useful
+default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing indexes, like so:
@@ -1494,9 +1494,9 @@ missing indexes, like so:
 
 This function tests that all of the triggers on the named table are only the
 triggers that *should* be on that table. If the `:schema` argument is omitted,
-the table must be visible in the search path, excluding `pg_catalog`. If the
-description is omitted, a generally useful default description will be
-generated.
+the table must be visible in the search path, excluding `pg_catalog` and
+`information_schema`. If the description is omitted, a generally useful
+default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing triggers, like so:
@@ -1521,8 +1521,8 @@ missing triggers, like so:
 This function tests that all of the functions in the named schema, or that are
 visible in the search path, are only the functions that *should* be there. If
 the `:schema` argument is omitted, functions will be sought in the search
-path, excluding `pg_catalog.` If the description is omitted, a generally
-useful default description will be generated.
+path, excluding `pg_catalog` and `information_schema` If the description is
+omitted, a generally useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing functions, like so:
@@ -1620,8 +1620,9 @@ diagnostics listing the extra and/or missing languages, like so:
 This function tests that all of the operator classes in the named schema, or
 that are visible in the search path, are only the opclasses that *should* be
 there. If the `:schema` argument is omitted, opclasses will be sought in the
-search path, excluding `pg_catalog`. If the description is omitted, a
-generally useful default description will be generated.
+search path, excluding `pg_catalog` and `information_schema`. If the
+description is omitted, a generally useful default description will be
+generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing opclasses, like so:
@@ -1647,8 +1648,8 @@ missing opclasses, like so:
 This function tests that all of the rules on the named relation are only the
 rules that *should* be on that relation (a table or a view). If the `:schema`
 argument is omitted, the rules must be visible in the search path, excluding
-`pg_catalog`. If the description is omitted, a generally useful default
-description will be generated.
+`pg_catalog` and `information_schema`. If the description is omitted, a
+generally useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing rules, like so:
@@ -3847,7 +3848,7 @@ On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
     SELECT display_type('public', 'varchar'::regtype, NULL );
     SELECT display_type('numeric'::regtype, 196612 );
 
-Like `pg_catalot.format_type()`, except that the returned value is not
+Like `pg_catalog.format_type()`, except that the returned value is not
 prepended with the schema name unless it is passed as the first argument. Used
 internally by pgTAP to compare type names, but may be more generally useful.
 
@@ -4251,7 +4252,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `columns_are()`
 * Useful result testing function to consider adding (but might require C
   code): `rowtype_is()`
 
