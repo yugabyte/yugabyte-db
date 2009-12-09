@@ -3846,11 +3846,8 @@ CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, $3, $4, $5 ),
-        'Operator ('
-        || quote_ident($1)
-        || ' ' || quote_ident($2) || '.' || $3 || ' '
-        || quote_ident($4)
-        || ' RETURNS ' || quote_ident($5) || ') should exist'
+        'Operator ' || quote_ident($2) || '.' || $3 || '(' || $1 || ',' || $4
+        || ') RETURNS ' || $5 || ' should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3865,11 +3862,8 @@ CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, $3, $4 ),
-        'Operator ('
-        || quote_ident($1)
-        || ' ' || $2 || ' '
-        || quote_ident($3)
-        || ' RETURNS ' || quote_ident($4) || ') should exist'
+        'Operator ' ||  $2 || '(' || $1 || ',' || $3
+        || ') RETURNS ' || $4 || ' should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3884,10 +3878,7 @@ CREATE OR REPLACE FUNCTION has_operator ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, $3 ),
-        'Operator ('
-        || quote_ident($1)
-        || ' ' || $2 || ' '
-        || quote_ident($3)
+        'Operator ' ||  $2 || '(' || $1 || ',' || $3
         || ') should exist'
     );
 $$ LANGUAGE SQL;
@@ -3903,10 +3894,8 @@ CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists(NULL, $1, $2, $3, $4 ),
-        'Operator ('
-        || quote_ident($1) || '.' || $2 || ' '
-        || quote_ident($3)
-        || ' RETURNS ' || quote_ident($4) || ') should exist'
+        'Left operator ' || quote_ident($1) || '.' || $2 || '(NONE,'
+        || $3 || ') RETURNS ' || $4 || ' should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3921,9 +3910,7 @@ CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists(NULL, $1, $2, $3 ),
-        'Operator (' || $1 || ' '
-        || quote_ident($2)
-        || ' RETURNS ' || quote_ident($3) || ') should exist'
+        'Left operator ' || $1 || '(NONE,' || $2 || ') RETURNS ' || $3 || ' should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3938,7 +3925,7 @@ CREATE OR REPLACE FUNCTION has_leftop ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists(NULL, $1, $2 ),
-        'Operator (' || $1 || ' ' || quote_ident($2) || ') should exist'
+        'Left operator ' || $1 || '(NONE,' || $2 || ') should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3953,10 +3940,8 @@ CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, $3, NULL, $4 ),
-        'Operator ('
-        || quote_ident($1) || ' '
-        || quote_ident($2) || '.' || $3
-        || ' RETURNS ' || quote_ident($4) || ') should exist'
+        'Right operator ' || quote_ident($2) || '.' || $3 || '('
+        || $1 || ',NONE) RETURNS ' || $4 || ' should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3971,9 +3956,8 @@ CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, NULL, $3 ),
-        'Operator ('
-        || quote_ident($1) || ' ' || $2
-        || ' RETURNS ' || quote_ident($3) || ') should exist'
+        'Right operator ' || $2 || '('
+        || $1 || ',NONE) RETURNS ' || $3 || ' should exist'
     );
 $$ LANGUAGE SQL;
 
@@ -3988,8 +3972,7 @@ CREATE OR REPLACE FUNCTION has_rightop ( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT ok(
          _op_exists($1, $2, NULL ),
-        'Operator ('
-        || quote_ident($1) || ' ' || $2 || ') should exist'
+        'Right operator ' || $2 || '(' || $1 || ',NONE) should exist'
     );
 $$ LANGUAGE SQL;
 
