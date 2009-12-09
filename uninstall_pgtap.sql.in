@@ -1,6 +1,11 @@
 -- ## SET search_path TO TAPSCHEMA, public;
-DROP FUNCTION casts_are ( TEXT[][] );
-DROP FUNCTION casts_are ( TEXT[][], TEXT );
+DROP FUNCTION operators_are ( TEXT[] );
+DROP FUNCTION operators_are( TEXT[], TEXT );
+DROP FUNCTION operators_are ( NAME, TEXT[] );
+DROP FUNCTION operators_are( NAME, TEXT[], TEXT );
+DROP FUNCTION casts_are ( TEXT[] );
+DROP FUNCTION casts_are ( TEXT[], TEXT );
+DROP FUNCTION _areni ( text, text[], text[], TEXT );
 DROP FUNCTION triggers_are( NAME, NAME[] );
 DROP FUNCTION triggers_are( NAME, NAME[], TEXT );
 DROP FUNCTION triggers_are( NAME, NAME, NAME[] );

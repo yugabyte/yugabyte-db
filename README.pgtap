@@ -1743,20 +1743,19 @@ missing enums, like so:
 
     SELECT casts_are(
         ARRAY[
-            ARRAY[ 'integer', 'double precision' ],
-            ARRAY[ 'integer', 'reltime' ],
-            ARRAY[ 'integer', 'numeric' ],
+            'integer AS double precision',
+            'integer AS reltime',
+            'integer AS numeric',
             -- ...
         ]
         'Should have the correct casts'
     );
 
 This function tests that all of the casts in the database are only the casts
-that *should* be in that database. Casts are specified as a two dimensional
-array, where each element in the array is a two-item array containing first
-the name of source data type and then the name of the target data type. If the
-description is omitted, a generally useful default description will be
-generated.
+that *should* be in that database. Casts are specified as strings in a syntax
+similarly to how they're declared via `CREATE CAST`. The pattern is
+`:source_type AS :target_type`. If the description is omitted, a generally
+useful default description will be generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing casts, like so:
@@ -1766,6 +1765,47 @@ missing casts, like so:
     #         lseg AS point
     #     Missing casts:
     #         lseg AS integer
+
+### `operators_are( schema, operators[], description )` ###
+### `operators_are( schema, operators[] )` ###
+### `operators_are( operators[], description )` ###
+### `operators_are( operators[] )` ###
+
+    SELECT operators_are(
+        'public',
+        ARRAY[
+            '=(citext,citext) RETURNS boolean',
+            '-(NONE,bigint) RETURNS bigint',
+            '!(bigint,NONE) RETURNS numeric',
+            -- ...
+        ],
+        ''
+    );
+
+Tests that all of the operators in the named schema are the only operators in
+that schema. If the `:schema` argument is omitted, the operators must be
+visible in the search path, excluding `pg_catalog` and `information_schema`.
+If the description is omitted, a generally useful default description will be
+generated.
+
+The `:operators` argument is specified as an array of strings in which
+each operator is defined similarly to the display of the `:regoperator` type.
+The format is `:op(:leftop,:rightop) RETURNS :return_type`.
+
+For left operators the left argument type should be `NONE`. For right
+operators, the right argument type should be `NONE`. The example above shows
+one one of each of the operator types. `=(citext,citext)` is an infix
+operator, `-(bigint,NONE)` is a left operator, and `!(NONE,bigint)' is a right
+operator.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing operators, like so:
+
+    # Failed test 453: "Schema public should have the correct operators"
+    #     Extra operators:
+    #         +(integer,integer) RETURNS integer
+    #     Missing enums:
+    #         +(integer,text) RETURNS text
 
 To Have or Have Not
 -------------------
@@ -4211,7 +4251,6 @@ To Do
   + `sequence_increments_by()`
   + `sequence_starts_at()`
   + `sequence_cycles()`
-  + `operators_are()`
   + `columns_are()`
 * Useful result testing function to consider adding (but might require C
   code): `rowtype_is()`

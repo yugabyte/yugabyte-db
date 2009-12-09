@@ -1,5 +1,5 @@
 \unset ECHO
-1..345
+1..369
 ok 1 - tablespaces_are(tablespaces, desc) should pass
 ok 2 - tablespaces_are(tablespaces, desc) should have the proper description
 ok 3 - tablespaces_are(tablespaces, desc) should have the proper diagnostics
@@ -345,3 +345,27 @@ ok 342 - casts_are(casts, desc) extra should have the proper diagnostics
 ok 343 - casts_are(casts, desc) extras and missing should fail
 ok 344 - casts_are(casts, desc) extras and missing should have the proper description
 ok 345 - casts_are(casts, desc) extras and missing should have the proper diagnostics
+ok 346 - operators_are(schema, operators, desc) should pass
+ok 347 - operators_are(schema, operators, desc) should have the proper description
+ok 348 - operators_are(schema, operators, desc) should have the proper diagnostics
+ok 349 - operators_are(schema, operators) should pass
+ok 350 - operators_are(schema, operators) should have the proper description
+ok 351 - operators_are(schema, operators) should have the proper diagnostics
+ok 352 - operators_are(schema, operators, desc) fail should fail
+ok 353 - operators_are(schema, operators, desc) fail should have the proper description
+ok 354 - operators_are(schema, operators, desc) fail should have the proper diagnostics
+ok 355 - operators_are(schema, operators) fail should fail
+ok 356 - operators_are(schema, operators) fail should have the proper description
+ok 357 - operators_are(schema, operators) fail should have the proper diagnostics
+ok 358 - operators_are(operators, desc) should pass
+ok 359 - operators_are(operators, desc) should have the proper description
+ok 360 - operators_are(operators, desc) should have the proper diagnostics
+ok 361 - operators_are(operators) should pass
+ok 362 - operators_are(operators) should have the proper description
+ok 363 - operators_are(operators) should have the proper diagnostics
+ok 364 - operators_are(operators, desc) fail should fail
+ok 365 - operators_are(operators, desc) fail should have the proper description
+ok 366 - operators_are(operators, desc) fail should have the proper diagnostics
+ok 367 - operators_are(operators) fail should fail
+ok 368 - operators_are(operators) fail should have the proper description
+ok 369 - operators_are(operators) fail should have the proper diagnostics

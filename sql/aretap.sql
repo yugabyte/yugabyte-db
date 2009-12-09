@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(345);
+SELECT plan(369);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1211,23 +1211,15 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test domains_are().
+-- Test casts_are().
 
-CREATE OR REPLACE FUNCTION ___mycasts(ex text) RETURNS TEXT[][] AS $$
-DECLARE
-    casts TEXT[][];
-    rec   TEXT[];
-BEGIN
-    FOR rec IN
-        SELECT ARRAY[ display_type(castsource, NULL), display_type(casttarget, NULL) ]
+CREATE OR REPLACE FUNCTION ___mycasts(ex text) RETURNS TEXT[] AS $$
+    SELECT ARRAY(
+        SELECT display_type(castsource, NULL) || ' AS ' || display_type(casttarget, NULL)
           FROM pg_catalog.pg_cast
          WHERE castsource::regtype::text <> $1
-    LOOP
-        casts := casts || ARRAY[rec];
-    END LOOP;
-    return casts;
-END;
-$$ LANGUAGE plpgsql;
+    );
+$$ LANGUAGE SQL;
 
 SELECT * FROM check_test(
     casts_are( ___mycasts(''), 'whatever' ),
@@ -1246,7 +1238,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    casts_are( ___mycasts('') || ARRAY[ARRAY['__booya__', 'integer']], 'whatever' ),
+    casts_are( array_append(___mycasts(''), '__booya__ AS integer'), 'whatever' ),
     false,
     'casts_are(casts, desc) missing',
     'whatever',
@@ -1264,7 +1256,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    casts_are( ___mycasts('lseg') || ARRAY[ARRAY['__booya__', 'integer']], 'whatever' ),
+    casts_are( array_append(___mycasts('lseg'), '__booya__ AS integer'), 'whatever' ),
     false,
     'casts_are(casts, desc) extras and missing',
     'whatever',
@@ -1272,6 +1264,96 @@ SELECT * FROM check_test(
         lseg AS point
     Missing casts:
         __booya__ AS integer'
+);
+
+/****************************************************************************/
+-- Test operators_are().
+
+SELECT * FROM check_test(
+    operators_are( 'public', ARRAY['=(goofy,goofy) RETURNS boolean'], 'whatever' ),
+    true,
+    'operators_are(schema, operators, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    operators_are( 'public', ARRAY['=(goofy,goofy) RETURNS boolean'] ),
+    true,
+    'operators_are(schema, operators)',
+    'Schema public should have the correct operators',
+    ''
+);
+
+SELECT * FROM check_test(
+    operators_are( 'public', ARRAY['+(freddy,freddy) RETURNS barnie'], 'whatever' ),
+    false,
+    'operators_are(schema, operators, desc) fail',
+    'whatever',
+    '    Extra operators:
+        =(goofy,goofy) RETURNS boolean
+    Missing operators:
+        +(freddy,freddy) RETURNS barnie'
+);
+
+SELECT * FROM check_test(
+    operators_are( 'public', ARRAY['+(freddy,freddy) RETURNS barnie'] ),
+    false,
+    'operators_are(schema, operators) fail',
+    'Schema public should have the correct operators',
+    '    Extra operators:
+        =(goofy,goofy) RETURNS boolean
+    Missing operators:
+        +(freddy,freddy) RETURNS barnie'
+);
+
+CREATE OR REPLACE FUNCTION ___myops(ex text) RETURNS TEXT[] AS $$
+    SELECT ARRAY(
+        SELECT o.oid::regoperator::text || ' RETURNS ' || o.oprresult::regtype
+          FROM pg_catalog.pg_operator o
+          JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
+         WHERE pg_catalog.pg_operator_is_visible(o.oid)
+           AND o.oprleft::regtype::text <> $1
+           AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+    );
+$$ LANGUAGE SQL;
+
+SELECT * FROM check_test(
+    operators_are( array_append( ___myops(''), '=(goofy,goofy) RETURNS boolean' ), 'whatever' ),
+    true,
+    'operators_are(operators, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    operators_are( array_append( ___myops(''), '=(goofy,goofy) RETURNS boolean' ) ),
+    true,
+    'operators_are(operators)',
+    'There should be the correct operators',
+    ''
+);
+
+SELECT * FROM check_test(
+    operators_are( array_append( ___myops('goofy'), '+(freddy,freddy) RETURNS barnie' ), 'whatever' ),
+    false,
+    'operators_are(operators, desc) fail',
+    'whatever',
+    '    Extra operators:
+        =(goofy,goofy) RETURNS boolean
+    Missing operators:
+        +(freddy,freddy) RETURNS barnie'
+);
+
+SELECT * FROM check_test(
+    operators_are( array_append( ___myops('goofy'), '+(freddy,freddy) RETURNS barnie' ) ),
+    false,
+    'operators_are(operators) fail',
+    'There should be the correct operators',
+    '    Extra operators:
+        =(goofy,goofy) RETURNS boolean
+    Missing operators:
+        +(freddy,freddy) RETURNS barnie'
 );
 
 /****************************************************************************/
