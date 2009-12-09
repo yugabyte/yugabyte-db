@@ -7227,3 +7227,87 @@ RETURNS TEXT AS $$
     SELECT operators_are($1, 'There should be the correct operators')
 $$ LANGUAGE SQL;
 
+-- columns_are( schema, table, columns[], description )
+CREATE OR REPLACE FUNCTION columns_are( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'columns',
+        ARRAY(
+            SELECT a.attname
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+             WHERE n.nspname = $1
+               AND c.relname = $2
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT a.attname
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+             WHERE n.nspname = $1
+               AND c.relname = $2
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
+-- columns_are( schema, table, columns[] )
+CREATE OR REPLACE FUNCTION columns_are( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT columns_are( $1, $2, $3, 'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should have the correct columns' );
+$$ LANGUAGE SQL;
+
+-- columns_are( table, columns[], description )
+CREATE OR REPLACE FUNCTION columns_are( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'columns',
+        ARRAY(
+            SELECT a.attname
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+            EXCEPT
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT a.attname
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+              JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND pg_catalog.pg_table_is_visible(c.oid)
+               AND c.relname = $1
+               AND a.attnum > 0
+               AND NOT a.attisdropped
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
+-- columns_are( table, columns[] )
+CREATE OR REPLACE FUNCTION columns_are( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT columns_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct columns' );
+$$ LANGUAGE SQL;
+

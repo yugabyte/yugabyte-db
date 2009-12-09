@@ -1,5 +1,5 @@
 \unset ECHO
-1..369
+1..399
 ok 1 - tablespaces_are(tablespaces, desc) should pass
 ok 2 - tablespaces_are(tablespaces, desc) should have the proper description
 ok 3 - tablespaces_are(tablespaces, desc) should have the proper diagnostics
@@ -369,3 +369,33 @@ ok 366 - operators_are(operators, desc) fail should have the proper diagnostics
 ok 367 - operators_are(operators) fail should fail
 ok 368 - operators_are(operators) fail should have the proper description
 ok 369 - operators_are(operators) fail should have the proper diagnostics
+ok 370 - columns_are(schema, table, columns, desc) should pass
+ok 371 - columns_are(schema, table, columns, desc) should have the proper description
+ok 372 - columns_are(schema, table, columns, desc) should have the proper diagnostics
+ok 373 - columns_are(schema, table, columns) should pass
+ok 374 - columns_are(schema, table, columns) should have the proper description
+ok 375 - columns_are(schema, table, columns) should have the proper diagnostics
+ok 376 - columns_are(schema, table, columns) + extra should fail
+ok 377 - columns_are(schema, table, columns) + extra should have the proper description
+ok 378 - columns_are(schema, table, columns) + extra should have the proper diagnostics
+ok 379 - columns_are(schema, table, columns) + missing should fail
+ok 380 - columns_are(schema, table, columns) + missing should have the proper description
+ok 381 - columns_are(schema, table, columns) + missing should have the proper diagnostics
+ok 382 - columns_are(schema, table, columns) + extra & missing should fail
+ok 383 - columns_are(schema, table, columns) + extra & missing should have the proper description
+ok 384 - columns_are(schema, table, columns) + extra & missing should have the proper diagnostics
+ok 385 - columns_are(table, columns, desc) should pass
+ok 386 - columns_are(table, columns, desc) should have the proper description
+ok 387 - columns_are(table, columns, desc) should have the proper diagnostics
+ok 388 - columns_are(table, columns) should pass
+ok 389 - columns_are(table, columns) should have the proper description
+ok 390 - columns_are(table, columns) should have the proper diagnostics
+ok 391 - columns_are(table, columns) + extra should fail
+ok 392 - columns_are(table, columns) + extra should have the proper description
+ok 393 - columns_are(table, columns) + extra should have the proper diagnostics
+ok 394 - columns_are(table, columns) + missing should fail
+ok 395 - columns_are(table, columns) + missing should have the proper description
+ok 396 - columns_are(table, columns) + missing should have the proper diagnostics
+ok 397 - columns_are(table, columns) + extra & missing should fail
+ok 398 - columns_are(table, columns) + extra & missing should have the proper description
+ok 399 - columns_are(table, columns) + extra & missing should have the proper diagnostics

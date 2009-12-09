@@ -1453,6 +1453,34 @@ missing sequences, like so:
     #         users_seq
     #         widgets_seq
 
+### `columns_are( schema, table, columns[], description )` ###
+### `columns_are( schema, table, columns[] )` ###
+### `columns_are( table, columns[], description )` ###
+### `columns_are( table, columns[] )` ###
+
+    SELECT columns_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'id', 'name', 'rank', 'sn' ],
+        'Should have the correct columns on myschema.atable'
+    );
+
+This function tests that all of the columns on the named table are only the
+columns that *should* be on that table. If the `:schema` argument is omitted,
+the table must be visible in the search path, excluding `pg_catalog` and
+`information_schema`. If the description is omitted, a generally useful
+default description will be generated.
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing columns, like so:
+
+    # Failed test 183: "Table users should have the correct columns"
+    #     Extra columns:
+    #         given_name
+    #         surname
+    #     Missing columns:
+    #         name
+
 ### `indexes_are( schema, table, indexes[], description )` ###
 ### `indexes_are( schema, table, indexes[] )` ###
 ### `indexes_are( table, indexes[], description )` ###

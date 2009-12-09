@@ -1,4 +1,8 @@
 -- ## SET search_path TO TAPSCHEMA, public;
+DROP FUNCTION columns_are( NAME, NAME[] );
+DROP FUNCTION columns_are( NAME, NAME[], TEXT );
+DROP FUNCTION columns_are( NAME, NAME, NAME[] );
+DROP FUNCTION columns_are( NAME, NAME, NAME[], TEXT );
 DROP FUNCTION operators_are ( TEXT[] );
 DROP FUNCTION operators_are( TEXT[], TEXT );
 DROP FUNCTION operators_are ( NAME, TEXT[] );
