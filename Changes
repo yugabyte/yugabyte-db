@@ -40,6 +40,7 @@ Revision history for pgTAP
 * Changed the default descriptions output by `has_operator()`, `has_leftop()`,
   and `has_rightop()` to format the operator names more like the display of
   `regoperator` types.
+* Fixed issue with using SET SESSION AUTHORIZATION among tests [Kevin Field]
 
 0.22 2009-07-31T00:26:16
 -------------------------
