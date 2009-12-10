@@ -681,7 +681,9 @@ documentation](http://www.postgresql.org/docs/current/static/).
 The third argument is an error message. This will be most useful for functions
 you've written that raise exceptions, so that you can test the exception
 message that you've thrown. Otherwise, for core errors, you'll need to be
-careful of localized error messages.
+careful of localized error messages.  One trick to get around localized error
+messages is to pass NULL as the third argument.  This allows you to still pass
+a description as the fourth argument.
 
 The fourth argument is of course a brief test description.
 
