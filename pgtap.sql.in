@@ -49,6 +49,7 @@ BEGIN
                 note  TEXT    NOT NULL DEFAULT ''''
             );
             GRANT ALL ON TABLE __tcache__ TO PUBLIC;
+            GRANT ALL ON TABLE __tcache___id_seq TO PUBLIC;
 
             CREATE TEMP TABLE __tresults__ (
                 numb   SERIAL           PRIMARY KEY,
