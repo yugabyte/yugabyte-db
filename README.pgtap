@@ -4292,7 +4292,7 @@ pgTAP has been tested on the following builds of PostgreSQL:
 
 * PostgreSQL 8.5devel on i386-apple-darwin10.2.0
 * PostgreSQL 8.4.0 on i386-apple-darwin9.7.0
-* PostgreSQL 8.3.7 on i386-apple-darwin9.6.0
+* PostgreSQL 8.3.9 on i386-apple-darwin10.2.0
 * PostgreSQL 8.3.6 on i386-redhat-linux-gnu
 * PostgreSQL 8.2.13 on i386-apple-darwin9.6.0
 * PostgreSQL 8.1.17 on i686-apple-darwin9.6.0

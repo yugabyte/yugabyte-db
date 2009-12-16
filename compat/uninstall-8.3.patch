@@ -1,6 +1,6 @@
---- uninstall_pgtap.sql.orig	2009-07-29 21:51:55.000000000 -0700
-+++ uninstall_pgtap.sql	2009-07-29 21:52:53.000000000 -0700
-@@ -626,6 +626,7 @@
+--- uninstall_pgtap.sql.orig	2009-12-16 15:34:43.000000000 -0800
++++ uninstall_pgtap.sql	2009-12-16 15:34:43.000000000 -0800
+@@ -697,6 +697,7 @@
  DROP FUNCTION _get ( text );
  DROP FUNCTION no_plan();
  DROP FUNCTION plan( integer );
