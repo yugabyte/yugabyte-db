@@ -57,7 +57,7 @@ DROP FUNCTION throws_ilike ( TEXT, TEXT, TEXT );
 DROP FUNCTION throws_like ( TEXT, TEXT );
 DROP FUNCTION throws_like ( TEXT, TEXT, TEXT );
 DROP FUNCTION _tlike ( BOOLEAN, TEXT, TEXT, TEXT );
-DROP FUNCTION collect_tap(;
+DROP FUNCTION collect_tap( VARIADIC text[] );
 DROP FUNCTION is_empty( TEXT );
 DROP FUNCTION is_empty( TEXT, TEXT );
 DROP FUNCTION isa_ok( anyelement, regtype );

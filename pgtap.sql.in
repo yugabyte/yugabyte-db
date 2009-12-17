@@ -6538,9 +6538,8 @@ RETURNS TEXT AS $$
 $$ LANGUAGE sql;
 
 -- collect_tap( tap, tap, tap )
-CREATE OR REPLACE FUNCTION collect_tap(
-    VARIADIC tap text[]
-) RETURNS TEXT AS $$
+CREATE OR REPLACE FUNCTION collect_tap( VARIADIC text[] )
+RETURNS TEXT AS $$
     SELECT array_to_string($1, E'\n');
 $$ LANGUAGE sql;
 
