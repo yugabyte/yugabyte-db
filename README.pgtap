@@ -4243,6 +4243,8 @@ No changes. Everything should just work.
 * A C function, `pg_typeof()`, is built and installed in a DSO. This is for
   compatibility with the same function that ships in 8.4 core, and is required
   for `cmp_ok()` and `isa_ok()` to work.
+* The variadic form of `collect_tap()` is not available. Instead you must pass
+  an array of TAP to it.
 
 8.2 and Down
 ------------

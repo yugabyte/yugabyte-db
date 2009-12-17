@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-12-16 15:46:29.000000000 -0800
-+++ pgtap.sql	2009-12-16 15:46:51.000000000 -0800
+--- pgtap.sql.orig	2009-12-16 16:16:23.000000000 -0800
++++ pgtap.sql	2009-12-16 16:17:15.000000000 -0800
 @@ -15,6 +15,11 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -41,11 +41,17 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6538,7 +6544,7 @@
+@@ -6538,13 +6544,7 @@
  $$ LANGUAGE sql;
  
  -- collect_tap( tap, tap, tap )
 -CREATE OR REPLACE FUNCTION collect_tap( VARIADIC text[] )
+-RETURNS TEXT AS $$
+-    SELECT array_to_string($1, E'\n');
+-$$ LANGUAGE sql;
+-
+--- collect_tap( tap[] )
+-CREATE OR REPLACE FUNCTION collect_tap( VARCHAR[] )
 +CREATE OR REPLACE FUNCTION collect_tap( text[] )
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
