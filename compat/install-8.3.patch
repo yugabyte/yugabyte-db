@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-12-16 16:16:23.000000000 -0800
-+++ pgtap.sql	2009-12-16 16:17:15.000000000 -0800
+--- pgtap.sql.orig	2009-12-16 17:06:12.000000000 -0800
++++ pgtap.sql	2009-12-16 17:06:38.000000000 -0800
 @@ -15,6 +15,11 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -56,3 +56,12 @@
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
  $$ LANGUAGE sql;
+@@ -7017,7 +7017,7 @@
+     result BOOLEAN;
+ BEGIN
+     FOR rec in EXECUTE _query($1) LOOP
+-        result := NOT rec IS DISTINCT FROM $2;
++        result := NOT rec::text IS DISTINCT FROM $2::text;
+         RETURN ok(result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
+                '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE rec::text END ||
+             E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE $2::text  END

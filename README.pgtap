@@ -4241,10 +4241,10 @@ No changes. Everything should just work.
 
 8.3 and Down
 ------------
-* A patch is applied to modify `results_eq()` to cast records to text before
-  comparing them. This means that things will mainly be correct, but it also
-  means that two queries with incompatible types that convert to the same text
-  string may be considered incorrectly equivalent.
+* A patch is applied to modify `results_eq()` and `row_eq()` to cast records
+  to text before comparing them. This means that things will mainly be
+  correct, but it also means that two queries with incompatible types that
+  convert to the same text string may be considered incorrectly equivalent.
 * A C function, `pg_typeof()`, is built and installed in a DSO. This is for
   compatibility with the same function that ships in 8.4 core, and is required
   for `cmp_ok()` and `isa_ok()` to work.
