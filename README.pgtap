@@ -412,7 +412,12 @@ Will produce something like this:
 
 So you can figure out what went wrong without re-running the test.
 
-You are encouraged to use `is()` and `isnt()` over `ok()` where possible.
+You are encouraged to use `is()` and `isnt()` over `ok()` where possible. You
+can even use them to compar records in PostgreSQL 8.4 and later:
+
+    SELECT is( users.*, ROW(1, 'theory', true)::users )
+      FROM users
+     WHERE nick = 'theory'; 
 
 ### `matches( anyelement, regex, description )` ###
 ### `matches( anyelement, regex )` ###

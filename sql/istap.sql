@@ -61,35 +61,89 @@ CREATE TABLE mumble ( id int, name text );
 RESET client_min_messages;
 INSERT INTO mumble VALUES (1, 'hey');
 
-SELECT is( mumble.*, ROW(1, 'hey')::mumble, 'with records!' )
-  FROM mumble;
+CREATE FUNCTION test_records() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 80400 THEN
+        RETURN NEXT is( mumble.*, ROW(1, 'hey')::mumble, 'with records!' )
+          FROM mumble;
 
-SELECT check_test(
-    is( mumble.*, ROW(1, 'HEY')::mumble ),
-    false,
-    'is(mumble, row) fail',
-    '',
-    '       have: (1,hey)
+        -- Before 8.3, have to cast to text.
+        FOR tap IN SELECT check_test(
+            is( mumble.*, ROW(1, 'HEY')::mumble ),
+            false,
+            'is(mumble, row) fail',
+            '',
+            '       have: (1,hey)
         want: (1,HEY)'
-) FROM mumble;
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-SELECT check_test(
-    is( mumble.*, ROW(1, NULL)::mumble ),
-    false,
-    'is(mumble, row) fail with NULL',
-    '',
-    '       have: (1,hey)
+        FOR tap IN SELECT check_test(
+            is( mumble.*, ROW(1, NULL)::mumble ),
+            false,
+            'is(mumble, row) fail with NULL',
+            '',
+            '       have: (1,hey)
         want: (1,)'
-) FROM mumble;
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-SELECT check_test(
-    is( mumble.*, NULL::mumble ),
-    false,
-    'is(mumble, NULL)',
-    '',
-    '       have: (1,hey)
+        FOR tap IN SELECT check_test(
+            is( mumble.*, NULL::mumble ),
+            false,
+            'is(mumble, NULL)',
+            '',
+            '       have: (1,hey)
         want: NULL'
-) FROM mumble;
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    ELSE
+        RETURN NEXT is( (mumble.*)::text, ROW(1, 'hey')::text, 'with records!' )
+          FROM mumble;
+
+        FOR tap IN SELECT check_test(
+            is( (mumble.*)::text, ROW(1, 'HEY')::text ),
+            false,
+            'is(mumble, row) fail',
+            '',
+            '       have: (1,hey)
+        want: (1,HEY)'
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT check_test(
+            is( (mumble.*)::text, ROW(1, NULL)::text ),
+            false,
+            'is(mumble, row) fail with NULL',
+            '',
+            '       have: (1,hey)
+        want: (1,)'
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT check_test(
+            is( (mumble.*)::text, NULL::text ),
+            false,
+            'is(mumble, NULL)',
+            '',
+            '       have: (1,hey)
+        want: NULL'
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_records();
 
 /****************************************************************************/
 -- Finish the tests and clean up.
