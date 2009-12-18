@@ -1240,11 +1240,12 @@ fails and the results are displayed in the failure diagnostics, like so:
     PREPARE testrow  AS SELECT * FROM users where nick = 'theory';
     SELECT row_eq('testrow', ROW(1, 'theory', 'David Wheeler')::users);
 
-Compares the contents of a single row to a record. Due to the limitations of
-non-C functions in PostgreSQL, a bar `RECORD` value cannot be passed to the
-function. You must instead pass in a valid composite type value, and cast the
-record argument (the second argument) to the same type. Both explicitly
-created composite types and table types are supported. Thus, you can do this:
+Compares the contents of a single row to a record. Works on PostgreSQL 8.1 and
+higher. Due to the limitations of non-C functions in PostgreSQL, a bar
+`RECORD` value cannot be passed to the function. You must instead pass in a
+valid composite type value, and cast the record argument (the second argument)
+to the same type. Both explicitly created composite types and table types are
+supported. Thus, you can do this:
 
     CREATE TYPE sometype AS (
         id    INT,
@@ -4289,6 +4290,7 @@ No changes. Everything should just work.
 * `has_role()`
 * `hasnt_role()`
 * `roles_are()`
+* `row_eq()`
 
 To Do
 -----

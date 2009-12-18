@@ -2283,7 +2283,7 @@ BEGIN
     ELSE
         PREPARE notempty AS SELECT id, name FROM names WHERE name IN ('Jacob', 'Emily')
           ORDER BY ID;
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             is_empty( 'notempty', 'whatever' ),
             false,
             'is_empty(prepared, desc) fail',
@@ -2291,11 +2291,11 @@ BEGIN
             '    Unexpected records:
         (1,Jacob)
         (2,Emily)'
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             is_empty( 'notempty' ),
             false,
             'is_empty(prepared) fail',
@@ -2303,7 +2303,7 @@ BEGIN
             '   Unexpected records:
         (1,Jacob)
         (2,Emily)'
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
     END IF;
@@ -2346,64 +2346,64 @@ BEGIN
         RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should have the proper diagnostics');
         RETURN NEXT pass('threw 0A000');
     ELSE
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             row_eq('arow', ROW(1, 'Jacob')::names, 'whatever'),
             true,
             'row_eq(prepared, record, desc)',
             'whatever',
             ''
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             row_eq('SELECT id, name FROM names WHERE id = 1', ROW(1, 'Jacob')::names, 'whatever'),
             true,
             'row_eq(sql, record, desc)',
             'whatever',
             ''
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             row_eq('arow', ROW(1, 'Jacob')::names),
             true,
             'row_eq(prepared, record, desc)',
             '',
             ''
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             row_eq('arow', ROW(1, 'Larry')::names),
             false,
             'row_eq(prepared, record, desc)',
             '',
             '       have: (1,Jacob)
         want: (1,Larry)'
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             row_eq('arow', ROW(1, 'Jacob')::sometype),
             true,
             'row_eq(prepared, sometype, desc)',
             '',
             ''
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
-        FOR tap IN SELECT check_test(
+        FOR tap IN SELECT * FROM check_test(
             row_eq('SELECT 1, ''Jacob''::text', ROW(1, 'Jacob')::sometype),
             true,
             'row_eq(sqlrow, sometype, desc)',
             '',
             ''
-        ) AS b FROM mumble LOOP
+        ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
 
@@ -2414,13 +2414,13 @@ BEGIN
             --  'PL/pgSQL functions cannot accept type record'
         );
 
-        -- FOR tap IN SELECT check_test(
+        -- FOR tap IN SELECT * FROM check_test(
         --     row_eq( 'SELECT id, ts FROM someat', ROW(1, '2009-12-04T07:22:52') ),
         --     true,
         --     'row_eq(sql, rec)',
         --     '',
         --     ''
-        -- ) AS b FROM mumble LOOP
+        -- ) AS a(b) LOOP
         --     RETURN NEXT tap.b;
         -- END LOOP;
 
