@@ -41,6 +41,8 @@ Revision history for pgTAP
   and `has_rightop()` to format the operator names more like the display of
   `regoperator` types.
 * Fixed issue with using SET SESSION AUTHORIZATION among tests [Kevin Field]
+* Added `display_oper()` so that schemas are always displayed properly when
+  comparing operators.
 
 0.22 2009-07-31T00:26:16
 -------------------------

@@ -7164,13 +7164,18 @@ RETURNS TEXT AS $$
     SELECT casts_are( $1, 'There should be the correct casts');
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION display_oper ( NAME, OID )
+RETURNS TEXT AS $$
+    SELECT $1 || substring($2::regoperator::text, '[(][^)]+[)]$')
+$$ LANGUAGE SQL;
+
 -- operators_are( schema, operators[], description )
 CREATE OR REPLACE FUNCTION operators_are( NAME, TEXT[], TEXT )
 RETURNS TEXT AS $$
     SELECT _areni(
         'operators',
         ARRAY(
-            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
               FROM pg_catalog.pg_operator o
               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
              WHERE n.nspname = $1
@@ -7182,7 +7187,7 @@ RETURNS TEXT AS $$
             SELECT $2[i]
               FROM generate_series(1, array_upper($2, 1)) s(i)
             EXCEPT
-            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
               FROM pg_catalog.pg_operator o
               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
              WHERE n.nspname = $1
@@ -7203,7 +7208,7 @@ RETURNS TEXT AS $$
     SELECT _areni(
         'operators',
         ARRAY(
-            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
               FROM pg_catalog.pg_operator o
               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
              WHERE pg_catalog.pg_operator_is_visible(o.oid)
@@ -7216,7 +7221,7 @@ RETURNS TEXT AS $$
             SELECT $1[i]
               FROM generate_series(1, array_upper($1, 1)) s(i)
             EXCEPT
-            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
               FROM pg_catalog.pg_operator o
               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
              WHERE pg_catalog.pg_operator_is_visible(o.oid)

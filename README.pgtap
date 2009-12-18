@@ -3887,6 +3887,14 @@ Like `pg_catalog.format_type()`, except that the returned value is not
 prepended with the schema name unless it is passed as the first argument. Used
 internally by pgTAP to compare type names, but may be more generally useful.
 
+### `display_oper( oper_name, oper_oid )` ###
+
+    SELECT display_type(oprname, oid ) FROM pg_operator;
+
+Similar to casting an operator OID to regoperator, only the schema is not
+included in the display. Used internally by pgTAP to compare operators, but
+may be more generally useful.
+
 ### `pg_typeof(any)` ###
 
     SELECT pg_typeof(:value);
