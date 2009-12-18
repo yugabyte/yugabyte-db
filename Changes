@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.23 
+0.23 2009-12-18T23:03:39
 -------------------------
 * Fixed broken Perl detection in `Makefile`.
 * Copied OS detection from Perl's `Configure` script to new script,
