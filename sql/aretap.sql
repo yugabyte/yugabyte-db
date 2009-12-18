@@ -47,11 +47,13 @@ CREATE OR REPLACE FUNCTION public.goofy_eq (goofy, goofy) RETURNS boolean AS $$
     SELECT $1 = $2;
 $$ LANGUAGE SQL IMMUTABLE STRICT;
 
-CREATE OPERATOR public.= ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
+CREATE SCHEMA disney;
 
-CREATE OPERATOR CLASS public.goofy_ops
+CREATE OPERATOR disney.= ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
+
+CREATE OPERATOR CLASS goofy_ops
 DEFAULT FOR TYPE goofy USING BTREE AS
-	OPERATOR 1 =,
+	OPERATOR 1 disney.=,
 	FUNCTION 1 goofy_cmp(goofy,goofy)
 ;
 
@@ -1070,7 +1072,7 @@ CREATE FUNCTION ___mytype(ex text) RETURNS NAME[] AS $$
                      t.typrelid = 0
                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
              )
-               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem)
                AND n.nspname NOT IN('pg_catalog', 'information_schema')
            AND t.typname <> $1
            AND pg_catalog.pg_type_is_visible(t.oid)
@@ -1164,7 +1166,7 @@ CREATE FUNCTION ___mydo(ex text) RETURNS NAME[] AS $$
                      t.typrelid = 0
                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
              )
-               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem)
                AND n.nspname NOT IN('pg_catalog', 'information_schema')
            AND t.typname <> $1
            AND pg_catalog.pg_type_is_visible(t.oid)
@@ -1268,9 +1270,10 @@ SELECT * FROM check_test(
 
 /****************************************************************************/
 -- Test operators_are().
+SET search_path = disney,public,pg_catalog;
 
 SELECT * FROM check_test(
-    operators_are( 'public', ARRAY['=(goofy,goofy) RETURNS boolean'], 'whatever' ),
+    operators_are( 'disney', ARRAY['=(goofy,goofy) RETURNS boolean'], 'whatever' ),
     true,
     'operators_are(schema, operators, desc)',
     'whatever',
@@ -1278,15 +1281,15 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    operators_are( 'public', ARRAY['=(goofy,goofy) RETURNS boolean'] ),
+    operators_are( 'disney', ARRAY['=(goofy,goofy) RETURNS boolean'] ),
     true,
     'operators_are(schema, operators)',
-    'Schema public should have the correct operators',
+    'Schema disney should have the correct operators',
     ''
 );
 
 SELECT * FROM check_test(
-    operators_are( 'public', ARRAY['+(freddy,freddy) RETURNS barnie'], 'whatever' ),
+    operators_are( 'disney', ARRAY['+(freddy,freddy) RETURNS barnie'], 'whatever' ),
     false,
     'operators_are(schema, operators, desc) fail',
     'whatever',
@@ -1297,10 +1300,10 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    operators_are( 'public', ARRAY['+(freddy,freddy) RETURNS barnie'] ),
+    operators_are( 'disney', ARRAY['+(freddy,freddy) RETURNS barnie'] ),
     false,
     'operators_are(schema, operators) fail',
-    'Schema public should have the correct operators',
+    'Schema disney should have the correct operators',
     '    Extra operators:
         =(goofy,goofy) RETURNS boolean
     Missing operators:
@@ -1309,7 +1312,7 @@ SELECT * FROM check_test(
 
 CREATE OR REPLACE FUNCTION ___myops(ex text) RETURNS TEXT[] AS $$
     SELECT ARRAY(
-        SELECT o.oid::regoperator::text || ' RETURNS ' || o.oprresult::regtype
+        SELECT textin(regoperatorout(o.oid::regoperator)) || ' RETURNS ' || o.oprresult::regtype::text
           FROM pg_catalog.pg_operator o
           JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
          WHERE pg_catalog.pg_operator_is_visible(o.oid)

@@ -103,11 +103,11 @@ BEGIN
             RETURN NEXT tap.b;
         END LOOP;
     ELSE
-        RETURN NEXT is( (mumble.*)::text, ROW(1, 'hey')::text, 'with records!' )
+        RETURN NEXT is( textin(record_out(mumble.*)), textin(record_out(ROW(1, 'hey'))), 'with records!' )
           FROM mumble;
 
         FOR tap IN SELECT check_test(
-            is( (mumble.*)::text, ROW(1, 'HEY')::text ),
+            is( textin(record_out(mumble.*)), textin(record_out(ROW(1, 'HEY')))),
             false,
             'is(mumble, row) fail',
             '',
@@ -118,7 +118,7 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT check_test(
-            is( (mumble.*)::text, ROW(1, NULL)::text ),
+            is( textin(record_out(mumble.*)), textin(record_out(ROW(1, NULL))) ),
             false,
             'is(mumble, row) fail with NULL',
             '',
@@ -129,7 +129,7 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT check_test(
-            is( (mumble.*)::text, NULL::text ),
+            is( textin(record_out(mumble.*)), NULL::text ),
             false,
             'is(mumble, NULL)',
             '',

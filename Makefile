@@ -103,7 +103,6 @@ ifneq ($(PGVER_MINOR), 0)
 	patch -p0 < compat/install-8.3.patch
 endif
 ifneq ($(PGVER_MINOR), 3)
-	cat compat/install-8.2.sql >> pgtap.sql
 ifeq ($(PGVER_MINOR), 2)
 	patch -p0 < compat/install-8.2.patch
 else
@@ -131,9 +130,6 @@ ifneq ($(PGVER_MINOR), 4)
 	patch -p0 < compat/uninstall-8.3.patch
 ifneq ($(PGVER_MINOR), 3)
 	patch -p0 < compat/uninstall-8.2.patch
-	mv uninstall_pgtap.sql uninstall_pgtap.tmp
-	cat compat/uninstall-8.2.sql uninstall_pgtap.tmp >> uninstall_pgtap.sql
-	rm uninstall_pgtap.tmp
 endif
 ifeq ($(PGVER_MINOR), 0)
 	patch -p0 < compat/uninstall-8.0.patch
