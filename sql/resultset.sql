@@ -2268,99 +2268,168 @@ SELECT * FROM check_test(
     ''
 );
 
-PREPARE notempty AS SELECT id, name FROM names WHERE name IN ('Jacob', 'Emily') ORDER BY ID;
-SELECT * FROM check_test(
-    is_empty( 'notempty', 'whatever' ),
-    false,
-    'is_empty(prepared, desc) fail',
-    'whatever',
-    '    Unexpected records:
+CREATE FUNCTION test_empty_fail() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() < 80100 THEN
+        -- Can't do shit with records on 8.0
+        RETURN NEXT pass('is_empty(prepared, desc) fail should fail');
+        RETURN NEXT pass('is_empty(prepared, desc) fail should have the proper description');
+        RETURN NEXT pass('is_empty(prepared, desc) fail should have the proper diagnostics');
+        RETURN NEXT pass('is_empty(prepared) fail should fail');
+        RETURN NEXT pass('is_empty(prepared) fail should have the proper description');
+        RETURN NEXT pass('is_empty(prepared) fail should have the proper diagnostics');
+    ELSE
+        PREPARE notempty AS SELECT id, name FROM names WHERE name IN ('Jacob', 'Emily')
+          ORDER BY ID;
+        FOR tap IN SELECT check_test(
+            is_empty( 'notempty', 'whatever' ),
+            false,
+            'is_empty(prepared, desc) fail',
+            'whatever',
+            '    Unexpected records:
         (1,Jacob)
         (2,Emily)'
-);
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-SELECT * FROM check_test(
-    is_empty( 'notempty' ),
-    false,
-    'is_empty(prepared) fail',
-    '',
-    '   Unexpected records:
+        FOR tap IN SELECT check_test(
+            is_empty( 'notempty' ),
+            false,
+            'is_empty(prepared) fail',
+            '',
+            '   Unexpected records:
         (1,Jacob)
         (2,Emily)'
-);
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE PLPGSQL;
+SELECT * FROM test_empty_fail();
 
 /****************************************************************************/
 -- Test row_eq().
 PREPARE arow AS SELECT id, name FROM names WHERE name = 'Jacob';
-
-SELECT check_test(
-    row_eq('arow', ROW(1, 'Jacob')::names, 'whatever'),
-    true,
-    'row_eq(prepared, record, desc)',
-    'whatever',
-    ''
-);
-
-SELECT check_test(
-    row_eq('SELECT id, name FROM names WHERE id = 1', ROW(1, 'Jacob')::names, 'whatever'),
-    true,
-    'row_eq(sql, record, desc)',
-    'whatever',
-    ''
-);
-
-SELECT check_test(
-    row_eq('arow', ROW(1, 'Jacob')::names),
-    true,
-    'row_eq(prepared, record, desc)',
-    '',
-    ''
-);
-
-SELECT check_test(
-    row_eq('arow', ROW(1, 'Larry')::names),
-    false,
-    'row_eq(prepared, record, desc)',
-    '',
-    '       have: (1,Jacob)
-        want: (1,Larry)'
-);
-
 CREATE TYPE sometype AS (
     id    INT,
     name  TEXT
 );
 
-SELECT check_test(
-    row_eq('arow', ROW(1, 'Jacob')::sometype),
-    true,
-    'row_eq(prepared, sometype, desc)',
-    '',
-    ''
-);
+CREATE FUNCTION test_row_eq() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() < 80100 THEN
+        -- Can't do shit with records on 8.0
+        RETURN NEXT pass('row_eq(prepared, record, desc) should pass');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper description');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper diagnostics');
+        RETURN NEXT pass('row_eq(sql, record, desc) should pass');
+        RETURN NEXT pass('row_eq(sql, record, desc) should have the proper description');
+        RETURN NEXT pass('row_eq(sql, record, desc) should have the proper diagnostics');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should pass');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper description');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper diagnostics');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should fail');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper description');
+        RETURN NEXT pass('row_eq(prepared, record, desc) should have the proper diagnostics');
+        RETURN NEXT pass('row_eq(prepared, sometype, desc) should pass');
+        RETURN NEXT pass('row_eq(prepared, sometype, desc) should have the proper description');
+        RETURN NEXT pass('row_eq(prepared, sometype, desc) should have the proper diagnostics');
+        RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should pass');
+        RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should have the proper description');
+        RETURN NEXT pass('row_eq(sqlrow, sometype, desc) should have the proper diagnostics');
+        RETURN NEXT pass('threw 0A000');
+    ELSE
+        FOR tap IN SELECT check_test(
+            row_eq('arow', ROW(1, 'Jacob')::names, 'whatever'),
+            true,
+            'row_eq(prepared, record, desc)',
+            'whatever',
+            ''
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-SELECT check_test(
-    row_eq('SELECT 1, ''Jacob''::text', ROW(1, 'Jacob')::sometype),
-    true,
-    'row_eq(sqlrow, sometype, desc)',
-    '',
-    ''
-);
+        FOR tap IN SELECT check_test(
+            row_eq('SELECT id, name FROM names WHERE id = 1', ROW(1, 'Jacob')::names, 'whatever'),
+            true,
+            'row_eq(sql, record, desc)',
+            'whatever',
+            ''
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
-INSERT INTO someat (ts) values ('2009-12-04T07:22:52');
-SELECT throws_ok(
-    'SELECT row_eq( ''SELECT id, ts FROM someat'', ROW(1, ''2009-12-04T07:22:52'') )',
-    '0A000'
---  'PL/pgSQL functions cannot accept type record'
-);
+        FOR tap IN SELECT check_test(
+            row_eq('arow', ROW(1, 'Jacob')::names),
+            true,
+            'row_eq(prepared, record, desc)',
+            '',
+            ''
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
 
--- SELECT check_test(
---     row_eq( 'SELECT id, ts FROM someat', ROW(1, '2009-12-04T07:22:52') ),
---     true,
---     'row_eq(sql, rec)',
---     '',
---     ''
--- );
+        FOR tap IN SELECT check_test(
+            row_eq('arow', ROW(1, 'Larry')::names),
+            false,
+            'row_eq(prepared, record, desc)',
+            '',
+            '       have: (1,Jacob)
+        want: (1,Larry)'
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT check_test(
+            row_eq('arow', ROW(1, 'Jacob')::sometype),
+            true,
+            'row_eq(prepared, sometype, desc)',
+            '',
+            ''
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT check_test(
+            row_eq('SELECT 1, ''Jacob''::text', ROW(1, 'Jacob')::sometype),
+            true,
+            'row_eq(sqlrow, sometype, desc)',
+            '',
+            ''
+        ) AS b FROM mumble LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        INSERT INTO someat (ts) values ('2009-12-04T07:22:52');
+        RETURN NEXT throws_ok(
+            'SELECT row_eq( ''SELECT id, ts FROM someat'', ROW(1, ''2009-12-04T07:22:52'') )',
+            '0A000'
+            --  'PL/pgSQL functions cannot accept type record'
+        );
+
+        -- FOR tap IN SELECT check_test(
+        --     row_eq( 'SELECT id, ts FROM someat', ROW(1, '2009-12-04T07:22:52') ),
+        --     true,
+        --     'row_eq(sql, rec)',
+        --     '',
+        --     ''
+        -- ) AS b FROM mumble LOOP
+        --     RETURN NEXT tap.b;
+        -- END LOOP;
+
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM test_row_eq();
 
 /****************************************************************************/
 -- Finish the tests and clean up.

@@ -4288,6 +4288,7 @@ No changes. Everything should just work.
 * `runtests()`
 * `has_role()`
 * `hasnt_role()`
+* `roles_are()`
 
 To Do
 -----
