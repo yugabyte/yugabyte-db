@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-12-17 14:55:53.000000000 -0800
-+++ pgtap.sql	2009-12-17 16:05:04.000000000 -0800
+--- pgtap.sql.orig	2009-12-18 09:23:38.000000000 -0800
++++ pgtap.sql	2009-12-18 09:25:55.000000000 -0800
 @@ -11,6 +11,59 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
@@ -314,39 +314,48 @@
          ) END;
      END LOOP;
  END;
-@@ -7170,7 +7166,7 @@
+@@ -7166,7 +7162,7 @@
+ 
+ CREATE OR REPLACE FUNCTION display_oper ( NAME, OID )
+ RETURNS TEXT AS $$
+-    SELECT $1 || substring($2::regoperator::text, '[(][^)]+[)]$')
++    SELECT $1 || substring(textin(regoperatorout($2::regoperator)), '[(][^)]+[)]$')
+ $$ LANGUAGE SQL;
+ 
+ -- operators_are( schema, operators[], description )
+@@ -7175,7 +7171,7 @@
      SELECT _areni(
          'operators',
          ARRAY(
--            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
-+            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype::text
+-            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
++            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE n.nspname = $1
-@@ -7182,7 +7178,7 @@
+@@ -7187,7 +7183,7 @@
              SELECT $2[i]
                FROM generate_series(1, array_upper($2, 1)) s(i)
              EXCEPT
--            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
-+            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype::text
+-            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
++            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE n.nspname = $1
-@@ -7203,7 +7199,7 @@
+@@ -7208,7 +7204,7 @@
      SELECT _areni(
          'operators',
          ARRAY(
--            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
-+            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype::text
+-            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
++            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE pg_catalog.pg_operator_is_visible(o.oid)
-@@ -7216,7 +7212,7 @@
+@@ -7221,7 +7217,7 @@
              SELECT $1[i]
                FROM generate_series(1, array_upper($1, 1)) s(i)
              EXCEPT
--            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype
-+            SELECT o.oid::regoperator || ' RETURNS ' || o.oprresult::regtype::text
+-            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
++            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE pg_catalog.pg_operator_is_visible(o.oid)

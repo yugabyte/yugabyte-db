@@ -70,6 +70,8 @@ TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/role
 REGRESS := $(filter-out throwtap runtests enumtap roletap,$(REGRESS))
 endif
 ifeq ($(PGVER_MINOR), 5)
+# Do nothing.
+else
 ifeq ($(PGVER_MINOR), 4)
 # Do nothing.
 else
