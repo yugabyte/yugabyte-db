@@ -1,6 +1,6 @@
---- pgtap.sql.orig	2009-07-29 22:02:08.000000000 -0700
-+++ pgtap.sql	2009-07-29 22:02:23.000000000 -0700
-@@ -5530,7 +5530,7 @@
+--- pgtap.sql.orig	2009-12-18 09:41:17.000000000 -0800
++++ pgtap.sql	2009-12-18 09:41:17.000000000 -0800
+@@ -5646,7 +5646,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -9,7 +9,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -5538,8 +5538,8 @@
+@@ -5654,8 +5654,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -20,13 +20,13 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -5607,14 +5607,14 @@
+@@ -5723,14 +5723,14 @@
      setup    ALIAS FOR $3;
      teardown ALIAS FOR $4;
      tests    ALIAS FOR $5;
 -    tap      text;
 +    rec      record;
-     verbose  boolean := _is_verbose();
+     verbos   boolean := _is_verbose(); -- verbose is a reserved word in 8.5.
      num_faild INTEGER := 0;
  BEGIN
      BEGIN
@@ -37,8 +37,8 @@
      EXCEPTION
          -- Catch all exceptions and simply rethrow custom exceptions. This
          -- will roll back everything in the above block.
-@@ -5629,15 +5629,15 @@
-                 IF verbose THEN RETURN NEXT diag(tests[i] || '()'); END IF;
+@@ -5745,15 +5745,15 @@
+                 IF verbos THEN RETURN NEXT diag(tests[i] || '()'); END IF;
  
                  -- Run the setup functions.
 -                FOR tap IN SELECT * FROM _runem(setup, false) LOOP RETURN NEXT tap; END LOOP;
@@ -57,7 +57,7 @@
  
                  -- Remember how many failed and then roll back.
                  num_faild := num_faild + num_failed();
-@@ -5652,7 +5652,7 @@
+@@ -5768,7 +5768,7 @@
          END LOOP;
  
          -- Run the shutdown functions.
@@ -66,7 +66,7 @@
  
          -- Raise an exception to rollback any changes.
          RAISE EXCEPTION '__TAP_ROLLBACK__';
-@@ -5663,8 +5663,8 @@
+@@ -5779,8 +5779,8 @@
          END IF;
      END;
      -- Finish up.
