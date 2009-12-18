@@ -24,7 +24,16 @@ PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
 PGTAP_VERSION = 0.23
 
 # Compile the C code only if we're on 8.3 or older.
-ifneq ($(PGVER_MINOR), 4)
+ifeq ($(PGVER_MINOR), 3)
+MODULES = pgtap
+endif
+ifeq ($(PGVER_MINOR), 2)
+MODULES = pgtap
+endif
+ifeq ($(PGVER_MINOR), 1)
+MODULES = pgtap
+endif
+ifeq ($(PGVER_MINOR), 0)
 MODULES = pgtap
 endif
 
