@@ -62,30 +62,22 @@ endif
 
 # Set up extra substitutions based on version numbers.
 ifeq ($(PGVER_MAJOR), 8)
+ifeq ($(PGVER_MINOR), 2)
+# Enum tests not supported by 8.2 and earlier.
+TESTS := $(filter-out sql/enumtap.sql,$(TESTS))
+REGRESS := $(filter-out enumtap,$(REGRESS))
+endif
+ifeq ($(PGVER_MINOR), 1)
+# Values tests not supported by 8.1 and earlier.
+TESTS := $(filter-out sql/enumtap.sql sql/valueset.sql,$(TESTS))
+REGRESS := $(filter-out enumtap valueset,$(REGRESS))
+endif
 ifeq ($(PGVER_MINOR), 0)
 # Hack for E'' syntax (<= PG8.0)
 EXTRA_SUBS := -e "s/ E'/ '/g"
 # Throw, runtests, enums, and roles aren't supported in 8.0.
 TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/roletap.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests enumtap roletap,$(REGRESS))
-endif
-ifeq ($(PGVER_MINOR), 5)
-# Do nothing.
-else
-ifeq ($(PGVER_MINOR), 4)
-# Do nothing.
-else
-ifneq ($(PGVER_MINOR), 3)
-# Enum tests not supported by 8.2 and earlier.
-TESTS := $(filter-out sql/enumtap.sql,$(TESTS))
-REGRESS := $(filter-out enumtap,$(REGRESS))
-ifneq ($(PGVER_MINOR), 2)
-# Values tests not supported by 8.1 and earlier.
-TESTS := $(filter-out sql/valueset.sql,$(TESTS))
-REGRESS := $(filter-out valueset,$(REGRESS))
-endif
-endif
-endif
 endif
 endif
 
