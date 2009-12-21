@@ -3,6 +3,7 @@ Revision history for pgTAP
 
 0.24
 -------------------------
+* Got `sql/artap.sql` tests passing again when building with `$TAPSCHEMA` set.
 
 0.23 2009-12-18T23:03:39
 -------------------------

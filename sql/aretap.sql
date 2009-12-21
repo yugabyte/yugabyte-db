@@ -50,8 +50,9 @@ $$ LANGUAGE SQL IMMUTABLE STRICT;
 CREATE SCHEMA disney;
 
 CREATE OPERATOR disney.= ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
+CREATE OPERATOR = ( PROCEDURE = goofy_eq, LEFTARG = goofy, RIGHTARG = goofy);
 
-CREATE OPERATOR CLASS goofy_ops
+CREATE OPERATOR CLASS public.goofy_ops
 DEFAULT FOR TYPE goofy USING BTREE AS
 	OPERATOR 1 disney.=,
 	FUNCTION 1 goofy_cmp(goofy,goofy)
@@ -1270,7 +1271,7 @@ SELECT * FROM check_test(
 
 /****************************************************************************/
 -- Test operators_are().
-SET search_path = disney,public,pg_catalog;
+--SET search_path = disney,public,pg_catalog;
 
 SELECT * FROM check_test(
     operators_are( 'disney', ARRAY['=(goofy,goofy) RETURNS boolean'], 'whatever' ),
