@@ -5,7 +5,7 @@ Release:	1%{?dist}
 Group:		Applications/Databases
 License:	BSD
 URL:		http://pgtap.projects.postgresql.org
-Source0:	http://pgfoundry.org/frs/download.php/2316/pgtap-%{version}.tar.gz
+Source0:	ftp://ftp.postgresql.org/pub/projects/pgFoundry/pgtap/pgtap-%{version}.tar.gz
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
 BuildRequires:	postgresql-devel
 Requires:	postgresql-server, perl-Test-Harness >= 3.0
@@ -37,6 +37,9 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Sun Dec 27 2009 Davi dWheeler <david@kineticode.com> 0.24-1
+- Updated Source URL to a more predictable format.
+
 * Mon Aug 24 2009 David Fetter <david.fetter@pgexperts.com> 0.23-1
 - Got corrected .spec from Devrim GUNDUZ <devrim@gunduz.org>
 - Bumped version to 0.23.
