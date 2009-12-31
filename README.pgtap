@@ -3709,7 +3709,7 @@ had the `WHEN` condition been true.
 Declares a series of tests that you expect to fail and why. Perhaps it's
 because you haven't fixed a bug or haven't finished a new feature:
 
-    todo('URIGeller not finished', 2);
+    SELECT todo('URIGeller not finished', 2);
 
     \set card '\'' Eight of clubs '\''
     SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
