@@ -3535,8 +3535,8 @@ so.
 
 ### `is_member_of( group, users[], desc )` ###
 ### `is_member_of( group, users[] )` ###
-### `is_member_of( group, users, desc )` ###
-### `is_member_of( group, users )` ###
+### `is_member_of( group, user, desc )` ###
+### `is_member_of( group, user )` ###
 
     SELECT is_member_of( 'sweeties', 'anna' 'Anna should be a sweetie' );
     SELECT is_member_of( 'meanies', ARRAY['dr_evil', 'dr_no' ] );
