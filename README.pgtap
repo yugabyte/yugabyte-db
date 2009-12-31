@@ -4294,6 +4294,13 @@ No changes. Everything should just work.
 
 To Do
 -----
+* Add functions to test for object ownership.
+  + `db_owner_is()`
+  + `table_owner_is()`
+  + `view_owner_is()`
+  + `sequence_owner_is()`
+  + `function_owner_is()`
+  + etc.
 * Have `has_function()` manage OUT, INOUT, and VARIADIC arguments.
 * Useful schema testing functions to consider adding:
   + `sequence_has_range()`
