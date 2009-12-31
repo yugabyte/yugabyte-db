@@ -5,6 +5,8 @@ Revision history for pgTAP
 -------------------------
 * Got `sql/artap.sql` tests passing again when building with `$TAPSCHEMA` set.
 * Changed to saner source URL in `contrib/pgtap.spec`.
+* Fixed a bug in `has_member()` where it failed to confirm that users were
+  actually members of a group.
 
 0.23 2009-12-18T23:03:39
 -------------------------

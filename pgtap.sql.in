@@ -3581,7 +3581,7 @@ BEGIN
           FROM generate_series(1, array_upper($2, 1)) s(i)
           LEFT JOIN pg_catalog.pg_user ON usename = $2[i]
          WHERE usesysid IS NULL
-            OR usesysid <> ANY ( _grolist($1) )
+            OR NOT usesysid = ANY ( _grolist($1) )
          ORDER BY s.i
     ) INTO missing;
     IF missing[1] IS NULL THEN
