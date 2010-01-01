@@ -1,63 +1,6 @@
---- pgtap.sql.orig	2009-12-18 10:01:20.000000000 -0800
-+++ pgtap.sql	2009-12-18 10:07:07.000000000 -0800
-@@ -11,10 +11,84 @@
- -- ## CREATE SCHEMA TAPSCHEMA;
- -- ## SET search_path TO TAPSCHEMA, public;
- 
-+-- Cast booleans to text like 8.3 does.
-+CREATE OR REPLACE FUNCTION booltext(boolean)
-+RETURNS text AS 'SELECT CASE WHEN $1 then ''true'' ELSE ''false'' END;'
-+LANGUAGE sql IMMUTABLE STRICT;
-+
-+CREATE CAST (boolean AS text) WITH FUNCTION booltext(boolean) AS ASSIGNMENT;
-+
-+-- Cast text[]s to text like 8.3 does.
-+CREATE OR REPLACE FUNCTION textarray_text(text[])
-+RETURNS TEXT AS 'SELECT textin(array_out($1));'
-+LANGUAGE sql IMMUTABLE STRICT;
-+
-+CREATE CAST (text[] AS text) WITH FUNCTION textarray_text(text[]) AS ASSIGNMENT;
-+
-+-- Cast name[]s to text like 8.3 does.
-+CREATE OR REPLACE FUNCTION namearray_text(name[])
-+RETURNS TEXT AS 'SELECT textin(array_out($1));'
-+LANGUAGE sql IMMUTABLE STRICT;
-+
-+CREATE CAST (name[] AS text) WITH FUNCTION namearray_text(name[]) AS ASSIGNMENT;
-+
-+-- Compare name[]s more or less like 8.3 does.
-+CREATE OR REPLACE FUNCTION namearray_eq( name[], name[] )
-+RETURNS bool
-+AS 'SELECT $1::text = $2::text;'
-+LANGUAGE sql IMMUTABLE STRICT;
-+
-+CREATE OPERATOR = (
-+    LEFTARG    = name[],
-+    RIGHTARG   = name[],
-+    NEGATOR    = <>,
-+    PROCEDURE  = namearray_eq
-+);
-+
-+CREATE OR REPLACE FUNCTION namearray_ne( name[], name[] )
-+RETURNS bool
-+AS 'SELECT $1::text <> $2::text;'
-+LANGUAGE sql IMMUTABLE STRICT;
-+
-+CREATE OPERATOR <> (
-+    LEFTARG    = name[],
-+    RIGHTARG   = name[],
-+    NEGATOR    = =,
-+    PROCEDURE  = namearray_ne
-+);
-+
-+-- Cast regtypes to text like 8.3 does.
-+CREATE OR REPLACE FUNCTION regtypetext(regtype)
-+RETURNS text AS 'SELECT textin(regtypeout($1))'
-+LANGUAGE sql IMMUTABLE STRICT;
-+
-+CREATE CAST (regtype AS text) WITH FUNCTION regtypetext(regtype) AS ASSIGNMENT;
-+
- CREATE OR REPLACE FUNCTION pg_version()
+--- pgtap.sql.orig	2009-12-31 16:40:00.000000000 -0800
++++ pgtap.sql	2009-12-31 17:13:43.000000000 -0800
+@@ -68,6 +68,27 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
  
@@ -82,10 +25,10 @@
 +AS '$libdir/pgtap'
 +LANGUAGE C STABLE;
 +
- CREATE OR REPLACE FUNCTION pg_version_num()
- RETURNS integer AS $$
-     SELECT s.a[1]::int * 10000
-@@ -92,53 +166,63 @@
+ CREATE OR REPLACE FUNCTION pg_typeof("any")
+ RETURNS regtype
+ AS '$libdir/pgtap'
+@@ -150,53 +171,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -132,7 +75,7 @@
 +    quote_literal($1) || ' AND value = ' || $2 LOOP
 +        RETURN rec.id;
 +    END LOOP;
-+    RETURN;
++    RETURN NULL;
  END;
  $$ LANGUAGE plpgsql strict;
  
@@ -166,24 +109,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -190,11 +274,11 @@
- RETURNS integer AS $$
- BEGIN
-     EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
--    VALUES( ' || $1 || ', '
--              || $2 || ', '
--              || quote_literal(COALESCE($3, '')) || ', '
--              || quote_literal($4) || ', '
--              || quote_literal($5) || ' )';
-+    VALUES( ' || $1::text || ', '
-+              || $2::text || ', '
-+              || quote_literal(COALESCE($3, '')::text) || ', '
-+              || quote_literal($4::text) || ', '
-+              || quote_literal($5::text) || ' )';
-     RETURN currval('__tresults___numb_seq');
- END;
- $$ LANGUAGE plpgsql;
-@@ -202,10 +286,12 @@
+@@ -260,10 +291,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -199,7 +125,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -478,13 +564,16 @@
+@@ -536,13 +569,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -207,29 +133,19 @@
      output TEXT;
  BEGIN
 -    EXECUTE 'SELECT ' ||
--            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have) || ' '
 +   FOR rec IN EXECUTE 'SELECT ' ||
-+            COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have)::text || ' '
+             COALESCE(quote_literal( have ), 'NULL') || '::' || pg_typeof(have)::text || ' '
              || op || ' ' ||
--            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)
+-            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)::text
 -       INTO result;
 +            COALESCE(quote_literal( want ), 'NULL') || '::' || pg_typeof(want)::text || ' AS res'
 +    LOOP
 +        result := rec.res;
 +    END LOOP;
      output := ok( COALESCE(result, FALSE), descr );
-     RETURN output || CASE result WHEN TRUE THEN '' ELSE '\n' || diag(
+     RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1084,7 +1173,7 @@
- 
- CREATE OR REPLACE FUNCTION display_type ( OID, INTEGER )
- RETURNS TEXT AS $$
--    SELECT $1::regtype
-+    SELECT $1::regtype::text
-         || COALESCE(substring(pg_catalog.format_type($1, $2), '[(][^)]+[)]$'), '')
- $$ LANGUAGE SQL;
- 
-@@ -1306,19 +1395,21 @@
+@@ -1364,19 +1400,21 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -255,76 +171,10 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -2096,7 +2187,7 @@
-            p.proname     AS name,
-            array_to_string(p.proargtypes::regtype[], ',') AS args,
-            CASE p.proretset WHEN TRUE THEN 'setof ' ELSE '' END
--             || p.prorettype::regtype AS returns,
-+             || p.prorettype::regtype::text AS returns,
-            p.prolang     AS langoid,
-            p.proisstrict AS is_strict,
-            p.proisagg    AS is_agg,
-@@ -3367,96 +3458,6 @@
+@@ -3425,39 +3463,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
---- enum_has_labels( schema, enum, labels, description )
--CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[], TEXT )
--RETURNS TEXT AS $$
--    SELECT is(
--        ARRAY(
--            SELECT e.enumlabel
--              FROM pg_catalog.pg_type t
--              JOIN pg_catalog.pg_enum e      ON t.oid = e.enumtypid
--              JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
--              WHERE t.typisdefined
--               AND n.nspname = $1
--               AND t.typname = $2
--               AND t.typtype = 'e'
--             ORDER BY e.oid
--        ),
--        $3,
--        $4
--    );
--$$ LANGUAGE sql;
--
---- enum_has_labels( schema, enum, labels )
--CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[] )
--RETURNS TEXT AS $$
--    SELECT enum_has_labels(
--        $1, $2, $3,
--        'Enum ' || quote_ident($1) || '.' || quote_ident($2) || ' should have labels (' || array_to_string( $3, ', ' ) || ')'
--    );
--$$ LANGUAGE sql;
--
---- enum_has_labels( enum, labels, description )
--CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[], TEXT )
--RETURNS TEXT AS $$
--    SELECT is(
--        ARRAY(
--            SELECT e.enumlabel
--              FROM pg_catalog.pg_type t
--              JOIN pg_catalog.pg_enum e ON t.oid = e.enumtypid
--              WHERE t.typisdefined
--               AND pg_catalog.pg_type_is_visible(t.oid)
--               AND t.typname = $1
--               AND t.typtype = 'e'
--             ORDER BY e.oid
--        ),
--        $2,
--        $3
--    );
--$$ LANGUAGE sql;
--
---- enum_has_labels( enum, labels )
--CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[] )
--RETURNS TEXT AS $$
--    SELECT enum_has_labels(
--        $1, $2,
--        'Enum ' || quote_ident($1) || ' should have labels (' || array_to_string( $2, ', ' ) || ')'
--    );
--$$ LANGUAGE sql;
--
 -CREATE OR REPLACE FUNCTION _has_role( NAME )
 -RETURNS BOOLEAN AS $$
 -    SELECT EXISTS(
@@ -361,16 +211,23 @@
  CREATE OR REPLACE FUNCTION _is_super( NAME )
  RETURNS BOOLEAN AS $$
      SELECT usesuper
-@@ -3560,7 +3561,7 @@
+@@ -3561,13 +3566,8 @@
  $$ LANGUAGE sql;
  
  CREATE OR REPLACE FUNCTION _grolist ( NAME )
 -RETURNS oid[] AS $$
+-    SELECT ARRAY(
+-        SELECT member
+-          FROM pg_catalog.pg_auth_members m
+-          JOIN pg_catalog.pg_roles r ON m.roleid = r.oid
+-         WHERE r.rolname =  $1
+-    );
 +RETURNS integer[] AS $$
-     SELECT grolist FROM pg_catalog.pg_group WHERE groname = $1;
++    SELECT grolist FROM pg_catalog.pg_group WHERE groname = $1;
  $$ LANGUAGE sql;
  
-@@ -5510,6 +5511,7 @@
+ -- is_member_of( group, user[], description )
+@@ -5516,6 +5516,7 @@
      res     BOOLEAN;
      descr   TEXT;
      adiag   TEXT;
@@ -378,7 +235,7 @@
      have    ALIAS FOR $1;
      eok     ALIAS FOR $2;
      name    ALIAS FOR $3;
-@@ -5521,8 +5523,10 @@
+@@ -5527,8 +5528,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -391,27 +248,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -5645,7 +5649,7 @@
- CREATE OR REPLACE FUNCTION _runem( text[], boolean )
- RETURNS SETOF TEXT AS $$
- DECLARE
--    tap    text;
-+    rec    record;
-     lbound int := array_lower($1, 1);
- BEGIN
-     IF lbound IS NULL THEN RETURN; END IF;
-@@ -5653,8 +5657,8 @@
-         -- Send the name of the function to diag if warranted.
-         IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
-         -- Execute the tap function and return its results.
--        FOR tap IN EXECUTE 'SELECT * FROM ' || $1[i] || '()' LOOP
--            RETURN NEXT tap;
-+        FOR rec IN EXECUTE 'SELECT * FROM ' || $1[i] || '() AS b(a)' LOOP
-+            RETURN NEXT rec.a;
-         END LOOP;
-     END LOOP;
-     RETURN;
-@@ -5714,116 +5718,6 @@
+@@ -5720,116 +5723,6 @@
  END
  $$ LANGUAGE plpgsql;
  
@@ -423,14 +260,14 @@
 -    setup    ALIAS FOR $3;
 -    teardown ALIAS FOR $4;
 -    tests    ALIAS FOR $5;
--    tap      text;
+-    rec      record;
 -    verbos   boolean := _is_verbose(); -- verbose is a reserved word in 8.5.
 -    num_faild INTEGER := 0;
 -BEGIN
 -    BEGIN
 -        -- No plan support.
 -        PERFORM * FROM no_plan();
--        FOR tap IN SELECT * FROM _runem(startup, false) LOOP RETURN NEXT tap; END LOOP;
+-        FOR rec IN SELECT * FROM _runem(startup, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 -    EXCEPTION
 -        -- Catch all exceptions and simply rethrow custom exceptions. This
 -        -- will roll back everything in the above block.
@@ -445,15 +282,15 @@
 -                IF verbos THEN RETURN NEXT diag(tests[i] || '()'); END IF;
 -
 -                -- Run the setup functions.
--                FOR tap IN SELECT * FROM _runem(setup, false) LOOP RETURN NEXT tap; END LOOP;
+-                FOR rec IN SELECT * FROM _runem(setup, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 -
 -                -- Run the actual test function.
--                FOR tap IN EXECUTE 'SELECT * FROM ' || tests[i] || '()' LOOP
--                    RETURN NEXT tap;
+-                FOR rec IN EXECUTE 'SELECT * FROM ' || tests[i] || '() AS b(a)' LOOP
+-                    RETURN NEXT rec.a;
 -                END LOOP;
 -
 -                -- Run the teardown functions.
--                FOR tap IN SELECT * FROM _runem(teardown, false) LOOP RETURN NEXT tap; END LOOP;
+-                FOR rec IN SELECT * FROM _runem(teardown, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 -
 -                -- Remember how many failed and then roll back.
 -                num_faild := num_faild + num_failed();
@@ -468,7 +305,7 @@
 -        END LOOP;
 -
 -        -- Run the shutdown functions.
--        FOR tap IN SELECT * FROM _runem(shutdown, false) LOOP RETURN NEXT tap; END LOOP;
+-        FOR rec IN SELECT * FROM _runem(shutdown, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
 -
 -        -- Raise an exception to rollback any changes.
 -        RAISE EXCEPTION '__TAP_ROLLBACK__';
@@ -479,8 +316,8 @@
 -        END IF;
 -    END;
 -    -- Finish up.
--    FOR tap IN SELECT * FROM _finish( currval('__tresults___numb_seq')::integer, 0, num_faild ) LOOP
--        RETURN NEXT tap;
+-    FOR rec IN SELECT * FROM _finish( currval('__tresults___numb_seq')::integer, 0, num_faild ) AS b(a) LOOP
+-        RETURN NEXT rec.a;
 -    END LOOP;
 -
 -    -- Clean up and return.
@@ -528,34 +365,23 @@
  CREATE OR REPLACE FUNCTION _temptable ( TEXT, TEXT )
  RETURNS TEXT AS $$
  BEGIN
-@@ -5849,8 +5743,9 @@
-         SELECT display_type(a.atttypid, a.atttypmod)
-           FROM pg_catalog.pg_attribute a
-           JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
-+          JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-          WHERE c.relname = $1
--           AND c.relistemp
-+           AND n.nspname LIKE 'pg_temp%'
-            AND attnum > 0
-            AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
-          ORDER BY attnum
-@@ -5872,13 +5767,13 @@
+@@ -5879,13 +5772,13 @@
          -- Find extra records.
          FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || want LOOP
--            extras := extras || rec::text;
+-            extras := array_append(extras, textin(record_out(rec)));
 +            extras := array_append(extras, textin(record_out(rec, 2249)));
          END LOOP;
  
          -- Find missing records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || have LOOP
--            missing := missing || rec::text;
+-            missing := array_append(missing, textin(record_out(rec)));
 +            missing := array_append(missing, textin(record_out(rec, 2249)));
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -5992,16 +5887,20 @@
+@@ -5999,16 +5892,20 @@
      missing TEXT[]  := '{}';
      res     BOOLEAN := TRUE;
      msg     TEXT    := '';
@@ -578,75 +404,71 @@
  
          -- Drop the temporary tables.
          EXECUTE 'DROP TABLE ' || have;
-@@ -6102,7 +6001,7 @@
+@@ -6109,7 +6006,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
--            results := results || rec::text;
+-            results := array_append(results, textin(record_out(rec)));
 +            results := array_append(results, textin(record_out(rec, 2249)));
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6197,11 +6096,11 @@
+@@ -6204,11 +6101,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
--        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
+-        IF textin(record_out(have_rec)) IS DISTINCT FROM textin(record_out(want_rec)) OR have_found <> want_found THEN
 +        IF textin(record_out(have_rec, 2249)) IS DISTINCT FROM textin(record_out(want_rec, 2249)) OR have_found <> want_found THEN
-             RETURN ok( false, $3 ) || '\n' || diag(
-                 '    Results differ beginning at row ' || rownum || ':\n' ||
--                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || '\n' ||
--                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
-+                '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec, 2249)) ELSE 'NULL' END || '\n' ||
+             RETURN ok( false, $3 ) || E'\n' || diag(
+                 '    Results differ beginning at row ' || rownum || E':\n' ||
+-                '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec)) ELSE 'NULL' END || E'\n' ||
+-                '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec)) ELSE 'NULL' END
++                '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec, 2249)) ELSE 'NULL' END || E'\n' ||
 +                '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec, 2249)) ELSE 'NULL' END
              );
          END IF;
          rownum = rownum + 1;
-@@ -6216,8 +6115,8 @@
+@@ -6223,8 +6120,8 @@
      WHEN datatype_mismatch THEN
-         RETURN ok( false, $3 ) || '\n' || diag(
-             '    Columns differ between queries:\n' ||
--            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || '\n' ||
--            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
-+            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec, 2249)) ELSE 'NULL' END || '\n' ||
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Columns differ between queries:\n' ||
+-            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec)) ELSE 'NULL' END || E'\n' ||
+-            '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec)) ELSE 'NULL' END
++            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec, 2249)) ELSE 'NULL' END || E'\n' ||
 +            '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec, 2249)) ELSE 'NULL' END
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6352,7 +6251,7 @@
+@@ -6359,7 +6256,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
--        IF have_rec IS DISTINCT FROM want_rec OR have_found <> want_found THEN
+-        IF textin(record_out(have_rec)) IS DISTINCT FROM textin(record_out(want_rec)) OR have_found <> want_found THEN
 +        IF textin(record_out(have_rec, 2249)) IS DISTINCT FROM textin(record_out(want_rec, 2249)) OR have_found <> want_found THEN
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6366,8 +6265,8 @@
+@@ -6373,8 +6270,8 @@
      WHEN datatype_mismatch THEN
-         RETURN ok( false, $3 ) || '\n' || diag(
-             '    Columns differ between queries:\n' ||
--            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || '\n' ||
--            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
-+            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec, 2249)) ELSE 'NULL' END || '\n' ||
+         RETURN ok( false, $3 ) || E'\n' || diag(
+             E'    Columns differ between queries:\n' ||
+-            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec)) ELSE 'NULL' END || E'\n' ||
+-            '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec)) ELSE 'NULL' END
++            '        have: ' || CASE WHEN have_found THEN textin(record_out(have_rec, 2249)) ELSE 'NULL' END || E'\n' ||
 +            '        want: ' || CASE WHEN want_found THEN textin(record_out(want_rec, 2249)) ELSE 'NULL' END
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6492,9 +6391,9 @@
- DECLARE
-     typeof regtype := pg_typeof($1);
+@@ -6522,7 +6419,7 @@
  BEGIN
--    IF typeof = $2 THEN RETURN ok(true, $3 || ' isa ' || $2 ); END IF;
--    RETURN ok(false, $3 || ' isa ' || $2 ) || '\n' ||
--        diag('    ' || $3 || ' isn''t a "' || $2 || '" it''s a "' || typeof || '"');
-+    IF typeof = $2 THEN RETURN ok(true, $3 || ' isa ' || $2::text ); END IF;
-+    RETURN ok(false, $3 || ' isa ' || $2::text ) || '\n' ||
-+        diag('    ' || $3 || ' isn''t a "' || $2::text || '" it''s a "' || typeof::text || '"');
- END;
- $$ LANGUAGE plpgsql;
+     -- Find extra records.
+     FOR rec in EXECUTE _query($1) LOOP
+-        extras := extras || textin(record_out(rec));
++        extras := extras || textin(record_out(rec, 2249));
+     END LOOP;
  
-@@ -6625,35 +6524,6 @@
+     -- What extra records do we have?
+@@ -6626,35 +6523,6 @@
      SELECT throws_imatching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
  $$ LANGUAGE sql;
  
@@ -682,84 +504,17 @@
  CREATE OR REPLACE FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] )
  RETURNS TEXT AS $$
      SELECT _are(
-@@ -6666,7 +6536,7 @@
-                      t.typrelid = 0
-                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
-              )
--               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem)
-                AND n.nspname = $1
-                AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
-             EXCEPT
-@@ -6684,7 +6554,7 @@
-                      t.typrelid = 0
-                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
-              )
--               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem)
-                AND n.nspname = $1
-                AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
-         ),
-@@ -6717,7 +6587,7 @@
-                      t.typrelid = 0
-                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
-              )
--               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem)
-                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-                AND pg_catalog.pg_type_is_visible(t.oid)
-                AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
-@@ -6736,7 +6606,7 @@
-                      t.typrelid = 0
-                  OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
-              )
--               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem AND el.typarray = t.oid)
-+               AND NOT EXISTS(SELECT 1 FROM pg_catalog.pg_type el WHERE el.oid = t.typelem)
-                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-                AND pg_catalog.pg_type_is_visible(t.oid)
-                AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
-@@ -7166,7 +7036,7 @@
- 
- CREATE OR REPLACE FUNCTION display_oper ( NAME, OID )
- RETURNS TEXT AS $$
--    SELECT $1 || substring($2::regoperator::text, '[(][^)]+[)]$')
-+    SELECT $1 || substring(textin(regoperatorout($2::regoperator)), '[(][^)]+[)]$')
- $$ LANGUAGE SQL;
- 
- -- operators_are( schema, operators[], description )
-@@ -7175,7 +7045,7 @@
-     SELECT _areni(
-         'operators',
-         ARRAY(
--            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
-+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
-               FROM pg_catalog.pg_operator o
-               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
-              WHERE n.nspname = $1
-@@ -7187,7 +7057,7 @@
-             SELECT $2[i]
-               FROM generate_series(1, array_upper($2, 1)) s(i)
-             EXCEPT
--            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
-+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
-               FROM pg_catalog.pg_operator o
-               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
-              WHERE n.nspname = $1
-@@ -7208,7 +7078,7 @@
-     SELECT _areni(
-         'operators',
-         ARRAY(
--            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
-+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
-               FROM pg_catalog.pg_operator o
-               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
-              WHERE pg_catalog.pg_operator_is_visible(o.oid)
-@@ -7221,7 +7091,7 @@
-             SELECT $1[i]
-               FROM generate_series(1, array_upper($1, 1)) s(i)
-             EXCEPT
--            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype
-+            SELECT display_oper(o.oprname, o.oid) || ' RETURNS ' || o.oprresult::regtype::text
-               FROM pg_catalog.pg_operator o
-               JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
-              WHERE pg_catalog.pg_operator_is_visible(o.oid)
+@@ -7018,10 +6886,10 @@
+     result BOOLEAN;
+ BEGIN
+     FOR rec in EXECUTE _query($1) LOOP
+-        result := NOT textin(record_out(rec)) IS DISTINCT FROM textin(record_out($2));
++        result := NOT textin(record_out(rec, 2249)) IS DISTINCT FROM textin(record_out($2, 2249));
+         RETURN ok(result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
+-               '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE textin(record_out(rec)) END ||
+-            E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE textin(record_out($2))  END
++               '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE textin(record_out(rec, 2249)) END ||
++            E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE textin(record_out($2, 2249))  END
+         ) END;
+     END LOOP;
+ END;

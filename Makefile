@@ -73,8 +73,6 @@ TESTS := $(filter-out sql/enumtap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out enumtap valueset,$(REGRESS))
 endif
 ifeq ($(PGVER_MINOR), 0)
-# Hack for E'' syntax (<= PG8.0)
-EXTRA_SUBS := -e "s/ E'/ '/g"
 # Throw, runtests, enums, and roles aren't supported in 8.0.
 TESTS := $(filter-out sql/throwtap.sql sql/runtests.sql sql/enumtap.sql sql/roletap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests enumtap roletap valueset,$(REGRESS))
@@ -95,25 +93,24 @@ endif
 
 pgtap.sql: pgtap.sql.in test_setup.sql
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(EXTRA_SUBS) pgtap.sql.in > pgtap.sql
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql.in > pgtap.sql
 else
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' $(EXTRA_SUBS) pgtap.sql.in > pgtap.sql
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql.in > pgtap.sql
 endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
 ifneq ($(PGVER_MINOR), 4)
-ifneq ($(PGVER_MINOR), 0)
 	patch -p0 < compat/install-8.3.patch
-endif
 ifneq ($(PGVER_MINOR), 3)
-ifeq ($(PGVER_MINOR), 2)
 	patch -p0 < compat/install-8.2.patch
-else
-ifeq ($(PGVER_MINOR), 1)
-	patch -p0 < compat/install-8.2.patch
+ifneq ($(PGVER_MINOR), 2)
 	patch -p0 < compat/install-8.1.patch
-else
+ifneq ($(PGVER_MINOR), 1)
 	patch -p0 < compat/install-8.0.patch
+#	Hack for E'' syntax (<= PG8.0)
+	mv pgtap.sql pgtap.tmp
+	sed -e "s/ E'/ '/g" pgtap.tmp > pgtap.sql
+	rm pgtap.tmp
 endif
 endif
 endif
