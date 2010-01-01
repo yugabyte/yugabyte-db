@@ -4301,6 +4301,9 @@ To Do
   + `sequence_owner_is()`
   + `function_owner_is()`
   + etc.
+* Add some sort of tests for permisions. Something like:
+  `table_privs_are(:table, :user, :privs[])`, and would have variations for
+  database, sequence, function, language, schema, and tablespace.
 * Have `has_function()` manage OUT, INOUT, and VARIADIC arguments.
 * Useful schema testing functions to consider adding:
   + `sequence_has_range()`
