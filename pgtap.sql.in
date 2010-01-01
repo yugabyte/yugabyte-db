@@ -3575,9 +3575,9 @@ RETURNS TEXT AS $$
 DECLARE
     missing text[];
 BEGIN
-    IF NOT _has_group($1) THEN
+    IF NOT _has_role($1) THEN
         RETURN fail( $3 ) || E'\n' || diag (
-            '    Group ' || quote_ident($1) || ' does not exist'
+            '    Role ' || quote_ident($1) || ' does not exist'
         );
     END IF;
 
