@@ -13,6 +13,9 @@ Revision history for pgTAP
 * Changed the diagnostic output for row type mismatches from `set_eq()`,
   `set_ne()`, `bag_eq()`, and `bag_ne()` to include the schema name for types
   not found in the search path.
+* Fixed bug in the diagnostic output of `set_eq()`, `set_ne()`, `bag_eq()`,
+  and `bag_ne()` where a column's type would not be displayed if the column
+  was not in the search path. Thanks to Rod Taylor for the spot!
 
 0.23 2009-12-18T23:03:39
 -------------------------

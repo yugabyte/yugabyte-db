@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(512);
+SELECT plan(515);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -424,6 +424,31 @@ SELECT * FROM check_test(
     '   Columns differ between queries:
         have: (integer)
         want: (text,integer)'
+);
+
+-- Handle failure with column mismatch with a column type in a schema not in
+-- the search path. This is a regression.
+CREATE SCHEMA __myfoo;
+CREATE DOMAIN __myfoo.text AS TEXT CHECK(TRUE);
+CREATE TABLE __yowza(
+    foo text,
+    bar __myfoo.text,
+    baz integer
+);
+INSERT INTO __yowza VALUES ('abc', 'xyz', 1);
+INSERT INTO __yowza VALUES ('def', 'utf', 2);
+
+SELECT * FROM check_test(
+    set_eq(
+        'SELECT foo, bar from __yowza',
+        'SELECT foo, bar, baz from __yowza'
+    ),
+    false,
+    'set_eq(sql, sql) fail type schema visibility',
+    '',
+    '   Columns differ between queries:
+        have: (text,__myfoo.text)
+        want: (text,__myfoo.text,integer)'
 );
 
 /****************************************************************************/

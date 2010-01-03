@@ -5859,7 +5859,7 @@ RETURNS TEXT AS $$
          WHERE c.relname = $1
            AND c.relistemp
            AND attnum > 0
-           AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
+           AND NOT attisdropped
          ORDER BY attnum
     ), ',');
 $$ LANGUAGE sql;
