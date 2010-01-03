@@ -7,6 +7,12 @@ Revision history for pgTAP
 * Changed to saner source URL in `contrib/pgtap.spec`.
 * Fixed a bug in `has_member()` where it failed to confirm that users were
   actually members of a group.
+* Fixed a bug where `display_type()` would include the schema name in its
+  output for types not found in the current path, despite its assertion that
+  it wouldn't.
+* Changed the diagnostic output for row type mismatches from `set_eq()`,
+  `set_ne()`, `bag_eq()`, and `bag_ne()` to include the schema name for types
+  not found in the search path.
 
 0.23 2009-12-18T23:03:39
 -------------------------

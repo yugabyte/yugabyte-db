@@ -1084,8 +1084,10 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION display_type ( OID, INTEGER )
 RETURNS TEXT AS $$
-    SELECT $1::regtype
-        || COALESCE(substring(pg_catalog.format_type($1, $2), '[(][^)]+[)]$'), '')
+    SELECT COALESCE(substring(
+        pg_catalog.format_type($1, $2),
+        '(("(?!")([^"]|"")+"|[^.]+)([(][^)]+[)])?)$'
+    ), '')
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION display_type ( NAME, OID, INTEGER )
@@ -5851,7 +5853,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION _temptypes( TEXT )
 RETURNS TEXT AS $$
     SELECT array_to_string(ARRAY(
-        SELECT display_type(a.atttypid, a.atttypmod)
+        SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
           FROM pg_catalog.pg_attribute a
           JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
          WHERE c.relname = $1

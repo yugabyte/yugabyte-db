@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(24);
+SELECT plan(29);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -99,6 +99,30 @@ SELECT is( display_type('timestamptz'::regtype, NULL), 'timestamp with time zone
 SELECT is( display_type('foo', 'int4'::regtype, NULL), 'foo.integer', 'display_type(foo, int4)');
 SELECT is( display_type('HEY', 'numeric'::regtype, NULL), '"HEY".numeric', 'display_type(HEY, numeric)');
 SELECT is( display_type('t z', 'int4'::regtype, NULL), '"t z".integer', 'display_type(t z, int4)');
+
+-- Look at a type not in the current schema.
+CREATE SCHEMA __foo;
+CREATE DOMAIN __foo.goofy AS text CHECK ( TRUE );
+SELECT is( display_type( oid, NULL ), 'goofy', 'display_type(__foo.goofy)' )
+  FROM pg_type WHERE typname = 'goofy';
+
+-- Look at types with funny names.
+CREATE DOMAIN __foo."this.that" AS text CHECK (TRUE);
+SELECT is( display_type( oid, NULL ), '"this.that"', 'display_type(__foo."this.that")' )
+  FROM pg_type WHERE typname = 'this.that';
+
+CREATE DOMAIN __foo."this"".that" AS text CHECK (TRUE);
+SELECT is( display_type( oid, NULL ), '"this"".that"', 'display_type(__foo."this"".that")' )
+  FROM pg_type WHERE typname = 'this".that';
+
+-- Look at types with precision.
+CREATE DOMAIN __foo."hey"".yoman" AS numeric CHECK (TRUE);
+SELECT is( display_type( oid, 13 ), '"hey"".yoman"(13)', 'display_type(__foo."hey"".yoman", 13)' )
+  FROM pg_type WHERE typname = 'hey".yoman';
+
+CREATE DOMAIN "try.this""" AS numeric CHECK (TRUE);
+SELECT is( display_type( oid, 42 ), '"try.this"""(42)', 'display_type("try.this""", 42)' )
+  FROM pg_type WHERE typname = 'try.this"';
 
 /****************************************************************************/
 -- Finish the tests and clean up.
