@@ -16,6 +16,8 @@ Revision history for pgTAP
 * Fixed bug in the diagnostic output of `set_eq()`, `set_ne()`, `bag_eq()`,
   and `bag_ne()` where a column's type would not be displayed if the column
   was not in the search path. Thanks to Rod Taylor for the spot!
+* Made the implementation of `row_eq()` always return a value, even if the
+  query it executes returns no rows.
 
 0.23 2009-12-18T23:03:39
 -------------------------

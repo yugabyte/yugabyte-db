@@ -7021,15 +7021,13 @@ CREATE OR REPLACE FUNCTION row_eq( TEXT, anyelement, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     rec    RECORD;
-    result BOOLEAN;
 BEGIN
-    FOR rec in EXECUTE _query($1) LOOP
-        result := NOT rec IS DISTINCT FROM $2;
-        RETURN ok(result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
-               '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE rec::text END ||
-            E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE $2::text  END
-        ) END;
-    END LOOP;
+    EXECUTE _query($1) INTO rec;
+    IF NOT rec IS DISTINCT FROM $2 THEN RETURN ok(true, $3); END IF;
+    RETURN ok(false, $3 ) || E'\n' || diag(
+           '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE rec::text END ||
+        E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE $2::text  END
+    );
 END;
 $$ LANGUAGE plpgsql;
 
