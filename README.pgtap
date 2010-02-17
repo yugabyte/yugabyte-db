@@ -4294,6 +4294,9 @@ No changes. Everything should just work.
 
 To Do
 -----
+* Add `schema, table, colname` variations of the table-checking functions
+  (`table_has_column()`, col_type_is()`, etc.). That is, allow the description
+  to be optional if the schema is included in the function call.
 * Add functions to test for object ownership.
   + `db_owner_is()`
   + `table_owner_is()`
