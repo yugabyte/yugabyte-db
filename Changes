@@ -18,6 +18,8 @@ Revision history for pgTAP
   was not in the search path. Thanks to Rod Taylor for the spot!
 * Made the implementation of `row_eq()` always return a value, even if the
   query it executes returns no rows.
+* Fixed bug in the default description for `col_type_is()` where the column
+  name was listed as the type!
 
 0.23 2009-12-18T23:03:39
 -------------------------

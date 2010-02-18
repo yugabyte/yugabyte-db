@@ -1206,7 +1206,7 @@ $$ LANGUAGE plpgsql;
 -- col_type_is( schema, table, column, type )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT col_type_is( $1, $2, $3, $4, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should be type ' || $3 );
+    SELECT col_type_is( $1, $2, $3, $4, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || '.' || quote_ident($3) || ' should be type ' || $4 );
 $$ LANGUAGE SQL;
 
 -- col_type_is( table, column, type, description )

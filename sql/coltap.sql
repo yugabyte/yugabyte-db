@@ -197,7 +197,7 @@ SELECT * FROM check_test(
     col_type_is( 'public', 'sometab', 'name'::name, 'text' ),
     true,
     'col_type_is( sch, tab, col, type )',
-    'Column public.sometab should be type name',
+    'Column public.sometab.name should be type text',
     ''
 );
 
