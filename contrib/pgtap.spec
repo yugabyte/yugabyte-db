@@ -49,7 +49,7 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 * Sun Mar 01 2010 Darrell Fuhriman <darrell@renewfund.com> 0.24-2
 - Make install work where the pgtap.so library is needed.
 
-* Sun Dec 27 2009 Davi dWheeler <david@kineticode.com> 0.24-1
+* Sun Dec 27 2009 David Wheeler <david@kineticode.com> 0.24-1
 - Updated Source URL to a more predictable format.
 
 * Mon Aug 24 2009 David Fetter <david.fetter@pgexperts.com> 0.23-1
