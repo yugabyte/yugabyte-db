@@ -57,7 +57,9 @@ endif
 
 # We support 8.0 and later.
 ifneq ($(PGVER_MAJOR), 8)
+ifneq ($(PGVER_MAJOR), 9)
 $(error pgTAP requires PostgreSQL 8.0 or later. This is $(VERSION))
+endif
 endif
 
 # Set up extra substitutions based on version numbers.
