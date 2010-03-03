@@ -23,7 +23,15 @@ PGVER_MINOR = $(shell echo $(VERSION) | awk -F. '{ print ($$2 + 0) }')
 PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
 PGTAP_VERSION = 0.24
 
+# We support 8.0 and later.
+ifneq ($(PGVER_MAJOR), 8)
+ifneq ($(PGVER_MAJOR), 9)
+$(error pgTAP requires PostgreSQL 8.0 or later. This is $(VERSION))
+endif
+endif
+
 # Compile the C code only if we're on 8.3 or older.
+ifeq ($(PGVER_MAJOR), 8)
 ifeq ($(PGVER_MINOR), 3)
 MODULES = pgtap
 endif
@@ -35,6 +43,7 @@ MODULES = pgtap
 endif
 ifeq ($(PGVER_MINOR), 0)
 MODULES = pgtap
+endif
 endif
 
 # Load up the PostgreSQL makefiles.
@@ -53,13 +62,6 @@ endif
 # Is TAP::Harness installed?
 ifdef PERL
 HAVE_HARNESS := $(shell $(PERL) -le 'eval { require TAP::Harness }; print 1 unless $$@' )
-endif
-
-# We support 8.0 and later.
-ifneq ($(PGVER_MAJOR), 8)
-ifneq ($(PGVER_MAJOR), 9)
-$(error pgTAP requires PostgreSQL 8.0 or later. This is $(VERSION))
-endif
 endif
 
 # Set up extra substitutions based on version numbers.
