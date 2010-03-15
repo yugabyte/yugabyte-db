@@ -22,8 +22,8 @@ Revision history for pgTAP
   name was listed as the type!
 * Updated the `Makefile` to support PostgreSQL 9.
 * Removed the primary keys from the temporary tables used internally by pgTAP
-  and thus eliminated the need for pgTAP to suppress NOTICEs when creating
-  those tables.
+  and thus eliminated the logging of NOTICEs to the PostgreSQL log when pgTAP
+  creates those tables.
 
 0.23 2009-12-18T23:03:39
 -------------------------
