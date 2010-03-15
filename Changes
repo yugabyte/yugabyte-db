@@ -24,6 +24,9 @@ Revision history for pgTAP
 * Removed the primary keys from the temporary tables used internally by pgTAP
   and thus eliminated the logging of NOTICEs to the PostgreSQL log when pgTAP
   creates those tables.
+* Eliminated the need to set `USE_PGXS=1` when building outsde the contrib
+  directory of the PostgreSQL distribution, though it will still be respected
+  if it is set.
 
 0.23 2009-12-18T23:03:39
 -------------------------
