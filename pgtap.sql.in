@@ -37,34 +37,35 @@ CREATE OR REPLACE FUNCTION plan( integer )
 RETURNS TEXT AS $$
 DECLARE
     rcount INTEGER;
-    cmm    text := current_setting('client_min_messages');
 BEGIN
     BEGIN
-        PERFORM set_config('client_min_messages', 'warning', true);
         EXECUTE '
+            CREATE SEQUENCE __tcache___id_seq;
             CREATE TEMP TABLE __tcache__ (
-                id    SERIAL           PRIMARY KEY,
+                id    INTEGER NOT NULL DEFAULT nextval(''__tcache___id_seq''),
                 label TEXT    NOT NULL,
                 value INTEGER NOT NULL,
                 note  TEXT    NOT NULL DEFAULT ''''
             );
+            CREATE UNIQUE INDEX __tcache___key ON __tcache__(id);
             GRANT ALL ON TABLE __tcache__ TO PUBLIC;
             GRANT ALL ON TABLE __tcache___id_seq TO PUBLIC;
 
+            CREATE SEQUENCE __tresults___numb_seq;
             CREATE TEMP TABLE __tresults__ (
-                numb   SERIAL           PRIMARY KEY,
+                numb   INTEGER NOT NULL DEFAULT nextval(''__tresults___numb_seq''),
                 ok     BOOLEAN NOT NULL DEFAULT TRUE,
                 aok    BOOLEAN NOT NULL DEFAULT TRUE,
                 descr  TEXT    NOT NULL DEFAULT '''',
                 type   TEXT    NOT NULL DEFAULT '''',
                 reason TEXT    NOT NULL DEFAULT ''''
             );
+            CREATE UNIQUE INDEX __tresults___key ON __tresults__(numb);
             GRANT ALL ON TABLE __tresults__ TO PUBLIC;
             GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
         ';
 
     EXCEPTION WHEN duplicate_table THEN
-        PERFORM set_config('client_min_messages', cmm, true);
         -- Raise an exception if there's already a plan.
         EXECUTE 'SELECT TRUE FROM __tcache__ WHERE label = ''plan''';
       GET DIAGNOSTICS rcount = ROW_COUNT;
@@ -72,8 +73,6 @@ BEGIN
            RAISE EXCEPTION 'You tried to plan twice!';
         END IF;
     END;
-
-    PERFORM set_config('client_min_messages', cmm, true);
 
     -- Save the plan and return.
     PERFORM _set('plan', $1 );
@@ -4083,7 +4082,7 @@ RETURNS NAME[] AS $$
           JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
          WHERE c.relkind = $1
            AND n.nspname = $2
-           AND c.relname NOT IN('pg_all_foreign_keys', 'tap_funky')
+           AND c.relname NOT IN('pg_all_foreign_keys', 'tap_funky', '__tresults___numb_seq', '__tcache___id_seq')
         EXCEPT
         SELECT $3[i]
           FROM generate_series(1, array_upper($3, 1)) s(i)
@@ -5710,16 +5709,10 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION _cleanup()
 RETURNS boolean AS $$
-DECLARE
-    cmm    text := current_setting('client_min_messages');
-BEGIN
-    PERFORM set_config('client_min_messages', 'warning', true);
     DROP TABLE __tresults__;
     DROP TABLE __tcache__;
-    PERFORM set_config('client_min_messages', cmm, true);
-    RETURN TRUE;
-END
-$$ LANGUAGE plpgsql;
+    SELECT TRUE;
+$$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _runner( text[], text[], text[], text[], text[] )
 RETURNS SETOF TEXT AS $$

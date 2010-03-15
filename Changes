@@ -21,6 +21,9 @@ Revision history for pgTAP
 * Fixed bug in the default description for `col_type_is()` where the column
   name was listed as the type!
 * Updated the `Makefile` to support PostgreSQL 9.
+* Removed the primary keys from the temporary tables used internally by pgTAP
+  and thus eliminated the need for pgTAP to suppress NOTICEs when creating
+  those tables.
 
 0.23 2009-12-18T23:03:39
 -------------------------
