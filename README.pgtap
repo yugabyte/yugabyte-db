@@ -36,18 +36,16 @@ Or:
 
 Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
-`-devel` package is also installed. If necessary, add the path to `pg_config`
-to your `$PATH` environment variable:
+`-devel` package is also installed. If necessary tell the build process where
+to find it:
 
-    env PATH=$PATH:/path/to/pgsql/bin \
-    make && make install && make installcheck
+    env PG_CONFIG=/path/to/pg_config make && make install && make installcheck
 
 And finally, if all that fails, copy the entire distribution directory to the
 `contrib/` subdirectory of the PostgreSQL source tree and try it there:
 
-    make
-    make install
-    make installcheck
+    env PG_CONFIG=../../src/bin/pg_config/pg_config \
+    make && make install && make installcheck
 
 If you encounter an error such as:
 

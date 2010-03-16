@@ -6,21 +6,9 @@ SCRIPTS = bbin/pg_prove bbin/pg_tapgen
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --load-language=plpgsql
 
-# Figure out where pg_config is, and set other vars we'll need depending on
-# whether or not we're in the source tree.
-
-ifdef USE_PGXS
+# Run pg_config to get the PGXS Makefiles
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
-else
-ifeq (exists, $(shell [ -e ../../src/bin/pg_config/pg_config ] && echo exists) ) 
-top_builddir = ../..
-PG_CONFIG := $(top_builddir)/src/bin/pg_config/pg_config
-else
-PG_CONFIG = pg_config
-PGXS := $(shell $(PG_CONFIG) --pgxs)
-endif
-endif
 
 # We need to do various things with various versions of PostgreSQL.
 VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
