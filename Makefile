@@ -9,6 +9,7 @@ REGRESS_OPTS = --load-language=plpgsql
 # Run pg_config to get the PGXS Makefiles
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
 
 # We need to do various things with various versions of PostgreSQL.
 VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
@@ -38,14 +39,6 @@ endif
 ifeq ($(PGVER_MINOR), 0)
 MODULES = pgtap
 endif
-endif
-
-# Load up the PostgreSQL makefiles.
-ifdef PGXS
-include $(PGXS)
-else
-include $(top_builddir)/src/Makefile.global
-include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
 # We need Perl.
