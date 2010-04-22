@@ -249,7 +249,7 @@ COMMENT ON FUNCTION pg_catalog.lnnvl(bool) IS '';
 
 CREATE OR REPLACE FUNCTION pg_catalog.listagg1_transfn(internal, text)
 RETURNS internal 
-AS 'MODULE_PATHNAME','orafce_listagg2_transfn'
+AS 'MODULE_PATHNAME','orafce_listagg1_transfn'
 LANGUAGE C IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION pg_catalog.listagg2_transfn(internal, text, text)

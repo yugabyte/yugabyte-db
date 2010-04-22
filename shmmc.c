@@ -103,7 +103,7 @@ ora_scstring(text *str)
 }
 
 static void
-defragmentation()
+defragmentation(void)
 {
 	int i, w;
 	int state = MOVE_CUR;

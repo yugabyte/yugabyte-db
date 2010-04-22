@@ -158,7 +158,7 @@ pack_field(message_buffer *buffer, message_data_type type,
 		ereport(ERROR,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory"),
-				 errdetail("Packed message is biger than local buffer."),
+				 errdetail("Packed message is bigger than local buffer."),
 				 errhint("Increase LOCALMSGSZ in 'pipe.h' and recompile library.")));
 
 	if (buffer->next == NULL)

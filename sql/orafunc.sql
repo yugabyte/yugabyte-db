@@ -272,3 +272,5 @@ SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 
 select listagg(i::text) from generate_series(1,3) g(i);
 select listagg(i::text, ',') from generate_series(1,3) g(i);
+select coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);
+select coalesce(listagg(i::text), '<NULL>') from generate_series(1,0) g(i);

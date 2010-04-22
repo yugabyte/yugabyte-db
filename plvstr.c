@@ -594,7 +594,7 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 	end = PG_ARGISNULL(2) ? (start < 0 ? -len : len) : end;
 
 	if ((start > end && start > 0) || (start < end && start < 0))
-		PARAMETER_ERROR("Second parameter is biger than third.");
+		PARAMETER_ERROR("Second parameter is bigger than third.");
 
 	if (start < 0)
 	{

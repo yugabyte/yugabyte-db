@@ -22,13 +22,6 @@ PG_FUNCTION_INFO_V1(orafce_median8_finalfn);
 
 typedef struct
 {
-	StringInfo	strInfo;
-	bool	is_empty;
-	char	separator[1];
-} ListAggState;
-
-typedef struct
-{
 	int	alen;		/* allocated length */
 	int	nextlen;	/* next allocated length */
 	int	nelems;		/* number of valid entries */
@@ -42,6 +35,30 @@ typedef struct
 int orafce_float4_cmp(const void *a, const void *b);
 int orafce_float8_cmp(const void *a, const void *b);
 
+#if PG_VERSION_NUM >= 80400 && PG_VERSION_NUM < 90000
+static int
+AggCheckCallContext(FunctionCallInfo fcinfo, MemoryContext *aggcontext)
+{
+	if (fcinfo->context && IsA(fcinfo->context, AggState))
+	{
+		if (aggcontext)
+			*aggcontext = ((AggState *) fcinfo->context)->aggcontext;
+		return 1;
+	}
+	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
+	{
+		if (aggcontext)
+			*aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
+		return 2;
+	}
+
+	/* this is just to prevent "uninitialized variable" warnings */
+	if (aggcontext)
+		*aggcontext = NULL;
+	return 0;
+}
+#endif
+
 /****************************************************************
  * listagg
  *  
@@ -54,151 +71,105 @@ int orafce_float8_cmp(const void *a, const void *b);
  * Note: any NULL value is ignored.
  *
  ****************************************************************/
-static ListAggState *
-accumStringResult(ListAggState *state, text *elem, text *separator, 
-						    MemoryContext aggcontext)
+#if PG_VERSION_NUM >= 80400 && PG_VERSION_NUM < 90000
+/* subroutine to initialize state */
+static StringInfo
+makeStringAggState(FunctionCallInfo fcinfo)
 {
-#if PG_VERSION_NUM >= 80400
+	StringInfo	state;
+	MemoryContext aggcontext;
+	MemoryContext oldcontext;
 
-	MemoryContext	oldcontext;
-	
-	if (state == NULL)
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
-		if (separator != NULL)
-		{
-			char *cseparator = text_to_cstring(separator);
-			int	len = strlen(cseparator);
-			
-			oldcontext = MemoryContextSwitchTo(aggcontext);
-			state = palloc(sizeof(ListAggState) + len);
-			
-			/* copy delimiter to state var */
-			memcpy(&state->separator, cseparator, len + 1);
-		}
-		else
-		{
-			oldcontext = MemoryContextSwitchTo(aggcontext);
-			state = palloc(sizeof(ListAggState));
-			state->separator[0] = '\0';
-		}
-		
-		/* Initialise StringInfo */
-		state->strInfo = makeStringInfo();
-		state->is_empty = true;
-		
-		MemoryContextSwitchTo(oldcontext);
+		/* cannot be called directly because of internal-type argument */
+		elog(ERROR, "listagg_transfn called in non-aggregate context");
 	}
-	
-	/* only when element isn't null */
-	if (elem != NULL)
-	{
-		char	*cstr = text_to_cstring(elem);
 
-		oldcontext = MemoryContextSwitchTo(aggcontext);
-		if (!state->is_empty)
-			appendStringInfoString(state->strInfo, state->separator);
-		appendStringInfoString(state->strInfo, cstr);
-		MemoryContextSwitchTo(oldcontext);
-		
-		state->is_empty = false;
-	}
-	
+	/*
+	 * Create state in aggregate context.  It'll stay there across subsequent
+	 * calls.
+	 */
+	oldcontext = MemoryContextSwitchTo(aggcontext);
+	state = makeStringInfo();
+	MemoryContextSwitchTo(oldcontext);
+
 	return state;
-
-#else
-	return NULL;
-#endif
 }
+
+static void
+appendStringInfoText(StringInfo str, const text *t)
+{
+	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
+}
+#endif
 
 Datum
 orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
+#if PG_VERSION_NUM >= 90000
+	return string_agg_transfn(fcinfo);
+#elif PG_VERSION_NUM >= 80400
+	StringInfo	state;
 
-	MemoryContext	aggcontext;
-	ListAggState *state = NULL;
-	text *elem;
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
 
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
-		aggcontext = ((AggState *) fcinfo->context)->aggcontext;
-	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
-		aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
-	else
+	/* Append the element unless null. */
+	if (!PG_ARGISNULL(1))
 	{
-		/* cannot be called directly because of internal-type argument */
-		elog(ERROR, "listagg2_transfn called in non-aggregate context");
-		aggcontext = NULL;		/* keep compiler quiet */
+		if (state == NULL)
+			state = makeStringAggState(fcinfo);
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
 	}
-	
-	state = PG_ARGISNULL(0) ? NULL : (ListAggState *) PG_GETARG_POINTER(0);
-	elem = PG_ARGISNULL(1) ? NULL : PG_GETARG_TEXT_P(1);
-	
-	state = accumStringResult(state,
-					    elem,
-					    NULL,
-					    aggcontext);
 
 	/*
-	 * The transition type for listagg() is declared to be "internal", which
-	 * is a pass-by-value type the same size as a pointer.	
+	 * The transition type for string_agg() is declared to be "internal",
+	 * which is a pass-by-value type the same size as a pointer.
 	 */
 	PG_RETURN_POINTER(state);
-
 #else
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("feature not suppported"),
 			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-		
-	PG_RETURN_NULL();
 
+	PG_RETURN_NULL();
 #endif
 }
 
 Datum 
 orafce_listagg2_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
+#if PG_VERSION_NUM >= 90000
+	return string_agg_delim_transfn(fcinfo);
+#elif PG_VERSION_NUM >= 80400
+	StringInfo	state;
 
-	MemoryContext	aggcontext;
-	ListAggState *state = NULL;
-	text *elem;
-	text *separator = NULL;
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
 
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
-		aggcontext = ((AggState *) fcinfo->context)->aggcontext;
-	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
-		aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
-	else
+	/* Append the value unless null. */
+	if (!PG_ARGISNULL(1))
 	{
-		/* cannot be called directly because of internal-type argument */
-		elog(ERROR, "listagg2_transfn called in non-aggregate context");
-		aggcontext = NULL;		/* keep compiler quiet */
+		/* On the first time through, we ignore the delimiter. */
+		if (state == NULL)
+			state = makeStringAggState(fcinfo);
+		else if (!PG_ARGISNULL(2))
+			appendStringInfoText(state, PG_GETARG_TEXT_PP(2));	/* delimiter */
+
+		appendStringInfoText(state, PG_GETARG_TEXT_PP(1));		/* value */
 	}
-	
-	state = PG_ARGISNULL(0) ? NULL : (ListAggState *) PG_GETARG_POINTER(0);
-	elem = PG_ARGISNULL(1) ? NULL : PG_GETARG_TEXT_P(1);
-	
-	if (PG_NARGS() > 2)
-		separator = PG_ARGISNULL(2) ? NULL : PG_GETARG_TEXT_P(2);
-	
-	state = accumStringResult(state,
-					    elem,
-					    separator,
-					    aggcontext);
 
 	/*
-	 * The transition type for listagg() is declared to be "internal", which
-	 * is a pass-by-value type the same size as a pointer.	
+	 * The transition type for string_agg() is declared to be "internal",
+	 * which is a pass-by-value type the same size as a pointer.
 	 */
-	PG_RETURN_POINTER(state);	
-
+	PG_RETURN_POINTER(state);
 #else
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("feature not suppported"),
 			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-		
+
 	PG_RETURN_NULL();
 #endif
 }
@@ -206,29 +177,25 @@ orafce_listagg2_transfn(PG_FUNCTION_ARGS)
 Datum
 orafce_listagg_finalfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 80400
-	ListAggState *state = NULL;
+#if PG_VERSION_NUM >= 90000
+	return string_agg_finalfn(fcinfo);
+#elif PG_VERSION_NUM >= 80400
+	StringInfo	state;
 
-	if (PG_ARGISNULL(0))
-		PG_RETURN_NULL();
-		
 	/* cannot be called directly because of internal-type argument */
-	Assert(fcinfo->context &&
-		    (IsA(fcinfo->context, AggState) ||
-			    IsA(fcinfo->context, WindowAggState)));
-	
-	state = (ListAggState *) PG_GETARG_POINTER(0);
-	if (!state->is_empty)
-		PG_RETURN_TEXT_P(cstring_to_text(state->strInfo->data));
-	else
-		PG_RETURN_NULL();    
+	Assert(AggCheckCallContext(fcinfo, NULL));
 
+	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
+
+	if (state != NULL)
+		PG_RETURN_TEXT_P(cstring_to_text(state->data));
+	else
+		PG_RETURN_NULL();
 #else
 	ereport(ERROR,
 			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 			 errmsg("feature not suppported"),
 			 errdetail("This functions is blocked on PostgreSQL 8.3 and older (from security reasons).")));
-		
 
 	PG_RETURN_NULL();
 #endif
@@ -321,15 +288,10 @@ orafce_median4_transfn(PG_FUNCTION_ARGS)
 	MedianState *state = NULL;
 	float4 elem;
 
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
-		aggcontext = ((AggState *) fcinfo->context)->aggcontext;
-	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
-		aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
-	else
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
 		/* cannot be called directly because of internal-type argument */
 		elog(ERROR, "median4_transfn called in non-aggregate context");
-		aggcontext = NULL;		/* keep compiler quiet */
 	}
 	
 	state = PG_ARGISNULL(0) ? NULL : (MedianState *) PG_GETARG_POINTER(0);
@@ -402,15 +364,10 @@ orafce_median8_transfn(PG_FUNCTION_ARGS)
 	MedianState *state = NULL;
 	float8 elem;
 
-	if (fcinfo->context && IsA(fcinfo->context, AggState))
-		aggcontext = ((AggState *) fcinfo->context)->aggcontext;
-	else if (fcinfo->context && IsA(fcinfo->context, WindowAggState))
-		aggcontext = ((WindowAggState *) fcinfo->context)->wincontext;
-	else
+	if (!AggCheckCallContext(fcinfo, &aggcontext))
 	{
 		/* cannot be called directly because of internal-type argument */
 		elog(ERROR, "median4_transfn called in non-aggregate context");
-		aggcontext = NULL;		/* keep compiler quiet */
 	}
 	
 	state = PG_ARGISNULL(0) ? NULL : (MedianState *) PG_GETARG_POINTER(0);
