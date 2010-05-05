@@ -192,24 +192,23 @@ void*
 ora_salloc(size_t size)
 {
 	size_t aligned_size;
-	size_t max_min;
-	int select;
-	int i;
 	int repeat_c;
 	void *ptr = NULL;
 
 	aligned_size = align_size(size);
 
-	max_min = max_size;
-	select = -1;
-
 	for (repeat_c = 0; repeat_c < 2; repeat_c++)
 	{
+		size_t	max_min = max_size;
+		int		select = -1;
+		int		i;
 
 		/* find first good free block */
 		for (i = 0; i < *list_c; i++)
+		{
 			if (list[i].dispossible)
 			{
+				/* If this block is just the right size, return it */
 				if (list[i].size == aligned_size)
 				{
 					list[i].dispossible = false;
@@ -225,17 +224,19 @@ ora_salloc(size_t size)
 					select = i;
 				}
 			}
+		}
 
-		/* if I haven't well block or free slot */
-
+		/* If no suitable free slot found, defragment and try again. */
 		if (select == -1 || *list_c == LIST_ITEMS)
 		{
 			defragmentation();
 			continue;
 		}
 
-		/* I have to divide block */
-
+		/*
+		 * A slot larger than required was found. Divide it to avoid wasting
+		 * space, and return the slot of the right size.
+		 */
 		list[*list_c].size = list[select].size - aligned_size;
 		list[*list_c].first_byte_ptr = (char*)list[select].first_byte_ptr + aligned_size;
 		list[*list_c].dispossible = true;
