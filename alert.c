@@ -26,7 +26,6 @@ PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 extern unsigned char sid;
 float8 sensitivity = 250.0;
 extern LWLockId shmem_lock;
-extern int context;
 
 #ifndef _GetCurrentTimestamp
 #define _GetCurrentTimestamp()		GetCurrentTimestamp()
@@ -44,7 +43,7 @@ extern int context;
 
 
 /*
- * There are maximum 30 events and 255 colaborated sessions
+ * There are maximum 30 events and 255 collaborating sessions
  *
  */
 
@@ -55,20 +54,6 @@ alert_lock *session_lock = NULL;
 
 #define NOT_FOUND  -1
 #define NOT_USED -1
-
-static char*
-pstrcpy(char *str)
-{
-	int len;
-	char *result;
-
-	len = strlen(str);
-	result = (char*) palloc(len+1);
-	memcpy(result, str, len + 1);
-
-	return result;
-}
-
 
 /*
  * Compare text and cstr
@@ -136,8 +121,8 @@ find_lock(int sid, bool create)
 			ereport(ERROR,
     				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
         			 errmsg("lock request error"),
-				 errdetail("Failed to create session lock."),
-        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));
+					 errdetail("Failed to create session lock."),
+        			 errhint("There are too many collaborating sessions. Increase MAX_LOCKS in 'pipe.h'.")));
 	}
 
 	return NULL;
@@ -162,6 +147,7 @@ find_event(text *event_name, bool create, int *event_id)
 	if (create)
 	{
 		for (i=0; i < MAX_EVENTS; i++)
+		{
 			if (events[i].event_name == NULL)
 			{
 				events[i].event_name = ora_scstring(event_name);
@@ -175,12 +161,13 @@ find_event(text *event_name, bool create, int *event_id)
 					*event_id = i;
 				return &events[i];
 			}
+		}
 
-			ereport(ERROR,
-    				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-        			 errmsg("event registeration error"),
-				 errdetail("Too much registered events."),
-        			 errhint("There are too much colaborated sessions. Increase MAX_EVENTS in 'pipe.h'.")));
+		ereport(ERROR,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("event registeration error"),
+				 errdetail("Too many registered events."),
+				 errhint("There are too many collaborating sessions. Increase MAX_EVENTS in 'pipe.h'.")));
 	}
 
 	return NULL;
@@ -208,18 +195,17 @@ register_event(text *event_name)
 	}
 
 	/*
-	 * I can have maximalne MAX_LOCKS receivers for one event.
+	 * I can have a maximum of MAX_LOCKS receivers for one event.
 	 * Array receivers is increased for 16 fields
 	 */
-
 	if (first_free == NOT_FOUND)
 	{
 		if (ev->max_receivers + 16 > MAX_LOCKS)
 			ereport(ERROR,
     				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
         			 errmsg("lock request error"),
-				 errdetail("Failed to create session lock."),
-        			 errhint("There are too much colaborated sessions. Increase MAX_LOCKS in 'pipe.h'.")));
+					 errdetail("Failed to create session lock."),
+        			 errhint("There are too many collaborating sessions. Increase MAX_LOCKS in 'pipe.h'.")));
 
 		/* increase receiver's array */
 
@@ -261,12 +247,14 @@ unregister_event(int event_id, int sid)
 	if (ev->receivers_number > 0)
 	{
 		for (i = 0; i < ev->max_receivers; i++)
+		{
 			if (ev->receivers[i] == sid)
 			{
 				ev->receivers[i] = NOT_USED;
 				ev->receivers_number -= 1;
 				break;
 			}
+		}
 		if (ev->receivers_number == 0)
 		{
 			ora_sfree(ev->receivers);
@@ -300,7 +288,6 @@ remove_receiver(message_item *msg, int sid)
 		}
 		else if (msg->receivers[i] != NOT_USED)
 		{
-
 			find_other = true;
 		}
 		if (found && find_other)
@@ -401,13 +388,13 @@ find_and_remove_message_item(int message_id, int sid,
 				/* I have to do local copy */
 				if (message_text)
 				{
-					result = pstrcpy(message_text);
+					result = pstrdup(message_text);
 					if (destroy_msg_item)
 						ora_sfree(message_text);
 				}
 
 				if (event_name != NULL)
-					*event_name = pstrcpy(events[_message_id].event_name);
+					*event_name = pstrdup(events[_message_id].event_name);
 
 				break;
 			}
@@ -461,6 +448,7 @@ create_message(text *event_name, text *message)
 
 			msg_item->message_id = event_id;
 			for (i = j = 0; j < ev->max_receivers; j++)
+			{
 				if (ev->receivers[j] != NOT_USED)
 				{
 					msg_item->receivers[i++] = ev->receivers[j];
@@ -489,6 +477,7 @@ create_message(text *event_name, text *message)
 						}
 
 				}
+			}
 
 			msg_item->next_message = NULL;
 			if (ev->messages == NULL)
@@ -725,7 +714,7 @@ dbms_alert_waitone(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("event name is NULL"),
-			 errdetail("Eventname may not be NULL.")));
+				 errdetail("Eventname may not be NULL.")));
 
 	if (PG_ARGISNULL(1))
 		timeout = TDAYS;
