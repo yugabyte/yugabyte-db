@@ -57,9 +57,6 @@ ptr_comp(const void* a, const void* b)
 	return (long)_a->first_byte_ptr - (long)_b->first_byte_ptr;
 }
 
-#define MOVE_CUR 1
-#define ADD_CUR  2
-
 char *
 ora_sstrcpy(char *str)
 {
@@ -102,43 +99,36 @@ ora_scstring(text *str)
 	return result;
 }
 
+/*
+ * Compact the list of slots, by merging adjacent unused slots into larger
+ * slots.
+ */
 static void
-defragmentation(void)
+defragmentation()
 {
-	int i, w;
-	int state = MOVE_CUR;
+	int src, target;
 
+	/* Sort the array to pointer order */
 	qsort(list, *list_c, sizeof(list_item), ptr_comp);
 
-	/* list strip -  every field have to check or move */
-
-	w = 0;
-	for (i = 0; i < *list_c; i++)
+	/* Merge adjacent dispossible slots, and move up other slots */
+	target = 0;
+	for (src = 0; src < *list_c; src++)
 	{
-		if (state == MOVE_CUR)
+		if (target > 0 &&
+			list[src].dispossible &&
+			list[target - 1].dispossible)
 		{
-			if (i != w)
-				memcpy(&list[w], &list[i], sizeof(list_item));
-			state = (list[i].dispossible) ? ADD_CUR : MOVE_CUR;
-			w = w + (state == MOVE_CUR ? 1 : 0);
+			list[target - 1].size += list[src].size;
 		}
-		else if (state == ADD_CUR)
+		else
 		{
-			if (list[i].dispossible)
-			{
-				list[w].size += list[i].size;
-			}
-			else
-			{
-				if (i != ++w)
-					memcpy(&list[w], &list[i], sizeof(list_item));
-				w += 1;
-				state = MOVE_CUR;
-			}
+			if (src != target)
+				memcpy(&list[target], &list[src], sizeof(list_item));
+			target++;
 		}
 	}
-	*list_c = w + 1 + (state == ADD_CUR ? 1:0);
-
+	*list_c = target;
 }
 
 static size_t
