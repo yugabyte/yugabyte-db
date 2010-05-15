@@ -2091,8 +2091,8 @@ RETURNS TEXT AS $$
     SELECT fk_ok( $1, ARRAY[$2], $3, ARRAY[$4] );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE VIEW tap_funky AS
-    SELECT p.oid         AS oid,
+CREATE OR REPLACE VIEW tap_funky
+ AS SELECT p.oid         AS oid,
            n.nspname     AS schema,
            p.proname     AS name,
            array_to_string(p.proargtypes::regtype[], ',') AS args,
