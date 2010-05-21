@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-12-16 17:06:12.000000000 -0800
-+++ pgtap.sql	2009-12-16 17:06:38.000000000 -0800
+--- pgtap.sql	2010-05-21 16:48:21.000000000 -0400
++++ pgtap.sql.new	2010-05-21 16:47:26.000000000 -0400
 @@ -15,6 +15,11 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -12,8 +12,8 @@
  CREATE OR REPLACE FUNCTION pg_version_num()
  RETURNS integer AS $$
      SELECT s.a[1]::int * 10000
-@@ -5849,8 +5854,9 @@
-         SELECT display_type(a.atttypid, a.atttypmod)
+@@ -5785,8 +5790,9 @@
+         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
            FROM pg_catalog.pg_attribute a
            JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
 +          JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
@@ -21,9 +21,9 @@
 -           AND c.relistemp
 +           AND n.nspname LIKE 'pg_temp%'
             AND attnum > 0
-            AND CASE WHEN attisdropped THEN false ELSE pg_type_is_visible(a.atttypid) END
+            AND NOT attisdropped
           ORDER BY attnum
-@@ -6197,7 +6203,7 @@
+@@ -6133,7 +6139,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -32,7 +32,7 @@
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
                  '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-@@ -6352,7 +6358,7 @@
+@@ -6288,7 +6294,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -41,7 +41,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6538,13 +6544,7 @@
+@@ -6474,13 +6480,7 @@
  $$ LANGUAGE sql;
  
  -- collect_tap( tap, tap, tap )
@@ -56,12 +56,12 @@
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
  $$ LANGUAGE sql;
-@@ -7017,7 +7017,7 @@
-     result BOOLEAN;
+@@ -6952,7 +6952,7 @@
+     rec    RECORD;
  BEGIN
-     FOR rec in EXECUTE _query($1) LOOP
--        result := NOT rec IS DISTINCT FROM $2;
-+        result := NOT rec::text IS DISTINCT FROM $2::text;
-         RETURN ok(result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
-                '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE rec::text END ||
-             E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE $2::text  END
+     EXECUTE _query($1) INTO rec;
+-    IF NOT rec IS DISTINCT FROM $2 THEN RETURN ok(true, $3); END IF;
++    IF NOT rec::text IS DISTINCT FROM $2::text THEN RETURN ok(true, $3); END IF;
+     RETURN ok(false, $3 ) || E'\n' || diag(
+            '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE rec::text END ||
+         E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE $2::text  END

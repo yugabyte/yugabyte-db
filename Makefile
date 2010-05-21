@@ -9,7 +9,6 @@ REGRESS_OPTS = --load-language=plpgsql
 # Run pg_config to get the PGXS Makefiles
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
-include $(PGXS)
 
 # We need to do various things with various versions of PostgreSQL.
 VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
@@ -27,16 +26,7 @@ endif
 
 # Compile the C code only if we're on 8.3 or older.
 ifeq ($(PGVER_MAJOR), 8)
-ifeq ($(PGVER_MINOR), 3)
-MODULES = pgtap
-endif
-ifeq ($(PGVER_MINOR), 2)
-MODULES = pgtap
-endif
-ifeq ($(PGVER_MINOR), 1)
-MODULES = pgtap
-endif
-ifeq ($(PGVER_MINOR), 0)
+ifneq ($(PGVER_MINOR), 4)
 MODULES = pgtap
 endif
 endif
@@ -45,6 +35,9 @@ endif
 ifndef PERL
 PERL := $(shell which perl)
 endif
+
+# Load PGXS now that we've set all the variables it might need.
+include $(PGXS)
 
 # Is TAP::Harness installed?
 ifdef PERL
