@@ -29,6 +29,7 @@ Revision history for pgTAP
   `$PATH` environment variable, one can simply set `PG_CONFIG` to point to it.
 * Fixed typo in the statement to drop the `tap_funky` view in
   `uninstall_pgtap.sql`. Thanks to Erik Rijkers.
+* Removed deprecated `can_ok()` functions. Use `has_function()`, instead.
 
 0.23 2009-12-18T23:03:39
 -------------------------

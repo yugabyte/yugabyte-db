@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(508);
+SELECT plan(466);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -21,9 +21,6 @@ CREATE AGGREGATE public.tap_accum (
     stype    = anyarray,
     initcond = '{}'
 );
-
--- XXX Delete when can_ok() is removed.
-SET client_min_messages = error;
 
 /****************************************************************************/
 -- Test has_function().
@@ -254,121 +251,6 @@ SELECT * FROM check_test(
     'custom numeric function',
     'Function __cat__(numeric) should not exist',
     ''
-);
-
-/****************************************************************************/
--- Test can_ok().
-SELECT * FROM check_test(
-    can_ok( 'now' ),
-    true,
-    'simple function',
-    'Function now() should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'pg_catalog', 'now'::name ),
-    true,
-    'simple schema.function',
-    'Function pg_catalog.now() should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'now', 'whatever' ),
-    true,
-    'simple function desc',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'now', '{}'::name[] ),
-    true,
-    'simple with 0 args',
-    'Function now() should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'now', '{}'::name[], 'whatever' ),
-    true,
-    'simple with 0 args desc',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'pg_catalog', 'now', '{}'::name[] ),
-    true,
-    'simple schema.func with 0 args',
-    'Function pg_catalog.now() should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'pg_catalog', 'now', 'whatever' ),
-    true,
-    'simple schema.func with desc',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'pg_catalog', 'now', '{}'::name[], 'whatever' ),
-    true,
-    'simple scchma.func with 0 args, desc',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'lower', '{text}'::name[] ),
-    true,
-    'simple function with 1 arg',
-    'Function lower(text) should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'decode', '{text,text}'::name[] ),
-    true,
-    'simple function with 2 args',
-    'Function decode(text, text) should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( 'array_cat', ARRAY['anyarray','anyarray'] ),
-    true,
-    'simple array function',
-    'Function array_cat(anyarray, anyarray) should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( '__cat__', '{text[]}'::name[] ),
-    true,
-    'custom array function',
-    'Function __cat__(text[]) should exist',
-    ''
-);
-
-SELECT * FROM check_test(
-    can_ok( '__cat__', '{numeric}'::name[] ),
-    true,
-    'custom numeric function',
-    'Function __cat__(numeric) should exist',
-    ''
-);
-
--- Check failure output.
-SELECT * FROM check_test(
-    can_ok( '__cat__', '{varchar[]}'::name[] ),
-    false,
-    'failure output',
-    'Function __cat__(varchar[]) should exist',
-    '' -- No diagnostics.
 );
 
 /****************************************************************************/
