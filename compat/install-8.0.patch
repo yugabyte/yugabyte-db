@@ -1,5 +1,5 @@
---- pgtap.sql.orig	2009-12-31 16:40:00.000000000 -0800
-+++ pgtap.sql	2009-12-31 17:13:43.000000000 -0800
+--- pgtap.sql	2010-05-21 18:40:22.000000000 -0400
++++ pgtap.sql.new	2010-05-21 18:40:08.000000000 -0400
 @@ -68,6 +68,27 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -28,7 +28,7 @@
  CREATE OR REPLACE FUNCTION pg_typeof("any")
  RETURNS regtype
  AS '$libdir/pgtap'
-@@ -150,53 +171,63 @@
+@@ -149,53 +170,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -109,7 +109,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -260,10 +291,12 @@
+@@ -259,10 +290,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -125,7 +125,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -536,13 +569,16 @@
+@@ -535,13 +568,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -145,7 +145,7 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1364,19 +1400,21 @@
+@@ -1365,19 +1401,21 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -171,7 +171,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -3425,39 +3463,6 @@
+@@ -3362,39 +3400,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -211,7 +211,7 @@
  CREATE OR REPLACE FUNCTION _is_super( NAME )
  RETURNS BOOLEAN AS $$
      SELECT usesuper
-@@ -3561,13 +3566,8 @@
+@@ -3498,13 +3503,8 @@
  $$ LANGUAGE sql;
  
  CREATE OR REPLACE FUNCTION _grolist ( NAME )
@@ -227,7 +227,19 @@
  $$ LANGUAGE sql;
  
  -- is_member_of( group, user[], description )
-@@ -5516,6 +5516,7 @@
+@@ -3513,9 +3513,9 @@
+ DECLARE
+     missing text[];
+ BEGIN
+-    IF NOT _has_role($1) THEN
++    IF NOT _has_group($1) THEN
+         RETURN fail( $3 ) || E'\n' || diag (
+-            '    Role ' || quote_ident($1) || ' does not exist'
++            '    Group ' || quote_ident($1) || ' does not exist'
+         );
+     END IF;
+ 
+@@ -5453,6 +5453,7 @@
      res     BOOLEAN;
      descr   TEXT;
      adiag   TEXT;
@@ -235,7 +247,7 @@
      have    ALIAS FOR $1;
      eok     ALIAS FOR $2;
      name    ALIAS FOR $3;
-@@ -5527,8 +5528,10 @@
+@@ -5464,8 +5465,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -248,9 +260,9 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -5720,116 +5723,6 @@
- END
- $$ LANGUAGE plpgsql;
+@@ -5651,116 +5654,6 @@
+     SELECT TRUE;
+ $$ LANGUAGE sql;
  
 -CREATE OR REPLACE FUNCTION _runner( text[], text[], text[], text[], text[] )
 -RETURNS SETOF TEXT AS $$
@@ -365,7 +377,7 @@
  CREATE OR REPLACE FUNCTION _temptable ( TEXT, TEXT )
  RETURNS TEXT AS $$
  BEGIN
-@@ -5879,13 +5772,13 @@
+@@ -5810,13 +5703,13 @@
          -- Find extra records.
          FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || want LOOP
@@ -381,7 +393,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -5999,16 +5892,20 @@
+@@ -5930,16 +5823,20 @@
      missing TEXT[]  := '{}';
      res     BOOLEAN := TRUE;
      msg     TEXT    := '';
@@ -404,7 +416,7 @@
  
          -- Drop the temporary tables.
          EXECUTE 'DROP TABLE ' || have;
-@@ -6109,7 +6006,7 @@
+@@ -6040,7 +5937,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
@@ -413,7 +425,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6204,11 +6101,11 @@
+@@ -6135,11 +6032,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -428,7 +440,7 @@
              );
          END IF;
          rownum = rownum + 1;
-@@ -6223,8 +6120,8 @@
+@@ -6154,8 +6051,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -439,7 +451,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6359,7 +6256,7 @@
+@@ -6290,7 +6187,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -448,7 +460,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6373,8 +6270,8 @@
+@@ -6304,8 +6201,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -459,7 +471,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6522,7 +6419,7 @@
+@@ -6453,7 +6350,7 @@
  BEGIN
      -- Find extra records.
      FOR rec in EXECUTE _query($1) LOOP
@@ -468,7 +480,7 @@
      END LOOP;
  
      -- What extra records do we have?
-@@ -6626,35 +6523,6 @@
+@@ -6557,35 +6454,6 @@
      SELECT throws_imatching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
  $$ LANGUAGE sql;
  
@@ -504,17 +516,19 @@
  CREATE OR REPLACE FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] )
  RETURNS TEXT AS $$
      SELECT _are(
-@@ -7018,10 +6886,10 @@
-     result BOOLEAN;
+@@ -6948,12 +6816,12 @@
+     rec    RECORD;
  BEGIN
-     FOR rec in EXECUTE _query($1) LOOP
--        result := NOT textin(record_out(rec)) IS DISTINCT FROM textin(record_out($2));
-+        result := NOT textin(record_out(rec, 2249)) IS DISTINCT FROM textin(record_out($2, 2249));
-         RETURN ok(result, $3 ) || CASE WHEN result THEN '' ELSE E'\n' || diag(
--               '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE textin(record_out(rec)) END ||
--            E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE textin(record_out($2))  END
-+               '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE textin(record_out(rec, 2249)) END ||
-+            E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE textin(record_out($2, 2249))  END
-         ) END;
-     END LOOP;
+     FOR rec in EXECUTE _query($1) LOOP END LOOP;
+-    IF NOT textin(record_out(rec)) IS DISTINCT FROM textin(record_out($2))
++    IF NOT textin(record_out(rec, 2249)) IS DISTINCT FROM textin(record_out($2, 2249))
+         THEN RETURN ok(true, $3);
+     END IF;
+     RETURN ok(false, $3 ) || E'\n' || diag(
+-           '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE textin(record_out(rec)) END ||
+-        E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE textin(record_out($2))  END
++           '        have: ' || CASE WHEN rec IS NULL THEN 'NULL' ELSE textin(record_out(rec, 2249)) END ||
++        E'\n        want: ' || CASE WHEN $2  IS NULL THEN 'NULL' ELSE textin(record_out($2, 2249))  END
+     );
  END;
+ $$ LANGUAGE plpgsql;

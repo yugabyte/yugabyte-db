@@ -4323,10 +4323,9 @@ pgTAP has been tested on the following builds of PostgreSQL:
 * PostgreSQL 9.0beta1 on x86_64-apple-darwin10.3.0
 * PostgreSQL 8.4.4 on i386-apple-darwin10.3.0
 * PostgreSQL 8.3.11 on i386-apple-darwin10.3.0
-* PostgreSQL 8.3.6 on i386-redhat-linux-gnu
 * PostgreSQL 8.2.17 on i386-apple-darwin10.3.0
-* PostgreSQL 8.1.19 on i686-apple-darwin10.2.0
-* PostgreSQL 8.0.23 on i686-apple-darwin10.2.0
+* PostgreSQL 8.1.21 on i686-apple-darwin10.3.0
+* PostgreSQL 8.0.25 on i686-apple-darwin10.3.0
 
 If you know of others, please submit them! Use
 `psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
