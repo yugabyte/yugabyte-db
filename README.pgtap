@@ -4309,6 +4309,10 @@ To Do
   + `sequence_cycles()`
 * Useful result testing function to consider adding (but might require C
   code): `rowtype_is()`
+* Split test functions into separate files (and maybe distributions?):
+  + One with scalar comparison functions: `ok()`, `is()`, `like()`, etc.
+  + One with relation comparison functions: `set_eq()`, `results_eq()`, etc.
+  + One with schema testing functions: `has_table()`, `tables_are()`, etc.
 
 Supported Versions
 -----------------
