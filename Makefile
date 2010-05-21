@@ -6,9 +6,14 @@ SCRIPTS = bbin/pg_prove bbin/pg_tapgen
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --load-language=plpgsql
 
+ifdef NO_PGXS
+top_builddir = ../..
+PG_CONFIG := $(top_builddir)/src/bin/pg_config/pg_config
+else
 # Run pg_config to get the PGXS Makefiles
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
+endif
 
 # We need to do various things with various versions of PostgreSQL.
 VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
@@ -37,7 +42,12 @@ PERL := $(shell which perl)
 endif
 
 # Load PGXS now that we've set all the variables it might need.
+ifdef NO_PGXS
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+else
 include $(PGXS)
+endif
 
 # Is TAP::Harness installed?
 ifdef PERL

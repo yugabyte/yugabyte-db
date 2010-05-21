@@ -27,6 +27,7 @@ Revision history for pgTAP
 * Eliminated the need to set `USE_PGXS=1` when building outsde the contrib
   directory of the PostgreSQL distribution. If `pg_config` isn't in the
   `$PATH` environment variable, one can simply set `PG_CONFIG` to point to it.
+  If building inside the contrib directory, set `NO_PGXS=1`.
 * Fixed typo in the statement to drop the `tap_funky` view in
   `uninstall_pgtap.sql`. Thanks to Erik Rijkers.
 * Removed deprecated `can_ok()` functions. Use `has_function()`, instead.

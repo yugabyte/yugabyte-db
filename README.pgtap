@@ -41,11 +41,12 @@ to find it:
 
     env PG_CONFIG=/path/to/pg_config make && make install && make installcheck
 
-And finally, if all that fails, copy the entire distribution directory to the
-`contrib/` subdirectory of the PostgreSQL source tree and try it there:
+And finally, if all that fails (and if you're on PostgreSQL 8.1 or lower, it
+likely will), copy the entire distribution directory to the `contrib/`
+subdirectory of the PostgreSQL source tree and try it there without
+`pg_config`:
 
-    env PG_CONFIG=../../src/bin/pg_config/pg_config \
-    make && make install && make installcheck
+    env NO_PGXS=1 make && make install && make installcheck
 
 If you encounter an error such as:
 
