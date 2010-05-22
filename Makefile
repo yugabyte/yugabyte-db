@@ -86,11 +86,7 @@ else
 endif
 
 pgtap.sql: pgtap.sql.in test_setup.sql
-ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql.in > pgtap.sql
-else
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql.in > pgtap.sql
-endif
+	cp $< $@
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
 ifneq ($(PGVER_MINOR), 4)
@@ -111,13 +107,15 @@ endif
 endif
 endif
 endif
+ifdef TAPSCHEMA
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql > pgtap.tmp
+else
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql > pgtap.tmp
+endif
+	mv pgtap.tmp pgtap.sql
 
 uninstall_pgtap.sql: uninstall_pgtap.sql.in test_setup.sql
-ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' uninstall_pgtap.sql.in > uninstall_pgtap.sql
-else
 	cp uninstall_pgtap.sql.in uninstall_pgtap.sql
-endif
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
 ifneq ($(PGVER_MINOR), 4)
@@ -130,6 +128,10 @@ ifeq ($(PGVER_MINOR), 0)
 endif
 endif
 endif
+endif
+ifdef TAPSCHEMA
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' uninstall_pgtap.sql > uninstall.tmp
+	mv uninstall.tmp uninstall_pgtap.sql
 endif
 
 # Build pg_prove and holler if there's no Perl or TAP::Harness.
