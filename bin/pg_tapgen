@@ -142,7 +142,6 @@ sub functions_are {
         "'\n] );\n\n";
 }
 
-
 __END__
 
 =encoding utf8
@@ -159,7 +158,13 @@ pg_tapgen - Generate schema TAP tests from an existing database
 
 C<pg_tapgen> is a command-line utility to generate pgTAP tests to validate a
 database schema by reading an existing database and generating the tests to
-match.
+match. Its use requires the installation of the L<DBI> and L<DBD::Pg> from
+CPAN or via a package distribution.
+
+B<Warning:> These prerequisites are not validatd by the pgTAP C<Makefile>, so
+you'll need to instal them youself. As a result, inclusion of this script in
+the pgTAP distribution is experimental. It may be moved to its own
+distribution in the future.
 
 =head1 Options
 
