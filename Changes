@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.24
+0.24 2010-05-24T23:33:22
 -------------------------
 * Got `sql/artap.sql` tests passing again when building with `$TAPSCHEMA` set.
 * Changed to saner source URL in `contrib/pgtap.spec`.
