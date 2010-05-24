@@ -572,7 +572,7 @@ thus support an alternative to make your tests more SQLish: using prepared
 statements.
 
 [Prepared statements](http://www.postgresql.org/docs/current/static/sql-prepare.html
-"PostgreSQL Documentation: `PREPARE`") allow you to just write SQL and simply
+"PostgreSQL Documentation: PREPARE") allow you to just write SQL and simply
 pass the prepared statement names to test functions. For example, the above
 example can be rewritten as:
 
@@ -1827,7 +1827,7 @@ The format is `:op(:leftop,:rightop) RETURNS :return_type`.
 For left operators the left argument type should be `NONE`. For right
 operators, the right argument type should be `NONE`. The example above shows
 one one of each of the operator types. `=(citext,citext)` is an infix
-operator, `-(bigint,NONE)` is a left operator, and `!(NONE,bigint)' is a right
+operator, `-(bigint,NONE)` is a left operator, and `!(NONE,bigint)` is a right
 operator.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
@@ -2245,10 +2245,10 @@ have a numeric column with a precision of 8, you should specify
 `ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
 the `:args[]` argument as `ARRAY['character varying']`.
 
-If you wish to use the two-argument form of `has_function()`, specifying only the
-schema and the function name, you must cast the `:function` argument to
+If you wish to use the two-argument form of `has_function()`, specifying only
+the schema and the function name, you must cast the `:function` argument to
 `:name` in order to disambiguate it from from the
-`has_function(`:function`, `:description)` form. If you neglect to do so, your
+`has_function(:function, :description)` form. If you neglect to do so, your
 results will be unexpected.
 
 Also, if you use the string form to specify the `:args[]` array, be sure to
@@ -4290,8 +4290,8 @@ No changes. Everything should just work.
 To Do
 -----
 * Add `schema, table, colname` variations of the table-checking functions
-  (`table_has_column()`, col_type_is()`, etc.). That is, allow the description
-  to be optional if the schema is included in the function call.
+  (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
+  description to be optional if the schema is included in the function call.
 * Add functions to test for object ownership.
   + `db_owner_is()`
   + `table_owner_is()`
