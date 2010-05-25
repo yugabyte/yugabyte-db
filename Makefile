@@ -20,7 +20,7 @@ VERSION     = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 PGVER_MAJOR = $(shell echo $(VERSION) | awk -F. '{ print ($$1 + 0) }')
 PGVER_MINOR = $(shell echo $(VERSION) | awk -F. '{ print ($$2 + 0) }')
 PGVER_PATCH = $(shell echo $(VERSION) | awk -F. '{ print ($$3 + 0) }')
-PGTAP_VERSION = 0.24
+PGTAP_VERSION = 0.25
 
 # We support 8.0 and later.
 ifneq ($(PGVER_MAJOR), 8)

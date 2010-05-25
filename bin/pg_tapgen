@@ -5,7 +5,7 @@ use warnings;
 use DBI;
 use DBD::Pg;
 use Getopt::Long;
-our $VERSION = '0.24';
+our $VERSION = '0.25';
 
 Getopt::Long::Configure (qw(bundling));
 
