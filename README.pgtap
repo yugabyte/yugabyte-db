@@ -791,8 +791,8 @@ example:
 
 Idea borrowed from the Test::Exception Perl module.
 
-### `performs_ok ( sql, milliseconds, description )` ###
-### `performs_ok ( sql, milliseconds )` ###
+### `performs_ok( sql, milliseconds, description )` ###
+### `performs_ok( sql, milliseconds )` ###
 
     PREPARE fast_query AS SELECT id FROM try WHERE name = 'Larry';
     SELECT performs_ok(
