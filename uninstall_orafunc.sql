@@ -50,10 +50,18 @@ DROP VIEW public.dual CASCADE;
 
 DROP FUNCTION nvl(anyelement, anyelement);
 DROP FUNCTION nvl2(anyelement, anyelement, anyelement);
+
 DROP FUNCTION concat(text, text);
+DROP FUNCTION concat(text, anyarray);
+DROP FUNCTION concat(anyarray, text);
+DROP FUNCTION concat(anyarray, anyarray);
+DROP FUNCTION concat(text, anynonarray);
+DROP FUNCTION concat(anynonarray, text);
+DROP FUNCTION concat(anynonarray, anynonarray);
 DROP FUNCTION concat(text, anyelement);
 DROP FUNCTION concat(anyelement, text);
 DROP FUNCTION concat(anyelement, anyelement);
+
 DROP FUNCTION bitand(bigint, bigint);
 DROP FUNCTION sinh(float8);
 DROP FUNCTION cosh(float8);

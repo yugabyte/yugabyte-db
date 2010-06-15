@@ -250,7 +250,7 @@ CE');
 END;
 $$ LANGUAGE plpgsql;
 SELECT dbms_output_test();
-SELECT buff FROM dbms_output_test limit 1;
+SELECT regexp_replace(buff, E'\n', '<LF>', 'g') FROM dbms_output_test limit 1;
 DROP TABLE dbms_output_test;
 DROP FUNCTION dbms_output_test();
 
@@ -418,7 +418,7 @@ CE');
 END;
 $$ LANGUAGE plpgsql;
 SELECT dbms_output_test();
-SELECT buff FROM dbms_output_test limit 1;
+SELECT regexp_replace(buff, E'\n', '<LF>', 'g') FROM dbms_output_test limit 1;
 DROP TABLE dbms_output_test;
 DROP FUNCTION dbms_output_test();
 

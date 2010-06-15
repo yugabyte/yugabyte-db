@@ -1,9 +1,4 @@
 \set ECHO none
- case 
-------
- 
-(1 row)
-
 --
 -- test built-in date type oracle compatibility functions
 --

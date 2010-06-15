@@ -340,12 +340,10 @@ SELECT dbms_output_test();
  
 (1 row)
 
-SELECT buff FROM dbms_output_test limit 1;
- buff 
-------
- ORA
- F
- CE
+SELECT regexp_replace(buff, E'\n', '<LF>', 'g') FROM dbms_output_test limit 1;
+ regexp_replace 
+----------------
+ ORA<LF>F<LF>CE
 (1 row)
 
 DROP TABLE dbms_output_test;
@@ -575,12 +573,10 @@ SELECT dbms_output_test();
  
 (1 row)
 
-SELECT buff FROM dbms_output_test limit 1;
- buff 
-------
- ORA
- F
- CE
+SELECT regexp_replace(buff, E'\n', '<LF>', 'g') FROM dbms_output_test limit 1;
+ regexp_replace 
+----------------
+ ORA<LF>F<LF>CE
 (1 row)
 
 DROP TABLE dbms_output_test;
