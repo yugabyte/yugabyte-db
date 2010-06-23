@@ -2194,13 +2194,13 @@ specified trigger does *not* exist.
         'myschema',
         'sometable',
         'somerule,
-        'Trigger "somerule" should exist'
+        'Rule "somerule" should exist'
     );
 
     SELECT has_rule( 'sometable', 'somerule' );
 
 Tests to see if the specified table has the named rule. The `:description` is
-optional, and if the schema is omitted, the table with which the trigger is
+optional, and if the schema is omitted, the table with which the rule is
 associated must be visible in the search path.
 
 ### `hasnt_rule( schema, table, rule, description )` ###
