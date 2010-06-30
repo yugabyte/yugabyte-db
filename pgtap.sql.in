@@ -40,7 +40,7 @@ DECLARE
 BEGIN
     BEGIN
         EXECUTE '
-            CREATE SEQUENCE __tcache___id_seq;
+            CREATE TEMP SEQUENCE __tcache___id_seq;
             CREATE TEMP TABLE __tcache__ (
                 id    INTEGER NOT NULL DEFAULT nextval(''__tcache___id_seq''),
                 label TEXT    NOT NULL,
