@@ -3394,36 +3394,41 @@ RETURNS TEXT AS $$
     SELECT ok( NOT _has_role($1), 'Role ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _is_super( NAME )
+CREATE OR REPLACE FUNCTION _haS_user( NAME )
 RETURNS BOOLEAN AS $$
-    SELECT usesuper
-      FROM pg_catalog.pg_user
-     WHERE usename = $1
+    SELECT EXISTS( SELECT true FROM pg_catalog.pg_user WHERE usename = $1);
 $$ LANGUAGE sql STRICT;
 
 -- has_user( user, description )
 CREATE OR REPLACE FUNCTION has_user( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( _is_super($1) IS NOT NULL, $2 );
+    SELECT ok( _has_user($1), $2 );
 $$ LANGUAGE sql;
 
 -- has_user( user )
 CREATE OR REPLACE FUNCTION has_user( NAME )
 RETURNS TEXT AS $$
-    SELECT ok( _is_super( $1 ) IS NOT NULL, 'User ' || quote_ident($1) || ' should exist');
+    SELECT ok( _has_user( $1 ), 'User ' || quote_ident($1) || ' should exist');
 $$ LANGUAGE sql;
 
 -- hasnt_user( user, description )
 CREATE OR REPLACE FUNCTION hasnt_user( NAME, TEXT )
 RETURNS TEXT AS $$
-    SELECT ok( _is_super($1) IS NULL, $2 );
+    SELECT ok( NOT _has_user($1), $2 );
 $$ LANGUAGE sql;
 
 -- hasnt_user( user )
 CREATE OR REPLACE FUNCTION hasnt_user( NAME )
 RETURNS TEXT AS $$
-    SELECT ok( _is_super( $1 ) IS NULL, 'User ' || quote_ident($1) || ' should not exist');
+    SELECT ok( NOT _has_user( $1 ), 'User ' || quote_ident($1) || ' should not exist');
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _is_super( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT rolsuper
+      FROM pg_catalog.pg_roles
+     WHERE rolname = $1
+$$ LANGUAGE sql STRICT;
 
 -- is_superuser( user, description )
 CREATE OR REPLACE FUNCTION is_superuser( NAME, TEXT )

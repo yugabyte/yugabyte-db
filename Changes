@@ -7,6 +7,8 @@ Revision history for pgTAP
   sequence. This will prevent it from persisting beyond the current
   connection, which could lead to erorrs in future connections. Thanks to
   Richard Huxton for the report.
+* Fixed `is_superuser()` and `isnt_superuser()` so that they properly detect
+  superuser roles as well as users.
 
 0.24 2010-05-24T23:33:22
 -------------------------
