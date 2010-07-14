@@ -4314,6 +4314,14 @@ To Do
   + One with scalar comparison functions: `ok()`, `is()`, `like()`, etc.
   + One with relation comparison functions: `set_eq()`, `results_eq()`, etc.
   + One with schema testing functions: `has_table()`, `tables_are()`, etc.
+* Add useful negation function tests:
+  + `isnt_definer()`
+  + `isnt_strict()`
+  + `isnt_aggregate()`
+* Add `has_columns(:schema, :table, :columns[])`
+* Modify function testing assertions so that functions can be specified with
+  full signatures, so that a polymorphic functions can be independently tested
+  for language, volatility, etc.
 
 Supported Versions
 -----------------
