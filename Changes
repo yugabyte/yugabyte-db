@@ -9,6 +9,8 @@ Revision history for pgTAP
   Richard Huxton for the report.
 * Fixed `is_superuser()` and `isnt_superuser()` so that they properly detect
   superuser roles as well as users.
+* Fixed examples of single-quoted string values stored in `psql` variables in
+  `README.pgtap`.
 
 0.24 2010-05-24T23:33:22
 -------------------------

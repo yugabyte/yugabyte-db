@@ -395,8 +395,8 @@ So why use these test functions? They produce better diagnostics on failure.
 `is()` and `isnt()` know what the test was and why it failed. For example this
 test:
 
-    \set foo '\'' waffle '\''
-    \set bar '\'' yarblokos '\''
+    \set foo '\'waffle\''
+    \set bar '\'yarblokos\''
     SELECT is( :foo::text, :bar::text, 'Is foo the same as bar?' );
 
 Will produce something like this:
@@ -3706,7 +3706,7 @@ because you haven't fixed a bug or haven't finished a new feature:
 
     SELECT todo('URIGeller not finished', 2);
 
-    \set card '\'' Eight of clubs '\''
+    \set card '\'Eight of clubs\''
     SELECT is( URIGeller.yourCard(), :card, 'Is THIS your card?' );
     SELECT is( URIGeller.bendSpoon(), 'bent', 'Spoon bending, how original' );
 
