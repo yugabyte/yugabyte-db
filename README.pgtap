@@ -4048,7 +4048,7 @@ values always compare case-insensitively. Sure you could do this with `is()`
 and the `LOWER()` function, but if you're doing this all the time, you might
 want to simplify things. Here's how to go about it:
 
-    CREATE OR REPLACE FUNCTION is (text, text, text)
+    CREATE OR REPLACE FUNCTION lc_is (text, text, text)
     RETURNS TEXT AS $$
     DECLARE
         result BOOLEAN;
@@ -4073,7 +4073,7 @@ is instructive, this version is easier on the eyes:
 
     CREATE OR REPLACE FUNCTION lc_is ( TEXT, TEXT, TEXT )
     RETURNS TEXT AS $$
-         SELECT is( LOWER($1), LOWER(2), $3);
+         SELECT is( LOWER($1), LOWER($2), $3);
     $$ LANGUAGE sql;
 
 But either way, let pgTAP handle recording the test results and formatting the
