@@ -11,6 +11,9 @@ Revision history for pgTAP
   superuser roles as well as users.
 * Fixed examples of single-quoted string values stored in `psql` variables in
   `README.pgtap`.
+* Fixed a bug in `plan()` where a sequence wasn't getting created as a
+  temporary sequence. This wasn't a problem if all testin was done inside a
+  transaction, but if not, you could only run tests once without an error.
 
 0.24 2010-05-24T23:33:22
 -------------------------

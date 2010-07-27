@@ -51,7 +51,7 @@ BEGIN
             GRANT ALL ON TABLE __tcache__ TO PUBLIC;
             GRANT ALL ON TABLE __tcache___id_seq TO PUBLIC;
 
-            CREATE SEQUENCE __tresults___numb_seq;
+            CREATE TEMP SEQUENCE __tresults___numb_seq;
             CREATE TEMP TABLE __tresults__ (
                 numb   INTEGER NOT NULL DEFAULT nextval(''__tresults___numb_seq''),
                 ok     BOOLEAN NOT NULL DEFAULT TRUE,
