@@ -4114,18 +4114,19 @@ function. For the impatient, the arguments are:
 * `:name` - A brief name for your test, to make it easier to find failures in
   your test script. Optional.
 * `:want_description` - Expected test description to be output by the test.
-  Optional.
+  Optional. Use an empty string to test that no description is output.
 * `:want_diag` - Expected diagnostic message output during the execution of
   a test. Must always follow whatever is output by the call to `ok()`.
+  Optional. Use an empty string to test that no description is output.
 * `:match_diag` - Use `matches()` to compare the diagnostics rather than
   `:is()`. Useful for those situations where you're not sure what will be in
   the output, but you can match it with a regular expression.
 
-Now, on with the detailed documentation. At its simplest, you just pass it the
-output of your test (and it must be one and **only one** test function's
-output, or you'll screw up the count, so don't do that!) and a boolean value
-indicating whether or not you expect the test to have passed. That looks
-something like the second example above.
+Now, on with the detailed documentation. At its simplest, you just pass in the
+output of your test function (and it must be one and **only one** test
+function's output, or you'll screw up the count, so don't do that!) and a
+boolean value indicating whether or not you expect the test to have passed.
+That looks something like the second example above.
 
 All other arguments are optional, but I recommend that you *always* include a
 short test name to make it easier to track down failures in your test script.
@@ -4187,9 +4188,9 @@ diagnostics generated during the test to an expected string. Such diagnostics
 test function should not call `diag()` until after it calls `ok()` or things
 will get truly funky.
 
-Assuming you've followed that rule in your `lc_eq()` test function, to see
-what happens when a `lc_eq()` fails. Write your test to test the diagnostics
-like so:
+Assuming you've followed that rule in your `lc_eq()` test function, see what
+happens when a `lc_eq()` fails. Write your test to test the diagnostics like
+so:
 
     SELECT * FROM check_test(
         lc_eq( ''this'', ''THat'' ),
