@@ -3722,7 +3722,7 @@ tests, is that they're like a programmatic todo list. You know how much work
 is left to be done, you're aware of what bugs there are, and you'll know
 immediately when they're fixed.
 
-### `todo_start( :why )` ###
+### `todo_start( why )` ###
 ### `todo_start( )` ###
 
 This function allows you declare all subsequent tests as TODO tests, up until
