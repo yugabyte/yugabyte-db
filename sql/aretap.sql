@@ -8,10 +8,10 @@ SELECT plan(399);
 SET client_min_messages = warning;
 
 CREATE TABLE public.fou(
-    id    INT NOT NULL PRIMARY KEY,
-    name  TEXT DEFAULT '',
-    numb  NUMERIC(10, 2),
-    myint NUMERIC(8)
+    id      INT NOT NULL PRIMARY KEY,
+    name    TEXT DEFAULT '',
+    numb    NUMERIC(10, 2),
+    "myInt" NUMERIC(8)
 );
 CREATE TABLE public.foo(
     id    INT NOT NULL PRIMARY KEY
@@ -1363,7 +1363,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test columns_are().
 SELECT * FROM check_test(
-    columns_are( 'public', 'fou', ARRAY['id', 'name', 'numb', 'myint'], 'whatever' ),
+    columns_are( 'public', 'fou', ARRAY['id', 'name', 'numb', 'myInt'], 'whatever' ),
     true,
     'columns_are(schema, table, columns, desc)',
     'whatever',
@@ -1371,7 +1371,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    columns_are( 'public', 'fou', ARRAY['id', 'name', 'numb', 'myint'] ),
+    columns_are( 'public', 'fou', ARRAY['id', 'name', 'numb', 'myInt'] ),
     true,
     'columns_are(schema, table, columns)',
     'Table public.fou should have the correct columns',
@@ -1384,11 +1384,11 @@ SELECT * FROM check_test(
     'columns_are(schema, table, columns) + extra',
     'Table public.fou should have the correct columns',
     '    Extra columns:
-        myint'
+        "myInt"'
 );
 
 SELECT * FROM check_test(
-    columns_are( 'public', 'fou', ARRAY['id', 'name', 'numb', 'myint', 'howdy'] ),
+    columns_are( 'public', 'fou', ARRAY['id', 'name', 'numb', 'myInt', 'howdy'] ),
     false,
     'columns_are(schema, table, columns) + missing',
     'Table public.fou should have the correct columns',
@@ -1402,13 +1402,13 @@ SELECT * FROM check_test(
     'columns_are(schema, table, columns) + extra & missing',
     'Table public.fou should have the correct columns',
     '    Extra columns:
-        myint
+        "myInt"
     Missing columns:
         howdy'
 );
 
 SELECT * FROM check_test(
-    columns_are( 'fou', ARRAY['id', 'name', 'numb', 'myint'], 'whatever' ),
+    columns_are( 'fou', ARRAY['id', 'name', 'numb', 'myInt'], 'whatever' ),
     true,
     'columns_are(table, columns, desc)',
     'whatever',
@@ -1416,7 +1416,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    columns_are( 'fou', ARRAY['id', 'name', 'numb', 'myint'] ),
+    columns_are( 'fou', ARRAY['id', 'name', 'numb', 'myInt'] ),
     true,
     'columns_are(table, columns)',
     'Table fou should have the correct columns',
@@ -1429,11 +1429,11 @@ SELECT * FROM check_test(
     'columns_are(table, columns) + extra',
     'Table fou should have the correct columns',
     '    Extra columns:
-        myint'
+        "myInt"'
 );
 
 SELECT * FROM check_test(
-    columns_are( 'fou', ARRAY['id', 'name', 'numb', 'myint', 'howdy'] ),
+    columns_are( 'fou', ARRAY['id', 'name', 'numb', 'myInt', 'howdy'] ),
     false,
     'columns_are(table, columns) + missing',
     'Table fou should have the correct columns',
@@ -1447,7 +1447,7 @@ SELECT * FROM check_test(
     'columns_are(table, columns) + extra & missing',
     'Table fou should have the correct columns',
     '    Extra columns:
-        myint
+        "myInt"
     Missing columns:
         howdy'
 );

@@ -14,6 +14,9 @@ Revision history for pgTAP
 * Fixed a bug in `plan()` where a sequence wasn't getting created as a
   temporary sequence. This wasn't a problem if all testin was done inside a
   transaction, but if not, you could only run tests once without an error.
+* Fixed but where some object names were inproperly converted to to lowercase.
+  This caused `has_column('foo', 'myInt')`, for example, to fail, because the
+  test was changing "myInt" to "myint". Thanks to Robert White for the report.
 
 0.24 2010-05-24T23:33:22
 -------------------------

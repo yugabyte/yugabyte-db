@@ -1,16 +1,16 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(675);
+SELECT plan(678);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
 CREATE TABLE public.sometab(
-    id    INT NOT NULL PRIMARY KEY,
-    name  TEXT DEFAULT '',
-    numb  NUMERIC(10, 2),
-    myint NUMERIC(8)
+    id      INT NOT NULL PRIMARY KEY,
+    name    TEXT DEFAULT '',
+    numb    NUMERIC(10, 2),
+    "myInt" NUMERIC(8)
 );
 
 CREATE TYPE public.sometype AS (
@@ -51,6 +51,7 @@ SELECT * FROM check_test(
     'Tablespace pg_default should exist',
     ''
 );
+
 SELECT * FROM check_test(
     has_tablespace( 'pg_default', 'lol' ),
     true,
@@ -723,6 +724,14 @@ SELECT * FROM check_test(
     true,
     'has_column(sch, tab, col, desc)',
     'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_column( 'sometab', 'myInt' ),
+    true,
+    'has_column(table, camleCase column)',
+    'Column sometab."myInt" should exist',
     ''
 );
 

@@ -942,7 +942,7 @@ RETURNS BOOLEAN AS $$
            AND c.relname = $2
            AND a.attnum > 0
            AND NOT a.attisdropped
-           AND a.attname = LOWER($3)
+           AND a.attname = $3
     );
 $$ LANGUAGE SQL;
 
@@ -956,7 +956,7 @@ RETURNS BOOLEAN AS $$
            AND pg_catalog.pg_table_is_visible(c.oid)
            AND a.attnum > 0
            AND NOT a.attisdropped
-           AND a.attname = LOWER($2)
+           AND a.attname = $2
     );
 $$ LANGUAGE SQL;
 
@@ -1230,7 +1230,7 @@ RETURNS boolean AS $$
        AND c.relname = $2
        AND a.attnum > 0
        AND NOT a.attisdropped
-       AND a.attname = LOWER($3)
+       AND a.attname = $3
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _has_def ( NAME, NAME )
@@ -1241,7 +1241,7 @@ RETURNS boolean AS $$
      WHERE c.relname = $1
        AND a.attnum > 0
        AND NOT a.attisdropped
-       AND a.attname = LOWER($2)
+       AND a.attname = $2
 $$ LANGUAGE sql;
 
 -- col_has_default( schema, table, column, description )
