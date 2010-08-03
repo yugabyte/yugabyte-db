@@ -4339,7 +4339,6 @@ To Do
   + `isnt_definer()`
   + `isnt_strict()`
   + `isnt_aggregate()`
-* Add `has_columns(:schema, :table, :columns[])`
 * Modify function testing assertions so that functions can be specified with
   full signatures, so that a polymorphic functions can be independently tested
   for language, volatility, etc.
