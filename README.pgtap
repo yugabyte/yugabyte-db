@@ -1779,15 +1779,27 @@ missing enums, like so:
             'integer AS reltime',
             'integer AS numeric',
             -- ...
-        ]
+        ],
         'Should have the correct casts'
     );
 
 This function tests that all of the casts in the database are only the casts
 that *should* be in that database. Casts are specified as strings in a syntax
 similarly to how they're declared via `CREATE CAST`. The pattern is
-`:source_type AS :target_type`. If the description is omitted, a generally
-useful default description will be generated.
+`:source_type AS :target_type`. If either type was created with double-quotes
+to force mixed case or special characers, then you must use double quotes in
+the cast strings:
+
+    SELECT casts_are(
+        ARRAY[
+            'integer AS "myInteger"',
+            -- ...
+        ]
+    );
+
+
+If the description is omitted, a generally useful default description will be
+generated.
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing casts, like so:

@@ -22,6 +22,9 @@ Revision history for pgTAP
 * The expected type passed to `index_is_type()` is no longer compared
   case-insensitively, since it might be possible in the future to create a
   type with mixed case by using double quotes when naming it.
+* Documented that double-quotes must be used for types created with
+  double-quoted names in the strings passed to `casts_are()`. This should be
+  the only part of the API that does require this sort of quoting.
 
 0.24 2010-05-24T23:33:22
 -------------------------
