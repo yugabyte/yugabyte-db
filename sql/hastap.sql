@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(705);
+SELECT plan(678);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1663,14 +1663,6 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'US_POSTAL_CODE', 'public', 'TEXT', 'whatever'),
-    true,
-    'domain_type_is(schema, DOMAIN, schema, TYPE, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
     domain_type_is( 'public', 'us_postal_code', 'public', 'integer', 'whatever'),
     false,
     'domain_type_is(schema, domain, schema, type, desc) fail',
@@ -1708,14 +1700,6 @@ SELECT * FROM check_test(
     true,
     'domain_type_is(schema, domain, type)',
     'Domain public.us_postal_code should extend type text', 
-    ''
-);
-
-SELECT * FROM check_test(
-    domain_type_is( 'public', 'US_POSTAL_CODE', 'TEXT', 'whatever'),
-    true,
-    'domain_type_is(schema, DOMAIN, TYPE, desc)',
-    'whatever',
     ''
 );
 
@@ -1761,14 +1745,6 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'US_POSTAL_CODE', 'TEXT', 'whatever'),
-    true,
-    'domain_type_is(DOMAIN, TYPE, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
     domain_type_is( 'us_postal_code', 'integer', 'whatever'),
     false,
     'domain_type_is(domain, type, desc) fail',
@@ -1810,26 +1786,9 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'US_POSTAL_CODE', 'public', 'INTEGER', 'whatever'),
-    true,
-    'domain_type_isnt(schema, DOMAIN, schema, TYPE, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
     domain_type_isnt( 'public', 'us_postal_code', 'public', 'text', 'whatever'),
     false,
     'domain_type_isnt(schema, domain, schema, type, desc) fail',
-    'whatever',
-    '        have: public.text
-        want: anything else'
-);
-
-SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'US_POSTAL_CODE', 'public', 'TEXT', 'whatever'),
-    false,
-    'domain_type_isnt(schema, DOMAIN, schema, TYPE, desc) fail',
     'whatever',
     '        have: public.text
         want: anything else'
@@ -1868,26 +1827,9 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'US_POSTAL_CODE', 'INTEGER', 'whatever'),
-    true,
-    'domain_type_isnt(schema, DOMAIN, TYPE, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
     domain_type_isnt( 'public', 'us_postal_code', 'text', 'whatever'),
     false,
     'domain_type_isnt(schema, domain, type, desc) fail',
-    'whatever',
-    '        have: text
-        want: anything else'
-);
-
-SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'US_POSTAL_CODE', 'TEXT', 'whatever'),
-    false,
-    'domain_type_isnt(schema, DOMAIN, TYPE, desc) fail',
     'whatever',
     '        have: text
         want: anything else'
@@ -1918,14 +1860,6 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'US_POSTAL_CODE', 'INTEGER', 'whatever'),
-    true,
-    'domain_type_isnt(DOMAIN, TYPE, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
     domain_type_isnt( 'us_postal_code', 'integer'),
     true,
     'domain_type_isnt(domain, type)',
@@ -1937,15 +1871,6 @@ SELECT * FROM check_test(
     domain_type_isnt( 'us_postal_code', 'text', 'whatever'),
     false,
     'domain_type_isnt(domain, type, desc) fail',
-    'whatever',
-    '        have: text
-        want: anything else'
-);
-
-SELECT * FROM check_test(
-    domain_type_isnt( 'US_POSTAL_CODE', 'TEXT', 'whatever'),
-    false,
-    'domain_type_isnt(DOMAIN, TYPE, desc) fail',
     'whatever',
     '        have: text
         want: anything else'

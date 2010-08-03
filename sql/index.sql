@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(228);
+SELECT plan(225);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -579,14 +579,6 @@ SELECT * FROM check_test(
     index_is_type( 'public', 'sometab', 'idx_bar', 'btree', 'whatever' ),
     true,
     'index_is_type()',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    index_is_type( 'public', 'sometab', 'idx_bar', 'BTREE', 'whatever' ),
-    true,
-    'index_is_type() ci',
     'whatever',
     ''
 );

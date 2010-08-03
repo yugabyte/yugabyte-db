@@ -14,12 +14,14 @@ Revision history for pgTAP
 * Fixed a bug in `plan()` where a sequence wasn't getting created as a
   temporary sequence. This wasn't a problem if all testin was done inside a
   transaction, but if not, you could only run tests once without an error.
-* Fixed but where some object names were inproperly converted to to lowercase.
-  This caused `has_column('foo', 'myInt')`, for example, to fail, because the
-  test was changing "myInt" to "myint". Thanks to Robert White for the report.
-* Fixed bug where `col_type_is()` was forcing the type to lowercase, which
-  isn't correct when the type is actually mixed case or uppercase (that is,
-  named in double quotes when it was created).
+* Fixed bug where `has_column()`, `col_type_is()`, `domain_type_is()`,
+  `cast_exists()`, `cast_context_is()`, and `has_operator()`, were forcing the
+  type argument to lowercase, which wont't correct when the type is actually
+  mixed case or uppercase (that is, named in double quotes when it was
+  created).
+* The expected type passed to `index_is_type()` is no longer compared
+  case-insensitively, since it might be possible in the future to create a
+  type with mixed case by using double quotes when naming it.
 
 0.24 2010-05-24T23:33:22
 -------------------------

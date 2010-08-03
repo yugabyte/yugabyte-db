@@ -3581,6 +3581,15 @@ RETURNS TEXT AS $$
     SELECT is_member_of( $1, ARRAY[$2] );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _cmp_types(oid, name)
+RETURNS BOOLEAN AS $$
+DECLARE
+    dtype TEXT := display_type($1, NULL);
+BEGIN
+    RETURN dtype = _quote_ident_like($2, dtype);
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION _cast_exists ( NAME, NAME, NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS (
@@ -3588,8 +3597,8 @@ RETURNS BOOLEAN AS $$
          FROM pg_catalog.pg_cast c
          JOIN pg_catalog.pg_proc p ON c.castfunc = p.oid
          JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
-        WHERE display_type(castsource, NULL) = $1
-          AND display_type(casttarget, NULL) = $2
+        WHERE _cmp_types(castsource, $1)
+          AND _cmp_types(casttarget, $2)
           AND n.nspname   = $3
           AND p.proname   = $4
    );
@@ -3601,8 +3610,8 @@ RETURNS BOOLEAN AS $$
        SELECT TRUE
          FROM pg_catalog.pg_cast c
          JOIN pg_catalog.pg_proc p ON c.castfunc = p.oid
-        WHERE display_type(castsource, NULL) = $1
-          AND display_type(casttarget, NULL) = $2
+        WHERE _cmp_types(castsource, $1)
+          AND _cmp_types(casttarget, $2)
           AND p.proname   = $3
    );
 $$ LANGUAGE SQL;
@@ -3612,8 +3621,8 @@ RETURNS BOOLEAN AS $$
     SELECT EXISTS (
        SELECT TRUE
          FROM pg_catalog.pg_cast c
-        WHERE display_type(castsource, NULL) = $1
-          AND display_type(casttarget, NULL) = $2
+        WHERE _cmp_types(castsource, $1)
+          AND _cmp_types(casttarget, $2)
    );
 $$ LANGUAGE SQL;
 
@@ -3728,8 +3737,8 @@ CREATE OR REPLACE FUNCTION _get_context( NAME, NAME )
 RETURNS "char" AS $$
    SELECT c.castcontext
      FROM pg_catalog.pg_cast c
-    WHERE display_type(castsource, NULL) = $1
-      AND display_type(casttarget, NULL) = $2
+    WHERE _cmp_types(castsource, $1)
+      AND _cmp_types(casttarget, $2)
 $$ LANGUAGE SQL;
 
 -- cast_context_is( source_type, target_type, context, description )
@@ -3769,10 +3778,10 @@ RETURNS BOOLEAN AS $$
         WHERE n.nspname = $2
           AND o.oprname = $3
           AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
-              ELSE display_type(o.oprleft, NULL) = $1 END
+              ELSE _cmp_types(o.oprleft, $1) END
           AND CASE o.oprkind WHEN 'r' THEN $4 IS NULL
-              ELSE display_type(o.oprright, NULL) = $4 END
-          AND display_type(o.oprresult, NULL) = $5
+              ELSE _cmp_types(o.oprright, $4) END
+          AND _cmp_types(o.oprresult, $5)
    );
 $$ LANGUAGE SQL;
 
@@ -3784,10 +3793,10 @@ RETURNS BOOLEAN AS $$
         WHERE pg_catalog.pg_operator_is_visible(o.oid)
           AND o.oprname = $2
           AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
-              ELSE display_type(o.oprleft, NULL) = $1 END
+              ELSE _cmp_types(o.oprleft, $1) END
           AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
-              ELSE display_type(o.oprright, NULL) = $3 END
-          AND display_type(o.oprresult, NULL) = $4
+              ELSE _cmp_types(o.oprright, $3) END
+          AND _cmp_types(o.oprresult, $4)
    );
 $$ LANGUAGE SQL;
 
@@ -3799,9 +3808,9 @@ RETURNS BOOLEAN AS $$
         WHERE pg_catalog.pg_operator_is_visible(o.oid)
           AND o.oprname = $2
           AND CASE o.oprkind WHEN 'l' THEN $1 IS NULL
-              ELSE display_type(o.oprleft, NULL) = $1 END
+              ELSE _cmp_types(o.oprleft, $1) END
           AND CASE o.oprkind WHEN 'r' THEN $3 IS NULL
-              ELSE display_type(o.oprright, NULL) = $3 END
+              ELSE _cmp_types(o.oprright, $3) END
    );
 $$ LANGUAGE SQL;
 
@@ -6827,7 +6836,7 @@ BEGIN
         );
     END IF;
 
-    RETURN is( actual_type, quote_ident($3) || '.' || LOWER($4), $5 );
+    RETURN is( actual_type, quote_ident($3) || '.' || _quote_ident_like($4, actual_type), $5 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6854,7 +6863,7 @@ BEGIN
         );
     END IF;
 
-    RETURN is( actual_type, LOWER($3), $4 );
+    RETURN is( actual_type, _quote_ident_like($3, actual_type), $4 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6880,7 +6889,7 @@ BEGIN
         );
     END IF;
 
-    RETURN is( actual_type, LOWER($2), $3 );
+    RETURN is( actual_type, _quote_ident_like($2, actual_type), $3 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6906,7 +6915,7 @@ BEGIN
         );
     END IF;
 
-    RETURN isnt( actual_type, quote_ident($3) || '.' || LOWER($4), $5 );
+    RETURN isnt( actual_type, quote_ident($3) || '.' || _quote_ident_like($4, actual_type), $5 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6933,7 +6942,7 @@ BEGIN
         );
     END IF;
 
-    RETURN isnt( actual_type, LOWER($3), $4 );
+    RETURN isnt( actual_type, _quote_ident_like($3, actual_type), $4 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -6959,7 +6968,7 @@ BEGIN
         );
     END IF;
 
-    RETURN isnt( actual_type, LOWER($2), $3 );
+    RETURN isnt( actual_type, _quote_ident_like($2, actual_type), $3 );
 END;
 $$ LANGUAGE plpgsql;
 
