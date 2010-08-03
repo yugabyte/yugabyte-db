@@ -1,5 +1,5 @@
 \unset ECHO
-1..29
+1..30
 ok 1 - pg_type(int) should work
 ok 2 - pg_type(numeric) should work
 ok 3 - pg_type(text) should work
@@ -24,8 +24,9 @@ ok 21 - display_type(timestamptz)
 ok 22 - display_type(foo, int4)
 ok 23 - display_type(HEY, numeric)
 ok 24 - display_type(t z, int4)
-ok 25 - display_type(__foo.goofy)
-ok 26 - display_type(__foo."this.that")
-ok 27 - display_type(__foo."this"".that")
-ok 28 - display_type(__foo."hey"".yoman", 13)
-ok 29 - display_type("try.this""", 42)
+ok 25 - display type_type(text)
+ok 26 - display_type(__foo.goofy)
+ok 27 - display_type(__foo."this.that")
+ok 28 - display_type(__foo."this"".that")
+ok 29 - display_type(__foo."hey"".yoman", 13)
+ok 30 - display_type("try.this""", 42)

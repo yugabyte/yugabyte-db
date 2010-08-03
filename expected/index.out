@@ -1,5 +1,5 @@
 \unset ECHO
-1..228
+1..225
 ok 1 - has_index() single column should pass
 ok 2 - has_index() single column should have the proper description
 ok 3 - has_index() single column should have the proper diagnostics
@@ -204,27 +204,24 @@ ok 201 - is_clustered() index only should have the proper diagnostics
 ok 202 - index_is_type() should pass
 ok 203 - index_is_type() should have the proper description
 ok 204 - index_is_type() should have the proper diagnostics
-ok 205 - index_is_type() ci should pass
-ok 206 - index_is_type() ci should have the proper description
-ok 207 - index_is_type() ci should have the proper diagnostics
-ok 208 - index_is_type() no desc should pass
-ok 209 - index_is_type() no desc should have the proper description
-ok 210 - index_is_type() no desc should have the proper diagnostics
-ok 211 - index_is_type() fail should fail
-ok 212 - index_is_type() fail should have the proper description
-ok 213 - index_is_type() fail should have the proper diagnostics
-ok 214 - index_is_type() no schema should pass
-ok 215 - index_is_type() no schema should have the proper description
-ok 216 - index_is_type() no schema should have the proper diagnostics
-ok 217 - index_is_type() no schema fail should fail
-ok 218 - index_is_type() no schema fail should have the proper description
-ok 219 - index_is_type() no schema fail should have the proper diagnostics
-ok 220 - index_is_type() no table should pass
-ok 221 - index_is_type() no table should have the proper description
-ok 222 - index_is_type() no table should have the proper diagnostics
-ok 223 - index_is_type() no table fail should fail
-ok 224 - index_is_type() no table fail should have the proper description
-ok 225 - index_is_type() no table fail should have the proper diagnostics
-ok 226 - index_is_type() hash should pass
-ok 227 - index_is_type() hash should have the proper description
-ok 228 - index_is_type() hash should have the proper diagnostics
+ok 205 - index_is_type() no desc should pass
+ok 206 - index_is_type() no desc should have the proper description
+ok 207 - index_is_type() no desc should have the proper diagnostics
+ok 208 - index_is_type() fail should fail
+ok 209 - index_is_type() fail should have the proper description
+ok 210 - index_is_type() fail should have the proper diagnostics
+ok 211 - index_is_type() no schema should pass
+ok 212 - index_is_type() no schema should have the proper description
+ok 213 - index_is_type() no schema should have the proper diagnostics
+ok 214 - index_is_type() no schema fail should fail
+ok 215 - index_is_type() no schema fail should have the proper description
+ok 216 - index_is_type() no schema fail should have the proper diagnostics
+ok 217 - index_is_type() no table should pass
+ok 218 - index_is_type() no table should have the proper description
+ok 219 - index_is_type() no table should have the proper diagnostics
+ok 220 - index_is_type() no table fail should fail
+ok 221 - index_is_type() no table fail should have the proper description
+ok 222 - index_is_type() no table fail should have the proper diagnostics
+ok 223 - index_is_type() hash should pass
+ok 224 - index_is_type() hash should have the proper description
+ok 225 - index_is_type() hash should have the proper diagnostics
