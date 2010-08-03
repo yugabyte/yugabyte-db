@@ -1136,28 +1136,50 @@ RETURNS TEXT AS $$
        AND NOT a.attisdropped
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _quote_ident_like(TEXT, TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    have    TEXT;
+    pcision TEXT;
+BEGIN
+    -- Just return it if rhs isn't quoted.
+    IF $2 !~ '"' THEN RETURN $1; END IF;
+
+    pcision := substring($1 FROM '[(][^")]+[)]$');
+
+    -- Just quote it if thre is no precision.
+    if pcision IS NULL THEN RETURN quote_ident($1); END IF;
+
+    -- Quote the non-precision part and concatenate with precision.
+    RETURN quote_ident(substring($1 FROM char_length($1) - char_length(pcision)))
+        || pcision;
+END;
+$$ LANGUAGE plpgsql;
+
 -- col_type_is( schema, table, column, schema, type, description )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT := _get_col_ns_type($1, $2, $3);
+    have_type TEXT := _get_col_ns_type($1, $2, $3);
+    want_type TEXT;
 BEGIN
-    IF actual_type IS NULL THEN
+    IF have_type IS NULL THEN
         RETURN fail( $6 ) || E'\n' || diag (
             '   Column ' || COALESCE(quote_ident($1) || '.', '')
             || quote_ident($2) || '.' || quote_ident($3) || ' does not exist'
         );
     END IF;
 
-    IF actual_type = quote_ident($4) || '.' || LOWER($5) THEN
+    want_type := quote_ident($4) || '.' || _quote_ident_like($5, have_type);
+    IF have_type = want_type THEN
         -- We're good to go.
         RETURN ok( true, $6 );
     END IF;
 
     -- Wrong data type. tell 'em what we really got.
     RETURN ok( false, $6 ) || E'\n' || diag(
-           '        have: ' || actual_type ||
-        E'\n        want: ' || quote_ident($4) || '.' || LOWER($5)
+           '        have: ' || have_type ||
+        E'\n        want: ' || want_type
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -1166,38 +1188,40 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT col_type_is( $1, $2, $3, $4, $5, 'Column ' || quote_ident($1) || '.' || quote_ident($2)
-        || '.' || quote_ident($3) || ' should be type ' || quote_ident($4) || '.' || quote_ident($5));
+        || '.' || quote_ident($3) || ' should be type ' || quote_ident($4) || '.' || $5);
 $$ LANGUAGE SQL;
 
 -- col_type_is( schema, table, column, type, description )
 CREATE OR REPLACE FUNCTION col_type_is ( NAME, NAME, NAME, TEXT, TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    actual_type TEXT;
+    have_type TEXT;
+    want_type TEXT;
 BEGIN
     -- Get the data type.
     IF $1 IS NULL THEN
-        actual_type := _get_col_type($2, $3);
+        have_type := _get_col_type($2, $3);
     ELSE
-        actual_type := _get_col_type($1, $2, $3);
+        have_type := _get_col_type($1, $2, $3);
     END IF;
 
-    IF actual_type IS NULL THEN
+    IF have_type IS NULL THEN
         RETURN fail( $5 ) || E'\n' || diag (
             '   Column ' || COALESCE(quote_ident($1) || '.', '')
             || quote_ident($2) || '.' || quote_ident($3) || ' does not exist'
         );
     END IF;
 
-    IF actual_type = LOWER($4) THEN
+    want_type := _quote_ident_like($4, have_type);
+    IF have_type = want_type THEN
         -- We're good to go.
         RETURN ok( true, $5 );
     END IF;
 
     -- Wrong data type. tell 'em what we really got.
     RETURN ok( false, $5 ) || E'\n' || diag(
-           '        have: ' || actual_type ||
-        E'\n        want: ' || $4::text
+           '        have: ' || have_type ||
+        E'\n        want: ' || want_type
     );
 END;
 $$ LANGUAGE plpgsql;
@@ -2857,7 +2881,7 @@ BEGIN
        AND n.nspname  = $1
       INTO aname;
 
-      return is( aname, LOWER($4)::name, $5 );
+      return is( aname, $4, $5 );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -2886,8 +2910,7 @@ BEGIN
       INTO aname;
 
       return is(
-          aname,
-          LOWER($3)::name,
+          aname, $3,
           'Index ' || quote_ident($2) || ' should be a ' || quote_ident($3) || ' index'
       );
 END;
@@ -2907,8 +2930,7 @@ BEGIN
       INTO aname;
 
       return is(
-          aname,
-          LOWER($2)::name,
+          aname, $2,
           'Index ' || quote_ident($1) || ' should be a ' || quote_ident($2) || ' index'
       );
 END;

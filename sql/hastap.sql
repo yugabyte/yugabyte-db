@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(678);
+SELECT plan(705);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -18,9 +18,16 @@ CREATE TYPE public.sometype AS (
     name  TEXT
 );
 
+CREATE TYPE public."myType" AS (
+    id INT,
+    foo INT
+);
+
 CREATE DOMAIN public.us_postal_code AS TEXT CHECK(
     VALUE ~ '^[[:digit:]]{5}$' OR VALUE ~ '^[[:digit:]]{5}-[[:digit:]]{4}$'
 );
+
+CREATE DOMAIN public."myDomain" AS TEXT CHECK(TRUE);
 
 CREATE SEQUENCE public.someseq;
 
@@ -461,6 +468,36 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Try case-sensitive.
+SELECT * FROM check_test(
+    has_type( 'myType' ),
+    true,
+    'has_type(myType)',
+    'Type "myType" should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'myType', 'mydesc' ),
+    true,
+    'has_type(myType, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'public'::name, 'myType'::name ),
+    true,
+    'has_type(scheam, myType)',
+    'Type public."myType" should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_type( 'public', 'myType', 'mydesc' ),
+    true,
+    'has_type(schema, myType, desc)',
+    'mydesc',
+    ''
+);
+
 -- Try failures.
 SELECT * FROM check_test(
     has_type( '__foobarbaz__' ),
@@ -497,6 +534,14 @@ SELECT * FROM check_test(
     true,
     'has_type(domain)',
     'Type us_postal_code should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_type( 'myDomain' ),
+    true,
+    'has_type(myDomain)',
+    'Type "myDomain" should exist',
     ''
 );
 
@@ -570,7 +615,6 @@ SELECT * FROM check_test(
     'Domain us_postal_code should exist',
     ''
 );
-
 SELECT * FROM check_test(
     has_domain( 'us_postal_code', 'mydesc' ),
     true,
@@ -589,6 +633,36 @@ SELECT * FROM check_test(
     has_domain( 'public', 'us_postal_code', 'mydesc' ),
     true,
     'has_domain(schema, domain, desc)',
+    'mydesc',
+    ''
+);
+
+-- Try case-sensitive.
+SELECT * FROM check_test(
+    has_domain( 'myDomain' ),
+    true,
+    'has_domain(myDomain)',
+    'Domain "myDomain" should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'myDomain', 'mydesc' ),
+    true,
+    'has_domain(myDomain, desc)',
+    'mydesc',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'public'::name, 'myDomain'::name ),
+    true,
+    'has_domain(scheam, myDomain)',
+    'Domain public."myDomain" should exist',
+    ''
+);
+SELECT * FROM check_test(
+    has_domain( 'public', 'myDomain', 'mydesc' ),
+    true,
+    'has_domain(schema, myDomain, desc)',
     'mydesc',
     ''
 );

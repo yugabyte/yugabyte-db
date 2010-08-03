@@ -17,6 +17,9 @@ Revision history for pgTAP
 * Fixed but where some object names were inproperly converted to to lowercase.
   This caused `has_column('foo', 'myInt')`, for example, to fail, because the
   test was changing "myInt" to "myint". Thanks to Robert White for the report.
+* Fixed bug where `col_type_is()` was forcing the type to lowercase, which
+  isn't correct when the type is actually mixed case or uppercase (that is,
+  named in double quotes when it was created).
 
 0.24 2010-05-24T23:33:22
 -------------------------

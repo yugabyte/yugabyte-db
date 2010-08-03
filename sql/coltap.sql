@@ -1,8 +1,13 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(192);
+SELECT plan(204);
 --SELECT * from no_plan();
+
+CREATE TYPE public."myType" AS (
+    id INT,
+    foo INT
+);
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
@@ -10,9 +15,10 @@ CREATE TABLE public.sometab(
     id      INT NOT NULL PRIMARY KEY,
     name    TEXT DEFAULT '',
     numb    NUMERIC(10, 2) DEFAULT NULL,
-    "myInt" NUMERIC(8) DEFAULT 24,
+    "myNum" NUMERIC(8) DEFAULT 24,
     myat    TIMESTAMP DEFAULT NOW(),
-    plain   INTEGER
+    plain   INTEGER,
+    camel   "myType"
 );
 
 CREATE OR REPLACE FUNCTION fakeout( eok boolean, name text )
@@ -150,6 +156,49 @@ SELECT * FROM check_test(
     ''
 );
 
+-- Try case-sensitive column name.
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'myNum', 'pg_catalog', 'numeric(8,0)', 'myNum is numeric' ),
+    true,
+    'col_type_is( sch, tab, myNum, sch, type, desc )',
+    'myNum is numeric',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'myNum', 'pg_catalog'::name, 'numeric(8,0)' ),
+    true,
+    'col_type_is( sch, tab, myNum, sch, type, desc )',
+    'Column public.sometab."myNum" should be type pg_catalog.numeric(8,0)',
+    ''
+);
+
+-- Try case-sensitive type name.
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'camel', 'public', 'myType', 'camel is myType' ),
+    true,
+    'col_type_is( sch, tab, camel, sch, type, desc )',
+    'camel is myType',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'camel', 'public'::name, 'myType' ),
+    true,
+    'col_type_is( sch, tab, camel, sch, type, desc )',
+    'Column public.sometab.camel should be type public.myType',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_type_is( 'public', 'sometab', 'camel', 'myType', 'whatever' ),
+    true,
+    'col_type_is( sch, tab, camel, type, desc )',
+    'whatever',
+    ''
+);
+
+-- Try failures.
 SELECT * FROM check_test(
     col_type_is( 'public', 'sometab', 'name', 'pg_catalog', 'integer', 'whatever' ),
     false,
@@ -217,14 +266,6 @@ SELECT * FROM check_test(
     ''
 );
 
-SELECT * FROM check_test(
-    col_type_is( 'sometab', 'name', 'TEXT' ),
-    true,
-    'col_type_is( tab, col, type ) insensitive',
-    'Column sometab.name should be type TEXT',
-    ''
-);
-
 -- Make sure failure is correct.
 SELECT * FROM check_test(
     col_type_is( 'sometab', 'name', 'int4' ),
@@ -264,7 +305,7 @@ SELECT * FROM check_test(
 
 -- Check its diagnostics.
 SELECT * FROM check_test(
-    col_type_is( 'sometab', 'myInt', 'numeric(7)', 'should be numeric(7)' ),
+    col_type_is( 'sometab', 'myNum', 'numeric(7)', 'should be numeric(7)' ),
     false,
     'col_type_is precision fail',
     'should be numeric(7)',
@@ -456,10 +497,10 @@ BEGIN
     IF pg_version_num() < 80300 THEN
         -- Before 8.3, have to cast to text.
         FOR tap IN SELECT * FROM check_test(
-            col_default_is( 'sometab', 'myInt', 24::text ),
+            col_default_is( 'sometab', 'myNum', 24::text ),
             true,
             'col_default_is( tab, col, int )',
-            'Column sometab."myInt" should default to ''24''',
+            'Column sometab."myNum" should default to ''24''',
             ''
         ) AS a(b) LOOP
             RETURN NEXT tap.b;
@@ -503,10 +544,10 @@ BEGIN
     ELSE
         -- In 8.3 and later, can just use the raw value.
         FOR tap IN SELECT * FROM check_test(
-            col_default_is( 'sometab', 'myInt', 24 ),
+            col_default_is( 'sometab', 'myNum', 24 ),
             true,
             'col_default_is( tab, col, int )',
-            'Column sometab."myInt" should default to ''24''',
+            'Column sometab."myNum" should default to ''24''',
             ''
         ) AS a(b) LOOP
             RETURN NEXT tap.b;

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(29);
+SELECT plan(30);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -99,6 +99,7 @@ SELECT is( display_type('timestamptz'::regtype, NULL), 'timestamp with time zone
 SELECT is( display_type('foo', 'int4'::regtype, NULL), 'foo.integer', 'display_type(foo, int4)');
 SELECT is( display_type('HEY', 'numeric'::regtype, NULL), '"HEY".numeric', 'display_type(HEY, numeric)');
 SELECT is( display_type('t z', 'int4'::regtype, NULL), '"t z".integer', 'display_type(t z, int4)');
+SELECT is( display_type('text'::regtype, NULL), 'text', 'display type_type(text)');
 
 -- Look at a type not in the current schema.
 CREATE SCHEMA __foo;

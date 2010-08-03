@@ -35,6 +35,7 @@ CREATE FUNCTION someschema.yip() returns boolean as 'SELECT TRUE' language SQL;
 CREATE FUNCTION someschema.yap() returns boolean as 'SELECT TRUE' language SQL;
 
 CREATE DOMAIN public.goofy AS text CHECK ( TRUE );
+CREATE DOMAIN public."myDomain" AS text CHECK ( TRUE );
 CREATE OR REPLACE FUNCTION public.goofy_cmp(goofy,goofy)
 RETURNS INTEGER AS $$
     SELECT CASE WHEN $1 = $2 THEN 0
@@ -61,6 +62,11 @@ DEFAULT FOR TYPE goofy USING BTREE AS
 CREATE TYPE someschema.sometype AS (
     id    INT,
     name  TEXT
+);
+
+CREATE TYPE someschema."myType" AS (
+    id INT,
+    foo INT
 );
 
 RESET client_min_messages;
@@ -1020,7 +1026,7 @@ SELECT * FROM check_test(
 -- Test types_are().
 
 SELECT * FROM check_test(
-    types_are( 'someschema', ARRAY['sometype'], 'whatever' ),
+    types_are( 'someschema', ARRAY['sometype', 'myType'], 'whatever' ),
     true,
     'types_are(schema, types, desc)',
     'whatever',
@@ -1028,7 +1034,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    types_are( 'someschema', ARRAY['sometype'] ),
+    types_are( 'someschema', ARRAY['sometype', 'myType'] ),
     true,
     'types_are(schema, types)',
     'Schema someschema should have the correct types'
@@ -1036,7 +1042,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    types_are( 'someschema', ARRAY['sometype', 'typo'], 'whatever' ),
+    types_are( 'someschema', ARRAY['sometype', 'myType', 'typo'], 'whatever' ),
     false,
     'types_are(schema, types, desc) + missing',
     'whatever',
@@ -1045,7 +1051,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    types_are( 'someschema', '{}'::name[], 'whatever' ),
+    types_are( 'someschema', ARRAY['myType'], 'whatever' ),
     false,
     'types_are(schema, types, desc) + extra',
     'whatever',
@@ -1054,7 +1060,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    types_are( 'someschema', ARRAY['typo'], 'whatever' ),
+    types_are( 'someschema', ARRAY['typo', 'myType'], 'whatever' ),
     false,
     'types_are(schema, types, desc) + extra & missing',
     'whatever',
@@ -1121,7 +1127,7 @@ SELECT * FROM check_test(
 -- Test domains_are().
 
 SELECT * FROM check_test(
-    domains_are( 'public', ARRAY['goofy'], 'whatever' ),
+    domains_are( 'public', ARRAY['goofy', 'myDomain'], 'whatever' ),
     true,
     'domains_are(schema, domains, desc)',
     'whatever',
@@ -1129,7 +1135,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domains_are( 'public', ARRAY['goofy'] ),
+    domains_are( 'public', ARRAY['goofy', 'myDomain'] ),
     true,
     'domains_are(schema, domains)',
     'Schema public should have the correct domains',
@@ -1137,7 +1143,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domains_are( 'public', ARRAY['freddy'], 'whatever' ),
+    domains_are( 'public', ARRAY['freddy', 'myDomain'], 'whatever' ),
     false,
     'domains_are(schema, domains, desc) fail',
     'whatever',
@@ -1148,7 +1154,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domains_are( 'public', ARRAY['freddy'] ),
+    domains_are( 'public', ARRAY['freddy', 'myDomain'] ),
     false,
     'domains_are(schema, domains) fail',
     'Schema public should have the correct domains',
