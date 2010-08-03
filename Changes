@@ -25,6 +25,8 @@ Revision history for pgTAP
 * Documented that double-quotes must be used for types created with
   double-quoted names in the strings passed to `casts_are()`. This should be
   the only part of the API that does require this sort of quoting.
+* Added `diag(anyelement)` and `diag(VARIADIC anyarray)` (for 8.4 and higher)
+  to make it easier to emit diagnostics for whatever data you have at hand.
 
 0.24 2010-05-24T23:33:22
 -------------------------

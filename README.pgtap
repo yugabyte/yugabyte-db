@@ -3636,15 +3636,18 @@ we have ways for you to write your own diagnostic messages which are safer
 than just `\echo` or `SELECT foo`.
 
 ### `diag( text )` ###
+### `diag( anyelement )` ###
+### `diag( variadic anyarray )` ###
+### `diag( variadic text[] )` ###
 
-Returns a diagnostic message which is guaranteed not to interfere with
-test output. Handy for this sort of thing:
+Returns a diagnostic message which is guaranteed not to interfere with test
+output. Handy for this sort of thing:
 
     -- Output a diagnostic message if the collation is not en_US.UTF-8.
     SELECT diag(
-         E'These tests expect LC_COLLATE to be en_US.UTF-8,\n'
-      || 'but yours is set to ' || setting || E'.\n'
-      || 'As a result, some tests may fail. YMMV.'
+         E'These tests expect LC_COLLATE to be en_US.UTF-8,\n',
+         'but yours is set to ', setting, E'.\n',
+         'As a result, some tests may fail. YMMV.'
     )
       FROM pg_settings
      WHERE name = 'lc_collate'
@@ -3655,6 +3658,11 @@ Which would produce:
     # These tests expect LC_COLLATE to be en_US.UTF-8,
     # but yours is set to en_US.ISO8859-1.
     # As a result, some tests may fail. YMMV.
+
+You can pass data of any type to `diag()` and it will all be converted to text
+for the diagnostics. On PostgreSQL 8.4 and higher, you can pass any number of
+arguments (as long as they are all the same data type) and they will be
+concatenated together.
 
 Conditional Tests
 -----------------
@@ -4302,7 +4310,6 @@ No changes. Everything should just work.
 
 To Do
 -----
-* Add `diag(anyelement)`.
 * Add `schema, table, colname` variations of the table-checking functions
   (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
   description to be optional if the schema is included in the function call.
