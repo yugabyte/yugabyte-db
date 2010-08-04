@@ -27,6 +27,10 @@ Revision history for pgTAP
   the only part of the API that does require this sort of quoting.
 * Added `diag(anyelement)` and `diag(VARIADIC anyarray)` (for 8.4 and higher)
   to make it easier to emit diagnostics for whatever data you have at hand.
+* The `_cleanup()` function now properly drops the temporary sequences as well
+  as the temporary tables. These are usually automatically dropped when the
+  tests finish and the client disconnects, but it's best to try to keep things
+  tidy ourselves, too. Spotted by Peter Eisentraut.
 
 0.24 2010-05-24T23:33:22
 -------------------------

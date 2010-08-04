@@ -5694,10 +5694,11 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION _cleanup()
-RETURNS boolean AS $$
+CREATE OR REPLACE FUNCTION _cleanup boolean AS $$
     DROP TABLE __tresults__;
+    DROP SEQUENCE __tresults___numb_seq;
     DROP TABLE __tcache__;
+    DROP SEQUENCE __tcache___id_seq;
     SELECT TRUE;
 $$ LANGUAGE sql;
 
