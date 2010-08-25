@@ -71,7 +71,7 @@ AggCheckCallContext(FunctionCallInfo fcinfo, MemoryContext *aggcontext)
  * Note: any NULL value is ignored.
  *
  ****************************************************************/
-#if PG_VERSION_NUM >= 80400 && PG_VERSION_NUM < 90000
+#if PG_VERSION_NUM >= 80400
 /* subroutine to initialize state */
 static StringInfo
 makeStringAggState(FunctionCallInfo fcinfo)
@@ -107,9 +107,7 @@ appendStringInfoText(StringInfo str, const text *t)
 Datum
 orafce_listagg1_transfn(PG_FUNCTION_ARGS)
 {
-#if PG_VERSION_NUM >= 90000
-	return string_agg_transfn(fcinfo);
-#elif PG_VERSION_NUM >= 80400
+#if PG_VERSION_NUM >= 80400
 	StringInfo	state;
 
 	state = PG_ARGISNULL(0) ? NULL : (StringInfo) PG_GETARG_POINTER(0);
@@ -141,7 +139,7 @@ Datum
 orafce_listagg2_transfn(PG_FUNCTION_ARGS)
 {
 #if PG_VERSION_NUM >= 90000
-	return string_agg_delim_transfn(fcinfo);
+	return string_agg_transfn(fcinfo);
 #elif PG_VERSION_NUM >= 80400
 	StringInfo	state;
 

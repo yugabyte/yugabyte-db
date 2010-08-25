@@ -36,12 +36,6 @@ PG_FUNCTION_INFO_V1(plvsubst_setsubst);
 PG_FUNCTION_INFO_V1(plvsubst_setsubst_default);
 PG_FUNCTION_INFO_V1(plvsubst_subst);
 
-#define PARAMETER_ERROR(detail) \
-	ereport(ERROR, \
-			(errcode(ERRCODE_INVALID_PARAMETER_VALUE), \
-			 errmsg("invalid parameter"), \
-			 errdetail(detail)));
-
 #define C_SUBST  "%s"
 
 
@@ -99,20 +93,22 @@ plvsubst_string(text *template_in, ArrayType *vals_in, text *c_subst, FunctionCa
 	const bits8	   *bitmap;
 	int				bitmask;
 
-	if (v != NULL)
+	if (v != NULL && (ndims = ARR_NDIM(v)) > 0)
 	{
-		ndims = ARR_NDIM(v);
 		if (ndims != 1)
-			PARAMETER_ERROR("Array of arguments has wrong dimension.");
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					 errmsg("invalid parameter"),
+					 errdetail("Array of arguments has wrong dimension: %d", ndims)));
 
 		p = ARR_DATA_PTR(v);
 		dims = ARR_DIMS(v);
 		nitems = ArrayGetNItems(ndims, dims);
 		bitmap = ARR_NULLBITMAP(v);
 		get_type_io_data(ARR_ELEMTYPE(v), IOFunc_output,
-						 &typlen, &typbyval,
-						 &typalign, &typdelim,
-						 &typelem, &typiofunc);
+							&typlen, &typbyval,
+							&typalign, &typdelim,
+							&typelem, &typiofunc);
 		fmgr_info_cxt(typiofunc, &proc, fcinfo->flinfo->fn_mcxt);
 	}
 	else

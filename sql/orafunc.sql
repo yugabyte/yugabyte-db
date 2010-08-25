@@ -171,7 +171,6 @@ select concat(1, 'b') = '1b';
 select concat(1, 2) = '12';
 select concat(1, NULL) = '1';
 select concat(NULL, 2) = '2';
-select concat(NULL, NULL) IS NULL;
 select nvl('A'::text, 'B');
 select nvl(NULL::text, 'B');
 select nvl(NULL::text, NULL);

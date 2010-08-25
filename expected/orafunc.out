@@ -881,12 +881,6 @@ select concat(NULL, 2) = '2';
  t
 (1 row)
 
-select concat(NULL, NULL) IS NULL;
- ?column? 
-----------
- t
-(1 row)
-
 select nvl('A'::text, 'B');
  nvl 
 -----

@@ -230,12 +230,6 @@ AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION plvstr.rvrs(text) IS 'Reverse string or part of string';
 
-CREATE FUNCTION pg_catalog.reverse(str text)
-RETURNS text
-AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
-LANGUAGE SQL IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.reverse(text) IS 'Reverse string or part of string';
-
 CREATE FUNCTION pg_catalog.lnnvl(bool)
 RETURNS bool
 AS 'MODULE_PATHNAME','ora_lnnvl'
@@ -335,12 +329,6 @@ RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl2'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION nvl2(anyelement, anyelement, anyelement) IS '';
-
-CREATE FUNCTION concat(text, text)
-RETURNS text
-AS 'MODULE_PATHNAME','ora_concat'
-LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION concat(text, text) IS 'Concat two strings';
 
 CREATE FUNCTION decode(anyelement, anyelement, text)
 RETURNS text
