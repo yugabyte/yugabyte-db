@@ -4311,6 +4311,8 @@ No changes. Everything should just work.
 To Do
 -----
 * Add `isnt_empty()` to complement `is_empty()`.
+* Add variants of `set_eq()`, `bag_eq()`, and `results_eq()` that take an
+  array of records as the second argument.
 * Add `schema, table, colname` variations of the table-checking functions
   (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
   description to be optional if the schema is included in the function call.
