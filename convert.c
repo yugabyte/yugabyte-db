@@ -365,7 +365,6 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 	src = PG_GETARG_TEXT_PP(0);
 	s = VARDATA_ANY(src);
 	srclen = VARSIZE_ANY_EXHDR(src);
-	elog(NOTICE, "srclen = %d", srclen);
 	dst = (text *) palloc(VARHDRSZ + srclen * MAX_CONVERSION_GROWTH);
 	d = VARDATA(dst);
 
