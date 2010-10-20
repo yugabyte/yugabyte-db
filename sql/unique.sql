@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(39);
+SELECT plan(48);
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
@@ -9,7 +9,8 @@ CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '' UNIQUE,
     numb  NUMERIC(10, 2),
-    myint NUMERIC(8)
+    myint NUMERIC(8),
+    UNIQUE (numb, myint)
 );
 RESET client_min_messages;
 
@@ -60,18 +61,34 @@ SELECT * FROM check_test(
 -- Test col_is_unique().
 
 SELECT * FROM check_test(
-    col_is_unique( 'public', 'sometab', 'name', 'public.sometab.name should be a pk' ),
+    col_is_unique( 'public', 'sometab', 'name', 'public.sometab.name should be unique' ),
     true,
     'col_is_unique( schema, table, column, description )',
-    'public.sometab.name should be a pk',
+    'public.sometab.name should be unique',
     ''
 );
 
 SELECT * FROM check_test(
-    col_is_unique( 'sometab', 'name', 'sometab.name should be a pk' ),
+    col_is_unique( 'public', 'sometab', ARRAY['numb', 'myint'], 'public.sometab.numb+myint should be unique' ),
+    true,
+    'col_is_unique( schema, table, columns, description )',
+    'public.sometab.numb+myint should be unique',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_is_unique( 'sometab', 'name', 'sometab.name should be unique' ),
     true,
     'col_is_unique( table, column, description )',
-    'sometab.name should be a pk',
+    'sometab.name should be unique',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_is_unique( 'sometab', ARRAY['numb', 'myint'], 'sometab.numb+myint should be unique' ),
+    true,
+    'col_is_unique( table, columns, description )',
+    'sometab.numb+myint should be unique',
     ''
 );
 
@@ -84,19 +101,27 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    col_is_unique( 'public', 'sometab', 'id', 'public.sometab.id should be a pk' ),
+    col_is_unique( 'sometab', ARRAY['numb', 'myint'] ),
+    true,
+    'col_is_unique( table, columns )',
+    'Column sometab(numb, myint) should have a unique constraint',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_is_unique( 'public', 'sometab', 'id', 'public.sometab.id should be unique' ),
     false,
     'col_is_unique( schema, table, column, description ) fail',
-    'public.sometab.id should be a pk',
+    'public.sometab.id should be unique',
     '        have: {name}
         want: {id}'
 );
 
 SELECT * FROM check_test(
-    col_is_unique( 'sometab', 'id', 'sometab.id should be a pk' ),
+    col_is_unique( 'sometab', 'id', 'sometab.id should be unique' ),
     false,
     'col_is_unique( table, column, description ) fail',
-    'sometab.id should be a pk',
+    'sometab.id should be unique',
     '        have: {name}
         want: {id}'
 );
@@ -113,18 +138,18 @@ CREATE TABLE public.argh (
 RESET client_min_messages;
 
 SELECT * FROM check_test(
-    col_is_unique( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
+    col_is_unique( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be unique' ),
     true,
     'col_is_unique( schema, table, column[], description )',
-    'id + name should be a pk',
+    'id + name should be unique',
     ''
 );
 
 SELECT * FROM check_test(
-    col_is_unique( 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
+    col_is_unique( 'argh', ARRAY['id', 'name'], 'id + name should be unique' ),
     true,
     'col_is_unique( table, column[], description )',
-    'id + name should be a pk',
+    'id + name should be unique',
     ''
 );
 

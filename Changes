@@ -35,7 +35,6 @@ Revision history for pgTAP
   in the search path when a schema is not specified, and doesn't check that
   when the schema *is* specified. Patch from Cédric Villemain.
 
-
 0.24 2010-05-24T23:33:22
 -------------------------
 * Got `sql/artap.sql` tests passing again when building with `$TAPSCHEMA` set.

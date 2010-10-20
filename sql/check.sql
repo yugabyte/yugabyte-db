@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(39);
+SELECT plan(48);
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
@@ -9,7 +9,8 @@ CREATE TABLE public.sometab(
     id    INT NOT NULL PRIMARY KEY,
     name  TEXT DEFAULT '' CHECK ( name IN ('foo', 'bar', 'baz') ),
     numb  NUMERIC(10, 2),
-    myint NUMERIC(8)
+    myint NUMERIC(8),
+    CHECK (numb > 1.0 AND myint < 10)
 );
 RESET client_min_messages;
 
@@ -60,18 +61,34 @@ SELECT * FROM check_test(
 -- Test col_has_check().
 
 SELECT * FROM check_test(
-    col_has_check( 'public', 'sometab', 'name', 'public.sometab.name should be a pk' ),
+    col_has_check( 'public', 'sometab', 'name', 'public.sometab.name should have a check' ),
     true,
     'col_has_check( sch, tab, col, desc )',
-    'public.sometab.name should be a pk',
+    'public.sometab.name should have a check',
     ''
 );
 
 SELECT * FROM check_test(
-    col_has_check( 'sometab', 'name', 'sometab.name should be a pk' ),
+    col_has_check( 'public', 'sometab', ARRAY['numb', 'myint'], 'public.sometab.numb+myint should have a check' ),
+    true,
+    'col_has_check( sch, tab, cols, desc )',
+    'public.sometab.numb+myint should have a check',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_has_check( 'sometab', 'name', 'sometab.name should have a check' ),
     true,
     'col_has_check( tab, col, desc )',
-    'sometab.name should be a pk',
+    'sometab.name should have a check',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_has_check( 'sometab', ARRAY['numb', 'myint'], 'sometab.numb+myint should have a check' ),
+    true,
+    'col_has_check( tab, cols, desc )',
+    'sometab.numb+myint should have a check',
     ''
 );
 
@@ -84,19 +101,27 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    col_has_check( 'public', 'sometab', 'id', 'public.sometab.id should be a pk' ),
+    col_has_check( 'sometab', ARRAY['numb', 'myint'] ),
+    true,
+    'col_has_check( table, columns )',
+    'Column sometab(numb, myint) should have a check constraint',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_has_check( 'public', 'sometab', 'id', 'public.sometab.id should have a check' ),
     false,
     'col_has_check( sch, tab, col, desc ) fail',
-    'public.sometab.id should be a pk',
+    'public.sometab.id should have a check',
     '        have: {name}
         want: {id}'
 );
 
 SELECT * FROM check_test(
-    col_has_check( 'sometab', 'id', 'sometab.id should be a pk' ),
+    col_has_check( 'sometab', 'id', 'sometab.id should have a check' ),
     false,
     'col_has_check( tab, col, desc ) fail',
-    'sometab.id should be a pk',
+    'sometab.id should have a check',
     '        have: {name}
         want: {id}'
 );
@@ -113,18 +138,18 @@ CREATE TABLE public.argh (
 RESET client_min_messages;
 
 SELECT * FROM check_test(
-    col_has_check( 'public', 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
+    col_has_check( 'public', 'argh', ARRAY['id', 'name'], 'id + name should have a check' ),
     true,
     'col_has_check( sch, tab, col[], desc )',
-    'id + name should be a pk',
+    'id + name should have a check',
     ''
 );
 
 SELECT * FROM check_test(
-    col_has_check( 'argh', ARRAY['id', 'name'], 'id + name should be a pk' ),
+    col_has_check( 'argh', ARRAY['id', 'name'], 'id + name should have a check' ),
     true,
     'col_has_check( tab, col[], desc )',
-    'id + name should be a pk',
+    'id + name should have a check',
     ''
 );
 
