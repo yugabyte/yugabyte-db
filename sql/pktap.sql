@@ -1,7 +1,7 @@
 \unset ECHO
 \i test_setup.sql
 
-SELECT plan(78);
+SELECT plan(84);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -12,6 +12,14 @@ CREATE TABLE public.sometab(
     numb  NUMERIC(10, 2),
     myint NUMERIC(8)
 );
+CREATE SCHEMA hide;
+CREATE TABLE hide.hidesometab(
+    id    INT NOT NULL PRIMARY KEY,
+    name  TEXT DEFAULT '',
+    numb  NUMERIC(10, 2),
+    myint NUMERIC(8)
+);
+
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -26,10 +34,26 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    has_pk( 'hide', 'hidesometab', 'hide.sometab should have a pk' ),
+    true,
+    'has_pk( hideschema, hidetable, description )',
+    'hide.sometab should have a pk',
+    ''
+);
+
+SELECT * FROM check_test(
     has_pk( 'sometab', 'sometab should have a pk' ),
     true,
     'has_pk( table, description )',
     'sometab should have a pk',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_pk( 'hidesometab', 'hidesometab should have a pk' ),
+    false,
+    'has_pk( hidetable, description ) fail',
+    'hidesometab should have a pk',
     ''
 );
 

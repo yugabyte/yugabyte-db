@@ -1,6 +1,8 @@
 Revision history for pgTAP
 ==========================
 
+* Fixed a bug in _hasc occurying when checking PK of a table in a schema not defined in the search_path
+
 0.25
 * Minor documentation tweaks.
 * The sequence created to keep track of test numbers is now a temporary
