@@ -1479,12 +1479,10 @@ CREATE OR REPLACE FUNCTION _hasc ( NAME, NAME, CHAR )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
             SELECT true
-              FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c,
-                   pg_catalog.pg_constraint x
-             WHERE n.oid = c.relnamespace
-               AND c.oid = x.conrelid
-               AND pg_table_is_visible(c.oid)
-               AND c.relhaspkey = true
+              FROM pg_catalog.pg_namespace n
+              JOIN pg_catalog.pg_class c      ON c.relnamespace = n.oid
+              JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
+             WHERE c.relhaspkey = true
                AND n.nspname = $1
                AND c.relname = $2
                AND x.contype = $3
@@ -1499,6 +1497,7 @@ RETURNS BOOLEAN AS $$
               FROM pg_catalog.pg_class c
               JOIN pg_catalog.pg_constraint x ON c.oid = x.conrelid
              WHERE c.relhaspkey = true
+               AND pg_table_is_visible(c.oid)
                AND c.relname = $1
                AND x.contype = $2
     );
