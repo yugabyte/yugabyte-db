@@ -34,6 +34,11 @@ Revision history for pgTAP
 * Fixed a bug in `has_pk()` so that it properly checks that a table is visible
   in the search path when a schema is not specified, and doesn't check that
   when the schema *is* specified. Patch from Cédric Villemain.
+* Fixed a bug in `col_is_unique()` and `col_has_check()` where they considered
+  *all* columns in a table that were unique or involved in a check constraint
+  were assocated with only one constraint. Since one can have multiple unique
+  or check constraints on a table, each using different columns, this was
+  sub-optimal. Thanks to Cédric Villemain for the spot!
 
 0.24 2010-05-24T23:33:22
 -------------------------

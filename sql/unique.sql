@@ -104,7 +104,7 @@ SELECT * FROM check_test(
     col_is_unique( 'sometab', ARRAY['numb', 'myint'] ),
     true,
     'col_is_unique( table, columns )',
-    'Column sometab(numb, myint) should have a unique constraint',
+    'Columns sometab(numb, myint) should have a unique constraint',
     ''
 );
 
@@ -114,6 +114,7 @@ SELECT * FROM check_test(
     'col_is_unique( schema, table, column, description ) fail',
     'public.sometab.id should be unique',
     '        have: {name}
+              {numb,myint}
         want: {id}'
 );
 
@@ -123,6 +124,7 @@ SELECT * FROM check_test(
     'col_is_unique( table, column, description ) fail',
     'sometab.id should be unique',
     '        have: {name}
+              {numb,myint}
         want: {id}'
 );
 

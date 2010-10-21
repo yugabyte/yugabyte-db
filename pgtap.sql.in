@@ -1539,34 +1539,6 @@ RETURNS TEXT AS $$
     SELECT hasnt_pk( $1, 'Table ' || quote_ident($1) || ' should not have a primary key' );
 $$ LANGUAGE sql;
 
--- _ckeys( schema, table, constraint_type )
-CREATE OR REPLACE FUNCTION _ckeys ( NAME, NAME, CHAR )
-RETURNS NAME[] AS $$
-    SELECT ARRAY (
-      SELECT a.attname
-        FROM pg_catalog.pg_namespace n
-        JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
-        JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
-        JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
-       WHERE n.nspname = $1
-         AND c.relname = $2
-         AND x.contype = $3
-    );
-$$ LANGUAGE sql;
-
--- _ckeys( table, constraint_type )
-CREATE OR REPLACE FUNCTION _ckeys ( NAME, CHAR )
-RETURNS NAME[] AS $$
-    SELECT ARRAY (
-      SELECT a.attname
-        FROM pg_catalog.pg_class c
-        JOIN pg_catalog.pg_attribute a   ON c.oid = a.attrelid
-        JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid AND a.attnum = ANY( x.conkey )
-         AND c.relname = $1
-         AND x.contype = $2
-    );
-$$ LANGUAGE sql;
-
 CREATE OR REPLACE FUNCTION _ident_array_to_string( name[], text )
 RETURNS text AS $$
     SELECT array_to_string(ARRAY(
@@ -1668,6 +1640,40 @@ AS
      AND k1.confrelid != 0
      AND k1.contype = 'f'
      AND _pg_sv_table_accessible(n1.oid, c1.oid);
+
+-- _keys( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _keys ( NAME, NAME, CHAR )
+RETURNS SETOF NAME[] AS $$
+    SELECT _pg_sv_column_array(x.conrelid,x.conkey)
+      FROM pg_catalog.pg_namespace n
+      JOIN pg_catalog.pg_class c       ON n.oid = c.relnamespace
+      JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid
+     WHERE n.nspname = $1
+       AND c.relname = $2
+       AND x.contype = $3
+$$ LANGUAGE sql;
+
+-- _keys( table, constraint_type )
+CREATE OR REPLACE FUNCTION _keys ( NAME, CHAR )
+RETURNS SETOF NAME[] AS $$
+    SELECT _pg_sv_column_array(x.conrelid,x.conkey)
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid
+       AND c.relname = $1
+       AND x.contype = $2
+$$ LANGUAGE sql;
+
+-- _ckeys( schema, table, constraint_type )
+CREATE OR REPLACE FUNCTION _ckeys ( NAME, NAME, CHAR )
+RETURNS NAME[] AS $$
+    SELECT * FROM _keys($1, $2, $3) LIMIT 1;
+$$ LANGUAGE sql;
+
+-- _ckeys( table, constraint_type )
+CREATE OR REPLACE FUNCTION _ckeys ( NAME, CHAR )
+RETURNS NAME[] AS $$
+    SELECT * FROM _keys($1, $2) LIMIT 1;
+$$ LANGUAGE sql;
 
 -- col_is_pk( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_is_pk ( NAME, NAME, NAME[], TEXT )
@@ -1941,16 +1947,64 @@ RETURNS TEXT AS $$
     SELECT has_unique( $1, 'Table ' || quote_ident($1) || ' should have a unique constraint' );
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _constraint ( NAME, NAME, CHAR, NAME[], TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    akey NAME[];
+    keys TEXT[] := '{}';
+    have TEXT;
+BEGIN
+    FOR akey IN SELECT * FROM _keys($1, $2, $3) LOOP
+        IF akey = $4 THEN RETURN pass($5); END IF;
+        keys = keys || akey::text;
+    END LOOP;
+    IF array_upper(keys, 0) = 1 THEN
+        have := 'No ' || $6 || ' constriants';
+    ELSE
+        have := array_to_string(keys, E'\n              ');
+    END IF;
+
+    RETURN fail($5) || E'\n' || diag(
+             '        have: ' || have
+       || E'\n        want: ' || CASE WHEN $4 IS NULL THEN 'NULL' ELSE $4::text END
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _constraint ( NAME, CHAR, NAME[], TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    akey NAME[];
+    keys TEXT[] := '{}';
+    have TEXT;
+BEGIN
+    FOR akey IN SELECT * FROM _keys($1, $2) LOOP
+        IF akey = $3 THEN RETURN pass($4); END IF;
+        keys = keys || akey::text;
+    END LOOP;
+    IF array_upper(keys, 0) = 1 THEN
+        have := 'No ' || $5 || ' constriants';
+    ELSE
+        have := array_to_string(keys, E'\n              ');
+    END IF;
+
+    RETURN fail($4) || E'\n' || diag(
+             '        have: ' || have
+       || E'\n        want: ' || CASE WHEN $3 IS NULL THEN 'NULL' ELSE $3::text END
+    );
+END;
+$$ LANGUAGE plpgsql;
+
 -- col_is_unique( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is( _ckeys( $1, $2, 'u' ), $3, $4 );
+    SELECT _constraint( $1, $2, 'u', $3, $4, 'unique' );
 $$ LANGUAGE sql;
 
 -- col_is_unique( table, column, description )
 CREATE OR REPLACE FUNCTION col_is_unique ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is( _ckeys( $1, 'u' ), $2, $3 );
+    SELECT _constraint( $1, 'u', $2, $3, 'unique' );
 $$ LANGUAGE sql;
 
 -- col_is_unique( table, column[] )
@@ -1998,13 +2052,13 @@ $$ LANGUAGE sql;
 -- col_has_check( schema, table, column, description )
 CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is( _ckeys( $1, $2, 'c' ), $3, $4 );
+    SELECT _constraint( $1, $2, 'c', $3, $4, 'check' );
 $$ LANGUAGE sql;
 
 -- col_has_check( table, column, description )
 CREATE OR REPLACE FUNCTION col_has_check ( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
-    SELECT is( _ckeys( $1, 'c' ), $2, $3 );
+    SELECT _constraint( $1, 'c', $2, $3, 'check' );
 $$ LANGUAGE sql;
 
 -- col_has_check( table, column[] )

@@ -2969,7 +2969,13 @@ in question does not exist.
     );
 
 Just like `col_is_pk()`, except that it test that the column or array of
-columns have a unique constraint on them.
+columns have a unique constraint on them. In the event of failure, the
+diagnostics will list the unique constraints that were actually found, if any:
+
+    Failed test 40: "users.email should be unique"
+            have: {username}
+                  {first_name,last_name}
+            want: {email}
 
 ### `has_check( schema, table, description )` ###
 ### `has_check( table, description )` ###
@@ -2981,12 +2987,19 @@ columns have a unique constraint on them.
         'Table myschema.sometable should have a check constraint'
     );
 
+    Failed test 41: "users.email should have a check constraint"
+            have: {username}
+            want: {email}
+
 Tests whether or not a table has a check constraint. The first argument is the
 schema name, the second the table name, the the third is the test description.
 If the schema is omitted, the table must be visible in the search path. If the
 test description is omitted, it will be set to "Table `:table` should have a
 check constraint". Note that this test will fail if the table in question does
 not exist.
+
+In the event of failure, the diagnostics will list the columns on the table
+that do have check constraints, if any:
 
 ### `col_has_check( schema, table, column, description )` ###
 ### `col_has_check( schema, table, column[], description )` ###

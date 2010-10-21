@@ -104,7 +104,7 @@ SELECT * FROM check_test(
     col_has_check( 'sometab', ARRAY['numb', 'myint'] ),
     true,
     'col_has_check( table, columns )',
-    'Column sometab(numb, myint) should have a check constraint',
+    'Columns sometab(numb, myint) should have a check constraint',
     ''
 );
 
@@ -114,6 +114,7 @@ SELECT * FROM check_test(
     'col_has_check( sch, tab, col, desc ) fail',
     'public.sometab.id should have a check',
     '        have: {name}
+              {numb,myint}
         want: {id}'
 );
 
@@ -123,6 +124,7 @@ SELECT * FROM check_test(
     'col_has_check( tab, col, desc ) fail',
     'sometab.id should have a check',
     '        have: {name}
+              {numb,myint}
         want: {id}'
 );
 
