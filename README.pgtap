@@ -4374,6 +4374,9 @@ pgTAP has been tested on the following builds of PostgreSQL:
 If you know of others, please submit them! Use
 `psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
 
+Metadata
+========
+
 Public Repository
 -----------------
 
