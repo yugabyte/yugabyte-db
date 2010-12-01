@@ -375,7 +375,15 @@ ora_decode(PG_FUNCTION_ARGS)
 		PG_RETURN_DATUM(PG_GETARG_DATUM(retarg));
 }
 
-#if PG_VERSION_NUM >= 80400
+#if PG_VERSION_NUM >= 90100
+Oid
+equality_oper_funcid(Oid argtype)
+{
+	Oid	eq;
+	get_sort_group_operators(argtype, false, true, false, NULL, &eq, NULL, NULL);
+	return get_opcode(eq);
+}
+#elif PG_VERSION_NUM >= 80400
 Oid
 equality_oper_funcid(Oid argtype)
 {
