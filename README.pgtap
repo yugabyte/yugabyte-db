@@ -6,6 +6,45 @@ PL/SQL. It includes a comprehensive collection of TAP-emitting assertion
 functions, as well as the ability to integrate with other TAP-emitting test
 frameworks. It can also be used in the xUnit testing style.
 
+Synopsis
+========
+
+    SELECT plan( 23 );
+    -- or SELECT * from no_plan();
+
+    -- Various ways to say "ok"
+    SELECT ok( :have = :want, :test_description );
+
+    SELECT is(   :have, :want, $test_description );
+    SELECT isnt( :have, :want, $test_description );
+
+    -- Rather than \echo # here's what went wrong
+    SELECT diag( 'here''s what went wrong' );
+
+    -- Compare values with LIKE or regular expressions.
+    SELECT alike(   :have, :like_expression, $test_description );
+    SELECT unalike( :have, :like_expression, $test_description );
+
+    SELECT matches(      :have, :regex, $test_description );
+    SELECT doesnt_match( :have, :regex, $test_description );
+
+    SELECT cmp_ok(:have, '=', :want, $test_description );
+
+    -- Skip tests based on runtime conditions.
+    SELECT CASE WHEN :some_feature THEN collect_tap(
+        ok( foo(),       :test_description),
+        is( foo(42), 23, :test_description)
+    ) ELSE skip(:why, :how_many ) END;
+
+    -- Mark some tests as to-do tests.
+    SELECT todo(:why, :how_many);
+    SELECT ok( foo(),       :test_description);
+    SELECT is( foo(42), 23, :test_description);
+
+    -- Simple pass/fail.
+    SELECT pass(:test_description);
+    SELECT fail(:test_description);
+
 Installation
 ============
 
