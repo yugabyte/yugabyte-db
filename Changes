@@ -12,7 +12,7 @@ Revision history for pgTAP
 * Fixed examples of single-quoted string values stored in `psql` variables in
   `README.pgtap`.
 * Fixed a bug in `plan()` where a sequence wasn't getting created as a
-  temporary sequence. This wasn't a problem if all testin was done inside a
+  temporary sequence. This wasn't a problem if all testing was done inside a
   transaction, but if not, you could only run tests once without an error.
 * Fixed bug where `has_column()`, `col_type_is()`, `domain_type_is()`,
   `cast_exists()`, `cast_context_is()`, and `has_operator()`, were forcing the
