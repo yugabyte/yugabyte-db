@@ -176,7 +176,7 @@ random_string(const char *charset, int chrset_size, int len)
 	str = makeStringInfo();
 	for (i = 0; i < len; i++)
 	{
-		int pos = (double) rand() / ((double) RAND_MAX + 1) * chrset_size;
+		int pos = (int) ((double) rand() / ((double) RAND_MAX + 1) * chrset_size);
 		
 		appendStringInfoChar(str, charset[pos]);
 	}

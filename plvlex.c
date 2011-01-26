@@ -181,8 +181,15 @@ filterList(List *list, bool skip_spaces, bool qnames)
 	return result;
 }
 
-Datum plvlex_tokens(PG_FUNCTION_ARGS)
+Datum
+plvlex_tokens(PG_FUNCTION_ARGS)
 {
+#ifdef _MSC_VER
+	ereport(ERROR,
+			(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+			 errmsg("plvlex.tokens is not available in the built")));
+	PG_RETURN_VOID();
+#else
 	FuncCallContext	   *funcctx;
 	TupleDesc			tupdesc;
 	TupleTableSlot	   *slot;
@@ -286,5 +293,6 @@ Datum plvlex_tokens(PG_FUNCTION_ARGS)
 	}
 
 	SRF_RETURN_DONE (funcctx);
+#endif
 }
 

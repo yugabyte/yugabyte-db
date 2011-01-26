@@ -23,7 +23,7 @@ PG_FUNCTION_INFO_V1(dbms_alert_waitany);
 PG_FUNCTION_INFO_V1(dbms_alert_waitone);
 PG_FUNCTION_INFO_V1(dbms_alert_defered_signal);
 
-extern unsigned char sid;
+extern unsigned int sid;
 float8 sensitivity = 250.0;
 extern LWLockId shmem_lock;
 
@@ -698,7 +698,7 @@ Datum
 dbms_alert_waitone(PG_FUNCTION_ARGS)
 {
 	text *name;
-	int timeout;
+	float8 timeout;
 	TupleDesc   tupdesc;
 	AttInMetadata       *attinmeta;
 	HeapTuple   tuple;

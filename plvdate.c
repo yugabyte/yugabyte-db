@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <stdlib.h>
 #include "orafunc.h"
+#include "builtins.h"
 
 
 /*
@@ -30,30 +31,6 @@
  */
 
 extern PGDLLIMPORT char *days[];
-
-Datum plvdate_add_bizdays (PG_FUNCTION_ARGS);
-Datum plvdate_nearest_bizday (PG_FUNCTION_ARGS);
-Datum plvdate_next_bizday (PG_FUNCTION_ARGS);
-Datum plvdate_bizdays_between (PG_FUNCTION_ARGS);
-Datum plvdate_prev_bizday (PG_FUNCTION_ARGS);
-Datum plvdate_isbizday (PG_FUNCTION_ARGS);
-
-Datum plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS);
-Datum plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS);
-Datum plvdate_set_nonbizday_day (PG_FUNCTION_ARGS);
-Datum plvdate_unset_nonbizday_day (PG_FUNCTION_ARGS);
-
-Datum plvdate_use_easter (PG_FUNCTION_ARGS);
-Datum plvdate_using_easter (PG_FUNCTION_ARGS);
-Datum plvdate_include_start (PG_FUNCTION_ARGS);
-Datum plvdate_including_start (PG_FUNCTION_ARGS);
-
-Datum plvdate_default_holidays (PG_FUNCTION_ARGS);
-
-Datum plvdate_version (PG_FUNCTION_ARGS);
-
-Datum plvdate_days_inmonth (PG_FUNCTION_ARGS);
-Datum plvdate_isleapyear (PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);

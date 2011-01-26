@@ -315,7 +315,7 @@ orafce_median4_transfn(PG_FUNCTION_ARGS)
 int 
 orafce_float4_cmp(const void *a, const void *b)
 {
-	return *((float4 *) a) - *((float4*) b);
+	return (int) (*((float4 *) a) - *((float4*) b));
 }
 
 Datum
@@ -339,7 +339,7 @@ orafce_median4_finalfn(PG_FUNCTION_ARGS)
 	if (lidx == hidx)
 		result = state->d.float4_values[lidx];
 	else
-		result = (state->d.float4_values[lidx] + state->d.float4_values[hidx]) / 2.0;
+		result = (state->d.float4_values[lidx] + state->d.float4_values[hidx]) / 2.0f;
 
 	PG_RETURN_FLOAT4(result);
 
@@ -390,7 +390,7 @@ orafce_median8_transfn(PG_FUNCTION_ARGS)
 int 
 orafce_float8_cmp(const void *a, const void *b)
 {
-	return *((float8 *) a) - *((float8*) b);
+	return (int) (*((float8 *) a) - *((float8*) b));
 }
 
 

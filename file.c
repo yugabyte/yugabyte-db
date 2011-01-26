@@ -1072,7 +1072,7 @@ utl_file_tmpdir(PG_FUNCTION_ARGS)
 	char		tmpdir[MAXPGPATH];
 	int			ret;
 
-	ret = GetTempPath(MAXPGPATH, tmpdir);
+	ret = GetTempPathA(MAXPGPATH, tmpdir);
 	if (ret == 0 || ret > MAXPGPATH)
 		CUSTOM_EXCEPTION(INVALID_PATH, strerror(errno));
 

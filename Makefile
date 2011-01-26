@@ -9,14 +9,21 @@ REGRESS_OPTS = --load-language=plpgsql
 
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in
 
+ifndef USE_PGXS
+top_builddir = ../..
+makefile_global = $(top_builddir)/src/Makefile.global
+ifeq "$(wildcard $(makefile_global))" ""
+USE_PGXS = 1	# use pgxs if not in contrib directory
+endif
+endif
+
 ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 else
-subdir = contrib/orafce
-top_builddir = ../..
-include $(top_builddir)/src/Makefile.global
+subdir = contrib/$(MODULE_big)
+include $(makefile_global)
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
@@ -27,6 +34,10 @@ else
 SHLIB_LINK += -L$(libdir)/gettextlib
 endif
 endif
+
+# remove dependency to libxml2 and libxslt
+LIBS := $(filter-out -lxml2, $(LIBS))
+LIBS := $(filter-out -lxslt, $(LIBS))
 
 plvlex.o: sqlparse.o
 

@@ -48,7 +48,9 @@ static int	scanbuflen;
 void orafce_sql_yyerror(const char *message);
 
 
-#define YYLTYPE int
+#define YYLTYPE		int
+#define YYMALLOC	malloc	/* XXX: should use palloc? */
+#define YYFREE		free	/* XXX: should use pfree? */
 
 %}
 %name-prefix="orafce_sql_yy" 
