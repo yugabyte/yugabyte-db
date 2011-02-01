@@ -1,6 +1,6 @@
---- uninstall_pgtap.sql.orig	2009-12-17 16:07:04.000000000 -0800
-+++ uninstall_pgtap.sql	2009-12-17 16:06:55.000000000 -0800
-@@ -364,10 +364,6 @@
+--- uninstall_pgtap.sql	2011-02-01 15:15:23.000000000 -0800
++++ uninstall_pgtap.sql.orig	2011-02-01 15:14:54.000000000 -0800
+@@ -367,10 +367,6 @@
  DROP FUNCTION has_role( NAME );
  DROP FUNCTION has_role( NAME, TEXT );
  DROP FUNCTION _has_role( NAME );
@@ -11,7 +11,17 @@
  DROP FUNCTION hasnt_enum( NAME );
  DROP FUNCTION hasnt_enum( NAME, TEXT );
  DROP FUNCTION hasnt_enum( NAME, NAME );
-@@ -702,5 +698,17 @@
+@@ -680,9 +676,6 @@
+ DROP FUNCTION is (anyelement, anyelement, text);
+ DROP FUNCTION ok ( boolean );
+ DROP FUNCTION ok ( boolean, text );
+-DROP FUNCTION diag( VARIADIC anyarray );
+-DROP FUNCTION diag( VARIADIC text[] );
+-DROP FUNCTION diag ( msg anyelement );
+ DROP FUNCTION diag ( msg text );
+ DROP FUNCTION finish ();
+ DROP FUNCTION _finish ( INTEGER, INTEGER, INTEGER);
+@@ -705,5 +698,17 @@
  DROP FUNCTION os_name();
  DROP FUNCTION pg_version_num();
  DROP FUNCTION pg_version();

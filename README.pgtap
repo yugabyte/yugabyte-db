@@ -3711,10 +3711,10 @@ Which would produce:
     # but yours is set to en_US.ISO8859-1.
     # As a result, some tests may fail. YMMV.
 
-You can pass data of any type to `diag()` and it will all be converted to text
-for the diagnostics. On PostgreSQL 8.4 and higher, you can pass any number of
-arguments (as long as they are all the same data type) and they will be
-concatenated together.
+You can pass data of any type to `diag()` on PostgreSQL 8.3 and higher and it
+will all be converted to text for the diagnostics. On PostgreSQL 8.4 and
+higher, you can pass any number of arguments (as long as they are all the same
+data type) and they will be concatenated together.
 
 Conditional Tests
 -----------------
@@ -4325,16 +4325,17 @@ No changes. Everything should just work.
 * A C function, `pg_typeof()`, is built and installed in a DSO. This is for
   compatibility with the same function that ships in 8.4 core, and is required
   for `cmp_ok()` and `isa_ok()` to work.
-* The variadic form of `collect_tap()` is not available. Instead you must pass
-  an array of TAP to it.
+* The variadic forms of `diag()` and `collect_tap()` are not available.
+  You can pass an array of TAP to `collect_tap()`, however.
 
 8.2 and Down
 ------------
-* A patch is applied that removes the `enum_has_labels()` function, and
-  `col_has_default()` cannot be used to test for columns specified with
-  `DEFAULT NULL` (even though that's the implied default default). The
-  `has_enums()` function won't work. Also, a number of assignments casts are
-  added to increase compatibility. The casts are:
+* A patch is applied that removes the `enum_has_labels()`, the
+  `diag(anyelement)` function and `col_has_default()` cannot be used to test
+  for columns specified with `DEFAULT NULL` (even though that's the implied
+  default default). The `has_enums()` function won't work. Also, a number of
+  assignments casts are added to increase compatibility. The casts are:
+
   + `boolean` to `text`
   + `text[]` to `text`
   + `name[]` to `text`
