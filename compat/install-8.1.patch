@@ -1,6 +1,42 @@
---- pgtap.sql	2010-05-21 17:56:54.000000000 -0400
-+++ pgtap.sql.new	2010-05-21 17:56:36.000000000 -0400
-@@ -5588,7 +5588,7 @@
+--- pgtap.sql	2011-02-01 15:32:02.000000000 -0800
++++ pgtap.sql.orig	2011-02-01 15:30:37.000000000 -0800
+@@ -1993,13 +1993,13 @@
+ CREATE OR REPLACE FUNCTION _constraint ( NAME, NAME, CHAR, NAME[], TEXT, TEXT )
+ RETURNS TEXT AS $$
+ DECLARE
+-    akey NAME[];
++    rec  record;
+     keys TEXT[] := '{}';
+     have TEXT;
+ BEGIN
+-    FOR akey IN SELECT * FROM _keys($1, $2, $3) LOOP
+-        IF akey = $4 THEN RETURN pass($5); END IF;
+-        keys = keys || akey::text;
++    FOR rec IN SELECT * FROM _keys($1, $2, $3) AS b(a) LOOP
++        IF rec.a = $4 THEN RETURN pass($5); END IF;
++        keys = keys || rec.a::text;
+     END LOOP;
+     IF array_upper(keys, 0) = 1 THEN
+         have := 'No ' || $6 || ' constriants';
+@@ -2017,13 +2017,13 @@
+ CREATE OR REPLACE FUNCTION _constraint ( NAME, CHAR, NAME[], TEXT, TEXT )
+ RETURNS TEXT AS $$
+ DECLARE
+-    akey NAME[];
++    rec  record;
+     keys TEXT[] := '{}';
+     have TEXT;
+ BEGIN
+-    FOR akey IN SELECT * FROM _keys($1, $2) LOOP
+-        IF akey = $3 THEN RETURN pass($4); END IF;
+-        keys = keys || akey::text;
++    FOR rec IN SELECT * FROM _keys($1, $2) AS b(a) LOOP
++        IF rec.a = $3 THEN RETURN pass($4); END IF;
++        keys = keys || rec.a::text;
+     END LOOP;
+     IF array_upper(keys, 0) = 1 THEN
+         have := 'No ' || $5 || ' constriants';
+@@ -5677,7 +5677,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -9,7 +45,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -5596,8 +5596,8 @@
+@@ -5685,8 +5685,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -20,7 +56,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -5659,14 +5659,14 @@
+@@ -5750,14 +5750,14 @@
      setup    ALIAS FOR $3;
      teardown ALIAS FOR $4;
      tests    ALIAS FOR $5;
@@ -37,7 +73,7 @@
      EXCEPTION
          -- Catch all exceptions and simply rethrow custom exceptions. This
          -- will roll back everything in the above block.
-@@ -5681,15 +5681,15 @@
+@@ -5772,15 +5772,15 @@
                  IF verbos THEN RETURN NEXT diag(tests[i] || '()'); END IF;
  
                  -- Run the setup functions.
@@ -57,7 +93,7 @@
  
                  -- Remember how many failed and then roll back.
                  num_faild := num_faild + num_failed();
-@@ -5704,7 +5704,7 @@
+@@ -5795,7 +5795,7 @@
          END LOOP;
  
          -- Run the shutdown functions.
@@ -66,7 +102,7 @@
  
          -- Raise an exception to rollback any changes.
          RAISE EXCEPTION '__TAP_ROLLBACK__';
-@@ -5715,8 +5715,8 @@
+@@ -5806,8 +5806,8 @@
          END IF;
      END;
      -- Finish up.
@@ -77,7 +113,7 @@
      END LOOP;
  
      -- Clean up and return.
-@@ -6947,7 +6947,7 @@
+@@ -7038,7 +7038,7 @@
  DECLARE
      rec    RECORD;
  BEGIN
