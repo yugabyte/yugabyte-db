@@ -1,8 +1,7 @@
-TESTS = $(wildcard sql/*.sql)
+ESTS = $(wildcard sql/*.sql)
 EXTRA_CLEAN = test_setup.sql *.html
 DATA_built = pgtap.sql uninstall_pgtap.sql
 DOCS = README.pgtap
-SCRIPTS = bbin/pg_prove bbin/pg_tapgen
 REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --load-language=plpgsql
 
@@ -49,9 +48,15 @@ else
 include $(PGXS)
 endif
 
-# Is TAP::Harness installed?
+# Is TAP::Parser::SourceHandler::pgTAP installed?
 ifdef PERL
-HAVE_HARNESS := $(shell $(PERL) -le 'eval { require TAP::Harness }; print 1 unless $$@' )
+HAVE_HARNESS := $(shell $(PERL) -le 'eval { require TAP::Parser::SourceHandler::pgTAP }; print 1 unless $$@' )
+endif
+
+ifndef HAVE_HARNESS
+    $(warning To use pg_prove, TAP::Parser::SourceHandler::pgTAP Perl module)
+    $(warning must be installed from CPAN. To do so, simply run:)
+    $(warning     cpan TAP::Parser::SourceHandler::pgTAP) 
 endif
 
 # Set up extra substitutions based on version numbers.
@@ -134,48 +139,14 @@ ifdef TAPSCHEMA
 	mv uninstall.tmp uninstall_pgtap.sql
 endif
 
-# Build pg_prove and holler if there's no Perl or TAP::Harness.
-bbin/pg_prove:
-	mkdir bbin
-#	sed -e "s,\\('\\|F<\\)psql\\(['>]\\),\\1$(bindir)/psql\\2,g" bin/pg_prove > bbin/pg_prove
-	sed -e "s,\\'psql\\',\\'$(bindir)/psql\\'," -e 's,F<psql>,F<$(bindir)/psql>,' bin/pg_prove > bbin/pg_prove
-ifdef PERL
-	$(PERL) '-MExtUtils::MY' -e 'MY->fixin(shift)' bbin/pg_prove
-ifndef HAVE_HARNESS
-	$(warning To use pg_prove, TAP::Harness Perl module must be installed from CPAN.)
-endif
-else
-	$(warning Could not find perl (required by pg_prove). Install it or set the PERL variable.)
-endif
-	chmod +x bbin/pg_prove
-
-bbin/pg_tapgen:
-	cp bin/pg_tapgen bbin
-ifdef PERL
-	$(PERL) '-MExtUtils::MY' -e 'MY->fixin(shift)' bbin/pg_tapgen
-else
-	$(warning Could not find perl (required by pg_tapgen). Install it or set the PERL variable.)
-endif
-	chmod +x bbin/pg_tapgen
-
 # Make sure that we build the regression tests.
 installcheck: test_setup.sql
 
-# Make sure we build pg_prove.
-all: bbin/pg_prove bbin/pg_tapgen
-
-# Make sure we remove bbin.
-clean: extraclean
-
-extraclean:
-	rm -rf bbin
-
 # In addition to installcheck, one can also run the tests through pg_prove.
-test: test_setup.sql bbin/pg_prove
-	./bbin/pg_prove --pset tuples_only=1 $(TESTS)
+test: test_setup.sql
+	pg_prove --pset tuples_only=1 $(TESTS)
 
 html:
 	markdown -F 0x1000 README.pgtap > readme.html
 	perl -ne 'BEGIN { $$prev = 0; $$lab = ""; print "<h1>Contents</h1>\n<ul>\n" } if (m{<h([123])\s+id="(?:`([^(]+)(?:[^"]+)|([^"]+))">((<code>[^(]+)?.+?)</h\1>}) { next if $$lab && $$lab eq $$5; $$lab = $$5; if ($$prev) { if ($$1 != $$prev) { print $$1 > $$prev ? $$1 - $$prev > 1 ? "<ul><li><ul>" : "<ul>\n" : $$prev - $$1 > 1 ? "</li></ul></li></ul></li>\n" : "</li></ul></li>\n"; $$prev = $$1; } else { print "</li>\n" } } else { $$prev = $$1; } print qq{<li><a href="#} . ($$2 || $$3) . q{">} . ($$5 ? "$$5()</code>" : $$4) . "</a>" } END { print "</li>\n</ul>\n" }' readme.html > toc.html
 	perl -pi -e 'BEGIN { my %seen }; s{(<h[123]\s+id=")`([^(]+)[^"]+}{"$$1$$2" . ($$seen{$$2}++ || "")}ge;' readme.html
-	PERL5LIB=/Users/david/dev/perl/Pod-Simple/lib perldoc -MPod::Simple::XHTML -d pg_prove.pod.html -w html_header_tags:'<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">' bin/pg_prove

@@ -40,6 +40,9 @@ Revision history for pgTAP
   were assocated with only one constraint. Since one can have multiple unique
   or check constraints on a table, each using different columns, this was
   sub-optimal. Thanks to Cédric Villemain for the spot!
+* Removed `pg_prove` and `pg_tapgen` from the distribution. They must now be
+  installed separately from CPAN. If it's not installed, the intaller will
+  issue a warning.
 
 0.24 2010-05-24T23:33:22
 -------------------------

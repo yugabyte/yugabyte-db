@@ -37,8 +37,6 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 
 %files
 %defattr(-,root,root,-)
-%{_bindir}/pg_prove
-%{_bindir}/pg_tapgen
 %if "%{postgresver}" == "8.3"
 %{_libdir}/pgsql/pgtap.so
 %endif

@@ -108,11 +108,11 @@ Testing pgTAP with pgTAP
 ------------------------
 
 In addition to the PostgreSQL-standard `installcheck` target, the `test`
-target uses the included `pg_prove` Perl program to do its testing, which
-requires that TAP::Harness, included in
-[Test::Harness](http://search.cpan.org/dist/Test-Harness/ "Test::Harness on
-CPAN") 3.x. You'll need to make sure that you use a database with PL/pgSQL
-loaded, or else the tests won't work. `pg_prove` supports a number of
+target uses the `pg_prove` Perl program to do its testing, which will be
+installed with the
+[TAP::Parser::SourceHandler::pgTAP](http://search.cpan.org/dist/TAP-Parser-SourceHandler-pgTAP)
+CPAN distribution. You'll need to make sure that you use a database with
+PL/pgSQL loaded, or else the tests won't work. `pg_prove` supports a number of
 environment variables that you might need to use, including all the usual
 PostgreSQL client environment variables:
 
@@ -213,10 +213,11 @@ Using `pg_prove`
 ----------------
 
 Or save yourself some effort -- and run a batch of tests scripts or all of
-your xUnit test functions at once -- by using `pg_prove`. If you're not
-relying on `installcheck`, your test scripts can be a lot less verbose; you
-don't need to set all the extra variables, because `pg_prove` takes care of
-that for you:
+your xUnit test functions at once -- by using `pg_prove`, available in the
+[TAP::Parser::SourceHandler::pgTAP](http://search.cpan.org/dist/TAP-Parser-SourceHandler-pgTAP)
+CPAN distribution . If you're not relying on `installcheck`, your test scripts
+can be a lot less verbose; you don't need to set all the extra variables,
+because `pg_prove` takes care of that for you:
 
     -- Start transaction and plan the tests.
     BEGIN;
