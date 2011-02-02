@@ -4401,21 +4401,6 @@ To Do
   full signatures, so that a polymorphic functions can be independently tested
   for language, volatility, etc.
 
-Supported Versions
------------------
-
-pgTAP has been tested on the following builds of PostgreSQL:
-
-* PostgreSQL 9.0beta1 on x86_64-apple-darwin10.3.0
-* PostgreSQL 8.4.4 on i386-apple-darwin10.3.0
-* PostgreSQL 8.3.11 on i386-apple-darwin10.3.0
-* PostgreSQL 8.2.17 on i386-apple-darwin10.3.0
-* PostgreSQL 8.1.21 on i686-apple-darwin10.3.0
-* PostgreSQL 8.0.25 on i686-apple-darwin10.3.0
-
-If you know of others, please submit them! Use
-`psql -d template1 -c 'SELECT VERSION()'` to get the formal build version and OS.
-
 Metadata
 ========
 
