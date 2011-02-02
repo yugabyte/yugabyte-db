@@ -1,7 +1,8 @@
 Revision history for pgTAP
 ==========================
 
-0.25
+0.25.0
+-----------------------------
 * Minor documentation tweaks.
 * The sequence created to keep track of test numbers is now a temporary
   sequence. This will prevent it from persisting beyond the current
@@ -43,6 +44,7 @@ Revision history for pgTAP
 * Removed `pg_prove` and `pg_tapgen` from the distribution. They must now be
   installed separately from CPAN. If it's not installed, the intaller will
   issue a warning.
+* Added `META.json` and distributed on [PGXN](http://pgxn.org/).
 
 0.24 2010-05-24T23:33:22
 -------------------------
