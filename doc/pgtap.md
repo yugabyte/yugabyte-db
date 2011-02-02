@@ -4364,7 +4364,7 @@ No changes. Everything should just work.
 * `row_eq()`
 
 To Do
------
+=====
 * Add `isnt_empty()` to complement `is_empty()`.
 * Add variants of `set_eq()`, `bag_eq()`, and `results_eq()` that take an
   array of records as the second argument.
