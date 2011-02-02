@@ -58,6 +58,7 @@ BEGIN
         RETURN NEXT pass('variadic text');
         RETURN NEXT pass('variadic int');
         RETURN NEXT pass('variadic unknown');
+        RETURN;
     END IF;
 END;
 $$ LANGUAGE plpgsql;

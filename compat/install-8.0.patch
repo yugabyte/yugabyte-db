@@ -1,5 +1,5 @@
---- pgtap.sql	2010-05-21 18:40:22.000000000 -0400
-+++ pgtap.sql.new	2010-05-21 18:40:08.000000000 -0400
+--- pgtap.sql	2011-02-01 16:00:45.000000000 -0800
++++ pgtap.sql.orig	2011-02-01 16:00:54.000000000 -0800
 @@ -68,6 +68,27 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -145,7 +145,7 @@
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
             '    ' || COALESCE( quote_literal(have), 'NULL' ) ||
-@@ -1365,19 +1401,21 @@
+@@ -1389,19 +1425,21 @@
  CREATE OR REPLACE FUNCTION _def_is( TEXT, TEXT, anyelement, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -171,7 +171,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -3362,39 +3400,6 @@
+@@ -3437,39 +3475,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -208,10 +208,23 @@
 -    SELECT ok( NOT _has_role($1), 'Role ' || quote_ident($1) || ' should not exist' );
 -$$ LANGUAGE sql;
 -
+ CREATE OR REPLACE FUNCTION _has_user( NAME )
+ RETURNS BOOLEAN AS $$
+     SELECT EXISTS( SELECT true FROM pg_catalog.pg_user WHERE usename = $1);
+@@ -3501,9 +3506,9 @@
+ 
  CREATE OR REPLACE FUNCTION _is_super( NAME )
  RETURNS BOOLEAN AS $$
-     SELECT usesuper
-@@ -3498,13 +3503,8 @@
+-    SELECT rolsuper
+-      FROM pg_catalog.pg_roles
+-     WHERE rolname = $1
++    SELECT usesuper
++      FROM pg_catalog.pg_user
++     WHERE usename = $1
+ $$ LANGUAGE sql STRICT;
+ 
+ -- is_superuser( user, description )
+@@ -3578,13 +3583,8 @@
  $$ LANGUAGE sql;
  
  CREATE OR REPLACE FUNCTION _grolist ( NAME )
@@ -227,7 +240,7 @@
  $$ LANGUAGE sql;
  
  -- is_member_of( group, user[], description )
-@@ -3513,9 +3513,9 @@
+@@ -3593,9 +3593,9 @@
  DECLARE
      missing text[];
  BEGIN
@@ -239,7 +252,7 @@
          );
      END IF;
  
-@@ -5453,6 +5453,7 @@
+@@ -5542,6 +5542,7 @@
      res     BOOLEAN;
      descr   TEXT;
      adiag   TEXT;
@@ -247,7 +260,7 @@
      have    ALIAS FOR $1;
      eok     ALIAS FOR $2;
      name    ALIAS FOR $3;
-@@ -5464,8 +5465,10 @@
+@@ -5553,8 +5554,10 @@
      tnumb := currval('__tresults___numb_seq');
  
      -- Fetch the results.
@@ -260,7 +273,7 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -5651,116 +5654,6 @@
+@@ -5742,116 +5745,6 @@
      SELECT TRUE;
  $$ LANGUAGE sql;
  
@@ -377,7 +390,7 @@
  CREATE OR REPLACE FUNCTION _temptable ( TEXT, TEXT )
  RETURNS TEXT AS $$
  BEGIN
-@@ -5810,13 +5703,13 @@
+@@ -5901,13 +5794,13 @@
          -- Find extra records.
          FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || want LOOP
@@ -393,7 +406,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -5930,16 +5823,20 @@
+@@ -6021,16 +5914,20 @@
      missing TEXT[]  := '{}';
      res     BOOLEAN := TRUE;
      msg     TEXT    := '';
@@ -416,7 +429,7 @@
  
          -- Drop the temporary tables.
          EXECUTE 'DROP TABLE ' || have;
-@@ -6040,7 +5937,7 @@
+@@ -6131,7 +6028,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
@@ -425,7 +438,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6135,11 +6032,11 @@
+@@ -6226,11 +6123,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -440,7 +453,7 @@
              );
          END IF;
          rownum = rownum + 1;
-@@ -6154,8 +6051,8 @@
+@@ -6245,8 +6142,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -451,7 +464,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6290,7 +6187,7 @@
+@@ -6381,7 +6278,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -460,7 +473,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6304,8 +6201,8 @@
+@@ -6395,8 +6292,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -471,7 +484,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6453,7 +6350,7 @@
+@@ -6544,7 +6441,7 @@
  BEGIN
      -- Find extra records.
      FOR rec in EXECUTE _query($1) LOOP
@@ -480,7 +493,7 @@
      END LOOP;
  
      -- What extra records do we have?
-@@ -6557,35 +6454,6 @@
+@@ -6648,35 +6545,6 @@
      SELECT throws_imatching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
  $$ LANGUAGE sql;
  
@@ -516,7 +529,7 @@
  CREATE OR REPLACE FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] )
  RETURNS TEXT AS $$
      SELECT _are(
-@@ -6948,12 +6816,12 @@
+@@ -7039,12 +6907,12 @@
      rec    RECORD;
  BEGIN
      FOR rec in EXECUTE _query($1) LOOP END LOOP;
