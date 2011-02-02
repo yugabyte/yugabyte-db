@@ -31,7 +31,7 @@ endif
 # Compile the C code only if we're on 8.3 or older.
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 4)
-MODULES = pgtap
+MODULES = src/pgtap
 endif
 endif
 
