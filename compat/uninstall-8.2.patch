@@ -1,5 +1,5 @@
---- uninstall_pgtap.sql	2011-02-01 15:15:23.000000000 -0800
-+++ uninstall_pgtap.sql.orig	2011-02-01 15:14:54.000000000 -0800
+--- sql/uninstall_pgtap.sql	2011-02-01 15:15:23.000000000 -0800
++++ sql/uninstall_pgtap.sql.orig	2011-02-01 15:14:54.000000000 -0800
 @@ -367,10 +367,6 @@
  DROP FUNCTION has_role( NAME );
  DROP FUNCTION has_role( NAME, TEXT );

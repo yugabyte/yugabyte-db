@@ -1,6 +1,6 @@
 TESTS = $(wildcard test/sql/*.sql)
 EXTRA_CLEAN = test_setup.sql *.html
-DATA_built = pgtap.sql uninstall_pgtap.sql
+DATA_built = sql/pgtap.sql sql/uninstall_pgtap.sql
 DOCS = README.pgtap
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
@@ -90,7 +90,7 @@ else
 	cp $< $@
 endif
 
-pgtap.sql: pgtap.sql.in test_setup.sql
+sql/pgtap.sql: sql/pgtap.sql.in test_setup.sql
 	cp $< $@
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
@@ -103,9 +103,9 @@ ifneq ($(PGVER_MINOR), 2)
 ifneq ($(PGVER_MINOR), 1)
 	patch -p0 < compat/install-8.0.patch
 #	Hack for E'' syntax (<= PG8.0)
-	mv pgtap.sql pgtap.tmp
-	sed -e "s/ E'/ '/g" pgtap.tmp > pgtap.sql
-	rm pgtap.tmp
+	mv sql/pgtap.sql sql/pgtap.tmp
+	sed -e "s/ E'/ '/g" sql/pgtap.tmp > sql/pgtap.sql
+	rm sql/pgtap.tmp
 endif
 endif
 endif
@@ -113,14 +113,14 @@ endif
 endif
 endif
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql > pgtap.tmp
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 else
-	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' pgtap.sql > pgtap.tmp
+	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(PGTAP_VERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 endif
-	mv pgtap.tmp pgtap.sql
+	mv sql/pgtap.tmp sql/pgtap.sql
 
-uninstall_pgtap.sql: uninstall_pgtap.sql.in test_setup.sql
-	cp uninstall_pgtap.sql.in uninstall_pgtap.sql
+sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test_setup.sql
+	cp sql/uninstall_pgtap.sql.in sql/uninstall_pgtap.sql
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
 ifneq ($(PGVER_MINOR), 4)
@@ -135,8 +135,8 @@ endif
 endif
 endif
 ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' uninstall_pgtap.sql > uninstall.tmp
-	mv uninstall.tmp uninstall_pgtap.sql
+	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' sql/uninstall_pgtap.sql > sql/uninstall.tmp
+	mv sql/uninstall.tmp sql/uninstall_pgtap.sql
 endif
 
 # Make sure that we build the regression tests.

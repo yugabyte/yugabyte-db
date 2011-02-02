@@ -1,5 +1,5 @@
---- uninstall_pgtap.sql.orig	2011-02-01 14:58:51.000000000 -0800
-+++ uninstall_pgtap.sql	2011-02-01 14:58:51.000000000 -0800
+--- sql/uninstall_pgtap.sql.orig	2011-02-01 14:58:51.000000000 -0800
++++ sql/uninstall_pgtap.sql	2011-02-01 14:58:51.000000000 -0800
 @@ -58,8 +58,7 @@
  DROP FUNCTION throws_like ( TEXT, TEXT );
  DROP FUNCTION throws_like ( TEXT, TEXT, TEXT );

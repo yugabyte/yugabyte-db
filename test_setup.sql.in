@@ -15,6 +15,6 @@
 
 -- Load the TAP functions.
 BEGIN;
-\i pgtap.sql
+\i sql/pgtap.sql
 
 -- ## SET search_path TO TAPSCHEMA,public;

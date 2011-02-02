@@ -1,5 +1,5 @@
---- pgtap.sql	2011-02-01 15:15:23.000000000 -0800
-+++ pgtap.sql.orig	2011-02-01 15:14:35.000000000 -0800
+--- sql/pgtap.sql	2011-02-01 15:15:23.000000000 -0800
++++ sql/pgtap.sql.orig	2011-02-01 15:14:35.000000000 -0800
 @@ -11,6 +11,59 @@
  -- ## CREATE SCHEMA TAPSCHEMA;
  -- ## SET search_path TO TAPSCHEMA, public;
