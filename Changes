@@ -1,8 +1,8 @@
 Revision history for pgTAP
 ==========================
 
-0.25.0
------------------------------
+0.25.0 2011-02-02T01:33:36
+--------------------------
 * Minor documentation tweaks.
 * The sequence created to keep track of test numbers is now a temporary
   sequence. This will prevent it from persisting beyond the current
