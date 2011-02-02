@@ -1,5 +1,5 @@
 TESTS = $(wildcard test/sql/*.sql)
-EXTRA_CLEAN = test_setup.sql *.html
+EXTRA_CLEAN = test/setup.sql *.html
 DATA_built = sql/pgtap.sql sql/uninstall_pgtap.sql
 DOCS = README.pgtap
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
@@ -83,14 +83,14 @@ OSNAME := $(shell ./getos.sh)
 
 # Override how .sql targets are processed to add the schema info, if
 # necessary. Otherwise just copy the files.
-test_setup.sql: test_setup.sql.in
+test/setup.sql: test/setup.sql.in
 ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
 else
 	cp $< $@
 endif
 
-sql/pgtap.sql: sql/pgtap.sql.in test_setup.sql
+sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
@@ -119,7 +119,7 @@ else
 endif
 	mv sql/pgtap.tmp sql/pgtap.sql
 
-sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test_setup.sql
+sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test/setup.sql
 	cp sql/uninstall_pgtap.sql.in sql/uninstall_pgtap.sql
 ifeq ($(PGVER_MAJOR), 8)
 ifneq ($(PGVER_MINOR), 5)
@@ -140,10 +140,10 @@ ifdef TAPSCHEMA
 endif
 
 # Make sure that we build the regression tests.
-installcheck: test_setup.sql
+installcheck: test/setup.sql
 
 # In addition to installcheck, one can also run the tests through pg_prove.
-test: test_setup.sql
+test: test/setup.sql
 	pg_prove --pset tuples_only=1 $(TESTS)
 
 html:

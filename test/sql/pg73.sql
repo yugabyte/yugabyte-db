@@ -1,5 +1,5 @@
 \unset ECHO
-\i test_setup.sql
+\i test/setup.sql
 
 select plan(39);
 

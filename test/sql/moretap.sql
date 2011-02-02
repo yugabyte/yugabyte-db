@@ -1,5 +1,5 @@
 \unset ECHO
-\i test_setup.sql
+\i test/setup.sql
 
 \set numb_tests 46
 SELECT plan(:numb_tests);

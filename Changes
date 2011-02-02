@@ -45,6 +45,8 @@ Revision history for pgTAP
   installed separately from CPAN. If it's not installed, the intaller will
   issue a warning.
 * Added `META.json` and distributed on [PGXN](http://pgxn.org/).
+* Rearranged the source directory layout to more closely match the [preferred
+  PGXN layout](http://manager.pgxn.org/howto#new-order).
 
 0.24 2010-05-24T23:33:22
 -------------------------

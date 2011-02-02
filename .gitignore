@@ -1,6 +1,6 @@
 pgtap.sql
 uninstall_pgtap.sql
-test_setup.sql
+test/setup.sql
 results
 pgtap.so
 regression.*

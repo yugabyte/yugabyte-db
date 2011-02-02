@@ -1,5 +1,5 @@
 \unset ECHO
-\i test_setup.sql
+\i test/setup.sql
 SET client_min_messages = notice;
 
 SELECT plan(26);
