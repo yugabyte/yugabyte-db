@@ -44,6 +44,9 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Tue Feb 01 2011 David Wheeler <david@kineticode.com> 0.25.0
+- Removed pg_prove and pg_tapgen, which are now distributed via CPAN.
+
 * Sun Mar 01 2010 Darrell Fuhriman <darrell@renewfund.com> 0.24-2
 - Make install work where the pgtap.so library is needed.
 

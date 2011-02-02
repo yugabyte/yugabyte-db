@@ -2,9 +2,10 @@ pgTAP 0.25.0
 ============
 
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
-PL/SQL. It includes a comprehensive collection of TAP-emitting assertion
-functions, as well as the ability to integrate with other TAP-emitting test
-frameworks. It can also be used in the xUnit testing style.
+PL/SQL. It includes a comprehensive collection of
+[TAP](http://testanything.org)-emitting assertion functions, as well as the
+ability to integrate with other TAP-emitting test frameworks. It can also be
+used in the xUnit testing style.
 
 Synopsis
 ========
@@ -4446,7 +4447,7 @@ Credits
 Copyright and License
 ---------------------
 
-Copyright (c) 2008-2010 Kineticode, Inc. Some rights reserved.
+Copyright (c) 2008-2011 Kineticode, Inc. Some rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
