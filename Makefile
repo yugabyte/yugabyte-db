@@ -1,9 +1,9 @@
-ESTS = $(wildcard sql/*.sql)
+TESTS = $(wildcard test/sql/*.sql)
 EXTRA_CLEAN = test_setup.sql *.html
 DATA_built = pgtap.sql uninstall_pgtap.sql
 DOCS = README.pgtap
-REGRESS = $(patsubst sql/%.sql,%,$(TESTS))
-REGRESS_OPTS = --load-language=plpgsql
+REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
+REGRESS_OPTS = --inputdir=test --load-language=plpgsql
 
 ifdef NO_PGXS
 top_builddir = ../..
