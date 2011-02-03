@@ -1,6 +1,6 @@
 TESTS = $(wildcard test/sql/*.sql)
 EXTRA_CLEAN = test/setup.sql doc/*.html
-DATA_built = sql/pgtap.sql sql/uninstall_pgtap.sql
+DATA_built = sql/pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql sql/uninstall_pgtap.sql
 DOCS = doc/pgtap.md
 REGRESS = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
@@ -138,6 +138,16 @@ ifdef TAPSCHEMA
 	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' sql/uninstall_pgtap.sql > sql/uninstall.tmp
 	mv sql/uninstall.tmp sql/uninstall_pgtap.sql
 endif
+
+sql/pgtap-core.sql: sql/pgtap.sql
+	cp $< $@
+	sed -e 's,sql/pgtap,sql/pgtap-core,g' compat/install-8.3.patch | patch -p0
+	patch -p0 < compat/pgtap-core.patch
+
+sql/pgtap-schema.sql: sql/pgtap.sql
+	cp $< $@
+	sed -e 's,sql/pgtap,sql/pgtap-schema,g' compat/install-8.3.patch | patch -p0
+#	diff -u sql/pgtap-core.sql sql/pgtap-schema.sql | patch -R -p0
 
 # Make sure that we build the regression tests.
 installcheck: test/setup.sql

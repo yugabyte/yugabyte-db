@@ -1,4 +1,6 @@
 pgtap.sql
+pgtap-core.sql
+pgtap-schema.sql
 uninstall_pgtap.sql
 test/setup.sql
 results

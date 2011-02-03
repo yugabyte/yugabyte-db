@@ -5,6 +5,9 @@ Revision history for pgTAP
 --------------------------
 * Removed the "Supported Versions" section of the documentation. Suffice it to
   say that pgTAP supports PostgreSQL 8.0 or higher.
+* Added a build target to create a portable version of pgTAP that can be
+  included in any distribution and should just work for tesing on PostgreSQL
+  8.3+.
 
 0.25.0 2011-02-02T03:21:55
 --------------------------
