@@ -3835,12 +3835,12 @@ discouraged:
 We recommend that you pick one style or another of TODO to be on the safe
 side.
 
-### todo_end() ###
+### `todo_end()` ###
 
 Stops running tests as TODO tests. This function is fatal if called without a
 preceding `todo_start()` method call.
 
-### in_todo() ###
+### `in_todo()` ###
 
 Returns true if the test is currently inside a TODO block.
 

@@ -1,2 +1,3 @@
 .gitignore export-ignore
 .gitattributes export-ignore
+tocgen export-ignore
