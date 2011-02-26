@@ -8,6 +8,7 @@ Revision history for pgTAP
 * Added a build target to create a portable version of pgTAP that can be
   included in any distribution and should just work for tesing on PostgreSQL
   8.3+.
+* Added abstract to the `provides` section of `META.json`.
 
 0.25.0 2011-02-02T03:21:55
 --------------------------
