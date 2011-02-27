@@ -25,10 +25,10 @@ if (m{
     # Clean up the ID a bit.
     my ($hn, $func, $id, $val, $label) = ($1, $2, $3, $4, $5);
     $id = $func || $id;
-    if ($id) {
-        $id =~ s{L?[.]code[.]}{}g;
-        $id =~ s{[.]{2,}}{.}g;
-    }
+    $id =~ s{L?[.]code[.]}{}g;
+    $id =~ s{[.]{2,}}{.}g;
+    my $num = $seen{$id}++ || '';
+
     if ($previd ne $id) {
         $previd = $id;
         if ($prevn) {
@@ -44,10 +44,10 @@ if (m{
         } else {
             $prevn = $hn;
         }
-        print STDERR qq{<li><a href="#} . ($func || $id) . q{">} . ($5 ? "$5()</code>" : $val) . "</a>";
+        print STDERR qq{<li><a href="#$id$num">} . ($5 ? "$5()</code>" : $val) . "</a>";
     }
 
-    $_ = qq{<h$hn id="$id} . ($seen{$id}++ || '')  . qq{">$val</h$hn>\n};
+    $_ = qq{<h$hn id="$id$num">$val</h$hn>\n};
 }
 
 END { print STDERR "</li>\n</ul>\n" }
