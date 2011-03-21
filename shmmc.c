@@ -152,7 +152,7 @@ align_size(size_t size)
 }
 
 /*
-  inicialize shared memory. It works in two modes, create and no create.
+  initialize shared memory. It works in two modes, create and no create.
   No create is used for mounting shared memory buffer. Top of memory is
   used for list_item array.
 */
@@ -170,7 +170,7 @@ ora_sinit(void *ptr, size_t size, bool create)
 		if (create)
 		{
 			list[0].size = size - sizeof(list_item)*LIST_ITEMS - sizeof(mem_desc);
-			list[0].first_byte_ptr = &m->data + sizeof(list_item)*LIST_ITEMS;
+			list[0].first_byte_ptr = ((char *) &m->data) + sizeof(list_item)*LIST_ITEMS;
 			list[0].dispossible = true;
 			*list_c = 1;
 		}
