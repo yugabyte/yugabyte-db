@@ -1941,7 +1941,6 @@ argument is a schema name and the second is the test description. If you omit
 the schema, the schema must be visible in the search path. If you omit the
 test description, it will be set to "Schema `:schema` should exist".
 
-### `hasnt_schema( schema, schema, description )` ###
 ### `hasnt_schema( schema, description )` ###
 ### `hasnt_schema( schema )` ###
 
@@ -2373,11 +2372,11 @@ pgTAP will generate a useful description if you don't provide one.
 This function is the inverse of `has_cast()`. The test passes if the specified
 cast does *not* exist.
 
-### `has_operator( left_type, schema, name, right_type, return_type, desc )` ###
+### `has_operator( left_type, schema, name, right_type, return_type, description )` ###
 ### `has_operator( left_type, schema, name, right_type, return_type )` ###
-### `has_operator( left_type, name, right_type, return_type, desc )` ###
+### `has_operator( left_type, name, right_type, return_type, description )` ###
 ### `has_operator( left_type, name, right_type, return_type )` ###
-### `has_operator( left_type, name, right_type, desc )` ###
+### `has_operator( left_type, name, right_type, description )` ###
 ### `has_operator( left_type, name, right_type )` ###
 
     SELECT has_operator(
@@ -2396,11 +2395,11 @@ the test description, pgTAP will generate a reasonable one for you. The return
 value is also optional. If you need to test for a left or right unary
 operator, use `has_leftop()` or `has_rightop()` instead.
 
-### `has_leftop( schema, name, right_type, return_type, desc )` ###
+### `has_leftop( schema, name, right_type, return_type, description )` ###
 ### `has_leftop( schema, name, right_type, return_type )` ###
-### `has_leftop( name, right_type, return_type, desc )` ###
+### `has_leftop( name, right_type, return_type, description )` ###
 ### `has_leftop( name, right_type, return_type )` ###
-### `has_leftop( name, right_type, desc )` ###
+### `has_leftop( name, right_type, description )` ###
 ### `has_leftop( name, right_type )` ###
 
     SELECT has_leftop(
@@ -2417,11 +2416,11 @@ name, then the operator must be visible in the search path. If you omit the
 test description, pgTAP will generate a reasonable one for you. The return
 value is also optional.
 
-### `has_rightop( left_type, schema, name, return_type, desc )` ###
+### `has_rightop( left_type, schema, name, return_type, description )` ###
 ### `has_rightop( left_type, schema, name, return_type )` ###
-### `has_rightop( left_type, name, return_type, desc )` ###
+### `has_rightop( left_type, name, return_type, description )` ###
 ### `has_rightop( left_type, name, return_type )` ###
-### `has_rightop( left_type, name, desc )` ###
+### `has_rightop( left_type, name, description )` ###
 ### `has_rightop( left_type, name )` ###
 
     SELECT has_rightop(
@@ -2468,7 +2467,7 @@ also optional.
 This function is the inverse of `has_opclass()`. The test passes if the
 specified operator class does *not* exist.
 
-### `has_role( role, desc )` ###
+### `has_role( role, description )` ###
 ### `has_role( role )` ###
 
     SELECT has_role( 'theory', 'Role "theory" should exist' );
@@ -2476,7 +2475,7 @@ specified operator class does *not* exist.
 Checks to ensure that a database role exists. If the description is omitted,
 it will default to "Role `:role` should exist".
 
-### `hasnt_role( role, desc )` ###
+### `hasnt_role( role, description )` ###
 ### `hasnt_role( role )` ###
 
     SELECT hasnt_role( 'theory', 'Role "theory" should not exist' );
@@ -2484,7 +2483,7 @@ it will default to "Role `:role` should exist".
 The inverse of `has_role()`, this function tests for the *absence* of a
 database role.
 
-### `has_user( user, desc )` ###
+### `has_user( user, description )` ###
 ### `has_user( user )` ###
 
     SELECT has_user( 'theory', 'User "theory" should exist' );
@@ -2492,7 +2491,7 @@ database role.
 Checks to ensure that a database user exists. If the description is omitted,
 it will default to "User `:user` should exist".
 
-### `hasnt_user( user, desc )` ###
+### `hasnt_user( user, description )` ###
 ### `hasnt_user( user )` ###
 
     SELECT hasnt_user( 'theory', 'User "theory" should not exist' );
@@ -2500,7 +2499,7 @@ it will default to "User `:user` should exist".
 The inverse of `has_user()`, this function tests for the *absence* of a
 database user.
 
-### `has_group( group, desc )` ###
+### `has_group( group, description )` ###
 ### `has_group( group )` ###
 
     SELECT has_group( 'sweeties, 'Group "sweeties" should exist' );
@@ -2508,7 +2507,7 @@ database user.
 Checks to ensure that a database group exists. If the description is omitted,
 it will default to "Group `:group` should exist".
 
-### `hasnt_group( group, desc )` ###
+### `hasnt_group( group, description )` ###
 ### `hasnt_group( group )` ###
 
     SELECT hasnt_group( 'meanies, 'Group meaines should not exist' );
@@ -2516,7 +2515,7 @@ it will default to "Group `:group` should exist".
 The inverse of `has_group()`, this function tests for the *absence* of a
 database group.
 
-### `has_language( language, desc )` ###
+### `has_language( language, description )` ###
 ### `has_language( language )` ###
 
     SELECT has_language( 'plpgsql', 'Language "plpgsql" should exist' );
@@ -2524,7 +2523,7 @@ database group.
 Checks to ensure that a procedural language exists. If the description is
 omitted, it will default to "Procedural language `:language` should exist".
 
-### `hasnt_language( language, desc )` ###
+### `hasnt_language( language, description )` ###
 ### `hasnt_language( language )` ###
 
     SELECT hasnt_language( 'plpgsql', 'Language "plpgsql" should not exist' );
@@ -2694,7 +2693,7 @@ first, eh?
 
 ### `col_default_is( schema, table, column, default, description )` ###
 ### `col_default_is( table, column, default, description )` ###
-### `col_default_is( table, column, type )` ###
+### `col_default_is( table, column, default )` ###
 
     SELECT col_default_is(
         'myschema',
@@ -3471,9 +3470,9 @@ fact, like so:
 But you really ought to call `has_language()` first so that you never get that
 far.
 
-### `enum_has_labels( schema, enum, labels, desc )` ###
+### `enum_has_labels( schema, enum, labels, description )` ###
 ### `enum_has_labels( schema, enum, labels )` ###
-### `enum_has_labels( enum, labels, desc )` ###
+### `enum_has_labels( enum, labels, description )` ###
 ### `enum_has_labels( enum, labels )` ###
 
     SELECT enum_has_labels(
@@ -3542,7 +3541,7 @@ The inverse of `domain_type_is()`, this function tests that a domain does
 should probably extned the `text` type, not `integer`, since leading 0s are
 valid and required. The arguments are the same as for `domain_type_is()`.
 
-### `cast_context_is( source_type, target_type, context, desc )` ###
+### `cast_context_is( source_type, target_type, context, description )` ###
 ### `cast_context_is( source_type, target_type, context )` ###
 
     SELECT cast_context_is( 'integer', 'bigint', 'implicit' );
@@ -3572,7 +3571,7 @@ If the cast doesn't exist, you'll be told that, too:
 
 But you've already used `has_cast()` to make sure of that, right?
 
-### `is_superuser( user, desc )` ###
+### `is_superuser( user, description )` ###
 ### `is_superuser( user )` ###
 
     SELECT is_superuser( 'theory', 'User "theory" should be a super user' );
@@ -3581,7 +3580,7 @@ Tests that a database user is a super user. If the description is omitted, it
 will default to "User `:user` should be a super user". If the user does not
 exist in the database, the diagnostics will say so.
 
-### `isnt_superuser( user, desc )` ###
+### `isnt_superuser( user, description )` ###
 ### `isnt_superuser( user )` ###
 
     SELECT is_superuser(
@@ -3594,9 +3593,9 @@ The inverse of `is_superuser()`, this function tests that a database user is
 database, the test is still considered a failure, and the diagnostics will say
 so.
 
-### `is_member_of( group, users[], desc )` ###
+### `is_member_of( group, users[], description )` ###
 ### `is_member_of( group, users[] )` ###
-### `is_member_of( group, user, desc )` ###
+### `is_member_of( group, user, description )` ###
 ### `is_member_of( group, user )` ###
 
     SELECT is_member_of( 'sweeties', 'anna' 'Anna should be a sweetie' );
