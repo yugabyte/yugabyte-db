@@ -353,6 +353,22 @@ the test in your script, simply search for "simple exponential".
 
 All test functions take a name argument. It's optional, but highly suggested
 that you use it.
+  
+Sometimes it's useful to extract test function names from pgtap output, especially when using xUnit style with Continuous Integration Server like Hudson or TeamCity.
+By default pgTAP displays this names as "comment", but you're able to change this behavior by overriding function `test_started`:
+
+### `test_started( test_name )` ###
+
+    CREATE OR REPLACE FUNCTION test_started(TEXT)
+    RETURNS TEXT AS $$
+        SELECT 'test ' || $1 || '()';
+    $$ LANGUAGE SQL;
+
+This will show
+    test my_example_test_function_name()
+instead of
+    # my_example_test_function_name()
+This makes easy handling test name and differing test names from comments.
 
 I'm ok, you're not ok
 ---------------------
