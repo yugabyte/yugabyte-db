@@ -5756,8 +5756,8 @@ RETURNS boolean AS $$
     SELECT TRUE;
 $$ LANGUAGE sql;
 
--- test_started ( test_name )
-CREATE OR REPLACE FUNCTION test_started(TEXT)
+-- diag_test_name ( test_name )
+CREATE OR REPLACE FUNCTION diag_test_name(TEXT)
 RETURNS TEXT AS $$
     SELECT diag($1 || '()');
 $$ LANGUAGE SQL;
@@ -5789,7 +5789,7 @@ BEGIN
         FOR i IN 1..array_upper(tests, 1) LOOP
             BEGIN
                 -- What test are we running?
-                IF verbos THEN RETURN NEXT test_started(tests[i]); END IF;
+                IF verbos THEN RETURN NEXT diag_test_name(tests[i]); END IF;
 
                 -- Run the setup functions.
                 FOR tap IN SELECT * FROM _runem(setup, false) LOOP RETURN NEXT tap; END LOOP;
