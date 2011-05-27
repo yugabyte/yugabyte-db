@@ -637,7 +637,11 @@ dbms_pipe_pack_message_record(PG_FUNCTION_ARGS)
 	 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
 	 * flinfo parameter.
 	 */
+#if PG_VERSION_NUM >= 90100
+	InitFunctionCallInfoData(info, fcinfo->flinfo, 3, InvalidOid, NULL, NULL);
+#else
 	InitFunctionCallInfoData(info, fcinfo->flinfo, 3, NULL, NULL);
+#endif
 
 	info.arg[0] = PointerGetDatum(rec);
 	info.arg[1] = ObjectIdGetDatum(tupType);
@@ -712,7 +716,11 @@ dbms_pipe_unpack_message(PG_FUNCTION_ARGS, message_data_type dtype)
 			 * using fcinfo->flinfo->fn_extra.  So we need to pass it our own
 			 * flinfo parameter.
 			 */
+#if PG_VERSION_NUM >= 90100
+			InitFunctionCallInfoData(info, fcinfo->flinfo, 3, InvalidOid, NULL, NULL);
+#else
 			InitFunctionCallInfoData(info, fcinfo->flinfo, 3, NULL, NULL);
+#endif
 
 			info.arg[0] = PointerGetDatum(&buf);
 			info.arg[1] = ObjectIdGetDatum(tupType);

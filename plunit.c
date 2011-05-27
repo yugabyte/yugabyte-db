@@ -62,7 +62,7 @@ plunit_assert_true_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || !condition)
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_true).")));
 
 	PG_RETURN_VOID();
@@ -96,7 +96,7 @@ plunit_assert_false_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || condition)
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_false).")));
 
 	PG_RETURN_VOID();
@@ -129,7 +129,7 @@ plunit_assert_null_message(PG_FUNCTION_ARGS)
 	if (!PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_null).")));
 
 	PG_RETURN_VOID();
@@ -162,7 +162,7 @@ plunit_assert_not_null_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_not_null).")));
 
 	PG_RETURN_VOID();
@@ -263,13 +263,13 @@ plunit_assert_equals_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_equals).")));
 
 	if (!assert_equals_base(fcinfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_equals).")));
 
 	PG_RETURN_VOID();
@@ -309,13 +309,13 @@ plunit_assert_equals_range_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_equals).")));
 
 	if (!assert_equals_range_base(fcinfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_equals).")));
 
 	PG_RETURN_VOID();
@@ -358,13 +358,13 @@ plunit_assert_not_equals_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_not_equals).")));
 
 	if (assert_equals_base(fcinfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_not_equals).")));
 
 	PG_RETURN_VOID();
@@ -385,13 +385,13 @@ plunit_assert_not_equals_range_message(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1) || PG_ARGISNULL(2))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_not_equals).")));
 
 	if (assert_equals_range_base(fcinfo))
 		ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation fails (assert_not_equals).")));
 
 	PG_RETURN_VOID();
@@ -423,7 +423,7 @@ plunit_fail_message(PG_FUNCTION_ARGS)
 
 	ereport(ERROR,
 				(errcode(ERRCODE_CHECK_VIOLATION),
-				 errmsg(message),
+				 errmsg("%s", message),
 				 errdetail("Plunit.assertation (assert_fail).")));
 
 	PG_RETURN_VOID();

@@ -159,12 +159,20 @@ Datum
 dbms_assert_enquote_name(PG_FUNCTION_ARGS)
 {
 	Datum name  = PG_GETARG_DATUM(0);
-    	bool loweralize = PG_GETARG_BOOL(1);
+	bool loweralize = PG_GETARG_BOOL(1);
+#if PG_VERSION_NUM >= 90100
+	Oid collation = PG_GET_COLLATION();
+#endif
 
 	name = DirectFunctionCall1(quote_ident, name);
 
+#if PG_VERSION_NUM >= 90100
+	if (loweralize)
+		name = DirectFunctionCall1Coll(lower, collation, name);
+#else
 	if (loweralize)
 		name = DirectFunctionCall1(lower, name);
+#endif
 
 	PG_RETURN_DATUM(name);
 }

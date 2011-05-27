@@ -325,6 +325,9 @@ ora_decode(PG_FUNCTION_ARGS)
 	else
 	{
 		FmgrInfo   *eq;
+#if PG_VERSION_NUM >= 90100
+		Oid		collation = PG_GET_COLLATION();
+#endif
 
 		/*
 		 * On first call, get the input type's operator '=' and save at
@@ -354,7 +357,11 @@ ora_decode(PG_FUNCTION_ARGS)
 			if (PG_ARGISNULL(i))
 				continue;
 
+#if PG_VERSION_NUM >= 90100
+			InitFunctionCallInfoData(func, eq, 2, collation, NULL, NULL);
+#else
 			InitFunctionCallInfoData(func, eq, 2, NULL, NULL);
+#endif
 			func.arg[0] = PG_GETARG_DATUM(0);
 			func.arg[1] = PG_GETARG_DATUM(i);
 			func.argnull[0] = false;
