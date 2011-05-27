@@ -1,8 +1,10 @@
 MODULE_big = orafunc
 OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o
 
+EXTENSION = orafce
+
 DATA_built = orafunc.sql
-DATA = uninstall_orafunc.sql 
+DATA = uninstall_orafunc.sql orafce--3.0.sql orafce--unpackaged--3.0.sql
 DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
 REGRESS = orafunc dbms_output files
 REGRESS_OPTS = --load-language=plpgsql
@@ -76,3 +78,4 @@ endif
 
 orafunc.sql.in:
 	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in
+
