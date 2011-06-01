@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(30);
+SELECT plan(35);
 --SELECT * FROM no_plan();
 
 SELECT is( pg_typeof(42), 'integer', 'pg_type(int) should work' );
@@ -124,6 +124,14 @@ SELECT is( display_type( oid, 13 ), '"hey"".yoman"(13)', 'display_type(__foo."he
 CREATE DOMAIN "try.this""" AS numeric CHECK (TRUE);
 SELECT is( display_type( oid, 42 ), '"try.this"""(42)', 'display_type("try.this""", 42)' )
   FROM pg_type WHERE typname = 'try.this"';
+
+-- Take care about quoting with/without precision
+SELECT is(_quote_ident_like('test','public.test'), 'test', 'No quoting is required');
+SELECT is(_quote_ident_like('test type','public."test type"'), '"test type"', 'Just quote');
+SELECT is(_quote_ident_like('varchar(12)', 'varchar(12)'), 'varchar(12)', 'No quoting is required (with precision)');
+SELECT is(_quote_ident_like('test type(123)','myschema."test type"(234)'), '"test type"(123)', 'Quote as type with precision');
+SELECT is(_quote_ident_like('test table (123)','public."test table (123)"'), '"test table (123)"', 'Quote as ident without precision');
+
 
 /****************************************************************************/
 -- Finish the tests and clean up.
