@@ -9,6 +9,8 @@ Revision history for pgTAP
   included in any distribution and should just work for tesing on PostgreSQL
   8.3+.
 * Added abstract to the `provides` section of `META.json`.
+* Removed use of `relistemp` column in an internal function, as it has been
+  removed in PostgreSQL 9.1. Thanks to Tom Lane for the alternate syntax.
 
 0.25.0 2011-02-02T03:21:55
 --------------------------

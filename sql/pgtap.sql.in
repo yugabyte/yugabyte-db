@@ -5897,8 +5897,7 @@ RETURNS TEXT AS $$
         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
           FROM pg_catalog.pg_attribute a
           JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
-         WHERE c.relname = $1
-           AND c.relistemp
+         WHERE c.oid = ('pg_temp.' || $1)::pg_catalog.regclass
            AND attnum > 0
            AND NOT attisdropped
          ORDER BY attnum
