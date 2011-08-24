@@ -4,7 +4,7 @@ EXTVERSION   = $(shell grep default_version $(EXTENSION).control | \
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
 DATA         = $(filter-out $(wildcard sql/*--*.sql),$(wildcard sql/*.sql))
 TESTS        = $(wildcard test/sql/*.sql)
-EXTRA_CLEAN  = test/setup.sql doc/*.html
+EXTRA_CLEAN  = sql/pgtap.sql sql/uninstall_pgtap.sql doc/*.html
 DOCS         = doc/pgtap.md
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
@@ -76,6 +76,9 @@ endif
 
 # Determine the OS. Borrowed from Perl's Configure.
 OSNAME := $(shell ./getos.sh)
+
+# Make sure we build these.
+all: sql/pgtap.sql sql/uninstall_pgtap.sql
 
 # Add extension build targets on 9.1 and up.
 ifeq ($(shell $(PG_CONFIG) --version | grep -qE " 8\.| 9\.0" && echo no || echo yes),yes)
