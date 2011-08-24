@@ -11,6 +11,7 @@ Revision history for pgTAP
 * Added abstract to the `provides` section of `META.json`.
 * Removed use of `relistemp` column in an internal function, as it has been
   removed in PostgreSQL 9.1. Thanks to Tom Lane for the alternate syntax.
+* Added PostreSQL 9.1 `CREATE EXTENSION` support.
 
 0.25.0 2011-02-02T03:21:55
 --------------------------

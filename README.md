@@ -57,13 +57,27 @@ You need to run the test suite using a super user, such as the default
 
     make installcheck PGUSER=postgres
 
-If you want to schema-qualify pgTAP (that is, install all of its functions
-into their own schema), set the `$TAPSCHEMA` variable to the name of the
-schema you'd like to be created, for example:
+Once pgTAP is installed, you can add it to a database. If you're running
+PostgreSQL 9.1.0 or greater, it's a simple as connecting to a database as a
+super user and running:
 
-    make TAPSCHEMA=tap
-    make install
-    make installcheck
+    CREATE EXTENSION pgtap;
+
+If you've upgraded your cluster to PostgreSQL 9.1 and already had pgTAP
+installed, you can upgrade it to a properly packaged extension with:
+
+    CREATE EXTENSION pgtap FROM unpackaged;
+
+For versions of PostgreSQL less than 9.1.0, you'll need to run the
+installation script:
+
+    psql -d mydb -f /path/to/pgsql/share/contrib/pgtap.sql
+
+If you want to install pgTAP and all of its supporting objects into a
+specific schema, use the `PGOPTIONS` environment variable to specify the
+schema, like so:
+
+    PGOPTIONS=--search_path=extensions psql -d mydb -f pgTAP.sql
 
 Dependencies
 ------------

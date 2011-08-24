@@ -8,3 +8,4 @@ pgtap.so
 regression.*
 *.html
 bbin
+/sql/pgtap--0.*
