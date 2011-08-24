@@ -26,7 +26,7 @@ BuildArch:	noarch
 %setup -q
 
 %build
-make USE_PGXS=1 TAPSCHEMA=tap
+make
 
 %install
 %{__rm} -rf  %{buildroot}
@@ -59,4 +59,9 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 
 * Wed Aug 19 2009 Darrell Fuhriman <darrell@projectdx.com> 0.22-1
 - initial RPM
- 
+
+* Tue Aug 23 2011 David Wheeler <david@kineticode.com> 0.26.0
+- Removed USE_PGXS from Makefile; it has not been supported in some time.
+- Removed TAPSCHEMA from Makefile; use PGOPTIONS=--search_path=tap with
+  psql instead.
+

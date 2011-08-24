@@ -12,7 +12,7 @@
  DROP FUNCTION hasnt_enum( NAME );
  DROP FUNCTION hasnt_enum( NAME, TEXT );
  DROP FUNCTION hasnt_enum( NAME, NAME );
-@@ -710,5 +705,9 @@
+@@ -710,3 +705,7 @@
  DROP FUNCTION textarray_text(text[]);
  DROP CAST (boolean AS char(1));
  DROP FUNCTION booltext(boolean);
@@ -20,5 +20,3 @@
 +DROP FUNCTION int2vint(int2vector);
 +DROP CAST (oidvector AS regtype[]);
 +DROP FUNCTION oidvregtype(oidvector);
- -- ## SET search_path TO public;
- -- ## DROP SCHEMA TAPSCHEMA;

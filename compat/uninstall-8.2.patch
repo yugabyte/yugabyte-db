@@ -21,7 +21,7 @@
  DROP FUNCTION diag ( msg text );
  DROP FUNCTION finish ();
  DROP FUNCTION _finish ( INTEGER, INTEGER, INTEGER);
-@@ -705,5 +698,17 @@
+@@ -705,3 +698,15 @@
  DROP FUNCTION os_name();
  DROP FUNCTION pg_version_num();
  DROP FUNCTION pg_version();
@@ -37,5 +37,3 @@
 +DROP FUNCTION textarray_text(text[]);
 +DROP CAST (boolean AS char(1));
 +DROP FUNCTION booltext(boolean);
- -- ## SET search_path TO public;
- -- ## DROP SCHEMA TAPSCHEMA;

@@ -77,7 +77,7 @@ If you want to install pgTAP and all of its supporting objects into a
 specific schema, use the `PGOPTIONS` environment variable to specify the
 schema, like so:
 
-    PGOPTIONS=--search_path=extensions psql -d mydb -f pgTAP.sql
+    PGOPTIONS=--search_path=tap psql -d mydb -f pgTAP.sql
 
 Dependencies
 ------------

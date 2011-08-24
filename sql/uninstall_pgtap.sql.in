@@ -1,4 +1,3 @@
--- ## SET search_path TO TAPSCHEMA, public;
 DROP FUNCTION columns_are( NAME, NAME[] );
 DROP FUNCTION columns_are( NAME, NAME[], TEXT );
 DROP FUNCTION columns_are( NAME, NAME, NAME[] );
@@ -706,5 +705,3 @@ DROP FUNCTION pgtap_version();
 DROP FUNCTION os_name();
 DROP FUNCTION pg_version_num();
 DROP FUNCTION pg_version();
--- ## SET search_path TO public;
--- ## DROP SCHEMA TAPSCHEMA;

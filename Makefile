@@ -88,15 +88,6 @@ DATA = $(wildcard sql/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql
 EXTRA_CLEAN += sql/$(EXTENSION)--$(EXTVERSION).sql
 endif
 
-# Override how .sql targets are processed to add the schema info, if
-# necessary. Otherwise just copy the files.
-test/setup.sql: test/setup.sql.in
-ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' $< >$@
-else
-	cp $< $@
-endif
-
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
 ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0123]" && echo yes || echo no),yes)
@@ -115,11 +106,7 @@ ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0]" && echo yes || echo no),yes)
 	sed -e "s/ E'/ '/g" sql/pgtap.tmp > sql/pgtap.sql
 	rm sql/pgtap.tmp
 endif
-ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
-else
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
-endif
 	mv sql/pgtap.tmp sql/pgtap.sql
 
 sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test/setup.sql
@@ -132,10 +119,6 @@ ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[012]" && echo yes || echo no),yes
 endif
 ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0]" && echo yes || echo no),yes)
 	patch -p0 < compat/uninstall-8.0.patch
-endif
-ifdef TAPSCHEMA
-	sed -e 's,TAPSCHEMA,$(TAPSCHEMA),g' -e 's/^-- ## //g' sql/uninstall_pgtap.sql > sql/uninstall.tmp
-	mv sql/uninstall.tmp sql/uninstall_pgtap.sql
 endif
 
 sql/pgtap-core.sql: sql/pgtap.sql.in

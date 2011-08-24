@@ -8,9 +8,6 @@
 --
 -- http://pgtap.org/
 
--- ## CREATE SCHEMA TAPSCHEMA;
--- ## SET search_path TO TAPSCHEMA, public;
-
 CREATE OR REPLACE FUNCTION pg_version()
 RETURNS text AS 'SELECT current_setting(''server_version'')'
 LANGUAGE SQL IMMUTABLE;
