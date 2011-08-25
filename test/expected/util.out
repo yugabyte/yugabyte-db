@@ -1,5 +1,5 @@
 \unset ECHO
-1..30
+1..35
 ok 1 - pg_type(int) should work
 ok 2 - pg_type(numeric) should work
 ok 3 - pg_type(text) should work
@@ -30,3 +30,8 @@ ok 27 - display_type(__foo."this.that")
 ok 28 - display_type(__foo."this"".that")
 ok 29 - display_type(__foo."hey"".yoman", 13)
 ok 30 - display_type("try.this""", 42)
+ok 31 - No quoting is required
+ok 32 - Just quote
+ok 33 - No quoting is required (with precision)
+ok 34 - Quote as type with precision
+ok 35 - Quote as ident without precision

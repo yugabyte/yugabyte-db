@@ -1157,9 +1157,8 @@ BEGIN
     -- Just return it if rhs isn't quoted.
     IF $2 !~ '"' THEN RETURN $1; END IF;
 
-    -- If it's quoted ident without precision, return it.
-    -- We need to care about, because "test type(123)" is distinct from "test type"(123)
-    IF substring($2 FROM char_length($2) FOR 1) = '"' THEN RETURN quote_ident($1); END IF;
+    -- If it's quoted ident without precision, return it quoted.
+    IF $2 ~ '"$' THEN RETURN quote_ident($1); END IF;
 
     pcision := substring($1 FROM '[(][^")]+[)]$');
 
