@@ -5,7 +5,7 @@ NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:
 DATA         = $(filter-out $(wildcard sql/*--*.sql),$(wildcard sql/*.sql))
 TESTS        = $(wildcard test/sql/*.sql)
 EXTRA_CLEAN  = sql/pgtap.sql sql/uninstall_pgtap.sql doc/*.html
-DOCS         = doc/pgtap.md
+DOCS         = doc/pgtap.mmd
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
 PG_CONFIG    = pg_config
@@ -146,7 +146,7 @@ test: test/setup.sql
 	pg_prove --pset tuples_only=1 $(TESTS)
 
 html:
-	markdown -ftoc doc/pgtap.md > doc/pgtap.html
+	MultiMarkdown.pl doc/pgtap.mmd > doc/pgtap.html
 	./tocgen doc/pgtap.html 2> doc/toc.html
 	perl -MPod::Simple::XHTML -E "my \$$p = Pod::Simple::XHTML->new; \$$p->html_header_tags('<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">'); \$$p->strip_verbatim_indent(sub { (my \$$i = \$$_[0]->[0]) =~ s/\\S.*//; \$$i }); \$$p->parse_from_file('`perldoc -l pg_prove`')" > doc/pg_prove.html
 

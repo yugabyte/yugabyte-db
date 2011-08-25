@@ -371,12 +371,17 @@ that you use it.
 Sometimes it's useful to extract test function names from pgtap output, especially when using xUnit style with Continuous Integration Server like Hudson or TeamCity.
 By default pgTAP displays this names as "comment", but you're able to change this behavior by overriding function `diag_test_name`:
 
-### `diag_test_name( test_name )` ###
+### `diag_test_name()` ###
 
     CREATE OR REPLACE FUNCTION diag_test_name(TEXT)
     RETURNS TEXT AS $$
         SELECT diag('test: ' || $1 );
     $$ LANGUAGE SQL;
+
+**Parameters**
+
+`:test_name`
+: A test name.
 
 This will show
     # test: my_example_test_function_name
@@ -394,10 +399,17 @@ given test succeeded or failed. Everything else is just gravy.
 All of the following functions return "ok" or "not ok" depending on whether
 the test succeeded or failed.
 
-### `ok( boolean, description )` ###
-### `ok( boolean )` ###
+### `ok()` ###
 
     SELECT ok( :this = :that, :description );
+
+**Parameters**
+
+`:boolean`
+: A boolean value indicating success or failure.
+
+`:description`
+: A short description of the test.
 
 This function simply evaluates any expression (`:this = :that` is just a
 simple example) and uses that to determine if the test succeeded or failed. A
@@ -431,13 +443,22 @@ additional diagnostic:
     #     Failed test 18: "sufficient mucus"
     #     (test result was NULL)
 
-### `is( anyelement, anyelement, description )` ###
-### `is( anyelement, anyelement )` ###
-### `isnt( anyelement, anyelement, description )` ###
-### `isnt( anyelement, anyelement )` ###
+### `is()` ###
+### `isnt()` ###
 
-    SELECT is(   :this, :that, :description );
-    SELECT isnt( :this, :that, :description );
+    SELECT is(   :have, :want, :description );
+    SELECT isnt( :have, :want, :description );
+
+**Parameters**
+
+`:have`
+: Value to test.
+
+`:want`
+: Value that `:have` is expcted to be. Must be the same data type.
+
+`:description`
+: A short description of the test.
 
 Similar to `ok()`, `is()` and `isnt()` compare their two arguments with `IS
 NOT DISTINCT FROM` (`=`) AND `IS DISTINCT FROM` (`<>`) respectively and use
@@ -457,8 +478,8 @@ are similar to these:
 (Mnemonic: "This is that." "This isn't that.")
 
 *Note:* Thanks to the use of the `IS [ NOT ] DISTINCT FROM` construct, `NULL`s
-are not treated as unknowns by `is()` or `isnt()`. That is, if `:this` and
-`:that` are both `NULL`, the test will pass, and if only one of them is
+are not treated as unknowns by `is()` or `isnt()`. That is, if `:have` and
+`:want` are both `NULL`, the test will pass, and if only one of them is
 `NULL`, the test will fail.
 
 So why use these test functions? They produce better diagnostics on failure.
@@ -485,12 +506,22 @@ can even use them to compar records in PostgreSQL 8.4 and later:
       FROM users
      WHERE nick = 'theory'; 
 
-### `matches( anyelement, regex, description )` ###
-### `matches( anyelement, regex )` ###
+### `matches()` ###
 
-    SELECT matches( :this, '^that', :description );
+    SELECT matches( :have, :regex, :description );
 
-Similar to `ok()`, `matches()` matches `:this` against the regex `/^that/`.
+**Parameters**
+
+`:have`
+: Value to match.
+
+`:regex`
+: A regular expression.
+
+`:description`
+: A short description of the test.
+
+Similar to `ok()`, `matches()` matches `:have` against the regex `:regex`.
 
 So this:
 
@@ -505,76 +536,127 @@ is similar to:
 Its advantages over `ok()` are similar to that of `is()` and `isnt()`: Better
 diagnostics on failure.
 
-### `imatches( anyelement, regex, description )` ###
-### `imatches( anyelement, regex )` ###
+### `imatches()` ###
 
-    SELECT imatches( :this, '^that', :description );
+    SELECT imatches( :have, :regex, :description );
 
-These are just like `matches()` except that the regular expression is compared
-to `:this` case-insensitively.
+**Parameters**
 
-### `doesnt_match( anyelement, regex, description )` ###
-### `doesnt_match( anyelement, regex )` ###
-### `doesnt_imatch( anyelement, regex, description )` ###
-### `doesnt_imatch( anyelement, regex )` ###
+`:have`
+: Value to match.
 
-    SELECT doesnt_match( :this, '^that', :description );
+`:regex`
+: A regular expression.
+
+`:description`
+: A short description of the test.
+
+Just like `matches()` except that the regular expression is compared to
+`:have` case-insensitively.
+
+### `doesnt_match()` ###
+### `doesnt_imatch()` ###
+
+    SELECT doesnt_match( :have, :regex, :description );
+
+**Parameters**
+
+`:have`
+: Value to match.
+
+`:regex`
+: A regular expression.
+
+`:description`
+: A short description of the test.
 
 These functions work exactly as `matches()` and `imatches()` do, only they
-check if `:this` *does not* match the given pattern.
+check if `:have` *does not* match the given pattern.
 
-### `alike( anyelement, pattern, description )` ###
-### `alike( anyelement, pattern )` ###
-### `ialike( anyelement, pattern, description )` ###
-### `ialike( anyelement, pattern )` ###
+### `alike()` ###
+### `ialike()` ###
 
-    SELECT alike( :this, 'that%', :description );
+    SELECT alike( :this, :like, :description );
 
-Similar to `matches()`, `alike()` matches `:this` against the SQL `LIKE`
-pattern 'that%'. `ialike()` matches case-insensitively.
+**Parameters**
+
+`:have`
+: Value to match.
+
+`:like`
+: A SQL `LIKE` pattern.
+
+`:description`
+: A short description of the test.
+
+Similar to `matches()`, `alike()` matches `:hve` against the SQL `LIKE`
+pattern `:like`. `ialike()` matches case-insensitively.
 
 So this:
 
-    SELECT ialike( :this, 'that%', 'this is alike that' );
+    SELECT ialike( :have, 'that%', 'this is alike that' );
 
 is similar to:
 
-    SELECT ok( :this ILIKE 'that%', 'this is like that' );
+    SELECT ok( :have ILIKE 'that%', 'this is like that' );
 
 (Mnemonic "This is like that".)
 
 Its advantages over `ok()` are similar to that of `is()` and `isnt()`: Better
 diagnostics on failure.
 
-### `unalike( anyelement, pattern, description )` ###
-### `unalike( anyelement, pattern )` ###
-### `unialike( anyelement, pattern, description )` ###
-### `unialike( anyelement, pattern )` ###
+### `unalike()` ###
+### `unialike()` ###
 
-    SELECT unalike( :this, 'that%', :description );
+    SELECT unalike( :this, :like, :description );
 
-Works exactly as `alike()`, only it checks if `:this` *does not* match the
+**Parameters**
+
+`:have`
+: Value to match.
+
+`:like`
+: A SQL `LIKE` pattern.
+
+`:description`
+: A short description of the test.
+
+Works exactly as `alike()`, only it checks if `:have` *does not* match the
 given pattern.
 
 ### `cmp_ok( anyelement, operator, anyelement, description )` ###
 ### `cmp_ok( anyelement, operator, anyelement )` ###
 
-    SELECT cmp_ok( :this, :op, :that, :description );
+    SELECT cmp_ok( :have, :op, :want, :description );
+
+**Parameters**
+
+`:have`
+: Value to compare.
+
+`:op`
+: An SQL operator specified as a string.
+
+`:want`
+: Value to compare to `:have` using the `:op` operator.
+
+`:description`
+: A short description of the test.
 
 Halfway between `ok()` and `is()` lies `cmp_ok()`. This function allows you to
 compare two arguments using any binary operator.
 
-    -- ok( :this = :that );
-    SELECT cmp_ok( :this, '=', :that, 'this = that' );
+    -- ok( :have = :want );
+    SELECT cmp_ok( :have, '=', :want, 'this = that' );
 
-    -- ok( :this >= :that );
-    SELECT cmp_ok( :this, '>=, 'this >= that' );
+    -- ok( :have >= :want );
+    SELECT cmp_ok( :have, '>=', :want, 'this >= that' );
 
-    -- ok( :this && :that );
-    SELECT cmp_ok( :this, '&&', :that, 'this && that' );
+    -- ok( :have && :want );
+    SELECT cmp_ok( :have, '&&', :want, 'this && that' );
 
-Its advantage over `ok()` is that when the test fails you'll know what `:this`
-and `:that` were:
+Its advantage over `ok()` is that when the test fails you'll know what `:have`
+and `:want` were:
 
     not ok 1
     #     Failed test 1:
@@ -590,13 +672,16 @@ was, for example:
 
 But in that case, you should probably use `is()`, instead.
 
-### `pass( description )` ###
 ### `pass()` ###
-### `fail( description )` ###
 ### `fail()` ###
 
     SELECT pass( :description );
     SELECT fail( :description );
+
+**Parameters**
+
+`:description`
+: A short description of the test.
 
 Sometimes you just want to say that the tests have passed. Usually the case is
 you've got some complicated condition that is difficult to wedge into an
@@ -605,10 +690,20 @@ you've got some complicated condition that is difficult to wedge into an
 
 Use these functions very, very, very sparingly.
 
-### `isa_ok( value, regtype, name )` ###
-### `isa_ok( value, regtype )` ###
+### `isa_ok()` ###
 
-    SELECT isa_ok( :value, :regtype, name );
+    SELECT isa_ok( :have, :regtype, :name );
+
+**Parameters**
+
+`:have`
+: Value to check the type of.
+
+`:regtype`
+: Name of an SQL data type.
+
+`:name`
+: A name for the value being compared.
 
 Checks to see if the given value is of a particular type. The description and
 diagnostics of this test normally just refer to "the value". If you'd like
