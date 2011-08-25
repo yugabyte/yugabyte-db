@@ -812,20 +812,26 @@ Or maybe you want to make sure a query *does not* trigger an error. For such
 cases, we provide a couple of test functions to make sure your queries are as
 error-prone as you think they should be.
 
-### `throws_ok( sql, errcode, errmsg, description )` ###
-### `throws_ok( sql, errcode, errmsg )` ###
-### `throws_ok( sql, errmsg, description )` ###
-### `throws_ok( sql, errcode )` ###
-### `throws_ok( sql, errmsg )` ###
-### `throws_ok( sql )` ###
+### `throws_ok()` ###
 
-    PREPARE my_thrower AS INSERT INTO try (id) VALUES (1);
-    SELECT throws_ok(
-        'my_thrower',
-        '23505',
-        'duplicate key value violates unique constraint "try_pkey"',
-        'We should get a unique violation for a duplicate PK'
-    );
+    SELECT throws_ok( :sql, :errcode, :ermsg, :description); 
+    SELECT throws_ok( :sql, :errcode, :description); 
+    SELECT throws_ok( :sql, :errmsg, :description); 
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:errcode`
+: A [PostgreSQL error code](http://www.postgresql.org/docs/current/static/errcodes-appendix.html
+"Appendix A. PostgreSQL Error Codes")
+
+`:errmsg`
+: An error message.
+
+`:description`
+: A short description of the test.
 
 When you want to make sure that an exception is thrown by PostgreSQL, use
 `throws_ok()` to test for it. Supported by 8.1 and up.
@@ -851,7 +857,16 @@ careful of localized error messages.  One trick to get around localized error
 messages is to pass NULL as the third argument.  This allows you to still pass
 a description as the fourth argument.
 
-The fourth argument is of course a brief test description.
+The fourth argument is of course a brief test description. Here's a useful
+example:
+
+    PREPARE my_thrower AS INSERT INTO try (id) VALUES (1);
+    SELECT throws_ok(
+        'my_thrower',
+        '23505',
+        'duplicate key value violates unique constraint "try_pkey"',
+        'We should get a unique violation for a duplicate PK'
+    );
 
 For the two- and three-argument forms of `throws_ok()`, if the second argument
 is exactly five bytes long, it is assumed to be an error code and the optional
@@ -869,8 +884,26 @@ example:
 
 Idea borrowed from the Test::Exception Perl module.
 
-### `throws_like( query, pattern, description )` ###
-### `throws_like( query, pattern )` ###
+### `throws_like()` ###
+### `throws_ilike()` ###
+
+    SELECT throws_like(:sql, :like, :description);
+    SELECT throws_ilike(:sql, :like, :description);
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:like`
+: An SQL `LIKE` pattern.
+
+`:description`
+: A short description of the test.
+
+Like `throws_ok()`, but tests that an exception error message matches an SQL
+`LIKE` pattern. Supported by 8.1 and up. The `throws_ilike()` variant matches
+case-insensitively. An example:
 
     PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
     SELECT throws_like(
@@ -879,9 +912,6 @@ Idea borrowed from the Test::Exception Perl module.
         'We should error for invalid time zone'
     );
 
-Like `throws_ok()`, but tests that an exception error message matches an SQL
-`LIKE` pattern. Supported by 8.1 and up.
-
 A failing `throws_like()` test produces an appropriate diagnostic message. For
 example:
 
@@ -889,21 +919,26 @@ example:
     #     error message: 'value for domain timezone violates check constraint "tz_check"'
     #     doesn't match: '%"timezone_check"'
 
-### `throws_ilike( query, pattern, description )` ###
-### `throws_ilike( query, pattern )` ###
 
-    PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
-    SELECT throws_ilike(
-        'my_thrower',
-        '%"TZ_check"',
-        'We should error for invalid time zone'
-    );
+### `throws_matching()` ###
+### `throws_imatching()` ###
 
-Like `throws_like()`, but case-insensitively compares the exception message to
-the SQL `LIKE` pattern.
+    SELECT throws_matching(:sql, :regex, :description);
 
-### `throws_matching( query, regex, description )` ###
-### `throws_matching( query, regex )` ###
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:regex`
+: A regular expression.
+
+`:description`
+: A short description of the test.
+
+Like `throws_ok()`, but tests that an exception error message matches a
+regular expression. The `throws_imatching()` variant matches
+case-insensitively. Supported by 8.1 and up. An example:
 
     PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
     SELECT throws_matching(
@@ -912,9 +947,6 @@ the SQL `LIKE` pattern.
         'We should error for invalid time zone'
     );
 
-Like `throws_ok()`, but tests that an exception error message matches a
-regular expression. Supported by 8.1 and up.
-
 A failing `throws_matching()` test produces an appropriate diagnostic message. For
 example:
 
@@ -922,32 +954,28 @@ example:
     #     error message: 'value for domain timezone violates check constraint "tz_check"'
     #     doesn't match: '.+"timezone_check"'
 
-### `throws_imatching( query, regex, description )` ###
-### `throws_imatching( query, regex )` ###
+### `lives_ok()` ###
 
-    PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
-    SELECT throws_imatching(
-        'my_thrower',
-        '.+"TZ_check"',
-        'We should error for invalid time zone'
-    );
+    SELECT lives_ok(:sql, :description);
 
-Like `throws_matching()`, but case-insensitively compares the exception
-message to the regular expression.
+**Parameters**
 
-### `lives_ok( query, description )` ###
-### `lives_ok( query )` ###
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
 
-    SELECT lives_ok(
-        'INSERT INTO try (id) VALUES (1)',
-        'We should not get a unique violation for a new PK'
-    );
+`:description`
+: A short description of the test.
 
 The inverse of `throws_ok()`, `lives_ok()` ensures that an SQL statement does
 *not* throw an exception. Supported by 8.1 and up. Pass in the name of a
 prepared statement or string of SQL code (see the
 [summary](#Pursuing+Your+Query) for query argument details). The optional
-second argument is the test description.
+second argument is the test description. An example:
+
+    SELECT lives_ok(
+        'INSERT INTO try (id) VALUES (1)',
+        'We should not get a unique violation for a new PK'
+    );
 
 A failing `lives_ok()` test produces an appropriate diagnostic message. For
 example:
@@ -960,16 +988,29 @@ Idea borrowed from the Test::Exception Perl module.
 ### `performs_ok( sql, milliseconds, description )` ###
 ### `performs_ok( sql, milliseconds )` ###
 
+    SELECT performs_ok( :sql, :milliseconds, :description );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:milliseconds`
+: Number of milliseconds.
+
+`:description`
+: A short description of the test.
+
+This function makes sure that an SQL statement performs well. It does so by
+timing its execution and failing if execution takes longer than the specified
+number of milliseconds. An example:
+
     PREPARE fast_query AS SELECT id FROM try WHERE name = 'Larry';
     SELECT performs_ok(
         'fast_query',
         250,
         'A select by name should be fast'
     );
-
-This function makes sure that an SQL statement performs well. It does so by
-timing its execution and failing if execution takes longer than the specified
-number of milliseconds.
 
 The first argument should be the name of a prepared statement or a string
 representing the query to be executed (see the [summary](#Pursuing+Your+Query)
