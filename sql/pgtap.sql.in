@@ -7363,3 +7363,37 @@ RETURNS TEXT AS $$
     SELECT columns_are( $1, $2, 'Table ' || quote_ident($1) || ' should have the correct columns' );
 $$ LANGUAGE SQL;
 
+-- _get_db_owner( dbname )
+CREATE OR REPLACE FUNCTION _get_db_owner( NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(datdba)
+      FROM pg_catalog.pg_database
+     WHERE datname = $1;
+$$ LANGUAGE SQL;
+
+-- db_owner_is ( dbname, user, description )
+CREATE OR REPLACE FUNCTION db_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    dbowner NAME := _get_db_owner($1);
+BEGIN
+    -- Make sure the database exists.
+    IF dbowner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Database ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(dbowner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- db_owner_is ( dbname, user )
+CREATE OR REPLACE FUNCTION db_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT db_owner_is(
+        $1, $2,
+        'Database ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;
+

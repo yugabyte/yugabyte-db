@@ -14,6 +14,7 @@ Revision history for pgTAP
 * Added PostreSQL 9.1 `CREATE EXTENSION` support.
 * Removed `TAPSCHEMA` option to `make`. Use `PGOPTIONS=--search_path=tap` with
   `psql`, instead.
+* Added `db_owner_is()`. Based on a patch by Gerd Koenig.
 
 0.25.0 2011-02-02T03:21:55
 --------------------------

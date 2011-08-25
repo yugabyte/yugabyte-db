@@ -1,3 +1,6 @@
+DROP FUNCTION db_owner_is ( NAME, NAME );
+DROP FUNCTION db_owner_is ( NAME, NAME, TEXT );
+DROP FUNCTION _get_db_owner( NAME );
 DROP FUNCTION columns_are( NAME, NAME[] );
 DROP FUNCTION columns_are( NAME, NAME[], TEXT );
 DROP FUNCTION columns_are( NAME, NAME, NAME[] );

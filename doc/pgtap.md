@@ -3701,6 +3701,33 @@ If the rule in question does not exist, you'll be told that, too:
 
 But then you run `has_rule()` first, don't you?
 
+Who owns me?
+------------
+
+After testing the availability of several objects, we often need to know who
+owns an object.
+
+### `db_owner_is (dbname, user, description)` ###
+### `db_owner_is (dbname, user)` ###
+
+    SELECT db_owner_is( 'mydb', 'someuser', 'mydb should be owned by someuser');
+    SELECT db_owner_is( current_database(), current_user);
+
+Tests the ownership of the database. If the `:description` argument is
+omitted, an appropriate description will be created. In the event that the
+test fails because the database in question does not actually exist, you will
+see an appropriate diagnostic such as:
+
+    # Failed test 16: "Database foo should be owned by www"
+    #     Database foo does not exist
+
+If the test fails because the database is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Database bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
 No Test for the Wicked
 ======================
 
@@ -4401,7 +4428,6 @@ To Do
   (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
   description to be optional if the schema is included in the function call.
 * Add functions to test for object ownership.
-  + `db_owner_is()`
   + `table_owner_is()`
   + `view_owner_is()`
   + `sequence_owner_is()`

@@ -1,0 +1,14 @@
+\unset ECHO
+1..12
+ok 1 - db_owner_is(db, user, desc) should pass
+ok 2 - db_owner_is(db, user, desc) should have the proper description
+ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
+ok 4 - db_owner_is(db, user) should pass
+ok 5 - db_owner_is(db, user) should have the proper description
+ok 6 - db_owner_is(db, user) should have the proper diagnostics
+ok 7 - db_owner_is(non-db, user) should fail
+ok 8 - db_owner_is(non-db, user) should have the proper description
+ok 9 - db_owner_is(non-db, user) should have the proper diagnostics
+ok 10 - db_owner_is(db, non-user) should fail
+ok 11 - db_owner_is(db, non-user) should have the proper description
+ok 12 - db_owner_is(db, non-user) should have the proper diagnostics
