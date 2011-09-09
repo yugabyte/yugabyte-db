@@ -1072,24 +1072,34 @@ So you've got your basic scalar comparison functions, what about relations?
 Maybe you have some pretty hairy `SELECT` statements in views or functions to
 test? We've got your relation-testing functions right here.
 
-### `results_eq( sql, sql, description )` ###
-### `results_eq( sql, sql )` ###
-### `results_eq( sql, array, description )` ###
-### `results_eq( sql, array )` ###
-### `results_eq( cursor, cursor, description )` ###
-### `results_eq( cursor, cursor )` ###
-### `results_eq( sql, cursor, description )` ###
-### `results_eq( sql, cursor )` ###
-### `results_eq( cursor, sql, description )` ###
-### `results_eq( cursor, sql )` ###
-### `results_eq( cursor, array, description )` ###
-### `results_eq( cursor, array )` ###
+### `results_eq()` ###
 
-    PREPARE users_test AS SELECT * FROM active_users();
-    PREPARE users_expect AS
-    VALUES ( 42, 'Anna'), (19, 'Strongrrl'),  (39, 'Theory');
+    SELECT results_eq( :sql,    :sql,    :description );
+    SELECT results_eq( :sql,    :sql                  );
+    SELECT results_eq( :sql,    :array,  :description );
+    SELECT results_eq( :sql,    :array                );
+    SELECT results_eq( :cursor, :cursor, :description );
+    SELECT results_eq( :cursor, :cursor               );
+    SELECT results_eq( :sql,    :cursor, :description );
+    SELECT results_eq( :sql,    :cursor               );
+    SELECT results_eq( :cursor, :sql,    :description );
+    SELECT results_eq( :cursor, :sql                  );
+    SELECT results_eq( :cursor, :array,  :description );
+    SELECT results_eq( :cursor, :array                );
 
-    SELECT results_eq( 'users_test', 'users_expect', 'We should have users' );
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:array`
+: An array of values representing a single-column row values.
+
+`:cursor`
+: A PostgreSQL `refcursor` value representing a named cursor.
+
+`:description`
+: A short description of the test.
 
 There are three ways to test result sets in pgTAP. Perhaps the most intuitive
 is to do a direct row-by-row comparison of results to ensure that they are
@@ -1226,24 +1236,34 @@ example, a `NULL` column will be equivalent to an empty string. The upshot:
 read failure diagnostics carefully and pay attention to data types on 8.3 and
 down.
 
-### `results_ne( sql, sql, description )` ###
-### `results_ne( sql, sql )` ###
-### `results_ne( sql, array, description )` ###
-### `results_ne( sql, array )` ###
-### `results_ne( cursor, cursor, description )` ###
-### `results_ne( cursor, cursor )` ###
-### `results_ne( sql, cursor, description )` ###
-### `results_ne( sql, cursor )` ###
-### `results_ne( cursor, sql, description )` ###
-### `results_ne( cursor, sql )` ###
-### `results_ne( cursor, array, description )` ###
-### `results_ne( cursor, array )` ###
+### `results_ne()` ###
 
-    PREPARE users_test AS SELECT * FROM active_users();
-    PREPARE not_users AS
-    VALUES ( 42, 'Anna'), (19, 'Strongrrl'),  (39, 'Theory');
+    SELECT results_ne( :sql,    :sql,    :description );
+    SELECT results_ne( :sql,    :sql                  );
+    SELECT results_ne( :sql,    :array,  :description );
+    SELECT results_ne( :sql,    :array                );
+    SELECT results_ne( :cursor, :cursor, :description );
+    SELECT results_ne( :cursor, :cursor               );
+    SELECT results_ne( :sql,    :cursor, :description );
+    SELECT results_ne( :sql,    :cursor               );
+    SELECT results_ne( :cursor, :sql,    :description );
+    SELECT results_ne( :cursor, :sql                  );
+    SELECT results_ne( :cursor, :array,  :description );
+    SELECT results_ne( :cursor, :array                );
 
-    SELECT results_ne( 'users_test', 'not_users', 'We should get only users' );
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:array`
+: An array of values representing a single-column row values.
+
+`:cursor`
+: A PostgreSQL `refcursor` value representing a named cursor.
+
+`:description`
+: A short description of the test.
 
 The inverse of `results_eq()`, this function tests that query results are not
 equivalent. Note that, like `results_ne()`, order matters, so you can actually
@@ -1257,14 +1277,23 @@ same!
 Note that the caveats for `results_ne()` on PostgreSQL 8.3 and down apply to
 `results_ne()` as well.
 
-### `set_eq( sql, sql, description )` ###
-### `set_eq( sql, sql )` ###
-### `set_eq( sql, array, description )` ###
-### `set_eq( sql, array )` ###
+### `set_eq()` ###
 
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
-    SELECT set_eq( 'testq', 'expect', 'gotta have the A listers' );
+    SELECT set_eq( :sql, :sql,   :description );
+    SELECT set_eq( :sql, :sql                 );
+    SELECT set_eq( :sql, :array, :description );
+    SELECT set_eq( :sql, :array               );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:array`
+: An array of values representing a single-column row values.
+
+`:description`
+: A short description of the test.
 
 Sometimes you don't care what order query results are in, or if there are
 duplicates. In those cases, use `set_eq()` to do a simple set comparison of
@@ -1307,14 +1336,23 @@ This of course extends to sets with different numbers of columns:
     #         have: (integer)
     #         want: (text,integer)
 
-### `set_ne( sql, sql, description )` ###
-### `set_ne( sql, sql )` ###
-### `set_ne( sql, array, description )` ###
-### `set_ne( sql, array )` ###
+### `set_ne()` ###
 
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
-    SELECT set_ne( 'testq', 'expect', 'gotta have the A listers' );
+    SELECT set_ne( :sql, :sql,   :description );
+    SELECT set_ne( :sql, :sql                 );
+    SELECT set_ne( :sql, :array, :description );
+    SELECT set_ne( :sql, :array               );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:array`
+: An array of values representing a single-column row values.
+
+`:description`
+: A short description of the test.
 
 The inverse of `set_eq()`, this function tests that the results of two queries
 are *not* the same. The two queries can as usual be the names of prepared
@@ -1325,12 +1363,18 @@ comparable -- that is, with the same number and types of columns in the same
 orders. If it happens that the query you're testing returns a single column,
 the second argument may be an array.
 
-### `set_has( sql, sql, description )` ###
-### `set_has( sql, sql )` ###
+### `set_has()` ###
 
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE subset AS SELECT * FROM USERS where name LIKE 'a%';
-    SELECT set_has( 'testq', 'subset', 'gotta have at least the A listers' );
+    SELECT set_has( :sql, :sql, :description );
+    SELECT set_has( :sql, :sql );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:description`
+: A short description of the test.
 
 When you need to test that a query returns at least some subset of records,
 `set_has()` is the hammer you're looking for. It tests that the the results of
@@ -1356,12 +1400,18 @@ As with `set_eq()`, `set_has()` will also provide useful diagnostics when the
 queries return incompatible columns. Internally, it uses an `EXCEPT` query to
 determine if there any any unexpectedly missing results.
 
-### `set_hasnt( sql, sql, description )` ###
-### `set_hasnt( sql, sql )` ###
+### `set_hasnt()` ###
 
-    PREPARE testq   AS SELECT * FROM users('a%');
-    PREPARE exclude AS SELECT * FROM USERS where name LIKE 'b%';
-    SELECT set_has( 'testq', 'exclude', 'Must not have the Bs' );
+    SELECT set_hasnt( :sql, :sql, :description );
+    SELECT set_hasnt( :sql, :sql );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:description`
+: A short description of the test.
 
 This test function is the inverse of `set_has()`: the test passes when the
 results of the first query have none of the results of the second query.
@@ -1375,14 +1425,23 @@ Diagnostics are similarly useful:
 Internally, the function uses an `INTERSECT` query to determine if there is
 any unexpected overlap between the query results.
 
-### `bag_eq( sql, sql, description )` ###
-### `bag_eq( sql, sql )` ###
-### `bag_eq( sql, array, description )` ###
-### `bag_eq( sql, array )` ###
+### `bag_eq()` ###
 
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE expect AS SELECT * FROM USERS where name LIKE 'a%';
-    SELECT bag_eq( 'testq', 'expect', 'gotta have the A listers' );
+    SELECT bag_eq( :sql, :sql,   :description );
+    SELECT bag_eq( :sql, :sql                 );
+    SELECT bag_eq( :sql, :array, :description );
+    SELECT bag_eq( :sql, :array               );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:array`
+: An array of values representing a single-column row values.
+
+`:description`
+: A short description of the test.
 
 The `bag_eq()` function is just like `set_eq()`, except that it considers the
 results as bags rather than as sets. A bag is a set that allows duplicates. In
@@ -1394,14 +1453,23 @@ result set.
 Otherwise, this function behaves exactly like `set_eq()`, including the
 utility of its diagnostics.
 
-### `bag_ne( sql, sql, description )` ###
-### `bag_ne( sql, sql )` ###
-### `bag_ne( sql, array, description )` ###
-### `bag_ne( sql, array )` ###
+### `bag_ne()` ###
 
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE expect AS SELECT * FROM USERS where name LIKE 'b%';
-    SELECT bag_ne( 'testq', 'expect', 'gotta have the A listers' );
+    SELECT bag_ne( :sql, :sql,   :description );
+    SELECT bag_ne( :sql, :sql                 );
+    SELECT bag_ne( :sql, :array, :description );
+    SELECT bag_ne( :sql, :array               );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:array`
+: An array of values representing a single-column row values.
+
+`:description`
+: A short description of the test.
 
 The inverse of `bag_eq()`, this function tests that the results of two queries
 are *not* the same, including duplicates. The two queries can as usual be the
@@ -1412,12 +1480,18 @@ comparable -- that is, with the same number and types of columns in the same
 orders. If it happens that the query you're testing returns a single column,
 the second argument may be an array.
 
-### `bag_has( sql, sql, description )` ###
-### `bag_has( sql, sql )` ###
+### `bag_has()` ###
 
-    PREPARE testq  AS SELECT * FROM users('a%');
-    PREPARE subset AS SELECT * FROM USERS where name LIKE 'a%';
-    SELECT bag_has( 'testq', 'subset', 'gotta have at least the A listers' );
+    SELECT bag_has( :sql, :sql, :description );
+    SELECT bag_has( :sql, :sql );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:description`
+: A short description of the test.
 
 The `bag_has()` function is just like `set_has()`, except that it considers
 the results as bags rather than as sets. A bag is a set with duplicates. What
@@ -1425,12 +1499,18 @@ practice this means that you can use `bag_has()` to test result sets where
 order doesn't matter, but duplication does. Internally, it uses an `EXCEPT
 ALL` query to determine if there any any unexpectedly missing results.
 
-### `bag_hasnt( sql, sql, description )` ###
-### `bag_hasnt( sql, sql )` ###
+### `bag_hasnt()` ###
 
-    PREPARE testq   AS SELECT * FROM users('a%');
-    PREPARE exclude AS SELECT * FROM USERS where name LIKE 'b%';
-    SELECT bag_has( 'testq', 'exclude', 'Must not have the Bs' );
+    SELECT bag_hasnt( :sql, :sql, :description );
+    SELECT bag_hasnt( :sql, :sql );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:description`
+: A short description of the test.
 
 This test function is the inverse of `bag_hasnt()`: the test passes when the
 results of the first query have none of the results of the second query.
@@ -1446,11 +1526,18 @@ is any unexpected overlap between the query results. This means that a
 duplicate row in the first query will appear twice in the diagnostics if it is
 also duplicated in the second query.
 
-### `is_empty( sql, description )` ###
-### `is_empty( sql )` ###
+### `is_empty()` ###
 
-    PREPARE emptyset  AS SELECT * FROM users(FALSE);
-    SELECT is_empty( 'emptyset', 'Should have no inactive users' );
+    SELECT is_empty( :sql, :description );
+    SELECT is_empty( :sql );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:description`
+: A short description of the test.
 
 The `is_empty()` function takes a single query string or prepared statement
 name as its first argument, and tests that said query returns no records.
@@ -1462,11 +1549,21 @@ fails and the results are displayed in the failure diagnostics, like so:
     #         (1,Jacob,false)
     #         (2,Emily,false)
 
-### `row_eq( sql, record, description )` ###
-### `row_eq( sql, record )` ###
+### `row_eq()` ###
 
-    PREPARE testrow  AS SELECT * FROM users where nick = 'theory';
-    SELECT row_eq('testrow', ROW(1, 'theory', 'David Wheeler')::users);
+    SELECT row_eq( :sql, :record, :description );
+    SELECT row_eq( :sql, :record );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:record`
+: A row or value, also known as a [composite type](http://www.postgresql.org/docs/current/static/rowtypes.html).
+
+`:description`
+: A short description of the test.
 
 Compares the contents of a single row to a record. Works on PostgreSQL 8.1 and
 higher. Due to the limitations of non-C functions in PostgreSQL, a bar
@@ -1482,7 +1579,7 @@ supported. Thus, you can do this:
 
     SELECT row_eq( ROW(1, 'foo')::sometype, ROW(1, 'foo')::sometype );
 
-And, of course, thins:
+And, of course, this:
 
     CREATE TABLE users (
         id   INT,
