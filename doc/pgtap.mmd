@@ -1665,17 +1665,26 @@ failure of schema change deployments.
 If you're more interested in the specifics of particular objects, skip to
 the next section.
 
-### `tablespaces_are( tablespaces, description )` ###
-### `tablespaces_are( tablespaces )` ###
+### `tablespaces_are()` ###
 
-    SELECT tablespaces_are(
-        ARRAY[ 'dbspace', 'indexspace' ],
-        'Should have the correct tablespaces'
-    );
+    SELECT tablespaces_are( :tablespaces, :description );
+    SELECT tablespaces_are( :tablespaces );
+
+**Parameters**
+
+`:tablespaces`
+: An array of tablespace names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the tablespaces in the database only the
-tablespaces that *should* be there. In the event of a failure, you'll see
-diagnostics listing the extra and/or missing tablespaces, like so:
+tablespaces that *should* be there. Example:
+
+    SELECT tablespaces_are(ARRAY[ 'dbspace', 'indexspace' ]);
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing tablespaces, like so:
 
     # Failed test 121: "There should be the correct tablespaces"
     #     Extra tablespaces:
@@ -1683,17 +1692,26 @@ diagnostics listing the extra and/or missing tablespaces, like so:
     #     Missing tablespaces:
     #         indexspace
 
-### `schemas_are( schemas, description )` ###
-### `schemas_are( schemas )` ###
+### `schemas_are()` ###
 
-    SELECT schemas_are(
-        ARRAY[ 'public', 'contrib', 'tap' ],
-        'Should have the correct schemas'
-    );
+    SELECT schemas_are( :schemas, :description );
+    SELECT schemas_are( :schemas );
+
+**Parameters**
+
+`:schemas`
+: An array of schema names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the schemas in the database only the schemas
-that *should* be there, excluding system schemas and `information_schema`. In
-the event of a failure, you'll see diagnostics listing the extra and/or
+that *should* be there, excluding system schemas and `information_schema`.
+Example:
+
+    SELECT schemas_are(ARRAY[ 'public', 'contrib', 'tap' ]);
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
 missing schemas, like so:
 
     # Failed test 106: "There should be the correct schemas"
@@ -1702,22 +1720,34 @@ missing schemas, like so:
     #     Missing schemas:
     #         someschema
 
-### `tables_are( schema, tables, description )` ###
-### `tables_are( tables, description )` ###
-### `tables_are( schema, tables )` ###
-### `tables_are( tables )` ###
+### `tables_are()` ###
 
-    SELECT tables_are(
-        'myschema',
-        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
-        'Should have the correct tables in myschema'
-    );
+    SELECT tables_are( :schema, :tables, :description );
+    SELECT tables_are( :schema, :tables );
+    SELECT tables_are( :tables, :description );
+    SELECT tables_are( :tables );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find tables.
+
+`:tables`
+: An array of table names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the tables in the named schema, or that are
 visible in the search path, are only the tables that *should* be there. If the
 `:schema` argument is omitted, tables will be sought in the search path,
 excluding `pg_catalog` and `information_schema` If the description is omitted,
-a generally useful default description will be generated.
+a generally useful default description will be generated. Example:
+
+    SELECT tables_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing tables, like so:
@@ -1730,22 +1760,34 @@ missing tables, like so:
     #         users
     #         widgets
 
-### `views_are( schema, views, description )` ###
-### `views_are( views, description )` ###
-### `views_are( schema, views )` ###
-### `views_are( views )` ###
+### `views_are()` ###
 
-    SELECT views_are(
-        'myschema',
-        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
-        'Should have the correct views in myschema'
-    );
+    SELECT views_are( :schema, :views, :description );
+    SELECT views_are( :schema, :views );
+    SELECT views_are( :views, :description );
+    SELECT views_are( :views );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find views.
+
+`:views`
+: An array of view names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the views in the named schema, or that are
 visible in the search path, are only the views that *should* be there. If the
 `:schema` argument is omitted, views will be sought in the search path,
 excluding `pg_catalog` and `information_schema` If the description is omitted,
-a generally useful default description will be generated.
+a generally useful default description will be generated. Example:
+
+    SELECT views_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing views, like so:
@@ -1758,22 +1800,34 @@ missing views, like so:
     #         v_userlog
     #         eated
 
-### `sequences_are( schema, sequences, description )` ###
-### `sequences_are( sequences, description )` ###
-### `sequences_are( schema, sequences )` ###
-### `sequences_are( sequences )` ###
+### `sequences_are()` ###
 
-    SELECT sequences_are(
-        'myschema',
-        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ],
-        'Should have the correct sequences in myschema'
-    );
+    SELECT sequences_are( :schema, :sequences, :description );
+    SELECT sequences_are( :schema, :sequences );
+    SELECT sequences_are( :sequences, :description );
+    SELECT sequences_are( :sequences );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find sequences.
+
+`:sequences`
+: An array of sequence names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the sequences in the named schema, or that are
 visible in the search path, are only the sequences that *should* be there. If
 the `:schema` argument is omitted, sequences will be sought in the search
 path, excluding `pg_catalog` and `information_schema`. If the description is
-omitted, a generally useful default description will be generated.
+omitted, a generally useful default description will be generated. Example:
+
+    SELECT sequences_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing sequences, like so:
@@ -1786,23 +1840,38 @@ missing sequences, like so:
     #         users_seq
     #         widgets_seq
 
-### `columns_are( schema, table, columns[], description )` ###
-### `columns_are( schema, table, columns[] )` ###
-### `columns_are( table, columns[], description )` ###
-### `columns_are( table, columns[] )` ###
+### `columns_are()` ###
 
-    SELECT columns_are(
-        'myschema',
-        'atable',
-        ARRAY[ 'id', 'name', 'rank', 'sn' ],
-        'Should have the correct columns on myschema.atable'
-    );
+    SELECT columns_are( :schema, :table, :columns[], :description );
+    SELECT columns_are( :schema, :table, :columns[] );
+    SELECT columns_are( :table,  :columns[], :description );
+    SELECT columns_are( :table,  :columns[] );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table in which to find columns.
+
+`:columns`
+: An array of column names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the columns on the named table are only the
 columns that *should* be on that table. If the `:schema` argument is omitted,
 the table must be visible in the search path, excluding `pg_catalog` and
 `information_schema`. If the description is omitted, a generally useful
-default description will be generated.
+default description will be generated. Example:
+
+    SELECT columns_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'id', 'name', 'rank', 'sn' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing columns, like so:
@@ -1814,23 +1883,38 @@ missing columns, like so:
     #     Missing columns:
     #         name
 
-### `indexes_are( schema, table, indexes[], description )` ###
-### `indexes_are( schema, table, indexes[] )` ###
-### `indexes_are( table, indexes[], description )` ###
-### `indexes_are( table, indexes[] )` ###
+### `indexes_are()` ###
 
-    SELECT indexes_are(
-        'myschema',
-        'atable',
-        ARRAY[ 'atable_pkey', 'idx_atable_name' ],
-        'Should have the correct indexes on myschema.atable'
-    );
+    SELECT indexes_are( :schema, :table, :indexes[], :description );
+    SELECT indexes_are( :schema, :table, :indexes[] );
+    SELECT indexes_are( :table,  :indexes[], :description );
+    SELECT indexes_are( :table,  :indexes[] );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table in which to find indexes.
+
+`:indexes`
+: An array of index names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the indexes on the named table are only the
 indexes that *should* be on that table. If the `:schema` argument is omitted,
 the table must be visible in the search path, excluding `pg_catalog` and
 `information_schema`. If the description is omitted, a generally useful
-default description will be generated.
+default description will be generated. Example:
+
+    SELECT indexes_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'atable_pkey', 'idx_atable_name' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing indexes, like so:
@@ -1841,23 +1925,38 @@ missing indexes, like so:
     #     Missing indexes:
     #         idx_fou_name
 
-### `triggers_are( schema, table, triggers[], description )` ###
-### `triggers_are( schema, table, triggers[] )` ###
-### `triggers_are( table, triggers[], description )` ###
-### `triggers_are( table, triggers[] )` ###
+### `triggers_are()` ###
 
-    SELECT triggers_are(
-        'myschema',
-        'atable',
-        ARRAY[ 'atable_pkey', 'idx_atable_name' ],
-        'Should have the correct triggers on myschema.atable'
-    );
+    SELECT triggers_are( :schema, :table, :triggers[], :description );
+    SELECT triggers_are( :schema, :table, :triggers[] );
+    SELECT triggers_are( :table,  :triggers[], :description );
+    SELECT triggers_are( :table,  :triggers[] );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table in which to find triggers.
+
+`:triggers`
+: An array of trigger names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the triggers on the named table are only the
 triggers that *should* be on that table. If the `:schema` argument is omitted,
 the table must be visible in the search path, excluding `pg_catalog` and
 `information_schema`. If the description is omitted, a generally useful
-default description will be generated.
+default description will be generated. Example:
+
+    SELECT triggers_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'atable_pkey', 'idx_atable_name' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing triggers, like so:
@@ -1868,22 +1967,34 @@ missing triggers, like so:
     #     Missing triggers:
     #         set_users_pass
 
-### `functions_are( schema, functions[], description )` ###
-### `functions_are( schema, functions[] )` ###
-### `functions_are( functions[], description )` ###
-### `functions_are( functions[] )` ###
+### `functions_are()` ###
 
-    SELECT functions_are(
-        'myschema',
-        ARRAY[ 'foo', 'bar', 'frobnitz' ],
-        'Should have the correct functions in myschema'
-    );
+    SELECT functions_are( :schema, :functions, :description );
+    SELECT functions_are( :schema, :functions );
+    SELECT functions_are( :functions, :description );
+    SELECT functions_are( :functions );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find functions.
+
+`:functions`
+: An array of function names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the functions in the named schema, or that are
 visible in the search path, are only the functions that *should* be there. If
 the `:schema` argument is omitted, functions will be sought in the search
 path, excluding `pg_catalog` and `information_schema` If the description is
-omitted, a generally useful default description will be generated.
+omitted, a generally useful default description will be generated. Example:
+
+    SELECT functions_are(
+        'myschema',
+        ARRAY[ 'foo', 'bar', 'frobnitz' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing functions, like so:
@@ -1894,18 +2005,26 @@ missing functions, like so:
     #     Missing functions:
     #         frobnitz
 
-### `roles_are( roles[], description )` ###
-### `roles_are( roles[] )` ###
+### `roles_are()` ###
 
-    SELECT roles_are(
-        ARRAY[ 'postgres', 'someone', 'root' ],
-        'Should have the correct roles'
-    );
+    SELECT roles_are( :roles, :description );
+    SELECT roles_are( :roles );
+
+**Parameters**
+
+`:roles`
+: An array of role names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the roles in the database only the roles that
-*should* be there. Supported in PostgreSQL 8.1 and higher. In the event of a
-failure, you'll see diagnostics listing the extra and/or missing roles, like
-so:
+*should* be there. Supported in PostgreSQL 8.1 and higher. Example:
+
+    SELECT roles_are(ARRAY[ 'postgres', 'someone', 'root' ]);
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing roles, like so:
 
     # Failed test 195: "There should be the correct roles"
     #     Extra roles:
@@ -1913,17 +2032,26 @@ so:
     #     Missing roles:
     #         bobby
 
-### `users_are( users[], description )` ###
-### `users_are( users[] )` ###
+### `users_are()` ###
 
-    SELECT users_are(
-        ARRAY[ 'postgres', 'someone', 'root' ],
-        'Should have the correct users'
-    );
+    SELECT users_are( :users, :description );
+    SELECT users_are( :users );
+
+**Parameters**
+
+`:users`
+: An array of user names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the users in the database only the users that
-*should* be there. In the event of a failure, you'll see diagnostics listing
-the extra and/or missing users, like so:
+*should* be there. Example:
+
+    SELECT users_are(ARRAY[ 'postgres', 'someone', 'root' ]);
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing users, like so:
 
     # Failed test 195: "There should be the correct users"
     #     Extra users:
@@ -1931,17 +2059,26 @@ the extra and/or missing users, like so:
     #     Missing users:
     #         bobby
 
-### `groups_are( groups[], description )` ###
-### `groups_are( groups[] )` ###
+### `groups_are()` ###
 
-    SELECT groups_are(
-        ARRAY[ 'postgres', 'admins, 'l0s3rs' ],
-        'Should have the correct groups'
-    );
+    SELECT groups_are( :groups, :description );
+    SELECT groups_are( :groups );
 
-This function tests that all of the groups in the database only the groups
-that *should* be there. In the event of a failure, you'll see diagnostics
-listing the extra and/or missing groups, like so:
+**Parameters**
+
+`:groups`
+: An array of group names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the groups in the database only the groups that
+*should* be there. Example:
+
+    SELECT groups_are(ARRAY[ 'postgres', 'admins, 'l0s3rs' ]);
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing groups, like so:
 
     # Failed test 210: "There should be the correct groups"
     #     Extra groups:
@@ -1949,17 +2086,26 @@ listing the extra and/or missing groups, like so:
     #     Missing groups:
     #         __howdy__
 
-### `languages_are( languages[], description )` ###
-### `languages_are( languages[] )` ###
+### `languages_are()` ###
 
-    SELECT languages_are(
-        ARRAY[ 'plpgsql', 'plperl', 'pllolcode' ],
-        'Should have the correct procedural languages'
-    );
+    SELECT languages_are( :languages, :description );
+    SELECT languages_are( :languages );
 
-This function tests that all of the procedural languages in the database only
-the languages that *should* be there. In the event of a failure, you'll see
-diagnostics listing the extra and/or missing languages, like so:
+**Parameters**
+
+`:languages`
+: An array of language names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the languages in the database only the languages that
+*should* be there. Example:
+
+    SELECT languages_are(ARRAY[ 'plpgsql', 'plperl', 'pllolcode' ]);
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing languages, like so:
 
     # Failed test 225: "There should be the correct procedural languages"
     #     Extra languages:
@@ -1967,23 +2113,35 @@ diagnostics listing the extra and/or missing languages, like so:
     #     Missing languages:
     #         plpgsql
 
-### `opclasses_are( schema, opclasses[], description )` ###
-### `opclasses_are( schema, opclasses[] )` ###
-### `opclasses_are( opclasses[], description )` ###
-### `opclasses_are( opclasses[] )` ###
+### `opclasses_are()` ###
 
-    SELECT opclasses_are(
-        'myschema',
-        ARRAY[ 'foo', 'bar', 'frobnitz' ],
-        'Should have the correct opclasses in myschema'
-    );
+    SELECT opclasses_are( :schema, :opclasses, :description );
+    SELECT opclasses_are( :schema, :opclasses );
+    SELECT opclasses_are( :opclasses, :description );
+    SELECT opclasses_are( :opclasses );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find opclasses.
+
+`:opclasses`
+: An array of opclass names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the operator classes in the named schema, or
 that are visible in the search path, are only the opclasses that *should* be
 there. If the `:schema` argument is omitted, opclasses will be sought in the
 search path, excluding `pg_catalog` and `information_schema`. If the
 description is omitted, a generally useful default description will be
-generated.
+generated. Example:
+
+    SELECT opclasses_are(
+        'myschema',
+        ARRAY[ 'foo', 'bar', 'frobnitz' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing opclasses, like so:
@@ -1994,23 +2152,38 @@ missing opclasses, like so:
     #     Missing operator classes:
     #         custom_ops
 
-### `rules_are( schema, table, rules[], description )` ###
-### `rules_are( schema, table, rules[] )` ###
-### `rules_are( table, rules[], description )` ###
-### `rules_are( table, rules[] )` ###
+### `rules_are()` ###
 
-    SELECT rules_are(
-        'myschema',
-        'atable',
-        ARRAY[ 'on_insert', 'on_update', 'on_delete' ],
-        'Should have the correct rules on myschema.atable'
-    );
+    SELECT rules_are( :schema, :table, :rules[], :description );
+    SELECT rules_are( :schema, :table, :rules[] );
+    SELECT rules_are( :table,  :rules[], :description );
+    SELECT rules_are( :table,  :rules[] );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table in which to find rules.
+
+`:rules`
+: An array of rule names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the rules on the named relation are only the
 rules that *should* be on that relation (a table or a view). If the `:schema`
 argument is omitted, the rules must be visible in the search path, excluding
 `pg_catalog` and `information_schema`. If the description is omitted, a
-generally useful default description will be generated.
+generally useful default description will be generated. Example:
+
+    SELECT rules_are(
+        'myschema',
+        'atable',
+        ARRAY[ 'on_insert', 'on_update', 'on_delete' ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing rules, like so:
@@ -2021,23 +2194,32 @@ missing rules, like so:
     #     Missing rules:
     #         on_delete
 
-### `types_are( schema, types[], description )` ###
-### `types_are( schema, types[] )` ###
-### `types_are( types[], description )` ###
-### `types_are( types[] )` ###
+### `types_are()` ###
 
-    SELECT types_are(
-        'myschema',
-        ARRAY[ 'timezone', 'state' ],
-        'Should have the correct types in myschema'
-    );
+    SELECT types_are( :schema, :types, :description );
+    SELECT types_are( :schema, :types );
+    SELECT types_are( :types, :description );
+    SELECT types_are( :types );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find types.
+
+`:types`
+: An array of data type names.
+
+`:description`
+: A short description of the test.
 
 Tests that all of the types in the named schema are the only types in that
 schema, including base types, composite types, domains, enums, and
 pseudo-types. If the `:schema` argument is omitted, the types must be visible
 in the search path, excluding `pg_catalog` and `information_schema`. If the
 description is omitted, a generally useful default description will be
-generated.
+generated. Example:
+
+    SELECT types_are('myschema', ARRAY[ 'timezone', 'state' ]);
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing types, like so:
@@ -2048,22 +2230,31 @@ missing types, like so:
     #     Missing types:
     #         timezone
 
-### `domains_are( schema, domains[], description )` ###
-### `domains_are( schema, domains[] )` ###
-### `domains_are( domains[], description )` ###
-### `domains_are( domains[] )` ###
+### `domains_are()` ###
 
-    SELECT domains_are(
-        'myschema',
-        ARRAY[ 'timezone', 'state' ],
-        'Should have the correct domains in myschema'
-    );
+    SELECT domains_are( :schema, :domains, :description );
+    SELECT domains_are( :schema, :domains );
+    SELECT domains_are( :domains, :description );
+    SELECT domains_are( :domains );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find domains.
+
+`:domains`
+: An array of data domain names.
+
+`:description`
+: A short description of the test.
 
 Tests that all of the domains in the named schema are the only domains in that
 schema. If the `:schema` argument is omitted, the domains must be visible in
 the search path, excluding `pg_catalog` and `information_schema`. If the
 description is omitted, a generally useful default description will be
-generated.
+generated. Example:
+
+    SELECT domains_are('myschema', ARRAY[ 'timezone', 'state' ]);
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing domains, like so:
@@ -2074,22 +2265,31 @@ missing domains, like so:
     #     Missing domains:
     #         timezone
 
-### `enums_are( schema, enums[], description )` ###
-### `enums_are( schema, enums[] )` ###
-### `enums_are( enums[], description )` ###
-### `enums_are( enums[] )` ###
+### `enums_are()` ###
 
-    SELECT enums_are(
-        'myschema',
-        ARRAY[ 'timezone', 'state' ],
-        'Should have the correct enums in myschema'
-    );
+    SELECT enums_are( :schema, :enums, :description );
+    SELECT enums_are( :schema, :enums );
+    SELECT enums_are( :enums, :description );
+    SELECT enums_are( :enums );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find enums.
+
+`:enums`
+: An array of enum data type names.
+
+`:description`
+: A short description of the test.
 
 Tests that all of the enums in the named schema are the only enums in that
 schema. Enums are supported in PostgreSQL 8.3 and up. If the `:schema`
 argument is omitted, the enums must be visible in the search path, excluding
 `pg_catalog` and `information_schema`. If the description is omitted, a
-generally useful default description will be generated.
+generally useful default description will be generated. Example:
+
+    SELECT enums_are('myschema', ARRAY[ 'timezone', 'state' ]);
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing enums, like so:
@@ -2100,34 +2300,33 @@ missing enums, like so:
     #     Missing enums:
     #         bug_status
 
-### `casts_are( casts[], description )` ###
-### `casts_are( casts[] )` ###
+### `casts_are()` ###
 
-    SELECT casts_are(
-        ARRAY[
-            'integer AS double precision',
-            'integer AS reltime',
-            'integer AS numeric',
-            -- ...
-        ],
-        'Should have the correct casts'
-    );
+    SELECT casts_are( :casts, :description );
+    SELECT casts_are( :casts );
+
+**Parameters**
+
+`:casts`
+: An array of cast names.
+
+`:description`
+: A short description of the test.
 
 This function tests that all of the casts in the database are only the casts
 that *should* be in that database. Casts are specified as strings in a syntax
 similarly to how they're declared via `CREATE CAST`. The pattern is
 `:source_type AS :target_type`. If either type was created with double-quotes
 to force mixed case or special characers, then you must use double quotes in
-the cast strings:
+the cast strings. Example:
 
-    SELECT casts_are(
-        ARRAY[
-            'integer AS "myInteger"',
-            -- ...
-        ]
-    );
-
-
+    SELECT casts_are(ARRAY[
+        'integer AS "myInteger"',
+        'integer AS double precision',
+        'integer AS reltime',
+        'integer AS numeric',
+    ]);
+ 
 If the description is omitted, a generally useful default description will be
 generated.
 
@@ -2140,21 +2339,23 @@ missing casts, like so:
     #     Missing casts:
     #         lseg AS integer
 
-### `operators_are( schema, operators[], description )` ###
-### `operators_are( schema, operators[] )` ###
-### `operators_are( operators[], description )` ###
-### `operators_are( operators[] )` ###
+### `operators_are()` ###
 
-    SELECT operators_are(
-        'public',
-        ARRAY[
-            '=(citext,citext) RETURNS boolean',
-            '-(NONE,bigint) RETURNS bigint',
-            '!(bigint,NONE) RETURNS numeric',
-            -- ...
-        ],
-        ''
-    );
+    SELECT operators_are( :schema, :operators, :description );
+    SELECT operators_are( :schema, :operators );
+    SELECT operators_are( :operators, :description );
+    SELECT operators_are( :operators );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find operators.
+
+`:operators`
+: An array of operators.
+
+`:description`
+: A short description of the test.
 
 Tests that all of the operators in the named schema are the only operators in
 that schema. If the `:schema` argument is omitted, the operators must be
@@ -2170,7 +2371,16 @@ For left operators the left argument type should be `NONE`. For right
 operators, the right argument type should be `NONE`. The example above shows
 one one of each of the operator types. `=(citext,citext)` is an infix
 operator, `-(bigint,NONE)` is a left operator, and `!(NONE,bigint)` is a right
-operator.
+operator. Example:
+
+    SELECT operators_are(
+        'public',
+        ARRAY[
+            '=(citext,citext) RETURNS boolean',
+            '-(NONE,bigint) RETURNS bigint',
+            '!(bigint,NONE) RETURNS numeric'
+        ]
+    );
 
 In the event of a failure, you'll see diagnostics listing the extra and/or
 missing operators, like so:
