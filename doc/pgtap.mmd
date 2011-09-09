@@ -367,7 +367,7 @@ the test in your script, simply search for "simple exponential".
 
 All test functions take a name argument. It's optional, but highly suggested
 that you use it.
-  
+
 Sometimes it's useful to extract test function names from pgtap output, especially when using xUnit style with Continuous Integration Server like Hudson or TeamCity.
 By default pgTAP displays this names as "comment", but you're able to change this behavior by overriding function `diag_test_name`:
 
@@ -504,7 +504,7 @@ can even use them to compar records in PostgreSQL 8.4 and later:
 
     SELECT is( users.*, ROW(1, 'theory', true)::users )
       FROM users
-     WHERE nick = 'theory'; 
+     WHERE nick = 'theory';
 
 ### `matches()` ###
 
@@ -814,9 +814,9 @@ error-prone as you think they should be.
 
 ### `throws_ok()` ###
 
-    SELECT throws_ok( :sql, :errcode, :ermsg, :description); 
-    SELECT throws_ok( :sql, :errcode, :description); 
-    SELECT throws_ok( :sql, :errmsg, :description); 
+    SELECT throws_ok( :sql, :errcode, :ermsg, :description);
+    SELECT throws_ok( :sql, :errcode, :description);
+    SELECT throws_ok( :sql, :errmsg, :description);
 
 **Parameters**
 
@@ -1112,7 +1112,7 @@ For example, say that you want to compare queries against a `persons` table.
 The simplest way to sort is by `name`, as in:
 
     try=# select * from people order by name;
-      name  | age 
+      name  | age
     --------+-----
      Damian |  19
      Larry  |  53
@@ -1123,7 +1123,7 @@ The simplest way to sort is by `name`, as in:
 But a different run of the same query could have the rows in different order:
 
     try=# select * from people order by name;
-      name  | age 
+      name  | age
     --------+-----
      Damian |  19
      Larry  |  53
