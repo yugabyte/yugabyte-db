@@ -401,7 +401,8 @@ the test succeeded or failed.
 
 ### `ok()` ###
 
-    SELECT ok( :this = :that, :description );
+    SELECT ok( :boolean, :description );
+    SELECT ok( :boolean );
 
 **Parameters**
 
@@ -411,9 +412,9 @@ the test succeeded or failed.
 `:description`
 : A short description of the test.
 
-This function simply evaluates any expression (`:this = :that` is just a
-simple example) and uses that to determine if the test succeeded or failed. A
-true expression passes, a false one fails. Very simple.
+This function simply evaluates any boolean expression and uses it to determine
+if the test succeeded or failed. A true expression passes, a false one fails.
+Very simple.
 
 For example:
 
@@ -425,7 +426,7 @@ For example:
 
 (Mnemonic:  "This is ok.")
 
-The `description` is a very short description of the test that will be printed
+The `:description` is a very short description of the test that will be printed
 out. It makes it very easy to find a test in your script when it fails and
 gives others an idea of your intentions. The description is optional, but we
 *very* strongly encourage its use.
@@ -447,7 +448,9 @@ additional diagnostic:
 ### `isnt()` ###
 
     SELECT is(   :have, :want, :description );
+    SELECT is(   :have, :want );
     SELECT isnt( :have, :want, :description );
+    SELECT isnt( :have, :want );
 
 **Parameters**
 
@@ -509,6 +512,7 @@ can even use them to compar records in PostgreSQL 8.4 and later:
 ### `matches()` ###
 
     SELECT matches( :have, :regex, :description );
+    SELECT matches( :have, :regex );
 
 **Parameters**
 
@@ -539,6 +543,7 @@ diagnostics on failure.
 ### `imatches()` ###
 
     SELECT imatches( :have, :regex, :description );
+    SELECT imatches( :have, :regex );
 
 **Parameters**
 
@@ -557,7 +562,10 @@ Just like `matches()` except that the regular expression is compared to
 ### `doesnt_match()` ###
 ### `doesnt_imatch()` ###
 
-    SELECT doesnt_match( :have, :regex, :description );
+    SELECT doesnt_match(  :have, :regex, :description );
+    SELECT doesnt_match(  :have, :regex );
+    SELECT doesnt_imatch( :have, :regex, :description );
+    SELECT doesnt_imatch( :have, :regex );
 
 **Parameters**
 
@@ -576,7 +584,10 @@ check if `:have` *does not* match the given pattern.
 ### `alike()` ###
 ### `ialike()` ###
 
-    SELECT alike( :this, :like, :description );
+    SELECT alike(  :this, :like, :description );
+    SELECT alike(  :this, :like );
+    SELECT ialike( :this, :like, :description );
+    SELECT ialike( :this, :like );
 
 **Parameters**
 
@@ -608,7 +619,10 @@ diagnostics on failure.
 ### `unalike()` ###
 ### `unialike()` ###
 
-    SELECT unalike( :this, :like, :description );
+    SELECT unalike(  :this, :like, :description );
+    SELECT unalike(  :this, :like );
+    SELECT unialike( :this, :like, :description );
+    SELECT unialike( :this, :like );
 
 **Parameters**
 
@@ -624,10 +638,10 @@ diagnostics on failure.
 Works exactly as `alike()`, only it checks if `:have` *does not* match the
 given pattern.
 
-### `cmp_ok( anyelement, operator, anyelement, description )` ###
-### `cmp_ok( anyelement, operator, anyelement )` ###
+### `cmp_ok()` ###
 
     SELECT cmp_ok( :have, :op, :want, :description );
+    SELECT cmp_ok( :have, :op, :want );
 
 **Parameters**
 
@@ -676,7 +690,9 @@ But in that case, you should probably use `is()`, instead.
 ### `fail()` ###
 
     SELECT pass( :description );
+    SELECT pass( );
     SELECT fail( :description );
+    SELECT fail( );
 
 **Parameters**
 
@@ -693,6 +709,7 @@ Use these functions very, very, very sparingly.
 ### `isa_ok()` ###
 
     SELECT isa_ok( :have, :regtype, :name );
+    SELECT isa_ok( :have, :regtype );
 
 **Parameters**
 
@@ -814,9 +831,12 @@ error-prone as you think they should be.
 
 ### `throws_ok()` ###
 
-    SELECT throws_ok( :sql, :errcode, :ermsg, :description);
-    SELECT throws_ok( :sql, :errcode, :description);
-    SELECT throws_ok( :sql, :errmsg, :description);
+    SELECT throws_ok( :sql, :errcode, :ermsg, :description );
+    SELECT throws_ok( :sql, :errcode, :ermsg );
+    SELECT throws_ok( :sql, :errcode );
+    SELECT throws_ok( :sql, :errmsg, :description );
+    SELECT throws_ok( :sql, :errmsg );
+    SELECT throws_ok( :sql );
 
 **Parameters**
 
@@ -887,8 +907,10 @@ Idea borrowed from the Test::Exception Perl module.
 ### `throws_like()` ###
 ### `throws_ilike()` ###
 
-    SELECT throws_like(:sql, :like, :description);
-    SELECT throws_ilike(:sql, :like, :description);
+    SELECT throws_like(  :sql, :like, :description );
+    SELECT throws_like(  :sql, :like );
+    SELECT throws_ilike( :sql, :like, :description );
+    SELECT throws_ilike( :sql, :like );
 
 **Parameters**
 
@@ -923,7 +945,10 @@ example:
 ### `throws_matching()` ###
 ### `throws_imatching()` ###
 
-    SELECT throws_matching(:sql, :regex, :description);
+    SELECT throws_matching(  :sql, :regex, :description );
+    SELECT throws_matching(  :sql, :regex );
+    SELECT throws_imatching( :sql, :regex, :description );
+    SELECT throws_imatching( :sql, :regex );
 
 **Parameters**
 
@@ -956,7 +981,8 @@ example:
 
 ### `lives_ok()` ###
 
-    SELECT lives_ok(:sql, :description);
+    SELECT lives_ok( :sql, :description );
+    SELECT lives_ok( :sql );
 
 **Parameters**
 
@@ -985,10 +1011,10 @@ example:
 
 Idea borrowed from the Test::Exception Perl module.
 
-### `performs_ok( sql, milliseconds, description )` ###
-### `performs_ok( sql, milliseconds )` ###
+### `performs_ok()` ###
 
     SELECT performs_ok( :sql, :milliseconds, :description );
+    SELECT performs_ok( :sql, :milliseconds );
 
 **Parameters**
 
