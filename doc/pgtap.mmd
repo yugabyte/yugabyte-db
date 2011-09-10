@@ -2865,63 +2865,100 @@ incorrect, the diagnostics will look more like this:
 This function is the inverse of `has_index()`. The test passes if the
 specified index does *not* exist.
 
-### `has_trigger( schema, table, trigger, description )` ###
-### `has_trigger( schema, table, trigger )` ###
-### `has_trigger( table, trigger, description )` ###
-### `has_trigger( table, trigger )` ###
+### `has_trigger()` ###
 
-    SELECT has_trigger(
-        'myschema',
-        'sometable',
-        'sometrigger',
-        'Trigger "sometrigger" should exist'
-    );
+    SELECT has_trigger( :schema, :table, :trigger, :description );
+    SELECT has_trigger( :schema, :table, :trigger );
+    SELECT has_trigger( :table, :trigger, :description );
+    SELECT has_trigger( :table, :trigger )` ###
 
-    SELECT has_trigger( 'sometable', 'sometrigger' );
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the trigger.
+
+`:table`
+: Name of a table in which to find the trigger.
+
+`:trigger`
+: Name of an trigger.
+
+`:description`
+: A short description of the test.
 
 Tests to see if the specified table has the named trigger. The `:description`
 is optional, and if the schema is omitted, the table with which the trigger is
 associated must be visible in the search path.
 
-### `hasnt_trigger( schema, table, trigger, description )` ###
-### `hasnt_trigger( schema, table, trigger )` ###
-### `hasnt_trigger( table, trigger, description )` ###
-### `hasnt_trigger( table, trigger )` ###
+### `hasnt_trigger()` ###
 
-    SELECT hasnt_trigger(
-        'myschema',
-        'sometable',
-        'sometrigger',
-        'Trigger "sometrigger" should not exist'
-    );
+    SELECT hasnt_trigger( :schema, :table, :trigger, :description );
+    SELECT hasnt_trigger( :schema, :table, :trigger );
+    SELECT hasnt_trigger( :table, :trigger, :description );
+    SELECT hasnt_trigger( :table, :trigger )` ###
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to not find the trigger.
+
+`:table`
+: Name of a table in which to not find the trigger.
+
+`:trigger`
+: Name of an trigger.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_trigger()`. The test passes if the
 specified trigger does *not* exist.
 
-### `has_rule( schema, table, rule, description )` ###
-### `has_rule( schema, table, rule )` ###
-### `has_rule( table, rule, description )` ###
-### `has_rule( table, rule )` ###
+### `has_rule()` ###
 
-    SELECT has_rule(
-        'myschema',
-        'sometable',
-        'somerule,
-        'Rule "somerule" should exist'
-    );
+    SELECT has_rule( :schema, :table, :rule, :description );
+    SELECT has_rule( :schema, :table, :rule );
+    SELECT has_rule( :table, :rule, :description );
+    SELECT has_rule( :table, :rule )` ###
 
-    SELECT has_rule( 'sometable', 'somerule' );
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the rule.
+
+`:table`
+: Name of a table in which to find the rule.
+
+`:rule`
+: Name of an rule.
+
+`:description`
+: A short description of the test.
 
 Tests to see if the specified table has the named rule. The `:description` is
 optional, and if the schema is omitted, the table with which the rule is
 associated must be visible in the search path.
 
-### `hasnt_rule( schema, table, rule, description )` ###
-### `hasnt_rule( schema, table, rule )` ###
-### `hasnt_rule( table, rule, description )` ###
-### `hasnt_rule( table, rule )` ###
+### `hasnt_rule()` ###
 
-    SELECT hasnt_rule( 'sometable', 'somerule' );
+    SELECT hasnt_rule( :schema, :table, :rule, :description );
+    SELECT hasnt_rule( :schema, :table, :rule );
+    SELECT hasnt_rule( :table, :rule, :description );
+    SELECT hasnt_rule( :table, :rule )` ###
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to not find the rule.
+
+`:table`
+: Name of a table in which to not find the rule.
+
+`:rule`
+: Name of an rule.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_rule()`. The test passes if the specified
 rule does *not* exist.
