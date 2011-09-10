@@ -2770,18 +2770,48 @@ treated as a description.
 This function is the inverse of `has_enum()`. The test passes if the specified
 enum does *not* exist.
 
-### `has_index( schema, table, index, columns[], description )` ###
-### `has_index( schema, table, index, columns[] )` ###
-### `has_index( schema, table, index, column/expression, description )` ###
-### `has_index( schema, table, index, columns/expression )` ###
-### `has_index( table, index, columns[], description )` ###
-### `has_index( table, index, columns[], description )` ###
-### `has_index( table, index, column/expression, description )` ###
-### `has_index( schema, table, index, column/expression )` ###
-### `has_index( table, index, column/expression )` ###
-### `has_index( schema, table, index )` ###
-### `has_index( table, index, description )` ###
-### `has_index( table, index )` ###
+### `has_index()` ###
+
+    SELECT has_index( :schema, :table, :index, :columns, :description );
+    SELECT has_index( :schema, :table, :index, :columns );
+    SELECT has_index( :schema, :table, :index, :column, :description );
+    SELECT has_index( :schema, :table, :index, :column );
+    SELECT has_index( :table,  :index, :columns, :description );
+    SELECT has_index( :table,  :index, :columns, :description );
+    SELECT has_index( :table,  :index, :column, :description );
+    SELECT has_index( :schema, :table, :index, :column );
+    SELECT has_index( :table,  :index, :column );
+    SELECT has_index( :schema, :table, :index );
+    SELECT has_index( :table,  :index, :description );
+    SELECT has_index( :table,  :index );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the index.
+
+`:table`
+: Name of a table in which to find index.
+
+`:index`
+: Name of an index.
+
+`:columns`
+: Array of the columns in the index.
+
+`:column`
+: Idexed column name or expression.
+
+`:description`
+: A short description of the test.
+
+Checks for the existence of an index associated with the named table. The
+`:schema` argument is optional, as is the column name or names or expression,
+and the description. The columns argument may be a string naming one column or
+an array of column names. It may also be a string representing an expression,
+such as `lower(foo)`. For expressions, you must use lowercase for all SQL
+keywords and functions to properly compare to PostgreSQL's internal form of
+the expression. A few examples:
 
     SELECT has_index(
         'myschema',
@@ -2794,14 +2824,6 @@ enum does *not* exist.
     SELECT has_index('myschema', 'sometable', 'anidx', 'somecolumn');
     SELECT has_index('myschema', 'sometable', 'loweridx', 'LOWER(somecolumn)');
     SELECT has_index('sometable', 'someindex');
-
-Checks for the existence of an index associated with the named table. The
-`:schema` argument is optional, as is the column name or names or expression,
-and the description. The columns argument may be a string naming one column or
-an array of column names. It may also be a string representing an expression,
-such as `lower(foo)`. For expressions, you must use lowercase for all SQL
-keywords and functions to properly compare to PostgreSQL's internal form of
-the expression.
 
 If you find that the function call seems to be getting confused, cast the
 index name to the `NAME` type:
@@ -2819,17 +2841,26 @@ incorrect, the diagnostics will look more like this:
     #       have: "idx_baz" ON public.sometab(lower(name))
     #       want: "idx_baz" ON public.sometab(lower(lname))
 
-### `hasnt_index( schema, table, index, description )` ###
-### `hasnt_index( schema, table, index )` ###
-### `hasnt_index( table, index, description )` ###
-### `hasnt_index( table, index )` ###
+### `hasnt_index()` ###
 
-    SELECT hasnt_index(
-        'myschema',
-        'sometable',
-        'someindex',
-        'Index "someindex" should not exist'
-    );
+    SELECT hasnt_index( schema, table, index, description );
+    SELECT hasnt_index( schema, table, index );
+    SELECT hasnt_index( table, index, description );
+    SELECT hasnt_index( table, index );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to not find the index.
+
+`:table`
+: Name of a table in which to not find the index.
+
+`:index`
+: Name of an index.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_index()`. The test passes if the
 specified index does *not* exist.
