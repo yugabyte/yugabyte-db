@@ -2399,46 +2399,64 @@ database objects](#I+Object! "I Object!"). Perhaps you just need to make sure
 that certain objects exist (or that certain objects *don't* exist). You've
 come to the right place.
 
-### `has_tablespace( tablespace, location, description )` ###
-### `has_tablespace( tablespace, description )` ###
-### `has_tablespace( tablespace )` ###
+### `has_tablespace()` ###
 
-    SELECT has_tablespace(
-        'sometablespace',
-        '/data/dbs',
-        'I got sometablespace in /data/dbs'
-    );
+    SELECT has_tablespace( :tablespace, :location, :description );
+    SELECT has_tablespace( :tablespace, :description );
+    SELECT has_tablespace( :tablespace );
+
+**Parameters**
+
+`:tablespace`
+: Name of a tablespace.
+
+`:location`
+: The tablespace's Location on disk.
+
+`:description`
+: A short description of the test.
 
 This function tests whether or not a tablespace exists in the database. The
 first argument is a tablespace name. The second is either the a file system
 path for the database or a test description. If you specify a location path,
 you must pass a description as the third argument; otherwise, if you omit the
 test description, it will be set to "Tablespace `:tablespace` should exist".
+Example:
 
-### `hasnt_tablespace( tablespace, tablespace, description )` ###
-### `hasnt_tablespace( tablespace, description )` ###
-### `hasnt_tablespace( tablespace )` ###
+    SELECT has_tablespace('sometablespace', '/data/dbs');
 
-    SELECT hasnt_tablespace(
-        'sometablespace',
-        'There should be no tablespace sometablespace'
-    );
+### `hasnt_tablespace()` ###
+
+    SELECT hasnt_tablespace( :tablespace, :description );
+    SELECT hasnt_tablespace( :tablespace );
+
+**Parameters**
+
+`:tablespace`
+: Name of a tablespace.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_tablespace()`. The test passes if the
 specified tablespace does *not* exist.
 
-### `has_schema( schema, description )` ###
-### `has_schema( schema )` ###
+### `has_schema()` ###
 
-    SELECT has_schema(
-        'someschema',
-        'I got someschema'
-    );
+    SELECT has_schema( :schema, :description );
+    SELECT has_schema( :schema );
+
+**Parameters**
+
+`:schema`
+: Name of a schema.
+
+`:description`
+: A short description of the test.
 
 This function tests whether or not a schema exists in the database. The first
 argument is a schema name and the second is the test description. If you omit
-the schema, the schema must be visible in the search path. If you omit the
-test description, it will be set to "Schema `:schema` should exist".
+the test description, it will be set to "Schema `:schema` should exist".
 
 ### `hasnt_schema( schema, description )` ###
 ### `hasnt_schema( schema )` ###
@@ -2451,95 +2469,164 @@ test description, it will be set to "Schema `:schema` should exist".
 This function is the inverse of `has_schema()`. The test passes if the
 specified schema does *not* exist.
 
-### `has_table( schema, table, description )` ###
-### `has_table( table, description )` ###
-### `has_table( table )` ###
+### `has_table()` ###
 
-    SELECT has_table(
-        'myschema',
-        'sometable',
-        'I got myschema.sometable'
-    );
+    SELECT has_table( :schema, :table, :description );
+    SELECT has_table( :table, :description );
+    SELECT has_table( :table );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
 
 This function tests whether or not a table exists in the database. The first
 argument is a schema name, the second is a table name, and the third is the
 test description. If you omit the schema, the table must be visible in the
-search path. If you omit the test description, it will be set to "Table
-`:table` should exist".
+search path. Example:
 
-### `hasnt_table( schema, table, description )` ###
-### `hasnt_table( table, description )` ###
-### `hasnt_table( table )` ###
+    SELECT has_table('myschema', 'sometable');
 
-    SELECT hasnt_table(
-        'myschema',
-        'sometable',
-        'There should be no table myschema.sometable'
-    );
+If you omit the test description, it will be set to "Table `:table` should
+exist".
+
+### `hasnt_table()` ###
+
+    SELECT hasnt_table( :schema, :table, :description );
+    SELECT hasnt_table( :table, :description );
+    SELECT hasnt_table( :table );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_table()`. The test passes if the
 specified table does *not* exist.
 
-### `has_view( schema, view, description )` ###
-### `has_view( view, description )` ###
-### `has_view( view )` ###
+### `has_view()` ###
 
-    SELECT has_view(
-        'myschema',
-        'someview',
-        'I got myschema.someview'
-    );
+    SELECT has_view( :schema, :view, :description );
+    SELECT has_view( :view, :description );
+    SELECT has_view( :view );
 
-Just like `has_table()`, only it tests for the existence of a view.
+**Parameters**
 
-### `hasnt_view( schema, view, description )` ###
-### `hasnt_view( view, description )` ###
-### `hasnt_view( view )` ###
+`:schema`
+: Name of a schema in which to find the view.
 
-    SELECT hasnt_view(
-        'myschema',
-        'someview',
-        'There should be no myschema.someview'
-    );
+`:view`
+: Name of a view.
 
-This function is the inverse of `has_view()`. The test passes if the specified
-view does *not* exist.
+`:description`
+: A short description of the test.
 
-### `has_sequence( schema, sequence, description )` ###
-### `has_sequence( sequence, description )` ###
-### `has_sequence( sequence )` ###
+This function tests whether or not a view exists in the database. The first
+argument is a schema name, the second is a view name, and the third is the
+test description. If you omit the schema, the view must be visible in the
+search path. Example:
 
-    SELECT has_sequence(
-        'myschema',
-        'somesequence',
-        'I got myschema.somesequence'
-    );
+    SELECT has_view('myschema', 'someview');
 
-Just like `has_table()`, only it tests for the existence of a sequence.
+If you omit the test description, it will be set to "View `:view` should
+exist".
 
-### `hasnt_sequence( schema, sequence, description )` ###
-### `hasnt_sequence( sequence, description )` ###
-### `hasnt_sequence( sequence )` ###
+### `hasnt_view()` ###
 
-    SELECT hasnt_sequence(
-        'myschema',
-        'somesequence',
-        'There should be no myschema.somesequence'
-    );
+    SELECT hasnt_view( :schema, :view, :description );
+    SELECT hasnt_view( :view, :description );
+    SELECT hasnt_view( :view );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the view.
+
+`:view`
+: Name of a view.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_view()`. The test passes if the
+specified view does *not* exist.
+
+### `has_sequence()` ###
+
+    SELECT has_sequence( :schema, :sequence, :description );
+    SELECT has_sequence( :sequence, :description );
+    SELECT has_sequence( :sequence );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:sequence`
+: Name of a sequence.
+
+`:description`
+: A short description of the test.
+
+This function tests whether or not a sequence exists in the database. The first
+argument is a schema name, the second is a sequence name, and the third is the
+test description. If you omit the schema, the sequence must be visible in the
+search path. Example:
+
+    SELECT has_sequence('myschema', 'somesequence');
+
+If you omit the test description, it will be set to "Sequence `:sequence` should
+exist".
+
+### `hasnt_sequence()` ###
+
+    SELECT hasnt_sequence( :schema, :sequence, :description );
+    SELECT hasnt_sequence( :sequence, :description );
+    SELECT hasnt_sequence( :sequence );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:sequence`
+: Name of a sequence.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_sequence()`. The test passes if the
 specified sequence does *not* exist.
 
-### `has_type( schema, type, description )` ###
-### `has_type( schema, type )` ###
-### `has_type( type, description )` ###
-### `has_type( type )` ###
+### `has_type()` ###
 
-    SELECT has_type(
-        'myschema',
-        'sometype',
-        'I got myschema.sometype'
-    );
+    SLEECT has_type( schema, type, description );
+    SELECT has_type( schema, type );
+    SELECT has_type( type, description );
+    SELECT has_type( type );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:type`
+: Name of a data type.
+
+`:description`
+: A short description of the test.
 
 This function tests whether or not a type exists in the database. Detects all
 types of types, including base types, composite types, domains, enums, and
@@ -2548,7 +2635,9 @@ and the third is the test description. If you omit the schema, the type must
 be visible in the search path. If you omit the test description, it will be
 set to "Type `:type` should exist". If you're passing a schema and type rather
 than type and description, be sure to cast the arguments to `name` values so
-that your type name doesn't get treated as a description.
+that your type name doesn't get treated as a description. Example:
+
+    SELECT has_type( 'myschema', 'sometype' );
 
 If you've created a composite type and want to test that the composed types
 are a part of it, use the column testing functions to verify them, like so:
@@ -2558,83 +2647,125 @@ are a part of it, use the column testing functions to verify them, like so:
     SELECT has_column( 'foo', 'id' );
     SELECT col_type_is( 'foo', 'id', 'integer' );
 
-### `hasnt_type( schema, type, description )` ###
-### `hasnt_type( schema, type )` ###
-### `hasnt_type( type, description )` ###
-### `hasnt_type( type )` ###
+### `hasnt_type()` ###
 
-    SELECT hasnt_type(
-        'myschema',
-        'sometype',
-        'There should be no type myschema.sometype'
-    );
+    SLEECT hasnt_type( schema, type, description );
+    SELECT hasnt_type( schema, type );
+    SELECT hasnt_type( type, description );
+    SELECT hasnt_type( type );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:type`
+: Name of a data type.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_type()`. The test passes if the specified
 type does *not* exist.
 
-### `has_domain( schema, domain, description )` ###
-### `has_domain( schema, domain )` ###
-### `has_domain( domain, description )` ###
-### `has_domain( domain )` ###
+### `has_domain()` ###
 
-    SELECT has_domain(
-        'myschema',
-        'somedomain',
-        'I got myschema.somedomain'
-    );
+    SLEECT has_domain( schema, domain, description );
+    SELECT has_domain( schema, domain );
+    SELECT has_domain( domain, description );
+    SELECT has_domain( domain );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:domain`
+: Name of a domain.
+
+`:description`
+: A short description of the test.
 
 This function tests whether or not a domain exists in the database. The first
 argument is a schema name, the second is the name of a domain, and the third
 is the test description. If you omit the schema, the domain must be visible in
 the search path. If you omit the test description, it will be set to "Domain
-`:domain` should exist". If you're passing a schema and domain rather than
-domain and description, be sure to cast the arguments to `name` values so that
-your domain name doesn't get treated as a description.
+`:domain` should exist". Example:
 
-### `hasnt_domain( schema, domain, description )` ###
-### `hasnt_domain( schema, domain )` ###
-### `hasnt_domain( domain, description )` ###
-### `hasnt_domain( domain )` ###
+    SELECT has_domain( 'myschema', 'somedomain' );
 
-    SELECT hasnt_domain(
-        'myschema',
-        'somedomain',
-        'There should be no domain myschema.somedomain'
-    );
+If you're passing a schema and domain rather than domain and description, be
+sure to cast the arguments to `name` values so that your domain name doesn't
+get treated as a description.
 
-This function is the inverse of `has_domain()`. The test passes if the
-specified domain does *not* exist.
+### `hasnt_domain()` ###
 
-### `has_enum( schema, enum, description )` ###
-### `has_enum( schema, enum )` ###
-### `has_enum( enum, description )` ###
-### `has_enum( enum )` ###
+    SLEECT hasnt_domain( schema, domain, description );
+    SELECT hasnt_domain( schema, domain );
+    SELECT hasnt_domain( domain, description );
+    SELECT hasnt_domain( domain );
 
-    SELECT has_enum(
-        'myschema',
-        'someenum',
-        'I got myschema.someenum'
-    );
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:domain`
+: Name of a domain.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_domain()`. The test passes if the specified
+domain does *not* exist.
+
+### `has_enum()` ###
+
+    SLEECT has_enum( schema, enum, description );
+    SELECT has_enum( schema, enum );
+    SELECT has_enum( enum, description );
+    SELECT has_enum( enum );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:enum`
+: Name of a enum.
+
+`:description`
+: A short description of the test.
 
 This function tests whether or not a enum exists in the database. Enums are
 supported in PostgreSQL 8.3 or higher. The first argument is a schema name,
 the second is the an enum name, and the third is the test description. If you
 omit the schema, the enum must be visible in the search path. If you omit the
-test description, it will be set to "Enum `:enum` should exist". If you're
-passing a schema and enum rather than enum and description, be sure to cast
-the arguments to `name` values so that your enum name doesn't get treated as a
-description.
+test description, it will be set to "Enum `:enum` should exist". Example:
 
-### `hasnt_enum( schema, enum, description )` ###
-### `hasnt_enum( schema, enum )` ###
-### `hasnt_enum( enum, description )` ###
-### `hasnt_enum( enum )` ###
+    SELECT has_enum( 'myschema', 'someenum' );
 
-    SELECT hasnt_enum(
-        'myschema',
-        'someenum',
-        'I don''t got myschema.someenum'
-    );
+If you're passing a schema and enum rather than enum and description, be sure
+to cast the arguments to `name` values so that your enum name doesn't get
+treated as a description.
+
+### `hasnt_enum()` ###
+
+    SLEECT hasnt_enum( schema, enum, description );
+    SELECT hasnt_enum( schema, enum );
+    SELECT hasnt_enum( enum, description );
+    SELECT hasnt_enum( enum );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:enum`
+: Name of a enum.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_enum()`. The test passes if the specified
 enum does *not* exist.
