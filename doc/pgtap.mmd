@@ -4252,23 +4252,36 @@ clients to interact with the database, making sure that they work will save
 you time in the long run. So check out these assertions to maintain your
 sanity.
 
-### `can( schema, functions[], description )` ###
-### `can( schema, functions[] )` ###
-### `can( functions[], description )` ###
-### `can( functions[] )` ###
+### `can()` ###
 
-    SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
+    SELECT can( :schema, :functions, :description );
+    SELECT can( :schema, :functions );
+    SELECT can( :functions, :description );
+    SELECT can( :functions );
 
-Checks to be sure that `:schema` has `:functions[]` defined. This is subtly
+**Parameters**
+
+`:schema`
+: Schema in which to find the functions.
+
+`:functions`
+: Array of function names.
+
+`:description`
+: A short description of the test.
+
+Checks to be sure that `:schema` has `:functions` defined. This is subtly
 different from `functions_are()`. `functions_are()` fails if the functions
-defined in `:schema` are not exactly the functions defined in `:functions[]`.
-`can()`, on the other hand, just makes sure that `functions[]` exist.
+defined in `:schema` are not exactly the functions defined in `:functions`.
+`can()`, on the other hand, just makes sure that `:functions` exist.
 
 If `:schema` is omitted, then `can()` will look for functions defined in
 schemas defined in the search path. No matter how many functions are listed in
-`:functions[]`, a single call to `can()` counts as one test. If you want
+`:functions`, a single call to `can()` counts as one test. If you want
 otherwise, call `can()` once for each function -- or better yet, use
-`has_function()`.
+`has_function()`. Example:
+
+    SELECT can( 'pg_catalog', ARRAY['upper', 'lower'] );
 
 If any of the functions are not defined, the test will fail and the
 diagnostics will output a list of the functions that are missing, like so:
@@ -4277,27 +4290,33 @@ diagnostics will output a list of the functions that are missing, like so:
     #     pg_catalog.foo() missing
     #     pg_catalog.bar() missing
 
-### `function_lang_is( schema, function, args[], language, description )` ###
-### `function_lang_is( schema, function, args[], language )` ###
-### `function_lang_is( schema, function, language, description )` ###
-### `function_lang_is( schema, function, language )` ###
-### `function_lang_is( function, args[], language, description )` ###
-### `function_lang_is( function, args[], language )` ###
-### `function_lang_is( function, language, description )` ###
-### `function_lang_is( function, language )` ###
+### `function_lang_is()` ###
 
-    SELECT function_lang_is(
-        'myschema',
-        'foo',
-        ARRAY['integer', 'text'],
-        'perl',
-        'The myschema.foo() function should be written in Perl'
-    );
+    SELECT function_lang_is( :schema, :function, :args, :language, :description );
+    SELECT function_lang_is( :schema, :function, :args, :language );
+    SELECT function_lang_is( :schema, :function, :language, :description );
+    SELECT function_lang_is( :schema, :function, :language );
+    SELECT function_lang_is( :function, :args, :language, :description );
+    SELECT function_lang_is( :function, :args, :language );
+    SELECT function_lang_is( :function, :language, :description );
+    SELECT function_lang_is( :function, :language );
 
+**Parameters**
 
-    SELECT function_lang_is( 'do_something', 'sql' );
-    SELECT function_lang_is( 'do_something', ARRAY['integer'], 'plpgsql' );
-    SELECT function_lang_is( 'do_something', ARRAY['numeric'], 'plpgsql' );
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:language`
+: Name of the procedural language.
+
+`:description`
+: A short description of the test.
 
 Tests that a particular function is implemented in a particular procedural
 language. The function name is required. If the `:schema` argument is omitted,
@@ -4305,7 +4324,12 @@ then the function must be visible in the search path. If the `:args[]`
 argument is passed, then the function with that argument signature will be the
 one tested; otherwise, a function with any signature will be checked (pass an
 empty array to specify a function with an empty signature). If the
-`:description` is omitted, a reasonable substitute will be created.
+`:description` is omitted, a reasonable substitute will be created. Examples:
+
+    SELECT function_lang_is( 'myschema', 'foo',  ARRAY['integer', 'text'], 'plperl' );
+    SELECT function_lang_is( 'do_something', 'sql' );
+    SELECT function_lang_is( 'do_something', ARRAY['integer'], 'plpgsql' );
+    SELECT function_lang_is( 'do_something', ARRAY['numeric'], 'plpgsql' );
 
 In the event of a failure, you'll useful diagnostics will tell you what went
 wrong, for example:
@@ -4321,33 +4345,45 @@ If the function does not exist, you'll be told that, too.
 
 But then you check with `has_function()` first, right?
 
-### `function_returns( schema, function, args[], type, description )` ###
-### `function_returns( schema, function, args[], type )` ###
-### `function_returns( schema, function, type, description )` ###
-### `function_returns( schema, function, type )` ###
-### `function_returns( function, args[], type, description )` ###
-### `function_returns( function, args[], type )` ###
-### `function_returns( function, type, description )` ###
-### `function_returns( function, type )` ###
+### `function_returns()` ###
 
-    SELECT function_returns(
-        'myschema',
-        'foo',
-        ARRAY['integer', 'text'],
-        'integer',
-        'The myschema.foo() function should return an integer'
-    );
+    SELECT function_returns( :schema, :function, :args, :type, :description );
+    SELECT function_returns( :schema, :function, :args, :type );
+    SELECT function_returns( :schema, :function, :type, :description );
+    SELECT function_returns( :schema, :function, :type );
+    SELECT function_returns( :function, :args, :type, :description );
+    SELECT function_returns( :function, :args, :type );
+    SELECT function_returns( :function, :type, :description );
+    SELECT function_returns( :function, :type );
 
-    SELECT function_returns( 'do_something', 'setof bool' );
-    SELECT function_returns( 'do_something', ARRAY['integer'], 'boolean' );
-    SELECT function_returns( 'do_something', ARRAY['numeric'], 'numeric' );
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:Type`
+: Return value data type.
+
+`:description`
+: A short description of the test.
 
 Tests that a particular function returns a particular data type. The `:args[]`
 and `:type` arguments should be formatted as they would be displayed in the
 view of a function using the `\df` command in `psql`. For example, use
 "character varying" rather than "varchar", and "boolean" rather than "bool".
 For set returning functions, the `:type` argument should start with "setof "
-(yes, lowercase).
+(yes, lowercase). Examples:
+
+    SELECT function_returns( 'myschema', 'foo', ARRAY['integer', 'text'], 'integer' );
+    SELECT function_returns( 'do_something', 'setof bool' );
+    SELECT function_returns( 'do_something', ARRAY['integer'], 'boolean' );
+    SELECT function_returns( 'do_something', ARRAY['numeric'], 'numeric' );
 
 If the `:schema` argument is omitted, then the function must be visible in the
 search path. If the `:args[]` argument is passed, then the function with that
@@ -4370,33 +4406,43 @@ If the function does not exist, you'll be told that, too.
 
 But then you check with `has_function()` first, right?
 
-### `is_definer( schema, function, args[], description )` ###
-### `is_definer( schema, function, args[] )` ###
-### `is_definer( schema, function, description )` ###
-### `is_definer( schema, function )` ###
-### `is_definer( function, args[], description )` ###
-### `is_definer( function, args[] )` ###
-### `is_definer( function, description )` ###
-### `is_definer( function )` ###
+### `is_definer()` ###
 
-    SELECT is_definer(
-        'myschema',
-        'foo',
-        ARRAY['integer', 'text'],
-        'The myschema.foo() function should be security definer'
-    );
+    SELECT is_definer( :schema, :function, :args, :description );
+    SELECT is_definer( :schema, :function, :args );
+    SELECT is_definer( :schema, :function, :description );
+    SELECT is_definer( :schema, :function );
+    SELECT is_definer( :function, :args, :description );
+    SELECT is_definer( :function, :args );
+    SELECT is_definer( :function, :description );
+    SELECT is_definer( :function );
 
-    SELECT is_definer( 'do_something' );
-    SELECT is_definer( 'do_something', ARRAY['integer'] );
-    SELECT is_definer( 'do_something', ARRAY['numeric'] );
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
 
 Tests that a function is a security definer (i.e., a "setuid" function). If
 the `:schema` argument is omitted, then the function must be visible in the
-search path. If the `:args[]` argument is passed, then the function with that
+search path. If the `:args` argument is passed, then the function with that
 argument signature will be the one tested; otherwise, a function with any
 signature will be checked (pass an empty array to specify a function with an
 empty signature). If the `:description` is omitted, a reasonable substitute
-will be created.
+will be created. Examples:
+
+    SELECT is_definer( 'myschema', 'foo', ARRAY['integer', 'text'] );
+    SELECT is_definer( 'do_something' );
+    SELECT is_definer( 'do_something', ARRAY['integer'] );
+    SELECT is_definer( 'do_something', ARRAY['numeric'] );
 
 If the function does not exist, a handy diagnostic message will let you know:
 
@@ -4405,33 +4451,43 @@ If the function does not exist, a handy diagnostic message will let you know:
 
 But then you check with `has_function()` first, right?
 
-### `is_strict( schema, function, args[], description )` ###
-### `is_strict( schema, function, args[] )` ###
-### `is_strict( schema, function, description )` ###
-### `is_strict( schema, function )` ###
-### `is_strict( function, args[], description )` ###
-### `is_strict( function, args[] )` ###
-### `is_strict( function, description )` ###
-### `is_strict( function )` ###
+### `is_strict()` ###
 
-    SELECT is_strict(
-        'myschema',
-        'foo',
-        ARRAY['integer', 'text'],
-        'The myschema.foo() function should be strict
-    );
+    SELECT is_strict( :schema, :function, :args, :description );
+    SELECT is_strict( :schema, :function, :args );
+    SELECT is_strict( :schema, :function, :description );
+    SELECT is_strict( :schema, :function );
+    SELECT is_strict( :function, :args, :description );
+    SELECT is_strict( :function, :args );
+    SELECT is_strict( :function, :description );
+    SELECT is_strict( :function );
 
-    SELECT is_strict( 'do_something' );
-    SELECT is_strict( 'do_something', ARRAY['integer'] );
-    SELECT is_strict( 'do_something', ARRAY['numeric'] );
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
 
 Tests that a function is a strict, meaning that the function returns null if
 any argument is null. If the `:schema` argument is omitted, then the function
-must be visible in the search path. If the `:args[]` argument is passed, then
+must be visible in the search path. If the `:args` argument is passed, then
 the function with that argument signature will be the one tested; otherwise, a
 function with any signature will be checked (pass an empty array to specify a
 function with an empty signature). If the `:description` is omitted, a
-reasonable substitute will be created.
+reasonable substitute will be created. Examples:
+
+    SELECT is_strict( 'myschema', 'foo', ARRAY['integer', 'text'] );
+    SELECT is_strict( 'do_something' );
+    SELECT is_strict( 'do_something', ARRAY['integer'] );
+    SELECT is_strict( 'do_something', ARRAY['numeric'] );
 
 If the function does not exist, a handy diagnostic message will let you know:
 
@@ -4440,25 +4496,30 @@ If the function does not exist, a handy diagnostic message will let you know:
 
 But then you check with `has_function()` first, right?
 
-### `is_aggregate( schema, function, args[], description )` ###
-### `is_aggregate( schema, function, args[] )` ###
-### `is_aggregate( schema, function, description )` ###
-### `is_aggregate( schema, function )` ###
-### `is_aggregate( function, args[], description )` ###
-### `is_aggregate( function, args[] )` ###
-### `is_aggregate( function, description )` ###
-### `is_aggregate( function )` ###
+### `is_aggregate()` ###
 
-    SELECT is_aggregate(
-        'myschema',
-        'foo',
-        ARRAY['integer', 'text'],
-        'The myschema.foo() function should be strict
-    );
+    SELECT is_aggregate( :schema, :function, :args, :description );
+    SELECT is_aggregate( :schema, :function, :args );
+    SELECT is_aggregate( :schema, :function, :description );
+    SELECT is_aggregate( :schema, :function );
+    SELECT is_aggregate( :function, :args, :description );
+    SELECT is_aggregate( :function, :args );
+    SELECT is_aggregate( :function, :description );
+    SELECT is_aggregate( :function );
 
-    SELECT is_aggregate( 'do_something' );
-    SELECT is_aggregate( 'do_something', ARRAY['integer'] );
-    SELECT is_aggregate( 'do_something', ARRAY['numeric'] );
+**Parameters**
+
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:description`
+: A short description of the test.
 
 Tests that a function is an aggregate function. If the `:schema` argument is
 omitted, then the function must be visible in the search path. If the
@@ -4466,6 +4527,12 @@ omitted, then the function must be visible in the search path. If the
 will be the one tested; otherwise, a function with any signature will be
 checked (pass an empty array to specify a function with an empty signature).
 If the `:description` is omitted, a reasonable substitute will be created.
+Examples:
+
+    SELECT is_aggregate( 'myschema', 'foo',  ARRAY['integer', 'text'] );
+    SELECT is_aggregate( 'do_something' );
+    SELECT is_aggregate( 'do_something', ARRAY['integer'] );
+    SELECT is_aggregate( 'do_something', ARRAY['numeric'] );
 
 If the function does not exist, a handy diagnostic message will let you know:
 
@@ -4474,27 +4541,33 @@ If the function does not exist, a handy diagnostic message will let you know:
 
 But then you check with `has_function()` first, right?
 
-### `volatility_is( schema, function, args[], volatility, description )` ###
-### `volatility_is( schema, function, args[], volatility )` ###
-### `volatility_is( schema, function, volatility, description )` ###
-### `volatility_is( schema, function, volatility )` ###
-### `volatility_is( function, args[], volatility, description )` ###
-### `volatility_is( function, args[], volatility )` ###
-### `volatility_is( function, volatility, description )` ###
-### `volatility_is( function, volatility )` ###
+### `volatility_is()` ###
 
-    SELECT volatility_is(
-        'myschema',
-        'foo',
-        ARRAY['integer', 'text'],
-        'stable',
-        'The myschema.foo() function should be stable
-    );
+    SELECT volatility_is( :schema, :function, :args, :volatility, :description );
+    SELECT volatility_is( :schema, :function, :args, :volatility );
+    SELECT volatility_is( :schema, :function, :volatility, :description );
+    SELECT volatility_is( :schema, :function, :volatility );
+    SELECT volatility_is( :function, :args, :volatility, :description );
+    SELECT volatility_is( :function, :args, :volatility );
+    SELECT volatility_is( :function, :volatility, :description );
+    SELECT volatility_is( :function, :volatility );
 
+**Parameters**
 
-    SELECT volatility_is( 'do_something', 'immutable' );
-    SELECT volatility_is( 'do_something', ARRAY['integer'], 'stable' );
-    SELECT volatility_is( 'do_something', ARRAY['numeric'], 'volatile' );
+`:schema`
+: Schema in which to find the function.
+
+`:function`
+: Function name.
+
+`:args`
+: Array of data types for the function arguments.
+
+`:volatility`
+: Volatility level.
+
+`:description`
+: A short description of the test.
 
 Tests the volatility of a function. Supported volatilities are "volatile",
 "stable", and "immutable". Consult the [`CREATE FUNCTION`
@@ -4505,6 +4578,12 @@ omitted, then the function must be visible in the search path. If the
 will be the one tested; otherwise, a function with any signature will be
 checked (pass an empty array to specify a function with an empty signature).
 If the `:description` is omitted, a reasonable substitute will be created.
+Examples:
+
+    SELECT volatility_is( 'myschema', 'foo',  ARRAY['integer', 'text'], 'stable' );
+    SELECT volatility_is( 'do_something', 'immutable' );
+    SELECT volatility_is( 'do_something', ARRAY['integer'], 'stable' );
+    SELECT volatility_is( 'do_something', ARRAY['numeric'], 'volatile' );
 
 In the event of a failure, you'll useful diagnostics will tell you what went
 wrong, for example:
@@ -4520,19 +4599,32 @@ If the function does not exist, you'll be told that, too.
 
 But then you check with `has_function()` first, right?
 
-### `trigger_is( schema, table, trigger, schema, function, description )` ###
-### `trigger_is( schema, table, trigger, schema, function )` ###
-### `trigger_is( table, trigger, function, description )` ###
-### `trigger_is( table, trigger, function )` ###
+### `trigger_is()` ###
 
-    SELECT trigger_is(
-        'myschema',
-        'sometable',
-        'sometrigger',
-        'myschema',
-        'somefunction',
-        'Trigger "sometrigger" should call somefunction()'
-    );
+    SELECT trigger_is( :schema, :table, :trigger, :func_schema, :function, :description );
+    SELECT trigger_is( :schema, :table, :trigger, :func_schema, :function );
+    SELECT trigger_is( :table, :trigger, :function, :description );
+    SELECT trigger_is( :table, :trigger, :function );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Table in which to find the trigger.
+
+`:trigger`
+: Trigger name.
+
+`:func_schema`
+: Schema in which to find the trigger function.
+
+`:function`
+: Function name.
+
+`:description`
+: A short description of the test.
 
 Tests that the specified trigger calls the named function. If not, it outputs
 a useful diagnostic:
