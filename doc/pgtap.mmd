@@ -2963,14 +2963,36 @@ associated must be visible in the search path.
 This function is the inverse of `has_rule()`. The test passes if the specified
 rule does *not* exist.
 
-### `has_function( schema, function, args[], description )` ###
-### `has_function( schema, function, args[] )` ###
-### `has_function( schema, function, description )` ###
-### `has_function( schema, function )` ###
-### `has_function( function, args[], description )` ###
-### `has_function( function, args[] )` ###
-### `has_function( function, description )` ###
-### `has_function( function )` ###
+### `has_function()` ###
+
+    SELECT has_function( :schema, :function, :args, :description );
+    SELECT has_function( :schema, :function, :args );
+    SELECT has_function( :schema, :function, :description );
+    SELECT has_function( :schema, :function );
+    SELECT has_function( :function, :args, :description );
+    SELECT has_function( :function, :args );
+    SELECT has_function( :function, :description );
+    SELECT has_function( :function );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to not find the function.
+
+`:function`
+: Name of a function.
+
+`:args`
+: Array of data types of the function arguments.
+
+`:description`
+: A short description of the test.
+
+Checks to be sure that the given function exists in the named schema and with
+the specified argument data types. If `:schema` is omitted, `has_function()` will
+search for the function in the schemas defined in the search path. If
+`:args[]` is omitted, `has_function()` will see if the function exists without
+regard to its arguments. Some examples:
 
     SELECT has_function(
         'pg_catalog',
@@ -2982,12 +3004,6 @@ rule does *not* exist.
     SELECT has_function( 'do_something' );
     SELECT has_function( 'do_something', ARRAY['integer'] );
     SELECT has_function( 'do_something', ARRAY['numeric'] );
-
-Checks to be sure that the given function exists in the named schema and with
-the specified argument data types. If `:schema` is omitted, `has_function()` will
-search for the function in the schemas defined in the search path. If
-`:args[]` is omitted, `has_function()` will see if the function exists without
-regard to its arguments.
 
 The `:args[]` argument should be formatted as it would be displayed in the
 view of a function using the `\df` command in `psql`. For example, even if you
@@ -3010,221 +3026,380 @@ cast it to `name[]` to disambiguate it from a text string:
 still available, but emits a warning when called. It will be removed in a
 future version of pgTAP.
 
-### `hasnt_function( schema, function, args[], description )` ###
-### `hasnt_function( schema, function, args[] )` ###
-### `hasnt_function( schema, function, description )` ###
-### `hasnt_function( schema, function )` ###
-### `hasnt_function( function, args[], description )` ###
-### `hasnt_function( function, args[] )` ###
-### `hasnt_function( function, description )` ###
-### `hasnt_function( function )` ###
+### `hasnt_function()` ###
 
-    SELECT hasnt_function(
-        'pg_catalog',
-        'alamode',
-        ARRAY[ 'text', 'text' ],
-        'Function alamode(text, text) should not exist'
-    );
+    SELECT hasnt_function( :schema, :function, :args, :description );
+    SELECT hasnt_function( :schema, :function, :args );
+    SELECT hasnt_function( :schema, :function, :description );
+    SELECT hasnt_function( :schema, :function );
+    SELECT hasnt_function( :function, :args, :description );
+    SELECT hasnt_function( :function, :args );
+    SELECT hasnt_function( :function, :description );
+    SELECT hasnt_function( :function );
 
-    SELECT hasnt_function( 'bogus' );
-    SELECT hasnt_function( 'bogus', ARRAY['integer'] );
-    SELECT hasnt_function( 'bogus', ARRAY['numeric'] );
+**Parameters**
+
+`:schema`
+: Name of a schema in which not to find the function.
+
+`:function`
+: Name of a function.
+
+`:args`
+: Array of data types of the function arguments.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_function()`. The test passes if the
 specified function (optionally with the specified signature) does *not* exist.
 
-### `has_cast( source_type, target_type, schema, function, description )` ###
-### `has_cast( source_type, target_type, schema, function )` ###
-### `has_cast( source_type, target_type, function, description )` ###
-### `has_cast( source_type, target_type, function )` ###
-### `has_cast( source_type, target_type, description )` ###
-### `has_cast( source_type, target_type )` ###
+### `has_cast()` ###
 
-    SELECT has_cast(
-        'integer',
-        'bigint',
-        'pg_catalog',
-        'int8'
-        'We should have a cast from integer to bigint'
-    );
+    SELECT has_cast( :source_type, :target_type, :schema, :function, :description );
+    SELECT has_cast( :source_type, :target_type, :schema, :function );
+    SELECT has_cast( :source_type, :target_type, :function, :description );
+    SELECT has_cast( :source_type, :target_type, :function );
+    SELECT has_cast( :source_type, :target_type, :description );
+    SELECT has_cast( :source_type, :target_type );
+
+**Parameters**
+
+`:source_type`
+: Data type of the source value.
+
+`:target_type`
+: Data type of the target value.
+
+`:schema`
+: Schema in which to find the operator function.
+
+`:function`
+: Name of the operator function.
+
+`:description`
+: A short description of the test.
 
 Tests for the existence of a cast. A cast consists of a source data type, a
-target data type, and perhaps a (possibly schema-qualified) function. If you
-omit the description four the 3- or 4-argument version, you'll need to cast
-the function name to the `NAME` data type so that PostgreSQL doesn't resolve
-the function name as a description. For example:
+target data type, and perhaps a (possibly schema-qualified) function. An example:
+
+    SELECT has_cast( 'integer', 'bigint', 'pg_catalog', 'int8' );
+
+If you omit the description four the 3- or 4-argument version, you'll need to
+cast the function name to the `NAME` data type so that PostgreSQL doesn't
+resolve the function name as a description. For example:
 
     SELECT has_cast( 'integer', 'bigint', 'int8'::NAME );
 
 pgTAP will generate a useful description if you don't provide one.
 
-### `hasnt_cast( source_type, target_type, schema, function, description )` ###
-### `hasnt_cast( source_type, target_type, schema, function )` ###
-### `hasnt_cast( source_type, target_type, function, description )` ###
-### `hasnt_cast( source_type, target_type, function )` ###
-### `hasnt_cast( source_type, target_type, description )` ###
-### `hasnt_cast( source_type, target_type )` ###
+### `hasnt_cast()` ###
 
-    SELECT hasnt_cast( 'integer', 'circle' );
+    SELECT hasnt_cast( :source_type, :target_type, :schema, :function, :description );
+    SELECT hasnt_cast( :source_type, :target_type, :schema, :function );
+    SELECT hasnt_cast( :source_type, :target_type, :function, :description );
+    SELECT hasnt_cast( :source_type, :target_type, :function );
+    SELECT hasnt_cast( :source_type, :target_type, :description );
+    SELECT hasnt_cast( :source_type, :target_type );
 
-This function is the inverse of `has_cast()`. The test passes if the specified
+**Parameters**
+
+`:source_type`
+: Data type of the source value.
+
+`:target_type`
+: Data type of the target value.
+
+`:schema`
+: Schema in which not to find the operator function.
+
+`:function`
+: Name of the operator function.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_cast()`: the test passes if the specified
 cast does *not* exist.
 
-### `has_operator( left_type, schema, name, right_type, return_type, description )` ###
-### `has_operator( left_type, schema, name, right_type, return_type )` ###
-### `has_operator( left_type, name, right_type, return_type, description )` ###
-### `has_operator( left_type, name, right_type, return_type )` ###
-### `has_operator( left_type, name, right_type, description )` ###
-### `has_operator( left_type, name, right_type )` ###
+    SELECT has_operator( :left_type, :schema, :name, :right_type, :return_type, :description );
+    SELECT has_operator( :left_type, :schema, :name, :right_type, :return_type );
+    SELECT has_operator( :left_type, :name, :right_type, :return_type, :description );
+    SELECT has_operator( :left_type, :name, :right_type, :return_type );
+    SELECT has_operator( :left_type, :name, :right_type, :description );
+    SELECT has_operator( :left_type, :name, :right_type );
 
-    SELECT has_operator(
-        'integer',
-        'pg_catalog', '<=',
-        'integer',
-        'boolean',
-        'Operator (integer <= integer RETURNS boolean) should exist'
-    );
+**Parameters**
+
+`:left_type`
+: Data type of the left operand.
+
+`:schema`
+: Schema in which to find the operator.
+
+`:name`
+: Name of the operator.
+
+`:right_type`
+: Data type of the right operand.
+
+`:return_type`
+: Data type of the return value.
+
+`:description`
+: A short description of the test.
 
 Tests for the presence of a binary operator. If the operator exists with the
 given schema, name, left and right arguments, and return value, the test will
-fail. If the operator does not exist, the test will fail. If you omit the
-schema name, then the operator must be visible in the search path. If you omit
-the test description, pgTAP will generate a reasonable one for you. The return
-value is also optional. If you need to test for a left or right unary
-operator, use `has_leftop()` or `has_rightop()` instead.
+fail. If the operator does not exist, the test will fail. Example:
 
-### `has_leftop( schema, name, right_type, return_type, description )` ###
-### `has_leftop( schema, name, right_type, return_type )` ###
-### `has_leftop( name, right_type, return_type, description )` ###
-### `has_leftop( name, right_type, return_type )` ###
-### `has_leftop( name, right_type, description )` ###
-### `has_leftop( name, right_type )` ###
+    SELECT has_operator( 'integer', 'pg_catalog', '<=', 'integer', 'boolean' );
 
-    SELECT has_leftop(
-        'pg_catalog', '!!',
-         'bigint',
-         'numeric',
-         'Operator (!! bigint RETURNS numeric) should exist'
-     );
+If you omit the schema name, then the operator must be visible in the search
+path. If you omit the test description, pgTAP will generate a reasonable one
+for you. The return value is also optional. If you need to test for a left or
+right unary operator, use `has_leftop()` or `has_rightop()` instead.
+
+### `has_leftop()` ###
+
+    SELECT has_leftop( :schema, :name, :type, :return_type, :description );
+    SELECT has_leftop( :schema, :name, :type, :return_type );
+    SELECT has_leftop( :name, :type, :return_type, :description );
+    SELECT has_leftop( :name, :type, :return_type );
+    SELECT has_leftop( :name, :type, :description );
+    SELECT has_leftop( :name, :type );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the operator.
+
+`:name`
+: Name of the operator.
+
+`:type`
+: Data type of the operand.
+
+`:return_type`
+: Data type of the return value.
+
+`:description`
+: A short description of the test.
 
 Tests for the presence of a left-unary operator. If the operator exists with
 the given schema, name, right argument, and return value, the test will fail.
-If the operator does not exist, the test will fail. If you omit the schema
-name, then the operator must be visible in the search path. If you omit the
-test description, pgTAP will generate a reasonable one for you. The return
-value is also optional.
+If the operator does not exist, the test will fail. Example:
 
-### `has_rightop( left_type, schema, name, return_type, description )` ###
-### `has_rightop( left_type, schema, name, return_type )` ###
-### `has_rightop( left_type, name, return_type, description )` ###
-### `has_rightop( left_type, name, return_type )` ###
-### `has_rightop( left_type, name, description )` ###
-### `has_rightop( left_type, name )` ###
+    SELECT has_leftop( 'pg_catalog', '!!', 'bigint', 'numeric' );
 
-    SELECT has_rightop(
-        'bigint',
-        'pg_catalog', '!',
-        'numeric',
-        'Operator (bigint ! RETURNS numeric) should exist'
-    );
+If you omit the schema name, then the operator must be visible in the search
+path. If you omit the test description, pgTAP will generate a reasonable one
+for you. The return type is also optional.
+
+### `has_rightop()` ###
+
+    SELECT has_rightop( :schema, :name, :type, :return_type, :description );
+    SELECT has_rightop( :schema, :name, :type, :return_type );
+    SELECT has_rightop( :name, :type, :return_type, :description );
+    SELECT has_rightop( :name, :type, :return_type );
+    SELECT has_rightop( :name, :type, :description );
+    SELECT has_rightop( :name, :type );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the operator.
+
+`:name`
+: Name of the operator.
+
+`:type`
+: Data type of the operand.
+
+`:return_type`
+: Data type of the return value.
+
+`:description`
+: A short description of the test.
 
 Tests for the presence of a right-unary operator. If the operator exists with
 the given left argument, schema, name, and return value, the test will fail.
-If the operator does not exist, the test will fail. If you omit the schema
-name, then the operator must be visible in the search path. If you omit the
-test description, pgTAP will generate a reasonable one for you. The return
-value is also optional.
+If the operator does not exist, the test will fail. Example:
 
-### `has_opclass( schema, name, description )` ###
-### `has_opclass( schema, name )` ###
-### `has_opclass( name, description )` ###
-### `has_opclass( name )` ###
+    SELECT has_rightop( 'bigint', 'pg_catalog', '!', 'numeric' );
 
-    SELECT has_opclass(
-        'myschema',
-        'my_ops',
-        'We should have the "my_ops" operator class'
-    );
+If you omit the schema name, then the operator must be visible in the search
+path. If you omit the test description, pgTAP will generate a reasonable one
+for you. The return type is also optional.
+
+### `has_opclass()` ###
+
+    SELECT has_opclass( :schema, :name, :description );
+    SELECT has_opclass( :schema, :name );
+    SELECT has_opclass( :name, :description );
+    SELECT has_opclass( :name );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the operator class.
+
+`:name`
+: Name of the operator class.
+
+`:description`
+: A short description of the test.
 
 Tests for the presence of an operator class. If you omit the schema name, then
 the operator must be visible in the search path. If you omit the test
 description, pgTAP will generate a reasonable one for you. The return value is
 also optional.
 
-### `hasnt_opclass( schema, name, description )` ###
-### `hasnt_opclass( schema, name )` ###
-### `hasnt_opclass( name, description )` ###
-### `hasnt_opclass( name )` ###
+### `hasnt_opclass()` ###
 
-    SELECT hasnt_opclass(
-        'myschema',
-        'your_ops',
-        'We should not have the "your_ops" operator class'
-    );
+    SELECT hasnt_opclass( :schema, :name, :description );
+    SELECT hasnt_opclass( :schema, :name );
+    SELECT hasnt_opclass( :name, :description );
+    SELECT hasnt_opclass( :name );
+
+**Parameters**
+
+`:schema`
+: Schema in which not to find the operator class.
+
+`:name`
+: Name of the operator class.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_opclass()`. The test passes if the
 specified operator class does *not* exist.
 
-### `has_role( role, description )` ###
-### `has_role( role )` ###
+### `has_role()` ###
 
-    SELECT has_role( 'theory', 'Role "theory" should exist' );
+    SELECT has_role( :role, :description );
+    SELECT has_role( :role );
+
+**Parameters**
+
+`:role`
+: Name of the role.
+
+`:description`
+: A short description of the test.
 
 Checks to ensure that a database role exists. If the description is omitted,
 it will default to "Role `:role` should exist".
 
-### `hasnt_role( role, description )` ###
-### `hasnt_role( role )` ###
+### `hasnt_role()` ###
 
-    SELECT hasnt_role( 'theory', 'Role "theory" should not exist' );
+    SELECT hasnt_role( :role, :description );
+    SELECT hasnt_role( :role );
+
+**Parameters**
+
+`:role`
+: Name of the role.
+
+`:description`
+: A short description of the test.
 
 The inverse of `has_role()`, this function tests for the *absence* of a
 database role.
 
-### `has_user( user, description )` ###
-### `has_user( user )` ###
+### `has_user()` ###
 
-    SELECT has_user( 'theory', 'User "theory" should exist' );
+    SELECT has_user( :user, :description );
+    SELECT has_user( :user );
+
+**Parameters**
+
+`:user`
+: Name of the user.
+
+`:description`
+: A short description of the test.
 
 Checks to ensure that a database user exists. If the description is omitted,
 it will default to "User `:user` should exist".
 
-### `hasnt_user( user, description )` ###
-### `hasnt_user( user )` ###
+### `hasnt_user()` ###
 
-    SELECT hasnt_user( 'theory', 'User "theory" should not exist' );
+    SELECT hasnt_user( :user, :description );
+    SELECT hasnt_user( :user );
+
+**Parameters**
+
+`:user`
+: Name of the user.
+
+`:description`
+: A short description of the test.
 
 The inverse of `has_user()`, this function tests for the *absence* of a
 database user.
 
-### `has_group( group, description )` ###
-### `has_group( group )` ###
+### `has_group()` ###
 
-    SELECT has_group( 'sweeties, 'Group "sweeties" should exist' );
+    SELECT has_group( :group, :description );
+    SELECT has_group( :group );
+
+**Parameters**
+
+`:group`
+: Name of the group.
+
+`:description`
+: A short description of the test.
 
 Checks to ensure that a database group exists. If the description is omitted,
 it will default to "Group `:group` should exist".
 
-### `hasnt_group( group, description )` ###
-### `hasnt_group( group )` ###
+### `hasnt_group()` ###
 
-    SELECT hasnt_group( 'meanies, 'Group meaines should not exist' );
+    SELECT hasnt_group( :group, :description );
+    SELECT hasnt_group( :group );
+
+**Parameters**
+
+`:group`
+: Name of the group.
+
+`:description`
+: A short description of the test.
 
 The inverse of `has_group()`, this function tests for the *absence* of a
 database group.
 
-### `has_language( language, description )` ###
-### `has_language( language )` ###
+### `has_language()` ###
 
-    SELECT has_language( 'plpgsql', 'Language "plpgsql" should exist' );
+    SELECT has_language( :language, :description );
+    SELECT has_language( :language );
+
+**Parameters**
+
+`:language`
+: Name of the language.
+
+`:description`
+: A short description of the test.
 
 Checks to ensure that a procedural language exists. If the description is
 omitted, it will default to "Procedural language `:language` should exist".
 
-### `hasnt_language( language, description )` ###
-### `hasnt_language( language )` ###
+### `hasnt_language()` ###
 
-    SELECT hasnt_language( 'plpgsql', 'Language "plpgsql" should not exist' );
+    SELECT hasnt_language( :language, :description );
+    SELECT hasnt_language( :language );
+
+**Parameters**
+
+`:language`
+: Name of the language.
+
+`:description`
+: A short description of the test.
 
 The inverse of `has_language()`, this function tests for the *absence* of a
 procedural language.
