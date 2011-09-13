@@ -1842,10 +1842,10 @@ missing sequences, like so:
 
 ### `columns_are()` ###
 
-    SELECT columns_are( :schema, :table, :columns[], :description );
-    SELECT columns_are( :schema, :table, :columns[] );
-    SELECT columns_are( :table,  :columns[], :description );
-    SELECT columns_are( :table,  :columns[] );
+    SELECT columns_are( :schema, :table, :columns, :description );
+    SELECT columns_are( :schema, :table, :columns );
+    SELECT columns_are( :table,  :columns, :description );
+    SELECT columns_are( :table,  :columns );
 
 **Parameters**
 
@@ -1885,10 +1885,10 @@ missing columns, like so:
 
 ### `indexes_are()` ###
 
-    SELECT indexes_are( :schema, :table, :indexes[], :description );
-    SELECT indexes_are( :schema, :table, :indexes[] );
-    SELECT indexes_are( :table,  :indexes[], :description );
-    SELECT indexes_are( :table,  :indexes[] );
+    SELECT indexes_are( :schema, :table, :indexes, :description );
+    SELECT indexes_are( :schema, :table, :indexes );
+    SELECT indexes_are( :table,  :indexes, :description );
+    SELECT indexes_are( :table,  :indexes );
 
 **Parameters**
 
@@ -1927,10 +1927,10 @@ missing indexes, like so:
 
 ### `triggers_are()` ###
 
-    SELECT triggers_are( :schema, :table, :triggers[], :description );
-    SELECT triggers_are( :schema, :table, :triggers[] );
-    SELECT triggers_are( :table,  :triggers[], :description );
-    SELECT triggers_are( :table,  :triggers[] );
+    SELECT triggers_are( :schema, :table, :triggers, :description );
+    SELECT triggers_are( :schema, :table, :triggers );
+    SELECT triggers_are( :table,  :triggers, :description );
+    SELECT triggers_are( :table,  :triggers );
 
 **Parameters**
 
@@ -2154,10 +2154,10 @@ missing opclasses, like so:
 
 ### `rules_are()` ###
 
-    SELECT rules_are( :schema, :table, :rules[], :description );
-    SELECT rules_are( :schema, :table, :rules[] );
-    SELECT rules_are( :table,  :rules[], :description );
-    SELECT rules_are( :table,  :rules[] );
+    SELECT rules_are( :schema, :table, :rules, :description );
+    SELECT rules_are( :schema, :table, :rules );
+    SELECT rules_are( :table,  :rules, :description );
+    SELECT rules_are( :table,  :rules );
 
 **Parameters**
 
@@ -2989,9 +2989,9 @@ rule does *not* exist.
 : A short description of the test.
 
 Checks to be sure that the given function exists in the named schema and with
-the specified argument data types. If `:schema` is omitted, `has_function()` will
-search for the function in the schemas defined in the search path. If
-`:args[]` is omitted, `has_function()` will see if the function exists without
+the specified argument data types. If `:schema` is omitted, `has_function()`
+will search for the function in the schemas defined in the search path. If
+`:args` is omitted, `has_function()` will see if the function exists without
 regard to its arguments. Some examples:
 
     SELECT has_function(
@@ -3005,11 +3005,11 @@ regard to its arguments. Some examples:
     SELECT has_function( 'do_something', ARRAY['integer'] );
     SELECT has_function( 'do_something', ARRAY['numeric'] );
 
-The `:args[]` argument should be formatted as it would be displayed in the
-view of a function using the `\df` command in `psql`. For example, even if you
-have a numeric column with a precision of 8, you should specify
+The `:args` argument should be formatted as it would be displayed in the view
+of a function using the `\df` command in `psql`. For example, even if you have
+a numeric column with a precision of 8, you should specify
 `ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
-the `:args[]` argument as `ARRAY['character varying']`.
+the `:args` argument as `ARRAY['character varying']`.
 
 If you wish to use the two-argument form of `has_function()`, specifying only
 the schema and the function name, you must cast the `:function` argument to
@@ -3017,8 +3017,8 @@ the schema and the function name, you must cast the `:function` argument to
 `has_function(:function, :description)` form. If you neglect to do so, your
 results will be unexpected.
 
-Also, if you use the string form to specify the `:args[]` array, be sure to
-cast it to `name[]` to disambiguate it from a text string:
+Also, if you use the string form to specify the `:args` array, be sure to cast
+it to `name` to disambiguate it from a text string:
 
     SELECT has_function( 'lower', '{text}'::name[] );
 
@@ -3414,16 +3414,25 @@ look at tables. There are a lot of ways to look at tables, to make sure that
 they have all the columns, indexes, constraints, keys, and indexes they need.
 So we have the assertions to validate 'em.
 
-### `has_column( schema, table, column, description )` ###
-### `has_column( table, column, description )` ###
-### `has_column( table, column )` ###
+### `has_column()` ###
 
-    SELECT has_column(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'I got myschema.sometable.somecolumn'
-    );
+    SELECT has_column( :schema, :table, :column, :description );
+    SELECT has_column( :table, :column, :description );
+    SELECT has_column( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:description`
+: A short description of the test.
 
 Tests whether or not a column exists in a given table, view, or composite
 type. The first argument is the schema name, the second the table name, the
@@ -3432,31 +3441,49 @@ is omitted, the table must be visible in the search path. If the test
 description is omitted, it will be set to "Column `:table.:column` should
 exist".
 
-### `hasnt_column( schema, table, column, description )` ###
-### `hasnt_column( table, column, description )` ###
-### `hasnt_column( table, column )` ###
+### `hasnt_column()` ###
 
-    SELECT hasnt_column(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'There should be no myschema.sometable.somecolumn column'
-    );
+    SELECT hasnt_column( :schema, :table, :column, :description );
+    SELECT hasnt_column( :table, :column, :description );
+    SELECT hasnt_column( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_column()`. The test passes if the
 specified column does *not* exist in the specified table, view, or composite
 type.
 
-### `col_not_null( schema, table, column, description )` ###
-### `col_not_null( table, column, description )` ###
-### `col_not_null( table, column )` ###
+### `col_not_null()` ###
 
-    SELECT col_not_null(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'Column myschema.sometable.somecolumn should be NOT NULL'
-    );
+    SELECT col_not_null( :schema, :table, :column, :description );
+    SELECT col_not_null( :table, :column, :description );
+    SELECT col_not_null( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:description`
+: A short description of the test.
 
 Tests whether the specified column has a `NOT NULL` constraint. The first
 argument is the schema name, the second the table name, the third the column
@@ -3467,16 +3494,25 @@ test will fail with a useful diagnostic message if the table or column in
 question does not exist. But use `has_column()` to make sure the column exists
 first, eh?
 
-### `col_is_null( schema, table, column, description )` ###
-### `col_is_null( table, column, description )` ###
-### `col_is_null( table, column )` ###
+### `col_is_null()` ###
 
-    SELECT col_is_null(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'Column myschema.sometable.somecolumn should allow NULL'
-    );
+    SELECT col_is_null( :schema, :table, :column, :description );
+    SELECT col_is_null( :table, :column, :description );
+    SELECT col_is_null( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `col_not_null()`: the test passes if the
 column does not have a `NOT NULL` constraint. The first argument is the schema
@@ -3487,16 +3523,25 @@ the search path. If the test description is omitted, it will be set to "Column
 useful diagnostic message if the table or column in question does not exist.
 But use `has_column()` to make sure the column exists first, eh?
 
-### `col_has_default( schema, table, column, description )` ###
-### `col_has_default( table, column, description )` ###
-### `col_has_default( table, column )` ###
+### `col_has_default()` ###
 
-    SELECT col_has_default(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'Column myschema.sometable.somecolumn has a default'
-    );
+    SELECT col_has_default( :schema, :table, :column, :description );
+    SELECT col_has_default( :table, :column, :description );
+    SELECT col_has_default( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:description`
+: A short description of the test.
 
 Tests whether or not a column has a default value. Fails if the column doesn't
 have a default value. It will also fail if the column doesn't exist, and emit
@@ -3505,50 +3550,74 @@ useful diagnostics to let you know:
     # Failed test 136: "desc"
     #     Column public.sometab.__asdfasdfs__ does not exist
 
-### `col_hasnt_default( schema, table, column, description )` ###
-### `col_hasnt_default( table, column, description )` ###
-### `col_hasnt_default( table, column )` ###
+### `col_hasnt_default()` ###
 
-    SELECT col_hasnt_default(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'There should be no default on myschema.sometable.somecolumn'
-    );
+    SELECT col_hasnt_default( :schema, :table, :column, :description );
+    SELECT col_hasnt_default( :table, :column, :description );
+    SELECT col_hasnt_default( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `col_has_default()`. The test passes if the
 specified column does *not* have a default. It will still fail if the column
 does not exist, and emit useful diagnostics to let you know.
 
-### `col_type_is( schema, table, column, schema, type, description )` ###
-### `col_type_is( schema, table, column, schema, type )` ###
-### `col_type_is( schema, table, column, type, description )` ###
-### `col_type_is( schema, table, column, type )` ###
-### `col_type_is( table, column, type, description )` ###
-### `col_type_is( table, column, type )` ###
+    SELECT col_type_is( :schema, :table, :column, :type_schema, :type, :description );
+    SELECT col_type_is( :schema, :table, :column, :type_schema, :type );
+    SELECT col_type_is( :schema, :table, :column, :type, :description );
+    SELECT col_type_is( :schema, :table, :column, :type );
+    SELECT col_type_is( :table, :column, :type, :description );
+    SELECT col_type_is( :table, :column, :type );
 
-    SELECT col_type_is(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'numeric(10,2)',
-        'Column myschema.sometable.somecolumn should be type text'
-    );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:type_schema`
+: Schema in which to find the data type.
+
+`:type`
+: Name of a data type.
+
+`:description`
+: A short description of the test.
 
 This function tests that the specified column is of a particular type. If it
 fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
-fourth the type's schem, the fifth the type, and the sixth is the test
-description. If the table schema is omitted, the table and the type must be
-visible in the search path. If the test description is omitted, it will be set
-to "Column `:schema.:table.:column` should be type `:schema.:type`". Note that
-this test will fail if the table or column in question does not exist.
+fourth the type's schema, the fifth the type, and the sixth is the test
+description. Example: If the table schema is omitted, the table and the type
+must be visible in the search path. If the test description is omitted, it
+will be set to "Column `:schema.:table.:column` should be type
+`:schema.:type`". Note that this test will fail if the table or column in
+question does not exist.
 
 The type argument should be formatted as it would be displayed in the view of
 a table using the `\d` command in `psql`. For example, if you have a numeric
 column with a precision of 8, you should specify "numeric(8,0)". If you
 created a `varchar(64)` column, you should pass the type as "character
-varying(64)".
+varying(64)". Example:
+
+    SELECT col_type_is( 'myschema', 'sometable', 'somecolumn', 'numeric(10,2)' );
 
 If the test fails, it will output useful diagnostics. For example this test:
 
@@ -3564,17 +3633,28 @@ It will even tell you if the test fails because a column doesn't exist or
 actually has no default. But use `has_column()` to make sure the column exists
 first, eh?
 
-### `col_default_is( schema, table, column, default, description )` ###
-### `col_default_is( table, column, default, description )` ###
-### `col_default_is( table, column, default )` ###
+### `col_default_is()` ###
 
-    SELECT col_default_is(
-        'myschema',
-        'sometable',
-        'somecolumn',
-        'howdy'::text,
-        'Column myschema.sometable.somecolumn should default to ''howdy'''
-    );
+    SELECT col_default_is( :schema, :table, :column, :default, :description );
+    SELECT col_default_is( :table, :column, :default, :description );
+    SELECT col_default_is( :table, :column, :default );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of the column.
+
+`:default`
+: Default value expressed as a string.
+
+`:description`
+: A short description of the test.
 
 Tests the default value of a column. If it fails, it will emit diagnostics
 showing the actual default value. The first argument is the schema name, the
@@ -3623,15 +3703,22 @@ the diagnostics will tell you that, too. But you use `has_column()` and
 `col_has_default()` to test those conditions before you call
 `col_default_is()`, right? *Right???* Yeah, good, I thought so.
 
-### `has_pk( schema, table, description )` ###
-### `has_pk( table, description )` ###
-### `has_pk( table )` ###
+### `has_pk()` ###
 
-    SELECT has_pk(
-        'myschema',
-        'sometable',
-        'Table myschema.sometable should have a primary key'
-    );
+    SELECT has_pk( :schema, :table, :description );
+    SELECT has_pk( :table, :description );
+    SELECT has_pk( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
 
 Tests whether or not a table has a primary key. The first argument is the
 schema name, the second the table name, the the third is the test description.
@@ -3640,28 +3727,42 @@ test description is omitted, it will be set to "Table `:table` should have a
 primary key". Note that this test will fail if the table in question does not
 exist.
 
-### `hasnt_pk( schema, table, description )` ###
-### `hasnt_pk( table, description )` ###
-### `hasnt_pk( table )` ###
+### `hasnt_pk()` ###
 
-    SELECT hasnt_pk(
-        'myschema',
-        'sometable',
-        'Table myschema.sometable should not have a primary key'
-    );
+    SELECT hasnt_pk( :schema, :table, :description );
+    SELECT hasnt_pk( :table, :description );
+    SELECT hasnt_pk( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_pk()`. The test passes if the specified
 primary key does *not* exist.
 
-### `has_fk( schema, table, description )` ###
-### `has_fk( table, description )` ###
-### `has_fk( table )` ###
+### `has_fk()` ###
 
-    SELECT has_fk(
-        'myschema',
-        'sometable',
-        'Table myschema.sometable should have a foreign key constraint'
-    );
+    SELECT has_fk( :schema, :table, :description );
+    SELECT has_fk( :table, :description );
+    SELECT has_fk( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
 
 Tests whether or not a table has a foreign key constraint. The first argument
 is the schema name, the second the table name, the the third is the test
@@ -3670,46 +3771,65 @@ path. If the test description is omitted, it will be set to "Table `:table`
 should have a foreign key constraint". Note that this test will fail if the
 table in question does not exist.
 
-### `hasnt_fk( schema, table, description )` ###
-### `hasnt_fk( table, description )` ###
-### `hasnt_fk( table )` ###
+### `hasnt_fk()` ###
 
-    SELECT hasnt_fk(
-        'myschema',
-        'sometable',
-        'Table myschema.sometable should not have a foreign key constraint'
-    );
+    SELECT hasnt_fk( :schema, :table, :description );
+    SELECT hasnt_fk( :table, :description );
+    SELECT hasnt_fk( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_fk()`. The test passes if the specified
 foreign key does *not* exist.
 
-### `col_is_pk( schema, table, column, description )` ###
-### `col_is_pk( schema, table, column[], description )` ###
-### `col_is_pk( table, column, description )` ###
-### `col_is_pk( table, column[], description )` ###
-### `col_is_pk( table, column )` ###
-### `col_is_pk( table, column[] )` ###
+### `col_is_pk()` ###
 
-    SELECT col_is_pk(
-        'myschema',
-        'sometable',
-        'id',
-        'Column myschema.sometable.id should be a primary key'
-    );
+    SELECT col_is_pk( :schema, :table, :columns, :description );
+    SELECT col_is_pk( :schema, :table, :column, :description );
+    SELECT col_is_pk( :table, :columns, :description );
+    SELECT col_is_pk( :table, :column, :description );
+    SELECT col_is_pk( :table, :columns );
+    SELECT col_is_pk( :table, :column );
 
-    SELECT col_is_pk(
-        'persons',
-        ARRAY['given_name', 'surname'],
-    );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the primary key.
+
+`:columns`
+: Array of the names of the primary key columns.
+
+`:column`
+: Name of the primary key column.
+
+`:description`
+: A short description of the test.
 
 Tests whether the specified column or columns in a table is/are the primary
 key for that table. If it fails, it will emit diagnostics showing the actual
 primary key columns, if any. The first argument is the schema name, the second
 the table name, the third the column name or an array of column names, and the
-fourth is the test description. If the schema is omitted, the table must be
-visible in the search path. If the test description is omitted, it will be set
-to "Column `:table(:column)` should be a primary key". Note that this test
-will fail if the table or column in question does not exist.
+fourth is the test description. Examples:
+
+    SELECT col_is_pk( 'myschema', 'sometable', 'id' );
+    SELECT col_is_pk( 'persons',  ARRAY['given_name', 'surname'] );
+
+If the schema is omitted, the table must be visible in the search path. If the
+test description is omitted, it will be set to "Column `:table(:column)`
+should be a primary key". Note that this test will fail if the table or column
+in question does not exist.
 
 If the test fails, it will output useful diagnostics. For example this test:
 
@@ -3721,46 +3841,60 @@ Will produce something like this:
     #         have: {}
     #         want: {id}
 
-### `col_isnt_pk( schema, table, column, description )` ###
-### `col_isnt_pk( schema, table, column[], description )` ###
-### `col_isnt_pk( table, column, description )` ###
-### `col_isnt_pk( table, column[], description )` ###
-### `col_isnt_pk( table, column )` ###
-### `col_isnt_pk( table, column[] )` ###
+### `col_isnt_pk()` ###
 
-    SELECT col_isnt_pk(
-        'myschema',
-        'sometable',
-        'id',
-        'Column myschema.sometable.id should not be a primary key'
-    );
+    SELECT col_isnt_pk( :schema, :table, :columns, :description );
+    SELECT col_isnt_pk( :schema, :table, :column, :description );
+    SELECT col_isnt_pk( :table, :columns, :description );
+    SELECT col_isnt_pk( :table, :column, :description );
+    SELECT col_isnt_pk( :table, :columns );
+    SELECT col_isnt_pk( :table, :column );
 
-    SELECT col_isnt_pk(
-        'persons',
-        ARRAY['given_name', 'surname'],
-    );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table not containing the primary key.
+
+`:columns`
+: Array of the names of the primary key columns.
+
+`:column`
+: Name of the primary key column.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `col_is_pk()`. The test passes if the
 specified column or columns are not a primary key.
 
-### `col_is_fk( schema, table, column, description )` ###
-### `col_is_fk( schema, table, column[], description )` ###
-### `col_is_fk( table, column, description )` ###
-### `col_is_fk( table, column[], description )` ###
-### `col_is_fk( table, column )` ###
-### `col_is_fk( table, column[] )` ###
+### `col_is_fk()` ###
 
-    SELECT col_is_fk(
-        'myschema',
-        'sometable',
-        'other_id',
-        'Column myschema.sometable.other_id should be a foreign key'
-    );
+    SELECT col_is_fk( :schema, :table, :columns, :description );
+    SELECT col_is_fk( :schema, :table, :column, :description );
+    SELECT col_is_fk( :table, :columns, :description );
+    SELECT col_is_fk( :table, :column, :description );
+    SELECT col_is_fk( :table, :columns );
+    SELECT col_is_fk( :table, :column );
 
-    SELECT col_is_fk(
-        'contacts',
-        ARRAY['given_name', 'surname'],
-    );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the foreign key constraint.
+
+`:columns`
+: Array of the names of the foreign key columns.
+
+`:column`
+: Name of the foreign key column.
+
+`:description`
+: A short description of the test.
 
 Just like `col_is_fk()`, except that it test that the column or array of
 columns are a primary key. The diagnostics on failure are a bit different,
@@ -3771,53 +3905,74 @@ simply list all of the foreign key constraint columns, like so:
     #        {thingy_id}
     #        {surname,given_name}
 
-### `col_isnt_fk( schema, table, column, description )` ###
-### `col_isnt_fk( schema, table, column[], description )` ###
-### `col_isnt_fk( table, column, description )` ###
-### `col_isnt_fk( table, column[], description )` ###
-### `col_isnt_fk( table, column )` ###
-### `col_isnt_fk( table, column[] )` ###
+### `col_isnt_fk()` ###
 
-    SELECT col_isnt_fk(
-        'myschema',
-        'sometable',
-        'other_id',
-        'Column myschema.sometable.other_id should not be a foreign key'
-    );
+    SELECT col_isnt_fk( :schema, :table, :columns, :description );
+    SELECT col_isnt_fk( :schema, :table, :column, :description );
+    SELECT col_isnt_fk( :table, :columns, :description );
+    SELECT col_isnt_fk( :table, :column, :description );
+    SELECT col_isnt_fk( :table, :columns );
+    SELECT col_isnt_fk( :table, :column );
 
-    SELECT col_isnt_fk(
-        'contacts',
-        ARRAY['given_name', 'surname'],
-    );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table not containing the foreign key constraint.
+
+`:columns`
+: Array of the names of the foreign key columns.
+
+`:column`
+: Name of the foreign key column.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `col_is_fk()`. The test passes if the
 specified column or columns are not a foreign key.
 
-### `fk_ok( fk_schema, fk_table, fk_column[], pk_schema, pk_table, pk_column[], description )` ###
-### `fk_ok( fk_schema, fk_table, fk_column[], fk_schema, pk_table, pk_column[] )` ###
-### `fk_ok( fk_table, fk_column[], pk_table, pk_column[], description )` ###
-### `fk_ok( fk_table, fk_column[], pk_table, pk_column[] )` ###
-### `fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column, description )` ###
-### `fk_ok( fk_schema, fk_table, fk_column, pk_schema, pk_table, pk_column )` ###
-### `fk_ok( fk_table, fk_column, pk_table, pk_column, description )` ###
-### `fk_ok( fk_table, fk_column, pk_table, pk_column )` ###
+### `fk_ok()` ###
 
-    SELECT fk_ok(
-        'myschema',
-        'sometable',
-        'big_id',
-        'myschema',
-        'bigtable',
-        'id',
-        'myschema.sometable(big_id) should reference myschema.bigtable(id)'
-    );
+    SELECT fk_ok( :fk_schema, :fk_table, :fk_columns, :pk_schema, :pk_table, :pk_columns, :description );
+    SELECT fk_ok( :fk_schema, :fk_table, :fk_columns, :fk_schema, :pk_table, :pk_columns );
+    SELECT fk_ok( :fk_table, :fk_columns, :pk_table, :pk_columns, :description );
+    SELECT fk_ok( :fk_table, :fk_columns, :pk_table, :pk_columns );
+    SELECT fk_ok( :fk_schema, :fk_table, :fk_column, :pk_schema, :pk_table, :pk_column, :description );
+    SELECT fk_ok( :fk_schema, :fk_table, :fk_column, :pk_schema, :pk_table, :pk_column );
+    SELECT fk_ok( :fk_table, :fk_column, :pk_table, :pk_column, :description );
+    SELECT fk_ok( :fk_table, :fk_column, :pk_table, :pk_column );
 
-    SELECT fk_ok(
-        'contacts',
-        ARRAY['person_given_name', 'person_surname'],
-        'persons',
-        ARRAY['given_name', 'surname'],
-    );
+**Parameters**
+
+`:fk_schema`
+: Schema in which to find the table with the foreign key
+
+`:fk_table`
+: Name of a table containing the foreign key.
+
+`:fk_columns`
+: Array of the names of the foreign key columns.
+
+`:fk_column`
+: Name of the foreign key column.
+
+`:pk_schema`
+: Schema in which to find the table with the primary key
+
+`:pk_table`
+: Name of a table containing the primary key.
+
+`:pk_columns`
+: Array of the names of the primary key columns.
+
+`:pk_column`
+: Name of the primary key column.
+
+`:description`
+: A short description of the test.
 
 This function combines `col_is_fk()` and `col_is_pk()` into a single test that
 also happens to determine that there is in fact a foreign key relationship
@@ -3833,7 +3988,15 @@ key. Again, the schema is optional and the columns may be a string or array of
 strings (though of course it should have the same number of elements as the
 foreign key column argument). The seventh argument is an optional description
 If it's not included, it will be set to `:fk_schema.:fk_table(:fk_column)`
-should reference `:pk_column.pk_table(:pk_column)`.
+should reference `:pk_column.pk_table(:pk_column)`. Some examples:
+
+    SELECT fk_ok( 'myschema', 'sometable', 'big_id', 'myschema', 'bigtable', 'id' );
+    SELECT fk_ok(
+        'contacts',
+        ARRAY['person_given_name', 'person_surname'],
+        'persons',
+        ARRAY['given_name', 'surname'],
+    );
 
 If the test fails, it will output useful diagnostics. For example this test:
 
@@ -3845,15 +4008,22 @@ Will produce something like this:
     #         have: contacts(person_id) REFERENCES persons(id)"
     #         want: contacts(person_nick) REFERENCES persons(nick)"
 
-### `has_unique( schema, table, description )` ###
-### `has_unique( table, description )` ###
-### `has_unique( table )` ###
+### `has_unique()` ###
 
-    SELECT has_unique(
-        'myschema',
-        'sometable',
-        'Table myschema.sometable should have a unique constraint'
-    );
+    SELECT has_unique( :schema, :table, :description );
+    SELECT has_unique( :table, :description );
+    SELECT has_unique( :table );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the unique constraint.
+
+`:description`
+: A short description of the test.
 
 Tests whether or not a table has a unique constraint. The first argument is
 the schema name, the second the table name, the the third is the test
@@ -3862,47 +4032,62 @@ path. If the test description is omitted, it will be set to "Table `:table`
 should have a unique constraint". Note that this test will fail if the table
 in question does not exist.
 
-### `col_is_unique( schema, table, column, description )` ###
-### `col_is_unique( schema, table, column[], description )` ###
-### `col_is_unique( table, column, description )` ###
-### `col_is_unique( table, column[], description )` ###
-### `col_is_unique( table, column )` ###
-### `col_is_unique( table, column[] )` ###
+### `col_is_unique()` ###
 
-    SELECT col_is_unique(
-        'myschema',
-        'sometable',
-        'other_id',
-        'Column myschema.sometable.other_id should have a unique constraint'
-    );
+    SELECT col_is_unique( schema, table, columns, description );
+    SELECT col_is_unique( schema, table, column, description );
+    SELECT col_is_unique( table, columns, description );
+    SELECT col_is_unique( table, column, description );
+    SELECT col_is_unique( table, columns );
+    SELECT col_is_unique( table, column );
 
-    SELECT col_is_unique(
-        'contacts',
-        ARRAY['given_name', 'surname'],
-    );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the unique constraint.
+
+`:columns`
+: Array of the names of the unique columns.
+
+`:column`
+: Name of the unique column.
+
+`:description`
+: A short description of the test.
 
 Just like `col_is_pk()`, except that it test that the column or array of
-columns have a unique constraint on them. In the event of failure, the
-diagnostics will list the unique constraints that were actually found, if any:
+columns have a unique constraint on them. Examples:
+
+    SELECT col_is_unique( 'myschema', 'sometable', 'other_id' );
+    SELECT col_is_unique( 'contacts', ARRAY['given_name', 'surname'] );
+
+In the event of failure, the diagnostics will list the unique constraints that
+were actually found, if any:
 
     Failed test 40: "users.email should be unique"
             have: {username}
                   {first_name,last_name}
             want: {email}
 
-### `has_check( schema, table, description )` ###
-### `has_check( table, description )` ###
-### `has_check( table )` ###
+### `has_check()` ###
 
-    SELECT has_check(
-        'myschema',
-        'sometable',
-        'Table myschema.sometable should have a check constraint'
-    );
+    SELECT has_check( :schema, :table, :description );
+    SELECT has_check( :table, :description );
+    SELECT has_check( :table );
 
-    Failed test 41: "users.email should have a check constraint"
-            have: {username}
-            want: {email}
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the check constraint.
+
+`:description`
+: A short description of the test.
 
 Tests whether or not a table has a check constraint. The first argument is the
 schema name, the second the table name, the the third is the test description.
@@ -3914,93 +4099,134 @@ not exist.
 In the event of failure, the diagnostics will list the columns on the table
 that do have check constraints, if any:
 
-### `col_has_check( schema, table, column, description )` ###
-### `col_has_check( schema, table, column[], description )` ###
-### `col_has_check( table, column, description )` ###
-### `col_has_check( table, column[], description )` ###
-### `col_has_check( table, column )` ###
-### `col_has_check( table, column[] )` ###
+    Failed test 41: "users.email should have a check constraint"
+            have: {username}
+            want: {email}
 
-    SELECT col_has_check(
-        'myschema',
-        'sometable',
-        'other_id',
-        'Column myschema.sometable.other_id should have a check constraint'
-    );
+### `col_has_check()` ###
 
-    SELECT col_has_check(
-        'contacts',
-        ARRAY['given_name', 'surname'],
-    );
+    SELECT col_has_check( :schema, :table, :columns, :description );
+    SELECT col_has_check( :schema, :table, :column, :description );
+    SELECT col_has_check( :table, :columns, :description );
+    SELECT col_has_check( :table, :column, :description );
+    SELECT col_has_check( :table, :columns );
+    SELECT col_has_check( :table, :column );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the check constraint.
+
+`:columns`
+: Array of the names of the check constraint columns.
+
+`:column`
+: Name of the check constraint column.
+
+`:description`
+: A short description of the test.
 
 Just like `col_is_pk()`, except that it test that the column or array of
 columns have a check constraint on them.
 
-### `index_is_unique( schema, table, index, description )` ###
-### `index_is_unique( schema, table, index )` ###
-### `index_is_unique( table, index )` ###
-### `index_is_unique( index )` ###
+### `index_is_unique()` ###
 
-    SELECT index_is_unique(
-        'myschema',
-        'sometable',
-        'myindex',
-        'Index "myindex" should be unique'
-    );
+    SELECT index_is_unique( :schema, :table, :index, :description );
+    SELECT index_is_unique( :schema, :table, :index );
+    SELECT index_is_unique( :table, :index );
+    SELECT index_is_unique( :index );
 
-    SELECT index_is_unique( 'sometable', 'myindex' );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the index.
+
+`:index`
+: Name of the index.
+
+`:description`
+: A short description of the test.
 
 Tests whether an index is unique.
 
-### `index_is_primary( schema, table, index, description )` ###
-### `index_is_primary( schema, table, index )` ###
-### `index_is_primary( table, index )` ###
-### `index_is_primary( index )` ###
+### `index_is_primary()` ###
 
-    SELECT index_is_primary(
-        'myschema',
-        'sometable',
-        'myindex',
-        'Index "myindex" should be on a primary key'
-    );
+    SELECT index_is_primary( :schema, :table, :index, :description );
+    SELECT index_is_primary( :schema, :table, :index );
+    SELECT index_is_primary( :table, :index );
+    SELECT index_is_primary( :index );
 
-    SELECT index_is_primary( 'sometable', 'myindex' );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the index.
+
+`:index`
+: Name of the index.
+
+`:description`
+: A short description of the test.
 
 Tests whether an index is on a primary key.
 
-### `is_clustered( schema, table, index, description )` ###
-### `is_clustered( schema, table, index )` ###
-### `is_clustered( table, index )` ###
-### `is_clustered( index )` ###
+### `is_clustered()` ###
 
-    SELECT is_clustered(
-        'myschema',
-        'sometable',
-        'myindex',
-        'Table sometable should be clustered on "myindex"'
-    );
+    SELECT is_clustered( :schema, :table, :index, :description );
+    SELECT is_clustered( :schema, :table, :index );
+    SELECT is_clustered( :table, :index );
+    SELECT is_clustered( :index );
 
-    SELECT is_clustered( 'sometable', 'myindex' );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the index.
+
+`:index`
+: Name of the index.
+
+`:description`
+: A short description of the test.
 
 Tests whether a table is clustered on the given index. A table is clustered on
 an index when the SQL command `CLUSTER TABLE INDEXNAME` has been executed.
 Clustering reorganizes the table tuples so that they are stored on disk in the
 order defined by the index.
 
-### `index_is_type( schema, table, index, type, description )` ###
-### `index_is_type( schema, table, index, type )` ###
-### `index_is_type( table, index, type )` ###
-### `index_is_type( index, type )` ###
+### `index_is_type()` ###
 
-    SELECT index_is_type(
-        'myschema',
-        'sometable',
-        'myindex',
-        'gist',
-        'Index "myindex" should be a GIST index'
-    );
+    SELECT index_is_type( :schema, :table, :index, :type, :description );
+    SELECT index_is_type( :schema, :table, :index, :type );
+    SELECT index_is_type( :table, :index, :type );
+    SELECT index_is_type( :index, :type );
 
-    SELECT index_is_type( 'myindex', 'gin' );
+**Parameters**
+
+`:schema`
+: Schema in which to find the table.
+
+`:table`
+: Name of a table containing the index.
+
+`:index`
+: Name of the index.
+
+`:type`
+: The index Type.
+
+`:description`
+: A short description of the test.
 
 Tests to ensure that an index is of a particular type. At the time of this
 writing, the supported types are:
@@ -5264,6 +5490,8 @@ No changes. Everything should just work.
 
 To Do
 =====
+* Add parameter names matching the docs so parameters can be passed by name on
+  9.0 and higher.
 * Add `isnt_empty()` to complement `is_empty()`.
 * Add variants of `set_eq()`, `bag_eq()`, and `results_eq()` that take an
   array of records as the second argument.
