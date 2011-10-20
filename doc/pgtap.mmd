@@ -4640,10 +4640,18 @@ Tables and functions aren't the only objects in the database, as you well
 know. These assertions close the gap by letting you test the attributes of
 other database objects.
 
-### `language_is_trusted( language, description )` ###
-### `language_is_trusted( language )` ###
+### `language_is_trusted()` ###
 
-    SELECT language_is_trusted( 'plperl', 'PL/Perl should be trusted' );
+    SELECT language_is_trusted( language, description );
+    SELECT language_is_trusted( language );
+
+**Parameters**
+
+`:language`
+: Name of a procedural language.
+
+`:description`
+: A short description of the test.
 
 Tests that the specified procedural language is trusted. See the [CREATE
 LANGUAGE](http://www.postgresql.org/docs/current/static/sql-createlanguage.html
@@ -4661,37 +4669,63 @@ fact, like so:
 But you really ought to call `has_language()` first so that you never get that
 far.
 
-### `enum_has_labels( schema, enum, labels, description )` ###
-### `enum_has_labels( schema, enum, labels )` ###
-### `enum_has_labels( enum, labels, description )` ###
-### `enum_has_labels( enum, labels )` ###
+### `enum_has_labels()` ###
 
-    SELECT enum_has_labels(
-        'myschema',
-        'someenum',
-        ARRAY['foo', 'bar'],
-        'Enum someenum should have labels foo, bar'
-    );
+    SELECT enum_has_labels( :schema, :enum, :labels, :description );
+    SELECT enum_has_labels( :schema, :enum, :labels );
+    SELECT enum_has_labels( :enum, :labels, :description );
+    SELECT enum_has_labels( :enum, :labels );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the enum.
+
+`:enum`
+: Enum name.
+
+`:labels`
+: An array of the enum labels.
+
+`:description`
+: A short description of the test.
 
 This function tests that an enum consists of an expected list of labels. Enums
 are supported in PostgreSQL 8.3 or higher. The first argument is a schema
 name, the second an enum name, the third an array of enum labels, and the
-fourth a description. If you omit the schema, the enum must be visible in the
-search path. If you omit the test description, it will be set to "Enum `:enum`
-should have labels (`:labels`)".
+fourth a description. Example:
 
-### `domain_type_is( schema, domain, schema, type, description )` ###
-### `domain_type_is( schema, domain, schema, type )` ###
-### `domain_type_is( schema, domain, type, description )` ###
-### `domain_type_is( schema, domain, type )` ###
-### `domain_type_is( domain, type, description )` ###
-### `domain_type_is( domain, type )` ###
+    SELECT enum_has_labels( 'myschema', 'someenum', ARRAY['foo', 'bar'] );
 
-    SELECT domain_type_is(
-        'public', 'us_postal_code',
-        'public', 'text',
-        'The us_postal_code domain should extend the text type'
-    );
+If you omit the schema, the enum must be visible in the search path. If you
+omit the test description, it will be set to "Enum `:enum` should have labels
+(`:labels`)".
+
+### `domain_type_is()` ###
+
+    SELECT domain_type_is( :schema, :domain, :type_schema, :type, :description );
+    SELECT domain_type_is( :schema, :domain, :type_schema, :type );
+    SELECT domain_type_is( :schema, :domain, :type, :description );
+    SELECT domain_type_is( :schema, :domain, :type );
+    SELECT domain_type_is( :domain, :type, :description );
+    SELECT domain_type_is( :domain, :type );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the domain.
+
+`:domain`
+: Domain name.
+
+`:type_schema`
+: Schema in which to find the data type.
+
+`:type`
+: Domain data type.
+
+`:description`
+: A short description of the test.
 
 Tests the data type underlying a domain. The first two are arguments are the
 schema and name of the domain. The second two are the schema and name of the
@@ -4699,7 +4733,12 @@ type that the domain should extend. The fifth argument is a description. If
 there is no description, a reasonable default description will be created. The
 schema arguments are also optional (though if there is no schema for the
 domain then there cannot be one for the type). For the 3- and 4-argument
-forms with schemas, cast the schemas to `NAME` to avoid ambiguities.
+forms with schemas, cast the schemas to `NAME` to avoid ambiguities. Example:
+
+    SELECT domain_type_is(
+        'public'::name, 'us_postal_code',
+        'public'::name, 'text'
+    );
 
 If the data type does not match the type that the domain extends, the test
 will fail and output diagnostics like so:
@@ -4714,12 +4753,36 @@ diagnostics that tell you so:
     # Failed test 632: "Domain public.zip_code should extend type public.text"
     #    Domain public.zip_code does not exist
 
-### `domain_type_isnt( schema, domain, schema, type, description )` ###
-### `domain_type_isnt( schema, domain, schema, type )` ###
-### `domain_type_isnt( schema, domain, type, description )` ###
-### `domain_type_isnt( schema, domain, type )` ###
-### `domain_type_isnt( domain, type, description )` ###
-### `domain_type_isnt( domain, type )` ###
+### `domain_type_isnt()` ###
+
+    SELECT domain_type_isnt( :schema, :domain, :type_schema, :type, :description );
+    SELECT domain_type_isnt( :schema, :domain, :type_schema, :type );
+    SELECT domain_type_isnt( :schema, :domain, :type, :description );
+    SELECT domain_type_isnt( :schema, :domain, :type );
+    SELECT domain_type_isnt( :domain, :type, :description );
+    SELECT domain_type_isnt( :domain, :type );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the domain.
+
+`:domain`
+: Domain name.
+
+`:type_schema`
+: Schema in which to find the data type.
+
+`:type`
+: Domain data type.
+
+`:description`
+: A short description of the test.
+
+The inverse of `domain_type_is()`, this function tests that a domain does
+*not* extend a particular data type. For example, a US postal code domain
+should probably extned the `text` type, not `integer`, since leading 0s are
+valid and required. Example:
 
     SELECT domain_type_isnt(
         'public', 'us_postal_code',
@@ -4727,17 +4790,29 @@ diagnostics that tell you so:
         'The us_postal_code domain should not extend the integer type'
     );
 
-The inverse of `domain_type_is()`, this function tests that a domain does
-*not* extend a particular data type. For example, a US postal code domain
-should probably extned the `text` type, not `integer`, since leading 0s are
-valid and required. The arguments are the same as for `domain_type_is()`.
+The arguments are the same as for `domain_type_is()`.
 
-### `cast_context_is( source_type, target_type, context, description )` ###
-### `cast_context_is( source_type, target_type, context )` ###
+### `cast_context_is()` ###
+
+    SELECT cast_context_is( :source_type, :target_type, :context, :description );
+    SELECT cast_context_is( :source_type, :target_type, :context );
+
+**Parameters**
+
+`:source_type`
+: The type cast from.
+
+`:target_type`
+: The type cast to.
+
+`:context`
+: The context for the cast, one of "implicit", "assignment", or "explicit".
+
+Test that a cast from a source to a target data type has a particular context.
+Example:
 
     SELECT cast_context_is( 'integer', 'bigint', 'implicit' );
 
-Test that a cast from a source to a target data type has a particular context.
 The data types should be passed as they are displayed by
 `pg_catalog.format_type()`. For example, you would need to pass "character
 varying", and not "VARCHAR".
@@ -4762,14 +4837,25 @@ If the cast doesn't exist, you'll be told that, too:
 
 But you've already used `has_cast()` to make sure of that, right?
 
-### `is_superuser( user, description )` ###
-### `is_superuser( user )` ###
+### `is_superuser()` ###
 
-    SELECT is_superuser( 'theory', 'User "theory" should be a super user' );
+    SELECT is_superuser( :user, :description );
+    SELECT is_superuser( :user );
+
+**Parameters**
+
+`:user`
+: Name of a PostgreSQL user.
+
+`:description`
+: A short description of the test.
 
 Tests that a database user is a super user. If the description is omitted, it
-will default to "User `:user` should be a super user". If the user does not
-exist in the database, the diagnostics will say so.
+will default to "User `:user` should be a super user". Example:
+
+    SELECT is_superuser('theory' ;
+
+If the user does not exist in the database, the diagnostics will say so.
 
 ### `isnt_superuser( user, description )` ###
 ### `isnt_superuser( user )` ###
@@ -4784,10 +4870,26 @@ The inverse of `is_superuser()`, this function tests that a database user is
 database, the test is still considered a failure, and the diagnostics will say
 so.
 
-### `is_member_of( group, users[], description )` ###
-### `is_member_of( group, users[] )` ###
-### `is_member_of( group, user, description )` ###
-### `is_member_of( group, user )` ###
+### `is_member_of()` ###
+
+    SELECT is_member_of( :group, :users, :description );
+    SELECT is_member_of( :group, :users );
+    SELECT is_member_of( :group, :user, :description );
+    SELECT is_member_of( :group, :user );
+
+**Parameters**
+
+`:group`
+: Name of a PostgreSQL group.
+
+`:users`
+: Array of names of users that should be members of the group.
+
+`:user`
+: Name of a user that should be a member of the group.
+
+`:description`
+: A short description of the test.
 
     SELECT is_member_of( 'sweeties', 'anna' 'Anna should be a sweetie' );
     SELECT is_member_of( 'meanies', ARRAY['dr_evil', 'dr_no' ] );
@@ -4806,48 +4908,74 @@ If the group does not exist, the diagnostics will tell you that, instead. But
 you use `has_group()` to make sure the group exists before you check its
 members, don't you? Of course you do.
 
-### `rule_is_instead( schema, table, rule, description )` ###
-### `rule_is_instead( schema, table, rule )` ###
-### `rule_is_instead( table, rule, description )` ###
-### `rule_is_instead( table, rule )` ###
+### `rule_is_instead()` ###
 
-    SELECT rule_is_instead(
-        'public',
-        'users',
-        'on_insert',
-        'Rule "on_insert" should be on on relation public.users'
-    );
+    SELECT rule_is_instead( :schema, :table, :rule, :description );
+    SELECT rule_is_instead( :schema, :table, :rule );
+    SELECT rule_is_instead( :table, :rule, :description );
+    SELECT rule_is_instead( :table, :rule );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the table.
+
+`:table`
+: Name of the table to which the rule is applied.
+
+`:rule`
+: A rule name.
+
+`:description`
+: A short description of the test.
 
 Checks whether a rule on the specified relation is an `INSTEAD` rule. See the
 [`CREATE RULE`
 Documentation](http://www.postgresql.org/docs/current/static/sql-createrule.html)
 for details. If the `:schema` argument is omitted, the relation must be
 visible in the search path. If the `:description` argument is omitted, an
-appropriate description will be created. In the event that the test fails
-because the rule in question does not actually exist, you will see an
-appropriate diagnostic such as:
+appropriate description will be created. An example:
+
+    SELECT rule_is_instead('public', 'users', 'on_insert');
+
+In the event that the test fails because the rule in question does not
+actually exist, you will see an appropriate diagnostic such as:
 
     # Failed test 625: "Rule on_insert on relation public.users should be an INSTEAD rule"
     #     Rule on_insert does not exist
 
-### `rule_is_on( schema, table, rule, event, description )` ###
-### `rule_is_on( schema, table, rule, event )` ###
-### `rule_is_on( table, rule, event, description )` ###
-### `rule_is_on( table, rule, event )` ###
+### `rule_is_on()` ###
 
-    SELECT rule_is_on(
-        'public',
-        'users',
-        'on_insert',
-        'INSERT',
-        'Rule "on_insert" be on insert to on relation public.users'
-    );
+    SELECT rule_is_on( :schema, :table, :rule, :event, :description );
+    SELECT rule_is_on( :schema, :table, :rule, :event );
+    SELECT rule_is_on( :table, :rule, :event, :description );
+    SELECT rule_is_on( :table, :rule, :event );
 
-Tests the event for a rule, which may be one of `SELECT`, `INSERT`, `UPDATE`,
-or `DELETE`. For the `:event` argument, you can specify the name of the event
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the table.
+
+`:table`
+: Name of the table to which the rule is applied.
+
+`:rule`
+: A rule name.
+
+`:event`
+: Name of a rule event, one of "SELECT", "INSERT", "UPDATE", or "DELETE".
+
+`:description`
+: A short description of the test.
+
+Tests the event for a rule, which may be one of "SELECT", "INSERT", "UPDATE",
+or "DELETE". For the `:event` argument, you can specify the name of the event
 in any case, or even with a single letter ("s", "i", "u", or "d"). If the
 `:schema` argument is omitted, then the table must be visible in the search
 path. If the `:description` is omitted, a reasonable default will be created.
+Example:
+
+    SELECT rule_is_on('public', 'users', 'on_insert', 'INSERT');
 
 If the test fails, you'll see useful diagnostics, such as:
 
