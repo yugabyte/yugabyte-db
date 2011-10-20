@@ -4996,16 +4996,30 @@ Who owns me?
 After testing the availability of several objects, we often need to know who
 owns an object.
 
-### `db_owner_is (dbname, user, description)` ###
-### `db_owner_is (dbname, user)` ###
+### `db_owner_is ()` ###
 
-    SELECT db_owner_is( 'mydb', 'someuser', 'mydb should be owned by someuser');
-    SELECT db_owner_is( current_database(), current_user);
+    SELECT db_owner_is ( :dbname, :user, :description );
+    SELECT db_owner_is ( :dbname, :user );
+
+**Parameters**
+
+`:dbname`
+: Name of a database.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
 
 Tests the ownership of the database. If the `:description` argument is
-omitted, an appropriate description will be created. In the event that the
-test fails because the database in question does not actually exist, you will
-see an appropriate diagnostic such as:
+omitted, an appropriate description will be created. Examples:
+
+    SELECT db_owner_is( 'mydb', 'someuser', 'mydb should be owned by someuser' );
+    SELECT db_owner_is( current_database(), current_user );
+
+In the event that the test fails because the database in question does not
+actually exist, you will see an appropriate diagnostic such as:
 
     # Failed test 16: "Database foo should be owned by www"
     #     Database foo does not exist
