@@ -5048,10 +5048,14 @@ went wrong when it failed. But sometimes it doesn't work out that way. So here
 we have ways for you to write your own diagnostic messages which are safer
 than just `\echo` or `SELECT foo`.
 
-### `diag( text )` ###
-### `diag( anyelement )` ###
-### `diag( variadic anyarray )` ###
-### `diag( variadic text[] )` ###
+### `diag()` ###
+
+    SELECT diag( :lines );
+
+**Parameters**
+
+`:lines`
+: A list of one or more SQL values of the same type.
 
 Returns a diagnostic message which is guaranteed not to interfere with test
 output. Handy for this sort of thing:
@@ -5087,10 +5091,20 @@ procedural language), or a contrib module isn't available. In these cases it's
 necessary to skip tests, or declare that they are supposed to fail but will
 work in the future (a todo test).
 
-### `skip( why, how_many )` ###
-### `skip( how_many, why )` ###
-### `skip( why )` ###
-### `skip( how_many )` ###
+### `skip()` ###
+
+    SELECT skip( :why, :how_many );
+    SELECT skip( :how_many, :why );
+    SELECT skip( :why );
+    SELECT skip( :how_many );
+
+**Parameters**
+
+`:why`
+: Reason for skipping the tests.
+
+`:how_many`
+: Number of tests to skip
 
 Outputs SKIP test results. Use it in a conditional expression within a
 `SELECT` statement to replace the output of a test that you otherwise would
@@ -5129,10 +5143,20 @@ multiple rows:
 This will cause it to skip the same number of rows as would have been tested
 had the `WHEN` condition been true.
 
-### `todo( why, how_many )` ###
-### `todo( how_many, why )` ###
-### `todo( how_many )` ###
-### `todo( why )` ###
+### `todo()` ###
+
+    SELECT todo( :why, :how_many );
+    SELECT todo( :how_many, :why );
+    SELECT todo( :why );
+    SELECT todo( :how_many );
+
+**Parameters**
+
+`:why`
+: Reason for marking tests as to dos.
+
+`:how_many`
+: Number of tests to mark as to dos.
 
 Declares a series of tests that you expect to fail and why. Perhaps it's
 because you haven't fixed a bug or haven't finished a new feature:
@@ -5277,12 +5301,14 @@ appreciated.
 **NOTE:** The values returned by this function may change in the future,
 depending on how good the pgTAP build process gets at detecting a OS.
 
-### `collect_tap(tap[])` ###
+### `collect_tap()` ###
 
-    SELECT collect_tap(
-        ok(true, 'This should pass'),
-        ok(false, 'This should fail)
-    );
+    SELECT collect_tap(:lines);
+
+**Parameters**
+
+`:lines`
+: A list of one or more lines of TAP.
 
 Collects the results of one or more pgTAP tests and returns them all. Useful
 when used in combination with `skip()`:
@@ -5306,27 +5332,60 @@ On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
         ok(false, 'This should fail)
     ]);
 
-### `display_type( schema, type_oid, typemod )` ###
-### `display_type( type_oid, typemod )` ###
+### `display_type()` ###
+
+    SELECT display_type( :schema, :typeoid, typemod );
+    SELECT display_type( :typeoid, :typemod );
+
+**Parameters**
+
+`:schema`
+: Schema in which to find the type.
+
+`:typeoid`
+: OID of the type.
+
+`:typemod`
+: Typemode for the type.
+
+Like `pg_catalog.format_type()`, except that the returned value is not
+prepended with the schema name unless it is passed as the first argument. Some
+examples:
 
     SELECT display_type('public', 'varchar'::regtype, NULL );
     SELECT display_type('numeric'::regtype, 196612 );
 
-Like `pg_catalog.format_type()`, except that the returned value is not
-prepended with the schema name unless it is passed as the first argument. Used
-internally by pgTAP to compare type names, but may be more generally useful.
+Used internally by pgTAP to compare type names, but may be more generally
+useful.
 
-### `display_oper( oper_name, oper_oid )` ###
+### `display_oper()` ###
+
+    SELECT display_oper( :opername, :operoid );
+
+**Parameters**
+
+`:opername`
+: Operator name.
+
+`:operoid`
+: Operator OID.
+
+Similar to casting an operator OID to regoperator, only the schema is not
+included in the display. For example:
 
     SELECT display_type(oprname, oid ) FROM pg_operator;
 
-Similar to casting an operator OID to regoperator, only the schema is not
-included in the display. Used internally by pgTAP to compare operators, but
-may be more generally useful.
+Used internally by pgTAP to compare operators, but may be more generally
+useful.
 
-### `pg_typeof(any)` ###
+### `pg_typeof()` ###
 
-    SELECT pg_typeof(:value);
+    SELECT pg_typeof(:any);
+
+**Parameters**
+
+`:any`
+: Any SQL value.
 
 Returns a `regtype` identifying the type of value passed to the function. This
 function is used internally by `cmp_ok()` to properly construct types when
@@ -5342,10 +5401,18 @@ because it's in core in 8.4. You only need to worry about this if you depend
 on the function being in particular schema. It will always be in `pg_catalog`
 in 8.4 and higher.
 
-### `findfuncs( schema, pattern )` ###
-### `findfuncs( pattern )` ###
+### `findfuncs()` ###
 
-    SELECT findfuncs('myschema', '^test' );
+    SELECT findfuncs( :schema, :pattern );
+    SELECT findfuncs( :pattern );
+
+**Parameters**
+
+`:schema`
+: Schema to search for functions.
+
+`:pattern`
+: Regular expression pattern against which to match function names.
 
 This function searches the named schema or, if no schema is passed, the search
 patch, for all functions that match the regular expression pattern. The
