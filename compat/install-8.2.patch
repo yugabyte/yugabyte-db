@@ -1,6 +1,6 @@
---- sql/pgtap.sql	2011-02-01 15:15:23.000000000 -0800
-+++ sql/pgtap.sql.orig	2011-02-01 15:14:35.000000000 -0800
-@@ -11,6 +11,59 @@
+--- sql/pgtap.sql.saf	2011-11-10 15:40:08.000000000 -0800
++++ sql/pgtap.sql	2011-11-10 15:40:43.000000000 -0800
+@@ -8,6 +8,59 @@
  --
  -- http://pgtap.org/
  
@@ -60,7 +60,7 @@
  CREATE OR REPLACE FUNCTION pg_version()
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
-@@ -194,11 +247,11 @@
+@@ -191,11 +244,11 @@
  RETURNS integer AS $$
  BEGIN
      EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
@@ -77,7 +77,7 @@
      RETURN currval('__tresults___numb_seq');
  END;
  $$ LANGUAGE plpgsql;
-@@ -273,21 +326,6 @@
+@@ -270,21 +323,6 @@
      );
  $$ LANGUAGE sql strict;
  
@@ -99,7 +99,7 @@
  CREATE OR REPLACE FUNCTION ok ( boolean, text )
  RETURNS TEXT AS $$
  DECLARE
-@@ -500,9 +538,9 @@
+@@ -497,9 +535,9 @@
      output TEXT;
  BEGIN
      EXECUTE 'SELECT ' ||
@@ -111,7 +111,7 @@
         INTO result;
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-@@ -1106,7 +1144,7 @@
+@@ -1103,7 +1141,7 @@
      SELECT COALESCE(substring(
          pg_catalog.format_type($1, $2),
          '(("(?!")([^"]|"")+"|[^.]+)([(][^)]+[)])?)$'
@@ -193,7 +193,7 @@
  CREATE OR REPLACE FUNCTION _has_role( NAME )
  RETURNS BOOLEAN AS $$
      SELECT EXISTS(
-@@ -5920,13 +5901,13 @@
+@@ -5924,13 +5905,13 @@
          -- Find extra records.
          FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || want LOOP
@@ -209,7 +209,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6150,7 +6131,7 @@
+@@ -6154,7 +6135,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
@@ -218,7 +218,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6245,11 +6226,11 @@
+@@ -6249,11 +6230,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -233,7 +233,7 @@
              );
          END IF;
          rownum = rownum + 1;
-@@ -6264,8 +6245,8 @@
+@@ -6268,8 +6249,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -244,7 +244,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6400,7 +6381,7 @@
+@@ -6404,7 +6385,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -253,7 +253,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6414,8 +6395,8 @@
+@@ -6418,8 +6399,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -264,7 +264,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6540,9 +6521,9 @@
+@@ -6544,9 +6525,9 @@
  DECLARE
      typeof regtype := pg_typeof($1);
  BEGIN
@@ -277,7 +277,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -6563,7 +6544,7 @@
+@@ -6567,7 +6548,7 @@
  BEGIN
      -- Find extra records.
      FOR rec in EXECUTE _query($1) LOOP
@@ -286,7 +286,7 @@
      END LOOP;
  
      -- What extra records do we have?
-@@ -6708,7 +6689,7 @@
+@@ -6712,7 +6693,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -295,7 +295,7 @@
                 AND n.nspname = $1
                 AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
              EXCEPT
-@@ -6726,7 +6707,7 @@
+@@ -6730,7 +6711,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -304,7 +304,7 @@
                 AND n.nspname = $1
                 AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
          ),
-@@ -6759,7 +6740,7 @@
+@@ -6763,7 +6744,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -313,7 +313,7 @@
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
-@@ -6778,7 +6759,7 @@
+@@ -6782,7 +6763,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -322,7 +322,7 @@
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
-@@ -7058,10 +7039,12 @@
+@@ -7062,10 +7043,12 @@
      rec    RECORD;
  BEGIN
      EXECUTE _query($1) INTO rec;
@@ -338,7 +338,7 @@
      );
  END;
  $$ LANGUAGE plpgsql;
-@@ -7206,7 +7189,7 @@
+@@ -7210,7 +7193,7 @@
  
  CREATE OR REPLACE FUNCTION display_oper ( NAME, OID )
  RETURNS TEXT AS $$
@@ -347,7 +347,7 @@
  $$ LANGUAGE SQL;
  
  -- operators_are( schema, operators[], description )
-@@ -7215,7 +7198,7 @@
+@@ -7219,7 +7202,7 @@
      SELECT _areni(
          'operators',
          ARRAY(
@@ -356,7 +356,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE n.nspname = $1
-@@ -7227,7 +7210,7 @@
+@@ -7231,7 +7214,7 @@
              SELECT $2[i]
                FROM generate_series(1, array_upper($2, 1)) s(i)
              EXCEPT
@@ -365,7 +365,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE n.nspname = $1
-@@ -7248,7 +7231,7 @@
+@@ -7252,7 +7235,7 @@
      SELECT _areni(
          'operators',
          ARRAY(
@@ -374,7 +374,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE pg_catalog.pg_operator_is_visible(o.oid)
-@@ -7261,7 +7244,7 @@
+@@ -7265,7 +7248,7 @@
              SELECT $1[i]
                FROM generate_series(1, array_upper($1, 1)) s(i)
              EXCEPT
