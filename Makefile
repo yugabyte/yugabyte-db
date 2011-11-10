@@ -23,12 +23,12 @@ endif
 VERSION = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 
 # We support 8.0 and later.
-ifeq ($(shell echo $(VERSION) | grep -qE " 7\." && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE " 7[.]" && echo yes || echo no),yes)
 $(error pgTAP requires PostgreSQL 8.0 or later. This is $(VERSION))
 endif
 
 # Compile the C code only if we're on 8.3 or older.
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE " 8[.][0123]" && echo yes || echo no),yes)
 MODULES = src/pgtap
 endif
 
@@ -57,19 +57,19 @@ ifndef HAVE_HARNESS
 endif
 
 # Enum tests not supported by 8.2 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[012]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE " 8[.][012]" && echo yes || echo no),yes)
 TESTS   := $(filter-out sql/enumtap.sql,$(TESTS))
 REGRESS := $(filter-out enumtap,$(REGRESS))
 endif
 
 # Values tests not supported by 8.1 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[01]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE " 8[.][01]" && echo yes || echo no),yes)
 TESTS   := $(filter-out sql/enumtap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out enumtap valueset,$(REGRESS))
 endif
 
 # Throw, runtests, and roles aren't supported in 8.0.
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.0" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE " 8[.]0" && echo yes || echo no),yes)
 TESTS   := $(filter-out sql/throwtap.sql sql/runtests.sql sql/roletap.sql,$(TESTS))
 REGRESS := $(filter-out throwtap runtests roletap,$(REGRESS))
 endif
@@ -81,7 +81,7 @@ OSNAME := $(shell ./getos.sh)
 all: sql/pgtap.sql sql/uninstall_pgtap.sql
 
 # Add extension build targets on 9.1 and up.
-ifeq ($(shell $(PG_CONFIG) --version | grep -qE " 8\.| 9\.0" && echo no || echo yes),yes)
+ifeq ($(shell $(PG_CONFIG) --version | grep -qE " 8[.]| 9[.]0" && echo no || echo yes),yes)
 all: sql/$(EXTENSION)--$(EXTVERSION).sql
 
 sql/$(EXTENSION)--$(EXTVERSION).sql: sql/$(EXTENSION).sql
