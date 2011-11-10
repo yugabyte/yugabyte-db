@@ -1,6 +1,6 @@
---- sql/pgtap.sql.orig	2011-02-01 14:54:33.000000000 -0800
-+++ sql/pgtap.sql	2011-02-01 14:54:33.000000000 -0800
-@@ -15,6 +15,11 @@
+--- sql/pgtap.sql.saf	2011-11-10 14:58:17.000000000 -0800
++++ sql/pgtap.sql	2011-11-10 14:59:43.000000000 -0800
+@@ -12,6 +12,11 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
  
@@ -12,18 +12,7 @@
  CREATE OR REPLACE FUNCTION pg_version_num()
  RETURNS integer AS $$
      SELECT s.a[1]::int * 10000
-@@ -5891,8 +5896,9 @@
-         SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
-           FROM pg_catalog.pg_attribute a
-           JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
-+          JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-          WHERE c.relname = $1
--           AND c.relistemp
-+           AND n.nspname LIKE 'pg_temp%'
-            AND attnum > 0
-            AND NOT attisdropped
-          ORDER BY attnum
-@@ -6239,7 +6245,7 @@
+@@ -6244,7 +6249,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -32,7 +21,7 @@
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
                  '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-@@ -6394,7 +6400,7 @@
+@@ -6399,7 +6404,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -41,7 +30,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6580,13 +6586,7 @@
+@@ -6585,13 +6590,7 @@
  $$ LANGUAGE sql;
  
  -- collect_tap( tap, tap, tap )
@@ -56,7 +45,7 @@
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
  $$ LANGUAGE sql;
-@@ -7058,7 +7058,7 @@
+@@ -7063,7 +7062,7 @@
      rec    RECORD;
  BEGIN
      EXECUTE _query($1) INTO rec;

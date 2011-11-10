@@ -1,6 +1,6 @@
---- sql/uninstall_pgtap.sql.orig	2011-02-01 14:58:51.000000000 -0800
-+++ sql/uninstall_pgtap.sql	2011-02-01 14:58:51.000000000 -0800
-@@ -58,8 +58,7 @@
+--- sql/uninstall_pgtap.sql.saf	2011-11-10 15:00:44.000000000 -0800
++++ sql/uninstall_pgtap.sql	2011-11-10 15:00:53.000000000 -0800
+@@ -60,8 +60,7 @@
  DROP FUNCTION throws_like ( TEXT, TEXT );
  DROP FUNCTION throws_like ( TEXT, TEXT, TEXT );
  DROP FUNCTION _tlike ( BOOLEAN, TEXT, TEXT, TEXT );
@@ -10,7 +10,7 @@
  DROP FUNCTION is_empty( TEXT );
  DROP FUNCTION is_empty( TEXT, TEXT );
  DROP FUNCTION isa_ok( anyelement, regtype );
-@@ -701,6 +700,7 @@
+@@ -704,6 +703,7 @@
  DROP FUNCTION _get ( text );
  DROP FUNCTION no_plan();
  DROP FUNCTION plan( integer );
