@@ -93,16 +93,16 @@ endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0123]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.3.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[012]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][012]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.2.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[01]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][01]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.1.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.0.patch
 #	Hack for E'' syntax (<= PG8.0)
 	mv sql/pgtap.sql sql/pgtap.tmp
@@ -114,13 +114,13 @@ endif
 
 sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test/setup.sql
 	cp sql/uninstall_pgtap.sql.in sql/uninstall_pgtap.sql
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0123]" && echo yes || echo no),yes)
 	patch -p0 < compat/uninstall-8.3.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[012]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][012]" && echo yes || echo no),yes)
 	patch -p0 < compat/uninstall-8.2.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE " 8\.[0]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0]" && echo yes || echo no),yes)
 	patch -p0 < compat/uninstall-8.0.patch
 endif
 
