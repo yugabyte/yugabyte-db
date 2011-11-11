@@ -32,7 +32,7 @@ If you encounter an error such as:
 
 Or:
 
-    Makefile:52: *** pgTAP requires PostgreSQL 8.0 or later. This is .  Stop.
+    Makefile:52: *** pgTAP requires PostgreSQL 8.1 or later. This is .  Stop.
 
 Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
@@ -41,10 +41,9 @@ to find it:
 
     env PG_CONFIG=/path/to/pg_config make && make install && make installcheck
 
-And finally, if all that fails (and if you're on PostgreSQL 8.1 or lower, it
-likely will), copy the entire distribution directory to the `contrib/`
-subdirectory of the PostgreSQL source tree and try it there without
-`pg_config`:
+And finally, if all that fails (and if you're on PostgreSQL 8.1, it likely
+will), copy the entire distribution directory to the `contrib/` subdirectory
+of the PostgreSQL source tree and try it there without `pg_config`:
 
     env NO_PGXS=1 make && make install && make installcheck
 
@@ -82,7 +81,7 @@ schema, like so:
 Dependencies
 ------------
 
-pgTAP requires PostgreSQL 8.0 or higher, with 8.4 or higher recommended for
+pgTAP requires PostgreSQL 8.1 or higher, with 8.4 or higher recommended for
 full use of its API. It also requires PL/pgSQL.
 
 Copyright and License

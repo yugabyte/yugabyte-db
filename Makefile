@@ -22,13 +22,13 @@ endif
 # We need to do various things with the PostgreSQLl version.
 VERSION = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 
-# We support 8.0 and later.
-ifeq ($(shell echo $(VERSION) | grep -qE " 7[.]" && echo yes || echo no),yes)
+# We support 8.1 and later.
+ifeq ($(shell echo $(VERSION) | grep -qE " 7[.]|8[.]0" && echo yes || echo no),yes)
 $(error pgTAP requires PostgreSQL 8.0 or later. This is $(VERSION))
 endif
 
 # Compile the C code only if we're on 8.3 or older.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
 MODULES = src/pgtap
 endif
 
@@ -57,21 +57,15 @@ ifndef HAVE_HARNESS
 endif
 
 # Enum tests not supported by 8.2 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][012]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
 TESTS   := $(filter-out test/sql/enumtap.sql,$(TESTS))
 REGRESS := $(filter-out enumtap,$(REGRESS))
 endif
 
 # Values tests not supported by 8.1 and earlier.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][01]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1]" && echo yes || echo no),yes)
 TESTS   := $(filter-out test/sql/enumtap.sql sql/valueset.sql,$(TESTS))
 REGRESS := $(filter-out enumtap valueset,$(REGRESS))
-endif
-
-# Throw, runtests, and roles aren't supported in 8.0.
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.]0" && echo yes || echo no),yes)
-TESTS   := $(filter-out test/sql/throwtap.sql sql/runtests.sql sql/roletap.sql,$(TESTS))
-REGRESS := $(filter-out throwtap runtests roletap,$(REGRESS))
 endif
 
 # Determine the OS. Borrowed from Perl's Configure.
@@ -93,35 +87,25 @@ endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
 	cp $< $@
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.3.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][012]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.2.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][01]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][1]" && echo yes || echo no),yes)
 	patch -p0 < compat/install-8.1.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0]" && echo yes || echo no),yes)
-	patch -p0 < compat/install-8.0.patch
-#	Hack for E'' syntax (<= PG8.0)
-	mv sql/pgtap.sql sql/pgtap.tmp
-	sed -e "s/ E'/ '/g" sql/pgtap.tmp > sql/pgtap.sql
-	rm sql/pgtap.tmp
 endif
 	sed -e 's,MODULE_PATHNAME,$$libdir/pgtap,g' -e 's,__OS__,$(OSNAME),g' -e 's,__VERSION__,$(NUMVERSION),g' sql/pgtap.sql > sql/pgtap.tmp
 	mv sql/pgtap.tmp sql/pgtap.sql
 
 sql/uninstall_pgtap.sql: sql/uninstall_pgtap.sql.in test/setup.sql
 	cp sql/uninstall_pgtap.sql.in sql/uninstall_pgtap.sql
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0123]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes)
 	patch -p0 < compat/uninstall-8.3.patch
 endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][012]" && echo yes || echo no),yes)
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.][12]" && echo yes || echo no),yes)
 	patch -p0 < compat/uninstall-8.2.patch
-endif
-ifeq ($(shell echo $(VERSION) | grep -qE "8[.][0]" && echo yes || echo no),yes)
-	patch -p0 < compat/uninstall-8.0.patch
 endif
 
 sql/pgtap-core.sql: sql/pgtap.sql.in

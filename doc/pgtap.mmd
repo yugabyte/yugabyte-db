@@ -72,7 +72,7 @@ If you encounter an error such as:
 
 Or:
 
-    Makefile:52: *** pgTAP requires PostgreSQL 8.0 or later. This is .  Stop.
+    Makefile:52: *** pgTAP requires PostgreSQL 8.1 or later. This is .  Stop.
 
 Be sure that you have `pg_config` installed and in your path. If you used a
 package management system such as RPM to install PostgreSQL, be sure that the
@@ -81,10 +81,9 @@ to find it:
 
     env PG_CONFIG=/path/to/pg_config make && make install && make installcheck
 
-And finally, if all that fails (and if you're on PostgreSQL 8.1 or lower, it
-likely will), copy the entire distribution directory to the `contrib/`
-subdirectory of the PostgreSQL source tree and try it there without
-`pg_config`:
+And finally, if all that fails (and if you're on PostgreSQL 8.1, it likely
+will), copy the entire distribution directory to the `contrib/` subdirectory
+of the PostgreSQL source tree and try it there without `pg_config`:
 
     env NO_PGXS=1 make && make install && make installcheck
 
@@ -313,10 +312,9 @@ discrepancy between the planned number of tests and the number actually run:
 What a sweet unit!
 ------------------
 
-If you're used to xUnit testing frameworks and using PostgreSQL 8.1 or higher,
-you can collect all of your tests into database functions and run them all at
-once with `runtests()`. This is similar to how
-[PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
+If you're used to xUnit testing frameworks, you can collect all of your tests
+into database functions and run them all at once with `runtests()`. This is
+similar to how [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
 [Epic](http://www.epictest.org/) work. The `runtests()` function does all the
 work of finding and running your test functions in individual transactions. It
 even supports setup and teardown functions. To use it, write your unit test
@@ -790,21 +788,6 @@ the query string or in a prepared statement. A useless example:
         'VALUES (1, 2), (3, 4)'
     );
 
-On PostgreSQL 8.1 and down, you'll have to use `UNION` queries (if order
-doesn't matter) or temporary tables to pass arbitrary values:
-
-    SET client_min_messages = warning;
-    CREATE TEMPORARY TABLE stuff (a int, b int);
-    INSERT INTO stuff VALUES(1, 2);
-    INSERT INTO stuff VALUES(3, 4);
-    RESET client_min_messages;
-    PREPARE myvals AS SELECT a, b FROM stuff;
-
-    SELECT set_eq(
-        'myvals',
-        'SELECT 1, 2 UNION SELECT 3, 4'
-    );
-
 Here's a bonus if you need to check the results from a query that returns a
 single column: for those functions that take two query arguments, the second
 can be an array. Check it out:
@@ -854,7 +837,7 @@ error-prone as you think they should be.
 : A short description of the test.
 
 When you want to make sure that an exception is thrown by PostgreSQL, use
-`throws_ok()` to test for it. Supported by 8.1 and up.
+`throws_ok()` to test for it.
 
 The first argument should be the name of a prepared statement or else a string
 representing the query to be executed (see the [summary](#Pursuing+Your+Query)
@@ -924,8 +907,8 @@ Idea borrowed from the Test::Exception Perl module.
 : A short description of the test.
 
 Like `throws_ok()`, but tests that an exception error message matches an SQL
-`LIKE` pattern. Supported by 8.1 and up. The `throws_ilike()` variant matches
-case-insensitively. An example:
+`LIKE` pattern. The `throws_ilike()` variant matches case-insensitively. An
+example:
 
     PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
     SELECT throws_like(
@@ -963,7 +946,7 @@ example:
 
 Like `throws_ok()`, but tests that an exception error message matches a
 regular expression. The `throws_imatching()` variant matches
-case-insensitively. Supported by 8.1 and up. An example:
+case-insensitively. An example:
 
     PREPARE my_thrower AS INSERT INTO try (tz) VALUES ('America/Moscow');
     SELECT throws_matching(
@@ -993,10 +976,9 @@ example:
 : A short description of the test.
 
 The inverse of `throws_ok()`, `lives_ok()` ensures that an SQL statement does
-*not* throw an exception. Supported by 8.1 and up. Pass in the name of a
-prepared statement or string of SQL code (see the
-[summary](#Pursuing+Your+Query) for query argument details). The optional
-second argument is the test description. An example:
+*not* throw an exception. Pass in the name of a prepared statement or string
+of SQL code (see the [summary](#Pursuing+Your+Query) for query argument
+details). The optional second argument is the test description. An example:
 
     SELECT lives_ok(
         'INSERT INTO try (id) VALUES (1)',
@@ -1565,12 +1547,11 @@ fails and the results are displayed in the failure diagnostics, like so:
 `:description`
 : A short description of the test.
 
-Compares the contents of a single row to a record. Works on PostgreSQL 8.1 and
-higher. Due to the limitations of non-C functions in PostgreSQL, a bar
-`RECORD` value cannot be passed to the function. You must instead pass in a
-valid composite type value, and cast the record argument (the second argument)
-to the same type. Both explicitly created composite types and table types are
-supported. Thus, you can do this:
+Compares the contents of a single row to a record. Due to the limitations of
+non-C functions in PostgreSQL, a bar `RECORD` value cannot be passed to the
+function. You must instead pass in a valid composite type value, and cast the
+record argument (the second argument) to the same type. Both explicitly
+created composite types and table types are supported. Thus, you can do this:
 
     CREATE TYPE sometype AS (
         id    INT,
@@ -2019,7 +2000,7 @@ missing functions, like so:
 : A short description of the test.
 
 This function tests that all of the roles in the database only the roles that
-*should* be there. Supported in PostgreSQL 8.1 and higher. Example:
+*should* be there. Example:
 
     SELECT roles_are(ARRAY[ 'postgres', 'someone', 'root' ]);
 
@@ -5110,11 +5091,11 @@ Outputs SKIP test results. Use it in a conditional expression within a
 `SELECT` statement to replace the output of a test that you otherwise would
 have run.
 
-    SELECT CASE WHEN pg_version_num() < 80100
-        THEN skip('throws_ok() not supported before 8.1', 2 )
+    SELECT CASE WHEN pg_version_num() < 80300
+        THEN skip('has_enum() not supported before 8.3', 2 )
         ELSE collect_tap(
-            throws_ok( 'SELECT 1/0', 22012, 'division by zero' ),
-            throws_ok( 'INSERT INTO try (id) VALUES (1)', '23505' )
+            has_enum( 'bug_status' ),
+            has_enum( 'bug_status', 'mydesc' )
         ) END;
 
 Note how use of the conditional `CASE` statement has been used to determine
@@ -5269,8 +5250,8 @@ certain tests should be run or skipped (using `skip()`) depending on the
 version of PostgreSQL. For example:
 
     SELECT CASE WHEN pg_version_num() < 80100
-        THEN skip('throws_ok() not supported before 8.1' )
-        ELSE throws_ok( 'SELECT 1/0', 22012, 'division by zero' )
+        THEN skip('has_enum() not supported before 8.3' )
+        ELSE has_enum( 'bug_status', 'mydesc' )
         END;
 
 The revision level is in the tens position, the minor version in the thousands
@@ -5278,7 +5259,7 @@ position, and the major version in the ten thousands position and above
 (assuming PostgreSQL 10 is ever released, it will be in the hundred thousands
 position). This value is the same as the `server_version_num` setting
 available in PostgreSQL 8.2 and higher, but supported by this function back to
-PostgreSQL 8.0:
+PostgreSQL 8.1:
 
     try=% select current_setting( 'server_version_num'), pg_version_num();
      current_setting | pg_version_num
@@ -5514,8 +5495,7 @@ If you'd like pgTAP to plan, run all of your tests functions, and finish all
 in one fell swoop, use `runtests()`. This most closely emulates the xUnit
 testing environment, similar to the functionality of
 [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
-[Epic](http://www.epictest.org/). It requires PostgreSQL 8.1 or higher.
-Example:
+[Epic](http://www.epictest.org/). Example:
 
     SELECT * FROM runtests( 'testschema', '^test' );
 
@@ -5796,25 +5776,6 @@ No changes. Everything should just work.
   + `name[]` to `text`
   + `regtype` to `text`
 * Two operators, `=` and `<>`, are added to compare `name[]` values.
-
-8.0
----
-* A patch is applied that changes how some of the test functions are written.
-* A few casts are added for compatibility:
-  + `oidvector` to `regtypep[]`.
-  + `int2vector` to `integer[]`.
-* The following functions do not work under 8.0. Don't even use them there:
-* `throws_ok()`
-* `throws_like()`
-* `throws_ilike()`
-* `throws_matching()`
-* `throws_imatching()`
-* `lives_ok()`
-* `runtests()`
-* `has_role()`
-* `hasnt_role()`
-* `roles_are()`
-* `row_eq()`
 
 To Do
 =====
