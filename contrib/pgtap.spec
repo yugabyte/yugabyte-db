@@ -1,6 +1,6 @@
 Summary:	Unit testing suite for PostgreSQL
 Name:		pgtap
-Version:	0.26.0
+Version:	1.0.0
 Release:	2%{?dist}
 Group:		Applications/Databases
 License:	BSD
@@ -44,6 +44,11 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 %{_docdir}/pgsql/contrib/README.pgtap
 
 %changelog
+* Tue Aug 23 2011 David Wheeler <david@justatheory.com> 0.26.0
+- Removed USE_PGXS from Makefile; it has not been supported in some time.
+- Removed TAPSCHEMA from Makefile; use PGOPTIONS=--search_path=tap with
+  psql instead.
+
 * Tue Feb 01 2011 David Wheeler <david@justatheory.com> 0.25.0
 - Removed pg_prove and pg_tapgen, which are now distributed via CPAN.
 
@@ -59,9 +64,4 @@ make install USE_PGXS=1 DESTDIR=%{buildroot}
 
 * Wed Aug 19 2009 Darrell Fuhriman <darrell@projectdx.com> 0.22-1
 - initial RPM
-
-* Tue Aug 23 2011 David Wheeler <david@justatheory.com> 0.26.0
-- Removed USE_PGXS from Makefile; it has not been supported in some time.
-- Removed TAPSCHEMA from Makefile; use PGOPTIONS=--search_path=tap with
-  psql instead.
 

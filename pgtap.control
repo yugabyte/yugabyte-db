@@ -1,6 +1,6 @@
 # pgTAP extension
 comment = 'Unit testing for PostgreSQL'
-default_version = '0.26.0'
-module_pathname = '$libdir/semver'
+default_version = '1.0.0'
+module_pathname = '$libdir/pgtap'
 relocatable = true
 superuser = false
