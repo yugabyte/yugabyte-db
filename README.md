@@ -1,4 +1,4 @@
-pgTAP 0.9.0
+pgTAP 0.90.0
 ===========
 
 [pgTAP](http://pgtap.org) is a unit testing framework for PostgreSQL written
