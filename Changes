@@ -5,17 +5,24 @@ Revision history for pgTAP
 --------------------------
 * Removed the "Supported Versions" section of the documentation. Suffice it to
   say that pgTAP supports PostgreSQL 8.0 or higher.
-* Added a build target to create a portable version of pgTAP that can be
-  included in any distribution and should just work for tesing on PostgreSQL
-  8.3+.
+* Added a build target to create a portable copy of pgTAP that can be included
+  in any distribution and should just work for tesing on PostgreSQL 8.3+. The
+  new files are `pgtap-core.sql`, which contains the core functionality, and
+  `pgtap-schema.sql`, which depends on pgtap-core and adds in the schema
+  testing assertion functions.
 * Added abstract to the `provides` section of `META.json`.
 * Removed use of `relistemp` column in an internal function, as it has been
-  removed in PostgreSQL 9.1. Thanks to Tom Lane for the alternate syntax.
+  removed in PostgreSQL 9.1. As a bonus, it now works on PostgreSQL 8.3 and
+  older without needing to be patched. Thanks to Tom Lane for the alternate
+  syntax.
 * Added PostreSQL 9.1 `CREATE EXTENSION` support.
 * Removed `TAPSCHEMA` option to `make`. Use `PGOPTIONS=--search_path=tap` with
   `psql`, instead.
 * Added `db_owner_is()`. Based on a patch by Gerd Koenig.
-* Dropped support for PostgreSQL 8.0.
+* Dropped support for PostgreSQL 8.0, as the new directory structure
+  introduced in 0.25.0 is incompatible with the 8.0 version og `pg_regress`,
+  making testing all but impossible. 8.0 has been EOLed for some time, so it's
+  time for pgTAP to finally drop its support, too.
 
 0.25.0 2011-02-02T03:21:55
 --------------------------
