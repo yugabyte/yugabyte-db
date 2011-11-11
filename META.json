@@ -4,7 +4,7 @@
    "description": "pgTAP is a suite of database functions that make it easy to write TAP-emitting unit tests in psql scripts or xUnit-style test functions.",
    "version": "0.26.0",
    "maintainer": [
-      "David E. Wheeler <david@kineticode.com>",
+      "David E. Wheeler <david@justatheory.com>",
       "pgTAP List <pgtap-users@pgfoundry.org>"
    ],
    "license": {
