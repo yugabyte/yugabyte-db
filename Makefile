@@ -75,14 +75,20 @@ OSNAME := $(shell ./getos.sh)
 all: sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
 
 # Add extension build targets on 9.1 and up.
-ifeq ($(shell $(PG_CONFIG) --version | grep -qE "8[.]| 9[.]0" && echo no || echo yes),yes)
-all: sql/$(EXTENSION)--$(EXTVERSION).sql
+ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
+all: sql/$(EXTENSION)--$(EXTVERSION).sql sql/$(EXTENSION)-core--$(EXTVERSION).sql sql/$(EXTENSION)-schema--$(EXTVERSION).sql
 
 sql/$(EXTENSION)--$(EXTVERSION).sql: sql/$(EXTENSION).sql
 	cp $< $@
 
-DATA = $(wildcard sql/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql
-EXTRA_CLEAN += sql/$(EXTENSION)--$(EXTVERSION).sql
+sql/$(EXTENSION)-core--$(EXTVERSION).sql: sql/$(EXTENSION)-core.sql
+	cp $< $@
+
+sql/$(EXTENSION)-schema--$(EXTVERSION).sql: sql/$(EXTENSION)-schema.sql
+	cp $< $@
+
+DATA = $(wildcard sql/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql sql/$(EXTENSION)-core--$(EXTVERSION).sql sql/$(EXTENSION)-schema--$(EXTVERSION).sql
+EXTRA_CLEAN += sql/$(EXTENSION)--$(EXTVERSION).sql sql/$(EXTENSION)-core--$(EXTVERSION).sql sql/$(EXTENSION)-schema--$(EXTVERSION).sql
 endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql

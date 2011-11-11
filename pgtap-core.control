@@ -1,0 +1,6 @@
+# pgTAP Core extension
+comment = 'Unit testing for PostgreSQL'
+default_version = '1.0.0'
+module_pathname = '$libdir/pgtap'
+relocatable = true
+superuser = false
