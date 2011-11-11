@@ -1,5 +1,6 @@
-EXTENSION    = pgtap
-EXTVERSION   = $(shell grep default_version $(EXTENSION).control | \
+MAINEXT      = pgtap
+EXTENSION    = $(MAINEXT) pgtap-core pgtap-schema
+EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
                sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
 DATA         = $(filter-out $(wildcard sql/*--*.sql),$(wildcard sql/*.sql))
@@ -76,19 +77,19 @@ all: sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.s
 
 # Add extension build targets on 9.1 and up.
 ifeq ($(shell echo $(VERSION) | grep -qE "8[.]|9[.]0" && echo no || echo yes),yes)
-all: sql/$(EXTENSION)--$(EXTVERSION).sql sql/$(EXTENSION)-core--$(EXTVERSION).sql sql/$(EXTENSION)-schema--$(EXTVERSION).sql
+all: sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
 
-sql/$(EXTENSION)--$(EXTVERSION).sql: sql/$(EXTENSION).sql
+sql/$(MAINEXT)--$(EXTVERSION).sql: sql/$(MAINEXT).sql
 	cp $< $@
 
-sql/$(EXTENSION)-core--$(EXTVERSION).sql: sql/$(EXTENSION)-core.sql
+sql/$(MAINEXT)-core--$(EXTVERSION).sql: sql/$(MAINEXT)-core.sql
 	cp $< $@
 
-sql/$(EXTENSION)-schema--$(EXTVERSION).sql: sql/$(EXTENSION)-schema.sql
+sql/$(MAINEXT)-schema--$(EXTVERSION).sql: sql/$(MAINEXT)-schema.sql
 	cp $< $@
 
-DATA = $(wildcard sql/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql sql/$(EXTENSION)-core--$(EXTVERSION).sql sql/$(EXTENSION)-schema--$(EXTVERSION).sql
-EXTRA_CLEAN += sql/$(EXTENSION)--$(EXTVERSION).sql sql/$(EXTENSION)-core--$(EXTVERSION).sql sql/$(EXTENSION)-schema--$(EXTVERSION).sql
+DATA = $(wildcard sql/*--*.sql) sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
+EXTRA_CLEAN += sql/$(MAINEXT)--$(EXTVERSION).sql sql/$(MAINEXT)-core--$(EXTVERSION).sql sql/$(MAINEXT)-schema--$(EXTVERSION).sql
 endif
 
 sql/pgtap.sql: sql/pgtap.sql.in test/setup.sql
