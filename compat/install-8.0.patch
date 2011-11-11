@@ -1,6 +1,6 @@
---- sql/pgtap.sql	2011-02-01 16:00:45.000000000 -0800
-+++ sql/pgtap.sql.orig	2011-02-01 16:00:54.000000000 -0800
-@@ -68,6 +68,27 @@
+--- sql/pgtap.sql.saf	2011-11-10 16:30:29.000000000 -0800
++++ sql/pgtap.sql	2011-11-10 16:35:53.000000000 -0800
+@@ -65,6 +65,27 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
  
@@ -28,7 +28,7 @@
  CREATE OR REPLACE FUNCTION pg_typeof("any")
  RETURNS regtype
  AS '$libdir/pgtap'
-@@ -149,53 +170,63 @@
+@@ -146,53 +167,63 @@
  CREATE OR REPLACE FUNCTION _get ( text )
  RETURNS integer AS $$
  DECLARE
@@ -109,7 +109,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -259,10 +290,12 @@
+@@ -256,10 +287,12 @@
  CREATE OR REPLACE FUNCTION num_failed ()
  RETURNS INTEGER AS $$
  DECLARE
@@ -125,7 +125,7 @@
  END;
  $$ LANGUAGE plpgsql strict;
  
-@@ -535,13 +568,16 @@
+@@ -532,13 +565,16 @@
      want   ALIAS FOR $3;
      descr  ALIAS FOR $4;
      result BOOLEAN;
@@ -273,9 +273,9 @@
  
      -- Now delete those results.
      EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
-@@ -5742,116 +5745,6 @@
-     SELECT TRUE;
- $$ LANGUAGE sql;
+@@ -5748,116 +5751,6 @@
+     SELECT diag($1 || '()');
+ $$ LANGUAGE SQL;
  
 -CREATE OR REPLACE FUNCTION _runner( text[], text[], text[], text[], text[] )
 -RETURNS SETOF TEXT AS $$
@@ -304,7 +304,7 @@
 -        FOR i IN 1..array_upper(tests, 1) LOOP
 -            BEGIN
 -                -- What test are we running?
--                IF verbos THEN RETURN NEXT diag(tests[i] || '()'); END IF;
+-                IF verbos THEN RETURN NEXT diag_test_name(tests[i]); END IF;
 -
 -                -- Run the setup functions.
 -                FOR rec IN SELECT * FROM _runem(setup, false) AS b(a) LOOP RETURN NEXT rec.a; END LOOP;
@@ -390,7 +390,7 @@
  CREATE OR REPLACE FUNCTION _temptable ( TEXT, TEXT )
  RETURNS TEXT AS $$
  BEGIN
-@@ -5901,13 +5794,13 @@
+@@ -5905,13 +5798,13 @@
          -- Find extra records.
          FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || want LOOP
@@ -406,7 +406,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6021,16 +5914,20 @@
+@@ -6025,16 +5918,20 @@
      missing TEXT[]  := '{}';
      res     BOOLEAN := TRUE;
      msg     TEXT    := '';
@@ -429,7 +429,7 @@
  
          -- Drop the temporary tables.
          EXECUTE 'DROP TABLE ' || have;
-@@ -6131,7 +6028,7 @@
+@@ -6135,7 +6032,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
@@ -438,7 +438,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6226,11 +6123,11 @@
+@@ -6230,11 +6127,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -453,7 +453,7 @@
              );
          END IF;
          rownum = rownum + 1;
-@@ -6245,8 +6142,8 @@
+@@ -6249,8 +6146,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -464,7 +464,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6381,7 +6278,7 @@
+@@ -6385,7 +6282,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -473,7 +473,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6395,8 +6292,8 @@
+@@ -6399,8 +6296,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -484,7 +484,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6544,7 +6441,7 @@
+@@ -6548,7 +6445,7 @@
  BEGIN
      -- Find extra records.
      FOR rec in EXECUTE _query($1) LOOP
@@ -493,7 +493,7 @@
      END LOOP;
  
      -- What extra records do we have?
-@@ -6648,35 +6545,6 @@
+@@ -6652,35 +6549,6 @@
      SELECT throws_imatching($1, $2, 'Should throw exception matching ' || quote_literal($2) );
  $$ LANGUAGE sql;
  
@@ -529,7 +529,7 @@
  CREATE OR REPLACE FUNCTION _types_are ( NAME, NAME[], TEXT, CHAR[] )
  RETURNS TEXT AS $$
      SELECT _are(
-@@ -7039,12 +6907,12 @@
+@@ -7043,12 +6911,12 @@
      rec    RECORD;
  BEGIN
      FOR rec in EXECUTE _query($1) LOOP END LOOP;

@@ -1,6 +1,6 @@
---- sql/uninstall_pgtap.sql	2011-02-01 15:54:35.000000000 -0800
-+++ sql/uninstall_pgtap.sql.orig	2011-02-01 15:55:28.000000000 -0800
-@@ -362,11 +362,6 @@
+--- sql/uninstall_pgtap.sql.saf	2011-11-10 16:30:54.000000000 -0800
++++ sql/uninstall_pgtap.sql	2011-11-10 16:35:13.000000000 -0800
+@@ -365,11 +365,6 @@
  DROP FUNCTION has_user( NAME );
  DROP FUNCTION has_user( NAME, TEXT );
  DROP FUNCTION _has_user( NAME );
@@ -12,7 +12,7 @@
  DROP FUNCTION hasnt_enum( NAME );
  DROP FUNCTION hasnt_enum( NAME, TEXT );
  DROP FUNCTION hasnt_enum( NAME, NAME );
-@@ -710,3 +705,7 @@
+@@ -713,3 +708,7 @@
  DROP FUNCTION textarray_text(text[]);
  DROP CAST (boolean AS char(1));
  DROP FUNCTION booltext(boolean);
