@@ -1,4 +1,4 @@
-#!/usr/bin/env perl -w
+#!/usr/bin/perl -w
 
 use strict;
 use warnings;
@@ -6,8 +6,6 @@ use warnings;
 my $invert = shift;
 my %keep = map { chomp; $_ => 1 } <DATA>;
 
-
-print $invert ? '\\i pgtap-core.sql' : '\\set ECHO 0';
 
 my ($name, $type) = $invert ? ('Schema', 'schema-testing') : ('Core', 'assertion');
 print qq{
@@ -22,17 +20,7 @@ print qq{
 
 };
 
-print $invert ? qq{-- Requires pgtap-core.sql
---
-} : qq{\\pset format unaligned
-\\pset tuples_only true
-\\pset pager
-
--- Revert all changes on failure.
-\\set ON_ERROR_ROLLBACK 1
-\\set ON_ERROR_STOP true
-
-};
+print "-- Requires pgtap-core.sql\n--\n" if $invert;
 
 my $print = 0;
 while (<>) {
