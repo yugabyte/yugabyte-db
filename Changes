@@ -2,7 +2,7 @@ Revision history for pgTAP
 ==========================
 
 0.90.0
---------------------------
+---------------------------
 * Removed the "Supported Versions" section of the documentation. Suffice it to
   say that pgTAP supports PostgreSQL 8.0 or higher.
 * Added a build target to create a portable copy of pgTAP that can be included
@@ -24,8 +24,8 @@ Revision history for pgTAP
   making testing all but impossible. 8.0 has been EOLed for some time, so it's
   time for pgTAP to finally drop its support, too.
 
-0.25.0 2011-02-02T03:21:55
---------------------------
+0.25.0 2011-02-02T03:21:55Z
+---------------------------
 * Minor documentation tweaks.
 * The sequence created to keep track of test numbers is now a temporary
   sequence. This will prevent it from persisting beyond the current
@@ -71,8 +71,8 @@ Revision history for pgTAP
 * Rearranged the source directory layout to more closely match the [preferred
   PGXN layout](http://manager.pgxn.org/howto#new-order).
 
-0.24 2010-05-24T23:33:22
--------------------------
+0.24 2010-05-24T23:33:22Z
+--------------------------
 * Got `sql/artap.sql` tests passing again when building with `$TAPSCHEMA` set.
 * Changed to saner source URL in `contrib/pgtap.spec`.
 * Fixed a bug in `has_member()` where it failed to confirm that users were
@@ -102,7 +102,7 @@ Revision history for pgTAP
   `uninstall_pgtap.sql`. Thanks to Erik Rijkers.
 * Removed deprecated `can_ok()` functions. Use `has_function()`, instead.
 
-0.23 2009-12-18T23:03:39
+0.23 2009-12-18T23:03:39Z
 -------------------------
 * Fixed broken Perl detection in `Makefile`.
 * Copied OS detection from Perl's `Configure` script to new script,
@@ -143,7 +143,7 @@ Revision history for pgTAP
 * Added `display_oper()` so that schemas are always displayed properly when
   comparing operators.
 
-0.22 2009-07-31T00:26:16
+0.22 2009-07-31T00:26:16Z
 -------------------------
 * Fixed failing test on 8.4rc2.
 * Added result set testing functions. These allow testers to write queries in
@@ -168,7 +168,7 @@ Revision history for pgTAP
   to `pg_prove` to better reflect that they are for finding xUnit tests,
   not for finding pgTAP functions.
 
-0.21 2009-05-29T00:04:31
+0.21 2009-05-29T00:04:31Z
 -------------------------
 * Fixed a bug in the processing of the `--schema` and `--match` options that
   only shows up in Getopt::Long 2.38 or higher.
@@ -193,7 +193,7 @@ Revision history for pgTAP
 * Added `function_lang_is()`, `function_returns()`, `is_definer()`,
   `is_aggregate()`, `is_strict()`, and `volatility_is()`.
 
-0.20 2009-03-29T19:05:40
+0.20 2009-03-29T19:05:40Z
 -------------------------
 * Changed the names of the functions tested in `sql/do_tap.sql` and
   `sql/runtests.sql` so that they are less likely to be ordered differently
@@ -209,7 +209,7 @@ Revision history for pgTAP
   `has_index()` could be wrong. Reported by Jeff Wartes. Thanks to Andrew
   Gierth for help fixing the query.
 
-0.19 2009-02-21T02:09:26
+0.19 2009-02-21T02:09:26Z
 -------------------------
 * Added an alternate version of `col_default_is()` to better handle the common
   case when a default is specified as a string, such as a text or expression
@@ -238,8 +238,8 @@ Revision history for pgTAP
   shows comments and diagnostics in the non-verbose output. Verbose output
   still outputs everything.
 
-0.18  2009-02-06T20:06:00
--------------------------
+0.18  2009-02-06T20:06:00Z
+--------------------------
 * Fixed `pg_version_num()`. It was broken in 0.16; sorry about that!
 * Fixed a bug in `col_type_is()` where it would die if it was looking
   for a type in a table that had dropped columns. Thanks to depesz and
@@ -251,8 +251,8 @@ Revision history for pgTAP
 * Fixed a bug in the `Makefile` where the `test_setup.sql` file, which
   is required for tests, was not always getting created.
 
-0.17  2009-02-06T17:51:52
--------------------------
+0.17  2009-02-06T17:51:52Z
+--------------------------
 * Fixed `col_default_is()` so that it works properly in cases where the
   default value is `NULL`.
 * Fixed `col_default_is()` to gracefully handle different data types,
@@ -285,8 +285,8 @@ Revision history for pgTAP
 * Added version of `todo()` with the `why` and `how_many` arguments
   reversed, so that I don't have to remember a specific order.
 
-0.16  2009-02-03T17:37:03
--------------------------
+0.16  2009-02-03T17:37:03Z
+--------------------------
 * Switched from a crazy trinary logic in `is()` and `isnt()` to the use
   of `IS NOT DISTINCT FROM` and `IS DISTINCT FROM`. Swiped from PGUnit.
 * Fixed documentation for the short version of `--help` in `pg_prove`.
@@ -312,8 +312,8 @@ Revision history for pgTAP
 * Fixed `pg_version_num()` to work on PostgreSQL 8.4devel.
 * Fixed test failures on PostgreSQL 8.4devel.
 
-0.15  2009-01-20T18:41:24
--------------------------
+0.15  2009-01-20T18:41:24Z
+--------------------------
 * Changed `pg_typeof()` from immutable to stable, in compliance with its
   configuration in the forthcoming PostgreSQL 8.4.
 * Added `do_tap()`, which finds test functions and runs them, allowing
@@ -336,8 +336,8 @@ Revision history for pgTAP
   the Web site, including a table of contents and documentation for
   `pg_prove`.
 
-0.14  2008-10-27T22:43:36
--------------------------
+0.14  2008-10-27T22:43:36Z
+--------------------------
 * Added `SET search_path` statements to `uninstall_pgtap.sql.in` so that
   it will work properly when TAP is installed in its own schema. Thanks to
   Ben for the catch!
@@ -363,13 +363,13 @@ Revision history for pgTAP
 * Added a note to `README.pgtap` about the need to avoid `pg_typeof()`
   and `cmp_ok()` in tests run as part of a distribution.
 
-0.13  2008-10-13T19:09:46
--------------------------
+0.13  2008-10-13T19:09:46Z
+--------------------------
 * Added `pg_version()` and `pg_version_num()`.
 * Documented `pg_typeof()`.
 
-0.12  2008-10-11T04:02:42
--------------------------
+0.12  2008-10-11T04:02:42Z
+--------------------------
 * Updated `plan()` to disable warnings while it creates its tables.
   This means that `plan()` no longer send NOTICE messages when they run,
   although tests still might, depending on the setting of
@@ -379,8 +379,8 @@ Revision history for pgTAP
   `col_isnt_fk()`.
 * Added missing `DROP` statements to `uninstall_pgtap.sql.in`.
 
-0.11  2008-09-24T20:41:42
--------------------------
+0.11  2008-09-24T20:41:42Z
+--------------------------
 * Simplified the tests so that they now load `test_setup.sql` instead of
   setting a bunch of stuff themselves. Now only `test_setup.sql` needs
   to be created from `test_setup.sql.in`, and the other `.sql` files
@@ -407,8 +407,8 @@ Revision history for pgTAP
 * Fixed the `installcheck` target so that it properly installs PL/pgSQL
   into the target database before the tests run.
 
-0.10  2008-09-18T22:59:31
--------------------------
+0.10  2008-09-18T22:59:31Z
+--------------------------
 * Changed `pg_prove` to set `QUIET=1` when it runs, so as to prevent the
   output of extraneous stuff.
 * Added some `GRANT` statements to `plan()` in order to make it easier
@@ -469,8 +469,8 @@ Revision history for pgTAP
   `make test` so that the schema can be properly set, if pgTAP is built
   with a schema.
 
-0.02  2008-06-17T16:26:41
--------------------------
+0.02  2008-06-17T16:26:41Z
+--------------------------
 * Converted the documentation to Markdown.
 * Added pg_prove, a Perl script that use TAP::Harness to run tests and
   report the results, just like the Perl program `prove`.
@@ -505,7 +505,7 @@ Revision history for pgTAP
   should allow pgtap to run on versions of PostgreSQL earlier than 8.3.
   Thanks to Neil Conway for the suggestion.
 
-0.01  2008-06-07T05:24:27
--------------------------
+0.01  2008-06-07T05:24:27Z
+--------------------------
 * Initial public release. Announcement at
   http://justatheory.com/computers/databases/postgresql/introducing_pgtap.html
