@@ -5,7 +5,7 @@ Release:	2%{?dist}
 Group:		Applications/Databases
 License:	BSD
 URL:		http://pgtap.projects.postgresql.org
-Source0:	ftp://ftp.postgresql.org/pub/projects/pgFoundry/pgtap/pgtap-%{version}.tar.gz
+Source0:	http://master.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
  
 %description
