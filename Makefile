@@ -70,7 +70,7 @@ REGRESS := $(filter-out enumtap valueset,$(REGRESS))
 endif
 
 # Determine the OS. Borrowed from Perl's Configure.
-OSNAME := $(shell ./getos.sh)
+OSNAME := $(shell $(SHELL) ./getos.sh)
 
 # Make sure we build these.
 all: sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgtap-schema.sql
