@@ -2439,13 +2439,20 @@ This function tests whether or not a schema exists in the database. The first
 argument is a schema name and the second is the test description. If you omit
 the test description, it will be set to "Schema `:schema` should exist".
 
-### `hasnt_schema( schema, description )` ###
-### `hasnt_schema( schema )` ###
+### `hasnt_schema()` ###
 
     SELECT hasnt_schema(
         'someschema',
         'There should be no schema someschema'
     );
+
+**Parameters**
+
+`:schema`
+: Name of a schema.
+
+`:description`
+: A short description of the test.
 
 This function is the inverse of `has_schema()`. The test passes if the
 specified schema does *not* exist.
@@ -4838,13 +4845,20 @@ will default to "User `:user` should be a super user". Example:
 
 If the user does not exist in the database, the diagnostics will say so.
 
-### `isnt_superuser( user, description )` ###
-### `isnt_superuser( user )` ###
+### `isnt_superuser()` ###
 
     SELECT is_superuser(
         'dr_evil',
         'User "dr_evil" should not be a super user'
     );
+
+**Parameters**
+
+`:user`
+: Name of a PostgreSQL user.
+
+`:description`
+: A short description of the test.
 
 The inverse of `is_superuser()`, this function tests that a database user is
 *not* a super user. Note that if the named user does not exist in the
