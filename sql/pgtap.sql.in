@@ -1,8 +1,5 @@
 -- This file defines pgTAP, a collection of functions for TAP-based unit
--- testing. It is distributed under the revised FreeBSD license. You can
--- find the original here:
---
--- http://github.com/theory/pgtap/raw/master/sql/pgtap.sql.in
+-- testing. It is distributed under the revised FreeBSD license.
 --
 -- The home page for the pgTAP project is:
 --
