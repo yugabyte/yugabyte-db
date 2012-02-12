@@ -6,6 +6,8 @@ Revision history for pgTAP
 * The OS name is restored to the call to `os_name()`. The `getos.sh` shell
   script was not getting called during `make`. Thanks to Peter Eisentraut for
   [the report](https://github.com/theory/pgtap/issues/16).
+* Noted `pg_prove --verbose` for showing test descriptions and fixed a few
+  typos in the documentation. Thanks to Jay Levitt for the pull request!
 
 0.90.0 2011-12-03T20:18:16Z
 ---------------------------
