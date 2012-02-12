@@ -206,11 +206,11 @@ Here's an example:
 Of course, if you already have the pgTAP functions in your testing database,
 you should skip `\i pgtap.sql` at the beginning of the script.
 
-The only other limitation is that the `pg_typoeof()` function, which is
+The only other limitation is that the `pg_typeof()` function, which is
 written in C, will not be available in 8.3 and lower. You'll want to
-comment-out its declaration in the bundled copy of `pgtap.sql` and then avoid
+comment out its declaration in the bundled copy of `pgtap.sql` and then avoid
 using `cmp_ok()`, since that function relies on `pg_typeof()`. Note that
-`pg_typeof()` is included in PostgreSQL 8.4, so ou won't need to avoid it on
+`pg_typeof()` is included in PostgreSQL 8.4, so you won't need to avoid it on
 that version or higher.
 
 Now you're ready to run your test script!
@@ -229,7 +229,7 @@ Using `pg_prove`
 Or save yourself some effort -- and run a batch of tests scripts or all of
 your xUnit test functions at once -- by using `pg_prove`, available in the
 [TAP::Parser::SourceHandler::pgTAP](http://search.cpan.org/dist/TAP-Parser-SourceHandler-pgTAP)
-CPAN distribution . If you're not relying on `installcheck`, your test scripts
+CPAN distribution. If you're not relying on `installcheck`, your test scripts
 can be a lot less verbose; you don't need to set all the extra variables,
 because `pg_prove` takes care of that for you:
 
@@ -262,8 +262,9 @@ through the `runtests()` function, just tell it to do so:
 
     % pg_prove -d myapp --runtests
 
-Yep, that's all there is to it. Call `pg_prove --help` to see other supported
-options, and `pg_prove --man` to see its entire documentation.
+Yep, that's all there is to it. Call `pg_prove --verbose` to see the individual test descriptions,
+`pg_prove --help` to see other supported options, and `pg_prove --man` to see its
+entire documentation.
 
 Using pgTAP
 ===========
@@ -2307,7 +2308,7 @@ the cast strings. Example:
         'integer AS reltime',
         'integer AS numeric',
     ]);
- 
+
 If the description is omitted, a generally useful default description will be
 generated.
 
@@ -5623,7 +5624,7 @@ handy-dandy test function!
 `:name`
 : A brief name for your test, to make it easier to find failures in your test
   script. Optional.
-  
+
 `:want_description`
 : Expected test description to be output by the test. Optional. Use an empty
   string to test that no description is output.
