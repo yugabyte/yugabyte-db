@@ -80,10 +80,14 @@ static HashEntry *search_ent(TidList *tidlist);
 
 static join_search_hook_type org_join_search = NULL;
 
+static void build_join_hints(PlannerInfo *root, int level, List *initial_rels);
+static RelOptInfo *my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2);
 static RelOptInfo *my_join_search(PlannerInfo *root, int levels_needed,
 							  List *initial_rels);
-static void build_join_hints(PlannerInfo *root, int level, List *initial_rels);
 static void my_join_search_one_level(PlannerInfo *root, int level);
+static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
+static void make_rels_by_clauseless_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
+static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 
 PG_FUNCTION_INFO_V1(pg_add_hint);
 PG_FUNCTION_INFO_V1(pg_clear_hint);
