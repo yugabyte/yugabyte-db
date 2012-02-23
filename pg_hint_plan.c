@@ -48,7 +48,9 @@ typedef struct hash_entry
 } HashEntry;
 
 static HashEntry *hashent[HASH_ENTRIES];
+#ifdef NOT_USED
 static bool (*org_cost_hook)(CostHookType type, PlannerInfo *root, Path *path1, Path *path2);
+#endif
 static bool print_log = false;
 static bool tweak_enabled = true;
 
@@ -61,13 +63,17 @@ Datum       pg_dump_hint(PG_FUNCTION_ARGS);
 Datum		pg_enable_hint(bool arg, bool *isnull);
 Datum		pg_enable_log(bool arg, bool *isnull);
 
+#ifdef NOT_USED
 static char *rels_str(PlannerInfo *root, Path *path);
 static void dump_rels(char *label, PlannerInfo *root, Path *path, bool found, bool enabled);
 static void dump_joinrels(char *label, PlannerInfo *root, Path *inpath, Path *outpath, bool found, bool enabled);
 static bool my_cost_hook(CostHookType type, PlannerInfo *root, Path *path1, Path *path2);
+#endif
 static void free_hashent(HashEntry *head);
 static unsigned int calc_hash(TidList *tidlist);
+#ifdef NOT_USED
 static HashEntry *search_ent(TidList *tidlist);
+#endif
 
 PG_FUNCTION_INFO_V1(pg_add_hint);
 PG_FUNCTION_INFO_V1(pg_clear_hint);
@@ -80,8 +86,10 @@ _PG_init(void)
 {
 	int i;
 
+#ifdef NOT_USED
 	org_cost_hook = cost_hook;
 	cost_hook = my_cost_hook;
+#endif
 	
 	for (i = 0 ; i < HASH_ENTRIES ; i++)
 		hashent[i] = NULL;
@@ -95,7 +103,9 @@ _PG_fini(void)
 {
 	int i;
 
+#ifdef NOT_USED
 	cost_hook = org_cost_hook;
+#endif
 
 	for (i = 0 ; i < HASH_ENTRIES ; i++)
 	{
@@ -105,6 +115,7 @@ _PG_fini(void)
 	}
 }
 
+#ifdef NOT_USED
 char *rels_str(PlannerInfo *root, Path *path)
 {
 	char buf[4096];								
@@ -129,6 +140,7 @@ char *rels_str(PlannerInfo *root, Path *path)
 
 	return strdup(buf);
 }
+#endif
 
 static int oidsortcmp(const void *a, const void *b)
 {
@@ -138,6 +150,7 @@ static int oidsortcmp(const void *a, const void *b)
 	return oida - oidb;
 }
 
+#ifdef NOT_USED
 static TidList *maketidlist(PlannerInfo *root, Path *path1, Path *path2)
 {
 	int relid;
@@ -322,6 +335,7 @@ bool my_cost_hook(CostHookType type, PlannerInfo *root, Path *path1, Path *path2
 	
 	return true;
 }
+#endif
 
 static void free_hashent(HashEntry *head)
 {
@@ -459,6 +473,7 @@ static unsigned int calc_hash(TidList *tidlist)
 ;
 }
 
+#ifdef NOT_USED
 static HashEntry *search_ent(TidList *tidlist)
 {
 	HashEntry *ent;
@@ -474,6 +489,7 @@ static HashEntry *search_ent(TidList *tidlist)
 
 	return NULL;
 }
+#endif
 
 Datum
 pg_add_hint(PG_FUNCTION_ARGS)
