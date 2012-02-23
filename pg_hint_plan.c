@@ -12,6 +12,7 @@
  */
 #include "postgres.h"
 #include "fmgr.h"
+#include "nodes/print.h"
 #include "utils/elog.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
@@ -78,8 +79,39 @@ static unsigned int calc_hash(TidList *tidlist);
 static HashEntry *search_ent(TidList *tidlist);
 #endif
 
-static join_search_hook_type org_join_search = NULL;
+/* Join Method Hints */
+typedef struct RelIdInfo
+{
+	Index		relid;
+	Oid			oid;
+	Alias	   *eref;
+} RelIdInfo;
 
+typedef struct JoinHint
+{
+	int				nrels;
+	List		   *relidinfos;
+	Relids			joinrelids;
+	unsigned char	enforce_mask;
+} JoinHint;
+
+typedef struct GucVariables
+{
+	bool	enable_seqscan;
+	bool	enable_indexscan;
+	bool	enable_bitmapscan;
+	bool	enable_tidscan;
+	bool	enable_sort;
+	bool	enable_hashagg;
+	bool	enable_nestloop;
+	bool	enable_material;
+	bool	enable_mergejoin;
+	bool	enable_hashjoin;
+} GucVariables;
+
+static void backup_guc(GucVariables *backup);
+static void restore_guc(GucVariables *backup);
+static void set_guc(unsigned char enforce_mask);
 static void build_join_hints(PlannerInfo *root, int level, List *initial_rels);
 static RelOptInfo *my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2);
 static RelOptInfo *my_join_search(PlannerInfo *root, int levels_needed,
@@ -88,6 +120,9 @@ static void my_join_search_one_level(PlannerInfo *root, int level);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
+
+static join_search_hook_type org_join_search = NULL;
+static List **join_hint_level = NULL;
 
 PG_FUNCTION_INFO_V1(pg_add_hint);
 PG_FUNCTION_INFO_V1(pg_clear_hint);
@@ -214,20 +249,21 @@ static void free_tidlist(TidList *tidlist)
 	}
 }
 
-int n = 0;
+int r = 0;
 static void dump_rels(char *label, PlannerInfo *root, Path *path, bool found, bool enabled)
 {
 	char *relsstr;
 
 	if (!print_log) return;
 	relsstr = rels_str(root, path);
-	ereport(LOG, (errmsg_internal("%04d: %s for relation %s (%s, %s)\n",
-								  n++, label, relsstr,
+	ereport(INFO, (errmsg_internal("SCAN: %04d: %s for relation %s (%s, %s)\n",
+								  r++, label, relsstr,
 								  found ? "found" : "not found",
 								  enabled ? "enabled" : "disabled")));
 	free(relsstr);
 }
 
+int J = 0;
 void dump_joinrels(char *label, PlannerInfo *root, Path *inpath, Path *outpath,
 				   bool found, bool enabled)
 {
@@ -237,8 +273,8 @@ void dump_joinrels(char *label, PlannerInfo *root, Path *inpath, Path *outpath,
 	irelstr = rels_str(root, inpath);
 	orelstr = rels_str(root, outpath);
 
-	ereport(LOG, (errmsg_internal("%04d: %s for relation ((%s),(%s)) (%s, %s)\n",
-								  n++, label, irelstr, orelstr,
+	ereport(INFO, (errmsg_internal("JOIN: %04d: %s for relation ((%s),(%s)) (%s, %s)\n",
+								  J++, label, irelstr, orelstr,
 								  found ? "found" : "not found",
 								  enabled ? "enabled" : "disabled")));
 	free(irelstr);
@@ -658,12 +694,170 @@ pg_dump_hint(PG_FUNCTION_ARGS)
 }
 
 /*
+ * pg_add_hint()で登録した個別のヒントを、使用しやすい構造に変換する。
+ */
+static JoinHint *
+set_relids(HashEntry *ent, RelIdInfo **relids, int nrels)
+{
+	int			i;
+	int			j;
+	JoinHint   *hint;
+
+	hint = palloc(sizeof(JoinHint));
+	hint->joinrelids = NULL;
+	hint->relidinfos = NIL;
+
+	for (i = 0; i < ent->tidlist.nrels; i++)
+	{
+		for (j = 0; j < nrels; j++)
+		{
+			if (ent->tidlist.oids[i] == relids[j]->oid)
+			{
+				hint->relidinfos = lappend(hint->relidinfos, relids[j]);
+				hint->joinrelids =
+					bms_add_member(hint->joinrelids, relids[j]->relid);
+				break;
+			}
+		}
+
+		if (j == nrels)
+		{
+			list_free(hint->relidinfos);
+			pfree(hint);
+			return NULL;
+		}
+	}
+
+	hint->nrels = ent->tidlist.nrels;
+	hint->enforce_mask = ent->enforce_mask;
+
+	return hint;
+}
+
+/*
  * pg_add_hint()で登録したヒントから、今回のクエリで使用するもののみ抽出し、
  * 使用しやすい構造に変換する。
  */
 static void
 build_join_hints(PlannerInfo *root, int level, List *initial_rels)
 {
+	int			i;
+	int			nrels;
+	RelIdInfo **relids;
+	JoinHint   *hint;
+
+	relids = palloc(sizeof(RelIdInfo *) * root->simple_rel_array_size);
+
+	// DEBUG  rtekind
+	if (print_log)
+	{
+		ListCell   *l;
+		foreach(l, initial_rels)
+		{
+			RelOptInfo *rel = (RelOptInfo *) lfirst(l);
+			elog_node_display(INFO, "initial_rels", rel, true);
+		}
+		elog_node_display(INFO, "root", root, true);
+		elog(INFO, "%s(simple_rel_array_size:%d, level:%d, query_level:%d, parent_root:%p)",
+			__func__, root->simple_rel_array_size, level, root->query_level, root->parent_root);
+	}
+
+	for (i = 0, nrels = 0; i < root->simple_rel_array_size; i++)
+	{
+		if (root->simple_rel_array[i] == NULL)
+			continue;
+
+		relids[nrels] = palloc(sizeof(RelIdInfo));
+
+		Assert(i == root->simple_rel_array[i]->relid);
+
+		relids[nrels]->relid = i;
+		relids[nrels]->oid = root->simple_rte_array[i]->relid;
+		relids[nrels]->eref = root->simple_rte_array[i]->eref;
+		//elog(INFO, "%d:%d:%d:%s", i, relids[nrels]->relid, relids[nrels]->oid, relids[nrels]->eref->aliasname);
+
+		nrels++;
+	}
+
+	join_hint_level = palloc0(sizeof(List *) * (root->simple_rel_array_size));
+
+	for (i = 0; i < HASH_ENTRIES; i++)
+	{
+		HashEntry *next;
+
+		for (next = hashent[i]; next; next = next->next)
+		{
+			int	lv;
+			if (!(next->enforce_mask & ENABLE_HASHJOIN) &&
+				!(next->enforce_mask & ENABLE_NESTLOOP) &&
+				!(next->enforce_mask & ENABLE_MERGEJOIN))
+				continue;
+
+			if ((hint = set_relids(next, relids, nrels)) == NULL)
+				continue;
+
+			lv = bms_num_members(hint->joinrelids);
+			join_hint_level[lv] = lappend(join_hint_level[lv], hint);
+		}
+	}
+}
+
+static void
+backup_guc(GucVariables *backup)
+{
+	backup->enable_seqscan = enable_seqscan;
+	backup->enable_indexscan = enable_indexscan;
+	backup->enable_bitmapscan = enable_bitmapscan;
+	backup->enable_tidscan = enable_tidscan;
+	backup->enable_sort = enable_sort;
+	backup->enable_hashagg = enable_hashagg;
+	backup->enable_nestloop = enable_nestloop;
+	backup->enable_material = enable_material;
+	backup->enable_mergejoin = enable_mergejoin;
+	backup->enable_hashjoin = enable_hashjoin;
+}
+
+static void
+restore_guc(GucVariables *backup)
+{
+	enable_seqscan = backup->enable_seqscan;
+	enable_indexscan = backup->enable_indexscan;
+	enable_bitmapscan = backup->enable_bitmapscan;
+	enable_tidscan = backup->enable_tidscan;
+	enable_sort = backup->enable_sort;
+	enable_hashagg = backup->enable_hashagg;
+	enable_nestloop = backup->enable_nestloop;
+	enable_material = backup->enable_material;
+	enable_mergejoin = backup->enable_mergejoin;
+	enable_hashjoin = backup->enable_hashjoin;
+}
+
+static void
+set_guc(unsigned char enforce_mask)
+{
+	enable_mergejoin = enforce_mask & ENABLE_MERGEJOIN ? true : false;
+	enable_hashjoin = enforce_mask & ENABLE_HASHJOIN ? true : false;
+	enable_nestloop = enforce_mask & ENABLE_NESTLOOP ? true : false;
+}
+
+/*
+ * relidビットマスクと一致するヒントを探す
+ */
+static JoinHint *
+find_join_hint(Relids joinrelids)
+{
+	List	   *join_hint;
+	ListCell   *l;
+
+	join_hint = join_hint_level[bms_num_members(joinrelids)];
+	foreach(l, join_hint)
+	{
+		JoinHint   *hint = (JoinHint *) lfirst(l);
+		if (bms_equal(joinrelids, hint->joinrelids))
+			return hint;
+	}
+
+	return NULL;
 }
 
 /*
@@ -676,7 +870,27 @@ build_join_hints(PlannerInfo *root, int level, List *initial_rels)
 static RelOptInfo *
 my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
-	return make_join_rel(root, rel1, rel2);
+	GucVariables	guc;
+	Relids			joinrelids;
+	JoinHint	   *hint;
+	RelOptInfo	   *rel;
+
+	joinrelids = bms_union(rel1->relids, rel2->relids);
+	hint = find_join_hint(joinrelids);
+	bms_free(joinrelids);
+
+	if (hint)
+	{
+		backup_guc(&guc);
+		set_guc(hint->enforce_mask);
+	}
+
+	rel = make_join_rel(root, rel1, rel2);
+
+	if (hint)
+		restore_guc(&guc);
+
+	return rel;
 }
 
 /*

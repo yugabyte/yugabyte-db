@@ -85,13 +85,15 @@ EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.val1
 SET join_collapse_limit TO 1;
 EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
 EXPLAIN SELECT * FROM t2 CROSS JOIN t3 CROSS JOIN t4 CROSS JOIN t1 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
+EXPLAIN SELECT * FROM t1 CROSS JOIN (t2 CROSS JOIN t3 CROSS JOIN t4) WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.val1 = t2.val1) JOIN t3 ON (t2.val1 = t3.val1) JOIN t4 ON (t3.val1 = t4.val1);
 
 EXPLAIN SELECT * FROM v2;
 EXPLAIN SELECT * FROM v3 v_3;
 EXPLAIN SELECT * FROM v2 v_2, v3 v_3 WHERE v_2.t1_val1 = v_3.t1_val1;
 
-SELECT pg_enable_log(true);
+--SELECT pg_enable_log(true);
 EXPLAIN SELECT * FROM v4 v_4;
 SET from_collapse_limit TO 1;
 EXPLAIN SELECT * FROM v4 v_4;
-SELECT pg_enable_log(false);
+--SELECT pg_enable_log(false);
