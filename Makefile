@@ -4,6 +4,8 @@ MODULES = pg_hint_plan
 DATA = pg_hint_plan--1.0.sql \
 	pg_hint_plan--unpackaged--1.0.sql
 
+REGRESS = pg_hint_plan
+
 EXTENSION = pg_hint_plan
 
 ifdef USE_PGXS

@@ -1,6 +1,7 @@
 # Global excludes across all subdirectories
 *.so
 tags
+regression.*
 
 # Generated subdirectories
 /log/
