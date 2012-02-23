@@ -1,0 +1,7 @@
+# Global excludes across all subdirectories
+*.so
+
+# Generated subdirectories
+/log/
+/results/
+/tmp_check/
