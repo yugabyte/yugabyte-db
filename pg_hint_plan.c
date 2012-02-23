@@ -449,13 +449,19 @@ static int parse_phrase(HashEntry **head, char **str)
 	HashEntry *ent = NULL;
 	char *p0;
 	int len;
+	bool	not_use = false;
 
 	p0 = *str;
-	while (isalpha(**str)) (*str)++;
+	while (isalpha(**str) || **str == '_') (*str)++;
 	len = *str - p0;
 	if (**str != '(' || len >= 12) return 0;
 	strncpy(req, p0, len);
 	req[len] = 0;
+	if (strncmp("no_", req, 3) == 0)
+	{
+		not_use = true;
+		memmove(req, req + 3, len - 3 + 1);
+	}
 	for (cmd = 0 ; cmds[cmd] && strcmp(cmds[cmd], req) ; cmd++);
 	if (cmds[cmd] == NULL) return 0;
 	(*str)++;
@@ -463,7 +469,7 @@ static int parse_phrase(HashEntry **head, char **str)
 	if (*(*str)++ != ')') return 0;
 	if (**str != 0 && **str != ';') return 0;
 	if (**str == ';') (*str)++;
-	ent->enforce_mask = masks[cmd];
+	ent->enforce_mask = not_use ? ~masks[cmd] : masks[cmd];
 	ent->next = NULL;
 	*head = ent;
 

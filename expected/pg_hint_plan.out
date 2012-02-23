@@ -248,21 +248,25 @@ EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.va
 (12 rows)
 
 SELECT pg_add_hint('no_merge(' || :t1_oid || ',' || :t2_oid || ')');
-ERROR:  Parse Error
+ pg_add_hint 
+-------------
+           1
+(1 row)
+
 EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
                                         QUERY PLAN                                        
 ------------------------------------------------------------------------------------------
- Nested Loop  (cost=1.27..1.70 rows=1 width=32)
-   ->  Merge Join  (cost=1.27..1.42 rows=1 width=24)
+ Nested Loop  (cost=1.27..1.80 rows=1 width=32)
+   ->  Merge Join  (cost=1.27..1.51 rows=1 width=24)
          Merge Cond: (t1.val1 = t4.val1)
-         ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
-               Merge Cond: (t1.val1 = t2.val1)
+         ->  Merge Join  (cost=0.00..18.43 rows=100 width=16)
+               Merge Cond: (t1.val1 = t3.val1)
                ->  Index Scan using t1_val1 on t1  (cost=0.00..318.26 rows=10000 width=8)
-               ->  Index Scan using t2_val1 on t2  (cost=0.00..43.25 rows=1000 width=8)
+               ->  Index Scan using t3_val1 on t3  (cost=0.00..13.75 rows=100 width=8)
          ->  Sort  (cost=1.27..1.29 rows=10 width=8)
                Sort Key: t4.val1
                ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
-   ->  Index Scan using t3_val1 on t3  (cost=0.00..0.27 rows=1 width=8)
+   ->  Index Scan using t2_val1 on t2  (cost=0.00..0.27 rows=1 width=8)
          Index Cond: (val1 = t1.val1)
 (12 rows)
 
@@ -284,40 +288,50 @@ EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.va
 (11 rows)
 
 SELECT pg_add_hint('no_hash(' || :t3_oid || ',' || :t4_oid || ')');
-ERROR:  Parse Error
+ pg_add_hint 
+-------------
+           1
+(1 row)
+
 EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Nested Loop  (cost=1.23..11.11 rows=1 width=32)
-   ->  Nested Loop  (cost=1.23..10.52 rows=1 width=24)
-         ->  Hash Join  (cost=1.23..3.70 rows=10 width=16)
-               Hash Cond: (t3.val1 = t4.val1)
-               ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
-               ->  Hash  (cost=1.10..1.10 rows=10 width=8)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Nested Loop  (cost=1.27..10.09 rows=1 width=32)
+   ->  Nested Loop  (cost=1.27..9.50 rows=1 width=24)
+         ->  Merge Join  (cost=1.27..2.68 rows=10 width=16)
+               Merge Cond: (t3.val1 = t4.val1)
+               ->  Index Scan using t3_val1 on t3  (cost=0.00..13.75 rows=100 width=8)
+               ->  Sort  (cost=1.27..1.29 rows=10 width=8)
+                     Sort Key: t4.val1
                      ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
          ->  Index Scan using t2_val1 on t2  (cost=0.00..0.67 rows=1 width=8)
                Index Cond: (val1 = t3.val1)
    ->  Index Scan using t1_val1 on t1  (cost=0.00..0.58 rows=1 width=8)
          Index Cond: (val1 = t2.val1)
-(11 rows)
+(12 rows)
 
 SELECT pg_add_hint('no_nest(' || :t2_oid || ',' || :t3_oid || ',' || :t4_oid || ')');
-ERROR:  Parse Error
+ pg_add_hint 
+-------------
+           1
+(1 row)
+
 EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-                                  QUERY PLAN                                  
-------------------------------------------------------------------------------
- Nested Loop  (cost=1.23..11.11 rows=1 width=32)
-   ->  Nested Loop  (cost=1.23..10.52 rows=1 width=24)
-         ->  Hash Join  (cost=1.23..3.70 rows=10 width=16)
-               Hash Cond: (t3.val1 = t4.val1)
-               ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
-               ->  Hash  (cost=1.10..1.10 rows=10 width=8)
-                     ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
-         ->  Index Scan using t2_val1 on t2  (cost=0.00..0.67 rows=1 width=8)
-               Index Cond: (val1 = t3.val1)
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Nested Loop  (cost=1.27..2.74 rows=1 width=32)
+   ->  Merge Join  (cost=1.27..2.15 rows=1 width=24)
+         Merge Cond: (t2.val1 = t4.val1)
+         ->  Nested Loop  (cost=0.00..81.95 rows=100 width=16)
+               ->  Index Scan using t3_val1 on t3  (cost=0.00..13.75 rows=100 width=8)
+               ->  Index Scan using t2_val1 on t2  (cost=0.00..0.67 rows=1 width=8)
+                     Index Cond: (val1 = t3.val1)
+         ->  Sort  (cost=1.27..1.29 rows=10 width=8)
+               Sort Key: t4.val1
+               ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
    ->  Index Scan using t1_val1 on t1  (cost=0.00..0.58 rows=1 width=8)
          Index Cond: (val1 = t2.val1)
-(11 rows)
+(12 rows)
 
 SELECT pg_clear_hint();
  pg_clear_hint 
