@@ -1,18 +1,18 @@
 Summary:	Unit testing suite for PostgreSQL
 Name:		pgtap
 Version:	0.91.0
-Release:	2%{?dist}
+Release:	1%{?dist}
 Group:		Applications/Databases
-License:	BSD
-URL:		http://pgtap.projects.postgresql.org
+License:	PostgreSQL
+URL:		http://pgtap.org/
 Source0:	http://master.pgxn.org/dist/pgtap/%{version}/pgtap-%{version}.zip
 BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
  
 %description
 pgTAP is a unit testing framework for PostgreSQL written in PL/pgSQL and
 PL/SQL. It includes a comprehensive collection of TAP-emitting assertion
-functions, as well as the ability to integrate with other TAP-emitting
-test frameworks. It can also be used in the xUnit testing style.
+functions, as well as the ability to integrate with other TAP-emitting test
+frameworks. It can also be used in the xUnit testing style.
 
 %define postgresver %(pg_config --version|awk '{print $2}'| cut -d. -f1,2)
 Requires:       postgresql-server = %{postgresver}, perl-Test-Harness >= 3.0
