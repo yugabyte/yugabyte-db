@@ -308,4 +308,159 @@ EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
          Index Cond: (id = t1.id)
 (5 rows)
 
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*HashJoin(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+/*NestLoop(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Nested Loop  (cost=0.00..607.00 rows=1000 width=16)
+   ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..0.58 rows=1 width=8)
+         Index Cond: (id = t2.id)
+(4 rows)
+
+/*NoMergeJoin(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Hash Join  (cost=3.25..285.75 rows=10000 width=16)
+   Hash Cond: (t1.val = t3.val)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=2.00..2.00 rows=100 width=8)
+         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+(5 rows)
+
+/*MergeJoin(t1 t3)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Merge Join  (cost=10.07..630.03 rows=10000 width=16)
+   Merge Cond: (t1.val = t3.val)
+   ->  Index Scan using t1_val on t1  (cost=0.00..450.21 rows=10000 width=8)
+   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         Sort Key: t3.val
+         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+(6 rows)
+
+/*NestLoop(t1 t3)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop  (cost=0.00..628.20 rows=10000 width=16)
+   ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+   ->  Index Scan using t1_val on t1  (cost=0.00..5.01 rows=100 width=8)
+         Index Cond: (val = t3.val)
+(4 rows)
+
+/*NoHashJoin(t1 t3)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop  (cost=0.00..628.20 rows=10000 width=16)
+   ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+   ->  Index Scan using t1_val on t1  (cost=0.00..5.01 rows=100 width=8)
+         Index Cond: (val = t3.val)
+(4 rows)
+
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Nested Loop  (cost=1.27..1.70 rows=1 width=32)
+   ->  Merge Join  (cost=1.27..1.42 rows=1 width=24)
+         Merge Cond: (t1.id = t4.id)
+         ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+               ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+         ->  Sort  (cost=1.27..1.29 rows=10 width=8)
+               Sort Key: t4.id
+               ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
+   ->  Index Scan using t3_pkey on t3  (cost=0.00..0.27 rows=1 width=8)
+         Index Cond: (id = t1.id)
+(12 rows)
+
+/*MergeJoin(t4 t1 t2 t3)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Merge Join  (cost=1.27..2.83 rows=1 width=32)
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join  (cost=0.00..15.03 rows=10 width=24)
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+               ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+         ->  Index Scan using t3_pkey on t3  (cost=0.00..13.75 rows=100 width=8)
+   ->  Sort  (cost=1.27..1.29 rows=10 width=8)
+         Sort Key: t4.id
+         ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
+(12 rows)
+
+/*HashJoin(t3 t4 t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Hash Join  (cost=1.43..3.82 rows=1 width=32)
+   Hash Cond: (t3.id = t1.id)
+   ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+   ->  Hash  (cost=1.42..1.42 rows=1 width=24)
+         ->  Merge Join  (cost=1.27..1.42 rows=1 width=24)
+               Merge Cond: (t1.id = t4.id)
+               ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+                     Merge Cond: (t1.id = t2.id)
+                     ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+                     ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+               ->  Sort  (cost=1.27..1.29 rows=10 width=8)
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
+(13 rows)
+
+/*NoNestLoop(t4 t1 t3 t2)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Merge Join  (cost=1.27..2.83 rows=1 width=32)
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join  (cost=0.00..15.03 rows=10 width=24)
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+               ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+         ->  Index Scan using t3_pkey on t3  (cost=0.00..13.75 rows=100 width=8)
+   ->  Sort  (cost=1.27..1.29 rows=10 width=8)
+         Sort Key: t4.id
+         ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
+(12 rows)
+
 \q

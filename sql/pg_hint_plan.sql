@@ -61,7 +61,6 @@ EXPLAIN SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
 /*NoTidScan(t1)*/
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
-\q
 
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*HashJoin(t1 t2)*/
@@ -86,6 +85,7 @@ EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t
 EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 /*NoNestLoop(t4 t1 t3 t2)*/
 EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+\q
 
 /*Leading(t3 t4)*/
 EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;

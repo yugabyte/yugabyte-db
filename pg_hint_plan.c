@@ -148,6 +148,7 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root, int levels_needed
 
 static const char *ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseIndexScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
+static const char *ParseJoinMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseSet(PlanHint *plan, Query *parse, char *keyword, const char *str);
 #ifdef NOT_USED
 static const char *Ordered(PlanHint *plan, Query *parse, char *keyword, const char *str);
@@ -205,6 +206,12 @@ static const HintParser parsers[] = {
 	{HINT_INDEXONLYSCAN, true, ParseIndexScanMethod},
 	{HINT_NOINDEXONLYSCAN, true, ParseIndexScanMethod},
 #endif
+	{HINT_NESTLOOP, true, ParseJoinMethod},
+	{HINT_MERGEJOIN, true, ParseJoinMethod},
+	{HINT_HASHJOIN, true, ParseJoinMethod},
+	{HINT_NONESTLOOP, true, ParseJoinMethod},
+	{HINT_NOMERGEJOIN, true, ParseJoinMethod},
+	{HINT_NOHASHJOIN, true, ParseJoinMethod},
 	{HINT_SET, true, ParseSet},
 	{NULL, false, NULL},
 };
@@ -1054,6 +1061,79 @@ ParseIndexScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *st
 
 		hint->indexnames = lappend(hint->indexnames, indexname);
 	}
+
+	return str;
+}
+
+static const char *
+ParseJoinMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
+{
+	char	   *relname;
+	JoinHint   *hint;
+
+	skip_space(str);
+
+	hint = JoinHintCreate();
+	hint->opt_str = str;
+	hint->relnames = palloc(sizeof(char *));
+
+	while ((str = parse_quote_value(str, &relname, "table name")) != NULL)
+	{
+		hint->nrels++;
+		hint->relnames = repalloc(hint->relnames, sizeof(char *) * hint->nrels);
+		hint->relnames[hint->nrels - 1] = relname;
+
+		skip_space(str);
+		if (*str == ')')
+			break;
+	}
+
+	if (str == NULL)
+	{
+		JoinHintDelete(hint);
+		return NULL;
+	}
+
+	/* Join 対象のテーブルは最低でも2つ指定する必要がある */
+	if (hint->nrels < 2)
+	{
+		JoinHintDelete(hint);
+		parse_ereport(str, ("Specified relation more than two."));
+		return NULL;
+	}
+
+	/* テーブル名順にソートする */
+	qsort(hint->relnames, hint->nrels, sizeof(char *), RelnameCmp);
+
+	if (strcasecmp(keyword, HINT_NESTLOOP) == 0)
+		hint->enforce_mask = ENABLE_NESTLOOP;
+	else if (strcasecmp(keyword, HINT_MERGEJOIN) == 0)
+		hint->enforce_mask = ENABLE_MERGEJOIN;
+	else if (strcasecmp(keyword, HINT_HASHJOIN) == 0)
+		hint->enforce_mask = ENABLE_HASHJOIN;
+	else if (strcasecmp(keyword, HINT_NONESTLOOP) == 0)
+		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
+	else if (strcasecmp(keyword, HINT_NOMERGEJOIN) == 0)
+		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
+	else if (strcasecmp(keyword, HINT_NOHASHJOIN) == 0)
+		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
+	else
+		elog(ERROR, "unrecognized hint keyword \"%s\"", keyword);
+
+	if (plan->njoin_hints == 0)
+	{
+		plan->max_join_hints = HINT_ARRAY_DEFAULT_INITSIZE;
+		plan->join_hints = palloc(sizeof(JoinHint *) * plan->max_join_hints);
+	}
+	else if (plan->njoin_hints == plan->max_join_hints)
+	{
+		plan->max_join_hints *= 2;
+		plan->join_hints = repalloc(plan->join_hints,
+								sizeof(JoinHint *) * plan->max_join_hints);
+	}
+
+	plan->join_hints[plan->njoin_hints] = hint;
+	plan->njoin_hints++;
 
 	return str;
 }
