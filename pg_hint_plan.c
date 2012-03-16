@@ -149,6 +149,7 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root, int levels_needed
 static const char *ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseIndexScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseJoinMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
+static const char *ParseLeading(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseSet(PlanHint *plan, Query *parse, char *keyword, const char *str);
 #ifdef NOT_USED
 static const char *Ordered(PlanHint *plan, Query *parse, char *keyword, const char *str);
@@ -212,6 +213,7 @@ static const HintParser parsers[] = {
 	{HINT_NONESTLOOP, true, ParseJoinMethod},
 	{HINT_NOMERGEJOIN, true, ParseJoinMethod},
 	{HINT_NOHASHJOIN, true, ParseJoinMethod},
+	{HINT_LEADING, true, ParseLeading},
 	{HINT_SET, true, ParseSet},
 	{NULL, false, NULL},
 };
@@ -1134,6 +1136,47 @@ ParseJoinMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 
 	plan->join_hints[plan->njoin_hints] = hint;
 	plan->njoin_hints++;
+
+	return str;
+}
+
+static const char *
+ParseLeading(PlanHint *plan, Query *parse, char *keyword, const char *str)
+{
+	char   *relname;
+
+	/*
+	 * すでに指定済みの場合は、後で指定したヒントが有効にするため、登録済みの
+	 * 情報を削除する
+	 */
+	list_free_deep(plan->leading);
+	plan->leading = NIL;
+
+	while ((str = parse_quote_value(str, &relname, "relation name")) != NULL)
+	{
+		const char *p;
+
+		plan->leading = lappend(plan->leading, relname);
+
+		p = str;
+		skip_space(str);
+		if (*str == ')')
+			break;
+
+		if (p == str)
+		{
+			parse_ereport(str, ("Must be specified space."));
+			break;
+		}
+	}
+
+	/* テーブル指定が1つのみの場合は、ヒントを無効にし、パースを続ける */
+	if (list_length(plan->leading) == 1)
+	{
+		parse_ereport(str, ("In %s hint, specified relation name 2 or more.", HINT_LEADING));
+		list_free_deep(plan->leading);
+		plan->leading = NIL;
+	}
 
 	return str;
 }
