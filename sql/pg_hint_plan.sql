@@ -1,99 +1,221 @@
-CREATE TABLE t1 (val1 int, val2 int);
-CREATE TABLE t2 (val1 int, val2 int);
-CREATE TABLE t3 (val1 int, val2 int);
-CREATE TABLE t4 (val1 int, val2 int);
-
-CREATE VIEW v1 AS SELECT val1, val2 FROM t1;
-CREATE VIEW v2 AS SELECT t1.val1 t1_val1, t1.val2 t1_val2, t2.val1 t2_val1, t2.val2 t2_val2 FROM t1, t2 WHERE t1.val1 = t2.val1;
-CREATE VIEW v3 AS SELECT t_1.val1 t1_val1, t_1.val2 t1_val2, t_2.val1 t2_val1, t_2.val2 t2_val2 FROM t1 t_1, t2 t_2 WHERE t_1.val1 = t_2.val1;
-CREATE VIEW v4 AS SELECT v_2.t1_val1, t_3.val1 FROM v2 v_2, t3 t_3 WHERE v_2.t1_val1 = t_3.val1;
+CREATE TABLE t1 (id int PRIMARY KEY, val int);
+CREATE TABLE t2 (id int PRIMARY KEY, val int);
+CREATE TABLE t3 (id int PRIMARY KEY, val int);
+CREATE TABLE t4 (id int PRIMARY KEY, val int);
+CREATE TABLE t5 (id int PRIMARY KEY, val int);
 
 INSERT INTO t1 SELECT i, i FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO t3 SELECT i, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO t4 SELECT i, i FROM (SELECT generate_series(1, 10) i) t;
-
-CREATE INDEX t1_val1 ON t1 (val1);
-CREATE INDEX t2_val1 ON t2 (val1);
-CREATE INDEX t3_val1 ON t3 (val1);
-CREATE INDEX t4_val1 ON t4 (val1);
+INSERT INTO t5 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
+CREATE INDEX t5_val ON t5 (val);
 
 ANALYZE t1;
 ANALYZE t2;
 ANALYZE t3;
 ANALYZE t4;
+ANALYZE t5;
 
-\set t1_oid `psql contrib_regression -tA -c "SELECT oid FROM pg_class WHERE relname = 't1'"`
-\set t2_oid `psql contrib_regression -tA -c "SELECT oid FROM pg_class WHERE relname = 't2'"`
-\set t3_oid `psql contrib_regression -tA -c "SELECT oid FROM pg_class WHERE relname = 't3'"`
-\set t4_oid `psql contrib_regression -tA -c "SELECT oid FROM pg_class WHERE relname = 't4'"`
+CREATE VIEW v1 AS SELECT id, val FROM t1;
+CREATE VIEW v2 AS SELECT t1.id t1_id, t1.val t1_val, t2.id t2_id, t2.val t2_val FROM t1, t2 WHERE t1.id = t2.id;
+CREATE VIEW v3 AS SELECT t_1.id t1_id, t_1.val t1_val, t_2.id t2_id, t_2.val t2_val FROM t1 t_1, t2 t_2 WHERE t_1.id = t_2.id;
+CREATE VIEW v4 AS SELECT v_2.t1_id, t_3.id FROM v2 v_2, t3 t_3 WHERE v_2.t1_id = t_3.id;
 
---SET enable_bitmapscan TO off;
---SET enable_hashagg TO off;
---SET enable_tidscan TO off;
---SET enable_sort TO off;
---SET enable_indexscan TO off;
---SET enable_seqscan TO off;
---SET enable_material TO off;
---SET enable_hashjoin TO off;
---SET enable_mergejoin TO off;
---SET enable_nestloop TO off;
+SET enable_bitmapscan TO on;
+SET enable_hashagg TO on;
+SET enable_tidscan TO on;
+SET enable_sort TO on;
+SET enable_indexscan TO on;
+SET enable_seqscan TO on;
+SET enable_material TO on;
+SET enable_hashjoin TO on;
+SET enable_mergejoin TO on;
+SET enable_nestloop TO on;
 
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val1 = t2.val1;
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val2 = t2.val2;
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
-CREATE EXTENSION pg_hint_plan;
+LOAD 'pg_hint_plan';
 
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val1 = t2.val1;
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val2 = t2.val2;
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
-SELECT pg_add_hint('nest(' || :t1_oid || ',' || :t2_oid || ')');
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val1 = t2.val1;
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val2 = t2.val2;
+\q
+/* NestLoop (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* NestLoop (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
-SELECT pg_add_hint('hash(' || :t1_oid || ',' || :t2_oid || ')');
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val1 = t2.val1;
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val2 = t2.val2;
+/* HashJoin (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* HashJoin (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
-SELECT pg_add_hint('merge(' || :t1_oid || ',' || :t2_oid || ')');
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val1 = t2.val1;
-EXPLAIN SELECT * FROM t1, t2 WHERE t1.val2 = t2.val2;
+/* MergeJoin (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* MergeJoin (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
-SELECT pg_clear_hint();
-EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1;
-EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.val2 = t2.val2 AND t2.val2 = t3.val2;
+/* NoMergeJoin (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* NoHashJoin (t1 t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
-SELECT pg_add_hint('nest(' || :t1_oid || ',' || :t2_oid ||  ',' || :t3_oid || ')');
-SELECT pg_add_hint('nest(' || :t1_oid || ',' || :t3_oid || ')');
-EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1;
-EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.val2 = t2.val2 AND t2.val2 = t3.val2;
+EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.id = t3.id;
+EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val AND t2.val = t3.val;
 
-SELECT pg_clear_hint();
-EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-SELECT pg_add_hint('no_merge(' || :t1_oid || ',' || :t2_oid || ')');
-EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
+/* NestLoop (t1 t2 t3) NestLoop (t1 t3) */
+EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.id = t3.id;
+/* NestLoop (t1 t2 t3) NestLoop (t1 t3) */
+EXPLAIN SELECT * FROM t1, t2, t3 WHERE t1.val = t2.val AND t2.val = t3.val;
+
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
 SET enable_mergejoin TO off;
-EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-SELECT pg_add_hint('no_hash(' || :t3_oid || ',' || :t4_oid || ')');
-EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-SELECT pg_add_hint('no_nest(' || :t2_oid || ',' || :t3_oid || ',' || :t4_oid || ')');
-EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+SET enable_mergejoin TO on;
 
-SELECT pg_clear_hint();
 SET join_collapse_limit TO 10;
-EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
+EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
 SET join_collapse_limit TO 1;
-EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-EXPLAIN SELECT * FROM t2 CROSS JOIN t3 CROSS JOIN t4 CROSS JOIN t1 WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-EXPLAIN SELECT * FROM t1 CROSS JOIN (t2 CROSS JOIN t3 CROSS JOIN t4) WHERE t1.val1 = t2.val1 AND t2.val1 = t3.val1 AND t3.val1 = t4.val1;
-EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.val1 = t2.val1) JOIN t3 ON (t2.val1 = t3.val1) JOIN t4 ON (t3.val1 = t4.val1);
+EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+EXPLAIN SELECT * FROM t2 CROSS JOIN t3 CROSS JOIN t4 CROSS JOIN t1 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+EXPLAIN SELECT * FROM t1 CROSS JOIN (t2 CROSS JOIN t3 CROSS JOIN t4) WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t2.id = t3.id) JOIN t4 ON (t3.id = t4.id);
 
 EXPLAIN SELECT * FROM v2;
 EXPLAIN SELECT * FROM v3 v_3;
-EXPLAIN SELECT * FROM v2 v_2, v3 v_3 WHERE v_2.t1_val1 = v_3.t1_val1;
+EXPLAIN SELECT * FROM v2 v_2, v3 v_3 WHERE v_2.t1_id = v_3.t1_id;
 
---SELECT pg_enable_log(true);
-EXPLAIN SELECT * FROM v4 v_4;
+EXPLAIN SELECT * FROM t1 t_1, v2 v_2 WHERE t_1.id = v_2.t1_id;
 SET from_collapse_limit TO 1;
-EXPLAIN SELECT * FROM v4 v_4;
---SELECT pg_enable_log(false);
+EXPLAIN SELECT * FROM t1 t_1, v2 v_2 WHERE t_1.id = v_2.t1_id;
+
+/* test */ EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* HashJoin(t1 t2) MergeJoin(t_1 t_2) NestLoop(t2 t1)*/ EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+SET join_collapse_limit TO 10;
+/* Set(join_collapse_limit "1") */ EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* Set(join_collapse_limit "10") */ EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+SHOW join_collapse_limit;
+/* Set(join_collapse_limit "1") */ EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+SHOW join_collapse_limit;
+/* Set(join_collapse_limit "1") */ EXPLAIN SELECT * FROM t1 CROSS JOIN t2 CROSS JOIN t3 CROSS JOIN t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+SHOW join_collapse_limit;
+
+/* Set(cursor_tuple_fraction "1") */ EXPLAIN DECLARE c1 CURSOR FOR SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t2.val = 1 ORDER BY t1.id;
+/* Set(cursor_tuple_fraction "0.5") */ EXPLAIN DECLARE c1 CURSOR FOR SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t2.val = 1 ORDER BY t1.id;
+/* Set (cursor_tuple_fraction "0.4") */ EXPLAIN DECLARE c1 CURSOR FOR SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t2.val = 1 ORDER BY t1.id;
+
+/* Leading (t1 t2 t3 t4) */EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+/* Leading (t4 t3 t2 t1) */EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+/* SeqScan (t1) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+/* SeqScan (t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+/* SeqScan (t1) SeqScan (t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+/* BitmapScan(t1) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+/* BitmapScan(t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+/* BitmapScan (t1) BitmapScan (t2) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id < 1 AND t2.id < 1 AND t1.id = t2.id;
+-- TID SCAN試験
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+/* TidScan(t4) */
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+/* IndexScan(t1) TidScan(t4)*/
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+-- NO～試験
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+/* NoTidScan(t1) */
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+/* NoSeqScan(t4) NoTidScan(t1) */
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+/* NoSeqScan(t4) NoTidScan(t1) NoNestLoop(t1 t4)*/
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id < 1 AND t4.id < 1 AND t1.id = t4.id AND t1.ctid = '(1, 1)' AND t4.ctid = '(1, 1)';
+
+EXPLAIN SELECT * FROM t1, t5 WHERE t1.id = t5.id AND t1.id < 1000 AND t5.val < 10;
+/* NoIndexScan(t1) */
+EXPLAIN SELECT * FROM t1, t5 WHERE t1.id = t5.id AND t1.id < 1000 AND t5.val < 10;
+/* NoBitmapScan(t5) NoIndexScan(t1) */
+EXPLAIN SELECT * FROM t1, t5 WHERE t1.id = t5.id AND t1.id < 1000 AND t5.val < 10;
+
+--EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+--EXPLAIN SELECT * FROM t1, t4 WHERE t1.id = t4.id;
+
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.id = t3.id;
+/* IndexScan (t1) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.id = t3.id;
+/* IndexScan (t3) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.id = t3.id;
+/* SeqScan (t1) IndexScan (t3) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.id = t3.id;
+/* SeqScan (t3) IndexScan (t1) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.id = t3.id;
+/* IndexScan (t1) IndexScan (t3) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.id = t3.id;
+
+EXPLAIN SELECT * FROM t1 WHERE id < 10000;
+/* IndexScan (t1) */
+EXPLAIN SELECT * FROM t1 WHERE id < 10000;
+
+EXPLAIN SELECT * FROM t1 WHERE id = 1;
+/* SeqScan (t1) */
+EXPLAIN SELECT * FROM t1 WHERE id = 1;
+
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id > 100;
+/* IndexScan (t1) */
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id > 100;
+/* IndexScan (t4) */
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id > 100;
+/* Set (enable_seqscan off) Set (enable_indexscan off) */
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.id > 100;
+
+CREATE INDEX t1_val ON t1 (val);
+CREATE INDEX t1_val_id ON t1 (val, id);
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/* IndexScan (t1 t1_val_id) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/* IndexScan (t1 t1_pkey) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/* IndexScan (t1 t1_val_id t1_val) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/* IndexScan (t1 t2_val) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+
+SET pg_hint_plan.debug_print TO true;
+/* HashJoin(a b c A B C z y x Z Y X) HashJoin (t1 t3) MergeJoin(a b c A B C z y x Z Y X) MergeJoin (t3 t1) NestLoop(a b c A B C z y x Z Y X) */
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+CREATE INDEX t3_val ON t3 (val);
+/* Leading(t3) IndexScan(t4) Set (cursor_tuple_fraction "1.0") Leading(t3 t1 t4) HashJoin(t3 t1) BitmapScan(t3) HashJoin(a b c) IndexScan(t2) MergeJoin(A B C) MergeJoin (B C A) NestLoop(b c a) MergeJoin(c a b) IndexScan(t3) NestLoop(C A B) IndexScan(t1) SeqScan(t1) SeqScan(t1) SeqScan(t1) MergeJoin(t3 t1) Leading(t2 t1 t4)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val ORDER BY t3.val;
+
+EXPLAIN SELECT * FROM t1 WHERE t1.val < 10000;
+/* Set(enable_seqscan "off") */
+EXPLAIN SELECT * FROM t1 WHERE t1.val < 10000;
+/* IndexScan(t1) */
+EXPLAIN SELECT * FROM t1 WHERE t1.val < 10000;
+
+EXPLAIN SELECT * FROM v1 WHERE v1.val < 10000;
+/* Set(enable_seqscan "off") */
+EXPLAIN SELECT * FROM v1 WHERE v1.val < 10000;
+/* IndexScan(t1) */
+EXPLAIN SELECT * FROM v1 WHERE v1.val < 10000;
+
+EXPLAIN SELECT * FROM v4;
+/* Set(enable_seqscan "off") */
+EXPLAIN SELECT * FROM v4;
+/* BitmapScan(t2) */
+EXPLAIN SELECT * FROM v2;
+/* BitmapScan(t_3) */
+EXPLAIN SELECT * FROM v4;
+
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;
+/* NestLoop(t1 t2) NoNestLoop(t1 t2 t4) Leading(t1 t2 t3 t4) */
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t2.id = t3.id AND t3.id = t4.id;

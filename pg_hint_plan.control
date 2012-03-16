@@ -1,5 +1,0 @@
-# pg_hint_plan extension
-comment = 'track execution history of last transaction'
-default_version = '1.0'
-module_pathname = '$libdir/pg_hint_plan'
-relocatable = true
