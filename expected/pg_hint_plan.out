@@ -61,4 +61,104 @@ EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (4 rows)
 
 SET pg_hint_plan.enable TO on;
+/*Set(enable_indexscan off)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+/* Set(enable_indexscan off) Set(enable_hashjoin off) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Merge Join  (cost=874.21..894.21 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Sort  (cost=809.39..834.39 rows=10000 width=8)
+         Sort Key: t1.id
+         ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Sort  (cost=64.83..67.33 rows=1000 width=8)
+         Sort Key: t2.id
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(8 rows)
+
+/* 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+/* 	 
+	 	Set 	 
+	 	( 	 
+	 	enable_indexscan 	 
+	 	off 	 
+	 	) 	 
+	 	*/	 	
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+/* Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)	 	
+	 	Set(enable_seqscan off)
+	 	*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Hash Join  (cost=20000000055.75..20000000421.51 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=10000000000.00..10000000318.26 rows=10000 width=8)
+   ->  Hash  (cost=10000000043.25..10000000043.25 rows=1000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=10000000000.00..10000000043.25 rows=1000 width=8)
+(5 rows)
+
+/*Set(work_mem "1M")*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  invalid value for parameter "work_mem": "1M"
+HINT:  Valid units for this parameter are "kB", "MB", and "GB".
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*Set(work_mem "1MB")*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*Set(work_mem TO "1MB")*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near ""1MB")"
+DETAIL:  Closed parenthesis is necessary.
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
 \q

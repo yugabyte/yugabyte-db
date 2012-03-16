@@ -9,21 +9,15 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
-#include "fmgr.h"
-#include "lib/stringinfo.h"
 #include "miscadmin.h"
-#include "nodes/print.h"
-#include "optimizer/cost.h"
+#include "optimizer/geqo.h"
 #include "optimizer/joininfo.h"
 #include "optimizer/pathnode.h"
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planner.h"
 #include "tcop/tcopprot.h"
-#include "utils/builtins.h"
-#include "utils/elog.h"
-#include "utils/guc.h"
-#include "utils/memutils.h"
+#include "utils/lsyscache.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -55,7 +49,8 @@ PG_MODULE_MAGIC;
 #define HINT_SET			"Set"
 
 #if PG_VERSION_NUM >= 90200
-#define	HINT_INDEXONLYSCAN	"IndexonlyScan";
+#define	HINT_INDEXONLYSCAN		"IndexonlyScan"
+#define	HINT_NOINDEXONLYSCAN	"NoIndexonlyScan"
 #endif
 
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
@@ -144,61 +139,23 @@ typedef struct HintParser
 void		_PG_init(void);
 void		_PG_fini(void);
 
-
-#define HASH_ENTRIES 201
-typedef struct tidlist
-{
-	int nrels;
-	Oid *oids;
-} TidList;
-typedef struct hash_entry
-{
-	TidList tidlist;
-	unsigned char enforce_mask;
-	struct hash_entry *next;
-} HashEntry;
-static HashEntry *hashent[HASH_ENTRIES];
-static bool print_log = false;
-/* Join Method Hints */
-typedef struct RelIdInfo
-{
-	Index		relid;
-	Oid			oid;
-	Alias	   *eref;
-} RelIdInfo;
-
-typedef struct GucVariables
-{
-	bool	enable_seqscan;
-	bool	enable_indexscan;
-	bool	enable_bitmapscan;
-	bool	enable_tidscan;
-	bool	enable_sort;
-	bool	enable_hashagg;
-	bool	enable_nestloop;
-	bool	enable_material;
-	bool	enable_mergejoin;
-	bool	enable_hashjoin;
-} GucVariables;
-
-
-static PlannedStmt *my_planner(Query *parse, int cursorOptions,
+static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 							   ParamListInfo boundParams);
-static void my_get_relation_info(PlannerInfo *root, Oid relationObjectId,
+static void pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 								 bool inhparent, RelOptInfo *rel);
-static RelOptInfo *my_join_search(PlannerInfo *root, int levels_needed,
+static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 								  List *initial_rels);
 
+static const char *ParseSet(PlanHint *plan, Query *parse, char *keyword, const char *str);
+#ifdef NOT_USED
+static const char *Ordered(PlanHint *plan, Query *parse, char *keyword, const char *str);
+#endif
 
-static void backup_guc(GucVariables *backup);
-static void restore_guc(GucVariables *backup);
-static void set_guc(unsigned char enforce_mask);
-static void build_join_hints(PlannerInfo *root, int level, List *initial_rels);
-static RelOptInfo *my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2);
 static void my_join_search_one_level(PlannerInfo *root, int level);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
+static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
 
 
 /* GUC variables */
@@ -234,24 +191,7 @@ static join_search_hook_type prev_join_search = NULL;
 static PlanHint *global = NULL;
 
 static const HintParser parsers[] = {
-/*
-	{HINT_SEQSCAN, true, ParseScanMethod},
-	{HINT_INDEXSCAN, true, ParseIndexScanMethod},
-	{HINT_BITMAPSCAN, true, ParseIndexScanMethod},
-	{HINT_TIDSCAN, true, ParseScanMethod},
-	{HINT_NOSEQSCAN, true, ParseScanMethod},
-	{HINT_NOINDEXSCAN, true, ParseScanMethod},
-	{HINT_NOBITMAPSCAN, true, ParseScanMethod},
-	{HINT_NOTIDSCAN, true, ParseScanMethod},
-	{HINT_NESTLOOP, true, ParseJoinMethod},
-	{HINT_MERGEJOIN, true, ParseJoinMethod},
-	{HINT_HASHJOIN, true, ParseJoinMethod},
-	{HINT_NONESTLOOP, true, ParseJoinMethod},
-	{HINT_NOMERGEJOIN, true, ParseJoinMethod},
-	{HINT_NOHASHJOIN, true, ParseJoinMethod},
-	{HINT_LEADING, true, ParseLeading},
 	{HINT_SET, true, ParseSet},
-*/
 	{NULL, false, NULL},
 };
 
@@ -298,11 +238,11 @@ _PG_init(void)
 
 	/* Install hooks. */
 	prev_planner_hook = planner_hook;
-	planner_hook = my_planner;
+	planner_hook = pg_hint_plan_planner;
 	prev_get_relation_info = get_relation_info_hook;
-	get_relation_info_hook = my_get_relation_info;
+	get_relation_info_hook = pg_hint_plan_get_relation_info;
 	prev_join_search = join_search_hook;
-	join_search_hook = my_join_search;
+	join_search_hook = pg_hint_plan_join_search;
 }
 
 /*
@@ -416,9 +356,9 @@ PlanHintCreate(void)
 	hint->join_hints = NULL;
 	hint->nlevel = 0;
 	hint->join_hint_level = NULL;
+	hint->leading = NIL;
 	hint->context = superuser() ? PGC_SUSET : PGC_USERSET;
 	hint->set_hints = NIL;
-	hint->leading = NIL;
 
 	return hint;
 }
@@ -450,11 +390,11 @@ PlanHintDelete(PlanHint *hint)
 	if (hint->join_hint_level)
 		pfree(hint->join_hint_level);
 
+	list_free_deep(hint->leading);
+
 	foreach(l, hint->set_hints)
 		SetHintDelete((SetHint *) lfirst(l));
 	list_free(hint->set_hints);
-
-	list_free_deep(hint->leading);
 
 	pfree(hint);
 }
@@ -464,8 +404,8 @@ PlanHintIsempty(PlanHint *hint)
 {
 	if (hint->nscan_hints == 0 &&
 		hint->njoin_hints == 0 &&
-		hint->set_hints == NIL &&
-		hint->leading == NIL)
+		hint->leading == NIL &&
+		hint->set_hints == NIL)
 		return true;
 
 	return false;
@@ -996,8 +936,53 @@ parse_head_comment(Query *parse)
 	return plan;
 }
 
+static const char *
+ParseSet(PlanHint *plan, Query *parse, char *keyword, const char *str)
+{
+	SetHint	   *hint;
+
+	hint = SetHintCreate();
+
+	if ((str = parse_quote_value(str, &hint->name, "parameter name")) == NULL ||
+		(str = skip_option_delimiter(str)) == NULL ||
+		(str = parse_quote_value(str, &hint->value, "parameter value")) == NULL)
+	{
+		SetHintDelete(hint);
+		return NULL;
+	}
+
+	skip_space(str);
+	if (*str != ')')
+	{
+		parse_ereport(str, ("Closed parenthesis is necessary."));
+		SetHintDelete(hint);
+		return NULL;
+	}
+	plan->set_hints = lappend(plan->set_hints, hint);
+
+	return str;
+}
+
+#ifdef NOT_USED
+/*
+ * Oracle の ORDERD ヒントの実装
+ */
+static const char *
+Ordered(PlanHint *plan, Query *parse, char *keyword, const char *str)
+{
+	SetHint	   *hint;
+
+	hint = SetHintCreate();
+	hint->name = pstrdup("join_collapse_limit");
+	hint->value = pstrdup("1");
+	plan->set_hints = lappend(plan->set_hints, hint);
+
+	return str;
+}
+#endif
+
 static PlannedStmt *
-my_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
+pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	int				save_nestlevel;
 	PlannedStmt	   *result;
@@ -1070,164 +1055,123 @@ my_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	return result;
 }
 
-static void my_get_relation_info(PlannerInfo *root, Oid relationObjectId,
-								 bool inhparent, RelOptInfo *rel)
+/*
+ * aliasnameと一致するSCANヒントを探す
+ */
+static ScanHint *
+find_scan_hint(RangeTblEntry *rte)
 {
-	if (prev_get_relation_info)
-		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
+	int	i;
+
+	for (i = 0; i < global->nscan_hints; i++)
+	{
+		ScanHint   *hint = global->scan_hints[i];
+
+		if (strcmp(rte->eref->aliasname, hint->relname) == 0)
+			return hint;
+	}
+
+	return NULL;
 }
 
-/*
- * pg_add_hint()で登録した個別のヒントを、使用しやすい構造に変換する。
- */
-static JoinHint *
-set_relids(HashEntry *ent, RelIdInfo **relids, int nrels)
+static void
+pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
+								 bool inhparent, RelOptInfo *rel)
 {
-	int			i;
-	int			j;
-	JoinHint   *hint;
+	ScanHint   *hint;
+	ListCell   *cell;
+	ListCell   *prev;
+	ListCell   *next;
 
-	hint = palloc(sizeof(JoinHint));
-	hint->joinrelids = NULL;
+	if (prev_get_relation_info)
+		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
 
-	for (i = 0; i < ent->tidlist.nrels; i++)
+	/* 有効なヒントが指定されなかった場合は処理をスキップする。 */
+	if (!global)
+		return;
+
+	if (rel->reloptkind != RELOPT_BASEREL)
+		return;
+
+	if ((hint = find_scan_hint(root->simple_rte_array[rel->relid])) == NULL)
+		return;
+
+	/* インデックスを全て削除し、スキャンに使えなくする */
+	if (hint->enforce_mask == ENABLE_SEQSCAN)
 	{
-		for (j = 0; j < nrels; j++)
+		list_free_deep(rel->indexlist);
+		rel->indexlist = NIL;
+
+		return;
+	}
+
+	/* 後でパスを作り直すため、ここではなにもしない */
+	if (hint->indexnames == NULL)
+		return;
+
+	/* 指定されたインデックスのみをのこす */
+	prev = NULL;
+	for (cell = list_head(rel->indexlist); cell; cell = next)
+	{
+		IndexOptInfo   *info = (IndexOptInfo *) lfirst(cell);
+		char		   *indexname = get_rel_name(info->indexoid);
+		ListCell	   *l;
+		bool			use_index = false;
+
+		next = lnext(cell);
+
+		foreach(l, hint->indexnames)
 		{
-			if (ent->tidlist.oids[i] == relids[j]->oid)
+			if (strcmp(indexname, lfirst(l)) == 0)
 			{
-				hint->joinrelids =
-					bms_add_member(hint->joinrelids, relids[j]->relid);
+				use_index = true;
 				break;
 			}
 		}
 
-		if (j == nrels)
-		{
-			pfree(hint);
-			return NULL;
-		}
+		if (!use_index)
+			rel->indexlist = list_delete_cell(rel->indexlist, cell, prev);
+		else
+			prev = cell;
+
+		pfree(indexname);
 	}
-
-	hint->nrels = ent->tidlist.nrels;
-	hint->enforce_mask = ent->enforce_mask;
-
-	return hint;
 }
 
-/*
- * pg_add_hint()で登録したヒントから、今回のクエリで使用するもののみ抽出し、
- * 使用しやすい構造に変換する。
- */
-static void
-build_join_hints(PlannerInfo *root, int level, List *initial_rels)
+static Index
+scan_relid_aliasname(PlannerInfo *root, char *aliasname, bool check_ambiguous, const char *str)
 {
-	int			i;
-	int			nrels;
-	RelIdInfo **relids;
-	JoinHint   *hint;
+	// TODO refnameRangeTblEntry を参考
+	int		i;
+	Index	find = 0;
 
-	if (1)
-		return;
-
-	relids = palloc(sizeof(RelIdInfo *) * root->simple_rel_array_size);
-
-	if (print_log)
-	{
-		ListCell   *l;
-		foreach(l, initial_rels)
-		{
-			RelOptInfo *rel = (RelOptInfo *) lfirst(l);
-			elog_node_display(INFO, "initial_rels", rel, true);
-		}
-		elog_node_display(INFO, "root", root, true);
-		elog(INFO, "%s(simple_rel_array_size:%d, level:%d, query_level:%d, parent_root:%p)",
-			__func__, root->simple_rel_array_size, level, root->query_level, root->parent_root);
-	}
-
-	for (i = 0, nrels = 0; i < root->simple_rel_array_size; i++)
+	for (i = 1; i < root->simple_rel_array_size; i++)
 	{
 		if (root->simple_rel_array[i] == NULL)
 			continue;
 
-		relids[nrels] = palloc(sizeof(RelIdInfo));
-
 		Assert(i == root->simple_rel_array[i]->relid);
 
-		relids[nrels]->relid = i;
-		relids[nrels]->oid = root->simple_rte_array[i]->relid;
-		relids[nrels]->eref = root->simple_rte_array[i]->eref;
-		//elog(INFO, "%d:%d:%d:%s", i, relids[nrels]->relid, relids[nrels]->oid, relids[nrels]->eref->aliasname);
+		if (strcmp(aliasname, root->simple_rte_array[i]->eref->aliasname) != 0)
+			continue;
 
-		nrels++;
+		if (!check_ambiguous)
+			return i;
+
+		if (find)
+			parse_ereport(str, ("relation name \"%s\" is ambiguous", aliasname));
+
+		find = i;
 	}
 
-	global->join_hint_level = palloc0(sizeof(List *) * (root->simple_rel_array_size));
-
-	for (i = 0; i < HASH_ENTRIES; i++)
-	{
-		HashEntry *next;
-
-		for (next = hashent[i]; next; next = next->next)
-		{
-			int	lv;
-			if (!(next->enforce_mask & ENABLE_HASHJOIN) &&
-				!(next->enforce_mask & ENABLE_NESTLOOP) &&
-				!(next->enforce_mask & ENABLE_MERGEJOIN))
-				continue;
-
-			if ((hint = set_relids(next, relids, nrels)) == NULL)
-				continue;
-
-			lv = bms_num_members(hint->joinrelids);
-			global->join_hint_level[lv] = lappend(global->join_hint_level[lv], hint);
-		}
-	}
-}
-
-static void
-backup_guc(GucVariables *backup)
-{
-	backup->enable_seqscan = enable_seqscan;
-	backup->enable_indexscan = enable_indexscan;
-	backup->enable_bitmapscan = enable_bitmapscan;
-	backup->enable_tidscan = enable_tidscan;
-	backup->enable_sort = enable_sort;
-	backup->enable_hashagg = enable_hashagg;
-	backup->enable_nestloop = enable_nestloop;
-	backup->enable_material = enable_material;
-	backup->enable_mergejoin = enable_mergejoin;
-	backup->enable_hashjoin = enable_hashjoin;
-}
-
-static void
-restore_guc(GucVariables *backup)
-{
-	enable_seqscan = backup->enable_seqscan;
-	enable_indexscan = backup->enable_indexscan;
-	enable_bitmapscan = backup->enable_bitmapscan;
-	enable_tidscan = backup->enable_tidscan;
-	enable_sort = backup->enable_sort;
-	enable_hashagg = backup->enable_hashagg;
-	enable_nestloop = backup->enable_nestloop;
-	enable_material = backup->enable_material;
-	enable_mergejoin = backup->enable_mergejoin;
-	enable_hashjoin = backup->enable_hashjoin;
-}
-
-static void
-set_guc(unsigned char enforce_mask)
-{
-	enable_mergejoin = enforce_mask & ENABLE_MERGEJOIN ? true : false;
-	enable_hashjoin = enforce_mask & ENABLE_HASHJOIN ? true : false;
-	enable_nestloop = enforce_mask & ENABLE_NESTLOOP ? true : false;
+	return find;
 }
 
 /*
  * relidビットマスクと一致するヒントを探す
  */
 static JoinHint *
-find_join_hint(Relids joinrelids)
+scan_join_hint(Relids joinrelids)
 {
 	List	   *join_hint;
 	ListCell   *l;
@@ -1243,6 +1187,153 @@ find_join_hint(Relids joinrelids)
 	return NULL;
 }
 
+/*
+ * ヒントを使用しやすい構造に変換する。
+ */
+static void
+rebuild_join_hints(PlanHint *plan, PlannerInfo *root, int level, List *initial_rels)
+{
+	int			i;
+	ListCell   *l;
+	Relids		joinrelids;
+	int			njoinrels;
+
+	plan->nlevel = root->simple_rel_array_size - 1;
+	plan->join_hint_level = palloc0(sizeof(List *) * (root->simple_rel_array_size));
+	for (i = 0; i < plan->njoin_hints; i++)
+	{
+		JoinHint   *hint = plan->join_hints[i];
+		int			j;
+		Index		relid = 0;
+
+		for (j = 0; j < hint->nrels; j++)
+		{
+			char   *relname = hint->relnames[j];
+
+			relid = scan_relid_aliasname(root, relname, true, hint->opt_str);
+			if (relid == 0)
+			{
+				parse_ereport(hint->opt_str, ("Relation \"%s\" does not exist.", relname));
+				break;
+			}
+
+			hint->joinrelids = bms_add_member(hint->joinrelids, relid);
+		}
+
+		if (relid == 0)
+			continue;
+
+		plan->join_hint_level[hint->nrels] =
+			lappend(plan->join_hint_level[hint->nrels], hint);
+	}
+
+	/* Leading hint は、全ての join 方式が有効な hint として登録する */
+	joinrelids = NULL;
+	njoinrels = 0;
+	foreach(l, plan->leading)
+	{
+		char	   *relname = (char *)lfirst(l);
+		JoinHint   *hint;
+
+		i = scan_relid_aliasname(root, relname, true, plan->hint_str);
+		if (i == 0)
+		{
+			parse_ereport(plan->hint_str, ("Relation \"%s\" does not exist.", relname));
+			list_free_deep(plan->leading);
+			plan->leading = NIL;
+			break;
+		}
+
+		joinrelids = bms_add_member(joinrelids, i);
+		njoinrels++;
+
+		if (njoinrels < 2)
+			continue;
+
+		if (njoinrels > plan->nlevel)
+		{
+			parse_ereport(plan->hint_str, ("In %s hint, specified relation name %d or less.", HINT_LEADING, plan->nlevel));
+			break;
+		}
+
+		/* Leading で指定した組み合わせ以外の join hint を削除する */
+		hint = scan_join_hint(joinrelids);
+		list_free(plan->join_hint_level[njoinrels]);
+		if (hint)
+			plan->join_hint_level[njoinrels] = lappend(NIL, hint);
+		else
+		{
+			hint = JoinHintCreate();
+			hint->nrels = njoinrels;
+			hint->enforce_mask = ENABLE_ALL_JOIN;
+			hint->joinrelids = bms_copy(joinrelids);
+			plan->join_hint_level[njoinrels] = lappend(NIL, hint);
+
+			if (plan->njoin_hints == 0)
+			{
+				plan->max_join_hints = HINT_ARRAY_DEFAULT_INITSIZE;
+				plan->join_hints = palloc(sizeof(JoinHint *) * plan->max_join_hints);
+			}
+			else if (plan->njoin_hints == plan->max_join_hints)
+			{
+				plan->max_join_hints *= 2;
+				plan->join_hints = repalloc(plan->join_hints,
+									sizeof(JoinHint *) * plan->max_join_hints);
+			}
+
+			plan->join_hints[plan->njoin_hints] = hint;
+			plan->njoin_hints++;
+		}
+	}
+
+	bms_free(joinrelids);
+}
+
+static void
+rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_rels)
+{
+	int	i;
+	int	save_nestlevel = 0;
+
+	for (i = 0; i < plan->nscan_hints; i++)
+	{
+		ScanHint   *hint = plan->scan_hints[i];
+		ListCell   *l;
+
+		if (hint->enforce_mask == ENABLE_SEQSCAN)
+			continue;
+
+		foreach(l, initial_rels)
+		{
+			RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
+			RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
+
+			if (rel->reloptkind != RELOPT_BASEREL ||
+				strcmp(hint->relname, rte->eref->aliasname) != 0)
+				continue;
+
+			if (save_nestlevel != 0)
+				save_nestlevel = NewGUCNestLevel();
+
+			/*
+			 * TODO ヒントで指定されたScan方式が最安価でない場合のみ、Pathを生成
+			 * しなおす
+			 */
+			set_scan_config_options(hint->enforce_mask, plan->context);
+
+			rel->pathlist = NIL;	// TODO 解放
+			set_plain_rel_pathlist(root, rel, rte);
+
+			break;
+		}
+	}
+
+	/*
+	 * Restore the GUC variables we set above.
+	 */
+	if (save_nestlevel != 0)
+		AtEOXact_GUC(true, save_nestlevel);
+}
 
 /*
  * src/backend/optimizer/path/joinrels.c
@@ -1252,32 +1343,50 @@ find_join_hint(Relids joinrelids)
  * 呼び出す。
  */
 static RelOptInfo *
-my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
+pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
-	GucVariables	guc;
 	Relids			joinrelids;
 	JoinHint	   *hint;
 	RelOptInfo	   *rel;
-
-	if (true)
-		return make_join_rel(root, rel1, rel2);
+	int				save_nestlevel;
 
 	joinrelids = bms_union(rel1->relids, rel2->relids);
-	hint = find_join_hint(joinrelids);
+	hint = scan_join_hint(joinrelids);
 	bms_free(joinrelids);
 
-	if (hint)
-	{
-		backup_guc(&guc);
-		set_guc(hint->enforce_mask);
-	}
+	if (!hint)
+		return make_join_rel(root, rel1, rel2);
+
+	save_nestlevel = NewGUCNestLevel();
+
+	set_join_config_options(hint->enforce_mask, global->context);
 
 	rel = make_join_rel(root, rel1, rel2);
 
-	if (hint)
-		restore_guc(&guc);
+	/*
+	 * Restore the GUC variables we set above.
+	 */
+	AtEOXact_GUC(true, save_nestlevel);
 
 	return rel;
+}
+
+static RelOptInfo *_standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels);
+static RelOptInfo *
+pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
+{
+	/* 有効なヒントが指定されなかった場合は本来の処理を実行する。 */
+	if (!global)
+	{
+		if (prev_join_search)
+			return (*prev_join_search) (root, levels_needed, initial_rels);
+		else if (enable_geqo && levels_needed >= geqo_threshold)
+			return geqo(root, levels_needed, initial_rels);
+		else
+			return standard_join_search(root, levels_needed, initial_rels);
+	}
+
+	return _standard_join_search(root, levels_needed, initial_rels);
 }
 
 /*
@@ -1289,7 +1398,7 @@ my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
  * export standard_join_search() を流用
  * 
  * 変更箇所
- *  build_join_hints() の呼び出しを追加
+ *  rebuild_join_hints() と rebuild_scan_path() の呼び出しを追加
  */
 /*
  * standard_join_search
@@ -1321,7 +1430,7 @@ my_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
  * original states of those data structures.  See geqo_eval() for an example.
  */
 static RelOptInfo *
-my_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
+_standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 {
 	int			lev;
 	RelOptInfo *rel;
@@ -1347,7 +1456,8 @@ my_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 	root->join_rel_level[1] = initial_rels;
 
-	build_join_hints(root, levels_needed, initial_rels);
+	rebuild_join_hints(global, root, levels_needed, initial_rels);
+	rebuild_scan_path(global, root, levels_needed, initial_rels);
 
 	for (lev = 2; lev <= levels_needed; lev++)
 	{
@@ -1392,10 +1502,10 @@ my_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 
 /*
  * src/backend/optimizer/path/joinrels.c
- * static join_search_one_level() を流用
+ * join_search_one_level() を流用
  * 
  * 変更箇所
- *  make_join_rel() の呼び出しをラップする、my_make_join_rel()の呼び出しに変更
+ *  make_join_rel() の呼び出しをラップする、pg_hint_plan_make_join_rel()の呼び出しに変更
  */
 /*
  * join_search_one_level
@@ -1529,7 +1639,7 @@ my_join_search_one_level(PlannerInfo *root, int level)
 					if (have_relevant_joinclause(root, old_rel, new_rel) ||
 						have_join_order_restriction(root, old_rel, new_rel))
 					{
-						(void) my_make_join_rel(root, old_rel, new_rel);
+						(void) pg_hint_plan_make_join_rel(root, old_rel, new_rel);
 					}
 				}
 			}
@@ -1598,7 +1708,7 @@ my_join_search_one_level(PlannerInfo *root, int level)
  * static make_rels_by_clause_joins() を流用
  * 
  * 変更箇所
- *  make_join_rel() の呼び出しをラップする、my_make_join_rel()の呼び出しに変更
+ *  make_join_rel() の呼び出しをラップする、pg_hint_plan_make_join_rel()の呼び出しに変更
  */
 /*
  * make_rels_by_clause_joins
@@ -1635,7 +1745,7 @@ make_rels_by_clause_joins(PlannerInfo *root,
 			(have_relevant_joinclause(root, old_rel, other_rel) ||
 			 have_join_order_restriction(root, old_rel, other_rel)))
 		{
-			(void) my_make_join_rel(root, old_rel, other_rel);
+			(void) pg_hint_plan_make_join_rel(root, old_rel, other_rel);
 		}
 	}
 }
@@ -1645,7 +1755,7 @@ make_rels_by_clause_joins(PlannerInfo *root,
  * static make_rels_by_clauseless_joins() を流用
  * 
  * 変更箇所
- *  make_join_rel() の呼び出しをラップする、my_make_join_rel()の呼び出しに変更
+ *  make_join_rel() の呼び出しをラップする、pg_hint_plan_make_join_rel()の呼び出しに変更
  */
 /*
  * make_rels_by_clauseless_joins
@@ -1674,7 +1784,7 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
 
 		if (!bms_overlap(other_rel->relids, old_rel->relids))
 		{
-			(void) my_make_join_rel(root, old_rel, other_rel);
+			(void) pg_hint_plan_make_join_rel(root, old_rel, other_rel);
 		}
 	}
 }
@@ -1721,4 +1831,31 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 	}
 
 	return false;
+}
+
+/*
+ * src/backend/optimizer/path/allpaths.c
+ * static set_plain_rel_pathlist() を流用
+ * 
+ * 変更箇所
+ *  なし
+ */
+/*
+ * set_plain_rel_pathlist
+ *	  Build access paths for a plain relation (no subquery, no inheritance)
+ */
+static void
+set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	/* Consider sequential scan */
+	add_path(rel, create_seqscan_path(root, rel));
+
+	/* Consider index scans */
+	create_index_paths(root, rel);
+
+	/* Consider TID scans */
+	create_tidscan_paths(root, rel);
+
+	/* Now find the cheapest of the paths for this rel */
+	set_cheapest(rel);
 }

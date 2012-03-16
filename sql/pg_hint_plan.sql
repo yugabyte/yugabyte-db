@@ -13,7 +13,93 @@ SET pg_hint_plan.enable TO off;
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 SET pg_hint_plan.enable TO on;
 
+/*Set(enable_indexscan off)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* Set(enable_indexscan off) Set(enable_hashjoin off) */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+
+/* 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* 	 
+	 	Set 	 
+	 	( 	 
+	 	enable_indexscan 	 
+	 	off 	 
+	 	) 	 
+	 	*/	 	
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/* Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)	 	
+	 	Set(enable_seqscan off)
+	 	*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*Set(work_mem "1M")*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*Set(work_mem "1MB")*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*Set(work_mem TO "1MB")*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 \q
+
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*SeqScan(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*SeqScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*SeqScan(t1)IndexScan(t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*BitmapScan(t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*BitmapScan(t2)NoSeqScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*NoIndexScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.val < 10;
+/*NoBitmapScan(t1)*/
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.val < 10;
+EXPLAIN SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+/*TidScan(t4)*/
+EXPLAIN SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+/*NoTidScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*HashJoin(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*NestLoop(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+/*NoMergeJoin(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/*MergeJoin(t1 t3)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/*NestLoop(t1 t3)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+/*NoHashJoin(t1 t3)*/
+EXPLAIN SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*MergeJoin(t4 t1 t2 t3)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*HashJoin(t3 t4 t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*NoNestLoop(t4 t1 t3 t2)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+
+/*Leading(t3 t4)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*Leading(t3 t4 t1)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*Leading(t3 t4 t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*Leading(t3 t4 t1 t2 t1)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+/*Leading(t3 t4 t4)*/
+EXPLAIN SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+\q
+
+SET pg_hint_plan.debug_print TO true;
 /* NestLoop (t1 t2) */
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /* NestLoop (t1 t2) */
