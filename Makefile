@@ -5,7 +5,7 @@
 #
 
 MODULES = pg_hint_plan
-REGRESS = pg_hint_plan
+REGRESS = init pg_hint_plan
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
