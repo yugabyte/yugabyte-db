@@ -161,4 +161,151 @@ DETAIL:  Closed parenthesis is necessary.
    ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
 (4 rows)
 
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*SeqScan(t1 t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near "t2)"
+DETAIL:  Closed parenthesis is necessary.
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*SeqScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+/*SeqScan(t1)IndexScan(t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Hash Join  (cost=55.75..248.25 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=43.25..43.25 rows=1000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(5 rows)
+
+/*BitmapScan(t2)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Nested Loop  (cost=0.26..42987.50 rows=1000 width=16)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Bitmap Heap Scan on t2  (cost=0.26..4.27 rows=1 width=8)
+         Recheck Cond: (id = t1.id)
+         ->  Bitmap Index Scan on t2_pkey  (cost=0.00..0.26 rows=1 width=0)
+               Index Cond: (id = t1.id)
+(6 rows)
+
+/*BitmapScan(t2)NoSeqScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Nested Loop  (cost=0.26..43160.76 rows=1000 width=16)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.26 rows=10000 width=8)
+   ->  Bitmap Heap Scan on t2  (cost=0.26..4.27 rows=1 width=8)
+         Recheck Cond: (id = t1.id)
+         ->  Bitmap Index Scan on t2_pkey  (cost=0.00..0.26 rows=1 width=0)
+               Index Cond: (id = t1.id)
+(6 rows)
+
+/*NoIndexScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+                            QUERY PLAN                            
+------------------------------------------------------------------
+ Hash Join  (cost=27.50..220.00 rows=1000 width=16)
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+   ->  Hash  (cost=15.00..15.00 rows=1000 width=8)
+         ->  Seq Scan on t2  (cost=0.00..15.00 rows=1000 width=8)
+(5 rows)
+
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.val < 10;
+                                  QUERY PLAN                                   
+-------------------------------------------------------------------------------
+ Nested Loop  (cost=20.01..203.64 rows=10000 width=16)
+   ->  Bitmap Heap Scan on t1  (cost=20.01..77.51 rows=1000 width=8)
+         Recheck Cond: (val < 10)
+         ->  Bitmap Index Scan on t1_val  (cost=0.00..19.76 rows=1000 width=0)
+               Index Cond: (val < 10)
+   ->  Materialize  (cost=0.00..1.15 rows=10 width=8)
+         ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
+(7 rows)
+
+/*NoBitmapScan(t1)*/
+EXPLAIN SELECT * FROM t1, t4 WHERE t1.val < 10;
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Nested Loop  (cost=0.00..296.12 rows=10000 width=16)
+   ->  Seq Scan on t1  (cost=0.00..170.00 rows=1000 width=8)
+         Filter: (val < 10)
+   ->  Materialize  (cost=0.00..1.15 rows=10 width=8)
+         ->  Seq Scan on t4  (cost=0.00..1.10 rows=10 width=8)
+(5 rows)
+
+EXPLAIN SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Merge Join  (cost=1.14..2.41 rows=1 width=16)
+   Merge Cond: (t3.id = t4.id)
+   ->  Index Scan using t3_pkey on t3  (cost=0.00..13.75 rows=100 width=8)
+   ->  Sort  (cost=1.14..1.14 rows=1 width=8)
+         Sort Key: t4.id
+         ->  Seq Scan on t4  (cost=0.00..1.12 rows=1 width=8)
+               Filter: (ctid = '(1,1)'::tid)
+(7 rows)
+
+/*TidScan(t4)*/
+EXPLAIN SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Merge Join  (cost=4.02..5.30 rows=1 width=16)
+   Merge Cond: (t3.id = t4.id)
+   ->  Index Scan using t3_pkey on t3  (cost=0.00..13.75 rows=100 width=8)
+   ->  Sort  (cost=4.02..4.03 rows=1 width=8)
+         Sort Key: t4.id
+         ->  Tid Scan on t4  (cost=0.00..4.01 rows=1 width=8)
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
+
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Nested Loop  (cost=0.00..12.29 rows=1 width=16)
+   ->  Tid Scan on t1  (cost=0.00..4.01 rows=1 width=8)
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..8.27 rows=1 width=8)
+         Index Cond: (id = t1.id)
+(5 rows)
+
+/*NoTidScan(t1)*/
+EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Nested Loop  (cost=0.00..178.28 rows=1 width=16)
+   ->  Seq Scan on t1  (cost=0.00..170.00 rows=1 width=8)
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..8.27 rows=1 width=8)
+         Index Cond: (id = t1.id)
+(5 rows)
+
 \q

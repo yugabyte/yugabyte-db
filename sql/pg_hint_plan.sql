@@ -38,7 +38,6 @@ EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*Set(work_mem TO "1MB")*/
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-\q
 
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*SeqScan(t1 t2)*/
@@ -62,6 +61,7 @@ EXPLAIN SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
 /*NoTidScan(t1)*/
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+\q
 
 EXPLAIN SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*HashJoin(t1 t2)*/
