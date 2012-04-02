@@ -5,7 +5,7 @@
 #
 
 MODULES = pg_hint_plan
-REGRESS = init pg_hint_plan
+REGRESS = init base_plan pg_hint_plan
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config
@@ -17,3 +17,13 @@ top_builddir = ../..
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 endif
+
+expected/base_plan.out: expected/base_plan-$(MAJORVERSION).out
+	cp expected/base_plan-$(MAJORVERSION).out expected/base_plan.out
+
+.PHONY: subclean
+clean: subclean
+subclean:
+	rm -f expected/base_plan.out
+
+installcheck: expected/base_plan.out
