@@ -1559,7 +1559,7 @@ created composite types and table types are supported. Thus, you can do this:
         name  TEXT
     );
 
-    SELECT row_eq( ROW(1, 'foo')::sometype, ROW(1, 'foo')::sometype );
+    SELECT row_eq( $$ SELECT 1, 'foo' $$, ROW(1, 'foo')::sometype );
 
 And, of course, this:
 
@@ -1569,20 +1569,22 @@ And, of course, this:
     );
 
     INSERT INTO users VALUES (1, 'theory');
+    PREPARE get_user AS SELECT * FROM users LIMIT 1;
 
-    SELECT row_eq( id, name), ROW(1, 'theory')::users )
-      FROM users;
+    SELECT row_eq( 'get_user', ROW(1, 'theory')::users );
 
 Compatible types can be compared, though. So if the `users` table actually
 included an `active` column, for example, and you only wanted to test the
 `id` and `name`, you could do this:
 
-    SELECT row_eq( id, name), ROW(1, 'theory')::sometype )
-      FROM users;
+    SELECT row_eq(
+        $$ SELECT id, name FROM users $$,
+        ROW(1, 'theory')::sometype
+    );
 
 Note the use of the `sometype` composite type for the second argument. The
 upshot is that you can create composite types in your tests explicitly for
-comparing the rerutn values of your queries, if such queries don't return an
+comparing the return values of your queries, if such queries don't return an
 existing valid type.
 
 Hopefully someday in the future we'll be able to support arbitrary `record`

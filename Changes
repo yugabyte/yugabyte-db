@@ -8,6 +8,8 @@ Revision history for pgTAP
   [the report](https://github.com/theory/pgtap/issues/16).
 * Noted `pg_prove --verbose` for showing test descriptions and fixed a few
   typos in the documentation. Thanks to Jay Levitt for the pull request!
+* Fixed broken examples in the `row_eq()` documentation. Thanks to @set5think
+  for the report!
 
 0.90.0 2011-12-03T20:18:16Z
 ---------------------------
