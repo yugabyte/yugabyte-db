@@ -1,0 +1,93 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD html 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>ヒント一覧</title>
+<!-- Uncoment after the tool has been hosted somewhere.
+<link rel="home" title="pg_hint_plan" href="index.html">
+-->
+<link rel="stylesheet" type="text/css" href="style.css">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+
+<body>
+<h1 id="pg_hint_plan">pg_hint_plan 0.1.0</h1>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
+  <a href="hint_list-ja.html">ヒント一覧</a>
+</div>
+<hr>
+
+<h2 id="hint-list">ヒント一覧</h2>
+<p>pg_hint_planで指定できるヒントは以下の通りです。</p>
+<table>
+<thead>
+<tr>
+<tr><th>ヒントのグループ</th><th>ヒント</th><th>説明</th></tr>
+</tr>
+</thead>
+<tbody>
+<tr><td rowspan="8" nowrap>スキャン方式</td>
+  <td>SeqScan(テーブル)</td>
+  <td>指定したテーブルについて、Seq Scanを選択します。</td></tr>
+<tr><td>TidScan(テーブル)</td>
+  <td>ctidに具体的な値を指定したときに、指定したテーブルについて、Tid Scanを選択します。</td></tr>
+<tr><td>IndexScan(テーブル[ インデックス[ インデックス...]])</td>
+  <td>指定したテーブルについて、IndexScanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。</td></tr>
+<tr><td>BitmapScan(テーブル[ インデックス[ インデックス...]])</td>
+  <td>指定したテーブルについて、Bitmap Scanを選択します。</br>インデックスも指定した場合は、指定したインデックスの中でコストが最小となるインデックスを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。</td></tr>
+<tr><td>NoSeqScan(テーブル)</td>
+  <td>指定したテーブルについて、Seq Scan以外でコストが最小となるスキャン方式を選択します。ただし、他のスキャン方式を選択できない場合は、Seq Scanを選択します。</td></tr>
+<tr><td>NoTidScan(テーブル)</td>
+  <td>指定したテーブルについて、Tid Scanを除いたコストが最小となるスキャン方式を選択します。</td></tr>
+<tr><td>NoIndexScan(テーブル)</td>
+  <td>指定したテーブルについて、Bitmap Scanを除いたコストが最小となるスキャン方式を選択します。</td></tr>
+<tr><td>NoBitmapScan(テーブル)</td>
+  <td>指定したテーブルについて、Bitmap Scanを除いたコストが最小となるスキャン方式を選択します。</td></tr>
+
+<tr><td rowspan="6" nowrap>結合方式</td>
+  <td>NestLoop(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にNested Loopを選択します。</td></tr>
+<tr><td>HashJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にHash Joinを選択します。</td></tr>
+<tr><td>MergeJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にMerge Joinを選択します。</td></tr>
+<tr><td>NoNestLoop(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にNested Loop以外の結合方式を選択します。他の結合方式を選択できない場合は、Nested Loopを選択します。</td></tr>
+<tr><td>NoHashJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にHash Join以外の結合方式を選択します。</td></tr>
+<tr><td>NoMergeJoin(テーブル テーブル[ テーブル...])</td>
+  <td>指定したテーブル間の結合にMerge Join以外の結合方式を選択します。</td></tr>
+
+<tr><td>結合順序</td>
+  <td>Leading(テーブル[ テーブル...])</td>
+  <td>指定したテーブルを指定した順番通りに結合します。</td></tr>
+
+<tr><td>GUCパラメータ</td>
+  <td>Set(GUCパラメータ 値)</td>
+  <td>そのクエリの時だけ、指定したGUCパラメータを指定した値に変更します。ただし、指定する値に小文字とアンダースコア(_)以外の文字(大文字、数字、空白スペースなど)を含む場合はダブルクォート(")で囲んでください。</td></tr>
+</tbody>
+</table></p>
+
+
+<hr>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
+  <a href="hint_list-ja.html">ヒント一覧</a>
+</div>
+
+<p class="footer">Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+
+<!--
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script><script src="pg_statsinfo-ja_files/ga.js" type="text/javascript"></script>
+<script type="text/javascript">
+try{
+var pageTracker = _gat._getTracker("UA-10244036-6");
+pageTracker._trackPageview();
+} catch(err) {}
+</script>
+-->
+</body>
+</html>

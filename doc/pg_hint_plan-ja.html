@@ -1,0 +1,396 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD html 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>pg_hint_plan</title>
+<!-- Uncoment after the tool has been hosted somewhere.
+<link rel="home" title="pg_hint_plan" href="index.html">
+-->
+<link rel="stylesheet" type="text/css" href="style.css">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+
+<body>
+<h1 id="pg_hint_plan">pg_hint_plan 0.1.0</h1>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
+</div>
+<hr>
+
+<div class="index">
+<ol>
+<li><a href="#name">pg_hint_planとは？</a></li>
+<li><a href="#description">機能概要</a></li>
+<li><a href="#install">インストール</a>
+<ol>
+  <li><a href="#requirement">動作環境</a></li>
+  <li><a href="#build">ビルド</a></li>
+</ol>
+</li>
+<li><a href="#uninstall">アンインストール</a></li>
+<li><a href="#usage">使い方</a>
+<ol>
+  <li><a href="#hint-load">pg_hint_planのロード</a></li>
+  <li><a href="#hint-rule">ヒントの記述方法</a></li>
+  <li><a href="#hint-object">対象オブジェクトの指定方法</a></li>
+  <li><a href="#hint-type">ヒントの種類</a></li>
+  <li><a href="#hint-GUC">pg_hint_planのGUCパラメータ</a></li>
+</ol>
+</li>
+<li><a href="#restrictions">使用上の注意と制約</a></li>
+<li><a href="#known-issues">既知の問題</a></li>
+<li><a href="#seealso">関連項目</a></li>
+</div>
+
+<h2 id="name">pg_hint_planとは？</h2>
+<p>pg_hint_planは、元のSQL文を変えずに実行計画を制御するためのツールです。</p>
+
+<h2 id="description">機能概要</h2>
+<p>pg_hint_planは、SQL文の前にヒントを記述したブロックコメントを加えることで、ヒントに従って実行計画を制御することができます。</p>
+
+<h2 id="install">インストール</h2>
+<p>pg_hint_planのインストール方法について説明します。</p>
+
+<h3 id="requirement">動作環境</h3>
+<dl>
+<dt>PostgreSQL</dt>
+  <dd>バージョン 9.1.3</dd>
+  <dd>バージョン 9.2devel 4月2日版</dd>
+<dt>動作検証済みOS</dt><dd>RHEL 6.1</dd>
+</dl>
+
+<h3 id="build">ビルド</h3>
+<p>pg_hint_planをソースコードからビルドする場合、PostgreSQLのソースツリーを用いる方法とpgxsを用いる方法があります。</p>
+
+<h4 id="build-with-source">ソースツリーを用いたビルド</h4>
+<p>PostgreSQLのソースツリーを用いる場合は、configureおよびビルドを済ませたPostgreSQL本体のcontrib配下にpg_hint_planのソースを展開し、make → make installの順に実行してください。</p>
+<p>以下にソースツリーを用いたビルドの例を示します。</p>
+<pre>
+$ cd postgresql-9.x.x
+$ cd contrib
+$ tar zxvf pg_hint_plan-0.1.0.tar.gz
+$ cd pg_hint_plan-0.1.0
+$ make
+$ make install 
+</pre>
+
+<h4 id="build-with-pgxs">pgxsを用いたビルド</h4>
+<p>pgxsを用いる場合は、USE_PGXS変数を設定してmake → make installの順に実行してください。</p>
+<p>以下にpgxsを用いたビルドの例を示します。</p>
+<pre>
+$ tar xzvf pg_hint_plan-0.1.0.tar.gz
+$ cd pg_hint_plan
+$ make USE_PGXS=1
+$ make USE_PGXS=1 install
+</pre>
+
+<h2 id="uninstall">アンインストール</h2>
+<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。
+インストールの際にpgxsを用いた場合は、USE_PGXS変数を設定してmake uninstallを実行してください。</p>
+<p>以下にpgxsを用いたアンインストールの例を示します。</p>
+<pre>
+$ cd pg_hint_plan-0.1.0
+$ make USE_PGXS=1 uninstall
+</pre>
+
+<h2 id="usage">使い方</h2>
+<p>pg_hint_planのヒントの使い方について説明します。</p>
+
+<h3 id="hint-load">pg_hint_planのロード</h3>
+<p>pg_hint_planを使うためには、pg_hint_planの共有ライブラリをロードしてください。</p>
+<p>以下に実行例を示します。</p>
+<pre>
+postgres=# LOAD 'pg_hint_plan';
+LOAD
+postgres=# </pre>
+
+<h3 id="hint-rule">ヒントの記述方法</h3>
+<p>ヒントはクエリの前にブロックコメントで記述してください。
+クエリの前に複数のブロックコメントを記述する場合は、先頭のブロックコメントにのみヒントを記述してください。先頭以外のブロックコメントは、ヒントと見なされず無視されます。
+また、複数のヒントを記述する場合は、スペース、タブまたは改行のいずれかで区切ってください。</p>
+<p>以下に示した具体例について説明します。この例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
+<pre>
+postgres=# /*
+postgres*#    <strong>HashJoin(a b)</strong>
+postgres*#    <strong>SeqScan(a)</strong>
+postgres*#  */
+postgres-# /* IndexScan(a) */
+postgres-# EXPLAIN SELECT /* MergeJoin(a b) */ *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-#   ORDER BY a.aid;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Sort  (cost=31465.84..31715.84 rows=100000 width=197)
+   Sort Key: a.aid
+   ->  <strong>Hash Join</strong>  (cost=1.02..4016.02 rows=100000 width=197)
+         Hash Cond: (a.bid = b.bid)
+         ->  <strong>Seq Scan on pgbench_accounts a</strong>  (cost=0.00..2640.00 rows=100000 width=97)
+         ->  Hash  (cost=1.01..1.01 rows=1 width=100)
+               ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
+(7 rows)
+
+postgres=# </pre>
+<h3 id="hint-object">対象オブジェクトの指定方法</h3>
+<p>ヒントの対象となるオブジェクトは、テーブルとインデックスの2種類です。テーブルとインデックスのどちらの場合でもスキーマ修飾できません。また、どちらの場合でもオブジェクト名の大文字と小文字を区別します。</br>
+テーブルを対象にする場合は、テーブル名または別名(エイリアス)で指定することができます。
+ただし、スキーマが異なる同じ名前のテーブルを1クエリ中に用いる場合は、別名で指定してください。個々のテーブルを指定できるようにするためです。</p>
+
+<p>以下に示した具体例について説明します。</br>
+1つ目のSQL文では、MergeJoin(t1 t1)をヒントに指定したとき、ヒント対象のオブジェクト指定に失敗しています。これは、t1というテーブル名が2つ存在するために、テーブルを区別できなかったことが原因です。</br>
+2つ目のSQL文では、各テーブルにptやstという別名をつけているため、ヒントで指定したの通りにMerge Joinしています。
+</p>
+<pre>
+postgres=# /* <strong>MergeJoin(t1 t1)</strong>*/
+postgres-# EXPLAIN SELECT * FROM s1.t1
+postgres-# JOIN public.t1 ON (s1.t1.id=public.t1.id);
+INFO:  hint syntax error at or near "t1 t1)"
+DETAIL:  relation name "t1" is ambiguous
+INFO:  hint syntax error at or near "t1 t1)"
+DETAIL:  relation name "t1" is ambiguous
+                             QUERY PLAN
+--------------------------------------------------------------------
+ <strong>Hash Join</strong>  (cost=270.00..323.05 rows=1230 width=44)
+   Hash Cond: (s1.t1.id = public.t1.id)
+   ->  Seq Scan on t1  (cost=0.00..22.30 rows=1230 width=36)
+   ->  Hash  (cost=145.00..145.00 rows=10000 width=8)
+         ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+(5 rows)
+
+postgres=# /* <strong>MergeJoin(pt st)</strong> */
+postgres-# EXPLAIN SELECT * FROM s1.t1 st
+postgres-# JOIN public.t1 pt ON (st.id=pt.id);
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ <strong>Merge Join</strong>  (cost=0.00..421.33 rows=1230 width=44)
+   Merge Cond: (st.id = pt.id)
+   ->  Index Scan using t1_id_idx on t1 st  (cost=0.00..62.70 rows=1230 width=36)
+   ->  Index Scan using t1_pkey on t1 pt  (cost=0.00..318.25 rows=10000 width=8)(4 rows)
+
+postgres=#</pre>
+<p>インデックスを対象にする場合は、インデックス名で指定してください。なお、インデックス名のみを対象とするヒントはありません。</p>
+<p>以下に具体例を示します。IndexScanヒントに対してt1テーブルの他にt1_valインデックスを指定することで、t1_valインデックスを用いてIndex Scanしています。</p>
+<pre>
+postgres=# /* IndexScan(t1 <strong>t1_val</strong>) */
+postgres-# EXPLAIN SELECT * FROM t1
+postgres-#   WHERE id &lt 5
+postgres-#     AND val &lt 3;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Index Scan using <strong>t1_val</strong> on t1  (cost=0.00..190.19 rows=1 width=8)
+   Index Cond: (val &lt 3)
+   Filter: (id &lt 5)
+(3 rows)
+
+postgres=#
+</pre>
+
+<h3 id="hint-type">ヒントのグループ</h3>
+<p>pg_hint_planで使えるヒントのグループは、スキャン方式と結合方式、結合順序、GUCパラメータの4通りに分けられます。同じグループのヒントを同じオブジェクトに対して指定した場合は、最後に指定したヒントが適用されます。各グループの具体的なヒントは、<a href="hint_list-ja.html">ヒント一覧</a>を参照してください。</p>
+
+<h4>スキャン方式</h4>
+<p>テーブルに対して、どんなスキャンを選択するか指定できるヒントのグループのことです。
+特定のテーブルに対するスキャン方式を選択したい場合は、そのスキャン方式のヒントと、対象となるオブジェクトの名前を指定してください。
+特定のテーブルに対するスキャン方式を選択してほしくない場合は、そのスキャン方式のヒントの先頭に No を記述した上で、対象となるオブジェクトの名前を指定してください。</p>
+<p>以下に示した具体例について説明します。</br>
+1つ目のSQL文では、aテーブルにIndex Scanを選択させるヒントを用いて実行計画を取得しています。</br>
+2つ目のSQL文では、aテーブルにIndex Scan以外を選択させるヒントを用いて実行計画を取得しています。</p>
+<pre>postgres=# /* <strong>IndexScan(a)</strong> */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_accounts a
+postgres-#   ORDER BY aid;
+                                               QUERY PLAN
+---------------------------------------------------------------------------------------------------------
+ <strong>Index Scan</strong> using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
+(1 row)
+
+postgres=# /* <strong>NoIndexScan(a)</strong> */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_accounts a
+postgres-#   ORDER BY aid;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ Sort  (cost=21885.82..22135.82 rows=100000 width=97)
+   Sort Key: aid
+   ->  <strong>Seq Scan</strong> on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+(3 rows)
+
+postgres=#
+</pre>
+<h4>結合方式</h4>
+<p>テーブルの結合に対して、どんな結合を選択するか指定できるヒントのグループのことです。
+特定の結合方式を選択したい場合は、その結合方式のヒントと、対象となる2つ以上のオブジェクトの名前を指定してください。
+特定の結合方式を選択してほしくない場合は、その結合方式のヒントの先頭に No を記述した上で、対象となるオブジェクトの名前を指定してください。</p>
+<p>以下に示した具体例について説明します。</br>
+1つ目のSQL文では、aテーブルとbテーブルの結合にMerge Joinを選択させるヒントを用いて実行計画を取得しています。</br>
+2つ目のSQL文では、aテーブルとbテーブルの結合にMerge Join以外を選択させるヒントを用いて実行計画を取得しています。</p>
+<pre>
+postgres=# /*
+postgres*#   <strong>MergeJoin(b a)</strong>
+postgres*#  */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ <strong>Merge Join</strong>  (cost=21886.84..23636.85 rows=100000 width=197)
+   Merge Cond: (b.bid = a.bid)
+   ->  Sort  (cost=1.02..1.02 rows=1 width=100)
+         Sort Key: b.bid
+         ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
+   ->  Materialize  (cost=21885.82..22385.82 rows=100000 width=97)
+         ->  Sort  (cost=21885.82..22135.82 rows=100000 width=97)
+               Sort Key: a.bid
+               ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+(9 rows)
+
+postgres=# /*
+postgres*#   <strong>NoMergeJoin(b a)</strong>
+postgres*#  */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid;
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
+ <strong>Nested Loop</strong>  (cost=0.00..3891.01 rows=100000 width=197)
+   Join Filter: (b.bid = a.bid)
+   ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
+   ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+(4 rows)
+
+postgres=#</pre>
+<h3>結合順序</h3>
+<p>テーブルの結合に対して、どんな順番で結合するか指定できるヒントのグループのことです。
+結合の順番を指定したい場合は、結合順序のヒント(Leading)と、2つ以上のオブジェクトの名前を結合したい順番で指定してください。</p>
+<p>以下に示した具体例について説明します。</br>
+この例では、bテーブルとaテーブルを結合させた後、この結合テーブルとtテーブルを結合させるヒントを用いて実行計画を取得しています。</p>
+<pre>postgres=# /*
+postgres*#  <strong>Leading(b a t)</strong>
+postgres*#  */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-#    JOIN pgbench_tellers t ON b.bid = t.bid;
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=1.23..15399.49 rows=1000000 width=297)
+   <strong>Hash Cond: (b.bid = t.bid)</strong>
+   ->  Nested Loop  (cost=0.00..3898.27 rows=100000 width=197)
+         <strong>Join Filter: (b.bid = a.bid)</strong>
+         ->  Index Scan using pgbench_branches_pkey on pgbench_branches b  (cost=0.00..8.27 rows=1 width=100)
+         ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+   ->  Hash  (cost=1.10..1.10 rows=10 width=100)
+         ->  Seq Scan on pgbench_tellers t  (cost=0.00..1.10 rows=10 width=100)
+(8 rows)
+
+postgres=#</pre>
+<h3>GUCパラメータ</h3>
+<p>1クエリ限りでGUCパラメータを設定できるヒントのグループのことです。
+1クエリ限りでGUCパラメータを設定したい場合は、GUCパラメータを設定するためのヒント(Set)と、設定したいGUCパラメータとそのパラメータの値を指定してください。ただし、指定する値に小文字とアンダースコア(_)以外の文字(大文字、数字、空白スペースなど)を含む場合はダブルクォート(")で囲んでください。</p>
+<p>以下に示した具体例について説明します。</br>
+1つ目のSQL文は、GUCパラメータのenable_hashjoinとenable_nestloopをoffに設定するヒントを用いて実行計画を取得しています。</br>
+2つ目のSQL文は、GUCパラメータのjoin_collapse_limitを1に設定するヒントを用いて実行計画を取得しています。</p>
+<pre>postgres=# /*
+postgres*#   Set(enable_hashjoin off)
+postgres*#   Set(enable_nestloop off)
+postgres*#  */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-#    JOIN pgbench_tellers t ON b.bid = t.bid;
+                                         QUERY PLAN
+---------------------------------------------------------------------------------------------
+ <strong>Merge Join</strong>  (cost=21888.11..37138.29 rows=1000000 width=297)
+   Merge Cond: (b.bid = a.bid)
+   ->  <strong>Merge Join</strong>  (cost=2.29..2.44 rows=10 width=200)
+         Merge Cond: (b.bid = t.bid)
+         ->  Sort  (cost=1.02..1.02 rows=1 width=100)
+               Sort Key: b.bid
+               ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
+         ->  Sort  (cost=1.27..1.29 rows=10 width=100)
+               Sort Key: t.bid
+               ->  Seq Scan on pgbench_tellers t  (cost=0.00..1.10 rows=10 width=100)
+   ->  Materialize  (cost=21885.82..22385.82 rows=100000 width=97)
+         ->  Sort  (cost=21885.82..22135.82 rows=100000 width=97)
+               Sort Key: a.bid
+               ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+(14 rows)
+
+postgres=# /*
+postgres*#   Set(join_collapse_limit "1")
+postgres*#  */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-#    JOIN pgbench_tellers t ON b.bid = t.bid;
+                                                  QUERY PLAN
+--------------------------------------------------------------------------------------------------------------
+ Hash Join  (cost=1.23..15399.49 rows=1000000 width=297)
+   Hash Cond: (b.bid = t.bid)
+   ->  Nested Loop  (cost=0.00..3898.27 rows=100000 width=197)
+         Join Filter: (b.bid = a.bid)
+         ->  Index Scan using pgbench_branches_pkey on pgbench_branches b  (cost=0.00..8.27 rows=1 width=100)
+         ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+   ->  Hash  (cost=1.10..1.10 rows=10 width=100)
+         ->  Seq Scan on pgbench_tellers t  (cost=0.00..1.10 rows=10 width=100)
+(8 rows)
+
+postgres=#</pre>
+
+<h3 id="hint-GUC">pg_hint_planのGUCパラメータ</h3>
+<p>pg_hint_planツールに関するGUCパラメータを以下に記述します。</p>
+<table>
+<thead>
+<tr>
+<tr><th>GUCパラメータ</th><th>説明</th><th>デフォルト値</th></tr>
+</tr></thead>
+<tbody>
+<tr><td>pg_hint_plan.enable</td>
+  <td>on のとき、pg_hint_planの機能を有効にします。</td><td>on</td></tr>
+<tr><td>pg_hint_plan.debug_print</td>
+  <td>on のとき、プランナが実行計画を生成するときに用いたヒントを表示します。</td><td>off</td></tr>
+<tr><td>pg_hint_plan.parse_message</td>
+  <td>指定したヒントに対して、どのメッセージ階層を表示するかを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warningまたはerrorです。</td><td>info</td></tr>
+</tbody>
+</table>
+
+<h2 id="restrictions">使用上の注意と制約</h2>
+<p>pg_hint_planを使用する際には、以下の注意と制約があります。</p>
+<dl>
+<dt>ヒントの記述誤り</dt>
+<dd>pg_hint_planでは、ヒントの記述に誤りがあった場合は、誤った記述に関する情報を出力しますがエラー終了しません。誤った記述より前のヒントのみ有効となり、誤った記述以降のヒントを無視してクエリを実行します。</dd>
+<dt>指定するヒントの種類の重複</dt>
+<dd>同じオブジェクトに対して同じグループのヒントを重複して指定した場合は、最後に指定したヒントを使用します。</dd>
+</dl>
+
+<h2 id="known-issues">既知の問題</h2>
+<p>pg_hint_planに関する既知の問題について説明します。</p>
+<dl>
+<dt>副問い合わせを含むSELECT文</dt>
+<dd>pg_hint_planの使用中に副問い合わせを含むSELECT文を実行すると、サーバ側で異常終了する場合があります。ですので、pg_hint_planを試用しているときは、副問い合わせを含むSELECT文を実行しないでください。</dd>
+</dl>
+
+<h2 id="seealso">関連項目</h2>
+<h3 id="postgresql_document">PostgreSQLドキュメント</h3>
+<a href="http://www.postgresql.org/docs/9.1/static/sql-explain.html">EXPLAIN</a>
+<hr>
+
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
+</div>
+
+<p class="footer">Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+
+<!--
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script><script src="pg_statsinfo-ja_files/ga.js" type="text/javascript"></script>
+<script type="text/javascript">
+try{
+var pageTracker = _gat._getTracker("UA-10244036-6");
+pageTracker._trackPageview();
+} catch(err) {}
+</script>
+-->
+</body>
+</html>
