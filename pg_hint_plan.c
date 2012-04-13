@@ -31,27 +31,27 @@ PG_MODULE_MAGIC;
 #define HINT_END	"*/"
 
 /* hint keywords */
-#define HINT_SEQSCAN		"SeqScan"
-#define HINT_INDEXSCAN		"IndexScan"
-#define HINT_BITMAPSCAN		"BitmapScan"
-#define HINT_TIDSCAN		"TidScan"
-#define HINT_NOSEQSCAN		"NoSeqScan"
-#define HINT_NOINDEXSCAN	"NoIndexScan"
-#define HINT_NOBITMAPSCAN	"NoBitmapScan"
-#define HINT_NOTIDSCAN		"NoTidScan"
-#define HINT_NESTLOOP		"NestLoop"
-#define HINT_MERGEJOIN		"MergeJoin"
-#define HINT_HASHJOIN		"HashJoin"
-#define HINT_NONESTLOOP		"NoNestLoop"
-#define HINT_NOMERGEJOIN	"NoMergeJoin"
-#define HINT_NOHASHJOIN		"NoHashJoin"
-#define HINT_LEADING		"Leading"
-#define HINT_SET			"Set"
-
+#define HINT_SEQSCAN			"SeqScan"
+#define HINT_INDEXSCAN			"IndexScan"
+#define HINT_BITMAPSCAN			"BitmapScan"
+#define HINT_TIDSCAN			"TidScan"
+#define HINT_NOSEQSCAN			"NoSeqScan"
+#define HINT_NOINDEXSCAN		"NoIndexScan"
+#define HINT_NOBITMAPSCAN		"NoBitmapScan"
+#define HINT_NOTIDSCAN			"NoTidScan"
 #if PG_VERSION_NUM >= 90200
-#define	HINT_INDEXONLYSCAN		"IndexonlyScan"
-#define	HINT_NOINDEXONLYSCAN	"NoIndexonlyScan"
+#define HINT_INDEXONLYSCAN		"IndexonlyScan"
+#define HINT_NOINDEXONLYSCAN	"NoIndexonlyScan"
 #endif
+#define HINT_NESTLOOP			"NestLoop"
+#define HINT_MERGEJOIN			"MergeJoin"
+#define HINT_HASHJOIN			"HashJoin"
+#define HINT_NONESTLOOP			"NoNestLoop"
+#define HINT_NOMERGEJOIN		"NoMergeJoin"
+#define HINT_NOHASHJOIN			"NoHashJoin"
+#define HINT_LEADING			"Leading"
+#define HINT_SET				"Set"
+
 
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
@@ -105,29 +105,39 @@ typedef struct SetHint
 	char   *value;
 } SetHint;
 
+/*
+ * Describes a context of hint processing.
+ */
 typedef struct PlanHint
 {
-	char	   *hint_str;
+	char	   *hint_str;		/* original hint string */
 
-	int			nscan_hints;
-	int			max_scan_hints;
-	ScanHint  **scan_hints;
+	/* for scan method hints */
+	int			nscan_hints;	/* # of valid scan hints */
+	int			max_scan_hints;	/* # of slots for scan hints */
+	ScanHint  **scan_hints;		/* parsed scan hints */
 
-	int			njoin_hints;
-	int			max_join_hints;
-	JoinHint  **join_hints;
+	/* for join method hints */
+	int			njoin_hints;	/* # of valid join hints */
+	int			max_join_hints;	/* # of slots for join hints */
+	JoinHint  **join_hints;		/* parsed join hints */
 
-	int			nlevel;
+	int			nlevel;			/* # of relations to be joined */
 	List	  **join_hint_level;
 
-	List	   *leading;
+	/* for Leading hints */
+	List	   *leading;		/* relation names specified in Leading hint */
 
-	GucContext	context;
-	List	   *set_hints;
+	/* for Set hints */
+	GucContext	context;		/* which GUC parameters can we set? */
+	List	   *set_hints;		/* parsed Set hints */
 } PlanHint;
 
 typedef const char *(*HintParserFunction) (PlanHint *plan, Query *parse, char *keyword, const char *str);
 
+/*
+ * Describes a hint parser module which is bound with particular hint keyword.
+ */
 typedef struct HintParser
 {
 	char   *keyword;
@@ -1557,6 +1567,10 @@ rebuild_join_hints(PlanHint *plan, PlannerInfo *root, int level, List *initial_r
 			plan->join_hint_level[njoinrels] = lappend(NIL, hint);
 		else
 		{
+			/*
+			 * Here relnames is not set, since Relids bitmap is sufficient to
+			 * control paths of this query afterwards.
+			 */
 			hint = JoinHintCreate();
 			hint->nrels = njoinrels;
 			hint->enforce_mask = ENABLE_ALL_JOIN;
