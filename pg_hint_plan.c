@@ -271,6 +271,7 @@ _PG_init(void)
 
 /*
  * Module unload callback
+ * XXX never called
  */
 void
 _PG_fini(void)
@@ -435,7 +436,7 @@ PlanHintIsempty(PlanHint *hint)
 	return false;
 }
 
-// TODO オブジェクト名のクォート処理を追加
+/* TODO オブジェクト名のクォート処理を追加 */
 static void
 PlanHintDump(PlanHint *hint)
 {
@@ -1093,7 +1094,9 @@ ParseIndexScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *st
 	/* インデックス参照をパースする。 */
 	while (true)
 	{
-		// TODO 直前のオブジェクト名がクウォート処理されていた場合の処理を実装
+		/*
+		 * TODO 直前のオブジェクト名がクウォート処理されていた場合の処理を実装
+		 */
 		skip_space(str);
 		if (*str == ')')
 			break;
@@ -1335,7 +1338,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (pg_hint_plan_debug_print)
 	{
 		PlanHintDump(global);
-		//elog_node_display(INFO, "rtable", parse->rtable, true);
+#ifdef NOT_USED
+		elog_node_display(INFO, "rtable", parse->rtable, true);
+#endif
 	}
 
 	PlanHintDelete(global);
@@ -1430,7 +1435,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 static Index
 scan_relid_aliasname(PlannerInfo *root, char *aliasname, bool check_ambiguous, const char *str)
 {
-	// TODO refnameRangeTblEntry を参考
+	/* TODO refnameRangeTblEntry を参考 */
 	int		i;
 	Index	find = 0;
 
@@ -1610,7 +1615,7 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 			 */
 			set_scan_config_options(hint->enforce_mask, plan->context);
 
-			rel->pathlist = NIL;	// TODO 解放
+			rel->pathlist = NIL;	/* TODO 解放 */
 			set_plain_rel_pathlist(root, rel, rte);
 
 			break;
