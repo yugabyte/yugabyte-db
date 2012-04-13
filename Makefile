@@ -7,16 +7,9 @@
 MODULES = pg_hint_plan
 REGRESS = init base_plan pg_hint_plan
 
-ifdef USE_PGXS
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
-else
-subdir = contrib/pg_hint_plan
-top_builddir = ../..
-include $(top_builddir)/src/Makefile.global
-include $(top_srcdir)/contrib/contrib-global.mk
-endif
 
 expected/base_plan.out: expected/base_plan-$(MAJORVERSION).out
 	cp expected/base_plan-$(MAJORVERSION).out expected/base_plan.out
