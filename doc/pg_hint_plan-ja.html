@@ -31,7 +31,7 @@
 <ol>
   <li><a href="#hint-load">pg_hint_planのロード</a></li>
   <li><a href="#hint-rule">ヒントの記述方法</a></li>
-  <li><a href="#hint-type">ヒントのグループ</a></li>
+  <li><a href="#hint-group">ヒントのグループ</a></li>
   <li><a href="#hint-GUC">pg_hint_planのGUCパラメータ</a></li>
 </ol>
 </li>
@@ -112,7 +112,7 @@ postgres-#   ORDER BY a.aid;
 
 postgres=# </pre>
 
-<h3 id="hint-type">ヒントのグループ</h3>
+<h3 id="hint-group">ヒントのグループ</h3>
 <p>pg_hint_planで使えるヒントのグループは、スキャン方式と結合方式、結合順序、GUCパラメータの4通りに分けられます。同じグループのヒントを同じオブジェクトに対して指定した場合は、最後に指定したヒントが適用されます。各グループの具体的なヒントは、<a href="hint_list-ja.html">ヒント一覧</a>を参照してください。</p>
 
 <h4>スキャン方式</h4>
