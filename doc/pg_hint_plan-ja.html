@@ -31,7 +31,6 @@
 <ol>
   <li><a href="#hint-load">pg_hint_planのロード</a></li>
   <li><a href="#hint-rule">ヒントの記述方法</a></li>
-  <li><a href="#hint-object">対象オブジェクトの指定方法</a></li>
   <li><a href="#hint-type">ヒントのグループ</a></li>
   <li><a href="#hint-GUC">pg_hint_planのGUCパラメータ</a></li>
 </ol>
@@ -80,25 +79,22 @@ $ make uninstall
 <p>pg_hint_planの使い方について説明します。</p>
 
 <h3 id="hint-load">pg_hint_planのロード</h3>
-<p>pg_hint_planを使うためには、pg_hint_planの共有ライブラリをロードしてください。</p>
-<p>以下に実行例を示します。</p>
+<p>pg_hint_planを使うには、以下の例のようにpg_hint_planの共有ライブラリをロードしてください。全てのセッションでpg_hint_planを有効にするには、shared_preload_librariesに'pg_hint_plan'を追加して下さい。</p>
 <pre>
 postgres=# LOAD 'pg_hint_plan';
 LOAD
 postgres=# </pre>
 
 <h3 id="hint-rule">ヒントの記述方法</h3>
-<p>ヒントはクエリの前にブロックコメントで記述してください。
-クエリの前に複数のブロックコメントを記述する場合は、先頭のブロックコメントにのみヒントを記述してください。先頭以外のブロックコメントは、ヒントと見なされず無視されます。
-また、複数のヒントを記述する場合は、スペース、タブまたは改行のいずれかで区切ってください。</p>
-<p>以下に示した具体例について説明します。この例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
+<p>ヒントはクエリの前のブロックコメント内に、スペース、タブまたは改行のいずれかで区切って記述してください。ヒントの対象がテーブルの場合は、テーブル名または別名(エイリアス)で指定してください。ただし、スキーマが異なる同じ名前のテーブルを1クエリ中に用いる場合は、別名で指定してください。これは、クエリ中の特定のテーブルを指定できるようにするためです。</p>
+
+<p>以下の例では、HashJoinとSeqScanヒントにより、pgbench_accountsテーブルに対するSeq Scanの結果をHash Joinする実行計画が選択されています。</p>
 <pre>
 postgres=# /*
 postgres*#    <span class="strong">HashJoin(a b)</span>
 postgres*#    <span class="strong">SeqScan(a)</span>
 postgres*#  */
-postgres-# /* IndexScan(a) */
-postgres-# EXPLAIN SELECT /* MergeJoin(a b) */ *
+postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_branches b
 postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
 postgres-#   ORDER BY a.aid;
@@ -114,60 +110,6 @@ postgres-#   ORDER BY a.aid;
 (7 rows)
 
 postgres=# </pre>
-<h3 id="hint-object">対象オブジェクトの指定方法</h3>
-<p>ヒントの対象となるオブジェクトは、テーブルとビューとインデックスの3種類です。3種類のどの場合でもスキーマ修飾できません。また、どの場合でもオブジェクト名に小文字とアンダースコア(_)以外の文字(大文字、数字、空白スペースなど)を含む場合は、ダブルクォート(")で囲んでください。</br>
-テーブルを対象にする場合は、テーブル名または別名(エイリアス)で指定してください。
-ただし、スキーマが異なる同じ名前のテーブルを1クエリ中に用いる場合は、別名で指定してください。個々のテーブルを指定できるようにするためです。</p>
-
-<p>以下に示した具体例について説明します。</br>
-1つ目のSQL文では、MergeJoin(t1 t1)をヒントに指定したとき、ヒント対象のオブジェクト指定に失敗しています。これは、t1というテーブル名が2つ存在するために、テーブルを区別できなかったことが原因です。</br>
-2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにMerge Joinを選択しています。
-</p>
-<pre>
-postgres=# /* <span class="strong">MergeJoin(t1 t1)</span>*/
-postgres-# EXPLAIN SELECT * FROM s1.t1
-postgres-# JOIN public.t1 ON (s1.t1.id=public.t1.id);
-INFO:  hint syntax error at or near "t1 t1)"
-<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
-INFO:  hint syntax error at or near "t1 t1)"
-<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
-                             QUERY PLAN
---------------------------------------------------------------------
- Hash Join  (cost=270.00..323.05 rows=1230 width=44)
-   Hash Cond: (s1.t1.id = public.t1.id)
-   ->  Seq Scan on t1  (cost=0.00..22.30 rows=1230 width=36)
-   ->  Hash  (cost=145.00..145.00 rows=10000 width=8)
-         ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
-(5 rows)
-
-postgres=# /* <span class="strong">MergeJoin(pt st)</span> */
-postgres-# EXPLAIN SELECT * FROM s1.t1 st
-postgres-# JOIN public.t1 pt ON (st.id=pt.id);
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- <span class="strong">Merge Join</span>  (cost=0.00..421.33 rows=1230 width=44)
-   Merge Cond: (st.id = pt.id)
-   ->  Index Scan using t1_id_idx on t1 st  (cost=0.00..62.70 rows=1230 width=36)
-   ->  Index Scan using t1_pkey on t1 pt  (cost=0.00..318.25 rows=10000 width=8)(4 rows)
-
-postgres=#</pre>
-<p>ビューを対象とする場合は、テーブルを対象とする場合に加えて制限事項が存在します。<a href="#view_limit">ビューに対する制限</a>を参照してください</p>
-<p>インデックスを対象にする場合は、インデックス名で指定してください。なお、インデックス名のみを対象とするヒントはありません。</p>
-<p>以下に示した具体例について説明します。</br>この例では、IndexScanヒントに対してt1テーブルの他にt1_valインデックスを指定したため、実行計画作成時にt1_valインデックスを用いたIndex Scanを選択しています。</p>
-<pre>
-postgres=# /* <span class="strong">IndexScan</span>(t1 <span class="strong">t1_val</span>) */
-postgres-# EXPLAIN SELECT * FROM t1
-postgres-#   WHERE id &lt 5
-postgres-#     AND val &lt 3;
-                            QUERY PLAN
--------------------------------------------------------------------
- <span class="strong">Index Scan</span> using <span class="strong">t1_val</span> on t1  (cost=0.00..190.19 rows=1 width=8)
-   Index Cond: (val &lt 3)
-   Filter: (id &lt 5)
-(3 rows)
-
-postgres=#
-</pre>
 
 <h3 id="hint-type">ヒントのグループ</h3>
 <p>pg_hint_planで使えるヒントのグループは、スキャン方式と結合方式、結合順序、GUCパラメータの4通りに分けられます。同じグループのヒントを同じオブジェクトに対して指定した場合は、最後に指定したヒントが適用されます。各グループの具体的なヒントは、<a href="hint_list-ja.html">ヒント一覧</a>を参照してください。</p>
@@ -341,6 +283,64 @@ postgres=#</pre>
 <h2 id="restrictions">使用上の注意と制約</h2>
 <p>pg_hint_planを使用する際には、以下の注意と制約があります。</p>
 <dl>
+<dt>ヒントの記述位置</dt>
+<dd>クエリの前に複数のブロックコメントを記述する場合は、最初のブロックコメントにのみヒントを記述してください。二番目以降のブロックコメントは、ヒントと見なされず無視されます。以下の例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
+<pre>
+postgres=# /*
+postgres*#    <span class="strong">HashJoin(a b)</span>
+postgres*#    <span class="strong">SeqScan(a)</span>
+postgres*#  */
+postgres-# /* IndexScan(a) */
+postgres-# EXPLAIN SELECT /* MergeJoin(a b) */ *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-#   ORDER BY a.aid;
+                                      QUERY PLAN
+---------------------------------------------------------------------------------------
+ Sort  (cost=31465.84..31715.84 rows=100000 width=197)
+   Sort Key: a.aid
+   ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=197)
+         Hash Cond: (a.bid = b.bid)
+         ->  <span class="strong">Seq Scan on pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
+         ->  Hash  (cost=1.01..1.01 rows=1 width=100)
+               ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
+(7 rows)
+
+postgres=# </pre>
+</dd>
+<dt>オブジェクト名の指定方法</dt>
+<dd><p>ヒント対象のオブジェクト名に小文字とアンダースコア(_)以外の文字(大文字、数字、空白スペースなど)を含む場合は、ダブルクォート(")で囲んでください。</p><p>また、クエリ中に同一名称のテーブルが複数回出現する場合(スキーマ違いや同一テーブルの複数回使用など)は、テーブルに別名をつけてそれぞれのテーブルを区別してください。以下の例の1つ目のSQL文では、MergeJoin(t1 t1)をヒントに指定したとき、ヒント対象のオブジェクトが特定できずにエラーになっています。2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにMerge Joinを選択しています。
+</p>
+<pre>
+postgres=# /* <span class="strong">MergeJoin(t1 t1)</span>*/
+postgres-# EXPLAIN SELECT * FROM s1.t1
+postgres-# JOIN public.t1 ON (s1.t1.id=public.t1.id);
+INFO:  hint syntax error at or near "t1 t1)"
+<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
+INFO:  hint syntax error at or near "t1 t1)"
+<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
+                             QUERY PLAN
+--------------------------------------------------------------------
+ Hash Join  (cost=270.00..323.05 rows=1230 width=44)
+   Hash Cond: (s1.t1.id = public.t1.id)
+   ->  Seq Scan on t1  (cost=0.00..22.30 rows=1230 width=36)
+   ->  Hash  (cost=145.00..145.00 rows=10000 width=8)
+         ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
+(5 rows)
+
+postgres=# /* <span class="strong">MergeJoin(pt st)</span> */
+postgres-# EXPLAIN SELECT * FROM s1.t1 st
+postgres-# JOIN public.t1 pt ON (st.id=pt.id);
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ <span class="strong">Merge Join</span>  (cost=0.00..421.33 rows=1230 width=44)
+   Merge Cond: (st.id = pt.id)
+   ->  Index Scan using t1_id_idx on t1 st  (cost=0.00..62.70 rows=1230 width=36)
+   ->  Index Scan using t1_pkey on t1 pt  (cost=0.00..318.25 rows=10000 width=8)(4 rows)
+
+postgres=#</pre>
+</p>
+</dd>
 <dt>ヒントの記述誤り</dt>
 <dd>pg_hint_planでは、ヒントの記述に誤りがあった場合は、誤った記述に関する情報を出力しますがエラー終了しません。誤った記述より前のヒントのみ有効となり、誤った記述以降のヒントを無視してクエリを実行します。</dd>
 <dt>指定するヒントの種類の重複</dt>
