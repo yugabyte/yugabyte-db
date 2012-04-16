@@ -94,8 +94,8 @@ postgres=# </pre>
 <p>以下に示した具体例について説明します。この例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
 <pre>
 postgres=# /*
-postgres*#    <strong>HashJoin(a b)</strong>
-postgres*#    <strong>SeqScan(a)</strong>
+postgres*#    <span class="strong">HashJoin(a b)</span>
+postgres*#    <span class="strong">SeqScan(a)</span>
 postgres*#  */
 postgres-# /* IndexScan(a) */
 postgres-# EXPLAIN SELECT /* MergeJoin(a b) */ *
@@ -106,9 +106,9 @@ postgres-#   ORDER BY a.aid;
 ---------------------------------------------------------------------------------------
  Sort  (cost=31465.84..31715.84 rows=100000 width=197)
    Sort Key: a.aid
-   ->  <strong>Hash Join</strong>  (cost=1.02..4016.02 rows=100000 width=197)
+   ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=197)
          Hash Cond: (a.bid = b.bid)
-         ->  <strong>Seq Scan on pgbench_accounts a</strong>  (cost=0.00..2640.00 rows=100000 width=97)
+         ->  <span class="strong">Seq Scan on pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
          ->  Hash  (cost=1.01..1.01 rows=1 width=100)
                ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
 (7 rows)
@@ -124,13 +124,13 @@ postgres=# </pre>
 2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにMerge Joinを選択しています。
 </p>
 <pre>
-postgres=# /* <strong>MergeJoin(t1 t1)</strong>*/
+postgres=# /* <span class="strong">MergeJoin(t1 t1)</span>*/
 postgres-# EXPLAIN SELECT * FROM s1.t1
 postgres-# JOIN public.t1 ON (s1.t1.id=public.t1.id);
 INFO:  hint syntax error at or near "t1 t1)"
-<strong>DETAIL:  relation name "t1" is ambiguous</strong>
+<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
 INFO:  hint syntax error at or near "t1 t1)"
-<strong>DETAIL:  relation name "t1" is ambiguous</strong>
+<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
                              QUERY PLAN
 --------------------------------------------------------------------
  Hash Join  (cost=270.00..323.05 rows=1230 width=44)
@@ -140,12 +140,12 @@ INFO:  hint syntax error at or near "t1 t1)"
          ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
 (5 rows)
 
-postgres=# /* <strong>MergeJoin(pt st)</strong> */
+postgres=# /* <span class="strong">MergeJoin(pt st)</span> */
 postgres-# EXPLAIN SELECT * FROM s1.t1 st
 postgres-# JOIN public.t1 pt ON (st.id=pt.id);
                                     QUERY PLAN
 ----------------------------------------------------------------------------------
- <strong>Merge Join</strong>  (cost=0.00..421.33 rows=1230 width=44)
+ <span class="strong">Merge Join</span>  (cost=0.00..421.33 rows=1230 width=44)
    Merge Cond: (st.id = pt.id)
    ->  Index Scan using t1_id_idx on t1 st  (cost=0.00..62.70 rows=1230 width=36)
    ->  Index Scan using t1_pkey on t1 pt  (cost=0.00..318.25 rows=10000 width=8)(4 rows)
@@ -155,13 +155,13 @@ postgres=#</pre>
 <p>インデックスを対象にする場合は、インデックス名で指定してください。なお、インデックス名のみを対象とするヒントはありません。</p>
 <p>以下に示した具体例について説明します。</br>この例では、IndexScanヒントに対してt1テーブルの他にt1_valインデックスを指定したため、実行計画作成時にt1_valインデックスを用いたIndex Scanを選択しています。</p>
 <pre>
-postgres=# /* <strong>IndexScan</strong>(t1 <strong>t1_val</strong>) */
+postgres=# /* <span class="strong">IndexScan</span>(t1 <span class="strong">t1_val</span>) */
 postgres-# EXPLAIN SELECT * FROM t1
 postgres-#   WHERE id &lt 5
 postgres-#     AND val &lt 3;
                             QUERY PLAN
 -------------------------------------------------------------------
- <strong>Index Scan</strong> using <strong>t1_val</strong> on t1  (cost=0.00..190.19 rows=1 width=8)
+ <span class="strong">Index Scan</span> using <span class="strong">t1_val</span> on t1  (cost=0.00..190.19 rows=1 width=8)
    Index Cond: (val &lt 3)
    Filter: (id &lt 5)
 (3 rows)
@@ -179,16 +179,16 @@ postgres=#
 <p>以下に示した具体例について説明します。</br>
 1つ目のSQL文では、aテーブルにIndex Scanを選択させるヒントを用いたため、実行計画作成時にaテーブルに対してIndex Scanを選択しています。</br>
 2つ目のSQL文では、aテーブルにIndex Scan以外を選択させるヒントを用いたため、実行計画作成時にaテーブルに対してIndex Scan以外のスキャン方式であるSeq Scanを選択しています。</p>
-<pre>postgres=# /* <strong>IndexScan(a)</strong> */
+<pre>postgres=# /* <span class="strong">IndexScan(a)</span> */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_accounts a
 postgres-#   ORDER BY aid;
                                                QUERY PLAN
 ---------------------------------------------------------------------------------------------------------
- <strong>Index Scan</strong> using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
+ <span class="strong">Index Scan</span> using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
 (1 row)
 
-postgres=# /* <strong>NoIndexScan(a)</strong> */
+postgres=# /* <span class="strong">NoIndexScan(a)</span> */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_accounts a
 postgres-#   ORDER BY aid;
@@ -196,7 +196,7 @@ postgres-#   ORDER BY aid;
 ---------------------------------------------------------------------------------
  Sort  (cost=21885.82..22135.82 rows=100000 width=97)
    Sort Key: aid
-   ->  <strong>Seq Scan</strong> on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
+   ->  <span class="strong">Seq Scan</span> on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
 (3 rows)
 
 postgres=#
@@ -210,14 +210,14 @@ postgres=#
 2つ目のSQL文では、aテーブルとbテーブルの結合にMerge Join以外を選択させるヒントを用いたため、実行計画作成時にMerge Join以外の結合方式であるNested Loopを選択しています。</p>
 <pre>
 postgres=# /*
-postgres*#   <strong>MergeJoin(b a)</strong>
+postgres*#   <span class="strong">MergeJoin(b a)</span>
 postgres*#  */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_branches b
 postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid;
                                          QUERY PLAN
 ---------------------------------------------------------------------------------------------
- <strong>Merge Join</strong>  (cost=21886.84..23636.85 rows=100000 width=197)
+ <span class="strong">Merge Join</span>  (cost=21886.84..23636.85 rows=100000 width=197)
    Merge Cond: (b.bid = a.bid)
    ->  Sort  (cost=1.02..1.02 rows=1 width=100)
          Sort Key: b.bid
@@ -229,14 +229,14 @@ postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid;
 (9 rows)
 
 postgres=# /*
-postgres*#   <strong>NoMergeJoin(b a)</strong>
+postgres*#   <span class="strong">NoMergeJoin(b a)</span>
 postgres*#  */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_branches b
 postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid;
                                    QUERY PLAN
 ---------------------------------------------------------------------------------
- <strong>Nested Loop</strong>  (cost=0.00..3891.01 rows=100000 width=197)
+ <span class="strong">Nested Loop</span>  (cost=0.00..3891.01 rows=100000 width=197)
    Join Filter: (b.bid = a.bid)
    ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
    ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
@@ -249,7 +249,7 @@ postgres=#</pre>
 <p>以下に示した具体例について説明します。</br>
 この例では、bテーブルとaテーブルを結合させた後、この結合テーブルとtテーブルを結合させるヒントを用いたため、実行計画作成時にヒントで指定したテーブル順でテーブル結合を選択しています。</p>
 <pre>postgres=# /*
-postgres*#  <strong>Leading(b a t)</strong>
+postgres*#  <span class="strong">Leading(b a t)</span>
 postgres*#  */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_branches b
@@ -258,9 +258,9 @@ postgres-#    JOIN pgbench_tellers t ON b.bid = t.bid;
                                                   QUERY PLAN
 --------------------------------------------------------------------------------------------------------------
  Hash Join  (cost=1.23..15399.49 rows=1000000 width=297)
-   <strong>Hash Cond: (b.bid = t.bid)</strong>
+   <span class="strong">Hash Cond: (b.bid = t.bid)</span>
    ->  Nested Loop  (cost=0.00..3898.27 rows=100000 width=197)
-         <strong>Join Filter: (b.bid = a.bid)</strong>
+         <span class="strong">Join Filter: (b.bid = a.bid)</span>
          ->  Index Scan using pgbench_branches_pkey on pgbench_branches b  (cost=0.00..8.27 rows=1 width=100)
          ->  Seq Scan on pgbench_accounts a  (cost=0.00..2640.00 rows=100000 width=97)
    ->  Hash  (cost=1.10..1.10 rows=10 width=100)
@@ -284,9 +284,9 @@ postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
 postgres-#    JOIN pgbench_tellers t ON b.bid = t.bid;
                                          QUERY PLAN
 ---------------------------------------------------------------------------------------------
- <strong>Merge Join</strong>  (cost=21888.11..37138.29 rows=1000000 width=297)
+ <span class="strong">Merge Join</span>  (cost=21888.11..37138.29 rows=1000000 width=297)
    Merge Cond: (b.bid = a.bid)
-   ->  <strong>Merge Join</strong>  (cost=2.29..2.44 rows=10 width=200)
+   ->  <span class="strong">Merge Join</span>  (cost=2.29..2.44 rows=10 width=200)
          Merge Cond: (b.bid = t.bid)
          ->  Sort  (cost=1.02..1.02 rows=1 width=100)
                Sort Key: b.bid

@@ -83,3 +83,8 @@ p.footer {
 span.param {
 	color: #0000cd;
 }
+
+span.strong {
+	font-weight: bold;
+	text-decoration: underline;
+}
