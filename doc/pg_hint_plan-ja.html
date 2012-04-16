@@ -59,37 +59,21 @@
 </dl>
 
 <h3 id="build">ビルド</h3>
-<p>pg_hint_planをソースコードからビルドする場合、PostgreSQLのソースツリーを用いる方法とpgxsを用いる方法があります。</p>
-
-<h4 id="build-with-source">ソースツリーを用いたビルド</h4>
-<p>PostgreSQLのソースツリーを用いる場合は、configureおよびビルドを済ませたPostgreSQL本体のcontrib配下にpg_hint_planのソースを展開し、make → make installの順に実行してください。</p>
-<p>以下にソースツリーを用いたビルドの例を示します。</p>
-<pre>
-$ cd postgresql-9.x.x
-$ cd contrib
-$ tar zxvf pg_hint_plan-0.1.0.tar.gz
-$ cd pg_hint_plan-0.1.0
-$ make
-$ make install 
-</pre>
-
-<h4 id="build-with-pgxs">pgxsを用いたビルド</h4>
-<p>pgxsを用いる場合は、USE_PGXS変数を設定してmake → make installの順に実行してください。</p>
-<p>以下にpgxsを用いたビルドの例を示します。</p>
+<p>pg_hint_planをソースコードからビルドする場合、pg_hint_planのソースを展開したディレクトリでmake → make installの順に実行してください。なお、pg_hint_planのビルドにはpgxsを使用するので、RPM版のPostgreSQLを使用している環境では、postgresql-devel パッケージが必要です。</p>
+<p>以下にビルドの例を示します。</p>
 <pre>
 $ tar xzvf pg_hint_plan-0.1.0.tar.gz
-$ cd pg_hint_plan
-$ make USE_PGXS=1
-$ make USE_PGXS=1 install
+$ cd pg_hint_plan-0.1.0
+$ make
+$ make install
 </pre>
 
 <h2 id="uninstall">アンインストール</h2>
-<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。
-インストールの際にpgxsを用いた場合は、USE_PGXS変数を設定してmake uninstallを実行してください。</p>
-<p>以下にpgxsを用いたアンインストールの例を示します。</p>
+<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。</p>
+<p>以下にアンインストールの例を示します。</p>
 <pre>
 $ cd pg_hint_plan-0.1.0
-$ make USE_PGXS=1 uninstall
+$ make uninstall
 </pre>
 
 <h2 id="usage">使い方</h2>
