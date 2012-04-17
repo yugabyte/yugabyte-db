@@ -80,7 +80,7 @@ $ make uninstall
 <p>pg_hint_planの使い方について説明します。</p>
 
 <h3 id="hint-load">pg_hint_planのロード</h3>
-<p>pg_hint_planを使うには、以下の例のようにpg_hint_planの共有ライブラリをロードしてください。全てのセッションでpg_hint_planを有効にするには、shared_preload_librariesに'pg_hint_plan'を追加して下さい。</p>
+<p>pg_hint_planを使うには、以下の例のようにpg_hint_planの共有ライブラリをロードしてください。全てのセッションでpg_hint_planを有効にするには、shared_preload_libraries GUCパラメータに'pg_hint_plan'を追加してからサーバを再起動して下さい。</p>
 <pre>
 postgres=# LOAD 'pg_hint_plan';
 LOAD
