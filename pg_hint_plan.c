@@ -766,12 +766,20 @@ skip_closed_parenthesis(const char *str)
 	return str;
 }
 
+/*
+ * 二重引用符で囲まれているかもしれないトークンを読み取り word 引数に palloc
+ * で確保したバッファに格納してそのポインタを返す。
+ *
+ * 正常にパースできた場合は残りの文字列の先頭位置を、異常があった場合は NULL を
+ * 返す。
+ */
 static const char *
 parse_quote_value(const char *str, char **word, char *value_type)
 {
 	StringInfoData	buf;
 	bool			in_quote;
 
+	/* 先頭のスペースは読み飛ばす。 */
 	skip_space(str);
 
 	initStringInfo(&buf);
@@ -783,7 +791,8 @@ parse_quote_value(const char *str, char **word, char *value_type)
 	else
 	{
 		/*
-		 * 1文字目以降の制限の適用
+		 * 二重引用符で囲まれていない場合は、1文字目に出現してよいのは
+		 * アルファベットまたはアンダースコアのみ。
 		 */
 		if (!isalpha(*str) && *str != '_')
 		{
@@ -800,6 +809,7 @@ parse_quote_value(const char *str, char **word, char *value_type)
 	{
 		if (in_quote)
 		{
+			/* 二重引用符が閉じられていない場合はパース中断 */
 			if (*str == '\0')
 			{
 				pfree(buf.data);
@@ -822,6 +832,8 @@ parse_quote_value(const char *str, char **word, char *value_type)
 		{
 			/*
 			 * 2文字目以降の制限の適用
+			 * 二重引用符で囲まれていない場合、二文字目以降に出現してよいのは
+			 * 英数字、アンダースコア、ドル記号のみ。
 			 */
 			if (!isalnum(*str) && *str != '_' && *str != '$')
 				break;
@@ -1014,6 +1026,9 @@ parse_head_comment(Query *parse)
 	return plan;
 }
 
+/*
+ * スキャン方式ヒントのパースでの共通処理
+ */
 static const char *
 parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
 {
@@ -1022,12 +1037,18 @@ parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
 	hint = ScanHintCreate();
 	hint->opt_str = str;
 
+	/*
+	 * スキャン方式のヒントでリレーション名が読み取れない場合はヒント無効
+	 */
 	if ((str = parse_quote_value(str, &hint->relname, "ralation name")) == NULL)
 	{
 		ScanHintDelete(hint);
 		return NULL;
 	}
 
+	/*
+	 * ヒントごとに決まっている許容スキャン方式をビットマスクとして設定
+	 */
 	if (strcasecmp(keyword, HINT_SEQSCAN) == 0)
 		hint->enforce_mask = ENABLE_SEQSCAN;
 	else if (strcasecmp(keyword, HINT_INDEXSCAN) == 0)
@@ -1050,6 +1071,9 @@ parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
 		return NULL;
 	}
 
+	/*
+	 * 出来上がったヒント情報を追加。スロットが足りない場合は二倍に拡張する。
+	 */
 	if (plan->nscan_hints == 0)
 	{
 		plan->max_scan_hints = HINT_ARRAY_DEFAULT_INITSIZE;
