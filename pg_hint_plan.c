@@ -1027,6 +1027,7 @@ ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 		ScanHintDelete(hint);
 		return NULL;
 	}
+	skip_space(str);
 
 	/*
 	 * インデックスリストを受け付けるヒントであれば、インデックス参照をパース
@@ -1038,7 +1039,6 @@ ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 #endif
 		strcmp(keyword, HINT_BITMAPSCAN) == 0)
 	{
-		skip_space(str);
 		while (*str != ')' && *str != '\0')
 		{
 			char	   *indexname;
@@ -1056,7 +1056,7 @@ ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 	}
 
 	/* カッコが閉じていなければヒント無効。 */
-	skip_space(str);
+	skip_space(str);		/* just in case */
 	if (*str != ')')
 	{
 		parse_ereport(str, ("Closed parenthesis is necessary."));
