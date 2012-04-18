@@ -939,7 +939,6 @@ parse_head_comment(Query *parse)
 	if (p == NULL)
 		return NULL;
 
-
 	/* extract query head comment. */
 	len = strlen(HINT_START);
 	skip_space(p);
@@ -950,8 +949,10 @@ parse_head_comment(Query *parse)
 	skip_space(p);
 
 	if ((tail = strstr(p, HINT_END)) == NULL)
-		elog(ERROR, "unterminated /* comment at or near \"%s\"",
-			 debug_query_string);
+	{
+		parse_ereport(debug_query_string, ("unterminated /* comment"));
+		return NULL;
+	}
 
 	/* 入れ子にしたブロックコメントはサポートしない */
 	if ((head = strstr(p, HINT_START)) != NULL && head < tail)
@@ -1049,7 +1050,8 @@ parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
 	else
 	{
-		elog(ERROR, "unrecognized hint keyword \"%s\"", keyword);
+		ScanHintDelete(hint);
+		parse_ereport(str, ("unrecognized hint keyword \"%s\"", keyword));
 		return NULL;
 	}
 
@@ -1183,7 +1185,11 @@ ParseJoinMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 	else if (strcasecmp(keyword, HINT_NOHASHJOIN) == 0)
 		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
 	else
-		elog(ERROR, "unrecognized hint keyword \"%s\"", keyword);
+	{
+		JoinHintDelete(hint);
+		parse_ereport(str, ("unrecognized hint keyword \"%s\"", keyword));
+		return NULL;
+	}
 
 	if (plan->njoin_hints == 0)
 	{
