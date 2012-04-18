@@ -581,7 +581,7 @@ ScanHintCmp(const void *a, const void *b, bool order)
 	const ScanHint	   *hintb = *((const ScanHint **) b);
 	int					result;
 
-	if ((result = strcmp(hinta->relname, hintb->relname)) != 0)
+	if ((result = RelnameCmp(&hinta->relname, &hintb->relname)) != 0)
 		return result;
 
 	/* ヒント句で指定した順を返す */
@@ -609,7 +609,7 @@ JoinHintCmp(const void *a, const void *b, bool order)
 		for (i = 0; i < hinta->nrels; i++)
 		{
 			int	result;
-			if ((result = strcmp(hinta->relnames[i], hintb->relnames[i])) != 0)
+			if ((result = RelnameCmp(&hinta->relnames[i], &hintb->relnames[i])) != 0)
 				return result;
 		}
 
@@ -1334,7 +1334,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		{
 			ScanHint	   *hint = global->scan_hints[i];
 
-			if (strcmp(hint->relname, rte->eref->aliasname) != 0)
+			if (RelnameCmp(&rte->eref->aliasname, &hint->relname) != 0)
 				parse_ereport(hint->opt_str, ("Relation \"%s\" does not exist.", hint->relname));
 
 			set_scan_config_options(hint->enforce_mask, global->context);
@@ -1377,7 +1377,7 @@ find_scan_hint(RangeTblEntry *rte)
 	{
 		ScanHint   *hint = global->scan_hints[i];
 
-		if (strcmp(rte->eref->aliasname, hint->relname) == 0)
+		if (RelnameCmp(&rte->eref->aliasname, &hint->relname) == 0)
 			return hint;
 	}
 
@@ -1432,7 +1432,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		foreach(l, hint->indexnames)
 		{
-			if (strcmp(indexname, lfirst(l)) == 0)
+			if (RelnameCmp(&indexname, &lfirst(l)) == 0)
 			{
 				use_index = true;
 				break;
@@ -1462,7 +1462,8 @@ scan_relid_aliasname(PlannerInfo *root, char *aliasname, bool check_ambiguous, c
 
 		Assert(i == root->simple_rel_array[i]->relid);
 
-		if (strcmp(aliasname, root->simple_rte_array[i]->eref->aliasname) != 0)
+		if (RelnameCmp(&aliasname, &root->simple_rte_array[i]->eref->aliasname)
+				!= 0)
 			continue;
 
 		if (!check_ambiguous)
@@ -1623,7 +1624,7 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 			RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
 
 			if (rel->reloptkind != RELOPT_BASEREL ||
-				strcmp(hint->relname, rte->eref->aliasname) != 0)
+				RelnameCmp(&hint->relname, &rte->eref->aliasname) != 0)
 				continue;
 
 			if (save_nestlevel != 0)
