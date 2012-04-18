@@ -1094,13 +1094,13 @@ ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 	if (plan->nscan_hints == 0)
 	{
 		plan->max_scan_hints = HINT_ARRAY_DEFAULT_INITSIZE;
-		plan->scan_hints = palloc(sizeof(JoinHint *) * plan->max_scan_hints);
+		plan->scan_hints = palloc(sizeof(ScanHint *) * plan->max_scan_hints);
 	}
 	else if (plan->nscan_hints == plan->max_scan_hints)
 	{
 		plan->max_scan_hints *= 2;
 		plan->scan_hints = repalloc(plan->scan_hints,
-								sizeof(JoinHint *) * plan->max_scan_hints);
+								sizeof(ScanHint *) * plan->max_scan_hints);
 	}
 	plan->scan_hints[plan->nscan_hints] = hint;
 	plan->nscan_hints++;
