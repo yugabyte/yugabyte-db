@@ -789,21 +789,7 @@ parse_quote_value(const char *str, char **word, char *value_type)
 		in_quote = true;
 	}
 	else
-	{
-		/*
-		 * 二重引用符で囲まれていない場合は、1文字目に出現してよいのは
-		 * アルファベットまたはアンダースコアのみ。
-		 */
-		if (!isalpha(*str) && *str != '_')
-		{
-			pfree(buf.data);
-			parse_ereport(str, ("Need for %s to be quoted.", value_type));
-			return NULL;
-		}
-
 		in_quote = false;
-		appendStringInfoCharMacro(&buf, *str++);
-	}
 
 	while (true)
 	{
@@ -818,8 +804,11 @@ parse_quote_value(const char *str, char **word, char *value_type)
 			}
 
 			/*
-			 * エスケープ対象をスキップする。
-			 * TODO エスケープ対象の仕様にあわせた処理を行う。
+			 * エスケープ対象のダブルクウォートをスキップする。
+			 * もしブロックコメントの開始文字列や終了文字列もオブジェクト名とし
+			 * て使用したい場合は、/ と * もエスケープ対象とすることで使用できる
+			 * が、処理対象としていない。もしテーブル名にこれらの文字が含まれる
+			 * 場合は、エイリアスを指定する必要がある。
 			 */
 			if(*str == '"')
 			{
@@ -829,15 +818,8 @@ parse_quote_value(const char *str, char **word, char *value_type)
 			}
 		}
 		else
-		{
-			/*
-			 * 2文字目以降の制限の適用
-			 * 二重引用符で囲まれていない場合、二文字目以降に出現してよいのは
-			 * 英数字、アンダースコア、ドル記号のみ。
-			 */
-			if (!isalnum(*str) && *str != '_' && *str != '$')
+			if (isspace(*str) || *str == ')' || *str == '\0')
 				break;
-		}
 
 		appendStringInfoCharMacro(&buf, *str++);
 	}
