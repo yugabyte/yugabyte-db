@@ -1033,8 +1033,10 @@ ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 	 * する。
 	 */
 	if (strcmp(keyword, HINT_INDEXSCAN) == 0 ||
-		strcmp(keyword, HINT_BITMAPSCAN) == 0 ||
-		strcmp(keyword, HINT_INDEXONLYSCAN) == 0)
+#if PG_VERSION_NUM >= 90200
+		strcmp(keyword, HINT_INDEXONLYSCAN) == 0 ||
+#endif
+		strcmp(keyword, HINT_BITMAPSCAN) == 0)
 	{
 		skip_space(str);
 		while (*str != ')' && *str != '\0')
