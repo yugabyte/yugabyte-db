@@ -157,7 +157,6 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root, int levels_needed
 								  List *initial_rels);
 
 static const char *ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
-static const char *ParseIndexScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseJoinMethod(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseLeading(PlanHint *plan, Query *parse, char *keyword, const char *str);
 static const char *ParseSet(PlanHint *plan, Query *parse, char *keyword, const char *str);
@@ -207,16 +206,16 @@ static PlanHint *global = NULL;
 
 static const HintParser parsers[] = {
 	{HINT_SEQSCAN, true, ParseScanMethod},
-	{HINT_INDEXSCAN, true, ParseIndexScanMethod},
-	{HINT_BITMAPSCAN, true, ParseIndexScanMethod},
+	{HINT_INDEXSCAN, true, ParseScanMethod},
+	{HINT_BITMAPSCAN, true, ParseScanMethod},
 	{HINT_TIDSCAN, true, ParseScanMethod},
 	{HINT_NOSEQSCAN, true, ParseScanMethod},
 	{HINT_NOINDEXSCAN, true, ParseScanMethod},
 	{HINT_NOBITMAPSCAN, true, ParseScanMethod},
 	{HINT_NOTIDSCAN, true, ParseScanMethod},
 #if PG_VERSION_NUM >= 90200
-	{HINT_INDEXONLYSCAN, true, ParseIndexScanMethod},
-	{HINT_NOINDEXONLYSCAN, true, ParseIndexScanMethod},
+	{HINT_INDEXONLYSCAN, true, ParseScanMethod},
+	{HINT_NOINDEXONLYSCAN, true, ParseScanMethod},
 #endif
 	{HINT_NESTLOOP, true, ParseJoinMethod},
 	{HINT_MERGEJOIN, true, ParseJoinMethod},
@@ -1010,10 +1009,10 @@ parse_head_comment(Query *parse)
 }
 
 /*
- * スキャン方式ヒントのパースでの共通処理
+ * スキャン方式ヒントのカッコ内をパースする
  */
 static const char *
-parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
+ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
 {
 	ScanHint   *hint;
 
@@ -1025,6 +1024,40 @@ parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
 	 */
 	if ((str = parse_quote_value(str, &hint->relname, "ralation name")) == NULL)
 	{
+		ScanHintDelete(hint);
+		return NULL;
+	}
+
+	/*
+	 * インデックスリストを受け付けるヒントであれば、インデックス参照をパース
+	 * する。
+	 */
+	if (strcmp(keyword, HINT_INDEXSCAN) == 0 ||
+		strcmp(keyword, HINT_BITMAPSCAN) == 0 ||
+		strcmp(keyword, HINT_INDEXONLYSCAN) == 0)
+	{
+		skip_space(str);
+		while (*str != ')' && *str != '\0')
+		{
+			char	   *indexname;
+
+			str = parse_quote_value(str, &indexname, "index name");
+			if (str == NULL)
+			{
+				ScanHintDelete(hint);
+				return NULL;
+			}
+
+			hint->indexnames = lappend(hint->indexnames, indexname);
+			skip_space(str);
+		}
+	}
+
+	/* カッコが閉じていなければヒント無効。 */
+	skip_space(str);
+	if (*str != ')')
+	{
+		parse_ereport(str, ("Closed parenthesis is necessary."));
 		ScanHintDelete(hint);
 		return NULL;
 	}
@@ -1069,65 +1102,8 @@ parse_scan_method(PlanHint *plan, Query *parse, char *keyword, const char *str)
 		plan->scan_hints = repalloc(plan->scan_hints,
 								sizeof(JoinHint *) * plan->max_scan_hints);
 	}
-
 	plan->scan_hints[plan->nscan_hints] = hint;
 	plan->nscan_hints++;
-
-	return str;
-}
-
-static const char *
-ParseScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
-{
-	ScanHint   *hint;
-
-	if ((str = parse_scan_method(plan, parse, keyword, str)) == NULL)
-		return NULL;
-
-	hint = plan->scan_hints[plan->nscan_hints - 1];
-
-	skip_space(str);
-	if (*str != ')')
-	{
-		parse_ereport(str, ("Closed parenthesis is necessary."));
-		plan->nscan_hints--;
-		ScanHintDelete(hint);
-		return NULL;
-	}
-
-	return str;
-}
-
-static const char *
-ParseIndexScanMethod(PlanHint *plan, Query *parse, char *keyword, const char *str)
-{
-	char	   *indexname;
-	ScanHint   *hint;
-
-	if ((str = parse_scan_method(plan, parse, keyword, str)) == NULL)
-		return NULL;
-
-	hint = plan->scan_hints[plan->nscan_hints - 1];
-
-	/* インデックス参照をパースする。 */
-	while (true)
-	{
-		/*
-		 * TODO 直前のオブジェクト名がクウォート処理されていた場合の処理を実装
-		 */
-		skip_space(str);
-		if (*str == ')')
-			break;
-
-		if ((str = parse_quote_value(str, &indexname, "index name")) == NULL)
-		{
-			plan->nscan_hints--;
-			ScanHintDelete(hint);
-			return NULL;
-		}
-
-		hint->indexnames = lappend(hint->indexnames, indexname);
-	}
 
 	return str;
 }
