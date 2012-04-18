@@ -1682,7 +1682,10 @@ pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2
 static RelOptInfo *
 pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 {
-	/* 有効なヒントが指定されなかった場合は本来の処理を実行する。 */
+	/*
+	 * pg_hint_planが無効、または有効なヒントが1つも指定されなかった場合は、標準
+	 * の処理を行う。
+	 */
 	if (!global)
 	{
 		if (prev_join_search)
@@ -1695,6 +1698,14 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rel
 
 	rebuild_join_hints(global, root, levels_needed, initial_rels);
 	rebuild_scan_path(global, root, levels_needed, initial_rels);
+
+	/*
+	 * GEQOを使用する条件を満たした場合は、GEQOを用いた結合方式の検索を行う。
+	 * このとき、スキャン方式のヒントとSetヒントのみが有効になり、結合方式や結合
+	 * 順序はヒント句は無効になりGEQOのアルゴリズムで決定される。
+	 */
+	if (enable_geqo && levels_needed >= geqo_threshold)
+		return geqo(root, levels_needed, initial_rels);
 
 	return standard_join_search_org(root, levels_needed, initial_rels);
 }
