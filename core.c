@@ -1,3 +1,13 @@
+/*-------------------------------------------------------------------------
+ *
+ * core.c
+ *	  Routines copied from PostgreSQL core distribution.
+ *
+ * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *-------------------------------------------------------------------------
+ */
 /*
  * PostgreSQL 本体から流用した関数
  *
