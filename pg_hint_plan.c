@@ -56,7 +56,7 @@ PG_MODULE_MAGIC;
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
 #define parse_ereport(str, detail) \
-	ereport(pg_hint_plan_parse_message, \
+	ereport(pg_hint_plan_parse_messages, \
 			(errmsg("hint syntax error at or near \"%s\"", (str)), \
 			 errdetail detail))
 
@@ -175,9 +175,9 @@ static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblE
 /* GUC variables */
 static bool pg_hint_plan_enable = true;
 static bool pg_hint_plan_debug_print = false;
-static int pg_hint_plan_parse_message = INFO;
+static int pg_hint_plan_parse_messages = INFO;
 
-static const struct config_enum_entry parse_message_level_options[] = {
+static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
 	{"debug5", DEBUG5, false},
 	{"debug4", DEBUG4, false},
@@ -257,12 +257,12 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 
-	DefineCustomEnumVariable("pg_hint_plan.parse_message",
+	DefineCustomEnumVariable("pg_hint_plan.parse_messages",
 							 "Messege level of the parse error.",
 							 NULL,
-							 &pg_hint_plan_parse_message,
+							 &pg_hint_plan_parse_messages,
 							 INFO,
-							 parse_message_level_options,
+							 parse_messages_level_options,
 							 PGC_USERSET,
 							 0,
 							 NULL,
@@ -456,7 +456,7 @@ PlanHintDump(PlanHint *hint)
 
 	if (!hint)
 	{
-		elog(INFO, "no hint");
+		elog(LOG, "no hint");
 		return;
 	}
 
@@ -559,7 +559,7 @@ PlanHintDump(PlanHint *hint)
 
 	appendStringInfoString(&buf, "*/");
 
-	elog(INFO, "%s", buf.data);
+	elog(LOG, "%s", buf.data);
 
 	pfree(buf.data);
 }
@@ -687,7 +687,7 @@ set_config_options(List *options, GucContext context)
 		if (result > 0)
 			result = set_config_option(hint->name, hint->value, context,
 						PGC_S_SESSION, GUC_ACTION_SAVE, true,
-						pg_hint_plan_parse_message);
+						pg_hint_plan_parse_messages);
 	}
 
 	return save_nestlevel;

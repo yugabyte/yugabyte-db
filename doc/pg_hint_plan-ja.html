@@ -87,7 +87,7 @@ LOAD
 postgres=# </pre>
 
 <h3 id="hint-rule">ヒントの記述方法</h3>
-<p>ヒントはクエリの前のブロックコメント内に、スペース、タブまたは改行のいずれかで区切って記述してください。ヒントの対象は、カッコ内にオブジェクト名または別名(エイリアス)で指定してください。</p>
+<p>ヒントはクエリの前のブロックコメント内に、スペース、タブ、または改行のいずれかで区切って記述してください。ヒントの対象は、カッコ内にオブジェクト名または別名(エイリアス)で指定してください。</p>
 
 <p>以下の例では、HashJoinとSeqScanヒントにより、pgbench_accountsテーブルに対するSeq Scanの結果をHash Joinする実行計画が選択されています。</p>
 <pre>
@@ -113,7 +113,7 @@ postgres-#   ORDER BY a.aid;
 postgres=# </pre>
 
 <h3 id="hint-group">ヒントのグループ</h3>
-<p>pg_hint_planで使えるヒントのグループは、スキャン方式と結合方式、結合順序、GUCパラメータの4通りに分けられます。同じグループのヒントを同じオブジェクトに対して指定した場合は、最後に指定したヒントが適用されます。各グループの具体的なヒントは、<a href="hint_list-ja.html">ヒント一覧</a>を参照してください。</p>
+<p>pg_hint_planで使えるヒントは、スキャン方式と結合方式、結合順序、GUCパラメータの4グループに分けられます。同じグループのヒントを同じオブジェクトに対して指定した場合は、最後に指定したヒントが適用されます。各グループの具体的なヒントは、<a href="hint_list-ja.html">ヒント一覧</a>を参照してください。</p>
 
 <h4>スキャン方式</h4>
 <p>あるテーブルのスキャン方式を選択するかを指定できるヒントのグループで、「SeqScan」や「IndexScan」などが含まれます</p>
@@ -138,11 +138,11 @@ postgres=# </pre>
 </tr></thead>
 <tbody>
 <tr><td>pg_hint_plan.enable</td>
-  <td>on のとき、pg_hint_planの機能を有効にします。</td><td>on</td></tr>
+  <td>pg_hint_planの機能を有効または無効にします。</td><td>on</td></tr>
 <tr><td>pg_hint_plan.debug_print</td>
-  <td>on のとき、プランナが実行計画を生成するときに用いたヒントを表示します。</td><td>off</td></tr>
-<tr><td>pg_hint_plan.parse_message</td>
-  <td>指定したヒントに対して、どのメッセージ階層を表示するかを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warningまたはerrorです。</td><td>info</td></tr>
+  <td>pg_hint_planのデバッグ出力を有効にします。メッセージはLOGメッセージレベルで出力されますので、デフォルトではサーバログに出力され、クライアントには渡されません。</td><td>off</td></tr>
+<tr><td>pg_hint_plan.parse_messages</td>
+  <td>指定したヒントを解釈できなかった場合に、どのメッセージ階層でログを出力するかを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。fatalとpanicは指定できません。</td><td>info</td></tr>
 </tbody>
 </table>
 
