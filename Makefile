@@ -22,3 +22,6 @@ subclean:
 	rm -f expected/base_plan.out expected/prepare.out
 
 installcheck: expected/base_plan.out expected/prepare.out
+
+# pg_hint_plan.c includes core.c
+pg_hint_plan.o: core.c
