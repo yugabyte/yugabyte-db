@@ -494,3 +494,46 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          Index Cond: (id = t2.id)
 (12 rows)
 
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = "*VALUES*".column1)
+(4 rows)
+
+/*HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near "t1 t2)"
+DETAIL:  Relation "t2" does not exist.
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = "*VALUES*".column1)
+(4 rows)
+
+/*HashJoin(t1 *VALUES*)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+                QUERY PLAN                 
+-------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = "*VALUES*".column1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Values Scan on "*VALUES*"
+(5 rows)
+
+/*HashJoin(t1 *VALUES*) IndexScan(t1) IndexScan(*VALUES*)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+                QUERY PLAN                 
+-------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = "*VALUES*".column1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Hash
+         ->  Values Scan on "*VALUES*"
+(5 rows)
+

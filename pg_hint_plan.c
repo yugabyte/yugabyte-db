@@ -1607,7 +1607,12 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 			RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
 			RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
 
+			/*
+			 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成
+			 * する。
+			 */
 			if (rel->reloptkind != RELOPT_BASEREL ||
+				rte->rtekind == RTE_VALUES ||
 				RelnameCmp(&hint->relname, &rte->eref->aliasname) != 0)
 				continue;
 
