@@ -197,27 +197,23 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*BitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                QUERY PLAN                
-------------------------------------------
+              QUERY PLAN              
+--------------------------------------
  Nested Loop
    ->  Seq Scan on t1
-   ->  Bitmap Heap Scan on t2
-         Recheck Cond: (id = t1.id)
-         ->  Bitmap Index Scan on t2_pkey
-               Index Cond: (id = t1.id)
-(6 rows)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(4 rows)
 
 /*BitmapScan(t2)NoSeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-                QUERY PLAN                
-------------------------------------------
+              QUERY PLAN              
+--------------------------------------
  Nested Loop
    ->  Index Scan using t1_pkey on t1
-   ->  Bitmap Heap Scan on t2
-         Recheck Cond: (id = t1.id)
-         ->  Bitmap Index Scan on t2_pkey
-               Index Cond: (id = t1.id)
-(6 rows)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(4 rows)
 
 /*NoIndexScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;

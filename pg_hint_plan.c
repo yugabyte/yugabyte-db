@@ -1616,7 +1616,11 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 				RelnameCmp(&hint->relname, &rte->eref->aliasname) != 0)
 				continue;
 
-			if (save_nestlevel != 0)
+			/*
+			 * 複数のスキャンヒントが指定されていた場合でも、1つのネストレベルで
+			 * スキャン関連のGUCパラメータを変更する。
+			 */
+			if (save_nestlevel == 0)
 				save_nestlevel = NewGUCNestLevel();
 
 			/*
