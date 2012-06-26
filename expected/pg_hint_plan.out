@@ -501,7 +501,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 
 /*HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near "t1 t2)"
+INFO:  hint syntax error at or near "HashJoin(t1 t2)"
 DETAIL:  Relation "t2" does not exist.
                   QUERY PLAN                   
 -----------------------------------------------
