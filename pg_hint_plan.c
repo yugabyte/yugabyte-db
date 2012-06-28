@@ -86,6 +86,15 @@ typedef Hint *(*HintCreateFunction) (char *hint_str, char *keyword);
 typedef void (*HintDeleteFunction) (Hint *hint);
 typedef const char *(*HintParseFunction) (Hint *hint, PlanHint *plan, Query *parse, const char *str);
 
+/* hint status */
+typedef enum HintStatus
+{
+	HINT_STATE_NOTUSED = 0,	/* specified relation not used in query */
+	HINT_STATE_DUPLICATION,	/* specified hint duplication */
+	HINT_STATE_USED,			/* hint is used */
+	/* execute error (parse error does not include it) */
+	HINT_STATE_ERROR
+} HintStatus;
 
 /* common data for all hints. */
 struct Hint
