@@ -37,7 +37,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
          ->  Index Scan using t1_val on t1
 (5 rows)
 
-/* Test (t1 t2) */
+/*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "Test (t1 t2) "
 DETAIL:  Keyword "Test" does not exist.
@@ -50,7 +50,7 @@ DETAIL:  Keyword "Test" does not exist.
 (4 rows)
 
 SET pg_hint_plan.enable TO off;
-/* Test (t1 t2) */
+/*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -61,7 +61,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 (4 rows)
 
 SET pg_hint_plan.enable TO on;
-/*Set(enable_indexscan off)*/
+/*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN          
 ------------------------------
@@ -72,7 +72,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/* Set(enable_indexscan off) Set(enable_hashjoin off) */
+/*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN           
 -------------------------------
@@ -86,7 +86,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (8 rows)
 
-/* 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
+/*+ 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN          
 ------------------------------
@@ -97,7 +97,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/* 	 
+/*+ 	 
 	 	Set 	 
 	 	( 	 
 	 	enable_indexscan 	 
@@ -114,7 +114,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/* Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)	 	
+/*+ Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)	 	
 	 	Set(enable_seqscan off)
 	 	*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -127,7 +127,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Index Scan using t2_pkey on t2
 (5 rows)
 
-/*Set(work_mem "1M")*/
+/*+Set(work_mem "1M")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  invalid value for parameter "work_mem": "1M"
 HINT:  Valid units for this parameter are "kB", "MB", and "GB".
@@ -139,7 +139,7 @@ HINT:  Valid units for this parameter are "kB", "MB", and "GB".
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
-/*Set(work_mem "1MB")*/
+/*+Set(work_mem "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -149,7 +149,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
-/*Set(work_mem TO "1MB")*/
+/*+Set(work_mem TO "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near ""1MB")"
 DETAIL:  Closed parenthesis is necessary.
@@ -161,7 +161,7 @@ DETAIL:  Closed parenthesis is necessary.
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
-/*SeqScan(t1 t2)*/
+/*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "t2)"
 DETAIL:  Closed parenthesis is necessary.
@@ -173,7 +173,7 @@ DETAIL:  Closed parenthesis is necessary.
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
-/*SeqScan(t1)*/
+/*+SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN          
 ------------------------------
@@ -184,7 +184,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/*SeqScan(t1)IndexScan(t2)*/
+/*+SeqScan(t1)IndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
                  QUERY PLAN                 
 --------------------------------------------
@@ -195,7 +195,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Index Scan using t2_pkey on t2
 (5 rows)
 
-/*BitmapScan(t2)*/
+/*+BitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -205,7 +205,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          Index Cond: (id = t1.id)
 (4 rows)
 
-/*BitmapScan(t2)NoSeqScan(t1)*/
+/*+BitmapScan(t2)NoSeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -215,7 +215,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          Index Cond: (id = t1.id)
 (4 rows)
 
-/*NoIndexScan(t1)*/
+/*+NoIndexScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN          
 ------------------------------
@@ -226,7 +226,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/*NoBitmapScan(t1)*/
+/*+NoBitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
          QUERY PLAN         
 ----------------------------
@@ -237,7 +237,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
          ->  Seq Scan on t4
 (5 rows)
 
-/*TidScan(t4)*/
+/*+TidScan(t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
                   QUERY PLAN                   
 -----------------------------------------------
@@ -250,7 +250,7 @@ EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1
                TID Cond: (ctid = '(1,1)'::tid)
 (7 rows)
 
-/*NoTidScan(t1)*/
+/*+NoTidScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
               QUERY PLAN               
 ---------------------------------------
@@ -261,7 +261,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1
          Index Cond: (id = t1.id)
 (5 rows)
 
-/*HashJoin(t1 t2)*/
+/*+HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN          
 ------------------------------
@@ -272,7 +272,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/*NestLoop(t1 t2)*/
+/*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -282,7 +282,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          Index Cond: (id = t2.id)
 (4 rows)
 
-/*NoMergeJoin(t1 t2)*/
+/*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
           QUERY PLAN          
 ------------------------------
@@ -293,7 +293,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
          ->  Seq Scan on t2
 (5 rows)
 
-/*MergeJoin(t1 t3)*/
+/*+MergeJoin(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
              QUERY PLAN              
 -------------------------------------
@@ -305,7 +305,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
          ->  Seq Scan on t3
 (6 rows)
 
-/*NestLoop(t1 t3)*/
+/*+NestLoop(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
              QUERY PLAN              
 -------------------------------------
@@ -315,7 +315,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
          Index Cond: (val = t3.val)
 (4 rows)
 
-/*NoHashJoin(t1 t3)*/
+/*+NoHashJoin(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
              QUERY PLAN              
 -------------------------------------
@@ -325,7 +325,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
          Index Cond: (val = t3.val)
 (4 rows)
 
-/*MergeJoin(t4 t1 t2 t3)*/
+/*+MergeJoin(t4 t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -343,7 +343,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          ->  Seq Scan on t4
 (12 rows)
 
-/*HashJoin(t3 t4 t1 t2)*/
+/*+HashJoin(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                        QUERY PLAN                       
 --------------------------------------------------------
@@ -362,7 +362,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
                      ->  Seq Scan on t4
 (13 rows)
 
-/*NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
+/*+NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -380,7 +380,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          Index Cond: (id = t1.id)
 (12 rows)
 
-/*NoNestLoop(t4 t1 t3 t2)*/
+/*+NoNestLoop(t4 t1 t3 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -398,7 +398,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          ->  Seq Scan on t4
 (12 rows)
 
-/*Leading(t3 t4)*/
+/*+Leading(t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -416,7 +416,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          Index Cond: (id = t2.id)
 (12 rows)
 
-/*Leading(t3 t4 t1)*/
+/*+Leading(t3 t4 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -434,7 +434,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          Index Cond: (id = t1.id)
 (12 rows)
 
-/*Leading(t3 t4 t1 t2)*/
+/*+Leading(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -452,7 +452,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
          Index Cond: (id = t1.id)
 (12 rows)
 
-/*Leading(t3 t4 t1 t2 t1)*/
+/*+Leading(t3 t4 t1 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  hint syntax error at or near "Leading(t3 t4 t1 t2 t1)"
 DETAIL:  In Leading hint, specified relation name 4 or less.
@@ -472,7 +472,7 @@ DETAIL:  In Leading hint, specified relation name 4 or less.
          Index Cond: (id = t1.id)
 (12 rows)
 
-/*Leading(t3 t4 t4)*/
+/*+Leading(t3 t4 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
                     QUERY PLAN                    
 --------------------------------------------------
@@ -499,7 +499,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
          Index Cond: (id = "*VALUES*".column1)
 (4 rows)
 
-/*HashJoin(t1 t2)*/
+/*+HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "HashJoin(t1 t2)"
 DETAIL:  Relation "t2" does not exist.
@@ -511,7 +511,7 @@ DETAIL:  Relation "t2" does not exist.
          Index Cond: (id = "*VALUES*".column1)
 (4 rows)
 
-/*HashJoin(t1 *VALUES*)*/
+/*+HashJoin(t1 *VALUES*)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
                 QUERY PLAN                 
 -------------------------------------------
@@ -522,7 +522,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
          ->  Values Scan on "*VALUES*"
 (5 rows)
 
-/*HashJoin(t1 *VALUES*) IndexScan(t1) IndexScan(*VALUES*)*/
+/*+HashJoin(t1 *VALUES*) IndexScan(t1) IndexScan(*VALUES*)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
                 QUERY PLAN                 
 -------------------------------------------

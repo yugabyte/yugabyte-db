@@ -87,11 +87,11 @@ LOAD
 postgres=# </pre>
 
 <h3 id="hint-rule">ヒントの記述方法</h3>
-<p>ヒントはクエリの前のブロックコメント内に、スペース、タブ、または改行のいずれかで区切って記述してください。ヒントの対象は、カッコ内にオブジェクト名または別名(エイリアス)で指定してください。</p>
+<p>ヒントはクエリの前のブロックコメント内に、スペース、タブ、または改行のいずれかで区切って記述してください。ブロックコメントをヒントとして認識させるには、ブロックコメントの開始直後に+（プラス）を指定する必要があります。ヒントの対象は、カッコ内にオブジェクト名または別名(エイリアス)で指定してください。</p>
 
 <p>以下の例では、HashJoinとSeqScanヒントにより、pgbench_accountsテーブルに対するSeq Scanの結果をHash Joinする実行計画が選択されています。</p>
 <pre>
-postgres=# /*
+postgres=# /*+
 postgres*#    <span class="strong">HashJoin(a b)</span>
 postgres*#    <span class="strong">SeqScan(a)</span>
 postgres*#  */
@@ -152,12 +152,12 @@ postgres=# </pre>
 <dt>ヒントの記述位置</dt>
 <dd>クエリの前に複数のブロックコメントを記述する場合は、最初のブロックコメントにのみヒントを記述してください。二番目以降のブロックコメントは、ヒントと見なされず無視されます。以下の例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
 <pre>
-postgres=# /*
+postgres=# /*+
 postgres*#    <span class="strong">HashJoin(a b)</span>
 postgres*#    <span class="strong">SeqScan(a)</span>
 postgres*#  */
-postgres-# /* IndexScan(a) */
-postgres-# EXPLAIN SELECT /* MergeJoin(a b) */ *
+postgres-# /*+ IndexScan(a) */
+postgres-# EXPLAIN SELECT /*+ MergeJoin(a b) */ *
 postgres-#    FROM pgbench_branches b
 postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
 postgres-#   ORDER BY a.aid;
@@ -180,7 +180,7 @@ postgres=# </pre>
 <dd>スキーマ違いや同一テーブルの複数回使用などでクエリ中に同一名称のテーブルが複数回出現する場合は、テーブルに別名をつけてそれぞれのテーブルを区別してください。以下の例の1つ目のSQL文では、MergeJoin(t1 t1)をヒントに指定したとき、ヒント対象のオブジェクトが特定できずにエラーになっています。2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにMerge Joinを選択しています。
 </p>
 <pre>
-postgres=# /* <span class="strong">MergeJoin(t1 t1)</span>*/
+postgres=# /*+ <span class="strong">MergeJoin(t1 t1)</span>*/
 postgres-# EXPLAIN SELECT * FROM s1.t1
 postgres-# JOIN public.t1 ON (s1.t1.id=public.t1.id);
 INFO:  hint syntax error at or near "t1 t1)"
@@ -196,7 +196,7 @@ INFO:  hint syntax error at or near "t1 t1)"
          ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
 (5 rows)
 
-postgres=# /* <span class="strong">MergeJoin(pt st)</span> */
+postgres=# /*+ <span class="strong">MergeJoin(pt st)</span> */
 postgres-# EXPLAIN SELECT * FROM s1.t1 st
 postgres-# JOIN public.t1 pt ON (st.id=pt.id);
                                     QUERY PLAN

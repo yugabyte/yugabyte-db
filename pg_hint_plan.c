@@ -27,8 +27,11 @@ PG_MODULE_MAGIC;
 #error unsupported PostgreSQL version
 #endif
 
-#define HINT_START	"/*"
-#define HINT_END	"*/"
+#define BLOCK_COMMENT_START		"/*"
+#define BLOCK_COMMENT_END		"*/"
+#define HINT_COMMENT_KEYWORD	"+"
+#define HINT_START		BLOCK_COMMENT_START HINT_COMMENT_KEYWORD
+#define HINT_END		BLOCK_COMMENT_END
 
 /* hint keywords */
 #define HINT_SEQSCAN			"SeqScan"
@@ -1029,17 +1032,19 @@ parse_head_comment(Query *parse)
 	if (strncmp(p, HINT_START, len))
 		return NULL;
 
+	head = (char *) p;
 	p += len;
 	skip_space(p);
 
+	/* find hint end keyword. */
 	if ((tail = strstr(p, HINT_END)) == NULL)
 	{
-		parse_ereport(debug_query_string, ("unterminated /* comment"));
+		parse_ereport(head, ("unterminated block comment"));
 		return NULL;
 	}
 
 	/* 入れ子にしたブロックコメントはサポートしない */
-	if ((head = strstr(p, HINT_START)) != NULL && head < tail)
+	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
 		parse_ereport(head, ("block comments nest doesn't supported"));
 
 	/* ヒント句部分を切り出す */
