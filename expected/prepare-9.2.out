@@ -1,7 +1,7 @@
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.enable TO on;
-SET pg_hint_plan.debug_print TO true;
-SET client_min_messages TO 'LOG';
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
 EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id;
                    QUERY PLAN                    
 -------------------------------------------------
@@ -43,9 +43,10 @@ EXPLAIN (COSTS false) EXECUTE p1;
 PREPARE p2 AS SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id;
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p2;
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -84,9 +85,10 @@ EXPLAIN (COSTS false) EXECUTE p2;
 PREPARE p3 AS SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id > $1;
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p3 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -100,9 +102,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p3 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -116,9 +119,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p3 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -132,9 +136,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p3 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -148,9 +153,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p3 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -201,9 +207,10 @@ EXPLAIN (COSTS false) EXECUTE p3 (10);
 PREPARE p4 AS SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id > $1;
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p4 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -217,9 +224,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p4 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -233,9 +241,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p4 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -249,9 +258,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p4 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -265,9 +275,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p4 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -281,9 +292,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p4 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
                    QUERY PLAN                    
 -------------------------------------------------
  Aggregate
@@ -380,12 +392,14 @@ EXPLAIN (COSTS false) EXECUTE p5 (10);
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p5 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
-LOG:  /*
+
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -399,9 +413,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p5 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -415,9 +430,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p5 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -529,9 +545,10 @@ EXPLAIN (COSTS false) EXECUTE p6 (10);
 PREPARE p7 AS SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id > $1;
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -545,9 +562,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -561,9 +579,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -577,9 +596,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -593,9 +613,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
              QUERY PLAN             
 ------------------------------------
  Aggregate
@@ -609,9 +630,10 @@ HashJoin(t1 t2)
 
 /*+ HashJoin(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-LOG:  /*
+LOG:  pg_hint_plan:
+used hint:
 HashJoin(t1 t2)
-*/
+
                    QUERY PLAN                    
 -------------------------------------------------
  Aggregate
@@ -700,7 +722,7 @@ EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id 
 EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  /*
 HashJoin(t1 t2)
-*/
+
                    QUERY PLAN                    
 -------------------------------------------------
  Aggregate

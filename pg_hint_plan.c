@@ -530,30 +530,22 @@ PlanHintIsEmpty(PlanHint *hint)
 
 /* TODO オブジェクト名のクォート処理を追加 */
 static void
-PlanHintDump(PlanHint *hint)
+all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus state)
 {
-	StringInfoData	buf;
-	ListCell	   *l;
 	int				i;
+	ListCell	   *l;
 	bool			is_first = true;
 
-	if (!hint)
-	{
-		elog(LOG, "pg_hint_plan:\nno hint");
-		return;
-	}
-
-	initStringInfo(&buf);
-	appendStringInfo(&buf, "pg_hint_plan:\nused hint:\n");
+	appendStringInfo(buf, "%s:\n", title);
 	for (i = 0; i < hint->nscan_hints; i++)
 	{
 		ScanMethodHint *h = hint->scan_hints[i];
 		ListCell	   *n;
 
-		appendStringInfo(&buf, "%s(%s", h->base.keyword, h->relname);
+		appendStringInfo(buf, "%s(%s", h->base.keyword, h->relname);
 		foreach(n, h->indexnames)
-			appendStringInfo(&buf, " %s", (char *) lfirst(n));
-		appendStringInfoString(&buf, ")\n");
+			appendStringInfo(buf, " %s", (char *) lfirst(n));
+		appendStringInfoString(buf, ")\n");
 	}
 
 	for (i = 0; i < hint->njoin_hints; i++)
@@ -564,30 +556,47 @@ PlanHintDump(PlanHint *hint)
 		if (h->enforce_mask == ENABLE_ALL_JOIN)
 			continue;
 
-		appendStringInfo(&buf, "%s(%s", h->base.keyword, h->relnames[0]);
+		appendStringInfo(buf, "%s(%s", h->base.keyword, h->relnames[0]);
 		for (i = 1; i < h->nrels; i++)
-			appendStringInfo(&buf, " %s", h->relnames[i]);
-		appendStringInfoString(&buf, ")\n");
+			appendStringInfo(buf, " %s", h->relnames[i]);
+		appendStringInfoString(buf, ")\n");
 	}
 
 	foreach(l, hint->set_hints)
 	{
 		SetHint	   *h = (SetHint *) lfirst(l);
-		appendStringInfo(&buf, "%s(%s %s)\n", HINT_SET, h->name, h->value);
+		appendStringInfo(buf, "%s(%s %s)\n", HINT_SET, h->name, h->value);
 	}
 
 	foreach(l, hint->leading)
 	{
 		if (is_first)
 		{
-			appendStringInfo(&buf, "%s(%s", HINT_LEADING, (char *)lfirst(l));
+			appendStringInfo(buf, "%s(%s", HINT_LEADING, (char *)lfirst(l));
 			is_first = false;
 		}
 		else
-			appendStringInfo(&buf, " %s", (char *)lfirst(l));
+			appendStringInfo(buf, " %s", (char *)lfirst(l));
 	}
 	if (!is_first)
-		appendStringInfoString(&buf, ")\n");
+		appendStringInfoString(buf, ")\n");
+
+}
+
+static void
+PlanHintDump(PlanHint *hint)
+{
+	StringInfoData	buf;
+
+	if (!hint)
+	{
+		elog(LOG, "pg_hint_plan:\nno hint");
+		return;
+	}
+
+	initStringInfo(&buf);
+	appendStringInfoString(&buf, "pg_hint_plan:\n");
+	all_hint_dump(hint, &buf, "used hint", HINT_STATE_USED);
 
 	elog(LOG, "%s", buf.data);
 
