@@ -18,6 +18,8 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 (5 rows)
 
 LOAD 'pg_hint_plan';
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -63,6 +65,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 SET pg_hint_plan.enable TO on;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -74,6 +80,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+Set(enable_hashjoin off)
+
           QUERY PLAN           
 -------------------------------
  Merge Join
@@ -88,6 +99,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+ 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -105,6 +120,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 	 	) 	 
 	 	*/	 	
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -118,6 +137,13 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 	 	Set(enable_seqscan off)
 	 	*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+Set(enable_nestloop off)
+Set(enable_mergejoin off)
+Set(enable_seqscan off)
+
                  QUERY PLAN                 
 --------------------------------------------
  Hash Join
@@ -131,6 +157,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  invalid value for parameter "work_mem": "1M"
 HINT:  Valid units for this parameter are "kB", "MB", and "GB".
+LOG:  pg_hint_plan:
+used hint:
+Set(work_mem 1M)
+
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -141,6 +171,10 @@ HINT:  Valid units for this parameter are "kB", "MB", and "GB".
 
 /*+Set(work_mem "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(work_mem 1MB)
+
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -175,6 +209,10 @@ DETAIL:  Closed parenthesis is necessary.
 
 /*+SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -186,6 +224,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+SeqScan(t1)IndexScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+IndexScan(t2)
+
                  QUERY PLAN                 
 --------------------------------------------
  Hash Join
@@ -197,6 +240,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+BitmapScan(t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t2)
+
               QUERY PLAN              
 --------------------------------------
  Nested Loop
@@ -207,6 +254,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+BitmapScan(t2)NoSeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+BitmapScan(t2)
+
               QUERY PLAN              
 --------------------------------------
  Nested Loop
@@ -217,6 +269,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NoIndexScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -228,6 +284,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NoBitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+
          QUERY PLAN         
 ----------------------------
  Nested Loop
@@ -239,6 +299,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
 
 /*+TidScan(t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t4)
+
                   QUERY PLAN                   
 -----------------------------------------------
  Merge Join
@@ -252,6 +316,10 @@ EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1
 
 /*+NoTidScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+
               QUERY PLAN               
 ---------------------------------------
  Nested Loop
@@ -263,6 +331,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1
 
 /*+HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -274,6 +346,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+
               QUERY PLAN              
 --------------------------------------
  Nested Loop
@@ -284,6 +360,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoMergeJoin(t1 t2)
+
           QUERY PLAN          
 ------------------------------
  Hash Join
@@ -295,6 +375,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+MergeJoin(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t3)
+
              QUERY PLAN              
 -------------------------------------
  Merge Join
@@ -307,6 +391,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 
 /*+NestLoop(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t3)
+
              QUERY PLAN              
 -------------------------------------
  Nested Loop
@@ -317,6 +405,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 
 /*+NoHashJoin(t1 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+LOG:  pg_hint_plan:
+used hint:
+NoHashJoin(t1 t3)
+
              QUERY PLAN              
 -------------------------------------
  Nested Loop
@@ -327,6 +419,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 
 /*+MergeJoin(t4 t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2 t3 t4)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Merge Join
@@ -345,6 +441,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 
 /*+HashJoin(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2 t3 t4)
+
                        QUERY PLAN                       
 --------------------------------------------------------
  Hash Join
@@ -364,6 +464,11 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 
 /*+NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t3)
+NestLoop(t1 t2 t3 t4)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
@@ -382,6 +487,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 
 /*+NoNestLoop(t4 t1 t3 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+NoNestLoop(t1 t2 t3 t4)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Merge Join
@@ -400,6 +509,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 
 /*+Leading(t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
@@ -418,6 +531,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 
 /*+Leading(t3 t4 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t1)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
@@ -436,6 +553,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 
 /*+Leading(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t1 t2)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
@@ -456,6 +577,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  hint syntax error at or near "Leading(t3 t4 t1 t2 t1)"
 DETAIL:  In Leading hint, specified relation name 4 or less.
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t1 t2 t1)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
@@ -474,6 +599,10 @@ DETAIL:  In Leading hint, specified relation name 4 or less.
 
 /*+Leading(t3 t4 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t4)
+
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
@@ -503,6 +632,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "HashJoin(t1 t2)"
 DETAIL:  Relation "t2" does not exist.
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+
                   QUERY PLAN                   
 -----------------------------------------------
  Nested Loop
@@ -513,6 +646,10 @@ DETAIL:  Relation "t2" does not exist.
 
 /*+HashJoin(t1 *VALUES*)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(*VALUES* t1)
+
                 QUERY PLAN                 
 -------------------------------------------
  Hash Join
@@ -524,6 +661,12 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 
 /*+HashJoin(t1 *VALUES*) IndexScan(t1) IndexScan(*VALUES*)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(*VALUES*)
+IndexScan(t1)
+HashJoin(*VALUES* t1)
+
                 QUERY PLAN                 
 -------------------------------------------
  Hash Join

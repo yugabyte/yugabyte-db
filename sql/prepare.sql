@@ -1,7 +1,7 @@
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.enable TO on;
-SET pg_hint_plan.debug_print TO true;
-SET client_min_messages TO 'LOG';
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
 
 EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id > 10;

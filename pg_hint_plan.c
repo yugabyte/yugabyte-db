@@ -94,7 +94,7 @@ typedef enum HintStatus
 {
 	HINT_STATE_NOTUSED = 0,	/* specified relation not used in query */
 	HINT_STATE_DUPLICATION,	/* specified hint duplication */
-	HINT_STATE_USED,			/* hint is used */
+	HINT_STATE_USED,		/* hint is used */
 	/* execute error (parse error does not include it) */
 	HINT_STATE_ERROR
 } HintStatus;
@@ -104,7 +104,7 @@ struct Hint
 {
 	const char		   *hint_str;		/* must not do pfree */
 	const char		   *keyword;		/* must not do pfree */
-	bool				used;
+	HintStatus			state;
 	HintDeleteFunction	delete_func;
 	HintParseFunction	parser_func;
 };
@@ -343,7 +343,7 @@ ScanMethodHintCreate(char *hint_str, char *keyword)
 	hint = palloc(sizeof(ScanMethodHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
-	hint->base.used = false;
+	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) ScanMethodHintDelete;
 	hint->base.parser_func = (HintParseFunction) ScanMethodHintParse;
 	hint->relname = NULL;
@@ -373,7 +373,7 @@ JoinMethodHintCreate(char *hint_str, char *keyword)
 	hint = palloc(sizeof(JoinMethodHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
-	hint->base.used = false;
+	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) JoinMethodHintDelete;
 	hint->base.parser_func = (HintParseFunction) JoinMethodHintParse;
 	hint->nrels = 0;
@@ -410,7 +410,7 @@ LeadingHintCreate(char *hint_str, char *keyword)
 	hint = palloc(sizeof(LeadingHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
-	hint->base.used = false;
+	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction)LeadingHintDelete;
 	hint->base.parser_func = (HintParseFunction) LeadingHintParse;
 	hint->relations = NIL;
@@ -436,7 +436,7 @@ SetHintCreate(char *hint_str, char *keyword)
 	hint = palloc(sizeof(SetHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
-	hint->base.used = false;
+	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) SetHintDelete;
 	hint->base.parser_func = (HintParseFunction) SetHintParse;
 	hint->name = NULL;
@@ -517,7 +517,7 @@ PlanHintDelete(PlanHint *hint)
 }
 
 static bool
-PlanHintIsempty(PlanHint *hint)
+PlanHintIsEmpty(PlanHint *hint)
 {
 	if (hint->nscan_hints == 0 &&
 		hint->njoin_hints == 0 &&
@@ -539,47 +539,18 @@ PlanHintDump(PlanHint *hint)
 
 	if (!hint)
 	{
-		elog(LOG, "no hint");
+		elog(LOG, "pg_hint_plan:\nno hint");
 		return;
 	}
 
 	initStringInfo(&buf);
-	appendStringInfo(&buf, "/*\n");
+	appendStringInfo(&buf, "pg_hint_plan:\nused hint:\n");
 	for (i = 0; i < hint->nscan_hints; i++)
 	{
 		ScanMethodHint *h = hint->scan_hints[i];
 		ListCell	   *n;
-		switch(h->enforce_mask)
-		{
-			case(ENABLE_SEQSCAN):
-				appendStringInfo(&buf, "%s(", HINT_SEQSCAN);
-				break;
-			case(ENABLE_INDEXSCAN):
-				appendStringInfo(&buf, "%s(", HINT_INDEXSCAN);
-				break;
-			case(ENABLE_BITMAPSCAN):
-				appendStringInfo(&buf, "%s(", HINT_BITMAPSCAN);
-				break;
-			case(ENABLE_TIDSCAN):
-				appendStringInfo(&buf, "%s(", HINT_TIDSCAN);
-				break;
-			case(ENABLE_INDEXSCAN | ENABLE_BITMAPSCAN | ENABLE_TIDSCAN):
-				appendStringInfo(&buf, "%s(", HINT_NOSEQSCAN);
-				break;
-			case(ENABLE_SEQSCAN | ENABLE_BITMAPSCAN | ENABLE_TIDSCAN):
-				appendStringInfo(&buf, "%s(", HINT_NOINDEXSCAN);
-				break;
-			case(ENABLE_SEQSCAN | ENABLE_INDEXSCAN | ENABLE_TIDSCAN):
-				appendStringInfo(&buf, "%s(", HINT_NOBITMAPSCAN);
-				break;
-			case(ENABLE_SEQSCAN | ENABLE_INDEXSCAN | ENABLE_BITMAPSCAN):
-				appendStringInfo(&buf, "%s(", HINT_NOTIDSCAN);
-				break;
-			default:
-				appendStringInfoString(&buf, "\?\?\?(");
-				break;
-		}
-		appendStringInfo(&buf, "%s", h->relname);
+
+		appendStringInfo(&buf, "%s(%s", h->base.keyword, h->relname);
 		foreach(n, h->indexnames)
 			appendStringInfo(&buf, " %s", (char *) lfirst(n));
 		appendStringInfoString(&buf, ")\n");
@@ -589,33 +560,11 @@ PlanHintDump(PlanHint *hint)
 	{
 		JoinMethodHint *h = hint->join_hints[i];
 		int				i;
-		switch(h->enforce_mask)
-		{
-			case(ENABLE_NESTLOOP):
-				appendStringInfo(&buf, "%s(", HINT_NESTLOOP);
-				break;
-			case(ENABLE_MERGEJOIN):
-				appendStringInfo(&buf, "%s(", HINT_MERGEJOIN);
-				break;
-			case(ENABLE_HASHJOIN):
-				appendStringInfo(&buf, "%s(", HINT_HASHJOIN);
-				break;
-			case(ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP):
-				appendStringInfo(&buf, "%s(", HINT_NONESTLOOP);
-				break;
-			case(ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN):
-				appendStringInfo(&buf, "%s(", HINT_NOMERGEJOIN);
-				break;
-			case(ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN):
-				appendStringInfo(&buf, "%s(", HINT_NOHASHJOIN);
-				break;
-			case(ENABLE_ALL_JOIN):
-				continue;
-			default:
-				appendStringInfoString(&buf, "\?\?\?(");
-				break;
-		}
-		appendStringInfo(&buf, "%s", h->relnames[0]);
+
+		if (h->enforce_mask == ENABLE_ALL_JOIN)
+			continue;
+
+		appendStringInfo(&buf, "%s(%s", h->base.keyword, h->relnames[0]);
 		for (i = 1; i < h->nrels; i++)
 			appendStringInfo(&buf, " %s", h->relnames[i]);
 		appendStringInfoString(&buf, ")\n");
@@ -639,8 +588,6 @@ PlanHintDump(PlanHint *hint)
 	}
 	if (!is_first)
 		appendStringInfoString(&buf, ")\n");
-
-	appendStringInfoString(&buf, "*/");
 
 	elog(LOG, "%s", buf.data);
 
@@ -684,25 +631,23 @@ JoinMethodHintCmp(const void *a, const void *b, bool order)
 {
 	const JoinMethodHint   *hinta = *((const JoinMethodHint **) a);
 	const JoinMethodHint   *hintb = *((const JoinMethodHint **) b);
+	int						i;
 
-	if (hinta->nrels == hintb->nrels)
+	if (hinta->nrels != hintb->nrels)
+		return hinta->nrels - hintb->nrels;
+
+	for (i = 0; i < hinta->nrels; i++)
 	{
-		int	i;
-		for (i = 0; i < hinta->nrels; i++)
-		{
-			int	result;
-			if ((result = RelnameCmp(&hinta->relnames[i], &hintb->relnames[i])) != 0)
-				return result;
-		}
-
-		/* ヒント句で指定した順を返す */
-		if (order)
-			return hinta->base.hint_str - hintb->base.hint_str;
-		else
-			return 0;
+		int	result;
+		if ((result = RelnameCmp(&hinta->relnames[i], &hintb->relnames[i])) != 0)
+			return result;
 	}
 
-	return hinta->nrels - hintb->nrels;
+	/* ヒント句で指定した順を返す */
+	if (order)
+		return hinta->base.hint_str - hintb->base.hint_str;
+	else
+		return 0;
 }
 
 static int
@@ -776,28 +721,28 @@ set_config_options(List *options, GucContext context)
 	return save_nestlevel;
 }
 
-#define SET_CONFIG_OPTION(name, enforce_mask, type_bits) \
+#define SET_CONFIG_OPTION(name, type_bits) \
 	set_config_option((name), \
-		((enforce_mask) & (type_bits)) ? "true" : "false", \
+		(enforce_mask & (type_bits)) ? "true" : "false", \
 		context, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR)
 
 static void
 set_join_config_options(unsigned char enforce_mask, GucContext context)
 {
-	SET_CONFIG_OPTION("enable_nestloop", enforce_mask, ENABLE_NESTLOOP);
-	SET_CONFIG_OPTION("enable_mergejoin", enforce_mask, ENABLE_MERGEJOIN);
-	SET_CONFIG_OPTION("enable_hashjoin", enforce_mask, ENABLE_HASHJOIN);
+	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
+	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
+	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
 }
 
 static void
 set_scan_config_options(unsigned char enforce_mask, GucContext context)
 {
-	SET_CONFIG_OPTION("enable_seqscan", enforce_mask, ENABLE_SEQSCAN);
-	SET_CONFIG_OPTION("enable_indexscan", enforce_mask, ENABLE_INDEXSCAN);
-	SET_CONFIG_OPTION("enable_bitmapscan", enforce_mask, ENABLE_BITMAPSCAN);
-	SET_CONFIG_OPTION("enable_tidscan", enforce_mask, ENABLE_TIDSCAN);
+	SET_CONFIG_OPTION("enable_seqscan", ENABLE_SEQSCAN);
+	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
+	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
+	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
 #if PG_VERSION_NUM >= 90200
-	SET_CONFIG_OPTION("enable_indexonlyscan", enforce_mask, ENABLE_INDEXSCAN);
+	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXSCAN);
 #endif
 }
 
@@ -1355,7 +1300,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 */
 	if (!pg_hint_plan_enable ||
 		(global = parse_head_comment(parse)) == NULL ||
-		PlanHintIsempty(global))
+		PlanHintIsEmpty(global))
 	{
 		PlanHintDelete(global);
 		global = NULL;
