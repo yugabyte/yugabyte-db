@@ -46,6 +46,9 @@ EXPLAIN (COSTS false) EXECUTE p2;
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -88,6 +91,9 @@ EXPLAIN (COSTS false) EXECUTE p3 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -105,6 +111,9 @@ EXPLAIN (COSTS false) EXECUTE p3 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -122,6 +131,9 @@ EXPLAIN (COSTS false) EXECUTE p3 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -139,6 +151,9 @@ EXPLAIN (COSTS false) EXECUTE p3 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -156,6 +171,9 @@ EXPLAIN (COSTS false) EXECUTE p3 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -210,6 +228,9 @@ EXPLAIN (COSTS false) EXECUTE p4 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -227,6 +248,9 @@ EXPLAIN (COSTS false) EXECUTE p4 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -244,6 +268,9 @@ EXPLAIN (COSTS false) EXECUTE p4 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -261,6 +288,9 @@ EXPLAIN (COSTS false) EXECUTE p4 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -278,6 +308,9 @@ EXPLAIN (COSTS false) EXECUTE p4 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -295,6 +328,9 @@ EXPLAIN (COSTS false) EXECUTE p4 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
                    QUERY PLAN                    
 -------------------------------------------------
@@ -395,10 +431,16 @@ EXPLAIN (COSTS false) EXECUTE p5 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -416,6 +458,9 @@ EXPLAIN (COSTS false) EXECUTE p5 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -433,6 +478,9 @@ EXPLAIN (COSTS false) EXECUTE p5 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -548,6 +596,9 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -565,6 +616,9 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -582,6 +636,9 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -599,6 +656,9 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -616,6 +676,9 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN             
 ------------------------------------
@@ -633,6 +696,9 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
                    QUERY PLAN                    
 -------------------------------------------------

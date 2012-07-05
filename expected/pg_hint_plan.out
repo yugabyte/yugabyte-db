@@ -68,6 +68,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -82,8 +85,11 @@ Set(enable_indexscan off)
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
-Set(enable_indexscan off)
 Set(enable_hashjoin off)
+Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN           
 -------------------------------
@@ -102,6 +108,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -123,6 +132,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -140,9 +152,12 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
-Set(enable_nestloop off)
 Set(enable_mergejoin off)
+Set(enable_nestloop off)
 Set(enable_seqscan off)
+not used hint:
+duplication hint:
+error hint:
 
                  QUERY PLAN                 
 --------------------------------------------
@@ -159,6 +174,9 @@ INFO:  invalid value for parameter "work_mem": "1M"
 HINT:  Valid units for this parameter are "kB", "MB", and "GB".
 LOG:  pg_hint_plan:
 used hint:
+not used hint:
+duplication hint:
+error hint:
 Set(work_mem 1M)
 
               QUERY PLAN              
@@ -174,6 +192,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 Set(work_mem 1MB)
+not used hint:
+duplication hint:
+error hint:
 
               QUERY PLAN              
 --------------------------------------
@@ -212,6 +233,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -228,6 +252,9 @@ LOG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
 IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
 
                  QUERY PLAN                 
 --------------------------------------------
@@ -243,6 +270,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
 
               QUERY PLAN              
 --------------------------------------
@@ -258,6 +288,9 @@ LOG:  pg_hint_plan:
 used hint:
 NoSeqScan(t1)
 BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
 
               QUERY PLAN              
 --------------------------------------
@@ -272,6 +305,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 NoIndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -287,6 +323,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
 LOG:  pg_hint_plan:
 used hint:
 NoBitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
 
          QUERY PLAN         
 ----------------------------
@@ -302,6 +341,9 @@ EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1
 LOG:  pg_hint_plan:
 used hint:
 TidScan(t4)
+not used hint:
+duplication hint:
+error hint:
 
                   QUERY PLAN                   
 -----------------------------------------------
@@ -319,6 +361,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1
 LOG:  pg_hint_plan:
 used hint:
 NoTidScan(t1)
+not used hint:
+duplication hint:
+error hint:
 
               QUERY PLAN               
 ---------------------------------------
@@ -334,6 +379,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -349,6 +397,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
               QUERY PLAN              
 --------------------------------------
@@ -363,6 +414,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
 NoMergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
           QUERY PLAN          
 ------------------------------
@@ -378,6 +432,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 LOG:  pg_hint_plan:
 used hint:
 MergeJoin(t1 t3)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN              
 -------------------------------------
@@ -394,6 +451,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 LOG:  pg_hint_plan:
 used hint:
 NestLoop(t1 t3)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN              
 -------------------------------------
@@ -408,6 +468,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
 LOG:  pg_hint_plan:
 used hint:
 NoHashJoin(t1 t3)
+not used hint:
+duplication hint:
+error hint:
 
              QUERY PLAN              
 -------------------------------------
@@ -422,6 +485,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 MergeJoin(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -444,6 +510,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
 
                        QUERY PLAN                       
 --------------------------------------------------------
@@ -468,6 +537,9 @@ LOG:  pg_hint_plan:
 used hint:
 IndexScan(t3)
 NestLoop(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -490,6 +562,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 NoNestLoop(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -512,6 +587,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 Leading(t3 t4)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -534,6 +612,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 Leading(t3 t4 t1)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -556,6 +637,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 Leading(t3 t4 t1 t2)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -579,22 +663,25 @@ INFO:  hint syntax error at or near "Leading(t3 t4 t1 t2 t1)"
 DETAIL:  In Leading hint, specified relation name 4 or less.
 LOG:  pg_hint_plan:
 used hint:
+not used hint:
+duplication hint:
+error hint:
 Leading(t3 t4 t1 t2 t1)
 
                     QUERY PLAN                    
 --------------------------------------------------
- Nested Loop
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
    ->  Merge Join
-         Merge Cond: (t3.id = t1.id)
+         Merge Cond: (t1.id = t3.id)
          ->  Merge Join
-               Merge Cond: (t3.id = t4.id)
-               ->  Index Scan using t3_pkey on t3
-               ->  Sort
-                     Sort Key: t4.id
-                     ->  Seq Scan on t4
-         ->  Index Scan using t1_pkey on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
 (12 rows)
 
 /*+Leading(t3 t4 t4)*/
@@ -602,6 +689,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id
 LOG:  pg_hint_plan:
 used hint:
 Leading(t3 t4 t4)
+not used hint:
+duplication hint:
+error hint:
 
                     QUERY PLAN                    
 --------------------------------------------------
@@ -634,7 +724,10 @@ INFO:  hint syntax error at or near "HashJoin(t1 t2)"
 DETAIL:  Relation "t2" does not exist.
 LOG:  pg_hint_plan:
 used hint:
+not used hint:
 HashJoin(t1 t2)
+duplication hint:
+error hint:
 
                   QUERY PLAN                   
 -----------------------------------------------
@@ -649,6 +742,9 @@ EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) 
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(*VALUES* t1)
+not used hint:
+duplication hint:
+error hint:
 
                 QUERY PLAN                 
 -------------------------------------------
@@ -663,9 +759,12 @@ HashJoin(*VALUES* t1)
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(*VALUES*)
 IndexScan(t1)
 HashJoin(*VALUES* t1)
+not used hint:
+IndexScan(*VALUES*)
+duplication hint:
+error hint:
 
                 QUERY PLAN                 
 -------------------------------------------
