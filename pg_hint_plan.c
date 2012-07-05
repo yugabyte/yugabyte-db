@@ -1533,9 +1533,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
 	if ((hint = find_scan_hint(root->simple_rte_array[rel->relid])) == NULL)
 	{
-	/* TODO
 		set_scan_config_options(global->init_scan_mask, global->context);
-	*/
 		return;
 	}
 
@@ -1549,6 +1547,9 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		return;
 	}
+
+	set_scan_config_options(hint->enforce_mask, global->context);
+	hint->base.state = HINT_STATE_USED;
 
 	/* 後でパスを作り直すため、ここではなにもしない */
 	if (hint->indexnames == NULL)
@@ -1581,8 +1582,6 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		pfree(indexname);
 	}
-
-	hint->base.state = HINT_STATE_USED;
 }
 
 static Index
@@ -1619,7 +1618,7 @@ scan_relid_aliasname(PlannerInfo *root, char *aliasname, bool check_ambiguous, c
  * relidビットマスクと一致するヒントを探す
  */
 static JoinMethodHint *
-scan_join_hint(Relids joinrelids)
+find_join_hint(Relids joinrelids)
 {
 	List	   *join_hint;
 	ListCell   *l;
@@ -1714,7 +1713,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int level, List *initial
 		}
 
 		/* Leading で指定した組み合わせ以外の join hint を削除する */
-		hint = scan_join_hint(joinrelids);
+		hint = find_join_hint(joinrelids);
 		list_free(plan->join_hint_level[njoinrels]);
 		if (hint)
 			plan->join_hint_level[njoinrels] = lappend(NIL, hint);
@@ -1762,60 +1761,46 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int level, List *initial
 static void
 rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_rels)
 {
-	int	i;
-	int	save_nestlevel = 0;
+	ListCell   *l;
 
-	for (i = 0; i < plan->nscan_hints; i++)
+	foreach(l, initial_rels)
 	{
-		ScanMethodHint *hint = plan->scan_hints[i];
-		ListCell	   *l;
+		RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
+		RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
+		ScanMethodHint *hint;
 
-		if (hint->enforce_mask == ENABLE_SEQSCAN)
+		/*
+		 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成
+		 * する。
+		 */
+		if (rel->reloptkind != RELOPT_BASEREL || rte->rtekind == RTE_VALUES)
 			continue;
 
-		if (!hint_state_enabled(hint))
-			continue;
-
-		foreach(l, initial_rels)
+		/*
+		 * scan method hint が指定されていなければ、初期値のGUCパラメータでscan
+		 * path を再生成する。
+		 */
+		if ((hint = find_scan_hint(rte)) == NULL || !hint_state_enabled(hint))
+			set_scan_config_options(plan->init_scan_mask, plan->context);
+		else
 		{
-			RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
-			RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
-
 			/*
-			 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成
-			 * する。
-			 */
-			if (rel->reloptkind != RELOPT_BASEREL ||
-				rte->rtekind == RTE_VALUES ||
-				RelnameCmp(&hint->relname, &rte->eref->aliasname) != 0)
-				continue;
-
-			/*
-			 * 複数のスキャンヒントが指定されていた場合でも、1つのネストレベルで
-			 * スキャン関連のGUCパラメータを変更する。
-			 */
-			if (save_nestlevel == 0)
-				save_nestlevel = NewGUCNestLevel();
-
-			/*
-			 * TODO ヒントで指定されたScan方式が最安価でない場合のみ、Pathを生成
+			 * XXX ヒントで指定されたScan方式が最安価でない場合のみ、Pathを生成
 			 * しなおす
 			 */
 			set_scan_config_options(hint->enforce_mask, plan->context);
-
-			rel->pathlist = NIL;	/* TODO 解放 */
-			set_plain_rel_pathlist(root, rel, rte);
-			hint->base.state = HINT_STATE_USED;
-
-			break;
 		}
+
+		rel->pathlist = NIL;	/* TODO 解放の必要はある? */
+		set_plain_rel_pathlist(root, rel, rte);
+		if (hint)
+			hint->base.state = HINT_STATE_USED;
 	}
 
 	/*
 	 * Restore the GUC variables we set above.
 	 */
-	if (save_nestlevel != 0)
-		AtEOXact_GUC(true, save_nestlevel);
+	set_scan_config_options(plan->init_scan_mask, plan->context);
 }
 
 /*
@@ -1834,7 +1819,7 @@ pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2
 	int				save_nestlevel;
 
 	joinrelids = bms_union(rel1->relids, rel2->relids);
-	hint = scan_join_hint(joinrelids);
+	hint = find_join_hint(joinrelids);
 	bms_free(joinrelids);
 
 	if (!hint)
