@@ -2789,3 +2789,88 @@ error hint:
          Filter: (ctid = '(1,1)'::tid)
 (6 rows)
 
+-- additional test
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: (id < 10)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: (id < 10)
+(8 rows)
+
+/*+BitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id < 10)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id < 10)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: ((id < 10) AND (id = t2.id))
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: ((id < 10) AND (id = t2.id))
+(11 rows)
+
+-- outer join test
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+          QUERY PLAN          
+------------------------------
+ Hash Full Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Full Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Full Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
