@@ -577,14 +577,21 @@ EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id 
 (6 rows)
 
 EXPLAIN (COSTS false) EXECUTE p7 (10);
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
                  QUERY PLAN                 
 --------------------------------------------
  Aggregate
-   ->  Merge Join
-         Merge Cond: (t1.id = t2.id)
+   ->  Nested Loop
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id > $1)
          ->  Index Scan using t2_pkey on t2
+               Index Cond: (id = t1.id)
 (6 rows)
 
 /*+ HashJoin(t1 t2) */
@@ -592,11 +599,11 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
                  QUERY PLAN                 
 --------------------------------------------
  Aggregate
-   ->  Merge Join
-         Merge Cond: (t1.id = t2.id)
+   ->  Nested Loop
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id > $1)
          ->  Index Scan using t2_pkey on t2
+               Index Cond: (id = t1.id)
 (6 rows)
 
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
@@ -616,32 +623,28 @@ EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id 
 EXPLAIN (COSTS false) EXECUTE p7 (10);
 LOG:  pg_hint_plan:
 used hint:
-HashJoin(t1 t2)
+NestLoop(t1 t2)
 not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN                 
---------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Aggregate
-   ->  Hash Join
-         Hash Cond: (t1.id = t2.id)
+   ->  Nested Loop
+         ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
-               Index Cond: (id > $1)
-         ->  Hash
-               ->  Seq Scan on t2
-(7 rows)
+               Index Cond: ((id > $1) AND (id = t2.id))
+(5 rows)
 
 /*+ NestLoop(t1 t2) */
 EXPLAIN (COSTS false) EXECUTE p7 (10);
-                 QUERY PLAN                 
---------------------------------------------
+                       QUERY PLAN                       
+--------------------------------------------------------
  Aggregate
-   ->  Hash Join
-         Hash Cond: (t1.id = t2.id)
+   ->  Nested Loop
+         ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
-               Index Cond: (id > $1)
-         ->  Hash
-               ->  Seq Scan on t2
-(7 rows)
+               Index Cond: ((id > $1) AND (id = t2.id))
+(5 rows)
 

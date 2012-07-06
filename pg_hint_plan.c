@@ -9,6 +9,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "commands/prepare.h"
 #include "miscadmin.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
@@ -18,6 +19,7 @@
 #include "optimizer/plancat.h"
 #include "optimizer/planner.h"
 #include "tcop/tcopprot.h"
+#include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 
@@ -205,6 +207,9 @@ typedef struct HintParser
 void		_PG_init(void);
 void		_PG_fini(void);
 
+void pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
+								 ParamListInfo params, bool isTopLevel,
+								 DestReceiver *dest, char *completionTag);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 							   ParamListInfo boundParams);
 static void pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
@@ -259,12 +264,19 @@ static const struct config_enum_entry parse_messages_level_options[] = {
 };
 
 /* Saved hook values in case of unload */
-static planner_hook_type prev_planner_hook = NULL;
+static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+static planner_hook_type prev_planner = NULL;
 static get_relation_info_hook_type prev_get_relation_info = NULL;
 static join_search_hook_type prev_join_search = NULL;
 
 /* フック関数をまたがって使用する情報を管理する */
 static PlanHint *global = NULL;
+
+/*
+ * EXECUTEコマンド実行時に、ステートメント名を格納する。
+ * その他のコマンドの場合は、NULLに設定る。
+ */
+static char	   *stmt_name = NULL;
 
 static const HintParser parsers[] = {
 	{HINT_SEQSCAN, true, ScanMethodHintCreate},
@@ -332,7 +344,9 @@ _PG_init(void)
 							 NULL);
 
 	/* Install hooks. */
-	prev_planner_hook = planner_hook;
+	prev_ProcessUtility = ProcessUtility_hook;
+	ProcessUtility_hook = pg_hint_plan_ProcessUtility;
+	prev_planner = planner_hook;
 	planner_hook = pg_hint_plan_planner;
 	prev_get_relation_info = get_relation_info_hook;
 	get_relation_info_hook = pg_hint_plan_get_relation_info;
@@ -348,9 +362,71 @@ void
 _PG_fini(void)
 {
 	/* Uninstall hooks. */
-	planner_hook = prev_planner_hook;
+	ProcessUtility_hook = prev_ProcessUtility;
+	planner_hook = prev_planner;
 	get_relation_info_hook = prev_get_relation_info;
 	join_search_hook = prev_join_search;
+}
+
+void
+pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
+							ParamListInfo params, bool isTopLevel,
+							DestReceiver *dest, char *completionTag)
+{
+	Node   *node;
+
+	if (!pg_hint_plan_enable)
+	{
+		if (prev_ProcessUtility)
+			(*prev_ProcessUtility) (parsetree, queryString, params,
+									isTopLevel, dest, completionTag);
+		else
+			standard_ProcessUtility(parsetree, queryString, params,
+									isTopLevel, dest, completionTag);
+
+		return;
+	}
+
+	node = parsetree;
+	if (IsA(node , ExplainStmt))
+	{
+		/*
+		 * EXPLAIN対象のクエリのパースツリーを取得する
+		 */
+		ExplainStmt	   *stmt;
+		Query		   *query;
+
+		stmt = (ExplainStmt *) node;
+
+		Assert(IsA(stmt->query, Query));
+		query = (Query *) stmt->query;
+
+		if (query->commandType == CMD_UTILITY && query->utilityStmt != NULL)
+			node = query->utilityStmt;
+	}
+
+	/*
+	 * EXECUTEコマンドならば、PREPARE時に指定されたクエリ文字列を取得し、ヒント
+	 * 句の候補として設定する
+	 */
+	if (IsA(node , ExecuteStmt))
+	{
+		ExecuteStmt		   *stmt;
+
+		stmt = (ExecuteStmt *) node;
+		stmt_name = stmt->name;
+	}
+	else
+		stmt_name = NULL;
+
+	if (prev_ProcessUtility)
+		(*prev_ProcessUtility) (parsetree, queryString, params,
+								isTopLevel, dest, completionTag);
+	else
+		standard_ProcessUtility(parsetree, queryString, params,
+								isTopLevel, dest, completionTag);
+
+	stmt_name = NULL;
 }
 
 static Hint *
@@ -1073,7 +1149,16 @@ parse_head_comment(Query *parse)
 	PlanHint	   *plan;
 
 	/* get client-supplied query string. */
-	p = debug_query_string;
+	if (stmt_name)
+	{
+		PreparedStatement  *entry;
+
+		entry = FetchPreparedStatement(stmt_name, true);
+		p = entry->plansource->query_string;
+	}
+	else
+		p = debug_query_string;
+
 	if (p == NULL)
 		return NULL;
 
@@ -1419,8 +1504,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	{
 		global = NULL;
 
-		if (prev_planner_hook)
-			return (*prev_planner_hook) (parse, cursorOptions, boundParams);
+		if (prev_planner)
+			return (*prev_planner) (parse, cursorOptions, boundParams);
 		else
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
@@ -1448,8 +1533,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (enable_hashjoin)
 		global->init_join_mask |= ENABLE_HASHJOIN;
 
-	if (prev_planner_hook)
-		result = (*prev_planner_hook) (parse, cursorOptions, boundParams);
+	if (prev_planner)
+		result = (*prev_planner) (parse, cursorOptions, boundParams);
 	else
 		result = standard_planner(parse, cursorOptions, boundParams);
 
