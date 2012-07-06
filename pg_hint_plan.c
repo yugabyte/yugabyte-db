@@ -174,6 +174,7 @@ struct PlanHint
 	int				njoin_hints;		/* # of valid join hints */
 	int				max_join_hints;		/* # of slots for join hints */
 	JoinMethodHint **join_hints;		/* parsed join hints */
+	int				init_join_mask;		/* initial value join parameter */
 
 	int				nlevel;				/* # of relations to be joined */
 	List		  **join_hint_level;
@@ -482,13 +483,14 @@ PlanHintCreate(void)
 
 	hint = palloc(sizeof(PlanHint));
 	hint->hint_str = NULL;
-	hint->init_scan_mask = 0;
 	hint->nscan_hints = 0;
 	hint->max_scan_hints = 0;
 	hint->scan_hints = NULL;
+	hint->init_scan_mask = 0;
 	hint->njoin_hints = 0;
 	hint->max_join_hints = 0;
 	hint->join_hints = NULL;
+	hint->init_join_mask = 0;
 	hint->nlevel = 0;
 	hint->join_hint_level = NULL;
 	hint->nleading_hints = 0;
@@ -1439,30 +1441,12 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (enable_indexonlyscan)
 		global->init_scan_mask |= ENABLE_INDEXONLYSCAN;
 #endif
-
-	/*
-	 * TODO ビュー定義で指定したテーブル数が1つの場合にもこのタイミングでGUCを変更する必
-	 * 要がある。
-	 */
-	if (list_length(parse->rtable) == 1 &&
-		((RangeTblEntry *) linitial(parse->rtable))->rtekind == RTE_RELATION)
-	{
-		int	i;
-		RangeTblEntry  *rte = linitial(parse->rtable);
-		
-		for (i = 0; i < global->nscan_hints; i++)
-		{
-			ScanMethodHint *hint = global->scan_hints[i];
-
-			if (!hint_state_enabled(hint))
-				continue;
-
-			if (RelnameCmp(&rte->eref->aliasname, &hint->relname) != 0)
-				parse_ereport(hint->base.hint_str, ("Relation \"%s\" does not exist.", hint->relname));
-
-			set_scan_config_options(hint->enforce_mask, global->context);
-		}
-	}
+	if (enable_nestloop)
+		global->init_join_mask |= ENABLE_NESTLOOP;
+	if (enable_mergejoin)
+		global->init_join_mask |= ENABLE_MERGEJOIN;
+	if (enable_hashjoin)
+		global->init_join_mask |= ENABLE_HASHJOIN;
 
 	if (prev_planner_hook)
 		result = (*prev_planner_hook) (parse, cursorOptions, boundParams);
@@ -1495,9 +1479,22 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
  * aliasnameと一致するSCANヒントを探す
  */
 static ScanMethodHint *
-find_scan_hint(RangeTblEntry *rte)
+find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 {
+	RangeTblEntry  *rte;
 	int	i;
+
+	/* RELOPT_BASEREL でなければ、scan method ヒントが適用できない。 */
+	if (rel->reloptkind != RELOPT_BASEREL)
+		return NULL;
+
+	rte = root->simple_rte_array[rel->relid];
+
+	/*
+	 * VALUESリストはValuesScanのみが選択できるため、ヒントが適用できない。
+	 */
+	if (rte->rtekind == RTE_VALUES)
+		return NULL;
 
 	for (i = 0; i < global->nscan_hints; i++)
 	{
@@ -1529,15 +1526,15 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (!global)
 		return;
 
-	if (rel->reloptkind != RELOPT_BASEREL)
-		return;
-
 	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
-	if ((hint = find_scan_hint(root->simple_rte_array[rel->relid])) == NULL)
+	if ((hint = find_scan_hint(root, rel)) == NULL)
 	{
 		set_scan_config_options(global->init_scan_mask, global->context);
 		return;
 	}
+
+	set_scan_config_options(hint->enforce_mask, global->context);
+	hint->base.state = HINT_STATE_USED;
 
 	/* インデックスを全て削除し、スキャンに使えなくする */
 	if (hint->enforce_mask == ENABLE_SEQSCAN ||
@@ -1549,9 +1546,6 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		return;
 	}
-
-	set_scan_config_options(hint->enforce_mask, global->context);
-	hint->base.state = HINT_STATE_USED;
 
 	/* 後でパスを作り直すため、ここではなにもしない */
 	if (hint->indexnames == NULL)
@@ -1782,21 +1776,16 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 		 * scan method hint が指定されていなければ、初期値のGUCパラメータでscan
 		 * path を再生成する。
 		 */
-		if ((hint = find_scan_hint(rte)) == NULL || !hint_state_enabled(hint))
+		if ((hint = find_scan_hint(root, rel)) == NULL)
 			set_scan_config_options(plan->init_scan_mask, plan->context);
 		else
 		{
-			/*
-			 * XXX ヒントで指定されたScan方式が最安価でない場合のみ、Pathを生成
-			 * しなおす
-			 */
 			set_scan_config_options(hint->enforce_mask, plan->context);
+			hint->base.state = HINT_STATE_USED;
 		}
 
 		rel->pathlist = NIL;	/* TODO 解放の必要はある? */
 		set_plain_rel_pathlist(root, rel, rte);
-		if (hint)
-			hint->base.state = HINT_STATE_USED;
 	}
 
 	/*
@@ -1882,10 +1871,11 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rel
 #define add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype, sjinfo, restrictlist) \
 do { \
 	ScanMethodHint *hint = NULL; \
-	if ((innerrel)->reloptkind == RELOPT_BASEREL && \
-		((root)->simple_rte_array[(innerrel)->relid])->rtekind != RTE_VALUES && \
-		(hint = find_scan_hint((root)->simple_rte_array[(innerrel)->relid])) != NULL) \
+	if ((hint = find_scan_hint((root), (innerrel))) != NULL) \
+	{ \
 		set_scan_config_options(hint->enforce_mask, global->context); \
+		hint->base.state = HINT_STATE_USED; \
+	} \
 	add_paths_to_joinrel((root), (joinrel), (outerrel), (innerrel), (jointype), (sjinfo), (restrictlist)); \
 	if (hint != NULL) \
 		set_scan_config_options(global->init_scan_mask, global->context); \
