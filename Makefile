@@ -23,5 +23,5 @@ subclean:
 
 installcheck: expected/base_plan.out expected/prepare.out
 
-# pg_hint_plan.c includes core.c
-pg_hint_plan.o: core.c
+# pg_hint_plan.c includes core.c and make_join_rel.c
+pg_hint_plan.o: core.c make_join_rel.c

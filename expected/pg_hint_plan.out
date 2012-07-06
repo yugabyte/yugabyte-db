@@ -274,13 +274,15 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Nested Loop
    ->  Seq Scan on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(6 rows)
 
 /*+BitmapScan(t2)NoSeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -292,13 +294,15 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Nested Loop
    ->  Index Scan using t1_pkey on t1
-   ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = t1.id)
-(4 rows)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(6 rows)
 
 /*+NoIndexScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -775,6 +779,7 @@ error hint:
          ->  Values Scan on "*VALUES*"
 (5 rows)
 
+-- single table scan hint test
 EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
                                              QUERY PLAN                                              
 -----------------------------------------------------------------------------------------------------

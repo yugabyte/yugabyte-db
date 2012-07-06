@@ -19,6 +19,7 @@
 #include "optimizer/planner.h"
 #include "tcop/tcopprot.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -223,12 +224,13 @@ static Hint *SetHintCreate(char *hint_str, char *keyword);
 static void SetHintDelete(SetHint *hint);
 static const char *SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str);
 
-RelOptInfo *standard_join_search_org(PlannerInfo *root, int levels_needed, List *initial_rels);
+RelOptInfo *pg_hint_plan_standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels);
 void pg_hint_plan_join_search_one_level(PlannerInfo *root, int level);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
+RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2);
 
 
 /* GUC variables */
@@ -1804,14 +1806,13 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 }
 
 /*
- * src/backend/optimizer/path/joinrels.c
- * export make_join_rel() をラップする関数
+ * make_join_rel() をラップする関数
  * 
  * ヒントにしたがって、enabele_* パラメータを変更した上で、make_join_rel()を
  * 呼び出す。
  */
 static RelOptInfo *
-pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
+make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
 	Relids			joinrelids;
 	JoinMethodHint *hint;
@@ -1823,13 +1824,13 @@ pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2
 	bms_free(joinrelids);
 
 	if (!hint)
-		return make_join_rel(root, rel1, rel2);
+		return pg_hint_plan_make_join_rel(root, rel1, rel2);
 
 	save_nestlevel = NewGUCNestLevel();
 
 	set_join_config_options(hint->enforce_mask, global->context);
 
-	rel = make_join_rel(root, rel1, rel2);
+	rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
 	hint->base.state = HINT_STATE_USED;
 
 	/*
@@ -1868,10 +1869,25 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rel
 	if (enable_geqo && levels_needed >= geqo_threshold)
 		return geqo(root, levels_needed, initial_rels);
 
-	return standard_join_search_org(root, levels_needed, initial_rels);
+	return pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
 }
 
-#define standard_join_search standard_join_search_org
+#define standard_join_search pg_hint_plan_standard_join_search
 #define join_search_one_level pg_hint_plan_join_search_one_level
-#define make_join_rel pg_hint_plan_make_join_rel
+#define make_join_rel make_join_rel_wrapper
 #include "core.c"
+
+#undef make_join_rel
+#define make_join_rel pg_hint_plan_make_join_rel
+#define add_paths_to_joinrel(root, joinrel, outerrel, innerrel, jointype, sjinfo, restrictlist) \
+do { \
+	ScanMethodHint *hint = NULL; \
+	if ((innerrel)->reloptkind == RELOPT_BASEREL && \
+		((root)->simple_rte_array[(innerrel)->relid])->rtekind != RTE_VALUES && \
+		(hint = find_scan_hint((root)->simple_rte_array[(innerrel)->relid])) != NULL) \
+		set_scan_config_options(hint->enforce_mask, global->context); \
+	add_paths_to_joinrel((root), (joinrel), (outerrel), (innerrel), (jointype), (sjinfo), (restrictlist)); \
+	if (hint != NULL) \
+		set_scan_config_options(global->init_scan_mask, global->context); \
+} while(0)
+#include "make_join_rel.c"
