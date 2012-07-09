@@ -644,7 +644,34 @@ PlanHintIsEmpty(PlanHint *hint)
 	return false;
 }
 
-/* TODO オブジェクト名のクォート処理を追加 */
+static void
+dump_quote_value(StringInfo buf, const char *value)
+{
+	bool		need_quote = false;
+	const char *str;
+
+	for (str = value; *str != '\0'; str++)
+	{
+		if (isspace(*str) || *str == ')' || *str == '"' || *str == '\0')
+		{
+			need_quote = true;
+			appendStringInfoCharMacro(buf, '"');
+			break;
+		}
+	}
+
+	for (str = value; *str != '\0'; str++)
+	{
+		if (*str == '"')
+			appendStringInfoCharMacro(buf, '"');
+
+		appendStringInfoCharMacro(buf, *str);
+	}
+
+	if (need_quote)
+		appendStringInfoCharMacro(buf, '"');
+}
+
 static void
 all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus state)
 {
@@ -659,9 +686,13 @@ all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus stat
 		if (h->base.state != state)
 			continue;
 
-		appendStringInfo(buf, "%s(%s", h->base.keyword, h->relname);
+		appendStringInfo(buf, "%s(", h->base.keyword);
+		dump_quote_value(buf, h->relname);
 		foreach(l, h->indexnames)
-			appendStringInfo(buf, " %s", (char *) lfirst(l));
+		{
+			appendStringInfoCharMacro(buf, ' ');
+			dump_quote_value(buf, (char *) lfirst(l));
+		}
 		appendStringInfoString(buf, ")\n");
 	}
 
@@ -677,9 +708,13 @@ all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus stat
 		if (h->enforce_mask == ENABLE_ALL_JOIN)
 			continue;
 
-		appendStringInfo(buf, "%s(%s", h->base.keyword, h->relnames[0]);
+		appendStringInfo(buf, "%s(", h->base.keyword);
+		dump_quote_value(buf, h->relnames[0]);
 		for (j = 1; j < h->nrels; j++)
-			appendStringInfo(buf, " %s", h->relnames[j]);
+		{
+			appendStringInfoCharMacro(buf, ' ');
+			dump_quote_value(buf, h->relnames[j]);
+		}
 		appendStringInfoString(buf, ")\n");
 	}
 
@@ -690,7 +725,11 @@ all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus stat
 		if (h->base.state != state)
 			continue;
 
-		appendStringInfo(buf, "%s(%s %s)\n", HINT_SET, h->name, h->value);
+		appendStringInfo(buf, "%s(", HINT_SET);
+		dump_quote_value(buf, h->name);
+		appendStringInfoCharMacro(buf, ' ');
+		dump_quote_value(buf, h->value);
+		appendStringInfo(buf, ")\n");
 	}
 
 	for (i = 0; i < hint->nleading_hints; i++)
@@ -706,11 +745,13 @@ all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus stat
 		{
 			if (is_first)
 			{
-				appendStringInfo(buf, "%s(%s", HINT_LEADING, (char *)lfirst(l));
+				appendStringInfo(buf, "%s(", HINT_LEADING);
 				is_first = false;
 			}
 			else
-				appendStringInfo(buf, " %s", (char *)lfirst(l));
+				appendStringInfoCharMacro(buf, ' ');
+
+			dump_quote_value(buf, (char *)lfirst(l));
 		}
 		if (!is_first)
 			appendStringInfoString(buf, ")\n");
@@ -1042,7 +1083,7 @@ parse_quote_value(const char *str, char **word, char *value_type)
 			}
 		}
 		else
-			if (isspace(*str) || *str == ')' || *str == '\0')
+			if (isspace(*str) || *str == ')' || *str == '"' || *str == '\0')
 				break;
 
 		appendStringInfoCharMacro(&buf, *str++);
@@ -1056,22 +1097,6 @@ parse_quote_value(const char *str, char **word, char *value_type)
 	}
 
 	*word = buf.data;
-
-	return str;
-}
-
-static const char *
-skip_option_delimiter(const char *str)
-{
-	const char *p = str;
-
-	skip_space(str);
-
-	if (str == p)
-	{
-		parse_ereport(str, ("Must be specified space."));
-		return NULL;
-	}
 
 	return str;
 }
@@ -1434,12 +1459,6 @@ LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse, const char *st
 		skip_space(str);
 		if (*str == ')')
 			break;
-
-		if (p == str)
-		{
-			parse_ereport(str, ("Must be specified space."));
-			break;
-		}
 	}
 
 	/* テーブル指定が1つのみの場合は、ヒントはエラーとする */
@@ -1472,7 +1491,6 @@ static const char *
 SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
 {
 	if ((str = parse_quote_value(str, &hint->name, "parameter name")) == NULL ||
-		(str = skip_option_delimiter(str)) == NULL ||
 		(str = parse_quote_value(str, &hint->value, "parameter value")) == NULL)
 		return NULL;
 

@@ -3929,3 +3929,30 @@ error hint:
          Index Cond: ((id < 10) AND (id = p1.id))
 (6 rows)
 
+-- quote test
+/*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
+EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan("""t1 )	")
+IndexScan("t	2 """)
+HashJoin("""t1 )	" T3 "t	2 """)
+Set(application_name "a	a	a""	a	A")
+Leading("""t1 )	" T3 "t	2 """)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Hash Join
+   Hash Cond: ("t        2 """.id = """t1 )      ".id)
+   ->  Index Scan using t2_pkey on t2 "t 2 """
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: ("""t1 )       ".id = "T3".id)
+               ->  Seq Scan on t1 """t1 )        "
+               ->  Hash
+                     ->  Seq Scan on t3 "T3"
+(9 rows)
+
