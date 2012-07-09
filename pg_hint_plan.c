@@ -1247,7 +1247,11 @@ parse_head_comment(Query *parse)
 	{
 		if (ScanMethodHintCmp(plan->scan_hints + i,
 						plan->scan_hints + i + 1, false) == 0)
+		{
+			parse_ereport(plan->scan_hints[i]->base.hint_str,
+				("Duplicate scan method hint."));
 			plan->scan_hints[i]->base.state = HINT_STATE_DUPLICATION;
+		}
 	}
 
 	/* 重複したjoin method hintを検索する */
@@ -1256,7 +1260,11 @@ parse_head_comment(Query *parse)
 	{
 		if (JoinMethodHintCmp(plan->join_hints + i,
 						plan->join_hints + i + 1, false) == 0)
+		{
+			parse_ereport(plan->join_hints[i]->base.hint_str,
+				("Duplicate join method hint."));
 			plan->join_hints[i]->base.state = HINT_STATE_DUPLICATION;
+		}
 	}
 
 	/* 重複したSet hintを検索する */
@@ -1265,7 +1273,11 @@ parse_head_comment(Query *parse)
 	{
 		if (SetHintCmp(plan->set_hints + i,
 						plan->set_hints + i + 1, false) == 0)
+		{
+			parse_ereport(plan->set_hints[i]->base.hint_str,
+				("Duplicate set hint."));
 			plan->set_hints[i]->base.state = HINT_STATE_DUPLICATION;
+		}
 	}
 
 	/* 重複したLeading hintを検索する */
@@ -1273,7 +1285,11 @@ parse_head_comment(Query *parse)
 	{
 		if (LeadingHintCmp(plan->leading_hints + i,
 						plan->leading_hints + i + 1, false) == 0)
+		{
+			parse_ereport(plan->leading_hints[i]->base.hint_str,
+				("Duplicate leading hint."));
 			plan->leading_hints[i]->base.state = HINT_STATE_DUPLICATION;
+		}
 	}
 
 	return plan;

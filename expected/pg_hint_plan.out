@@ -3956,3 +3956,62 @@ error hint:
                      ->  Seq Scan on t3 "T3"
 (9 rows)
 
+-- duplicate hint test
+/*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+INFO:  hint syntax error at or near "SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate scan method hint.
+INFO:  hint syntax error at or near "IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate scan method hint.
+INFO:  hint syntax error at or near "BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate scan method hint.
+INFO:  hint syntax error at or near "SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate scan method hint.
+INFO:  hint syntax error at or near "IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate scan method hint.
+INFO:  hint syntax error at or near "BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate scan method hint.
+INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate join method hint.
+INFO:  hint syntax error at or near "NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate join method hint.
+INFO:  hint syntax error at or near "Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate set hint.
+INFO:  hint syntax error at or near "Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Duplicate leading hint.
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+TidScan(t2)
+MergeJoin(t1 t2)
+Set(enable_mergejoin on)
+Set(enable_seqscan on)
+Leading(t2 t1)
+not used hint:
+duplication hint:
+SeqScan(t1)
+IndexScan(t1)
+BitmapScan(t1)
+SeqScan(t2)
+IndexScan(t2)
+BitmapScan(t2)
+HashJoin(t1 t2)
+NestLoop(t1 t2)
+Set(enable_seqscan off)
+Leading(t1 t2)
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Sort
+         Sort Key: t1.id
+         ->  Tid Scan on t1
+               TID Cond: (ctid = '(1,1)'::tid)
+   ->  Sort
+         Sort Key: t2.id
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(10 rows)
+
