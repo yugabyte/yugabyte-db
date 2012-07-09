@@ -2874,3 +2874,1058 @@ error hint:
          ->  Seq Scan on t2
 (5 rows)
 
+-- inherite table test
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Tid Scan on p1_c4 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(25 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(12 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c4 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(20 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c2_pkey on p1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_pkey on p1_c3 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c4_pkey on p1_c4 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+(29 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c3 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c3_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c4 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c4_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c3_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c3_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c3_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c3_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+(47 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                     
+---------------------------------------------------
+ Result
+   ->  Append
+         ->  Tid Scan on p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c4 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(29 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(10 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+(14 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+(22 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                     
+---------------------------------------------------
+ Result
+   ->  Append
+         ->  Tid Scan on p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(14 rows)
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(25 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Merge Append
+         Sort Key: public.p1.id
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c2_pkey on p1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_pkey on p1_c3 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c4_pkey on p1_c4 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(33 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Bitmap Heap Scan on p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c1 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c2 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c2_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c3 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c3_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c4 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c4_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c1_c1 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c1_c1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c1_c2 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c1_c2_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c3_c1 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c3_c1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c3_c2 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c3_c2_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(52 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Tid Scan on p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(34 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(15 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Merge Append
+         Sort Key: public.p1.id
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(18 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Bitmap Heap Scan on p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c1 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c1_c1 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c1_c1_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+               ->  Bitmap Heap Scan on p1_c1_c2 p1
+                     Recheck Cond: ((id >= 50) AND (id <= 51))
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on p1_c1_c2_pkey
+                           Index Cond: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(27 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Tid Scan on p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(19 rows)
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                 
+-------------------------------------------
+ Index Scan using p1_pkey on p1
+   Index Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Bitmap Heap Scan on p1
+   Recheck Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on p1_pkey
+         Index Cond: ((id >= 50) AND (id <= 51))
+(5 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Tid Scan on p1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((id >= 50) AND (id <= 51))
+(3 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                 
+-------------------------------------------
+ Index Scan using p1_pkey on p1
+   Index Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Bitmap Heap Scan on p1
+   Recheck Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on p1_pkey
+         Index Cond: ((id >= 50) AND (id <= 51))
+(5 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Tid Scan on p1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((id >= 50) AND (id <= 51))
+(3 rows)
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on p1
+         Recheck Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on p1_pkey
+               Index Cond: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(8 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Tid Scan on p1
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on p1
+         Recheck Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on p1_pkey
+               Index Cond: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(8 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Tid Scan on p1
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+

@@ -11,6 +11,8 @@
 #include "postgres.h"
 #include "commands/prepare.h"
 #include "miscadmin.h"
+#include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
 #include "optimizer/cost.h"
 #include "optimizer/geqo.h"
 #include "optimizer/joininfo.h"
@@ -18,6 +20,8 @@
 #include "optimizer/paths.h"
 #include "optimizer/plancat.h"
 #include "optimizer/planner.h"
+#include "optimizer/prep.h"
+#include "optimizer/restrictinfo.h"
 #include "tcop/tcopprot.h"
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
@@ -171,6 +175,7 @@ struct PlanHint
 	int				max_scan_hints;		/* # of slots for scan hints */
 	ScanMethodHint **scan_hints;		/* parsed scan hints */
 	int				init_scan_mask;		/* initial value scan parameter */
+	Index			parent_relid;		/* inherit parent table relid */
 
 	/* for join method hints */
 	int				njoin_hints;		/* # of valid join hints */
@@ -235,7 +240,14 @@ void pg_hint_plan_join_search_one_level(PlannerInfo *root, int level);
 static void make_rels_by_clause_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static void make_rels_by_clauseless_joins(PlannerInfo *root, RelOptInfo *old_rel, ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
-static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte);
+static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+				 Index rti, RangeTblEntry *rte);
+static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+					   RangeTblEntry *rte);
+static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+						Index rti, RangeTblEntry *rte);
+static List *accumulate_append_subpath(List *subpaths, Path *path);
+static void set_dummy_rel_pathlist(RelOptInfo *rel);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2);
 
 
@@ -563,6 +575,7 @@ PlanHintCreate(void)
 	hint->max_scan_hints = 0;
 	hint->scan_hints = NULL;
 	hint->init_scan_mask = 0;
+	hint->parent_relid = 0;
 	hint->njoin_hints = 0;
 	hint->max_join_hints = 0;
 	hint->join_hints = NULL;
@@ -1611,13 +1624,36 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (!global)
 		return;
 
+	if (inhparent)
+	{
+		/* cache does relids of parent table */
+		global->parent_relid = rel->relid;
+	}
+	else if (global->parent_relid != 0)
+	{
+		/* If this rel is an appendrel child, */
+		ListCell   *l;
+
+		/* append_rel_list contains all append rels; ignore others */
+		foreach(l, root->append_rel_list)
+		{
+			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+
+			/* This rel is child table. */
+			if (appinfo->parent_relid == global->parent_relid)
+				return;
+		}
+
+		/* This rel is not inherit table. */
+		global->parent_relid = 0;
+	}
+
 	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
 	if ((hint = find_scan_hint(root, rel)) == NULL)
 	{
 		set_scan_config_options(global->init_scan_mask, global->context);
 		return;
 	}
-
 	set_scan_config_options(hint->enforce_mask, global->context);
 	hint->base.state = HINT_STATE_USED;
 
@@ -1869,8 +1905,17 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 			hint->base.state = HINT_STATE_USED;
 		}
 
-		rel->pathlist = NIL;	/* TODO 解放の必要はある? */
-		set_plain_rel_pathlist(root, rel, rte);
+		list_free_deep(rel->pathlist);
+		rel->pathlist = NIL;
+		if (rte->inh)
+		{
+			/* It's an "append relation", process accordingly */
+			set_append_rel_pathlist(root, rel, rel->relid, rte);
+		}
+		else
+		{
+			set_plain_rel_pathlist(root, rel, rte);
+		}
 	}
 
 	/*
@@ -1944,6 +1989,36 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rel
 		return geqo(root, levels_needed, initial_rels);
 
 	return pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
+}
+
+/*
+ * set_rel_pathlist
+ *	  Build access paths for a base relation
+ */
+static void
+set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+				 Index rti, RangeTblEntry *rte)
+{
+	if (rte->inh)
+	{
+		/* It's an "append relation", process accordingly */
+		set_append_rel_pathlist(root, rel, rti, rte);
+	}
+	else
+	{
+		if (rel->rtekind == RTE_RELATION)
+		{
+			if (rte->relkind == RELKIND_RELATION)
+			{
+				/* Plain relation */
+				set_plain_rel_pathlist(root, rel, rte);
+			}
+			else
+				elog(ERROR, "unexpected relkind: %c", rte->relkind);
+		}
+		else
+			elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
+	}
 }
 
 #define standard_join_search pg_hint_plan_standard_join_search

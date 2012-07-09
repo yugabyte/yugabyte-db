@@ -14,6 +14,9 @@
  * src/backend/optimizer/path/allpaths.c
  *     standard_join_search()
  *     set_plain_rel_pathlist()
+ *     set_append_rel_pathlist()
+ *     accumulate_append_subpath()
+ *     set_dummy_rel_pathlist()
  *
  * src/backend/optimizer/path/joinrels.c:
  *     join_search_one_level()
@@ -136,6 +139,396 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 	create_tidscan_paths(root, rel);
 
 	/* Now find the cheapest of the paths for this rel */
+	set_cheapest(rel);
+}
+
+/*
+ * set_append_rel_pathlist
+ *	  Build access paths for an "append relation"
+ *
+ * The passed-in rel and RTE represent the entire append relation.	The
+ * relation's contents are computed by appending together the output of
+ * the individual member relations.  Note that in the inheritance case,
+ * the first member relation is actually the same table as is mentioned in
+ * the parent RTE ... but it has a different RTE and RelOptInfo.  This is
+ * a good thing because their outputs are not the same size.
+ */
+static void
+set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
+						Index rti, RangeTblEntry *rte)
+{
+	int			parentRTindex = rti;
+	List	   *live_childrels = NIL;
+	List	   *subpaths = NIL;
+	List	   *all_child_pathkeys = NIL;
+	double		parent_rows;
+	double		parent_size;
+	double	   *parent_attrsizes;
+	int			nattrs;
+	ListCell   *l;
+
+	/*
+	 * Initialize to compute size estimates for whole append relation.
+	 *
+	 * We handle width estimates by weighting the widths of different child
+	 * rels proportionally to their number of rows.  This is sensible because
+	 * the use of width estimates is mainly to compute the total relation
+	 * "footprint" if we have to sort or hash it.  To do this, we sum the
+	 * total equivalent size (in "double" arithmetic) and then divide by the
+	 * total rowcount estimate.  This is done separately for the total rel
+	 * width and each attribute.
+	 *
+	 * Note: if you consider changing this logic, beware that child rels could
+	 * have zero rows and/or width, if they were excluded by constraints.
+	 */
+	parent_rows = 0;
+	parent_size = 0;
+	nattrs = rel->max_attr - rel->min_attr + 1;
+	parent_attrsizes = (double *) palloc0(nattrs * sizeof(double));
+
+	/*
+	 * Generate access paths for each member relation, and pick the cheapest
+	 * path for each one.
+	 */
+	foreach(l, root->append_rel_list)
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+		int			childRTindex;
+		RangeTblEntry *childRTE;
+		RelOptInfo *childrel;
+		List	   *childquals;
+		Node	   *childqual;
+		ListCell   *lcp;
+		ListCell   *parentvars;
+		ListCell   *childvars;
+
+		/* append_rel_list contains all append rels; ignore others */
+		if (appinfo->parent_relid != parentRTindex)
+			continue;
+
+		childRTindex = appinfo->child_relid;
+		childRTE = root->simple_rte_array[childRTindex];
+
+		/*
+		 * The child rel's RelOptInfo was already created during
+		 * add_base_rels_to_query.
+		 */
+		childrel = find_base_rel(root, childRTindex);
+		Assert(childrel->reloptkind == RELOPT_OTHER_MEMBER_REL);
+
+		/*
+		 * We have to copy the parent's targetlist and quals to the child,
+		 * with appropriate substitution of variables.	However, only the
+		 * baserestrictinfo quals are needed before we can check for
+		 * constraint exclusion; so do that first and then check to see if we
+		 * can disregard this child.
+		 *
+		 * As of 8.4, the child rel's targetlist might contain non-Var
+		 * expressions, which means that substitution into the quals could
+		 * produce opportunities for const-simplification, and perhaps even
+		 * pseudoconstant quals.  To deal with this, we strip the RestrictInfo
+		 * nodes, do the substitution, do const-simplification, and then
+		 * reconstitute the RestrictInfo layer.
+		 */
+		childquals = get_all_actual_clauses(rel->baserestrictinfo);
+		childquals = (List *) adjust_appendrel_attrs((Node *) childquals,
+													 appinfo);
+		childqual = eval_const_expressions(root, (Node *)
+										   make_ands_explicit(childquals));
+		if (childqual && IsA(childqual, Const) &&
+			(((Const *) childqual)->constisnull ||
+			 !DatumGetBool(((Const *) childqual)->constvalue)))
+		{
+			/*
+			 * Restriction reduces to constant FALSE or constant NULL after
+			 * substitution, so this child need not be scanned.
+			 */
+			set_dummy_rel_pathlist(childrel);
+			continue;
+		}
+		childquals = make_ands_implicit((Expr *) childqual);
+		childquals = make_restrictinfos_from_actual_clauses(root,
+															childquals);
+		childrel->baserestrictinfo = childquals;
+
+		if (relation_excluded_by_constraints(root, childrel, childRTE))
+		{
+			/*
+			 * This child need not be scanned, so we can omit it from the
+			 * appendrel.  Mark it with a dummy cheapest-path though, in case
+			 * best_appendrel_indexscan() looks at it later.
+			 */
+			set_dummy_rel_pathlist(childrel);
+			continue;
+		}
+
+		/*
+		 * CE failed, so finish copying/modifying targetlist and join quals.
+		 *
+		 * Note: the resulting childrel->reltargetlist may contain arbitrary
+		 * expressions, which normally would not occur in a reltargetlist.
+		 * That is okay because nothing outside of this routine will look at
+		 * the child rel's reltargetlist.  We do have to cope with the case
+		 * while constructing attr_widths estimates below, though.
+		 */
+		childrel->joininfo = (List *)
+			adjust_appendrel_attrs((Node *) rel->joininfo,
+								   appinfo);
+		childrel->reltargetlist = (List *)
+			adjust_appendrel_attrs((Node *) rel->reltargetlist,
+								   appinfo);
+
+		/*
+		 * We have to make child entries in the EquivalenceClass data
+		 * structures as well.	This is needed either if the parent
+		 * participates in some eclass joins (because we will want to consider
+		 * inner-indexscan joins on the individual children) or if the parent
+		 * has useful pathkeys (because we should try to build MergeAppend
+		 * paths that produce those sort orderings).
+		 */
+		if (rel->has_eclass_joins || has_useful_pathkeys(root, rel))
+			add_child_rel_equivalences(root, appinfo, rel, childrel);
+		childrel->has_eclass_joins = rel->has_eclass_joins;
+
+		/*
+		 * Note: we could compute appropriate attr_needed data for the child's
+		 * variables, by transforming the parent's attr_needed through the
+		 * translated_vars mapping.  However, currently there's no need
+		 * because attr_needed is only examined for base relations not
+		 * otherrels.  So we just leave the child's attr_needed empty.
+		 */
+
+		/* Remember which childrels are live, for MergeAppend logic below */
+		live_childrels = lappend(live_childrels, childrel);
+
+		/*
+		 * Compute the child's access paths, and add the cheapest one to the
+		 * Append path we are constructing for the parent.
+		 */
+		set_rel_pathlist(root, childrel, childRTindex, childRTE);
+
+		subpaths = accumulate_append_subpath(subpaths,
+											 childrel->cheapest_total_path);
+
+		/*
+		 * Collect a list of all the available path orderings for all the
+		 * children.  We use this as a heuristic to indicate which sort
+		 * orderings we should build MergeAppend paths for.
+		 */
+		foreach(lcp, childrel->pathlist)
+		{
+			Path	   *childpath = (Path *) lfirst(lcp);
+			List	   *childkeys = childpath->pathkeys;
+			ListCell   *lpk;
+			bool		found = false;
+
+			/* Ignore unsorted paths */
+			if (childkeys == NIL)
+				continue;
+
+			/* Have we already seen this ordering? */
+			foreach(lpk, all_child_pathkeys)
+			{
+				List	   *existing_pathkeys = (List *) lfirst(lpk);
+
+				if (compare_pathkeys(existing_pathkeys,
+									 childkeys) == PATHKEYS_EQUAL)
+				{
+					found = true;
+					break;
+				}
+			}
+			if (!found)
+			{
+				/* No, so add it to all_child_pathkeys */
+				all_child_pathkeys = lappend(all_child_pathkeys, childkeys);
+			}
+		}
+
+		/*
+		 * Accumulate size information from each child.
+		 */
+		if (childrel->rows > 0)
+		{
+			parent_rows += childrel->rows;
+			parent_size += childrel->width * childrel->rows;
+
+			/*
+			 * Accumulate per-column estimates too.  We need not do anything
+			 * for PlaceHolderVars in the parent list.  If child expression
+			 * isn't a Var, or we didn't record a width estimate for it, we
+			 * have to fall back on a datatype-based estimate.
+			 *
+			 * By construction, child's reltargetlist is 1-to-1 with parent's.
+			 */
+			forboth(parentvars, rel->reltargetlist,
+					childvars, childrel->reltargetlist)
+			{
+				Var		   *parentvar = (Var *) lfirst(parentvars);
+				Node	   *childvar = (Node *) lfirst(childvars);
+
+				if (IsA(parentvar, Var))
+				{
+					int			pndx = parentvar->varattno - rel->min_attr;
+					int32		child_width = 0;
+
+					if (IsA(childvar, Var))
+					{
+						int		cndx = ((Var *) childvar)->varattno - childrel->min_attr;
+
+						child_width = childrel->attr_widths[cndx];
+					}
+					if (child_width <= 0)
+						child_width = get_typavgwidth(exprType(childvar),
+													  exprTypmod(childvar));
+					Assert(child_width > 0);
+					parent_attrsizes[pndx] += child_width * childrel->rows;
+				}
+			}
+		}
+	}
+
+	/*
+	 * Save the finished size estimates.
+	 */
+	rel->rows = parent_rows;
+	if (parent_rows > 0)
+	{
+		int			i;
+
+		rel->width = rint(parent_size / parent_rows);
+		for (i = 0; i < nattrs; i++)
+			rel->attr_widths[i] = rint(parent_attrsizes[i] / parent_rows);
+	}
+	else
+		rel->width = 0;			/* attr_widths should be zero already */
+
+	/*
+	 * Set "raw tuples" count equal to "rows" for the appendrel; needed
+	 * because some places assume rel->tuples is valid for any baserel.
+	 */
+	rel->tuples = parent_rows;
+
+	pfree(parent_attrsizes);
+
+	/*
+	 * Next, build an unordered Append path for the rel.  (Note: this is
+	 * correct even if we have zero or one live subpath due to constraint
+	 * exclusion.)
+	 */
+	add_path(rel, (Path *) create_append_path(rel, subpaths));
+
+	/*
+	 * Next, build MergeAppend paths based on the collected list of child
+	 * pathkeys.  We consider both cheapest-startup and cheapest-total cases,
+	 * ie, for each interesting ordering, collect all the cheapest startup
+	 * subpaths and all the cheapest total paths, and build a MergeAppend path
+	 * for each list.
+	 */
+	foreach(l, all_child_pathkeys)
+	{
+		List	   *pathkeys = (List *) lfirst(l);
+		List	   *startup_subpaths = NIL;
+		List	   *total_subpaths = NIL;
+		bool		startup_neq_total = false;
+		ListCell   *lcr;
+
+		/* Select the child paths for this ordering... */
+		foreach(lcr, live_childrels)
+		{
+			RelOptInfo *childrel = (RelOptInfo *) lfirst(lcr);
+			Path	   *cheapest_startup,
+					   *cheapest_total;
+
+			/* Locate the right paths, if they are available. */
+			cheapest_startup =
+				get_cheapest_path_for_pathkeys(childrel->pathlist,
+											   pathkeys,
+											   STARTUP_COST);
+			cheapest_total =
+				get_cheapest_path_for_pathkeys(childrel->pathlist,
+											   pathkeys,
+											   TOTAL_COST);
+
+			/*
+			 * If we can't find any paths with the right order just add the
+			 * cheapest-total path; we'll have to sort it.
+			 */
+			if (cheapest_startup == NULL)
+				cheapest_startup = childrel->cheapest_total_path;
+			if (cheapest_total == NULL)
+				cheapest_total = childrel->cheapest_total_path;
+
+			/*
+			 * Notice whether we actually have different paths for the
+			 * "cheapest" and "total" cases; frequently there will be no point
+			 * in two create_merge_append_path() calls.
+			 */
+			if (cheapest_startup != cheapest_total)
+				startup_neq_total = true;
+
+			startup_subpaths =
+				accumulate_append_subpath(startup_subpaths, cheapest_startup);
+			total_subpaths =
+				accumulate_append_subpath(total_subpaths, cheapest_total);
+		}
+
+		/* ... and build the MergeAppend paths */
+		add_path(rel, (Path *) create_merge_append_path(root,
+														rel,
+														startup_subpaths,
+														pathkeys));
+		if (startup_neq_total)
+			add_path(rel, (Path *) create_merge_append_path(root,
+															rel,
+															total_subpaths,
+															pathkeys));
+	}
+
+	/* Select cheapest path */
+	set_cheapest(rel);
+}
+
+/*
+ * accumulate_append_subpath
+ *		Add a subpath to the list being built for an Append or MergeAppend
+ *
+ * It's possible that the child is itself an Append path, in which case
+ * we can "cut out the middleman" and just add its child paths to our
+ * own list.  (We don't try to do this earlier because we need to
+ * apply both levels of transformation to the quals.)
+ */
+static List *
+accumulate_append_subpath(List *subpaths, Path *path)
+{
+	if (IsA(path, AppendPath))
+	{
+		AppendPath *apath = (AppendPath *) path;
+
+		/* list_copy is important here to avoid sharing list substructure */
+		return list_concat(subpaths, list_copy(apath->subpaths));
+	}
+	else
+		return lappend(subpaths, path);
+}
+
+/*
+ * set_dummy_rel_pathlist
+ *	  Build a dummy path for a relation that's been excluded by constraints
+ *
+ * Rather than inventing a special "dummy" path type, we represent this as an
+ * AppendPath with no members (see also IS_DUMMY_PATH macro).
+ */
+static void
+set_dummy_rel_pathlist(RelOptInfo *rel)
+{
+	/* Set dummy size estimates --- we leave attr_widths[] as zeroes */
+	rel->rows = 0;
+	rel->width = 0;
+
+	add_path(rel, (Path *) create_append_path(rel, NIL));
+
+	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);
 }
 
