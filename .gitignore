@@ -1,0 +1,10 @@
+*.o
+*.so
+*.so.*
+/.deps/
+/orafunc.sql
+/orafunc.sql.in
+/sqlparse.c
+/sqlparse.h
+/sqlscan.c
+/results
