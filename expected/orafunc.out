@@ -1119,6 +1119,18 @@ select to_char(1234567890.12345);
  1234567890.12345
 (1 row)
 
+select to_char('4.00'::numeric);
+ to_char 
+---------
+ 4
+(1 row)
+
+select to_char('4.0010'::numeric);
+ to_char 
+---------
+ 4.001
+(1 row)
+
 SELECT to_number('123'::text);
  to_number 
 -----------

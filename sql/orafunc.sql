@@ -212,6 +212,8 @@ select to_char(123.456::real);
 select to_char(1234.5678::double precision);
 select to_char(12345678901234567890::numeric);
 select to_char(1234567890.12345);
+select to_char('4.00'::numeric);
+select to_char('4.0010'::numeric);
 
 SELECT to_number('123'::text);
 SELECT to_number('123.456'::text);

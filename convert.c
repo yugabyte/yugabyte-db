@@ -80,12 +80,28 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 	StringInfo	buf = makeStringInfo();
 	struct lconv *lconv = PGLC_localeconv();
 	char	   *p;
+	char       *decimal = NULL;
 
 	appendStringInfoString(buf, DatumGetCString(DirectFunctionCall1(numeric_out, NumericGetDatum(arg0))));
 
 	for (p = buf->data; *p; p++)
 		if (*p == '.')
+		{
 			*p = lconv->decimal_point[0];
+			decimal = p; /* save decimal point position for the next loop */
+		}
+
+	/* Simulate the default Oracle to_char template (TM9 - Text Minimum)
+	   by removing unneeded digits after the decimal point;
+	   if no digits are left, then remove the decimal point too
+	*/
+	for (p = buf->data + buf->len - 1; decimal && p >= decimal; p--)
+	{
+		if (*p == '0' || *p == lconv->decimal_point[0])
+			*p = 0;
+		else
+			break; /* non-zero digit found, exit the loop */
+	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
 }
