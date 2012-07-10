@@ -13,6 +13,7 @@
 #include "builtins.h"
 #include "pipe.h"
 #include "shmmc.h"
+#include "utils/rel.h"
 
 PG_FUNCTION_INFO_V1(dbms_alert_register);
 PG_FUNCTION_INFO_V1(dbms_alert_remove);
