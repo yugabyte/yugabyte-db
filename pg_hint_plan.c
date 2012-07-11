@@ -102,7 +102,7 @@ enum
 typedef struct Hint Hint;
 typedef struct PlanHint PlanHint;
 
-typedef Hint *(*HintCreateFunction) (char *hint_str, char *keyword);
+typedef Hint *(*HintCreateFunction) (const char *hint_str, const char *keyword);
 typedef void (*HintDeleteFunction) (Hint *hint);
 typedef const char *(*HintParseFunction) (Hint *hint, PlanHint *plan, Query *parse, const char *str);
 
@@ -183,7 +183,6 @@ struct PlanHint
 	JoinMethodHint **join_hints;		/* parsed join hints */
 	int				init_join_mask;		/* initial value join parameter */
 
-	int				nlevel;				/* # of relations to be joined */
 	List		  **join_hint_level;
 
 	/* for Leading hints */
@@ -222,16 +221,16 @@ static void pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObject
 static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 								  List *initial_rels);
 
-static Hint *ScanMethodHintCreate(char *hint_str, char *keyword);
+static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword);
 static void ScanMethodHintDelete(ScanMethodHint *hint);
 static const char *ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse, const char *str);
-static Hint *JoinMethodHintCreate(char *hint_str, char *keyword);
+static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword);
 static void JoinMethodHintDelete(JoinMethodHint *hint);
 static const char *JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse, const char *str);
-static Hint *LeadingHintCreate(char *hint_str, char *keyword);
+static Hint *LeadingHintCreate(const char *hint_str, const char *keyword);
 static void LeadingHintDelete(LeadingHint *hint);
 static const char *LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse, const char *str);
-static Hint *SetHintCreate(char *hint_str, char *keyword);
+static Hint *SetHintCreate(const char *hint_str, const char *keyword);
 static void SetHintDelete(SetHint *hint);
 static const char *SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str);
 
@@ -442,7 +441,7 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 }
 
 static Hint *
-ScanMethodHintCreate(char *hint_str, char *keyword)
+ScanMethodHintCreate(const char *hint_str, const char *keyword)
 {
 	ScanMethodHint *hint;
 
@@ -472,7 +471,7 @@ ScanMethodHintDelete(ScanMethodHint *hint)
 }
 
 static Hint *
-JoinMethodHintCreate(char *hint_str, char *keyword)
+JoinMethodHintCreate(const char *hint_str, const char *keyword)
 {
 	JoinMethodHint *hint;
 
@@ -509,7 +508,7 @@ JoinMethodHintDelete(JoinMethodHint *hint)
 }
 
 static Hint *
-LeadingHintCreate(char *hint_str, char *keyword)
+LeadingHintCreate(const char *hint_str, const char *keyword)
 {
 	LeadingHint	   *hint;
 
@@ -535,7 +534,7 @@ LeadingHintDelete(LeadingHint *hint)
 }
 
 static Hint *
-SetHintCreate(char *hint_str, char *keyword)
+SetHintCreate(const char *hint_str, const char *keyword)
 {
 	SetHint	   *hint;
 
@@ -580,7 +579,6 @@ PlanHintCreate(void)
 	hint->max_join_hints = 0;
 	hint->join_hints = NULL;
 	hint->init_join_mask = 0;
-	hint->nlevel = 0;
 	hint->join_hint_level = NULL;
 	hint->nleading_hints = 0;
 	hint->max_leading_hints = 0;
@@ -613,11 +611,6 @@ PlanHintDelete(PlanHint *hint)
 		JoinMethodHintDelete(hint->join_hints[i]);
 	if (hint->join_hints)
 		pfree(hint->join_hints);
-
-	for (i = 2; i <= hint->nlevel; i++)
-		list_free(hint->join_hint_level[i]);
-	if (hint->join_hint_level)
-		pfree(hint->join_hint_level);
 
 	for (i = 0; i < hint->nleading_hints; i++)
 		LeadingHintDelete(hint->leading_hints[i]);
@@ -704,10 +697,6 @@ all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus stat
 		if (h->base.state != state)
 			continue;
 
-		/* Leading hint */
-		if (h->enforce_mask == ENABLE_ALL_JOIN)
-			continue;
-
 		appendStringInfo(buf, "%s(", h->base.keyword);
 		dump_quote_value(buf, h->relnames[0]);
 		for (j = 1; j < h->nrels; j++)
@@ -740,21 +729,19 @@ all_hint_dump(PlanHint *hint, StringInfo buf, const char *title, HintStatus stat
 		if (h->base.state != state)
 			continue;
 
+		appendStringInfo(buf, "%s(", HINT_LEADING);
 		is_first = true;
 		foreach(l, h->relations)
 		{
 			if (is_first)
-			{
-				appendStringInfo(buf, "%s(", HINT_LEADING);
 				is_first = false;
-			}
 			else
 				appendStringInfoCharMacro(buf, ' ');
 
 			dump_quote_value(buf, (char *)lfirst(l));
 		}
-		if (!is_first)
-			appendStringInfoString(buf, ")\n");
+
+		appendStringInfoString(buf, ")\n");
 	}
 }
 
@@ -1213,13 +1200,13 @@ parse_head_comment(Query *parse)
 	/* find hint end keyword. */
 	if ((tail = strstr(p, HINT_END)) == NULL)
 	{
-		parse_ereport(head, ("unterminated block comment"));
+		parse_ereport(head, ("Unterminated block comment."));
 		return NULL;
 	}
 
 	/* 入れ子にしたブロックコメントはサポートしない */
 	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
-		parse_ereport(head, ("block comments nest doesn't supported"));
+		parse_ereport(head, ("Block comments nest doesn't supported."));
 
 	/* ヒント句部分を切り出す */
 	len = tail - p;
@@ -1363,7 +1350,7 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse, const ch
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
 	else
 	{
-		parse_ereport(str, ("unrecognized hint keyword \"%s\"", keyword));
+		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
 		return NULL;
 	}
 
@@ -1436,7 +1423,7 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse, const ch
 		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
 	else
 	{
-		parse_ereport(str, ("unrecognized hint keyword \"%s\"", keyword));
+		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
 		return NULL;
 	}
 
@@ -1461,24 +1448,22 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse, const ch
 static const char *
 LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse, const char *str)
 {
-	while (true)
+	skip_space(str);
+
+	while (*str != ')')
 	{
-		char	   *relname;
-		const char *p;
+		char   *relname;
 
 		if ((str = parse_quote_value(str, &relname, "relation name")) == NULL)
 			return NULL;
 
 		hint->relations = lappend(hint->relations, relname);
 
-		p = str;
 		skip_space(str);
-		if (*str == ')')
-			break;
 	}
 
-	/* テーブル指定が1つのみの場合は、ヒントはエラーとする */
-	if (list_length(hint->relations) == 1)
+	/* テーブル指定が2つ未満の場合は、Leading ヒントはエラーとする */
+	if (list_length(hint->relations) < 2)
 	{
 		parse_ereport(hint->base.hint_str,
 			("In %s hint, specified relation name 2 or more.", HINT_LEADING));
@@ -1616,17 +1601,15 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 	RangeTblEntry  *rte;
 	int	i;
 
-	/* RELOPT_BASEREL でなければ、scan method ヒントが適用できない。 */
-	if (rel->reloptkind != RELOPT_BASEREL)
+	/*
+	 * RELOPT_BASEREL でなければ、scan method ヒントが適用しない。
+	 * 子テーブルの場合はRELOPT_OTHER_MEMBER_RELとなるが、サポート対象外とする。
+	 * また、通常のリレーション以外は、スキャン方式を選択できない。
+	 */
+	if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
 		return NULL;
 
 	rte = root->simple_rte_array[rel->relid];
-
-	/*
-	 * VALUESリストはValuesScanのみが選択できるため、ヒントが適用できない。
-	 */
-	if (rte->rtekind == RTE_VALUES)
-		return NULL;
 
 	for (i = 0; i < global->nscan_hints; i++)
 	{
@@ -1735,15 +1718,22 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	}
 }
 
+/*
+ * aliasnameがクエリ中に指定した別名と一致する場合は、そのインデックスを返し、一致
+ * する別名がなければ0を返す。
+ * aliasnameがクエリ中に複数回指定された場合は、-1を返す。
+ */
 static Index
-scan_relid_aliasname(PlannerInfo *root, char *aliasname, bool check_ambiguous, const char *str)
+find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
+		const char *str)
 {
-	/* TODO refnameRangeTblEntry を参考 */
 	int		i;
-	Index	find = 0;
+	Index	found = 0;
 
 	for (i = 1; i < root->simple_rel_array_size; i++)
 	{
+		ListCell   *l;
+
 		if (root->simple_rel_array[i] == NULL)
 			continue;
 
@@ -1753,16 +1743,36 @@ scan_relid_aliasname(PlannerInfo *root, char *aliasname, bool check_ambiguous, c
 				!= 0)
 			continue;
 
-		if (!check_ambiguous)
-			return i;
+		foreach(l, initial_rels)
+		{
+			RelOptInfo *rel = (RelOptInfo *) lfirst(l);
 
-		if (find)
-			parse_ereport(str, ("relation name \"%s\" is ambiguous", aliasname));
+			if (rel->reloptkind == RELOPT_BASEREL)
+			{
+				if (rel->relid != i)
+					continue;
+			}
+			else
+			{
+				Assert(rel->reloptkind == RELOPT_JOINREL);
 
-		find = i;
+				if (!bms_is_member(i, rel->relids))
+					continue;
+			}
+
+			if (found != 0)
+			{
+				parse_ereport(str, ("Relation name \"%s\" is ambiguous.", aliasname));
+				return -1;
+			}
+
+			found = i;
+			break;
+		}
+
 	}
 
-	return find;
+	return found;
 }
 
 /*
@@ -1789,64 +1799,95 @@ find_join_hint(Relids joinrelids)
  * 結合方式のヒントを使用しやすい構造に変換する。
  */
 static void
-transform_join_hints(PlanHint *plan, PlannerInfo *root, int level, List *initial_rels)
+transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
+		List *initial_rels, JoinMethodHint **join_method_hints)
 {
-	int			i;
-	ListCell   *l;
-	Relids		joinrelids;
-	int			njoinrels;
+	int				i;
+	Index			relid;
+	LeadingHint	   *lhint;
+	Relids			joinrelids;
+	int				njoinrels;
+	ListCell	   *l;
 
-	plan->nlevel = root->simple_rel_array_size - 1;
-	plan->join_hint_level = palloc0(sizeof(List *) * (root->simple_rel_array_size));
 	for (i = 0; i < plan->njoin_hints; i++)
 	{
 		JoinMethodHint *hint = plan->join_hints[i];
 		int				j;
-		Index			relid = 0;
 
-		if (!hint_state_enabled(hint))
+		if (!hint_state_enabled(hint) || hint->nrels > nbaserel)
 			continue;
 
+		bms_free(hint->joinrelids);
+		hint->joinrelids = NULL;
+		relid = 0;
 		for (j = 0; j < hint->nrels; j++)
 		{
 			char   *relname = hint->relnames[j];
 
-			relid = scan_relid_aliasname(root, relname, true, hint->base.hint_str);
-			if (relid == 0)
+			relid = find_relid_aliasname(root, relname, initial_rels,
+						hint->base.hint_str);
+
+			if (relid == -1)
+				hint->base.state = HINT_STATE_ERROR;
+
+			if (relid <= 0)
+				break;
+
+			if (bms_is_member(relid, hint->joinrelids))
 			{
-				parse_ereport(hint->base.hint_str, ("Relation \"%s\" does not exist.", relname));
+				parse_ereport(hint->base.hint_str,
+					("Relation name \"%s\" is duplicate.", relname));
+				hint->base.state = HINT_STATE_ERROR;
 				break;
 			}
 
 			hint->joinrelids = bms_add_member(hint->joinrelids, relid);
 		}
 
-		if (relid == 0)
+		if (relid <= 0 || hint->base.state == HINT_STATE_ERROR)
 			continue;
 
 		plan->join_hint_level[hint->nrels] =
 			lappend(plan->join_hint_level[hint->nrels], hint);
 	}
 
+	/*
+	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせてjoin method hint
+	 * のフォーマットに変換する。
+	 */
 	if (plan->nleading_hints == 0)
 		return;
 
-	// TODO エラーヒントならばスキップ
+	lhint = plan->leading_hints[plan->nleading_hints - 1];
+	if (!hint_state_enabled(lhint))
+		return;
+
 	/* Leading hint は、全ての join 方式が有効な hint として登録する */
 	joinrelids = NULL;
 	njoinrels = 0;
-	foreach(l, plan->leading_hints[plan->nleading_hints - 1]->relations)
+	foreach(l, lhint->relations)
 	{
 		char		   *relname = (char *)lfirst(l);
 		JoinMethodHint *hint;
 
-		i = scan_relid_aliasname(root, relname, true, plan->hint_str);
-		if (i == 0)
+		i = find_relid_aliasname(root, relname, initial_rels, plan->hint_str);
+
+		if (i == -1)
 		{
-			parse_ereport(plan->hint_str, ("Relation \"%s\" does not exist.", relname));
-			plan->leading_hints[plan->nleading_hints - 1]->base.state =
-				HINT_STATE_ERROR;
-			break;
+			bms_free(joinrelids);
+			return;
+		}
+
+		if (i == 0)
+			continue;
+
+		if (bms_is_member(i, joinrelids))
+		{
+			parse_ereport(lhint->base.hint_str,
+				("Relation name \"%s\" is duplicate.", relname));
+			lhint->base.state = HINT_STATE_ERROR;
+			bms_free(joinrelids);
+			return;
 		}
 
 		joinrelids = bms_add_member(joinrelids, i);
@@ -1855,58 +1896,46 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int level, List *initial
 		if (njoinrels < 2)
 			continue;
 
-		if (njoinrels > plan->nlevel)
-		{
-			parse_ereport(plan->hint_str, ("In %s hint, specified relation name %d or less.", HINT_LEADING, plan->nlevel));
-			plan->leading_hints[plan->nleading_hints - 1]->base.state =
-				HINT_STATE_ERROR;
-			break;
-		}
-
-		/* Leading で指定した組み合わせ以外の join hint を削除する */
 		hint = find_join_hint(joinrelids);
-		list_free(plan->join_hint_level[njoinrels]);
-		if (hint)
-			plan->join_hint_level[njoinrels] = lappend(NIL, hint);
-		else
+		if (hint == NULL)
 		{
 			/*
 			 * Here relnames is not set, since Relids bitmap is sufficient to
 			 * control paths of this query afterwards.
 			 */
-			// TODO plan->hint_strをLeadingHint構造に変更後修正
-			hint = (JoinMethodHint *) JoinMethodHintCreate(plan->hint_str, HINT_LEADING);
+			hint = (JoinMethodHint *) JoinMethodHintCreate(lhint->base.hint_str,
+						HINT_LEADING);
+			hint->base.state = HINT_STATE_USED;
 			hint->nrels = njoinrels;
 			hint->enforce_mask = ENABLE_ALL_JOIN;
 			hint->joinrelids = bms_copy(joinrelids);
-			plan->join_hint_level[njoinrels] = lappend(NIL, hint);
-
-			if (plan->njoin_hints == 0)
-			{
-				plan->max_join_hints = HINT_ARRAY_DEFAULT_INITSIZE;
-				plan->join_hints = palloc(sizeof(JoinMethodHint *) * plan->max_join_hints);
-			}
-			else if (plan->njoin_hints == plan->max_join_hints)
-			{
-				plan->max_join_hints *= 2;
-				plan->join_hints = repalloc(plan->join_hints,
-									sizeof(JoinMethodHint *) * plan->max_join_hints);
-			}
-
-			plan->join_hints[plan->njoin_hints] = hint;
-			plan->njoin_hints++;
 		}
 
-		plan->leading_hints[plan->nleading_hints - 1]->base.state =
-			HINT_STATE_USED;
+		join_method_hints[njoinrels] = hint;
+
+		if (njoinrels >= nbaserel)
+			break;
 	}
 
-	// TODO ここでいい？
-	if (global->nleading_hints > 0 &&
-		hint_state_enabled(global->leading_hints[global->nleading_hints - 1]))
+	bms_free(joinrelids);
+
+	if (njoinrels < 2)
+		return;
+
+	for (i = 2; i <= njoinrels; i++)
+	{
+		/* Leading で指定した組み合わせ以外の join hint を削除する */
+		list_free(plan->join_hint_level[i]);
+
+		plan->join_hint_level[i] =
+			lappend(NIL, join_method_hints[i]);
+	}
+
+	if (hint_state_enabled(lhint))
 		set_join_config_options(DISABLE_ALL_JOIN, global->context);
 
-	bms_free(joinrelids);
+	lhint->base.state = HINT_STATE_USED;
+
 }
 
 static void
@@ -1917,14 +1946,14 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 	foreach(l, initial_rels)
 	{
 		RelOptInfo	   *rel = (RelOptInfo *) lfirst(l);
-		RangeTblEntry  *rte = root->simple_rte_array[rel->relid];
+		RangeTblEntry  *rte;
 		ScanMethodHint *hint;
 
 		/*
 		 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成
 		 * する。
 		 */
-		if (rel->reloptkind != RELOPT_BASEREL || rte->rtekind == RTE_VALUES)
+		if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
 			continue;
 
 		/*
@@ -1941,6 +1970,7 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 
 		list_free_deep(rel->pathlist);
 		rel->pathlist = NIL;
+		rte = root->simple_rte_array[rel->relid];
 		if (rte->inh)
 		{
 			/* It's an "append relation", process accordingly */
@@ -1994,9 +2024,38 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	return rel;
 }
 
+static int
+get_num_baserels(List *initial_rels)
+{
+	int			nbaserel = 0;
+	ListCell   *l;
+
+	foreach(l, initial_rels)
+	{
+		RelOptInfo *rel = (RelOptInfo *) lfirst(l);
+
+		if (rel->reloptkind == RELOPT_BASEREL)
+			nbaserel++;
+		else if (rel->reloptkind ==RELOPT_JOINREL)
+			nbaserel+= bms_num_members(rel->relids);
+		else
+		{
+			/* other values not expected here */
+			elog(ERROR, "unrecognized reloptkind type: %d", rel->reloptkind);
+		}
+	}
+
+	return nbaserel;
+}
+
 static RelOptInfo *
 pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
 {
+	JoinMethodHint **join_method_hints;
+	int				nbaserel;
+	RelOptInfo	   *rel;
+	int				i;
+
 	/*
 	 * pg_hint_planが無効、または有効なヒントが1つも指定されなかった場合は、標準
 	 * の処理を行う。
@@ -2011,7 +2070,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rel
 			return standard_join_search(root, levels_needed, initial_rels);
 	}
 
-	transform_join_hints(global, root, levels_needed, initial_rels);
+	/* We apply scan method hint rebuild scan path. */
 	rebuild_scan_path(global, root, levels_needed, initial_rels);
 
 	/*
@@ -2022,7 +2081,31 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed, List *initial_rel
 	if (enable_geqo && levels_needed >= geqo_threshold)
 		return geqo(root, levels_needed, initial_rels);
 
-	return pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
+	nbaserel = get_num_baserels(initial_rels);
+	global->join_hint_level = palloc0(sizeof(List *) * (nbaserel + 1));
+	join_method_hints = palloc0(sizeof(JoinMethodHint *) * (nbaserel + 1));
+
+	transform_join_hints(global, root, nbaserel, initial_rels, join_method_hints);
+
+	rel = pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
+
+	for (i = 2; i <= nbaserel; i++)
+	{
+		list_free(global->join_hint_level[i]);
+
+		/* free Leading hint only */
+		if (join_method_hints[i] != NULL &&
+			join_method_hints[i]->enforce_mask == ENABLE_ALL_JOIN)
+			JoinMethodHintDelete(join_method_hints[i]);
+	}
+	pfree(global->join_hint_level);
+	pfree(join_method_hints);
+
+	if (global->nleading_hints > 0 &&
+		hint_state_enabled(global->leading_hints[global->nleading_hints - 1]))
+		set_join_config_options(global->init_join_mask, global->context);
+
+	return rel;
 }
 
 /*
