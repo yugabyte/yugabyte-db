@@ -1611,6 +1611,10 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 
 	rte = root->simple_rte_array[rel->relid];
 
+	/* 外部表はスキャン方式が選択できない。 */
+	if (rte->relkind == RELKIND_FOREIGN_TABLE)
+		return NULL;
+
 	for (i = 0; i < global->nscan_hints; i++)
 	{
 		ScanMethodHint *hint = global->scan_hints[i];
@@ -1956,6 +1960,12 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 		if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
 			continue;
 
+		rte = root->simple_rte_array[rel->relid];
+
+		/* 外部表はスキャン方式が選択できない。 */
+		if (rte->relkind == RELKIND_FOREIGN_TABLE)
+			continue;
+
 		/*
 		 * scan method hint が指定されていなければ、初期値のGUCパラメータでscan
 		 * path を再生成する。
@@ -1970,7 +1980,6 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 
 		list_free_deep(rel->pathlist);
 		rel->pathlist = NIL;
-		rte = root->simple_rte_array[rel->relid];
 		if (rte->inh)
 		{
 			/* It's an "append relation", process accordingly */

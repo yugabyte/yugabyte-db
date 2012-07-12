@@ -5,7 +5,9 @@
 #
 
 MODULES = pg_hint_plan
-REGRESS = init base_plan pg_hint_plan prepare
+REGRESS = init base_plan pg_hint_plan prepare fdw
+
+EXTRA_CLEAN = sql/fdw.sql expected/base_plan.out expected/prepare.out expected/fdw.out
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
@@ -15,11 +17,6 @@ expected/base_plan.out: expected/base_plan-$(MAJORVERSION).out
 	cp expected/base_plan-$(MAJORVERSION).out expected/base_plan.out
 expected/prepare.out: expected/prepare-$(MAJORVERSION).out
 	cp expected/prepare-$(MAJORVERSION).out expected/prepare.out
-
-.PHONY: subclean
-clean: subclean
-subclean:
-	rm -f expected/base_plan.out expected/prepare.out
 
 installcheck: expected/base_plan.out expected/prepare.out
 
