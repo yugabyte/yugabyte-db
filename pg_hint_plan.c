@@ -1236,7 +1236,7 @@ parse_head_comment(Query *parse)
 						plan->scan_hints + i + 1, false) == 0)
 		{
 			parse_ereport(plan->scan_hints[i]->base.hint_str,
-				("Duplicate scan method hint."));
+				("Conflict scan method hint."));
 			plan->scan_hints[i]->base.state = HINT_STATE_DUPLICATION;
 		}
 	}
