@@ -26,7 +26,7 @@
 </tr>
 </thead>
 <tbody>
-<tr><td rowspan="10" nowrap>スキャン方式</td>
+<tr><td rowspan="8" nowrap>スキャン方式</td>
   <td nowrap>SeqScan(テーブル)</td>
   <td>指定したテーブルについて、Seq Scanを選択します。</td></tr>
 <tr><td>TidScan(テーブル)</td>
@@ -35,8 +35,6 @@
   <td>指定したテーブルについて、Index Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。</td></tr>
 <tr><td nowrap>BitmapScan(テーブル[ インデックス...])</td>
   <td>指定したテーブルについて、Bitmap Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるインデックスを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。</td></tr>
-<tr><td nowrap>IndexOnlyScan(テーブル[ インデックス...])</td>
-  <td>指定したテーブルについて、Index Only Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。PostgreSQL 9.2 以降でのみ有効な機能です。</td></tr>
 <tr><td nowrap>NoSeqScan(テーブル)</td>
   <td>指定したテーブルについて、Seq Scan以外でコストが最小となるスキャン方式を選択します。ただし、他のスキャン方式を選択できない場合は、Seq Scanを選択します。</td></tr>
 <tr><td nowrap>NoTidScan(テーブル)</td>
@@ -45,8 +43,6 @@
   <td>指定したテーブルについて、Index Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
 <tr><td nowrap>NoBitmapScan(テーブル)</td>
   <td>指定したテーブルについて、Bitmap Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
-<tr><td nowrap>NoIndexOnlyScan(テーブル)</td>
-  <td>指定したテーブルについて、Index Only Scan以外でコストが最小となるスキャン方式を選択します。PostgreSQL 9.2 以降でのみ有効なヒントです。</td></tr>
 
 <tr><td rowspan="6" nowrap>結合方式</td>
   <td nowrap>NestLoop(テーブル テーブル[ テーブル...])</td>
@@ -56,7 +52,7 @@
 <tr><td nowrap>MergeJoin(テーブル テーブル[ テーブル...])</td>
   <td>指定したテーブル間の結合にMerge Joinを選択します。</td></tr>
 <tr><td nowrap>NoNestLoop(テーブル テーブル[ テーブル...])</td>
-  <td>指定したテーブル間の結合にNested Loop以外の結合方式を選択します。他の結合方式を選択できない場合は、Nested Loopを選択します。</td></tr>
+  <td>指定したテーブル間の結合にNested Loop以外の結合方式を選択します。</td></tr>
 <tr><td nowrap>NoHashJoin(テーブル テーブル[ テーブル...])</td>
   <td>指定したテーブル間の結合にHash Join以外の結合方式を選択します。</td></tr>
 <tr><td nowrap>NoMergeJoin(テーブル テーブル[ テーブル...])</td>
