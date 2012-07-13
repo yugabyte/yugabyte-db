@@ -22,7 +22,11 @@
  *     join_search_one_level()
  *     make_rels_by_clause_joins()
  *     make_rels_by_clauseless_joins()
+ *     join_is_legal()
  *     has_join_restriction()
+ *     is_dummy_rel()
+ *     mark_dummy_rel()
+ *     restriction_is_constant_false()
  */
 
 /*
@@ -532,6 +536,7 @@ set_dummy_rel_pathlist(RelOptInfo *rel)
 	set_cheapest(rel);
 }
 
+
 /*
  * join_search_one_level
  *	  Consider ways to produce join relations containing exactly 'level'
@@ -801,6 +806,215 @@ make_rels_by_clauseless_joins(PlannerInfo *root,
 }
 
 /*
+ * join_is_legal
+ *	   Determine whether a proposed join is legal given the query's
+ *	   join order constraints; and if it is, determine the join type.
+ *
+ * Caller must supply not only the two rels, but the union of their relids.
+ * (We could simplify the API by computing joinrelids locally, but this
+ * would be redundant work in the normal path through make_join_rel.)
+ *
+ * On success, *sjinfo_p is set to NULL if this is to be a plain inner join,
+ * else it's set to point to the associated SpecialJoinInfo node.  Also,
+ * *reversed_p is set TRUE if the given relations need to be swapped to
+ * match the SpecialJoinInfo node.
+ */
+static bool
+join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
+			  Relids joinrelids,
+			  SpecialJoinInfo **sjinfo_p, bool *reversed_p)
+{
+	SpecialJoinInfo *match_sjinfo;
+	bool		reversed;
+	bool		unique_ified;
+	bool		is_valid_inner;
+	ListCell   *l;
+
+	/*
+	 * Ensure output params are set on failure return.	This is just to
+	 * suppress uninitialized-variable warnings from overly anal compilers.
+	 */
+	*sjinfo_p = NULL;
+	*reversed_p = false;
+
+	/*
+	 * If we have any special joins, the proposed join might be illegal; and
+	 * in any case we have to determine its join type.	Scan the join info
+	 * list for conflicts.
+	 */
+	match_sjinfo = NULL;
+	reversed = false;
+	unique_ified = false;
+	is_valid_inner = true;
+
+	foreach(l, root->join_info_list)
+	{
+		SpecialJoinInfo *sjinfo = (SpecialJoinInfo *) lfirst(l);
+
+		/*
+		 * This special join is not relevant unless its RHS overlaps the
+		 * proposed join.  (Check this first as a fast path for dismissing
+		 * most irrelevant SJs quickly.)
+		 */
+		if (!bms_overlap(sjinfo->min_righthand, joinrelids))
+			continue;
+
+		/*
+		 * Also, not relevant if proposed join is fully contained within RHS
+		 * (ie, we're still building up the RHS).
+		 */
+		if (bms_is_subset(joinrelids, sjinfo->min_righthand))
+			continue;
+
+		/*
+		 * Also, not relevant if SJ is already done within either input.
+		 */
+		if (bms_is_subset(sjinfo->min_lefthand, rel1->relids) &&
+			bms_is_subset(sjinfo->min_righthand, rel1->relids))
+			continue;
+		if (bms_is_subset(sjinfo->min_lefthand, rel2->relids) &&
+			bms_is_subset(sjinfo->min_righthand, rel2->relids))
+			continue;
+
+		/*
+		 * If it's a semijoin and we already joined the RHS to any other rels
+		 * within either input, then we must have unique-ified the RHS at that
+		 * point (see below).  Therefore the semijoin is no longer relevant in
+		 * this join path.
+		 */
+		if (sjinfo->jointype == JOIN_SEMI)
+		{
+			if (bms_is_subset(sjinfo->syn_righthand, rel1->relids) &&
+				!bms_equal(sjinfo->syn_righthand, rel1->relids))
+				continue;
+			if (bms_is_subset(sjinfo->syn_righthand, rel2->relids) &&
+				!bms_equal(sjinfo->syn_righthand, rel2->relids))
+				continue;
+		}
+
+		/*
+		 * If one input contains min_lefthand and the other contains
+		 * min_righthand, then we can perform the SJ at this join.
+		 *
+		 * Barf if we get matches to more than one SJ (is that possible?)
+		 */
+		if (bms_is_subset(sjinfo->min_lefthand, rel1->relids) &&
+			bms_is_subset(sjinfo->min_righthand, rel2->relids))
+		{
+			if (match_sjinfo)
+				return false;	/* invalid join path */
+			match_sjinfo = sjinfo;
+			reversed = false;
+		}
+		else if (bms_is_subset(sjinfo->min_lefthand, rel2->relids) &&
+				 bms_is_subset(sjinfo->min_righthand, rel1->relids))
+		{
+			if (match_sjinfo)
+				return false;	/* invalid join path */
+			match_sjinfo = sjinfo;
+			reversed = true;
+		}
+		else if (sjinfo->jointype == JOIN_SEMI &&
+				 bms_equal(sjinfo->syn_righthand, rel2->relids) &&
+				 create_unique_path(root, rel2, rel2->cheapest_total_path,
+									sjinfo) != NULL)
+		{
+			/*----------
+			 * For a semijoin, we can join the RHS to anything else by
+			 * unique-ifying the RHS (if the RHS can be unique-ified).
+			 * We will only get here if we have the full RHS but less
+			 * than min_lefthand on the LHS.
+			 *
+			 * The reason to consider such a join path is exemplified by
+			 *	SELECT ... FROM a,b WHERE (a.x,b.y) IN (SELECT c1,c2 FROM c)
+			 * If we insist on doing this as a semijoin we will first have
+			 * to form the cartesian product of A*B.  But if we unique-ify
+			 * C then the semijoin becomes a plain innerjoin and we can join
+			 * in any order, eg C to A and then to B.  When C is much smaller
+			 * than A and B this can be a huge win.  So we allow C to be
+			 * joined to just A or just B here, and then make_join_rel has
+			 * to handle the case properly.
+			 *
+			 * Note that actually we'll allow unique-ified C to be joined to
+			 * some other relation D here, too.  That is legal, if usually not
+			 * very sane, and this routine is only concerned with legality not
+			 * with whether the join is good strategy.
+			 *----------
+			 */
+			if (match_sjinfo)
+				return false;	/* invalid join path */
+			match_sjinfo = sjinfo;
+			reversed = false;
+			unique_ified = true;
+		}
+		else if (sjinfo->jointype == JOIN_SEMI &&
+				 bms_equal(sjinfo->syn_righthand, rel1->relids) &&
+				 create_unique_path(root, rel1, rel1->cheapest_total_path,
+									sjinfo) != NULL)
+		{
+			/* Reversed semijoin case */
+			if (match_sjinfo)
+				return false;	/* invalid join path */
+			match_sjinfo = sjinfo;
+			reversed = true;
+			unique_ified = true;
+		}
+		else
+		{
+			/*----------
+			 * Otherwise, the proposed join overlaps the RHS but isn't
+			 * a valid implementation of this SJ.  It might still be
+			 * a legal join, however.  If both inputs overlap the RHS,
+			 * assume that it's OK.  Since the inputs presumably got past
+			 * this function's checks previously, they can't overlap the
+			 * LHS and their violations of the RHS boundary must represent
+			 * SJs that have been determined to commute with this one.
+			 * We have to allow this to work correctly in cases like
+			 *		(a LEFT JOIN (b JOIN (c LEFT JOIN d)))
+			 * when the c/d join has been determined to commute with the join
+			 * to a, and hence d is not part of min_righthand for the upper
+			 * join.  It should be legal to join b to c/d but this will appear
+			 * as a violation of the upper join's RHS.
+			 * Furthermore, if one input overlaps the RHS and the other does
+			 * not, we should still allow the join if it is a valid
+			 * implementation of some other SJ.  We have to allow this to
+			 * support the associative identity
+			 *		(a LJ b on Pab) LJ c ON Pbc = a LJ (b LJ c ON Pbc) on Pab
+			 * since joining B directly to C violates the lower SJ's RHS.
+			 * We assume that make_outerjoininfo() set things up correctly
+			 * so that we'll only match to some SJ if the join is valid.
+			 * Set flag here to check at bottom of loop.
+			 *----------
+			 */
+			if (sjinfo->jointype != JOIN_SEMI &&
+				bms_overlap(rel1->relids, sjinfo->min_righthand) &&
+				bms_overlap(rel2->relids, sjinfo->min_righthand))
+			{
+				/* seems OK */
+				Assert(!bms_overlap(joinrelids, sjinfo->min_lefthand));
+			}
+			else
+				is_valid_inner = false;
+		}
+	}
+
+	/*
+	 * Fail if violated some SJ's RHS and didn't match to another SJ. However,
+	 * "matching" to a semijoin we are implementing by unique-ification
+	 * doesn't count (think: it's really an inner join).
+	 */
+	if (!is_valid_inner &&
+		(match_sjinfo == NULL || unique_ified))
+		return false;			/* invalid join path */
+
+	/* Otherwise, it's a valid join */
+	*sjinfo_p = match_sjinfo;
+	*reversed_p = reversed;
+	return true;
+}
+
+
+/*
  * has_join_restriction
  *		Detect whether the specified relation has join-order restrictions
  *		due to being inside an outer join or an IN (sub-SELECT).
@@ -834,5 +1048,106 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 			return true;
 	}
 
+	return false;
+}
+
+
+/*
+ * is_dummy_rel --- has relation been proven empty?
+ *
+ * If so, it will have a single path that is dummy.
+ */
+static bool
+is_dummy_rel(RelOptInfo *rel)
+{
+	return (rel->cheapest_total_path != NULL &&
+			IS_DUMMY_PATH(rel->cheapest_total_path));
+}
+
+
+/*
+ * Mark a relation as proven empty.
+ *
+ * During GEQO planning, this can get invoked more than once on the same
+ * baserel struct, so it's worth checking to see if the rel is already marked
+ * dummy.
+ *
+ * Also, when called during GEQO join planning, we are in a short-lived
+ * memory context.	We must make sure that the dummy path attached to a
+ * baserel survives the GEQO cycle, else the baserel is trashed for future
+ * GEQO cycles.  On the other hand, when we are marking a joinrel during GEQO,
+ * we don't want the dummy path to clutter the main planning context.  Upshot
+ * is that the best solution is to explicitly make the dummy path in the same
+ * context the given RelOptInfo is in.
+ */
+static void
+mark_dummy_rel(RelOptInfo *rel)
+{
+	MemoryContext oldcontext;
+
+	/* Already marked? */
+	if (is_dummy_rel(rel))
+		return;
+
+	/* No, so choose correct context to make the dummy path in */
+	oldcontext = MemoryContextSwitchTo(GetMemoryChunkContext(rel));
+
+	/* Set dummy size estimate */
+	rel->rows = 0;
+
+	/* Evict any previously chosen paths */
+	rel->pathlist = NIL;
+
+	/* Set up the dummy path */
+	add_path(rel, (Path *) create_append_path(rel, NIL));
+
+	/* Set or update cheapest_total_path */
+	set_cheapest(rel);
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+
+/*
+ * restriction_is_constant_false --- is a restrictlist just FALSE?
+ *
+ * In cases where a qual is provably constant FALSE, eval_const_expressions
+ * will generally have thrown away anything that's ANDed with it.  In outer
+ * join situations this will leave us computing cartesian products only to
+ * decide there's no match for an outer row, which is pretty stupid.  So,
+ * we need to detect the case.
+ *
+ * If only_pushed_down is TRUE, then consider only pushed-down quals.
+ */
+static bool
+restriction_is_constant_false(List *restrictlist, bool only_pushed_down)
+{
+	ListCell   *lc;
+
+	/*
+	 * Despite the above comment, the restriction list we see here might
+	 * possibly have other members besides the FALSE constant, since other
+	 * quals could get "pushed down" to the outer join level.  So we check
+	 * each member of the list.
+	 */
+	foreach(lc, restrictlist)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+
+		Assert(IsA(rinfo, RestrictInfo));
+		if (only_pushed_down && !rinfo->is_pushed_down)
+			continue;
+
+		if (rinfo->clause && IsA(rinfo->clause, Const))
+		{
+			Const	   *con = (Const *) rinfo->clause;
+
+			/* constant NULL is as good as constant FALSE for our purposes */
+			if (con->constisnull)
+				return true;
+			if (!DatumGetBool(con->constvalue))
+				return true;
+		}
+	}
 	return false;
 }
