@@ -10,6 +10,7 @@ CREATE FOREIGN TABLE ft1 (id int, val int) SERVER file_server OPTIONS (format 'c
 
 -- foreign table test
 SELECT * FROM ft1;
+\t
 EXPLAIN (COSTS false) SELECT * FROM t1, ft1 WHERE t1.id = ft1.id;
 /*+SeqScan(t1)SeqScan(ft1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, ft1 WHERE t1.id = ft1.id;

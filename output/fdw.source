@@ -22,15 +22,13 @@ SELECT * FROM ft1;
  10 |  10
 (10 rows)
 
+\t
 EXPLAIN (COSTS false) SELECT * FROM t1, ft1 WHERE t1.id = ft1.id;
-                                          QUERY PLAN                                           
------------------------------------------------------------------------------------------------
  Nested Loop
    ->  Foreign Scan on ft1
          Foreign File: @abs_srcdir@/data/data.csv
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id = ft1.id)
-(5 rows)
 
 /*+SeqScan(t1)SeqScan(ft1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, ft1 WHERE t1.id = ft1.id;
@@ -42,13 +40,10 @@ SeqScan(ft1)
 duplication hint:
 error hint:
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
  Hash Join
    Hash Cond: (t1.id = ft1.id)
    ->  Seq Scan on t1
    ->  Hash
          ->  Foreign Scan on ft1
                Foreign File: @abs_srcdir@/data/data.csv
-(6 rows)
 
