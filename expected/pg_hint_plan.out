@@ -4342,8 +4342,8 @@ used hint:
 SeqScan("""t1 )	")
 IndexScan("t	2 """)
 HashJoin("""t1 )	" T3 "t	2 """)
-Set(application_name "a	a	a""	a	A")
 Leading("""t1 )	" T3 "t	2 """)
+Set(application_name "a	a	a""	a	A")
 not used hint:
 duplication hint:
 error hint:
@@ -4389,9 +4389,9 @@ used hint:
 TidScan(t1)
 TidScan(t2)
 MergeJoin(t1 t2)
+Leading(t2 t1)
 Set(enable_mergejoin on)
 Set(enable_seqscan on)
-Leading(t2 t1)
 not used hint:
 duplication hint:
 SeqScan(t1)
@@ -4402,8 +4402,8 @@ IndexScan(t2)
 BitmapScan(t2)
 HashJoin(t1 t2)
 NestLoop(t1 t2)
-Set(enable_seqscan off)
 Leading(t1 t2)
+Set(enable_seqscan off)
 error hint:
 
                   QUERY PLAN                   
