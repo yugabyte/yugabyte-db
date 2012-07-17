@@ -4377,13 +4377,13 @@ DETAIL:  Conflict scan method hint.
 INFO:  hint syntax error at or near "BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
 INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
-DETAIL:  Duplicate join method hint.
+DETAIL:  Conflict join method hint.
 INFO:  hint syntax error at or near "NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
-DETAIL:  Duplicate join method hint.
-INFO:  hint syntax error at or near "Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
-DETAIL:  Duplicate set hint.
+DETAIL:  Conflict join method hint.
 INFO:  hint syntax error at or near "Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
-DETAIL:  Duplicate leading hint.
+DETAIL:  Conflict leading hint.
+INFO:  hint syntax error at or near "Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict set hint.
 LOG:  pg_hint_plan:
 used hint:
 TidScan(t1)
