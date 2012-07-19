@@ -149,7 +149,7 @@ postgres=# </pre>
   <td>指定したヒントを解釈できなかった場合に、どのメッセージ階層でログを出力するかを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。fatalとpanicは指定できません。</td><td>info</td></tr>
 </tbody>
 </table>
-<p>これらのパラメータをpostgresql.confファイルに設定するには、<a href="http://www.postgresql.org/docs/9.1/static/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>に auth_delayを加える必要があります。標準的な使用例は以下のようになります。</p>
+<p>これらのパラメータをpostgresql.confファイルに設定するには、<a href="http://www.postgresql.org/docs/9.1/static/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>にpg_hint_planを加える必要があります。典型的な使用例は以下のようになります。</p>
 <pre>
 # postgresql.conf
 shared_preload_libraries = 'pg_hint_plan'
