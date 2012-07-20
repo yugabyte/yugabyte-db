@@ -82,12 +82,16 @@ enum
 	ENABLE_BITMAPSCAN		= 0x04,
 	ENABLE_TIDSCAN			= 0x08,
 #if PG_VERSION_NUM >= 90200
-	ENABLE_INDEXONLYSCAN	= 0x10,
+	ENABLE_INDEXONLYSCAN	= 0x10
 #endif
-	ENABLE_NESTLOOP			= 0x20,
-	ENABLE_MERGEJOIN		= 0x40,
-	ENABLE_HASHJOIN			= 0x80
-} TYPE_BITS;
+} SCAN_TYPE_BITS;
+
+enum
+{
+	ENABLE_NESTLOOP			= 0x01,
+	ENABLE_MERGEJOIN		= 0x02,
+	ENABLE_HASHJOIN			= 0x04
+} JOIN_TYPE_BITS;
 
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | ENABLE_BITMAPSCAN \
 						| ENABLE_TIDSCAN)
@@ -215,7 +219,6 @@ struct PlanHint
 typedef struct HintParser
 {
 	char   *keyword;
-	bool	have_paren;
 	HintCreateFunction	create_func;
 } HintParser;
 
@@ -301,32 +304,32 @@ static PlanHint *global = NULL;
 
 /*
  * EXECUTEコマンド実行時に、ステートメント名を格納する。
- * その他のコマンドの場合は、NULLに設定る。
+ * その他のコマンドの場合は、NULLに設定する。
  */
 static char	   *stmt_name = NULL;
 
 static const HintParser parsers[] = {
-	{HINT_SEQSCAN, true, ScanMethodHintCreate},
-	{HINT_INDEXSCAN, true, ScanMethodHintCreate},
-	{HINT_BITMAPSCAN, true, ScanMethodHintCreate},
-	{HINT_TIDSCAN, true, ScanMethodHintCreate},
-	{HINT_NOSEQSCAN, true, ScanMethodHintCreate},
-	{HINT_NOINDEXSCAN, true, ScanMethodHintCreate},
-	{HINT_NOBITMAPSCAN, true, ScanMethodHintCreate},
-	{HINT_NOTIDSCAN, true, ScanMethodHintCreate},
+	{HINT_SEQSCAN, ScanMethodHintCreate},
+	{HINT_INDEXSCAN, ScanMethodHintCreate},
+	{HINT_BITMAPSCAN, ScanMethodHintCreate},
+	{HINT_TIDSCAN, ScanMethodHintCreate},
+	{HINT_NOSEQSCAN, ScanMethodHintCreate},
+	{HINT_NOINDEXSCAN, ScanMethodHintCreate},
+	{HINT_NOBITMAPSCAN, ScanMethodHintCreate},
+	{HINT_NOTIDSCAN, ScanMethodHintCreate},
 #if PG_VERSION_NUM >= 90200
-	{HINT_INDEXONLYSCAN, true, ScanMethodHintCreate},
-	{HINT_NOINDEXONLYSCAN, true, ScanMethodHintCreate},
+	{HINT_INDEXONLYSCAN, ScanMethodHintCreate},
+	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate},
 #endif
-	{HINT_NESTLOOP, true, JoinMethodHintCreate},
-	{HINT_MERGEJOIN, true, JoinMethodHintCreate},
-	{HINT_HASHJOIN, true, JoinMethodHintCreate},
-	{HINT_NONESTLOOP, true, JoinMethodHintCreate},
-	{HINT_NOMERGEJOIN, true, JoinMethodHintCreate},
-	{HINT_NOHASHJOIN, true, JoinMethodHintCreate},
-	{HINT_LEADING, true, LeadingHintCreate},
-	{HINT_SET, true, SetHintCreate},
-	{NULL, false, NULL},
+	{HINT_NESTLOOP, JoinMethodHintCreate},
+	{HINT_MERGEJOIN, JoinMethodHintCreate},
+	{HINT_HASHJOIN, JoinMethodHintCreate},
+	{HINT_NONESTLOOP, JoinMethodHintCreate},
+	{HINT_NOMERGEJOIN, JoinMethodHintCreate},
+	{HINT_NOHASHJOIN, JoinMethodHintCreate},
+	{HINT_LEADING, LeadingHintCreate},
+	{HINT_SET, SetHintCreate},
+	{NULL, NULL}
 };
 
 /*
@@ -1106,32 +1109,14 @@ parse_hints(PlanHint *plan, Query *parse, const char *str)
 
 			hint = parser->create_func(head, keyword);
 
-			if (parser->have_paren)
+			/* parser of each hint does parse in a parenthesis. */
+			if ((str = skip_opened_parenthesis(str)) == NULL ||
+				(str = hint->parser_func(hint, plan, parse, str)) == NULL ||
+				(str = skip_closed_parenthesis(str)) == NULL)
 			{
-				/* parser of each hint does parse in a parenthesis. */
-				if ((str = skip_opened_parenthesis(str)) == NULL ||
-					(str = hint->parser_func(hint, plan, parse, str)) == NULL ||
-					(str = skip_closed_parenthesis(str)) == NULL)
-				{
-					hint->delete_func(hint);
-					pfree(buf.data);
-					return;
-				}
-			}
-			else
-			{
-				if ((str = hint->parser_func(hint, plan, parse, str)) == NULL)
-				{
-					hint->delete_func(hint);
-					pfree(buf.data);
-					return;
-				}
-
-				/*
-				 * 直前のヒントに括弧の指定がなければ次のヒントの間に空白が必要
-				 */
-				if (!isspace(*str) && *str == '\0')
-					parse_ereport(str, ("Delimiter of the hint is necessary."));
+				hint->delete_func(hint);
+				pfree(buf.data);
+				return;
 			}
 
 			/*
@@ -1328,14 +1313,6 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse, const ch
 		}
 	}
 
-	/* カッコが閉じていなければヒント無効。 */
-	skip_space(str);		/* just in case */
-	if (*str != ')')
-	{
-		parse_ereport(str, ("Closed parenthesis is necessary."));
-		return NULL;
-	}
-
 	/*
 	 * ヒントごとに決まっている許容スキャン方式をビットマスクとして設定
 	 */
@@ -1392,7 +1369,7 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse, const ch
 	if (hint->nrels < 2)
 	{
 		parse_ereport(str, ("Specified relation more than two."));
-		return NULL;
+		hint->base.state = HINT_STATE_ERROR;
 	}
 
 	/* テーブル名順にソートする */
@@ -1453,13 +1430,6 @@ SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
 	if ((str = parse_quote_value(str, &hint->name, "parameter name")) == NULL ||
 		(str = parse_quote_value(str, &hint->value, "parameter value")) == NULL)
 		return NULL;
-
-	skip_space(str);
-	if (*str != ')')
-	{
-		parse_ereport(str, ("Closed parenthesis is necessary."));
-		return NULL;
-	}
 
 	return str;
 }
