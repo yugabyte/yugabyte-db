@@ -69,7 +69,7 @@ $ su
 </pre>
 
 <h2 id="uninstall">アンインストール</h2>
-<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。</p>
+<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。make uninstallはPostgreSQLをインストールしたOSユーザで実行してください。</p>
 <p>以下にアンインストールの例を示します。</p>
 <pre>
 $ cd pg_hint_plan-1.0.0
@@ -128,7 +128,7 @@ postgres=# </pre>
 <h4>結合順序</h4>
 <p>あるオブジェクトの組み合わせでどのような順番で結合するかを指定できるヒントのグループで、「Leading」のみが含まれます。</p>
 <p>結合順序を指定できるオブジェクトは結合方式と同じです。</p>
-<p>先に結合して欲しいオブジェクトから順にオブジェクト名または別名を指定してください。複数の結合順序のヒントを指定した場合は、最後に指定したヒントが適用されます。</p>
+<p>先に結合して欲しいオブジェクトから順にオブジェクト名または別名を指定してください。複数の結合順序のヒントを指定した場合は、最後に指定したヒントが適用されます。クエリ中に複数の問い合わせブロックがあり、それぞれに結合順を指定したい場合は、それぞれの結合順を1つのLeadingヒントに連続して指定してください。</p>
 <h4>GUCパラメータ</h4>
 <p>そのクエリの実行計画を作成している間だけGUCパラメータを変更できるヒントのグループで、「Set」のみが含まれます。</p>
 <p>設定したいGUCパラメータとそのパラメータの値を指定してください。<a href="http://www.postgresql.org/docs/9.1/static/sql-set.html">SET</a>コマンドで指定できるGUCパラメータならば全て指定できますが、効果があるのは<a href="http://www.postgresql.org/docs/9.1/static/runtime-config-query.html">問い合わせ計画</a>のGUCパラメータのみです。同じGUCパラメータに対して複数のGUCパラメータのヒントを指定した場合は、最後に指定したヒントが適用されます。</p>
@@ -192,31 +192,34 @@ postgres=# </pre>
 <dd>スキーマ違いや同一テーブルの複数回使用などでクエリ中に同一名称のテーブルが複数回出現する場合は、テーブルに別名をつけてそれぞれのテーブルを区別してください。以下の例の1つ目のSQL文では、MergeJoin(t1 t1)をヒントに指定したとき、ヒント対象のオブジェクトが特定できずにエラーになっています。2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにMerge Joinを選択しています。
 </p>
 <pre>
-postgres=# /*+ <span class="strong">MergeJoin(t1 t1)</span>*/
+postgres=# /*+ <span class="strong">HashJoin(t1 t1)</span>*/
 postgres-# EXPLAIN SELECT * FROM s1.t1
 postgres-# JOIN public.t1 ON (s1.t1.id=public.t1.id);
-INFO:  hint syntax error at or near "t1 t1)"
-<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
-INFO:  hint syntax error at or near "t1 t1)"
-<span class="strong">DETAIL:  relation name "t1" is ambiguous</span>
-                             QUERY PLAN
---------------------------------------------------------------------
- Hash Join  (cost=270.00..323.05 rows=1230 width=44)
-   Hash Cond: (s1.t1.id = public.t1.id)
-   ->  Seq Scan on t1  (cost=0.00..22.30 rows=1230 width=36)
-   ->  Hash  (cost=145.00..145.00 rows=10000 width=8)
-         ->  Seq Scan on t1  (cost=0.00..145.00 rows=10000 width=8)
-(5 rows)
+INFO:  hint syntax error at or near "HashJoin(t1 t1)"
+<span class="strong">DETAIL:  Relation name "t1" is ambiguous.</span>
+                            QUERY PLAN
+------------------------------------------------------------------
+ Merge Join  (cost=337.49..781.49 rows=28800 width=8)
+   Merge Cond: (s1.t1.id = public.t1.id)
+   ->  Sort  (cost=168.75..174.75 rows=2400 width=4)
+         Sort Key: s1.t1.id
+         ->  Seq Scan on t1  (cost=0.00..34.00 rows=2400 width=4)
+   ->  Sort  (cost=168.75..174.75 rows=2400 width=4)
+         Sort Key: public.t1.id
+         ->  Seq Scan on t1  (cost=0.00..34.00 rows=2400 width=4)
+(8 行)
 
-postgres=# /*+ <span class="strong">MergeJoin(pt st)</span> */
+postgres=# /*+ <span class="strong">HashJoin(pt st)</span> */
 postgres-# EXPLAIN SELECT * FROM s1.t1 st
 postgres-# JOIN public.t1 pt ON (st.id=pt.id);
-                                    QUERY PLAN
-----------------------------------------------------------------------------------
- <span class="strong">Merge Join</span>  (cost=0.00..421.33 rows=1230 width=44)
-   Merge Cond: (st.id = pt.id)
-   ->  Index Scan using t1_id_idx on t1 st  (cost=0.00..62.70 rows=1230 width=36)
-   ->  Index Scan using t1_pkey on t1 pt  (cost=0.00..318.25 rows=10000 width=8)(4 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ <span class="strong">Hash Join</span>  (cost=64.00..1112.00 rows=28800 width=8)
+   Hash Cond: (st.id = pt.id)
+   ->  Seq Scan on t1 st  (cost=0.00..34.00 rows=2400 width=4)
+   ->  Hash  (cost=34.00..34.00 rows=2400 width=4)
+         ->  Seq Scan on t1 pt  (cost=0.00..34.00 rows=2400 width=4)
+(5 行)
 
 postgres=#</pre>
 </p>
@@ -230,6 +233,8 @@ postgres=#</pre>
 <li>結合方式のヒント、または結合順のヒントのオブジェクト名に、同じ名称を複数回指定した。</li>
 </ul>
 </dd>
+<dt>ネストしたブロックコメント</dt>
+<dd>pg_hint_planでは、ヒントを指定したブロックコメントにネストしたブロックコメントを含めることができません。ネストしたブロックコメントを含めた場合は、誤った記述に関する情報を出力しますがエラー終了しません。全てのヒントを無視してクエリを実行します。</dd>
 <dt>影響を与えるGUCパラメータ</dt>
 <dd>geqo_threshold、from_collapse_limit、およびjoin_collapse_limitによって結合順序が決定する場合は、結合順序のヒントより優先されます。GUCパラメータより結合順序のヒントを優先するには、GUCパラメータの値を結合対象のテーブル数より大きくしてください。</dd>
 <dt>指定するヒントの種類の重複</dt>
@@ -239,43 +244,43 @@ postgres=#</pre>
 <ul>
 <li>FULL OUTER JOINではNested Loopは候補パスとして扱われません。</li>
 <li>WHERE句やJOIN条件などに指定されない列のみを含むインデックスは候補パスとして扱われません。</li>
-<li>>検索条件にctidを指定しない場合はTid Scanは候補パスとして扱われません。</li>
+<li>検索条件にctidを指定しない場合はTid Scanは候補パスとして扱われません。</li>
 </ul>
 </dd>
 <dt>PREPARE/EXECUTEに対する制限</dt>
-<dd>libpqプロトコルの拡張問い合わせプロトコルを使い、かつSQL文をPREPARE文とEXECUTE文で実行する場合は、pg_hint_planでは実行計画を制御できません。拡張問い合わせプロトコルで準備された文を使用したい場合は、各種ライブラリが用意しているプリペアド機能を使用してください。例えば、JDBCではクエリの実行に常に拡張問い合わせプロトコルが使われるため、準備した文が必要な場合はPreparedStatementを使用する必要があります。</dd>
+<dd>libpqプロトコルの拡張問い合わせプロトコルを使い、かつSQL文をPREPARE文とEXECUTE文で実行する場合は、pg_hint_planでは実行計画を制御できません。拡張問い合わせプロトコルで準備された文を使用したい場合は、各種ライブラリが用意しているプリペアド機能を使用してください。例えばJDBCでは、クエリの実行に常に拡張問い合わせプロトコルが使われるため、準備した文が必要な場合はPreparedStatementを使用してください。</dd>
 <dt>継承テーブルに対する制限</dt>
 <dd>継承テーブルにスキャン方式のヒントを指定する場合は、オブジェクト名として親テーブルの名称または別名を指定してください。全ての子テーブルに同じスキャン方式を選択します。子テーブルごとに別のスキャン方式を指定することはできません。</dd>
 <dt>VIEWおよびRULEに対する制限</dt>
 <dd>VIEWやRULEを定義したテーブルを複数用いるときに、各VIEW内のテーブルの別名やRULE書き換え後のクエリのテーブルの別名が重複した場合は、ヒントの対象を区別できません。区別する場合は、各VIEW内のテーブルの別名やRULE書き換え後のクエリのテーブルの別名を重複させないでください。</dd>
 <dt>マルチステートメントにおける制限</dt>
-<dd>クエリがマルチステートメントで実行される場合は、先頭のコメントで指定したヒントを全てのクエリで使用します。2つ目以降のクエリに指定したヒントは無視します。psqlコマンドで-cオプションで複数のクエリを指定した場合などにマルチステートメントで実行されます。</dd>
+<dd>クエリがマルチステートメントで実行される場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。2つ目以降のクエリに指定したヒントは無視します。psqlコマンドで-cオプションで複数のクエリを指定した場合などにマルチステートメントで実行されます。</dd>
 <dt>RULEにおける制限</dt>
-<dd>RULEによるクエリ書き換え後によってクエリが複数になる場合は、先頭のコメントで指定したヒントを全てのクエリで使用します。</dd>
-<dt>PL/pgSQLおける制限</dt>
+<dd>RULEによるクエリ書き換え後によってクエリが複数になる場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。</dd>
+<dt>PL/pgSQLにおける制限</dt>
 <dd>PL/pgSQLでユーザ定義関数を実装する際に、関数定義内の各クエリの先頭にヒントを指定したとしても、そのヒントは無視します。ユーザ定義関数を実行するSELECTコマンドに指定したヒントを使用します。ただし、PL/pgSQLでは、関数定義内で指定したクエリがそのまま実行されるとは限らないため、ヒントを指定した場合の挙動は保証できません。</dd>
 <dt>ECPGにおける制限</dt>
-<dd>pg_hint_planでは、ECPGで実装したアプリケーションから発行するクエリは、基本的に実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのコメントを取り除いてしまうためです。ECPGでも例外的に、動的SQLの先頭にヒントを指定した場合は、実行計画を制御できます。</dd>
+<dd>pg_hint_planでは、ECPGで実装したアプリケーションから発行するクエリは、基本的に実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ECPGでも例外的に、動的SQLの先頭にヒントを指定した場合は、実行計画を制御できます。</dd>
 <dt>psqlのフェッチ件数指定</dt>
 <dd>psqlコマンドのFETCH_COUNT変数に0より大きな整数値を指定すると、pg_hint_planでは実行計画を制御できなくなります。FETCH_COUNT変数に0より大きな整数値を指定すると、ユーザが指定したクエリの先頭に「DECLARE _psql_cursor NO SCROLL CURSOR FOR」が自動的に追加されてクエリが発行されることにより、ヒントがクエリの先頭ではなくなってしまうためです。</dd>
 <dt>ヒントによる他の機能への影響</dt>
 <dd>pg_stat_statementやSQL文フィンガープリントベースのクエリキャッシュなどでは、ヒントが異なれば別のSQL文として扱われます。</dd>
 <dt>FROM句にVALUESコマンドを指定した場合の制限</dt>
-<dd>FROM句にVALUESコマンドを指定した場合は、ヒントのオブジェクト名に「*VALUES*」を指定してください。これは、VALUESの結果に別名を指定しても、内部的に「*VALUES*」に名称が置き換えられるためです。このため、複数のVALUESを指定するとヒントの対象を特定できなくなり、実行計画を制御できません。</dd>
+<dd>FROM句にVALUESコマンドを指定した場合は、ヒントのオブジェクト名に「*VALUES*」を指定してください。これは、VALUESの結果に別名を指定しても、PostgreSQL本体側で「*VALUES*」に名称が置き換えられるためです。このため、複数のVALUESを使用する場合は、ヒントの対象を特定できないため、実行計画を制御できません。</dd>
 <pre>
-postgres=# /* <span class="strong">MergeJoin(a *VALUES*)</span> */
+postgres=# /*+ <span class="strong">MergeJoin(a *VALUES*)</span> */
 postgres-# EXPLAIN SELECT *
 postgres-#    FROM pgbench_accounts a
-postgres-#    JOIN (VALUES (1,1),(2,2)) v (vid, vbalance) ON a.aid = v.vid
+postgres-#    JOIN (VALUES (1,1),(2,2)) <span class="strong">v</span> (vid, vbalance) ON a.aid = v.vid
 postgres-#   ORDER BY a.aid;
-                                                 QUERY PLAN
--------------------------------------------------------------------------------------------------------------
- Sort  (cost=16.62..16.62 rows=2 width=105)
-   Sort Key: a.aid
-   ->  <span class="strong">Nested Loop</span>  (cost=0.00..16.61 rows=2 width=105)
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
+ <span class="strong">Merge Join</span>  (cost=0.04..4497.33 rows=2 width=105)
+   Merge Cond: (a.aid = "*VALUES*".column1)
+   ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
+   ->  Sort  (cost=0.04..0.04 rows=2 width=8)
+         Sort Key: "*VALUES*".column1
          ->  Values Scan on <span class="strong">"*VALUES*"</span>  (cost=0.00..0.03 rows=2 width=8)
-         ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..8.28 rows=1 width=97)
-               Index Cond: (aid = "*VALUES*".column1)
 (6 行)
 
 postgres=#</pre>
