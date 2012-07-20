@@ -1671,12 +1671,12 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
  * する別名がなければ0を返す。
  * aliasnameがクエリ中に複数回指定された場合は、-1を返す。
  */
-static Index
+static int
 find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
 		const char *str)
 {
-	int		i;
-	Index	found = 0;
+	int	i;
+	int	found = 0;
 
 	for (i = 1; i < root->simple_rel_array_size; i++)
 	{
@@ -1751,7 +1751,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 		List *initial_rels, JoinMethodHint **join_method_hints)
 {
 	int				i;
-	Index			relid;
+	int				relid;
 	LeadingHint	   *lhint;
 	Relids			joinrelids;
 	int				njoinrels;
@@ -1818,18 +1818,18 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 		char		   *relname = (char *)lfirst(l);
 		JoinMethodHint *hint;
 
-		i = find_relid_aliasname(root, relname, initial_rels, plan->hint_str);
+		relid = find_relid_aliasname(root, relname, initial_rels, plan->hint_str);
 
-		if (i == -1)
+		if (relid == -1)
 		{
 			bms_free(joinrelids);
 			return;
 		}
 
-		if (i == 0)
+		if (relid == 0)
 			continue;
 
-		if (bms_is_member(i, joinrelids))
+		if (bms_is_member(relid, joinrelids))
 		{
 			parse_ereport(lhint->base.hint_str,
 				("Relation name \"%s\" is duplicate.", relname));
@@ -1838,7 +1838,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 			return;
 		}
 
-		joinrelids = bms_add_member(joinrelids, i);
+		joinrelids = bms_add_member(joinrelids, relid);
 		njoinrels++;
 
 		if (njoinrels < 2)
