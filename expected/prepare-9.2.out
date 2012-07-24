@@ -813,3 +813,25 @@ EXPLAIN (COSTS false) EXECUTE p7 (10);
                ->  Seq Scan on t2
 (7 rows)
 
+-- error case
+/*+ NestLoop(t1 t2) */
+EXPLAIN (COSTS false) EXECUTE p8 (10);
+ERROR:  prepared statement "p8" does not exist
+/*+ NestLoop(t1 t2) */
+EXPLAIN (COSTS false) SELECT count(*) FROM t1, t2 WHERE t1.id = t2.id AND t1.id > 10;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Seq Scan on t2
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: ((id > 10) AND (id = t2.id))
+(5 rows)
+

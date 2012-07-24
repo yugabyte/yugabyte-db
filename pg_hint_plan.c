@@ -404,12 +404,19 @@ _PG_fini(void)
 	join_search_hook = prev_join_search;
 }
 
+static void
+ProcessUtility_hook_error_callback(void *arg)
+{
+	stmt_name = NULL;
+}
+
 void
 pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 							ParamListInfo params, bool isTopLevel,
 							DestReceiver *dest, char *completionTag)
 {
-	Node   *node;
+	Node				   *node;
+	ErrorContextCallback	errcontext;
 
 	if (!pg_hint_plan_enable)
 	{
@@ -447,7 +454,13 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	 */
 	if (IsA(node , ExecuteStmt))
 	{
-		ExecuteStmt		   *stmt;
+		ExecuteStmt	   *stmt;
+
+		/* Set up callback to statement name reset. */
+		errcontext.callback = ProcessUtility_hook_error_callback;
+		errcontext.arg = NULL;
+		errcontext.previous = error_context_stack;
+		error_context_stack = &errcontext;
 
 		stmt = (ExecuteStmt *) node;
 		stmt_name = stmt->name;
@@ -460,7 +473,13 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 		standard_ProcessUtility(parsetree, queryString, params,
 								isTopLevel, dest, completionTag);
 
-	stmt_name = NULL;
+	if (stmt_name)
+	{
+		stmt_name = NULL;
+
+		/* Remove error callback. */
+		error_context_stack = errcontext.previous;
+	}
 }
 
 static Hint *
