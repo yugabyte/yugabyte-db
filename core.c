@@ -3,14 +3,6 @@
  * core.c
  *	  Routines copied from PostgreSQL core distribution.
  *
- * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
- * Portions Copyright (c) 1994, Regents of the University of California
- *
- *-------------------------------------------------------------------------
- */
-/*
- * PostgreSQL 本体から流用した関数
- *
  * src/backend/optimizer/path/allpaths.c
  *     standard_join_search()
  *     set_plain_rel_pathlist()
@@ -27,6 +19,11 @@
  *     is_dummy_rel()
  *     mark_dummy_rel()
  *     restriction_is_constant_false()
+ *
+ * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
+ * Portions Copyright (c) 1994, Regents of the University of California
+ *
+ *-------------------------------------------------------------------------
  */
 
 /*
@@ -536,7 +533,6 @@ set_dummy_rel_pathlist(RelOptInfo *rel)
 	set_cheapest(rel);
 }
 
-
 /*
  * join_search_one_level
  *	  Consider ways to produce join relations containing exactly 'level'
@@ -1013,7 +1009,6 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	return true;
 }
 
-
 /*
  * has_join_restriction
  *		Detect whether the specified relation has join-order restrictions
@@ -1051,7 +1046,6 @@ has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 	return false;
 }
 
-
 /*
  * is_dummy_rel --- has relation been proven empty?
  *
@@ -1063,7 +1057,6 @@ is_dummy_rel(RelOptInfo *rel)
 	return (rel->cheapest_total_path != NULL &&
 			IS_DUMMY_PATH(rel->cheapest_total_path));
 }
-
 
 /*
  * Mark a relation as proven empty.
@@ -1106,7 +1099,6 @@ mark_dummy_rel(RelOptInfo *rel)
 
 	MemoryContextSwitchTo(oldcontext);
 }
-
 
 /*
  * restriction_is_constant_false --- is a restrictlist just FALSE?

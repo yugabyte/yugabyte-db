@@ -2,7 +2,7 @@
  *
  * pg_hint_plan.c
  *		  do instructions or hints to the planner using C-style block comments
- * 		  of the SQL.
+ *		  of the SQL.
  *
  * Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  *
@@ -1881,7 +1881,7 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level, List *initial_re
 
 /*
  * make_join_rel() をラップする関数
- * 
+ *
  * ヒントにしたがって、enabele_* パラメータを変更した上で、make_join_rel()を
  * 呼び出す。
  */
