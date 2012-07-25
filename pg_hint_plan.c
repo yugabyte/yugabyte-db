@@ -1272,7 +1272,7 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 	/*
 	 * スキャン方式のヒントでリレーション名が読み取れない場合はヒント無効
 	 */
-	if ((str = parse_quote_value(str, &hint->relname, "ralation name")) ==NULL)
+	if ((str = parse_quote_value(str, &hint->relname, "ralation name")) == NULL)
 		return NULL;
 
 	skip_space(str);
@@ -1817,8 +1817,8 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 			 * Here relnames is not set, since Relids bitmap is sufficient to
 			 * control paths of this query afterwards.
 			 */
-			hint =(JoinMethodHint *) JoinMethodHintCreate(lhint->base.hint_str,
-														  HINT_LEADING);
+			hint = (JoinMethodHint *) JoinMethodHintCreate(lhint->base.hint_str,
+														   HINT_LEADING);
 			hint->base.state = HINT_STATE_USED;
 			hint->nrels = njoinrels;
 			hint->enforce_mask = ENABLE_ALL_JOIN;
