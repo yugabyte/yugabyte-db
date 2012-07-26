@@ -229,9 +229,11 @@ typedef struct HintParser
 void		_PG_init(void);
 void		_PG_fini(void);
 
-void pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
-								 ParamListInfo params, bool isTopLevel,
-								 DestReceiver *dest, char *completionTag);
+static void pg_hint_plan_ProcessUtility(Node *parsetree,
+										const char *queryString,
+										ParamListInfo params, bool isTopLevel,
+										DestReceiver *dest,
+										char *completionTag);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 										 ParamListInfo boundParams);
 static void pg_hint_plan_get_relation_info(PlannerInfo *root,
@@ -276,8 +278,6 @@ static void make_rels_by_clauseless_joins(PlannerInfo *root,
 										  RelOptInfo *old_rel,
 										  ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
-static void set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-							 Index rti, RangeTblEntry *rte);
 static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 								   RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
@@ -417,83 +417,9 @@ _PG_fini(void)
 	join_search_hook = prev_join_search;
 }
 
-static void
-ProcessUtility_hook_error_callback(void *arg)
-{
-	stmt_name = NULL;
-}
-
-void
-pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
-							ParamListInfo params, bool isTopLevel,
-							DestReceiver *dest, char *completionTag)
-{
-	Node				   *node;
-	ErrorContextCallback	errcontext;
-
-	if (!pg_hint_plan_enable)
-	{
-		if (prev_ProcessUtility)
-			(*prev_ProcessUtility) (parsetree, queryString, params,
-									isTopLevel, dest, completionTag);
-		else
-			standard_ProcessUtility(parsetree, queryString, params,
-									isTopLevel, dest, completionTag);
-
-		return;
-	}
-
-	node = parsetree;
-	if (IsA(node, ExplainStmt))
-	{
-		/*
-		 * EXPLAIN対象のクエリのパースツリーを取得する
-		 */
-		ExplainStmt	   *stmt;
-		Query		   *query;
-
-		stmt = (ExplainStmt *) node;
-
-		Assert(IsA(stmt->query, Query));
-		query = (Query *) stmt->query;
-
-		if (query->commandType == CMD_UTILITY && query->utilityStmt != NULL)
-			node = query->utilityStmt;
-	}
-
-	/*
-	 * EXECUTEコマンドならば、PREPARE時に指定されたクエリ文字列を取得し、ヒント
-	 * 句の候補として設定する
-	 */
-	if (IsA(node, ExecuteStmt))
-	{
-		ExecuteStmt	   *stmt;
-
-		/* Set up callback to statement name reset. */
-		errcontext.callback = ProcessUtility_hook_error_callback;
-		errcontext.arg = NULL;
-		errcontext.previous = error_context_stack;
-		error_context_stack = &errcontext;
-
-		stmt = (ExecuteStmt *) node;
-		stmt_name = stmt->name;
-	}
-
-	if (prev_ProcessUtility)
-		(*prev_ProcessUtility) (parsetree, queryString, params,
-								isTopLevel, dest, completionTag);
-	else
-		standard_ProcessUtility(parsetree, queryString, params,
-								isTopLevel, dest, completionTag);
-
-	if (stmt_name)
-	{
-		stmt_name = NULL;
-
-		/* Remove error callback. */
-		error_context_stack = errcontext.previous;
-	}
-}
+/*
+ * create and delete functions the hint object
+ */
 
 static Hint *
 ScanMethodHintCreate(const char *hint_str, const char *keyword)
@@ -527,6 +453,153 @@ ScanMethodHintDelete(ScanMethodHint *hint)
 	list_free_deep(hint->indexnames);
 	pfree(hint);
 }
+
+static Hint *
+JoinMethodHintCreate(const char *hint_str, const char *keyword)
+{
+	JoinMethodHint *hint;
+
+	hint = palloc(sizeof(JoinMethodHint));
+	hint->base.hint_str = hint_str;
+	hint->base.keyword = keyword;
+	hint->base.type = HINT_TYPE_JOIN_METHOD;
+	hint->base.state = HINT_STATE_NOTUSED;
+	hint->base.delete_func = (HintDeleteFunction) JoinMethodHintDelete;
+	hint->base.dump_func = (HintDumpFunction) JoinMethodHintDump;
+	hint->base.cmp_func = (HintCmpFunction) JoinMethodHintCmp;
+	hint->base.parser_func = (HintParseFunction) JoinMethodHintParse;
+	hint->nrels = 0;
+	hint->relnames = NULL;
+	hint->enforce_mask = 0;
+	hint->joinrelids = NULL;
+
+	return (Hint *) hint;
+}
+
+static void
+JoinMethodHintDelete(JoinMethodHint *hint)
+{
+	if (!hint)
+		return;
+
+	if (hint->relnames)
+	{
+		int	i;
+
+		for (i = 0; i < hint->nrels; i++)
+			pfree(hint->relnames[i]);
+		pfree(hint->relnames);
+	}
+	bms_free(hint->joinrelids);
+	pfree(hint);
+}
+
+static Hint *
+LeadingHintCreate(const char *hint_str, const char *keyword)
+{
+	LeadingHint	   *hint;
+
+	hint = palloc(sizeof(LeadingHint));
+	hint->base.hint_str = hint_str;
+	hint->base.keyword = keyword;
+	hint->base.type = HINT_TYPE_LEADING;
+	hint->base.state = HINT_STATE_NOTUSED;
+	hint->base.delete_func = (HintDeleteFunction)LeadingHintDelete;
+	hint->base.dump_func = (HintDumpFunction) LeadingHintDump;
+	hint->base.cmp_func = (HintCmpFunction) LeadingHintCmp;
+	hint->base.parser_func = (HintParseFunction) LeadingHintParse;
+	hint->relations = NIL;
+
+	return (Hint *) hint;
+}
+
+static void
+LeadingHintDelete(LeadingHint *hint)
+{
+	if (!hint)
+		return;
+
+	list_free_deep(hint->relations);
+	pfree(hint);
+}
+
+static Hint *
+SetHintCreate(const char *hint_str, const char *keyword)
+{
+	SetHint	   *hint;
+
+	hint = palloc(sizeof(SetHint));
+	hint->base.hint_str = hint_str;
+	hint->base.keyword = keyword;
+	hint->base.type = HINT_TYPE_SET;
+	hint->base.state = HINT_STATE_NOTUSED;
+	hint->base.delete_func = (HintDeleteFunction) SetHintDelete;
+	hint->base.dump_func = (HintDumpFunction) SetHintDump;
+	hint->base.cmp_func = (HintCmpFunction) SetHintCmp;
+	hint->base.parser_func = (HintParseFunction) SetHintParse;
+	hint->name = NULL;
+	hint->value = NULL;
+
+	return (Hint *) hint;
+}
+
+static void
+SetHintDelete(SetHint *hint)
+{
+	if (!hint)
+		return;
+
+	if (hint->name)
+		pfree(hint->name);
+	if (hint->value)
+		pfree(hint->value);
+	pfree(hint);
+}
+
+static PlanHint *
+PlanHintCreate(void)
+{
+	PlanHint   *hint;
+
+	hint = palloc(sizeof(PlanHint));
+	hint->hint_str = NULL;
+	hint->nall_hints = 0;
+	hint->max_all_hints = 0;
+	hint->all_hints = NULL;
+	memset(hint->num_hints, 0, sizeof(hint->num_hints));
+	hint->scan_hints = NULL;
+	hint->init_scan_mask = 0;
+	hint->parent_relid = 0;
+	hint->join_hints = NULL;
+	hint->init_join_mask = 0;
+	hint->join_hint_level = NULL;
+	hint->leading_hint = NULL;
+	hint->context = superuser() ? PGC_SUSET : PGC_USERSET;
+	hint->set_hints = NULL;
+
+	return hint;
+}
+
+static void
+PlanHintDelete(PlanHint *hint)
+{
+	int			i;
+
+	if (!hint)
+		return;
+
+	if (hint->hint_str)
+		pfree(hint->hint_str);
+
+	for (i = 0; i < hint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+		hint->all_hints[i]->delete_func(hint->all_hints[i]);
+	if (hint->all_hints)
+		pfree(hint->all_hints);
+}
+
+/*
+ * dump functions
+ */
 
 static void
 dump_quote_value(StringInfo buf, const char *value)
@@ -571,46 +644,6 @@ ScanMethodHintDump(ScanMethodHint *hint, StringInfo buf)
 	appendStringInfoString(buf, ")\n");
 }
 
-static Hint *
-JoinMethodHintCreate(const char *hint_str, const char *keyword)
-{
-	JoinMethodHint *hint;
-
-	hint = palloc(sizeof(JoinMethodHint));
-	hint->base.hint_str = hint_str;
-	hint->base.keyword = keyword;
-	hint->base.type = HINT_TYPE_JOIN_METHOD;
-	hint->base.state = HINT_STATE_NOTUSED;
-	hint->base.delete_func = (HintDeleteFunction) JoinMethodHintDelete;
-	hint->base.dump_func = (HintDumpFunction) JoinMethodHintDump;
-	hint->base.cmp_func = (HintCmpFunction) JoinMethodHintCmp;
-	hint->base.parser_func = (HintParseFunction) JoinMethodHintParse;
-	hint->nrels = 0;
-	hint->relnames = NULL;
-	hint->enforce_mask = 0;
-	hint->joinrelids = NULL;
-
-	return (Hint *) hint;
-}
-
-static void
-JoinMethodHintDelete(JoinMethodHint *hint)
-{
-	if (!hint)
-		return;
-
-	if (hint->relnames)
-	{
-		int	i;
-
-		for (i = 0; i < hint->nrels; i++)
-			pfree(hint->relnames[i]);
-		pfree(hint->relnames);
-	}
-	bms_free(hint->joinrelids);
-	pfree(hint);
-}
-
 static void
 JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf)
 {
@@ -625,35 +658,6 @@ JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf)
 	}
 	appendStringInfoString(buf, ")\n");
 
-}
-
-static Hint *
-LeadingHintCreate(const char *hint_str, const char *keyword)
-{
-	LeadingHint	   *hint;
-
-	hint = palloc(sizeof(LeadingHint));
-	hint->base.hint_str = hint_str;
-	hint->base.keyword = keyword;
-	hint->base.type = HINT_TYPE_LEADING;
-	hint->base.state = HINT_STATE_NOTUSED;
-	hint->base.delete_func = (HintDeleteFunction)LeadingHintDelete;
-	hint->base.dump_func = (HintDumpFunction) LeadingHintDump;
-	hint->base.cmp_func = (HintCmpFunction) LeadingHintCmp;
-	hint->base.parser_func = (HintParseFunction) LeadingHintParse;
-	hint->relations = NIL;
-
-	return (Hint *) hint;
-}
-
-static void
-LeadingHintDelete(LeadingHint *hint)
-{
-	if (!hint)
-		return;
-
-	list_free_deep(hint->relations);
-	pfree(hint);
 }
 
 static void
@@ -677,39 +681,6 @@ LeadingHintDump(LeadingHint *hint, StringInfo buf)
 	appendStringInfoString(buf, ")\n");
 }
 
-static Hint *
-SetHintCreate(const char *hint_str, const char *keyword)
-{
-	SetHint	   *hint;
-
-	hint = palloc(sizeof(SetHint));
-	hint->base.hint_str = hint_str;
-	hint->base.keyword = keyword;
-	hint->base.type = HINT_TYPE_SET;
-	hint->base.state = HINT_STATE_NOTUSED;
-	hint->base.delete_func = (HintDeleteFunction) SetHintDelete;
-	hint->base.dump_func = (HintDumpFunction) SetHintDump;
-	hint->base.cmp_func = (HintCmpFunction) SetHintCmp;
-	hint->base.parser_func = (HintParseFunction) SetHintParse;
-	hint->name = NULL;
-	hint->value = NULL;
-
-	return (Hint *) hint;
-}
-
-static void
-SetHintDelete(SetHint *hint)
-{
-	if (!hint)
-		return;
-
-	if (hint->name)
-		pfree(hint->name);
-	if (hint->value)
-		pfree(hint->value);
-	pfree(hint);
-}
-
 static void
 SetHintDump(SetHint *hint, StringInfo buf)
 {
@@ -718,47 +689,6 @@ SetHintDump(SetHint *hint, StringInfo buf)
 	appendStringInfoCharMacro(buf, ' ');
 	dump_quote_value(buf, hint->value);
 	appendStringInfo(buf, ")\n");
-}
-
-static PlanHint *
-PlanHintCreate(void)
-{
-	PlanHint   *hint;
-
-	hint = palloc(sizeof(PlanHint));
-	hint->hint_str = NULL;
-	hint->nall_hints = 0;
-	hint->max_all_hints = 0;
-	hint->all_hints = NULL;
-	memset(hint->num_hints, 0, sizeof(hint->num_hints));
-	hint->scan_hints = NULL;
-	hint->init_scan_mask = 0;
-	hint->parent_relid = 0;
-	hint->join_hints = NULL;
-	hint->init_join_mask = 0;
-	hint->join_hint_level = NULL;
-	hint->leading_hint = NULL;
-	hint->context = superuser() ? PGC_SUSET : PGC_USERSET;
-	hint->set_hints = NULL;
-
-	return hint;
-}
-
-static void
-PlanHintDelete(PlanHint *hint)
-{
-	int			i;
-
-	if (!hint)
-		return;
-
-	if (hint->hint_str)
-		pfree(hint->hint_str);
-
-	for (i = 0; i < hint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
-		hint->all_hints[i]->delete_func(hint->all_hints[i]);
-	if (hint->all_hints)
-		pfree(hint->all_hints);
 }
 
 static void
@@ -800,6 +730,10 @@ PlanHintDump(PlanHint *hint)
 
 	pfree(buf.data);
 }
+
+/*
+ * compare functions
+ */
 
 static int
 RelnameCmp(const void *a, const void *b)
@@ -867,102 +801,6 @@ static int
 AllHintCmpIsOrder(const void *a, const void *b)
 {
 	return AllHintCmp(a, b, true);
-}
-
-#if PG_VERSION_NUM < 90200
-static int
-set_config_option_wrapper(const char *name, const char *value,
-						  GucContext context, GucSource source,
-						  GucAction action, bool changeVal, int elevel)
-{
-	int				result = 0;
-	MemoryContext	ccxt = CurrentMemoryContext;
-
-	PG_TRY();
-	{
-		result = set_config_option(name, value, context, source,
-								   action, changeVal);
-	}
-	PG_CATCH();
-	{
-		ErrorData	   *errdata;
-		MemoryContext	ecxt;
-
-		if (elevel >= ERROR)
-			PG_RE_THROW();
-
-		ecxt = MemoryContextSwitchTo(ccxt);
-		errdata = CopyErrorData();
-		ereport(elevel, (errcode(errdata->sqlerrcode),
-				errmsg("%s", errdata->message),
-				errdata->detail ? errdetail("%s", errdata->detail) : 0,
-				errdata->hint ? errhint("%s", errdata->hint) : 0));
-		FreeErrorData(errdata);
-
-		MemoryContextSwitchTo(ecxt);
-	}
-	PG_END_TRY();
-
-	return result;
-}
-
-#define set_config_option(name, value, context, source, \
-						  action, changeVal, elevel) \
-	set_config_option_wrapper(name, value, context, source, \
-							  action, changeVal, elevel)
-#endif
-
-static int
-set_config_options(SetHint **options, int noptions, GucContext context)
-{
-	int	i;
-	int	save_nestlevel;
-
-	save_nestlevel = NewGUCNestLevel();
-
-	for (i = 0; i < noptions; i++)
-	{
-		SetHint	   *hint = options[i];
-		int			result;
-
-		if (!hint_state_enabled(hint))
-			continue;
-
-		result = set_config_option(hint->name, hint->value, context,
-								   PGC_S_SESSION, GUC_ACTION_SAVE, true,
-								   pg_hint_plan_parse_messages);
-		if (result != 0)
-			hint->base.state = HINT_STATE_USED;
-		else
-			hint->base.state = HINT_STATE_ERROR;
-	}
-
-	return save_nestlevel;
-}
-
-#define SET_CONFIG_OPTION(name, type_bits) \
-	set_config_option((name), \
-		(enforce_mask & (type_bits)) ? "true" : "false", \
-		context, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR)
-
-static void
-set_scan_config_options(unsigned char enforce_mask, GucContext context)
-{
-	SET_CONFIG_OPTION("enable_seqscan", ENABLE_SEQSCAN);
-	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
-	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
-	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
-#if PG_VERSION_NUM >= 90200
-	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXONLYSCAN);
-#endif
-}
-
-static void
-set_join_config_options(unsigned char enforce_mask, GucContext context)
-{
-	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
-	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
-	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
 }
 
 /*
@@ -1431,6 +1269,188 @@ SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
 		return NULL;
 
 	return str;
+}
+
+/*
+ * set GUC parameter functions
+ */
+
+#if PG_VERSION_NUM < 90200
+static int
+set_config_option_wrapper(const char *name, const char *value,
+						  GucContext context, GucSource source,
+						  GucAction action, bool changeVal, int elevel)
+{
+	int				result = 0;
+	MemoryContext	ccxt = CurrentMemoryContext;
+
+	PG_TRY();
+	{
+		result = set_config_option(name, value, context, source,
+								   action, changeVal);
+	}
+	PG_CATCH();
+	{
+		ErrorData	   *errdata;
+		MemoryContext	ecxt;
+
+		if (elevel >= ERROR)
+			PG_RE_THROW();
+
+		ecxt = MemoryContextSwitchTo(ccxt);
+		errdata = CopyErrorData();
+		ereport(elevel, (errcode(errdata->sqlerrcode),
+				errmsg("%s", errdata->message),
+				errdata->detail ? errdetail("%s", errdata->detail) : 0,
+				errdata->hint ? errhint("%s", errdata->hint) : 0));
+		FreeErrorData(errdata);
+
+		MemoryContextSwitchTo(ecxt);
+	}
+	PG_END_TRY();
+
+	return result;
+}
+
+#define set_config_option(name, value, context, source, \
+						  action, changeVal, elevel) \
+	set_config_option_wrapper(name, value, context, source, \
+							  action, changeVal, elevel)
+#endif
+
+static int
+set_config_options(SetHint **options, int noptions, GucContext context)
+{
+	int	i;
+	int	save_nestlevel;
+
+	save_nestlevel = NewGUCNestLevel();
+
+	for (i = 0; i < noptions; i++)
+	{
+		SetHint	   *hint = options[i];
+		int			result;
+
+		if (!hint_state_enabled(hint))
+			continue;
+
+		result = set_config_option(hint->name, hint->value, context,
+								   PGC_S_SESSION, GUC_ACTION_SAVE, true,
+								   pg_hint_plan_parse_messages);
+		if (result != 0)
+			hint->base.state = HINT_STATE_USED;
+		else
+			hint->base.state = HINT_STATE_ERROR;
+	}
+
+	return save_nestlevel;
+}
+
+#define SET_CONFIG_OPTION(name, type_bits) \
+	set_config_option((name), \
+		(enforce_mask & (type_bits)) ? "true" : "false", \
+		context, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR)
+
+static void
+set_scan_config_options(unsigned char enforce_mask, GucContext context)
+{
+	SET_CONFIG_OPTION("enable_seqscan", ENABLE_SEQSCAN);
+	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
+	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
+	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
+#if PG_VERSION_NUM >= 90200
+	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXONLYSCAN);
+#endif
+}
+
+static void
+set_join_config_options(unsigned char enforce_mask, GucContext context)
+{
+	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
+	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
+	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
+}
+
+/*
+ * pg_hint_plan hook functions
+ */
+
+static void
+ProcessUtility_hook_error_callback(void *arg)
+{
+	stmt_name = NULL;
+}
+
+static void
+pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
+							ParamListInfo params, bool isTopLevel,
+							DestReceiver *dest, char *completionTag)
+{
+	Node				   *node;
+	ErrorContextCallback	errcontext;
+
+	if (!pg_hint_plan_enable)
+	{
+		if (prev_ProcessUtility)
+			(*prev_ProcessUtility) (parsetree, queryString, params,
+									isTopLevel, dest, completionTag);
+		else
+			standard_ProcessUtility(parsetree, queryString, params,
+									isTopLevel, dest, completionTag);
+
+		return;
+	}
+
+	node = parsetree;
+	if (IsA(node, ExplainStmt))
+	{
+		/*
+		 * EXPLAIN対象のクエリのパースツリーを取得する
+		 */
+		ExplainStmt	   *stmt;
+		Query		   *query;
+
+		stmt = (ExplainStmt *) node;
+
+		Assert(IsA(stmt->query, Query));
+		query = (Query *) stmt->query;
+
+		if (query->commandType == CMD_UTILITY && query->utilityStmt != NULL)
+			node = query->utilityStmt;
+	}
+
+	/*
+	 * EXECUTEコマンドならば、PREPARE時に指定されたクエリ文字列を取得し、ヒント
+	 * 句の候補として設定する
+	 */
+	if (IsA(node, ExecuteStmt))
+	{
+		ExecuteStmt	   *stmt;
+
+		/* Set up callback to statement name reset. */
+		errcontext.callback = ProcessUtility_hook_error_callback;
+		errcontext.arg = NULL;
+		errcontext.previous = error_context_stack;
+		error_context_stack = &errcontext;
+
+		stmt = (ExecuteStmt *) node;
+		stmt_name = stmt->name;
+	}
+
+	if (prev_ProcessUtility)
+		(*prev_ProcessUtility) (parsetree, queryString, params,
+								isTopLevel, dest, completionTag);
+	else
+		standard_ProcessUtility(parsetree, queryString, params,
+								isTopLevel, dest, completionTag);
+
+	if (stmt_name)
+	{
+		stmt_name = NULL;
+
+		/* Remove error callback. */
+		error_context_stack = errcontext.previous;
+	}
 }
 
 static PlannedStmt *
