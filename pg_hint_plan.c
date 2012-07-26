@@ -953,7 +953,7 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
 	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
 #if PG_VERSION_NUM >= 90200
-	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXSCAN);
+	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXONLYSCAN);
 #endif
 }
 
@@ -1312,6 +1312,10 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 		hint->enforce_mask = ENABLE_BITMAPSCAN;
 	else if (strcasecmp(keyword, HINT_TIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_TIDSCAN;
+#if PG_VERSION_NUM >= 90200
+	else if (strcasecmp(keyword, HINT_INDEXONLYSCAN) == 0)
+		hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
+#endif
 	else if (strcasecmp(keyword, HINT_NOSEQSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_SEQSCAN;
 	else if (strcasecmp(keyword, HINT_NOINDEXSCAN) == 0)
@@ -1320,6 +1324,10 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_BITMAPSCAN;
 	else if (strcasecmp(keyword, HINT_NOTIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
+#if PG_VERSION_NUM >= 90200
+	else if (strcasecmp(keyword, HINT_NOINDEXONLYSCAN) == 0)
+		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
+#endif
 	else
 	{
 		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
