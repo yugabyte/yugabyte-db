@@ -208,8 +208,8 @@ struct PlanHint
 	int				init_join_mask;		/* initial value join parameter */
 	List		  **join_hint_level;
 
-	/* for Leading hints */
-	LeadingHint	  **leading_hints;		/* parsed Leading hints */
+	/* for Leading hint */
+	LeadingHint	   *leading_hint;		/* parsed last specified Leading hint */
 
 	/* for Set hints */
 	SetHint		  **set_hints;			/* parsed Set hints */
@@ -737,7 +737,7 @@ PlanHintCreate(void)
 	hint->join_hints = NULL;
 	hint->init_join_mask = 0;
 	hint->join_hint_level = NULL;
-	hint->leading_hints = NULL;
+	hint->leading_hint = NULL;
 	hint->context = superuser() ? PGC_SUSET : PGC_USERSET;
 	hint->set_hints = NULL;
 
@@ -1249,9 +1249,10 @@ parse_head_comment(Query *parse)
 	plan->scan_hints = (ScanMethodHint **) plan->all_hints;
 	plan->join_hints = (JoinMethodHint **) plan->all_hints +
 		plan->num_hints[HINT_TYPE_SCAN_METHOD];
-	plan->leading_hints = (LeadingHint **) plan->all_hints +
+	plan->leading_hint = (LeadingHint *) plan->all_hints[
 		plan->num_hints[HINT_TYPE_SCAN_METHOD] +
-		plan->num_hints[HINT_TYPE_JOIN_METHOD];
+		plan->num_hints[HINT_TYPE_JOIN_METHOD] +
+		plan->num_hints[HINT_TYPE_LEADING] - 1];
 	plan->set_hints = (SetHint **) plan->all_hints +
 		plan->num_hints[HINT_TYPE_SCAN_METHOD] +
 		plan->num_hints[HINT_TYPE_JOIN_METHOD] +
@@ -1771,7 +1772,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 	if (plan->num_hints[HINT_TYPE_LEADING] == 0)
 		return;
 
-	lhint = plan->leading_hints[plan->num_hints[HINT_TYPE_LEADING] - 1];
+	lhint = plan->leading_hint;
 	if (!hint_state_enabled(lhint))
 		return;
 
@@ -2023,8 +2024,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	pfree(join_method_hints);
 
 	if (global->num_hints[HINT_TYPE_LEADING] > 0 &&
-		hint_state_enabled(
-			global->leading_hints[global->num_hints[HINT_TYPE_LEADING] - 1]))
+		hint_state_enabled(global->leading_hint))
 		set_join_config_options(global->init_join_mask, global->context);
 
 	return rel;
