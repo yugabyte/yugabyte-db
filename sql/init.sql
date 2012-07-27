@@ -1,3 +1,5 @@
+SET search_path TO public;
+
 CREATE TABLE t1 (id int PRIMARY KEY, val int);
 CREATE TABLE t2 (id int PRIMARY KEY, val int);
 CREATE TABLE t3 (id int PRIMARY KEY, val int);
