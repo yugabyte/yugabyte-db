@@ -1581,12 +1581,15 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 	if (inhparent)
 	{
-		/* cache does relids of parent table */
+		/* store does relids of parent table. */
 		global->parent_relid = rel->relid;
 	}
 	else if (global->parent_relid != 0)
 	{
-		/* If this rel is an appendrel child, */
+		/*
+		 * We use the same GUC parameter if this table is the child table of a
+		 * table called pg_hint_plan_get_relation_info just before that.
+		 */
 		ListCell   *l;
 
 		/* append_rel_list contains all append rels; ignore others */
@@ -1612,7 +1615,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	set_scan_config_options(hint->enforce_mask, global->context);
 	hint->base.state = HINT_STATE_USED;
 
-	/* インデックスを全て削除し、スキャンに使えなくする */
+	/*
+	 * We delete all the IndexOptInfo list and prevent you from being usable by
+	 * a scan.
+	 */
 	if (hint->enforce_mask == ENABLE_SEQSCAN ||
 		hint->enforce_mask == ENABLE_TIDSCAN)
 	{
@@ -1623,11 +1629,16 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 		return;
 	}
 
-	/* 後でパスを作り直すため、ここではなにもしない */
-	if (hint->indexnames == NULL)
+	/*
+	 * When a list of indexes is not specified, we just use all indexes.
+	 */
+	if (hint->indexnames == NIL)
 		return;
 
-	/* 指定されたインデックスのみをのこす */
+	/*
+	 * Leaving only an specified index, we delete it from a IndexOptInfo list
+	 * other than it.
+	 */
 	prev = NULL;
 	for (cell = list_head(rel->indexlist); cell; cell = next)
 	{
