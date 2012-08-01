@@ -4,11 +4,11 @@
  *	  Routines copied from PostgreSQL core distribution.
  *
  * src/backend/optimizer/path/allpaths.c
- *     standard_join_search()
  *     set_plain_rel_pathlist()
  *     set_append_rel_pathlist()
  *     accumulate_append_subpath()
  *     set_dummy_rel_pathlist()
+ *     standard_join_search()
  *
  * src/backend/optimizer/path/joinrels.c
  *     join_search_one_level()
@@ -25,103 +25,6 @@
  *
  *-------------------------------------------------------------------------
  */
-
-/*
- * standard_join_search
- *	  Find possible joinpaths for a query by successively finding ways
- *	  to join component relations into join relations.
- *
- * 'levels_needed' is the number of iterations needed, ie, the number of
- *		independent jointree items in the query.  This is > 1.
- *
- * 'initial_rels' is a list of RelOptInfo nodes for each independent
- *		jointree item.	These are the components to be joined together.
- *		Note that levels_needed == list_length(initial_rels).
- *
- * Returns the final level of join relations, i.e., the relation that is
- * the result of joining all the original relations together.
- * At least one implementation path must be provided for this relation and
- * all required sub-relations.
- *
- * To support loadable plugins that modify planner behavior by changing the
- * join searching algorithm, we provide a hook variable that lets a plugin
- * replace or supplement this function.  Any such hook must return the same
- * final join relation as the standard code would, but it might have a
- * different set of implementation paths attached, and only the sub-joinrels
- * needed for these paths need have been instantiated.
- *
- * Note to plugin authors: the functions invoked during standard_join_search()
- * modify root->join_rel_list and root->join_rel_hash.	If you want to do more
- * than one join-order search, you'll probably need to save and restore the
- * original states of those data structures.  See geqo_eval() for an example.
- */
-RelOptInfo *
-standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
-{
-	int			lev;
-	RelOptInfo *rel;
-
-	/*
-	 * This function cannot be invoked recursively within any one planning
-	 * problem, so join_rel_level[] can't be in use already.
-	 */
-	Assert(root->join_rel_level == NULL);
-
-	/*
-	 * We employ a simple "dynamic programming" algorithm: we first find all
-	 * ways to build joins of two jointree items, then all ways to build joins
-	 * of three items (from two-item joins and single items), then four-item
-	 * joins, and so on until we have considered all ways to join all the
-	 * items into one rel.
-	 *
-	 * root->join_rel_level[j] is a list of all the j-item rels.  Initially we
-	 * set root->join_rel_level[1] to represent all the single-jointree-item
-	 * relations.
-	 */
-	root->join_rel_level = (List **) palloc0((levels_needed + 1) * sizeof(List *));
-
-	root->join_rel_level[1] = initial_rels;
-
-	for (lev = 2; lev <= levels_needed; lev++)
-	{
-		ListCell   *lc;
-
-		/*
-		 * Determine all possible pairs of relations to be joined at this
-		 * level, and build paths for making each one from every available
-		 * pair of lower-level relations.
-		 */
-		join_search_one_level(root, lev);
-
-		/*
-		 * Do cleanup work on each just-processed rel.
-		 */
-		foreach(lc, root->join_rel_level[lev])
-		{
-			rel = (RelOptInfo *) lfirst(lc);
-
-			/* Find and save the cheapest paths for this rel */
-			set_cheapest(rel);
-
-#ifdef OPTIMIZER_DEBUG
-			debug_print_rel(root, rel);
-#endif
-		}
-	}
-
-	/*
-	 * We should have a single rel at the final level.
-	 */
-	if (root->join_rel_level[levels_needed] == NIL)
-		elog(ERROR, "failed to build any %d-way joins", levels_needed);
-	Assert(list_length(root->join_rel_level[levels_needed]) == 1);
-
-	rel = (RelOptInfo *) linitial(root->join_rel_level[levels_needed]);
-
-	root->join_rel_level = NULL;
-
-	return rel;
-}
 
 /*
  * set_plain_rel_pathlist
@@ -531,6 +434,103 @@ set_dummy_rel_pathlist(RelOptInfo *rel)
 
 	/* Select cheapest path (pretty easy in this case...) */
 	set_cheapest(rel);
+}
+
+/*
+ * standard_join_search
+ *	  Find possible joinpaths for a query by successively finding ways
+ *	  to join component relations into join relations.
+ *
+ * 'levels_needed' is the number of iterations needed, ie, the number of
+ *		independent jointree items in the query.  This is > 1.
+ *
+ * 'initial_rels' is a list of RelOptInfo nodes for each independent
+ *		jointree item.	These are the components to be joined together.
+ *		Note that levels_needed == list_length(initial_rels).
+ *
+ * Returns the final level of join relations, i.e., the relation that is
+ * the result of joining all the original relations together.
+ * At least one implementation path must be provided for this relation and
+ * all required sub-relations.
+ *
+ * To support loadable plugins that modify planner behavior by changing the
+ * join searching algorithm, we provide a hook variable that lets a plugin
+ * replace or supplement this function.  Any such hook must return the same
+ * final join relation as the standard code would, but it might have a
+ * different set of implementation paths attached, and only the sub-joinrels
+ * needed for these paths need have been instantiated.
+ *
+ * Note to plugin authors: the functions invoked during standard_join_search()
+ * modify root->join_rel_list and root->join_rel_hash.	If you want to do more
+ * than one join-order search, you'll probably need to save and restore the
+ * original states of those data structures.  See geqo_eval() for an example.
+ */
+RelOptInfo *
+standard_join_search(PlannerInfo *root, int levels_needed, List *initial_rels)
+{
+	int			lev;
+	RelOptInfo *rel;
+
+	/*
+	 * This function cannot be invoked recursively within any one planning
+	 * problem, so join_rel_level[] can't be in use already.
+	 */
+	Assert(root->join_rel_level == NULL);
+
+	/*
+	 * We employ a simple "dynamic programming" algorithm: we first find all
+	 * ways to build joins of two jointree items, then all ways to build joins
+	 * of three items (from two-item joins and single items), then four-item
+	 * joins, and so on until we have considered all ways to join all the
+	 * items into one rel.
+	 *
+	 * root->join_rel_level[j] is a list of all the j-item rels.  Initially we
+	 * set root->join_rel_level[1] to represent all the single-jointree-item
+	 * relations.
+	 */
+	root->join_rel_level = (List **) palloc0((levels_needed + 1) * sizeof(List *));
+
+	root->join_rel_level[1] = initial_rels;
+
+	for (lev = 2; lev <= levels_needed; lev++)
+	{
+		ListCell   *lc;
+
+		/*
+		 * Determine all possible pairs of relations to be joined at this
+		 * level, and build paths for making each one from every available
+		 * pair of lower-level relations.
+		 */
+		join_search_one_level(root, lev);
+
+		/*
+		 * Do cleanup work on each just-processed rel.
+		 */
+		foreach(lc, root->join_rel_level[lev])
+		{
+			rel = (RelOptInfo *) lfirst(lc);
+
+			/* Find and save the cheapest paths for this rel */
+			set_cheapest(rel);
+
+#ifdef OPTIMIZER_DEBUG
+			debug_print_rel(root, rel);
+#endif
+		}
+	}
+
+	/*
+	 * We should have a single rel at the final level.
+	 */
+	if (root->join_rel_level[levels_needed] == NIL)
+		elog(ERROR, "failed to build any %d-way joins", levels_needed);
+	Assert(list_length(root->join_rel_level[levels_needed]) == 1);
+
+	rel = (RelOptInfo *) linitial(root->join_rel_level[levels_needed]);
+
+	root->join_rel_level = NULL;
+
+	return rel;
 }
 
 /*
