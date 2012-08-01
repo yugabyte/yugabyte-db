@@ -41,13 +41,12 @@ CREATE VIEW v2 AS SELECT t1.id t1_id, t1.val t1_val, t2.id t2_id, t2.val t2_val 
 CREATE VIEW v3 AS SELECT t_1.id t1_id, t_1.val t1_val, t_2.id t2_id, t_2.val t2_val FROM t1 t_1, t2 t_2 WHERE t_1.id = t_2.id;
 CREATE VIEW v4 AS SELECT v_2.t1_id, t_3.id FROM v2 v_2, t3 t_3 WHERE v_2.t1_id = t_3.id;
 
-SET enable_bitmapscan TO on;
-SET enable_hashagg TO on;
-SET enable_tidscan TO on;
-SET enable_sort TO on;
-SET enable_indexscan TO on;
-SET enable_seqscan TO on;
-SET enable_material TO on;
-SET enable_hashjoin TO on;
-SET enable_mergejoin TO on;
-SET enable_nestloop TO on;
+/*
+ * The following GUC parameters need the setting of the default value to
+ * succeed in regression test.
+ */
+SELECT name, setting, category
+  FROM pg_settings
+ WHERE category LIKE 'Query Tuning%'
+    OR name = 'client_min_messages'
+ ORDER BY category, name;
