@@ -10,7 +10,7 @@
  *     accumulate_append_subpath()
  *     set_dummy_rel_pathlist()
  *
- * src/backend/optimizer/path/joinrels.c:
+ * src/backend/optimizer/path/joinrels.c
  *     join_search_one_level()
  *     make_rels_by_clause_joins()
  *     make_rels_by_clauseless_joins()
