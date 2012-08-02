@@ -1035,7 +1035,10 @@ parse_head_comment(Query *parse)
 
 	/* 入れ子にしたブロックコメントはサポートしない */
 	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
+	{
 		parse_ereport(head, ("Block comments nest doesn't supported."));
+		return NULL;
+	}
 
 	/* ヒント句部分を切り出す */
 	len = tail - p;
