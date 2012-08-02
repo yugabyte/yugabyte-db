@@ -1656,12 +1656,12 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
  * する別名がなければ0を返す。
  * aliasnameがクエリ中に複数回指定された場合は、-1を返す。
  */
-static int
+static Index
 find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
 					 const char *str)
 {
-	int	i;
-	int	found = 0;
+	int		i;
+	Index	found = 0;
 
 	for (i = 1; i < root->simple_rel_array_size; i++)
 	{
@@ -1740,7 +1740,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 		List *initial_rels, JoinMethodHint **join_method_hints)
 {
 	int				i;
-	int				relid;
+	Index			relid;
 	LeadingHint	   *lhint;
 	Relids			joinrelids;
 	int				njoinrels;

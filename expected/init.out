@@ -1,4 +1,5 @@
 SET search_path TO public;
+CREATE SCHEMA s1;
 CREATE TABLE t1 (id int PRIMARY KEY, val int);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t1_pkey" for table "t1"
 CREATE TABLE t2 (id int PRIMARY KEY, val int);
@@ -41,6 +42,8 @@ CREATE TABLE p1_c3_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) IN
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c3_c2_pkey" for table "p1_c3_c2"
+CREATE TABLE s1.t1 (id int PRIMARY KEY, val int);
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t1_pkey" for table "t1"
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO t3 SELECT i, i FROM (SELECT generate_series(1, 100) i) t;

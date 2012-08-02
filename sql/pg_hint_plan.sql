@@ -554,3 +554,7 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
+
+EXPLAIN (COSTS false) SELECT * FROM t1, s1.t1, t2 WHERE public.t1.id = s1.t1.id AND public.t1.id = t2.id;
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, s1.t1, t2 WHERE public.t1.id = s1.t1.id AND public.t1.id = t2.id;
