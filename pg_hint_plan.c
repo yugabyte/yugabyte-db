@@ -278,8 +278,6 @@ static void make_rels_by_clauseless_joins(PlannerInfo *root,
 										  RelOptInfo *old_rel,
 										  ListCell *other_rels);
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
-static void set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
-								   RangeTblEntry *rte);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									Index rti, RangeTblEntry *rte);
 static List *accumulate_append_subpath(List *subpaths, Path *path);
@@ -1875,6 +1873,29 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 
 }
 
+/*
+ * set_plain_rel_pathlist
+ *	  Build access paths for a plain relation (no subquery, no inheritance)
+ *
+ * This function was copied and edited from set_plain_rel_pathlist() in
+ * src/backend/optimizer/path/allpaths.c
+ */
+static void
+set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
+{
+	/* Consider sequential scan */
+	add_path(rel, create_seqscan_path(root, rel));
+
+	/* Consider index scans */
+	create_index_paths(root, rel);
+
+	/* Consider TID scans */
+	create_tidscan_paths(root, rel);
+
+	/* Now find the cheapest of the paths for this rel */
+	set_cheapest(rel);
+}
+
 static void
 rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level,
 				  List *initial_rels)
@@ -2056,6 +2077,9 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 /*
  * set_rel_pathlist
  *	  Build access paths for a base relation
+ *
+ * This function was copied and edited from set_rel_pathlist() in
+ * src/backend/optimizer/path/allpaths.c
  */
 static void
 set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
