@@ -907,8 +907,15 @@ parse_quote_value(const char *str, char **word, char *value_type)
 
 	if (buf.len == 0)
 	{
+		char   *type;
+
+		type = pstrdup(value_type);
+		type[0] = toupper(type[0]);
+		parse_ereport(str, ("%s is necessary.", type));
+
 		pfree(buf.data);
-		parse_ereport(str, ("%s is necessary.", value_type));
+		pfree(type);
+
 		return NULL;
 	}
 
