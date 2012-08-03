@@ -900,7 +900,7 @@ error hint:
 /*+SeqScan())*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 ")" WHERE ")".c1 = 1;
 INFO:  hint syntax error at or near "))"
-DETAIL:  ralation name is necessary.
+DETAIL:  Relation name is necessary.
              QUERY PLAN             
 ------------------------------------
  Index Scan using t1_pkey on t1 ")"
@@ -942,7 +942,7 @@ error hint:
 /*+SeqScan(")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 """" WHERE """".c1 = 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Unterminated quoted ralation name.
+DETAIL:  Unterminated quoted relation name.
              QUERY PLAN              
 -------------------------------------
  Index Scan using t1_pkey on t1 """"
@@ -984,7 +984,7 @@ error hint:
 /*+SeqScan( )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 " " WHERE " ".c1 = 1;
 INFO:  hint syntax error at or near ")"
-DETAIL:  ralation name is necessary.
+DETAIL:  Relation name is necessary.
              QUERY PLAN             
 ------------------------------------
  Index Scan using t1_pkey on t1 " "
@@ -1026,7 +1026,7 @@ error hint:
 /*+SeqScan(	)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "	" WHERE "	".c1 = 1;
 INFO:  hint syntax error at or near ")"
-DETAIL:  ralation name is necessary.
+DETAIL:  Relation name is necessary.
                 QUERY PLAN                 
 -------------------------------------------
  Index Scan using t1_pkey on t1 "        "
@@ -1071,7 +1071,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "
 " WHERE "
 ".c1 = 1;
 INFO:  hint syntax error at or near ")"
-DETAIL:  ralation name is necessary.
+DETAIL:  Relation name is necessary.
             QUERY PLAN            
 ----------------------------------
  Index Scan using t1_pkey on t1 "
@@ -1369,7 +1369,7 @@ error hint:
 /*+Set(enable_indexscan off)SeqScan("")Set(enable_bitmapscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near ")Set(enable_bitmapscan off)"
-DETAIL:  ralation name is necessary.
+DETAIL:  Relation name is necessary.
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
