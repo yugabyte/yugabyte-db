@@ -1119,7 +1119,7 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 	/*
 	 * スキャン方式のヒントでリレーション名が読み取れない場合はヒント無効
 	 */
-	if ((str = parse_quote_value(str, &hint->relname, "ralation name")) == NULL)
+	if ((str = parse_quote_value(str, &hint->relname, "relation name")) == NULL)
 		return NULL;
 
 	skip_space(str);
@@ -1194,7 +1194,7 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse,
 
 	hint->relnames = palloc(sizeof(char *));
 
-	while ((str = parse_quote_value(str, &relname, "table name")) != NULL)
+	while ((str = parse_quote_value(str, &relname, "relation name")) != NULL)
 	{
 		hint->nrels++;
 		hint->relnames = repalloc(hint->relnames, sizeof(char *) * hint->nrels);
