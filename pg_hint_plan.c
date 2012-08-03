@@ -908,9 +908,7 @@ parse_quote_value(const char *str, char **word, char *value_type)
 	if (buf.len == 0)
 	{
 		pfree(buf.data);
-
 		parse_ereport(str, ("%s is necessary.", value_type));
-
 		return NULL;
 	}
 
