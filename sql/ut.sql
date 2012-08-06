@@ -4,6 +4,15 @@ SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
 
+---- TODO 後で適切な位置に移動する
+----
+---- No. J-3-4 hint state output
+----
+
+-- No. J-3-4-7
+/*+Set(enable_indexscan off)NestLoop("")Set(enable_bitmapscan off)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
 ----
 ---- No. A-5-1 hint format
 ----
@@ -679,3 +688,60 @@ UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 EXPLAIN (COSTS false) EXECUTE p1 (1);
 DEALLOCATE p1;
 
+-- No. A-8-1-3
+-- No. A-8-1-4
+/*+SeqScan(t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) EXECUTE p1;
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+EXPLAIN (COSTS false) EXECUTE p1;
+DEALLOCATE p1;
+
+/*+BitmapScan(t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
+EXPLAIN (COSTS false) EXECUTE p1 (1);
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+EXPLAIN (COSTS false) EXECUTE p1 (1);
+DEALLOCATE p1;
+
+-- No. A-8-1-5
+-- No. A-8-1-6
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1;
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1;
+DEALLOCATE p1;
+
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1);
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1);
+DEALLOCATE p1;
+
+----
+---- No. A-8-4 EXECUTE statement name error
+----
+
+-- No. A-8-4-1
+EXECUTE p1;
+SHOW pg_hint_plan.debug_print;
+
+----
+---- No. A-9-5 EXECUTE statement name error
+----
+
+-- No. A-9-5-1
+CREATE EXTENSION pg_stat_statements;
+SELECT pg_stat_statements_reset();
+SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+Set(enable_seqscan off)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+SeqScan(t1)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+SELECT s.query, s.calls
+  FROM public.pg_stat_statements s
+  JOIN pg_catalog.pg_database d
+    ON (s.dbid = d.oid)
+ ORDER BY 1;
