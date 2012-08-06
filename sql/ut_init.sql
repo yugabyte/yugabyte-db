@@ -50,8 +50,9 @@ CREATE TABLE s1.p2c3c2 (LIKE s1.p2c3 INCLUDING ALL, CHECK (c1 > 250)) INHERITS(s
 CREATE TABLE s1.r1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.r2 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.r3 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
+CREATE UNLOGGED TABLE s1.ul1 (LIKE s1.t1 INCLUDING ALL);
 
-INSERT INTO s1.t1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 1000) i) t;
+INSERT INTO s1.t1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO s1.t2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.t3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.t4 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
@@ -75,7 +76,7 @@ INSERT INTO s1.r1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i)
 INSERT INTO s1.r2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.r3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 
-CREATE INDEX t1_i ON s1.t1 (c2);
+CREATE INDEX t1_i ON s1.t1 (c3);
 CREATE INDEX t2_i ON s1.t2 (c2);
 CREATE INDEX t3_i ON s1.t3 (c2);
 CREATE INDEX t4_i ON s1.t4 (c2);
@@ -109,6 +110,10 @@ CREATE VIEW s1.v2 AS SELECT v2t1.c1, v2t1.c2, v2t1.c3, v2t1.c4 FROM s1.t1 v2t1 J
 CREATE VIEW s1.v3 AS SELECT v3t1.c1, v3t1.c2, v3t1.c3, v3t1.c4 FROM s1.t1 v3t1 JOIN s1.t2 v3t2 ON(v3t1.c1 = v3t2.c1) JOIN s1.t3 v3t3 ON(v3t1.c1 = v3t3.c1);
 
 ANALYZE;
+
+CREATE FUNCTION s1.f1 () RETURNS s1.t1 AS $$
+VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')
+$$ LANGUAGE sql;
 
 \q
 CREATE RULE r1_s_a AS ON SELECT TO s1.r1 WHERE true DO ALSO SELECT * FROM t1;
