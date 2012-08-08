@@ -745,3 +745,52 @@ SELECT s.query, s.calls
   JOIN pg_catalog.pg_database d
     ON (s.dbid = d.oid)
  ORDER BY 1;
+
+----
+---- No. A-12-1 reset of global variable of core at the error
+---- No. A-12-2 reset of global variable of original at the error
+----
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) EXECUTE p1;
+
+-- No. A-12-1-1
+-- No. A-12-2-1
+SELECT name, setting FROM settings;
+SET pg_hint_plan.parse_messages TO error;
+/*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+SELECT name, setting FROM settings;
+/*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. A-12-1-2
+-- No. A-12-2-2
+SELECT name, setting FROM settings;
+SET pg_hint_plan.parse_messages TO error;
+/*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+SELECT name, setting FROM settings;
+EXPLAIN (COSTS false) EXECUTE p1;
+
+-- No. A-12-1-3
+-- No. A-12-2-3
+SELECT name, setting FROM settings;
+SET pg_hint_plan.parse_messages TO error;
+EXPLAIN (COSTS false) EXECUTE p2;
+/*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) EXECUTE p1;
+SELECT name, setting FROM settings;
+
+-- No. A-12-1-4
+-- No. A-12-2-4
+SELECT name, setting FROM settings;
+SET pg_hint_plan.parse_messages TO error;
+EXPLAIN (COSTS false) EXECUTE p2;
+EXPLAIN (COSTS false) EXECUTE p1;
+SELECT name, setting FROM settings;
+
+DEALLOCATE p1;
