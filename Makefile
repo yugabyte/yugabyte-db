@@ -7,10 +7,6 @@
 MODULES = pg_hint_plan
 REGRESS = init base_plan pg_hint_plan prepare fdw
 
-ifdef UNIT_TEST
-PG_CPPFLAGS = -O0
-endif
-
 EXTRA_CLEAN = sql/fdw.sql expected/base_plan.out expected/prepare.out expected/fdw.out
 
 PG_CONFIG = pg_config
