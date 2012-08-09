@@ -1432,17 +1432,35 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 		stmt_name = stmt->name;
 	}
 
+	if (stmt_name)
+	{
+		PG_TRY();
+		{
+			if (prev_ProcessUtility)
+				(*prev_ProcessUtility) (parsetree, queryString, params,
+										isTopLevel, dest, completionTag);
+			else
+				standard_ProcessUtility(parsetree, queryString, params,
+										isTopLevel, dest, completionTag);
+		}
+		PG_CATCH();
+		{
+			stmt_name = NULL;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		stmt_name = NULL;
+
+		return;
+	}
+
 	if (prev_ProcessUtility)
 		(*prev_ProcessUtility) (parsetree, queryString, params,
 								isTopLevel, dest, completionTag);
 	else
 		standard_ProcessUtility(parsetree, queryString, params,
 								isTopLevel, dest, completionTag);
-
-	if (stmt_name)
-	{
-		stmt_name = NULL;
-	}
 }
 
 static PlannedStmt *
