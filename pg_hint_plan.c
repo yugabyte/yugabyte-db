@@ -1384,18 +1384,11 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
  */
 
 static void
-ProcessUtility_hook_error_callback(void *arg)
-{
-	stmt_name = NULL;
-}
-
-static void
 pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 							ParamListInfo params, bool isTopLevel,
 							DestReceiver *dest, char *completionTag)
 {
 	Node				   *node;
-	ErrorContextCallback	errcontext;
 
 	if (!pg_hint_plan_enable)
 	{
@@ -1435,14 +1428,31 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	{
 		ExecuteStmt	   *stmt;
 
-		/* Set up callback to statement name reset. */
-		errcontext.callback = ProcessUtility_hook_error_callback;
-		errcontext.arg = NULL;
-		errcontext.previous = error_context_stack;
-		error_context_stack = &errcontext;
-
 		stmt = (ExecuteStmt *) node;
 		stmt_name = stmt->name;
+	}
+
+	if (stmt_name)
+	{
+		PG_TRY();
+		{
+			if (prev_ProcessUtility)
+				(*prev_ProcessUtility) (parsetree, queryString, params,
+										isTopLevel, dest, completionTag);
+			else
+				standard_ProcessUtility(parsetree, queryString, params,
+										isTopLevel, dest, completionTag);
+		}
+		PG_CATCH();
+		{
+			stmt_name = NULL;
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		stmt_name = NULL;
+
+		return;
 	}
 
 	if (prev_ProcessUtility)
@@ -1451,14 +1461,6 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	else
 		standard_ProcessUtility(parsetree, queryString, params,
 								isTopLevel, dest, completionTag);
-
-	if (stmt_name)
-	{
-		stmt_name = NULL;
-
-		/* Remove error callback. */
-		error_context_stack = errcontext.previous;
-	}
 }
 
 static PlannedStmt *
