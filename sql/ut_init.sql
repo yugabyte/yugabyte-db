@@ -54,37 +54,39 @@ CREATE UNLOGGED TABLE s1.ul1 (LIKE s1.t1 INCLUDING ALL);
 
 INSERT INTO s1.t1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO s1.t2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t4 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t5 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t6 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t7 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t8 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t9 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t4 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t5 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t6 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t7 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t8 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.t9 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s2.t1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s3.t1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.p1c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.p1c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(101, 200) i) t;
 INSERT INTO s1.p1c3 SELECT i, i, i % 10, i FROM (SELECT generate_series(201, 300) i) t;
-INSERT INTO s1.p2c1c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 50) i) t;
-INSERT INTO s1.p2c1c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(51, 100) i) t;
-INSERT INTO s1.p2c2c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(101, 150) i) t;
-INSERT INTO s1.p2c2c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(151, 200) i) t;
-INSERT INTO s1.p2c3c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(201, 250) i) t;
-INSERT INTO s1.p2c3c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(251, 300) i) t;
-INSERT INTO s1.r1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.r2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.r3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.p2c1c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 50) i) t;
+--INSERT INTO s1.p2c1c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(51, 100) i) t;
+--INSERT INTO s1.p2c2c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(101, 150) i) t;
+--INSERT INTO s1.p2c2c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(151, 200) i) t;
+--INSERT INTO s1.p2c3c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(201, 250) i) t;
+--INSERT INTO s1.p2c3c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(251, 300) i) t;
+--INSERT INTO s1.r1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.r2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
+--INSERT INTO s1.r3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 
 CREATE INDEX t1_i ON s1.t1 (c3);
 CREATE INDEX t2_i ON s1.t2 (c2);
 CREATE INDEX t3_i ON s1.t3 (c2);
+/*
 CREATE INDEX t4_i ON s1.t4 (c2);
 CREATE INDEX t5_i ON s1.t5 (c2);
 CREATE INDEX t6_i ON s1.t6 (c2);
 CREATE INDEX t7_i ON s1.t7 (c2);
 CREATE INDEX t8_i ON s1.t8 (c2);
 CREATE INDEX t9_i ON s1.t9 (c2);
+*/
 CREATE INDEX t1_i ON s2.t1 (c2);
 CREATE INDEX t1_i ON s3.t1 (c2);
 CREATE INDEX p1_i ON s1.p1 (c2);
@@ -92,6 +94,7 @@ CREATE INDEX p2_i ON s1.p2 (c2);
 CREATE INDEX p1c1_i ON s1.p1c1 (c2);
 CREATE INDEX p1c2_i ON s1.p1c2 (c2);
 CREATE INDEX p1c3_i ON s1.p1c3 (c2);
+/*
 CREATE INDEX p2c1_i ON s1.p2c1 (c2);
 CREATE INDEX p2c2_i ON s1.p2c2 (c2);
 CREATE INDEX p2c3_i ON s1.p2c3 (c2);
@@ -104,6 +107,7 @@ CREATE INDEX p2c3c2_i ON s1.p2c3c2 (c2);
 CREATE INDEX r1_i ON s1.r1 (c2);
 CREATE INDEX r2_i ON s1.r2 (c2);
 CREATE INDEX r3_i ON s1.r3 (c2);
+*/
 
 CREATE VIEW s1.v1 AS SELECT v1t1.c1, v1t1.c2, v1t1.c3, v1t1.c4 FROM s1.t1 v1t1;
 CREATE VIEW s1.v2 AS SELECT v2t1.c1, v2t1.c2, v2t1.c3, v2t1.c4 FROM s1.t1 v2t1 JOIN s1.t2 v2t2 ON(v2t1.c1 = v2t2.c1);

@@ -794,3 +794,52 @@ EXPLAIN (COSTS false) EXECUTE p1;
 SELECT name, setting FROM settings;
 
 DEALLOCATE p1;
+SET pg_hint_plan.parse_messages TO LOG;
+
+----
+---- No. A-12-3 effective range of the hint
+----
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. A-12-3-1
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+SELECT name, setting FROM settings;
+/*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+SELECT name, setting FROM settings;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. A-12-3-2
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+SELECT name, setting FROM settings;
+BEGIN;
+/*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+COMMIT;
+BEGIN;
+SELECT name, setting FROM settings;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+COMMIT;
+
+-- No. A-12-3-3
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+SELECT name, setting FROM settings;
+/*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\connect
+LOAD 'pg_hint_plan';
+SELECT name, setting FROM settings;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+SET pg_hint_plan.enable TO on;
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+SET search_path TO public;
+

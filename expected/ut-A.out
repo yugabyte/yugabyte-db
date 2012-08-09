@@ -2939,3 +2939,365 @@ SELECT name, setting FROM settings;
 (29 rows)
 
 DEALLOCATE p1;
+SET pg_hint_plan.parse_messages TO LOG;
+----
+---- No. A-12-3 effective range of the hint
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+-- No. A-12-3-1
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+SELECT name, setting FROM settings;
+           name            |  setting  
+---------------------------+-----------
+ geqo                      | on
+ geqo_effort               | 5
+ geqo_generations          | 0
+ geqo_pool_size            | 0
+ geqo_seed                 | 0
+ geqo_selection_bias       | 2
+ geqo_threshold            | 12
+ constraint_exclusion      | partition
+ cursor_tuple_fraction     | 0.1
+ default_statistics_target | 100
+ from_collapse_limit       | 8
+ join_collapse_limit       | 8
+ cpu_index_tuple_cost      | 0.005
+ cpu_operator_cost         | 0.0025
+ cpu_tuple_cost            | 0.01
+ effective_cache_size      | 16384
+ random_page_cost          | 4
+ seq_page_cost             | 1
+ enable_bitmapscan         | on
+ enable_hashagg            | on
+ enable_hashjoin           | on
+ enable_indexscan          | off
+ enable_material           | on
+ enable_mergejoin          | off
+ enable_nestloop           | on
+ enable_seqscan            | on
+ enable_sort               | on
+ enable_tidscan            | on
+ client_min_messages       | log
+(29 rows)
+
+/*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t2)
+MergeJoin(t1 t2)
+Leading(t2 t1)
+Set(enable_indexscan on)
+Set(geqo_threshold 100)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+SELECT name, setting FROM settings;
+           name            |  setting  
+---------------------------+-----------
+ geqo                      | on
+ geqo_effort               | 5
+ geqo_generations          | 0
+ geqo_pool_size            | 0
+ geqo_seed                 | 0
+ geqo_selection_bias       | 2
+ geqo_threshold            | 12
+ constraint_exclusion      | partition
+ cursor_tuple_fraction     | 0.1
+ default_statistics_target | 100
+ from_collapse_limit       | 8
+ join_collapse_limit       | 8
+ cpu_index_tuple_cost      | 0.005
+ cpu_operator_cost         | 0.0025
+ cpu_tuple_cost            | 0.01
+ effective_cache_size      | 16384
+ random_page_cost          | 4
+ seq_page_cost             | 1
+ enable_bitmapscan         | on
+ enable_hashagg            | on
+ enable_hashjoin           | on
+ enable_indexscan          | off
+ enable_material           | on
+ enable_mergejoin          | off
+ enable_nestloop           | on
+ enable_seqscan            | on
+ enable_sort               | on
+ enable_tidscan            | on
+ client_min_messages       | log
+(29 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+-- No. A-12-3-2
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+SELECT name, setting FROM settings;
+           name            |  setting  
+---------------------------+-----------
+ geqo                      | on
+ geqo_effort               | 5
+ geqo_generations          | 0
+ geqo_pool_size            | 0
+ geqo_seed                 | 0
+ geqo_selection_bias       | 2
+ geqo_threshold            | 12
+ constraint_exclusion      | partition
+ cursor_tuple_fraction     | 0.1
+ default_statistics_target | 100
+ from_collapse_limit       | 8
+ join_collapse_limit       | 8
+ cpu_index_tuple_cost      | 0.005
+ cpu_operator_cost         | 0.0025
+ cpu_tuple_cost            | 0.01
+ effective_cache_size      | 16384
+ random_page_cost          | 4
+ seq_page_cost             | 1
+ enable_bitmapscan         | on
+ enable_hashagg            | on
+ enable_hashjoin           | on
+ enable_indexscan          | off
+ enable_material           | on
+ enable_mergejoin          | off
+ enable_nestloop           | on
+ enable_seqscan            | on
+ enable_sort               | on
+ enable_tidscan            | on
+ client_min_messages       | log
+(29 rows)
+
+BEGIN;
+/*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t2)
+MergeJoin(t1 t2)
+Leading(t2 t1)
+Set(enable_indexscan on)
+Set(geqo_threshold 100)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+COMMIT;
+BEGIN;
+SELECT name, setting FROM settings;
+           name            |  setting  
+---------------------------+-----------
+ geqo                      | on
+ geqo_effort               | 5
+ geqo_generations          | 0
+ geqo_pool_size            | 0
+ geqo_seed                 | 0
+ geqo_selection_bias       | 2
+ geqo_threshold            | 12
+ constraint_exclusion      | partition
+ cursor_tuple_fraction     | 0.1
+ default_statistics_target | 100
+ from_collapse_limit       | 8
+ join_collapse_limit       | 8
+ cpu_index_tuple_cost      | 0.005
+ cpu_operator_cost         | 0.0025
+ cpu_tuple_cost            | 0.01
+ effective_cache_size      | 16384
+ random_page_cost          | 4
+ seq_page_cost             | 1
+ enable_bitmapscan         | on
+ enable_hashagg            | on
+ enable_hashjoin           | on
+ enable_indexscan          | off
+ enable_material           | on
+ enable_mergejoin          | off
+ enable_nestloop           | on
+ enable_seqscan            | on
+ enable_sort               | on
+ enable_tidscan            | on
+ client_min_messages       | log
+(29 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+COMMIT;
+-- No. A-12-3-3
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+SELECT name, setting FROM settings;
+           name            |  setting  
+---------------------------+-----------
+ geqo                      | on
+ geqo_effort               | 5
+ geqo_generations          | 0
+ geqo_pool_size            | 0
+ geqo_seed                 | 0
+ geqo_selection_bias       | 2
+ geqo_threshold            | 12
+ constraint_exclusion      | partition
+ cursor_tuple_fraction     | 0.1
+ default_statistics_target | 100
+ from_collapse_limit       | 8
+ join_collapse_limit       | 8
+ cpu_index_tuple_cost      | 0.005
+ cpu_operator_cost         | 0.0025
+ cpu_tuple_cost            | 0.01
+ effective_cache_size      | 16384
+ random_page_cost          | 4
+ seq_page_cost             | 1
+ enable_bitmapscan         | on
+ enable_hashagg            | on
+ enable_hashjoin           | on
+ enable_indexscan          | off
+ enable_material           | on
+ enable_mergejoin          | off
+ enable_nestloop           | on
+ enable_seqscan            | on
+ enable_sort               | on
+ enable_tidscan            | on
+ client_min_messages       | log
+(29 rows)
+
+/*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t2)
+MergeJoin(t1 t2)
+Leading(t2 t1)
+Set(enable_indexscan on)
+Set(geqo_threshold 100)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+\connect
+LOAD 'pg_hint_plan';
+SELECT name, setting FROM settings;
+           name            |  setting  
+---------------------------+-----------
+ geqo                      | on
+ geqo_effort               | 5
+ geqo_generations          | 0
+ geqo_pool_size            | 0
+ geqo_seed                 | 0
+ geqo_selection_bias       | 2
+ geqo_threshold            | 12
+ constraint_exclusion      | partition
+ cursor_tuple_fraction     | 0.1
+ default_statistics_target | 100
+ from_collapse_limit       | 8
+ join_collapse_limit       | 8
+ cpu_index_tuple_cost      | 0.005
+ cpu_operator_cost         | 0.0025
+ cpu_tuple_cost            | 0.01
+ effective_cache_size      | 16384
+ random_page_cost          | 4
+ seq_page_cost             | 1
+ enable_bitmapscan         | on
+ enable_hashagg            | on
+ enable_hashjoin           | on
+ enable_indexscan          | on
+ enable_material           | on
+ enable_mergejoin          | on
+ enable_nestloop           | on
+ enable_seqscan            | on
+ enable_sort               | on
+ enable_tidscan            | on
+ client_min_messages       | notice
+(29 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+SET pg_hint_plan.enable TO on;
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+SET search_path TO public;
