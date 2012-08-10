@@ -198,41 +198,47 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = 1 AND s1.t1.c1
          Filter: (c1 = 1)
 (5 rows)
 
-/*+IndexScan(t1)*/
+/*+BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = 1 AND s1.t1.c1 = s2.t1.c1;
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(t1)
+BitmapScan(t1)
 not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
+                QUERY PLAN                
+------------------------------------------
  Nested Loop
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: (c1 = 1)
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: (c1 = 1)
-(5 rows)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (c1 = 1)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (c1 = 1)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (c1 = 1)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (c1 = 1)
+(9 rows)
 
-/*+SeqScan(t1)*/
+/*+BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = 1 AND s1.t1.c1 = s2t1.c1;
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t1)
+BitmapScan(t1)
 not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN         
----------------------------
+                QUERY PLAN                
+------------------------------------------
  Nested Loop
-   ->  Seq Scan on t1
-         Filter: (c1 = 1)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (c1 = 1)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (c1 = 1)
    ->  Seq Scan on t1 s2t1
          Filter: (c1 = 1)
-(5 rows)
+(7 rows)
 
 /*+BitmapScan(s2t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = 1 AND s1.t1.c1 = s2t1.c1;
@@ -268,68 +274,76 @@ EXPLAIN (COSTS false) SELECT (SELECT max(c1) FROM s1.t1 WHERE s1.t1.c1 = 1) FROM
                          Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
 (8 rows)
 
-/*+SeqScan(t1)*/
+/*+BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(c1) FROM s1.t1 WHERE s1.t1.c1 = 1) FROM s1.t1 WHERE s1.t1.c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t1)
+BitmapScan(t1)
 not used hint:
 duplication hint:
 error hint:
 
-                           QUERY PLAN                            
------------------------------------------------------------------
- Seq Scan on t1
-   Filter: (c1 = 1)
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Bitmap Heap Scan on t1
+   Recheck Cond: (c1 = 1)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
-                   ->  Seq Scan on t1
-                         Filter: ((c1 IS NOT NULL) AND (c1 = 1))
-(8 rows)
+                   ->  Bitmap Heap Scan on t1
+                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                         ->  Bitmap Index Scan on t1_pkey
+                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   ->  Bitmap Index Scan on t1_pkey
+         Index Cond: (c1 = 1)
+(12 rows)
 
-/*+SeqScan(t11)*/
+/*+BitmapScan(t11)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(c1) FROM s1.t1 t11 WHERE t11.c1 = 1) FROM s1.t1 t12 WHERE t12.c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t11)
+BitmapScan(t11)
 not used hint:
 duplication hint:
 error hint:
 
-                           QUERY PLAN                            
------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Index Scan using t1_pkey on t1 t12
    Index Cond: (c1 = 1)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
-                   ->  Seq Scan on t1 t11
-                         Filter: ((c1 IS NOT NULL) AND (c1 = 1))
-(8 rows)
+                   ->  Bitmap Heap Scan on t1 t11
+                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                         ->  Bitmap Index Scan on t1_pkey
+                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+(10 rows)
 
-/*+SeqScan(t12)*/
+/*+BitmapScan(t12)*/
 EXPLAIN (COSTS false) SELECT (SELECT max(c1) FROM s1.t1 t11 WHERE t11.c1 = 1) FROM s1.t1 t12 WHERE t12.c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t12)
+BitmapScan(t12)
 not used hint:
 duplication hint:
 error hint:
 
                              QUERY PLAN                              
 ---------------------------------------------------------------------
- Seq Scan on t1 t12
-   Filter: (c1 = 1)
+ Bitmap Heap Scan on t1 t12
+   Recheck Cond: (c1 = 1)
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
                    ->  Index Scan using t1_pkey on t1 t11
                          Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-(8 rows)
+   ->  Bitmap Index Scan on t1_pkey
+         Index Cond: (c1 = 1)
+(10 rows)
 
 ----
 ---- No. S-1-5 object type for the hint
@@ -2229,4 +2243,457 @@ error hint:
          ->  Seq Scan on p2c1c1 p2  (cost=10000000000.00..10000000001.62 rows=1 width=14)
                Filter: (c1 = 1)
 (8 rows)
+
+----
+---- No. S-3-12 specified same table
+----
+-- No. S-3-12-1
+/*+IndexScan(ti1) BitmapScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "IndexScan(ti1) BitmapScan(ti1)"
+DETAIL:  Conflict scan method hint.
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1)
+not used hint:
+duplication hint:
+IndexScan(ti1)
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_uniq
+         Index Cond: (c1 = 1)
+(5 rows)
+
+-- No. S-3-12-2
+/*+IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)"
+DETAIL:  Conflict scan method hint.
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_btree)
+not used hint:
+duplication hint:
+IndexScan(ti1 ti1_pkey)
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_btree
+         Index Cond: (c1 = 1)
+(5 rows)
+
+-- No. S-3-12-3
+/*+BitmapScan(ti1) IndexScan(ti1) BitmapScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "BitmapScan(ti1) IndexScan(ti1) BitmapScan(ti1)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "IndexScan(ti1) BitmapScan(ti1)"
+DETAIL:  Conflict scan method hint.
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1)
+not used hint:
+duplication hint:
+BitmapScan(ti1)
+IndexScan(ti1)
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_uniq
+         Index Cond: (c1 = 1)
+(5 rows)
+
+-- No. S-3-12-4
+/*+BitmapScan(ti1 ti1_hash) IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "BitmapScan(ti1 ti1_hash) IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)"
+DETAIL:  Conflict scan method hint.
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_btree)
+not used hint:
+duplication hint:
+BitmapScan(ti1 ti1_hash)
+IndexScan(ti1 ti1_pkey)
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_btree
+         Index Cond: (c1 = 1)
+(5 rows)
+
+----
+---- No. S-3-13 message output
+----
+-- No. S-3-13-1
+/*+SeqScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Seq Scan on ti1
+   Filter: ((c1 = 1) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+-- No. S-3-13-2
+/*+SeqScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-3
+/*+SeqScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-4
+/*+IndexScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-13-5
+/*+IndexScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_pkey on ti1
+   Index Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-13-6
+/*+IndexScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_pkey ti1_btree)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Index Scan using ti1_btree on ti1
+   Index Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-13-7
+/*+BitmapScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_uniq
+         Index Cond: (c1 = 1)
+(5 rows)
+
+-- No. S-3-13-8
+/*+BitmapScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_pkey
+         Index Cond: (c1 = 1)
+(5 rows)
+
+-- No. S-3-13-9
+/*+BitmapScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_pkey ti1_btree)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_btree
+         Index Cond: (c1 = 1)
+(5 rows)
+
+-- No. S-3-13-10
+/*+TidScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-11
+/*+TidScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-12
+/*+TidScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-13
+/*+NoSeqScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-14
+/*+NoSeqScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-15
+/*+NoSeqScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-16
+/*+NoIndexScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-17
+/*+NoIndexScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-18
+/*+NoIndexScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-19
+/*+NoBitmapScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-20
+/*+NoBitmapScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-21
+/*+NoBitmapScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-22
+/*+NoTidScan(ti1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(ti1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-13-23
+/*+NoTidScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
+
+-- No. S-3-13-24
+/*+NoTidScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
+DETAIL:  Closed parenthesis is necessary.
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c1 = 1)
+(3 rows)
 
