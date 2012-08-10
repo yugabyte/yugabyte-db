@@ -371,13 +371,13 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                     
----------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Result
    ->  Append
          ->  Index Scan using p1_pkey on p1
                Index Cond: (c1 = 1)
-         ->  Index Scan using p1c1_pkey on p1c1 p1
+         ->  Index Scan using p1c1_i on p1c1 p1
                Index Cond: (c1 = 1)
 (6 rows)
 
@@ -990,4 +990,1243 @@ error hint:
  Index Scan using t1_pkey on t1
    Index Cond: (c1 = 1)
 (2 rows)
+
+----
+---- No. S-3-3 index name specified
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (c2 = 1)
+(3 rows)
+
+SET enable_tidscan TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+           QUERY PLAN            
+---------------------------------
+ Index Scan using ti1_i2 on ti1
+   Index Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+SET enable_indexscan TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+            QUERY PLAN             
+-----------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_i2
+         Index Cond: (c2 = 1)
+(5 rows)
+
+RESET enable_tidscan;
+RESET enable_indexscan;
+-- No. S-3-3-1
+/*+IndexScan(ti1 ti1_i3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_i3)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN            
+---------------------------------
+ Index Scan using ti1_i3 on ti1
+   Index Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-3-2
+/*+IndexScan(ti1 ti1_i3 ti1_i2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_i3 ti1_i2)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN            
+---------------------------------
+ Index Scan using ti1_i2 on ti1
+   Index Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-3-3
+/*+IndexScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN            
+---------------------------------
+ Index Scan using ti1_i2 on ti1
+   Index Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+-- No. S-3-3-4
+/*+BitmapScan(ti1 ti1_i3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_i3)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_i3
+         Index Cond: (c2 = 1)
+(5 rows)
+
+-- No. S-3-3-5
+/*+BitmapScan(ti1 ti1_i3 ti1_i2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_i3 ti1_i2)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_i2
+         Index Cond: (c2 = 1)
+(5 rows)
+
+-- No. S-3-3-6
+/*+BitmapScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c2 = 1)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on ti1_i2
+         Index Cond: (c2 = 1)
+(5 rows)
+
+----
+---- No. S-3-4 index type
+----
+\d s1.ti1
+        Table "s1.ti1"
+ Column |  Type   | Modifiers 
+--------+---------+-----------
+ c1     | integer | not null
+ c2     | integer | 
+ c3     | integer | 
+ c4     | text    | 
+Indexes:
+    "ti1_pkey" PRIMARY KEY, btree (c1)
+    "ti1_c2_key" UNIQUE CONSTRAINT, btree (c2)
+    "ti1_uniq" UNIQUE, btree (c1)
+    "ti1_btree" btree (c1)
+    "ti1_expr" btree ((c1 < 100))
+    "ti1_gin" gin (c1)
+    "ti1_gist" gist (c1)
+    "ti1_hash" hash (c1)
+    "ti1_i1" btree (c2)
+    "ti1_i2" btree (c2, c4)
+    "ti1_i3" btree (c2, c4, c4)
+    "ti1_i4" btree (c2, c4, c4, c4)
+    "ti1_multi" btree (c1, c2, c3, c4)
+    "ti1_pred" btree (lower(c4))
+    "ti1_ts" gin (to_tsvector('english'::regconfig, c4))
+
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-1
+/*+IndexScan(ti1 ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_btree)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_btree on ti1
+   Index Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-2
+/*+IndexScan(ti1 ti1_hash)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_hash)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_hash on ti1
+   Index Cond: (c1 = 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-3
+/*+IndexScan(ti1 ti1_gist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_gist)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_gist on ti1
+   Index Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-4
+/*+IndexScan(ti1 ti1_gin)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_gin)
+not used hint:
+duplication hint:
+error hint:
+
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-5
+/*+IndexScan(ti1 ti1_expr)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_expr)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                            QUERY PLAN                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_expr on ti1
+   Index Cond: ((c1 < 100) = true)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-6
+/*+IndexScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_pred)
+not used hint:
+duplication hint:
+error hint:
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_pred on ti1
+   Index Cond: (lower(c4) = '1'::text)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
+(3 rows)
+
+-- No. S-3-4-7
+/*+IndexScan(ti1 ti1_uniq)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_uniq)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-8
+/*+IndexScan(ti1 ti1_multi)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_multi)
+not used hint:
+duplication hint:
+error hint:
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_multi on ti1
+   Index Cond: ((c1 < 100) AND (c2 = 1))
+   Filter: ((ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-9
+/*+IndexScan(ti1 ti1_ts)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_ts)
+not used hint:
+duplication hint:
+error hint:
+
+                                                               QUERY PLAN                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------
+ Tid Scan on ti1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-10
+/*+IndexScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_pkey on ti1
+   Index Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-11
+/*+IndexScan(ti1 ti1_c2_key)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_c2_key)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Index Scan using ti1_c2_key on ti1
+   Index Cond: (c2 = 1)
+   Filter: ((c1 < 100) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+(3 rows)
+
+-- No. S-3-4-12
+/*+BitmapScan(ti1 ti1_btree)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_btree)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_btree
+         Index Cond: (c1 < 100)
+(5 rows)
+
+-- No. S-3-4-13
+/*+BitmapScan(ti1 ti1_hash)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_hash)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 = 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_hash
+         Index Cond: (c1 = 100)
+(5 rows)
+
+-- No. S-3-4-14
+/*+BitmapScan(ti1 ti1_gist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_gist)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_gist
+         Index Cond: (c1 < 100)
+(5 rows)
+
+-- No. S-3-4-15
+/*+BitmapScan(ti1 ti1_gin)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_gin)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_gin
+         Index Cond: (c1 < 100)
+(5 rows)
+
+-- No. S-3-4-16
+/*+BitmapScan(ti1 ti1_expr)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_expr)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                            QUERY PLAN                                                                             
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_expr
+         Index Cond: ((c1 < 100) = true)
+(4 rows)
+
+-- No. S-3-4-17
+/*+BitmapScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_pred)
+not used hint:
+duplication hint:
+error hint:
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (lower(c4) = '1'::text)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
+   ->  Bitmap Index Scan on ti1_pred
+         Index Cond: (lower(c4) = '1'::text)
+(5 rows)
+
+-- No. S-3-4-18
+/*+BitmapScan(ti1 ti1_uniq)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_uniq)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_uniq
+         Index Cond: (c1 < 100)
+(5 rows)
+
+-- No. S-3-4-19
+/*+BitmapScan(ti1 ti1_multi)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_multi)
+not used hint:
+duplication hint:
+error hint:
+
+                                                              QUERY PLAN                                                               
+---------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: ((c1 < 100) AND (c2 = 1))
+   Filter: ((ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_multi
+         Index Cond: ((c1 < 100) AND (c2 = 1))
+(5 rows)
+
+-- No. S-3-4-20
+/*+BitmapScan(ti1 ti1_ts)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_ts)
+not used hint:
+duplication hint:
+error hint:
+
+                                        QUERY PLAN                                         
+-------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_ts
+         Index Cond: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+(5 rows)
+
+-- No. S-3-4-10
+/*+BitmapScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                     QUERY PLAN                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c1 < 100)
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_pkey
+         Index Cond: (c1 < 100)
+(5 rows)
+
+-- No. S-3-4-11
+/*+BitmapScan(ti1 ti1_c2_key)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_c2_key)
+not used hint:
+duplication hint:
+error hint:
+
+                                                                      QUERY PLAN                                                                      
+------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (c2 = 1)
+   Filter: ((c1 < 100) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   ->  Bitmap Index Scan on ti1_c2_key
+         Index Cond: (c2 = 1)
+(5 rows)
+
+----
+---- No. S-3-5 not used index
+----
+-- No. S-3-5-1
+/*+IndexScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_pred)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
+   Filter: (c1 = 100)
+(2 rows)
+
+-- No. S-3-5-2
+/*+BitmapScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 ti1_pred)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
+   Filter: (c1 = 100)
+(2 rows)
+
+----
+---- No. S-3-6 not exist index
+----
+-- No. S-3-6-1
+/*+IndexScan(ti1 not_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 not_exist)
+not used hint:
+duplication hint:
+error hint:
+
+      QUERY PLAN      
+----------------------
+ Seq Scan on ti1
+   Filter: (c1 = 100)
+(2 rows)
+
+-- No. S-3-6-2
+/*+BitmapScan(ti1 not_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(ti1 not_exist)
+not used hint:
+duplication hint:
+error hint:
+
+      QUERY PLAN      
+----------------------
+ Seq Scan on ti1
+   Filter: (c1 = 100)
+(2 rows)
+
+----
+---- No. S-3-7 query structure
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.ctid = '(1,1)';
+                  QUERY PLAN                   
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (t2.c1 = t1.c1)
+   ->  Seq Scan on t2
+   ->  Hash
+         ->  Tid Scan on t1
+               TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+-- No. S-3-7-1
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE c1 = 100;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+      QUERY PLAN      
+----------------------
+ Seq Scan on t1
+   Filter: (c1 = 100)
+(2 rows)
+
+-- No. S-3-7-2
+/*+SeqScan(t1)BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (c1 = t1.c1)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (c1 = t1.c1)
+(7 rows)
+
+-- No. S-3-7-3
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+                 QUERY PLAN                  
+---------------------------------------------
+ Hash Join
+   Hash Cond: (t2.c1 = t1.c1)
+   ->  Seq Scan on t2
+   ->  Hash
+         ->  Seq Scan on t1
+               Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+----
+---- No. S-3-8 query structure
+----
+-- No. S-3-8-1
+EXPLAIN (COSTS false) 
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1 WHERE b1t1.c1 = 1)
+SELECT max(b3t1.c1), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+                  ) FROM s1.t1 b3t1 WHERE b3t1.c1 = (
+SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Result
+   InitPlan 2 (returns $1)
+     ->  Result
+           InitPlan 1 (returns $0)
+             ->  Limit
+                   ->  Index Scan using t1_pkey on t1 b2t1
+                         Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   InitPlan 4 (returns $3)
+     ->  Result
+           InitPlan 3 (returns $2)
+             ->  Limit
+                   ->  Index Scan using t1_pkey on t1 b4t1
+                         Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   InitPlan 5 (returns $4)
+     ->  Limit
+           ->  Index Scan using t1_pkey on t1 b3t1
+                 Index Cond: ((c1 IS NOT NULL) AND (c1 = $3))
+(17 rows)
+
+/*+BitmapScan(b1t1)BitmapScan(b2t1)BitmapScan(b3t1)BitmapScan(b4t1)*/
+EXPLAIN (COSTS false) 
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1 WHERE b1t1.c1 = 1)
+SELECT max(b3t1.c1), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+                  ) FROM s1.t1 b3t1 WHERE b3t1.c1 = (
+SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(b2t1)
+BitmapScan(b3t1)
+BitmapScan(b4t1)
+not used hint:
+BitmapScan(b1t1)
+duplication hint:
+error hint:
+
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Result
+   InitPlan 2 (returns $1)
+     ->  Result
+           InitPlan 1 (returns $0)
+             ->  Limit
+                   ->  Bitmap Heap Scan on t1 b2t1
+                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                         ->  Bitmap Index Scan on t1_pkey
+                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   InitPlan 4 (returns $3)
+     ->  Result
+           InitPlan 3 (returns $2)
+             ->  Limit
+                   ->  Bitmap Heap Scan on t1 b4t1
+                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                         ->  Bitmap Index Scan on t1_pkey
+                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   InitPlan 5 (returns $4)
+     ->  Limit
+           ->  Bitmap Heap Scan on t1 b3t1
+                 Recheck Cond: ((c1 IS NOT NULL) AND (c1 = $3))
+                 ->  Bitmap Index Scan on t1_pkey
+                       Index Cond: ((c1 IS NOT NULL) AND (c1 = $3))
+(23 rows)
+
+-- No. S-3-8-2
+EXPLAIN (COSTS false) 
+WITH cte1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1 JOIN s1.t2 b1t2 ON(b1t1.c1 = b1t2.c1) WHERE b1t1.c1 = 1)
+SELECT max(b3t1.c1), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1 JOIN s1.t2 b2t2 ON(b2t1.c1 = b2t2.c1) WHERE b2t1.c1 = 1
+                  ) FROM s1.t1 b3t1 JOIN s1.t2 b3t2 ON(b3t1.c1 = b3t2.c1) JOIN cte1 ON(b3t1.c1 = cte1.c1) WHERE b3t1.c1 = (
+SELECT max(b4t1.c1) FROM s1.t1 b4t1 JOIN s1.t2 b4t2 ON(b4t1.c1 = b4t2.c1) WHERE b4t1.c1 = 1);
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Aggregate
+   CTE cte1
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Index Scan using t1_pkey on t1 b1t1
+                       Index Cond: (c1 = 1)
+                 ->  Seq Scan on t2 b1t2
+                       Filter: (c1 = 1)
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Index Scan using t1_pkey on t1 b2t1
+                       Index Cond: (c1 = 1)
+                 ->  Seq Scan on t2 b2t2
+                       Filter: (c1 = 1)
+   InitPlan 3 (returns $2)
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Index Scan using t1_pkey on t1 b4t1
+                       Index Cond: (c1 = 1)
+                 ->  Seq Scan on t2 b4t2
+                       Filter: (c1 = 1)
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Index Scan using t1_pkey on t1 b3t1
+                     Index Cond: (c1 = $2)
+               ->  Seq Scan on t2 b3t2
+                     Filter: (c1 = $2)
+         ->  CTE Scan on cte1
+               Filter: (c1 = $2)
+(30 rows)
+
+/*+BitmapScan(b1t1)BitmapScan(b2t1)BitmapScan(b3t1)BitmapScan(b4t1)BitmapScan(b1t2)BitmapScan(b2t2)BitmapScan(b3t2)BitmapScan(b4t2)*/
+EXPLAIN (COSTS false) 
+WITH cte1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1 JOIN s1.t2 b1t2 ON(b1t1.c1 = b1t2.c1) WHERE b1t1.c1 = 1)
+SELECT max(b3t1.c1), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1 JOIN s1.t2 b2t2 ON(b2t1.c1 = b2t2.c1) WHERE b2t1.c1 = 1
+                  ) FROM s1.t1 b3t1 JOIN s1.t2 b3t2 ON(b3t1.c1 = b3t2.c1) JOIN cte1 ON(b3t1.c1 = cte1.c1) WHERE b3t1.c1 = (
+SELECT max(b4t1.c1) FROM s1.t1 b4t1 JOIN s1.t2 b4t2 ON(b4t1.c1 = b4t2.c1) WHERE b4t1.c1 = 1);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(b1t1)
+BitmapScan(b1t2)
+BitmapScan(b2t1)
+BitmapScan(b2t2)
+BitmapScan(b3t1)
+BitmapScan(b3t2)
+BitmapScan(b4t1)
+BitmapScan(b4t2)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Aggregate
+   CTE cte1
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Bitmap Heap Scan on t1 b1t1
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t1_pkey
+                             Index Cond: (c1 = 1)
+                 ->  Bitmap Heap Scan on t2 b1t2
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t2_pkey
+                             Index Cond: (c1 = 1)
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Bitmap Heap Scan on t1 b2t1
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t1_pkey
+                             Index Cond: (c1 = 1)
+                 ->  Bitmap Heap Scan on t2 b2t2
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t2_pkey
+                             Index Cond: (c1 = 1)
+   InitPlan 3 (returns $2)
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Bitmap Heap Scan on t1 b4t1
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t1_pkey
+                             Index Cond: (c1 = 1)
+                 ->  Bitmap Heap Scan on t2 b4t2
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t2_pkey
+                             Index Cond: (c1 = 1)
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on t1 b3t1
+                     Recheck Cond: (c1 = $2)
+                     ->  Bitmap Index Scan on t1_pkey
+                           Index Cond: (c1 = $2)
+               ->  Bitmap Heap Scan on t2 b3t2
+                     Recheck Cond: (c1 = $2)
+                     ->  Bitmap Index Scan on t2_pkey
+                           Index Cond: (c1 = $2)
+         ->  CTE Scan on cte1
+               Filter: (c1 = $2)
+(46 rows)
+
+-- No. S-3-8-3
+EXPLAIN (COSTS false) 
+WITH cte1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1 JOIN s1.t2 b1t2 ON(b1t1.c1 = b1t2.c1) WHERE b1t1.c1 = 1)
+SELECT max(b3t1.c1), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+                  ) FROM s1.t1 b3t1 JOIN s1.t2 b3t2 ON(b3t1.c1 = b3t2.c1) JOIN cte1 ON(b3t1.c1 = cte1.c1) WHERE b3t1.c1 = (
+SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   CTE cte1
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Index Scan using t1_pkey on t1 b1t1
+                       Index Cond: (c1 = 1)
+                 ->  Seq Scan on t2 b1t2
+                       Filter: (c1 = 1)
+   InitPlan 3 (returns $2)
+     ->  Result
+           InitPlan 2 (returns $1)
+             ->  Limit
+                   ->  Index Scan using t1_pkey on t1 b2t1
+                         Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   InitPlan 5 (returns $4)
+     ->  Result
+           InitPlan 4 (returns $3)
+             ->  Limit
+                   ->  Index Scan using t1_pkey on t1 b4t1
+                         Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Index Scan using t1_pkey on t1 b3t1
+                     Index Cond: (c1 = $4)
+               ->  Seq Scan on t2 b3t2
+                     Filter: (c1 = $4)
+         ->  CTE Scan on cte1
+               Filter: (c1 = $4)
+(28 rows)
+
+/*+BitmapScan(b1t1)BitmapScan(b2t1)BitmapScan(b3t1)BitmapScan(b4t1)BitmapScan(b1t2)BitmapScan(b3t2)*/
+EXPLAIN (COSTS false) 
+WITH cte1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1 JOIN s1.t2 b1t2 ON(b1t1.c1 = b1t2.c1) WHERE b1t1.c1 = 1)
+SELECT max(b3t1.c1), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+                  ) FROM s1.t1 b3t1 JOIN s1.t2 b3t2 ON(b3t1.c1 = b3t2.c1) JOIN cte1 ON(b3t1.c1 = cte1.c1) WHERE b3t1.c1 = (
+SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(b1t1)
+BitmapScan(b1t2)
+BitmapScan(b2t1)
+BitmapScan(b3t1)
+BitmapScan(b3t2)
+BitmapScan(b4t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Aggregate
+   CTE cte1
+     ->  Aggregate
+           ->  Nested Loop
+                 ->  Bitmap Heap Scan on t1 b1t1
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t1_pkey
+                             Index Cond: (c1 = 1)
+                 ->  Bitmap Heap Scan on t2 b1t2
+                       Recheck Cond: (c1 = 1)
+                       ->  Bitmap Index Scan on t2_pkey
+                             Index Cond: (c1 = 1)
+   InitPlan 3 (returns $2)
+     ->  Result
+           InitPlan 2 (returns $1)
+             ->  Limit
+                   ->  Bitmap Heap Scan on t1 b2t1
+                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                         ->  Bitmap Index Scan on t1_pkey
+                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   InitPlan 5 (returns $4)
+     ->  Result
+           InitPlan 4 (returns $3)
+             ->  Limit
+                   ->  Bitmap Heap Scan on t1 b4t1
+                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                         ->  Bitmap Index Scan on t1_pkey
+                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Bitmap Heap Scan on t1 b3t1
+                     Recheck Cond: (c1 = $4)
+                     ->  Bitmap Index Scan on t1_pkey
+                           Index Cond: (c1 = $4)
+               ->  Bitmap Heap Scan on t2 b3t2
+                     Recheck Cond: (c1 = $4)
+                     ->  Bitmap Index Scan on t2_pkey
+                           Index Cond: (c1 = $4)
+         ->  CTE Scan on cte1
+               Filter: (c1 = $4)
+(40 rows)
+
+----
+---- No. S-3-9 inheritance table select type
+----
+-- No. S-3-9-1
+EXPLAIN (COSTS false) SELECT * FROM ONLY s1.p1 WHERE c1 = 1;
+     QUERY PLAN     
+--------------------
+ Seq Scan on p1
+   Filter: (c1 = 1)
+(2 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY s1.p1 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using p1_pkey on p1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-9-2
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+           QUERY PLAN            
+---------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (c1 = 1)
+         ->  Seq Scan on p1c1 p1
+               Filter: (c1 = 1)
+(6 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p1c1_i on p1c1 p1
+               Index Cond: (c1 = 1)
+(6 rows)
+
+----
+---- No. S-3-10 inheritance table number
+----
+-- No. S-3-10-1
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+           QUERY PLAN            
+---------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (c1 = 1)
+         ->  Seq Scan on p1c1 p1
+               Filter: (c1 = 1)
+(6 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p1c1_i on p1c1 p1
+               Index Cond: (c1 = 1)
+(6 rows)
+
+-- No. S-3-10-2
+EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+            QUERY PLAN             
+-----------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p2
+               Filter: (c1 = 1)
+         ->  Seq Scan on p2c1 p2
+               Filter: (c1 = 1)
+         ->  Seq Scan on p2c1c1 p2
+               Filter: (c1 = 1)
+(8 rows)
+
+/*+IndexScan(p2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p2)
+not used hint:
+duplication hint:
+error hint:
+
+                     QUERY PLAN                     
+----------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p2c1_i on p2c1 p2
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p2c1c1_i on p2c1c1 p2
+               Index Cond: (c1 = 1)
+(8 rows)
+
+----
+---- No. S-3-11 inheritance table specified table
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+            QUERY PLAN             
+-----------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p2
+               Filter: (c1 = 1)
+         ->  Seq Scan on p2c1 p2
+               Filter: (c1 = 1)
+         ->  Seq Scan on p2c1c1 p2
+               Filter: (c1 = 1)
+(8 rows)
+
+-- No. S-3-11-1
+/*+IndexScan(p2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p2)
+not used hint:
+duplication hint:
+error hint:
+
+                     QUERY PLAN                     
+----------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p2c1_i on p2c1 p2
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p2c1c1_i on p2c1c1 p2
+               Index Cond: (c1 = 1)
+(8 rows)
+
+-- No. S-3-11-2
+/*+IndexScan(p2c1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+IndexScan(p2c1)
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p2
+               Filter: (c1 = 1)
+         ->  Seq Scan on p2c1 p2
+               Filter: (c1 = 1)
+         ->  Seq Scan on p2c1c1 p2
+               Filter: (c1 = 1)
+(8 rows)
+
+-- No. S-3-11-3
+/*+IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p2_pkey on p2
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p2c1_pkey on p2c1 p2
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p2c1c1_pkey on p2c1c1 p2
+               Index Cond: (c1 = 1)
+(8 rows)
+
+-- No. S-3-11-4
+/*+IndexScan(p2 p2c1_pkey)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p2 p2c1_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Result  (cost=10000000000.00..20000000009.89 rows=3 width=34)
+   ->  Append  (cost=10000000000.00..20000000009.89 rows=3 width=34)
+         ->  Seq Scan on p2  (cost=10000000000.00..10000000000.00 rows=1 width=44)
+               Filter: (c1 = 1)
+         ->  Index Scan using p2c1_pkey on p2c1 p2  (cost=0.00..8.27 rows=1 width=44)
+               Index Cond: (c1 = 1)
+         ->  Seq Scan on p2c1c1 p2  (cost=10000000000.00..10000000001.62 rows=1 width=14)
+               Filter: (c1 = 1)
+(8 rows)
 
