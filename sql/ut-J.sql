@@ -57,6 +57,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 
 -- No. J-1-4-2
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
+/*+HashJoin(t1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
 /*+HashJoin(s1.t1 s2.t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
 
@@ -76,7 +78,19 @@ EXPLAIN (COSTS false) SELECT *, (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WH
 ----
 
 -- No. J-1-5-1
--- TODO
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-1-5-2
+/*+HashJoin(t1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-1-5-3
+/*+HashJoin(t1 t1)HashJoin(t2 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+/*+HashJoin(t1 t2 t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 
 ----
 ---- No. J-1-6 object type for the hint
@@ -138,6 +152,12 @@ EXPLAIN (COSTS false) SELECT * FROM s1.v1 t1, s1.v1_ t2 WHERE t1.c1 = t2.c1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.c1 = (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WHERE st1.c1 = st2.c1);
 /*+MergeJoin(t1 t2)NestLoop(st1 st2)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.c1 = (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WHERE st1.c1 = st2.c1);
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+/*+HashJoin(t1 st2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
 
 \q
 

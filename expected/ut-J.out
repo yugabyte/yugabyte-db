@@ -193,6 +193,28 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
          ->  Seq Scan on t1
 (6 rows)
 
+/*+HashJoin(t1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
+INFO:  hint syntax error at or near "HashJoin(t1 t1)"
+DETAIL:  Relation name "t1" is ambiguous.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+HashJoin(t1 t1)
+duplication hint:
+error hint:
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (s1.t1.c1 = s2.t1.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: s2.t1.c1
+         ->  Seq Scan on t1
+(6 rows)
+
 /*+HashJoin(s1.t1 s2.t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
 LOG:  pg_hint_plan:
@@ -315,7 +337,112 @@ error hint:
 ---- No. J-1-5 conflict table name
 ----
 -- No. J-1-5-1
--- TODO
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+-- No. J-1-5-2
+/*+HashJoin(t1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "HashJoin(t1 t1)"
+DETAIL:  Relation name "t1" is duplicate.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+HashJoin(t1 t1)
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+-- No. J-1-5-3
+/*+HashJoin(t1 t1)HashJoin(t2 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "HashJoin(t1 t1)HashJoin(t2 t2)"
+DETAIL:  Relation name "t1" is duplicate.
+INFO:  hint syntax error at or near "HashJoin(t2 t2)"
+DETAIL:  Relation name "t2" is duplicate.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+HashJoin(t1 t1)
+HashJoin(t2 t2)
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+                 QUERY PLAN                 
+--------------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Merge Join
+         Merge Cond: (t1.c1 = t3.c1)
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(9 rows)
+
+/*+HashJoin(t1 t2 t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+INFO:  hint syntax error at or near "HashJoin(t1 t2 t1 t2)"
+DETAIL:  Relation name "t1" is duplicate.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+HashJoin(t1 t1 t2 t2)
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Merge Join
+         Merge Cond: (t1.c1 = t4.c1)
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t3.c1)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t3_pkey on t3
+         ->  Index Scan using t4_pkey on t4
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(12 rows)
+
 ----
 ---- No. J-1-6 object type for the hint
 ----
@@ -668,5 +795,53 @@ error hint:
    ->  Seq Scan on t2  (cost=0.00..2.25 rows=1 width=14)
          Filter: (c1 = $1)
 (11 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+/*+HashJoin(t1 st2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+HashJoin(st2 t1)
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
 
 \q

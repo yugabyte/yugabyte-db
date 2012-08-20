@@ -27,6 +27,7 @@ CREATE SCHEMA s2;
 CREATE TABLE s1.t1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.t2 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.t3 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
+CREATE TABLE s1.t4 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s2.t1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.p1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
 CREATE TABLE s1.p2 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
@@ -50,7 +51,6 @@ CREATE UNLOGGED TABLE s1.ul1 (LIKE s1.t1 INCLUDING ALL);
 
 INSERT INTO s1.t1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO s1.t2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
-INSERT INTO s1.t3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s2.t1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.p1c1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.p1c2 SELECT i, i, i % 10, i FROM (SELECT generate_series(101, 200) i) t;
@@ -67,9 +67,6 @@ INSERT INTO s1.r3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i)
 INSERT INTO s1.ti1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
 
 CREATE INDEX t1_i ON s1.t1 (c3);
-CREATE INDEX t2_i ON s1.t2 (c2);
-CREATE INDEX t3_i ON s1.t3 (c2);
-CREATE INDEX t1_i ON s2.t1 (c2);
 CREATE INDEX p1_i ON s1.p1 (c2);
 CREATE INDEX p2_i ON s1.p2 (c2);
 CREATE INDEX p1c1_i ON s1.p1c1 (c1);
@@ -84,9 +81,6 @@ CREATE INDEX p2c2c1_i ON s1.p2c2c1 (c1);
 CREATE INDEX p2c2c2_i ON s1.p2c2c2 (c1);
 CREATE INDEX p2c3c1_i ON s1.p2c3c1 (c1);
 CREATE INDEX p2c3c2_i ON s1.p2c3c2 (c1);
-CREATE INDEX r1_i ON s1.r1 (c2);
-CREATE INDEX r2_i ON s1.r2 (c2);
-CREATE INDEX r3_i ON s1.r3 (c2);
 CREATE INDEX ti1_i1    ON s1.ti1 (c2);
 CREATE INDEX ti1_i2    ON s1.ti1 (c2, c4);
 CREATE INDEX ti1_i3    ON s1.ti1 (c2, c4, c4);
@@ -111,8 +105,3 @@ ANALYZE;
 CREATE FUNCTION s1.f1 () RETURNS s1.t1 AS $$
 VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')
 $$ LANGUAGE sql;
-
-\q
-CREATE RULE r1_s_a AS ON SELECT TO s1.r1 WHERE true DO ALSO SELECT * FROM t1;
-CREATE RULE r1_s_i AS ON SELECT TO s1.r1 WHERE true DO INSTEAD SELECT * FROM t1;
-
