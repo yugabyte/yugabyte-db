@@ -139,6 +139,148 @@ EXPLAIN (COSTS false) SELECT * FROM (SELECT * FROM s1.t1 WHERE t1.c1 = 1) AS s1 
 /*+SeqScan(s1)*/
 EXPLAIN (COSTS false) SELECT * FROM (SELECT * FROM s1.t1 WHERE t1.c1 = 1) AS s1 WHERE s1.c1 = 1;
 
+
+----
+---- No. S-2-1 complexity query block
+----
+
+-- No. S-2-1-1
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
+BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)*/
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+
+-- No. S-2-1-2
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
+BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)
+BitmapScan(b2t1)BitmapScan(b2t2)BitmapScan(b2t3)BitmapScan(b2t4)*/
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+
+-- No. S-2-1-3
+EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = sbmt4.c1;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)*/
+EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = sbmt4.c1;
+
+-- No. S-2-1-4
+EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT * FROM s1.t3 bmt3) sbmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)*/
+EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT * FROM s1.t3 bmt3) sbmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+
+-- No. S-2-1-5
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+  AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
+BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)*/
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+  AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+;
+
+-- No. S-2-1-6
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+  AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
+BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)
+BitmapScan(b2t1)BitmapScan(b2t2)BitmapScan(b2t3)BitmapScan(b2t4)*/
+EXPLAIN (COSTS false)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+  AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+;
+
+-- No. S-2-1-7
+EXPLAIN (COSTS false)
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
+BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)*/
+EXPLAIN (COSTS false)
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+;
+
+-- No. S-2-1-8
+EXPLAIN (COSTS false)
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+, c2 (c1) AS (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1, c2
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 = c2.c1
+;
+/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
+BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)
+BitmapScan(b2t1)BitmapScan(b2t2)BitmapScan(b2t3)BitmapScan(b2t4)*/
+EXPLAIN (COSTS false)
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+, c2 (c1) AS (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1, c2
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 = c2.c1
+;
+
 ----
 ---- No. S-3-1 scan method hint
 ----
