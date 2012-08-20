@@ -200,11 +200,10 @@ DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
-HashJoin(t1 t1)
 duplication hint:
 error hint:
+HashJoin(t1 t1)
 
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -662,7 +661,22 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near "NestLoop(*VALUES* *VALUES*)"
 DETAIL:  Relation name "*VALUES*" is ambiguous.
-ERROR:  negative bitmapset member not allowed
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NestLoop(*VALUES* *VALUES*)
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
+   ->  Values Scan on "*VALUES*"
+   ->  Hash
+         ->  Values Scan on "*VALUES*"
+(5 rows)
+
 -- No. J-1-6-9
 EXPLAIN (COSTS false) WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) SELECT * FROM s1.t1, c1 WHERE t1.c1 = c1.c1;
                      QUERY PLAN                     
