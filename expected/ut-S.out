@@ -3747,15 +3747,15 @@ not used hint:
 duplication hint:
 error hint:
 
-                     QUERY PLAN                     
-----------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Result
    ->  Append
          ->  Index Scan using p2_pkey on p2
                Index Cond: (c1 = 1)
-         ->  Index Scan using p2c1_i on p2c1 p2
+         ->  Index Scan using p2c1_pkey on p2c1 p2
                Index Cond: (c1 = 1)
-         ->  Index Scan using p2c1c1_i on p2c1c1 p2
+         ->  Index Scan using p2c1c1_pkey on p2c1c1 p2
                Index Cond: (c1 = 1)
 (8 rows)
 
@@ -3769,16 +3769,16 @@ not used hint:
 duplication hint:
 error hint:
 
-                                      QUERY PLAN                                       
----------------------------------------------------------------------------------------
- Result  (cost=0.00..24.80 rows=3 width=34)
-   ->  Append  (cost=0.00..24.80 rows=3 width=34)
-         ->  Index Scan using p2_pkey on p2  (cost=0.00..8.27 rows=1 width=44)
+                                        QUERY PLAN                                        
+------------------------------------------------------------------------------------------
+ Result  (cost=10000000000.00..20000000009.89 rows=3 width=34)
+   ->  Append  (cost=10000000000.00..20000000009.89 rows=3 width=34)
+         ->  Seq Scan on p2  (cost=10000000000.00..10000000000.00 rows=1 width=44)
+               Filter: (c1 = 1)
+         ->  Index Scan using p2c1_pkey on p2c1 p2  (cost=0.00..8.27 rows=1 width=44)
                Index Cond: (c1 = 1)
-         ->  Index Scan using p2c1_i on p2c1 p2  (cost=0.00..8.27 rows=1 width=44)
-               Index Cond: (c1 = 1)
-         ->  Index Scan using p2c1c1_i on p2c1c1 p2  (cost=0.00..8.27 rows=1 width=14)
-               Index Cond: (c1 = 1)
+         ->  Seq Scan on p2c1c1 p2  (cost=10000000000.00..10000000001.62 rows=1 width=14)
+               Filter: (c1 = 1)
 (8 rows)
 
 ----

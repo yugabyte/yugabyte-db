@@ -4,17 +4,17 @@ SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t4.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t4_pkey on t4
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -37,7 +37,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -61,17 +61,17 @@ Leading(t4 t2 t3 t1)
 duplication hint:
 error hint:
 
-                      QUERY PLAN                      
-------------------------------------------------------
+                     QUERY PLAN                     
+----------------------------------------------------
  Merge Join
    Merge Cond: (t_1.c1 = t_2.c1)
    ->  Merge Join
          Merge Cond: (t_1.c1 = t_4.c1)
          ->  Merge Join
                Merge Cond: (t_1.c1 = t_3.c1)
-               ->  Index Scan using t1_pkey on t1 t_1
-               ->  Index Scan using t3_pkey on t3 t_3
-         ->  Index Scan using t4_pkey on t4 t_4
+               ->  Index Scan using t1_i1 on t1 t_1
+               ->  Index Scan using t3_i1 on t3 t_3
+         ->  Index Scan using t4_i1 on t4 t_4
    ->  Sort
          Sort Key: t_2.c1
          ->  Seq Scan on t2 t_2
@@ -91,7 +91,7 @@ error hint:
 --------------------------------------------------------
  Merge Join
    Merge Cond: (t_1.c1 = t_2.c1)
-   ->  Index Scan using t1_pkey on t1 t_1
+   ->  Index Scan using t1_i1 on t1 t_1
    ->  Sort
          Sort Key: t_2.c1
          ->  Hash Join
@@ -122,7 +122,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -146,17 +146,17 @@ Leading(s1.t4 s1.t2 s1.t3 s1.t1)
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t4.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t4_pkey on t4
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -179,7 +179,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -208,7 +208,7 @@ error hint:
  Nested Loop
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
-         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t1_i1 on t1
          ->  Sort
                Sort Key: t2.c1
                ->  Hash Join
@@ -216,7 +216,7 @@ error hint:
                      ->  Seq Scan on t3
                      ->  Hash
                            ->  Seq Scan on t2
-   ->  Index Scan using t4_pkey on t4
+   ->  Index Scan using t4_i1 on t4
          Index Cond: (c1 = t1.c1)
 (13 rows)
 
@@ -237,7 +237,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -253,17 +253,17 @@ error hint:
 
 -- No. L-1-4-2
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2.t1.c1;
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (s1.t1.c1 = s2.t1.c1)
    ->  Merge Join
          Merge Cond: (s1.t1.c1 = t2.c1)
          ->  Merge Join
                Merge Cond: (s1.t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t2_pkey on t2
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t2_i1 on t2
    ->  Sort
          Sort Key: s2.t1.c1
          ->  Seq Scan on t1
@@ -280,17 +280,17 @@ Leading(t1 t2 t3 t1)
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (s1.t1.c1 = s2.t1.c1)
    ->  Merge Join
          Merge Cond: (s1.t1.c1 = t2.c1)
          ->  Merge Join
                Merge Cond: (s1.t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t2_pkey on t2
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t2_i1 on t2
    ->  Sort
          Sort Key: s2.t1.c1
          ->  Seq Scan on t1
@@ -305,34 +305,34 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Nested Loop
    ->  Nested Loop
          ->  Merge Join
                Merge Cond: (t3.c1 = t2.c1)
-               ->  Index Scan using t3_pkey on t3
+               ->  Index Scan using t3_i1 on t3
                ->  Sort
                      Sort Key: t2.c1
                      ->  Seq Scan on t2
          ->  Index Scan using t1_pkey on t1
                Index Cond: (c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
          Index Cond: (c1 = t2.c1)
 (12 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 s2t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2t1.c1;
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = s2t1.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t2_pkey on t2
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t2_i1 on t2
    ->  Sort
          Sort Key: s2t1.c1
          ->  Seq Scan on t1 s2t1
@@ -355,9 +355,9 @@ error hint:
          Merge Cond: (t1.c1 = t3.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = s2t1.c1)
-               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t1_i1 on t1
                ->  Index Scan using t1_pkey on t1 s2t1
-         ->  Index Scan using t3_pkey on t3
+         ->  Index Scan using t3_i1 on t3
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -365,8 +365,8 @@ error hint:
 
 -- No. L-1-4-3
 EXPLAIN (COSTS false) SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1) FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                          QUERY PLAN                           
+---------------------------------------------------------------
  Merge Join
    Merge Cond: (s1.t1.c1 = s1.t2.c1)
    InitPlan 1 (returns $0)
@@ -377,9 +377,9 @@ EXPLAIN (COSTS false) SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2, s1.t3, s1.
                        Merge Cond: (s1.t1.c1 = s1.t4.c1)
                        ->  Merge Join
                              Merge Cond: (s1.t1.c1 = s1.t3.c1)
-                             ->  Index Scan using t1_pkey on t1
-                             ->  Index Scan using t3_pkey on t3
-                       ->  Index Scan using t4_pkey on t4
+                             ->  Index Scan using t1_i1 on t1
+                             ->  Index Scan using t3_i1 on t3
+                       ->  Index Scan using t4_i1 on t4
                  ->  Sort
                        Sort Key: s1.t2.c1
                        ->  Seq Scan on t2
@@ -387,9 +387,9 @@ EXPLAIN (COSTS false) SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2, s1.t3, s1.
          Merge Cond: (s1.t1.c1 = s1.t4.c1)
          ->  Merge Join
                Merge Cond: (s1.t1.c1 = s1.t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t4_pkey on t4
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: s1.t2.c1
          ->  Seq Scan on t2
@@ -412,7 +412,7 @@ error hint:
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (s1.t1.c1 = s1.t2.c1)
-                 ->  Index Scan using t1_pkey on t1
+                 ->  Index Scan using t1_i1 on t1
                  ->  Sort
                        Sort Key: s1.t2.c1
                        ->  Hash Join
@@ -424,7 +424,7 @@ error hint:
                                          ->  Seq Scan on t4
                                          ->  Hash
                                                ->  Seq Scan on t2
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: s1.t2.c1
          ->  Hash Join
@@ -451,7 +451,7 @@ error hint:
 --------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -496,7 +496,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -524,7 +524,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -549,17 +549,17 @@ duplication hint:
 error hint:
 Leading(t4 t2 t3 t4)
 
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t4.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t4_pkey on t4
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -579,7 +579,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -604,17 +604,17 @@ duplication hint:
 error hint:
 Leading(t4 t2 t2 t4)
 
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t4.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t4_pkey on t4
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -637,7 +637,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
@@ -1126,17 +1126,17 @@ error hint:
 
 -- No. L-1-6-11
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t4) st4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = st4.c1;
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t4.c1)
          ->  Merge Join
                Merge Cond: (t1.c1 = t3.c1)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t3_pkey on t3
-         ->  Index Scan using t4_pkey on t4
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -1156,7 +1156,7 @@ error hint:
  Nested Loop
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
-         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t1_i1 on t1
          ->  Sort
                Sort Key: t2.c1
                ->  Hash Join
@@ -1164,7 +1164,7 @@ error hint:
                      ->  Seq Scan on t3
                      ->  Hash
                            ->  Seq Scan on t2
-   ->  Index Scan using t4_pkey on t4
+   ->  Index Scan using t4_i1 on t4
          Index Cond: (c1 = t1.c1)
 (13 rows)
 
@@ -1181,7 +1181,7 @@ error hint:
 ------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
          ->  Hash Join
