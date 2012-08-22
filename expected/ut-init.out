@@ -141,6 +141,10 @@ INSERT INTO s1.r2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i)
 INSERT INTO s1.r3 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s1.ti1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
 CREATE INDEX t1_i ON s1.t1 (c3);
+CREATE INDEX t1_i1 ON s1.t1 (c1);
+CREATE INDEX t2_i1 ON s1.t2 (c1);
+CREATE INDEX t3_i1 ON s1.t3 (c1);
+CREATE INDEX t4_i1 ON s1.t4 (c1);
 CREATE INDEX p1_i ON s1.p1 (c2);
 CREATE INDEX p2_i ON s1.p2 (c2);
 CREATE INDEX p1c1_i ON s1.p1c1 (c1);
