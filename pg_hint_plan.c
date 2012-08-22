@@ -202,6 +202,7 @@ struct PlanHint
 	ScanMethodHint **scan_hints;		/* parsed scan hints */
 	int				init_scan_mask;		/* initial value scan parameter */
 	Index			parent_relid;		/* inherit parent table relid */
+	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
 
 	/* for join method hints */
 	JoinMethodHint **join_hints;		/* parsed join hints */
@@ -568,6 +569,7 @@ PlanHintCreate(void)
 	hint->scan_hints = NULL;
 	hint->init_scan_mask = 0;
 	hint->parent_relid = 0;
+	hint->parent_hint = NULL;
 	hint->join_hints = NULL;
 	hint->init_join_mask = 0;
 	hint->join_hint_level = NULL;
@@ -1574,56 +1576,11 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 }
 
 static void
-pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
-							   bool inhparent, RelOptInfo *rel)
+delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 {
-	ScanMethodHint *hint;
 	ListCell	   *cell;
 	ListCell	   *prev;
 	ListCell	   *next;
-
-	if (prev_get_relation_info)
-		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
-
-	/* 有効なヒントが指定されなかった場合は処理をスキップする。 */
-	if (!global)
-		return;
-
-	if (inhparent)
-	{
-		/* store does relids of parent table. */
-		global->parent_relid = rel->relid;
-	}
-	else if (global->parent_relid != 0)
-	{
-		/*
-		 * We use the same GUC parameter if this table is the child table of a
-		 * table called pg_hint_plan_get_relation_info just before that.
-		 */
-		ListCell   *l;
-
-		/* append_rel_list contains all append rels; ignore others */
-		foreach(l, root->append_rel_list)
-		{
-			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-
-			/* This rel is child table. */
-			if (appinfo->parent_relid == global->parent_relid)
-				return;
-		}
-
-		/* This rel is not inherit table. */
-		global->parent_relid = 0;
-	}
-
-	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
-	if ((hint = find_scan_hint(root, rel)) == NULL)
-	{
-		set_scan_config_options(global->init_scan_mask, global->context);
-		return;
-	}
-	set_scan_config_options(hint->enforce_mask, global->context);
-	hint->base.state = HINT_STATE_USED;
 
 	/*
 	 * We delete all the IndexOptInfo list and prevent you from being usable by
@@ -1675,6 +1632,67 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		pfree(indexname);
 	}
+}
+
+static void
+pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
+							   bool inhparent, RelOptInfo *rel)
+{
+	ScanMethodHint *hint;
+
+	if (prev_get_relation_info)
+		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
+
+	/* 有効なヒントが指定されなかった場合は処理をスキップする。 */
+	if (!global)
+		return;
+
+	if (inhparent)
+	{
+		/* store does relids of parent table. */
+		global->parent_relid = rel->relid;
+	}
+	else if (global->parent_relid != 0)
+	{
+		/*
+		 * We use the same GUC parameter if this table is the child table of a
+		 * table called pg_hint_plan_get_relation_info just before that.
+		 */
+		ListCell   *l;
+
+		/* append_rel_list contains all append rels; ignore others */
+		foreach(l, root->append_rel_list)
+		{
+			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+
+			/* This rel is child table. */
+			if (appinfo->parent_relid == global->parent_relid &&
+				appinfo->child_relid == rel->relid)
+			{
+				if (global->parent_hint)
+					delete_indexes(global->parent_hint, rel);
+
+				return;
+			}
+		}
+
+		/* This rel is not inherit table. */
+		global->parent_relid = 0;
+		global->parent_hint = NULL;
+	}
+
+	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
+	if ((hint = find_scan_hint(root, rel)) == NULL)
+	{
+		set_scan_config_options(global->init_scan_mask, global->context);
+		return;
+	}
+	set_scan_config_options(hint->enforce_mask, global->context);
+	hint->base.state = HINT_STATE_USED;
+	if (inhparent)
+		global->parent_hint = hint;
+
+	delete_indexes(hint, rel);
 }
 
 /*
