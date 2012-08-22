@@ -5044,20 +5044,20 @@ error hint:
 (53 rows)
 
 -- ambigous error
-EXPLAIN (COSTS false) SELECT * FROM t1, s1.t1, t2 WHERE public.t1.id = s1.t1.id AND public.t1.id = t2.id;
+EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
                   QUERY PLAN                   
 -----------------------------------------------
  Merge Join
    Merge Cond: (public.t1.id = t2.id)
    ->  Merge Join
-         Merge Cond: (public.t1.id = s1.t1.id)
+         Merge Cond: (public.t1.id = s0.t1.id)
          ->  Index Scan using t1_pkey on t1
          ->  Index Scan using t1_pkey on t1
    ->  Index Scan using t2_pkey on t2
 (7 rows)
 
 /*+NestLoop(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM t1, s1.t1, t2 WHERE public.t1.id = s1.t1.id AND public.t1.id = t2.id;
+EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
 INFO:  hint syntax error at or near "NestLoop(t1 t2)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
@@ -5072,14 +5072,14 @@ NestLoop(t1 t2)
  Merge Join
    Merge Cond: (public.t1.id = t2.id)
    ->  Merge Join
-         Merge Cond: (public.t1.id = s1.t1.id)
+         Merge Cond: (public.t1.id = s0.t1.id)
          ->  Index Scan using t1_pkey on t1
          ->  Index Scan using t1_pkey on t1
    ->  Index Scan using t2_pkey on t2
 (7 rows)
 
 /*+Leading(t1 t2 t1)*/
-EXPLAIN (COSTS false) SELECT * FROM t1, s1.t1, t2 WHERE public.t1.id = s1.t1.id AND public.t1.id = t2.id;
+EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
 INFO:  hint syntax error at or near "Leading(t1 t2 t1)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
@@ -5094,7 +5094,7 @@ error hint:
  Merge Join
    Merge Cond: (public.t1.id = t2.id)
    ->  Merge Join
-         Merge Cond: (public.t1.id = s1.t1.id)
+         Merge Cond: (public.t1.id = s0.t1.id)
          ->  Index Scan using t1_pkey on t1
          ->  Index Scan using t1_pkey on t1
    ->  Index Scan using t2_pkey on t2

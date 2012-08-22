@@ -1,6 +1,6 @@
 SET search_path TO public;
 
-CREATE SCHEMA s1;
+CREATE SCHEMA s0;
 
 CREATE TABLE t1 (id int PRIMARY KEY, val int);
 CREATE TABLE t2 (id int PRIMARY KEY, val int);
@@ -15,7 +15,7 @@ CREATE TABLE p1_c1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 50)) INHERITS(p1_c1);
 CREATE TABLE p1_c1_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INHERITS(p1_c1);
 CREATE TABLE p1_c3_c1 (LIKE p1 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p1_c3);
 CREATE TABLE p1_c3_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p1_c3);
-CREATE TABLE s1.t1 (id int PRIMARY KEY, val int);
+CREATE TABLE s0.t1 (id int PRIMARY KEY, val int);
 
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;

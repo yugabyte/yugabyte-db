@@ -389,7 +389,7 @@ error hint:
 ------------------------------------------------
  Result
    ->  Append
-         ->  Index Scan using p1_pkey on p1
+         ->  Index Scan using p1_i on p1
                Index Cond: (c1 = 1)
          ->  Index Scan using p1c1_i on p1c1 p1
                Index Cond: (c1 = 1)
@@ -659,8 +659,9 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
                ->  Seq Scan on t2 bmt2
 (27 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
-BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+*/
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1), (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
@@ -669,56 +670,54 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
 ;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b1t3)
-BitmapScan(b1t4)
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Aggregate
-   InitPlan 1 (returns $2)
+   InitPlan 1 (returns $1)
      ->  Aggregate
-           ->  Nested Loop
+           ->  Merge Join
+                 Merge Cond: (b1t1.c1 = b1t2.c1)
                  ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b1t2
-                             ->  Bitmap Heap Scan on t1 b1t1
-                                   Recheck Cond: (c1 = b1t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b1t2.c1)
-                       ->  Bitmap Heap Scan on t3 b1t3
+                       ->  Merge Join
+                             Merge Cond: (b1t1.c1 = b1t3.c1)
+                             ->  Sort
+                                   Sort Key: b1t1.c1
+                                   ->  Seq Scan on t1 b1t1
+                             ->  Index Scan using t3_pkey on t3 b1t3
+                       ->  Bitmap Heap Scan on t4 b1t4
                              Recheck Cond: (c1 = b1t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
+                             ->  Bitmap Index Scan on t4_pkey
                                    Index Cond: (c1 = b1t1.c1)
-                 ->  Bitmap Heap Scan on t4 b1t4
-                       Recheck Cond: (c1 = b1t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b1t1.c1)
-   ->  Nested Loop
-         ->  Nested Loop
+                 ->  Sort
+                       Sort Key: b1t2.c1
+                       ->  Seq Scan on t2 b1t2
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt2.c1)
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt2.c1)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t4 bmt4
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t4_i1
-                     Index Cond: (c1 = bmt1.c1)
-(35 rows)
+                     ->  Hash Join
+                           Hash Cond: (bmt1.c1 = bmt2.c1)
+                           ->  Seq Scan on t1 bmt1
+                           ->  Hash
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(33 rows)
 
 -- No. S-2-1-2
 EXPLAIN (COSTS false)
@@ -774,9 +773,10 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
                ->  Seq Scan on t2 bmt2
 (41 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
-BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)
-BitmapScan(b2t1)BitmapScan(b2t2)BitmapScan(b2t3)BitmapScan(b2t4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
+*/
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1), (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
@@ -787,78 +787,75 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 ;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b1t3)
-BitmapScan(b1t4)
-BitmapScan(b2t1)
-BitmapScan(b2t2)
-BitmapScan(b2t3)
-BitmapScan(b2t4)
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Aggregate
-   InitPlan 1 (returns $2)
+   InitPlan 1 (returns $1)
      ->  Aggregate
-           ->  Nested Loop
+           ->  Merge Join
+                 Merge Cond: (b1t1.c1 = b1t2.c1)
                  ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b1t2
-                             ->  Bitmap Heap Scan on t1 b1t1
-                                   Recheck Cond: (c1 = b1t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b1t2.c1)
-                       ->  Bitmap Heap Scan on t3 b1t3
+                       ->  Merge Join
+                             Merge Cond: (b1t1.c1 = b1t3.c1)
+                             ->  Sort
+                                   Sort Key: b1t1.c1
+                                   ->  Seq Scan on t1 b1t1
+                             ->  Index Scan using t3_pkey on t3 b1t3
+                       ->  Bitmap Heap Scan on t4 b1t4
                              Recheck Cond: (c1 = b1t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
+                             ->  Bitmap Index Scan on t4_pkey
                                    Index Cond: (c1 = b1t1.c1)
-                 ->  Bitmap Heap Scan on t4 b1t4
-                       Recheck Cond: (c1 = b1t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b1t1.c1)
+                 ->  Sort
+                       Sort Key: b1t2.c1
+                       ->  Seq Scan on t2 b1t2
    InitPlan 2 (returns $3)
      ->  Aggregate
-           ->  Nested Loop
-                 ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b2t2
-                             ->  Bitmap Heap Scan on t1 b2t1
-                                   Recheck Cond: (c1 = b2t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b2t2.c1)
-                       ->  Bitmap Heap Scan on t3 b2t3
-                             Recheck Cond: (c1 = b2t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
-                                   Index Cond: (c1 = b2t1.c1)
-                 ->  Bitmap Heap Scan on t4 b2t4
-                       Recheck Cond: (c1 = b2t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b2t1.c1)
-   ->  Nested Loop
-         ->  Nested Loop
+           ->  Hash Join
+                 Hash Cond: (b2t3.c1 = b2t1.c1)
+                 ->  Seq Scan on t3 b2t3
+                 ->  Hash
+                       ->  Merge Join
+                             Merge Cond: (b2t1.c1 = b2t2.c1)
+                             ->  Nested Loop
+                                   ->  Index Scan using t4_pkey on t4 b2t4
+                                   ->  Bitmap Heap Scan on t1 b2t1
+                                         Recheck Cond: (c1 = b2t4.c1)
+                                         ->  Bitmap Index Scan on t1_pkey
+                                               Index Cond: (c1 = b2t4.c1)
+                             ->  Sort
+                                   Sort Key: b2t2.c1
+                                   ->  Seq Scan on t2 b2t2
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt2.c1)
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt2.c1)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t4 bmt4
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t4_i1
-                     Index Cond: (c1 = bmt1.c1)
-(53 rows)
+                     ->  Hash Join
+                           Hash Cond: (bmt1.c1 = bmt2.c1)
+                           ->  Seq Scan on t1 bmt1
+                           ->  Hash
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(50 rows)
 
 -- No. S-2-1-3
 EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = sbmt4.c1;
@@ -879,38 +876,37 @@ EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt
                ->  Seq Scan on t2 bmt2
 (13 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+*/
 EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = sbmt4.c1;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                         QUERY PLAN                         
-------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Aggregate
-   ->  Nested Loop
-         ->  Nested Loop
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt2.c1)
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt2.c1)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t4 bmt4
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t4_i1
-                     Index Cond: (c1 = bmt1.c1)
-(17 rows)
+                     ->  Hash Join
+                           Hash Cond: (bmt1.c1 = bmt2.c1)
+                           ->  Seq Scan on t1 bmt1
+                           ->  Hash
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(15 rows)
 
 -- No. S-2-1-4
 EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT * FROM s1.t3 bmt3) sbmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
@@ -931,38 +927,37 @@ EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT *
                ->  Seq Scan on t2 bmt2
 (13 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+*/
 EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT * FROM s1.t3 bmt3) sbmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                         QUERY PLAN                         
-------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Aggregate
-   ->  Nested Loop
-         ->  Nested Loop
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt2.c1)
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt2.c1)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t4 bmt4
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t4_i1
-                     Index Cond: (c1 = bmt1.c1)
-(17 rows)
+                     ->  Hash Join
+                           Hash Cond: (bmt1.c1 = bmt2.c1)
+                           ->  Seq Scan on t1 bmt1
+                           ->  Hash
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(15 rows)
 
 -- No. S-2-1-5
 EXPLAIN (COSTS false)
@@ -1003,8 +998,9 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
                ->  Seq Scan on t2 bmt2
 (28 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
-BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+*/
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
   AND bmt1.c1 <> (
@@ -1013,57 +1009,55 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
 ;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b1t3)
-BitmapScan(b1t4)
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
  Aggregate
-   InitPlan 1 (returns $2)
+   InitPlan 1 (returns $1)
      ->  Aggregate
-           ->  Nested Loop
+           ->  Merge Join
+                 Merge Cond: (b1t1.c1 = b1t2.c1)
                  ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b1t2
-                             ->  Bitmap Heap Scan on t1 b1t1
-                                   Recheck Cond: (c1 = b1t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b1t2.c1)
-                       ->  Bitmap Heap Scan on t3 b1t3
+                       ->  Merge Join
+                             Merge Cond: (b1t1.c1 = b1t3.c1)
+                             ->  Sort
+                                   Sort Key: b1t1.c1
+                                   ->  Seq Scan on t1 b1t1
+                             ->  Index Scan using t3_pkey on t3 b1t3
+                       ->  Bitmap Heap Scan on t4 b1t4
                              Recheck Cond: (c1 = b1t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
+                             ->  Bitmap Index Scan on t4_pkey
                                    Index Cond: (c1 = b1t1.c1)
-                 ->  Bitmap Heap Scan on t4 b1t4
-                       Recheck Cond: (c1 = b1t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b1t1.c1)
-   ->  Nested Loop
-         ->  Nested Loop
+                 ->  Sort
+                       Sort Key: b1t2.c1
+                       ->  Seq Scan on t2 b1t2
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt2.c1)
-                           Filter: (c1 <> $2)
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt2.c1)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t4 bmt4
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t4_i1
-                     Index Cond: (c1 = bmt1.c1)
-(36 rows)
+                     ->  Hash Join
+                           Hash Cond: (bmt1.c1 = bmt2.c1)
+                           ->  Seq Scan on t1 bmt1
+                                 Filter: (c1 <> $1)
+                           ->  Hash
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(34 rows)
 
 -- No. S-2-1-6
 EXPLAIN (COSTS false)
@@ -1120,9 +1114,10 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
                ->  Seq Scan on t2 bmt2
 (42 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
-BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)
-BitmapScan(b2t1)BitmapScan(b2t2)BitmapScan(b2t3)BitmapScan(b2t4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
+*/
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
   AND bmt1.c1 <> (
@@ -1133,79 +1128,76 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 ;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b1t3)
-BitmapScan(b1t4)
-BitmapScan(b2t1)
-BitmapScan(b2t2)
-BitmapScan(b2t3)
-BitmapScan(b2t4)
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Aggregate
-   InitPlan 1 (returns $2)
+   InitPlan 1 (returns $1)
      ->  Aggregate
-           ->  Nested Loop
+           ->  Merge Join
+                 Merge Cond: (b1t1.c1 = b1t2.c1)
                  ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b1t2
-                             ->  Bitmap Heap Scan on t1 b1t1
-                                   Recheck Cond: (c1 = b1t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b1t2.c1)
-                       ->  Bitmap Heap Scan on t3 b1t3
+                       ->  Merge Join
+                             Merge Cond: (b1t1.c1 = b1t3.c1)
+                             ->  Sort
+                                   Sort Key: b1t1.c1
+                                   ->  Seq Scan on t1 b1t1
+                             ->  Index Scan using t3_pkey on t3 b1t3
+                       ->  Bitmap Heap Scan on t4 b1t4
                              Recheck Cond: (c1 = b1t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
+                             ->  Bitmap Index Scan on t4_pkey
                                    Index Cond: (c1 = b1t1.c1)
-                 ->  Bitmap Heap Scan on t4 b1t4
-                       Recheck Cond: (c1 = b1t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b1t1.c1)
+                 ->  Sort
+                       Sort Key: b1t2.c1
+                       ->  Seq Scan on t2 b1t2
    InitPlan 2 (returns $3)
      ->  Aggregate
-           ->  Nested Loop
-                 ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b2t2
-                             ->  Bitmap Heap Scan on t1 b2t1
-                                   Recheck Cond: (c1 = b2t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b2t2.c1)
-                       ->  Bitmap Heap Scan on t3 b2t3
-                             Recheck Cond: (c1 = b2t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
-                                   Index Cond: (c1 = b2t1.c1)
-                 ->  Bitmap Heap Scan on t4 b2t4
-                       Recheck Cond: (c1 = b2t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b2t1.c1)
-   ->  Nested Loop
-         ->  Nested Loop
+           ->  Hash Join
+                 Hash Cond: (b2t3.c1 = b2t1.c1)
+                 ->  Seq Scan on t3 b2t3
+                 ->  Hash
+                       ->  Merge Join
+                             Merge Cond: (b2t1.c1 = b2t2.c1)
+                             ->  Nested Loop
+                                   ->  Index Scan using t4_pkey on t4 b2t4
+                                   ->  Bitmap Heap Scan on t1 b2t1
+                                         Recheck Cond: (c1 = b2t4.c1)
+                                         ->  Bitmap Index Scan on t1_pkey
+                                               Index Cond: (c1 = b2t4.c1)
+                             ->  Sort
+                                   Sort Key: b2t2.c1
+                                   ->  Seq Scan on t2 b2t2
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt2.c1)
-                           Filter: ((c1 <> $2) AND (c1 <> $3))
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt2.c1)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t4 bmt4
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t4_i1
-                     Index Cond: (c1 = bmt1.c1)
-(54 rows)
+                     ->  Hash Join
+                           Hash Cond: (bmt1.c1 = bmt2.c1)
+                           ->  Seq Scan on t1 bmt1
+                                 Filter: ((c1 <> $1) AND (c1 <> $3))
+                           ->  Hash
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(51 rows)
 
 -- No. S-2-1-7
 EXPLAIN (COSTS false)
@@ -1252,8 +1244,9 @@ AND bmt1.c1 = c1.c1
                            ->  CTE Scan on c1
 (31 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
-BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+*/
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
@@ -1265,61 +1258,57 @@ AND bmt1.c1 = c1.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b1t3)
-BitmapScan(b1t4)
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    CTE c1
      ->  Aggregate
-           ->  Nested Loop
+           ->  Merge Join
+                 Merge Cond: (b1t1.c1 = b1t2.c1)
                  ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b1t2
-                             ->  Bitmap Heap Scan on t1 b1t1
-                                   Recheck Cond: (c1 = b1t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b1t2.c1)
-                       ->  Bitmap Heap Scan on t3 b1t3
+                       ->  Merge Join
+                             Merge Cond: (b1t1.c1 = b1t3.c1)
+                             ->  Sort
+                                   Sort Key: b1t1.c1
+                                   ->  Seq Scan on t1 b1t1
+                             ->  Index Scan using t3_pkey on t3 b1t3
+                       ->  Bitmap Heap Scan on t4 b1t4
                              Recheck Cond: (c1 = b1t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
+                             ->  Bitmap Index Scan on t4_pkey
                                    Index Cond: (c1 = b1t1.c1)
-                 ->  Bitmap Heap Scan on t4 b1t4
-                       Recheck Cond: (c1 = b1t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b1t1.c1)
-   ->  Nested Loop
-         ->  Nested Loop
+                 ->  Sort
+                       Sort Key: b1t2.c1
+                       ->  Seq Scan on t2 b1t2
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
                      ->  Nested Loop
-                           ->  CTE Scan on c1
-                           ->  Bitmap Heap Scan on t3 bmt3
-                                 Recheck Cond: (c1 = c1.c1)
-                                 ->  Bitmap Index Scan on t3_i1
-                                       Index Cond: (c1 = c1.c1)
-                     ->  Bitmap Heap Scan on t1 bmt1
-                           Recheck Cond: (c1 = bmt3.c1)
-                           ->  Bitmap Index Scan on t1_i1
-                                 Index Cond: (c1 = bmt3.c1)
-               ->  Bitmap Heap Scan on t4 bmt4
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t4_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  Bitmap Heap Scan on t2 bmt2
-               Recheck Cond: (c1 = bmt1.c1)
-               ->  Bitmap Index Scan on t2_i1
-                     Index Cond: (c1 = bmt1.c1)
-(40 rows)
+                           ->  Hash Join
+                                 Hash Cond: (bmt1.c1 = c1.c1)
+                                 ->  Seq Scan on t1 bmt1
+                                 ->  Hash
+                                       ->  CTE Scan on c1
+                           ->  Index Scan using t2_pkey on t2 bmt2
+                                 Index Cond: (c1 = bmt1.c1)
+                     ->  Bitmap Heap Scan on t3 bmt3
+                           Recheck Cond: (c1 = bmt1.c1)
+                           ->  Bitmap Index Scan on t3_pkey
+                                 Index Cond: (c1 = bmt1.c1)
+(36 rows)
 
 -- No. S-2-1-8
 EXPLAIN (COSTS false)
@@ -1387,9 +1376,10 @@ AND bmt1.c1 = c2.c1
          ->  CTE Scan on c2
 (48 rows)
 
-/*+BitmapScan(bmt1)BitmapScan(bmt2)BitmapScan(bmt3)BitmapScan(bmt4)
-BitmapScan(b1t1)BitmapScan(b1t2)BitmapScan(b1t3)BitmapScan(b1t4)
-BitmapScan(b2t1)BitmapScan(b2t2)BitmapScan(b2t3)BitmapScan(b2t4)*/
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
+*/
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
@@ -1405,86 +1395,81 @@ AND bmt1.c1 = c2.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b1t3)
-BitmapScan(b1t4)
-BitmapScan(b2t1)
-BitmapScan(b2t2)
-BitmapScan(b2t3)
-BitmapScan(b2t4)
-BitmapScan(bmt1)
-BitmapScan(bmt2)
-BitmapScan(bmt3)
-BitmapScan(bmt4)
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+SeqScan(bmt1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
+TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                              QUERY PLAN                              
-----------------------------------------------------------------------
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
  Aggregate
    CTE c1
      ->  Aggregate
-           ->  Nested Loop
+           ->  Merge Join
+                 Merge Cond: (b1t1.c1 = b1t2.c1)
                  ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b1t2
-                             ->  Bitmap Heap Scan on t1 b1t1
-                                   Recheck Cond: (c1 = b1t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b1t2.c1)
-                       ->  Bitmap Heap Scan on t3 b1t3
+                       ->  Merge Join
+                             Merge Cond: (b1t1.c1 = b1t3.c1)
+                             ->  Sort
+                                   Sort Key: b1t1.c1
+                                   ->  Seq Scan on t1 b1t1
+                             ->  Index Scan using t3_pkey on t3 b1t3
+                       ->  Bitmap Heap Scan on t4 b1t4
                              Recheck Cond: (c1 = b1t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
+                             ->  Bitmap Index Scan on t4_pkey
                                    Index Cond: (c1 = b1t1.c1)
-                 ->  Bitmap Heap Scan on t4 b1t4
-                       Recheck Cond: (c1 = b1t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b1t1.c1)
+                 ->  Sort
+                       Sort Key: b1t2.c1
+                       ->  Seq Scan on t2 b1t2
    CTE c2
      ->  Aggregate
-           ->  Nested Loop
-                 ->  Nested Loop
-                       ->  Nested Loop
-                             ->  Index Scan using t2_i1 on t2 b2t2
-                             ->  Bitmap Heap Scan on t1 b2t1
-                                   Recheck Cond: (c1 = b2t2.c1)
-                                   ->  Bitmap Index Scan on t1_i1
-                                         Index Cond: (c1 = b2t2.c1)
-                       ->  Bitmap Heap Scan on t3 b2t3
-                             Recheck Cond: (c1 = b2t1.c1)
-                             ->  Bitmap Index Scan on t3_i1
-                                   Index Cond: (c1 = b2t1.c1)
-                 ->  Bitmap Heap Scan on t4 b2t4
-                       Recheck Cond: (c1 = b2t1.c1)
-                       ->  Bitmap Index Scan on t4_i1
-                             Index Cond: (c1 = b2t1.c1)
-   ->  Nested Loop
-         Join Filter: (bmt1.c1 = c2.c1)
-         ->  Nested Loop
+           ->  Hash Join
+                 Hash Cond: (b2t3.c1 = b2t1.c1)
+                 ->  Seq Scan on t3 b2t3
+                 ->  Hash
+                       ->  Merge Join
+                             Merge Cond: (b2t1.c1 = b2t2.c1)
+                             ->  Nested Loop
+                                   ->  Index Scan using t4_pkey on t4 b2t4
+                                   ->  Bitmap Heap Scan on t1 b2t1
+                                         Recheck Cond: (c1 = b2t4.c1)
+                                         ->  Bitmap Index Scan on t1_pkey
+                                               Index Cond: (c1 = b2t4.c1)
+                             ->  Sort
+                                   Sort Key: b2t2.c1
+                                   ->  Seq Scan on t2 b2t2
+   ->  Hash Join
+         Hash Cond: (bmt4.c1 = bmt1.c1)
+         ->  Seq Scan on t4 bmt4
+         ->  Hash
                ->  Nested Loop
                      ->  Nested Loop
+                           Join Filter: (bmt1.c1 = c2.c1)
                            ->  Nested Loop
-                                 ->  CTE Scan on c1
-                                 ->  Bitmap Heap Scan on t3 bmt3
-                                       Recheck Cond: (c1 = c1.c1)
-                                       ->  Bitmap Index Scan on t3_i1
-                                             Index Cond: (c1 = c1.c1)
-                           ->  Bitmap Heap Scan on t1 bmt1
-                                 Recheck Cond: (c1 = bmt3.c1)
-                                 ->  Bitmap Index Scan on t1_i1
-                                       Index Cond: (c1 = bmt3.c1)
-                     ->  Bitmap Heap Scan on t4 bmt4
+                                 ->  Hash Join
+                                       Hash Cond: (bmt1.c1 = c1.c1)
+                                       ->  Seq Scan on t1 bmt1
+                                       ->  Hash
+                                             ->  CTE Scan on c1
+                                 ->  Index Scan using t2_pkey on t2 bmt2
+                                       Index Cond: (c1 = bmt1.c1)
+                           ->  CTE Scan on c2
+                     ->  Bitmap Heap Scan on t3 bmt3
                            Recheck Cond: (c1 = bmt1.c1)
-                           ->  Bitmap Index Scan on t4_i1
+                           ->  Bitmap Index Scan on t3_pkey
                                  Index Cond: (c1 = bmt1.c1)
-               ->  Bitmap Heap Scan on t2 bmt2
-                     Recheck Cond: (c1 = bmt1.c1)
-                     ->  Bitmap Index Scan on t2_i1
-                           Index Cond: (c1 = bmt1.c1)
-         ->  CTE Scan on c2
-(61 rows)
+(56 rows)
 
 ----
 ---- No. S-2-2 the number of the tables per quiry block
@@ -1535,8 +1520,8 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = 1
 
 /*+SeqScan(bmt1)
 TidScan(b1t1)
-BitmapScan(b2t1 t1_i1)
-IndexScan(b3t1 t1_i1)
+BitmapScan(b2t1 t1_pkey)
+IndexScan(b3t1 t1_pkey)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -1553,8 +1538,8 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = 1
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
-BitmapScan(b2t1 t1_i1)
-IndexScan(b3t1 t1_i1)
+BitmapScan(b2t1 t1_pkey)
+IndexScan(b3t1 t1_pkey)
 SeqScan(bmt1)
 not used hint:
 duplication hint:
@@ -1577,13 +1562,13 @@ error hint:
                    ->  Bitmap Heap Scan on t1 b2t1
                          Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
                          Filter: (ctid = '(1,1)'::tid)
-                         ->  Bitmap Index Scan on t1_i1
+                         ->  Bitmap Index Scan on t1_pkey
                                Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
    InitPlan 6 (returns $5)
      ->  Result
            InitPlan 5 (returns $4)
              ->  Limit
-                   ->  Index Scan using t1_i1 on t1 b3t1
+                   ->  Index Scan using t1_pkey on t1 b3t1
                          Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
                          Filter: (ctid = '(1,1)'::tid)
    ->  Nested Loop
@@ -1643,10 +1628,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.ctid = '(1,1)' AND b3
          ->  CTE Scan on c1
 (34 rows)
 
-/*+SeqScan(bmt1)IndexScan(bmt2 t2_i1)
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)
 TidScan(b1t1)SeqScan(b1t2)
-BitmapScan(b2t1 t1_i1)TidScan(b2t2)
-IndexScan(b3t1 t1_i1)BitmapScan(b3t2 t2_i1)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)
+IndexScan(b3t1 t1_pkey)BitmapScan(b3t2 t2_pkey)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -1664,12 +1649,12 @@ LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
 SeqScan(b1t2)
-BitmapScan(b2t1 t1_i1)
+BitmapScan(b2t1 t1_pkey)
 TidScan(b2t2)
-IndexScan(b3t1 t1_i1)
-BitmapScan(b3t2 t2_i1)
+IndexScan(b3t1 t1_pkey)
+BitmapScan(b3t2 t2_pkey)
 SeqScan(bmt1)
-IndexScan(bmt2 t2_i1)
+IndexScan(bmt2 t2_pkey)
 not used hint:
 duplication hint:
 error hint:
@@ -1693,23 +1678,23 @@ error hint:
                  ->  Bitmap Heap Scan on t1 b2t1
                        Recheck Cond: (c1 = b2t2.c1)
                        Filter: (ctid = '(1,1)'::tid)
-                       ->  Bitmap Index Scan on t1_i1
+                       ->  Bitmap Index Scan on t1_pkey
                              Index Cond: (c1 = b2t2.c1)
    InitPlan 3 (returns $4)
      ->  Aggregate
            ->  Nested Loop
-                 ->  Index Scan using t1_i1 on t1 b3t1
+                 ->  Index Scan using t1_pkey on t1 b3t1
                        Filter: (ctid = '(1,1)'::tid)
                  ->  Bitmap Heap Scan on t2 b3t2
                        Recheck Cond: (c1 = b3t1.c1)
                        Filter: (ctid = '(1,1)'::tid)
-                       ->  Bitmap Index Scan on t2_i1
+                       ->  Bitmap Index Scan on t2_pkey
                              Index Cond: (c1 = b3t1.c1)
    ->  Nested Loop
          ->  Nested Loop
                ->  Seq Scan on t1 bmt1
                      Filter: ((c1 <> $4) AND (ctid = '(1,1)'::tid))
-               ->  Index Scan using t2_i1 on t2 bmt2
+               ->  Index Scan using t2_pkey on t2 bmt2
                      Index Cond: (c1 = bmt1.c1)
                      Filter: (ctid = '(1,1)'::tid)
          ->  CTE Scan on c1
@@ -1799,10 +1784,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
          ->  CTE Scan on c1
 (67 rows)
 
-/*+SeqScan(bmt1)IndexScan(bmt2 t2_i1)BitmapScan(bmt3 t3_i1)TidScan(bmt4)
-TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_i1)BitmapScan(b1t4 t4_i1)
-BitmapScan(b2t1 t1_i1)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_i1)
-IndexScan(b3t1 t1_i1)BitmapScan(b3t2 t2_i1)TidScan(b3t3)SeqScan(b3t4)
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
+IndexScan(b3t1 t1_pkey)BitmapScan(b3t2 t2_pkey)TidScan(b3t3)SeqScan(b3t4)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -1820,44 +1805,44 @@ LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
 SeqScan(b1t2)
-IndexScan(b1t3 t3_i1)
-BitmapScan(b1t4 t4_i1)
-BitmapScan(b2t1 t1_i1)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
 TidScan(b2t2)
 SeqScan(b2t3)
-IndexScan(b2t4 t4_i1)
-IndexScan(b3t1 t1_i1)
-BitmapScan(b3t2 t2_i1)
+IndexScan(b2t4 t4_pkey)
+IndexScan(b3t1 t1_pkey)
+BitmapScan(b3t2 t2_pkey)
 TidScan(b3t3)
 SeqScan(b3t4)
 SeqScan(bmt1)
-IndexScan(bmt2 t2_i1)
-BitmapScan(bmt3 t3_i1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
 TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                             QUERY PLAN                             
---------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Aggregate
    CTE c1
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       Join Filter: (b1t2.c1 = b1t1.c1)
                        ->  Nested Loop
+                             Join Filter: (b1t1.c1 = b1t2.c1)
+                             ->  Tid Scan on t1 b1t1
+                                   TID Cond: (ctid = '(1,1)'::tid)
                              ->  Seq Scan on t2 b1t2
                                    Filter: (ctid = '(1,1)'::tid)
-                             ->  Index Scan using t3_i1 on t3 b1t3
-                                   Index Cond: (c1 = b1t2.c1)
-                                   Filter: (ctid = '(1,1)'::tid)
-                       ->  Tid Scan on t1 b1t1
-                             TID Cond: (ctid = '(1,1)'::tid)
+                       ->  Index Scan using t3_pkey on t3 b1t3
+                             Index Cond: (c1 = b1t1.c1)
+                             Filter: (ctid = '(1,1)'::tid)
                  ->  Bitmap Heap Scan on t4 b1t4
                        Recheck Cond: (c1 = b1t1.c1)
                        Filter: (ctid = '(1,1)'::tid)
-                       ->  Bitmap Index Scan on t4_i1
+                       ->  Bitmap Index Scan on t4_pkey
                              Index Cond: (c1 = b1t1.c1)
    InitPlan 2 (returns $3)
      ->  Aggregate
@@ -1870,11 +1855,11 @@ error hint:
                              ->  Bitmap Heap Scan on t1 b2t1
                                    Recheck Cond: (c1 = b2t2.c1)
                                    Filter: (ctid = '(1,1)'::tid)
-                                   ->  Bitmap Index Scan on t1_i1
+                                   ->  Bitmap Index Scan on t1_pkey
                                          Index Cond: (c1 = b2t2.c1)
                        ->  Seq Scan on t3 b2t3
                              Filter: (ctid = '(1,1)'::tid)
-                 ->  Index Scan using t4_i1 on t4 b2t4
+                 ->  Index Scan using t4_pkey on t4 b2t4
                        Index Cond: (c1 = b2t1.c1)
                        Filter: (ctid = '(1,1)'::tid)
    InitPlan 3 (returns $5)
@@ -1890,30 +1875,30 @@ error hint:
                        ->  Bitmap Heap Scan on t2 b3t2
                              Recheck Cond: (c1 = b3t3.c1)
                              Filter: (ctid = '(1,1)'::tid)
-                             ->  Bitmap Index Scan on t2_i1
+                             ->  Bitmap Index Scan on t2_pkey
                                    Index Cond: (c1 = b3t3.c1)
-                 ->  Index Scan using t1_i1 on t1 b3t1
+                 ->  Index Scan using t1_pkey on t1 b3t1
                        Index Cond: (c1 = b3t2.c1)
                        Filter: (ctid = '(1,1)'::tid)
    ->  Nested Loop
-         Join Filter: (bmt1.c1 = bmt2.c1)
          ->  Nested Loop
-               Join Filter: (bmt1.c1 = bmt4.c1)
-               ->  Seq Scan on t1 bmt1
-                     Filter: ((c1 <> $5) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on t4 bmt4
-                     TID Cond: (ctid = '(1,1)'::tid)
-         ->  Nested Loop
+               Join Filter: (bmt1.c1 = c1.c1)
                ->  Nested Loop
-                     ->  CTE Scan on c1
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                           Index Cond: (c1 = c1.c1)
-                           Filter: (ctid = '(1,1)'::tid)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt2.c1)
-                     Filter: (ctid = '(1,1)'::tid)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt2.c1)
+                     Join Filter: (bmt1.c1 = bmt4.c1)
+                     ->  Nested Loop
+                           ->  Seq Scan on t1 bmt1
+                                 Filter: ((c1 <> $5) AND (ctid = '(1,1)'::tid))
+                           ->  Bitmap Heap Scan on t3 bmt3
+                                 Recheck Cond: (c1 = bmt1.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                                 ->  Bitmap Index Scan on t3_pkey
+                                       Index Cond: (c1 = bmt1.c1)
+                     ->  Tid Scan on t4 bmt4
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  CTE Scan on c1
+         ->  Index Scan using t2_pkey on t2 bmt2
+               Index Cond: (c1 = bmt1.c1)
+               Filter: (ctid = '(1,1)'::tid)
 (74 rows)
 
 -- No. S-2-2-4
@@ -1979,10 +1964,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
          ->  CTE Scan on c1
 (46 rows)
 
-/*+SeqScan(bmt1)IndexScan(bmt2 t2_i1)BitmapScan(bmt3 t3_i1)TidScan(bmt4)
-TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_i1)BitmapScan(b1t4 t4_i1)
-BitmapScan(b2t1 t1_i1)
-IndexScan(b3t1 t1_i1)
+/*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
+IndexScan(b3t1 t1_pkey)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -2000,81 +1985,801 @@ LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
 SeqScan(b1t2)
-IndexScan(b1t3 t3_i1)
-BitmapScan(b1t4 t4_i1)
-BitmapScan(b2t1 t1_i1)
-IndexScan(b3t1 t1_i1)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
+IndexScan(b3t1 t1_pkey)
 SeqScan(bmt1)
-IndexScan(bmt2 t2_i1)
-BitmapScan(bmt3 t3_i1)
+IndexScan(bmt2 t2_pkey)
+BitmapScan(bmt3 t3_pkey)
 TidScan(bmt4)
 not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                                   QUERY PLAN                                   
+--------------------------------------------------------------------------------
  Aggregate
    CTE c1
      ->  Aggregate
            ->  Nested Loop
                  ->  Nested Loop
-                       Join Filter: (b1t2.c1 = b1t1.c1)
                        ->  Nested Loop
+                             Join Filter: (b1t1.c1 = b1t2.c1)
+                             ->  Tid Scan on t1 b1t1
+                                   TID Cond: (ctid = '(1,1)'::tid)
                              ->  Seq Scan on t2 b1t2
                                    Filter: (ctid = '(1,1)'::tid)
-                             ->  Index Scan using t3_i1 on t3 b1t3
-                                   Index Cond: (c1 = b1t2.c1)
-                                   Filter: (ctid = '(1,1)'::tid)
-                       ->  Tid Scan on t1 b1t1
-                             TID Cond: (ctid = '(1,1)'::tid)
+                       ->  Index Scan using t3_pkey on t3 b1t3
+                             Index Cond: (c1 = b1t1.c1)
+                             Filter: (ctid = '(1,1)'::tid)
                  ->  Bitmap Heap Scan on t4 b1t4
                        Recheck Cond: (c1 = b1t1.c1)
                        Filter: (ctid = '(1,1)'::tid)
-                       ->  Bitmap Index Scan on t4_i1
+                       ->  Bitmap Index Scan on t4_pkey
                              Index Cond: (c1 = b1t1.c1)
-   InitPlan 3 (returns $4)
+   InitPlan 3 (returns $3)
      ->  Result
-           InitPlan 2 (returns $3)
+           InitPlan 2 (returns $2)
              ->  Limit
                    ->  Bitmap Heap Scan on t1 b2t1
                          Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
                          Filter: (ctid = '(1,1)'::tid)
-                         ->  Bitmap Index Scan on t1_i1
+                         ->  Bitmap Index Scan on t1_pkey
                                Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-   InitPlan 5 (returns $6)
+   InitPlan 5 (returns $5)
      ->  Result
-           InitPlan 4 (returns $5)
+           InitPlan 4 (returns $4)
              ->  Limit
-                   ->  Index Scan Backward using t1_i1 on t1 b3t1
+                   ->  Index Scan Backward using t1_pkey on t1 b3t1
                          Index Cond: (c1 IS NOT NULL)
                          Filter: (ctid = '(1,1)'::tid)
    ->  Nested Loop
-         Join Filter: (bmt1.c1 = bmt2.c1)
          ->  Nested Loop
-               Join Filter: (bmt1.c1 = bmt4.c1)
-               ->  Seq Scan on t1 bmt1
-                     Filter: ((c1 <> $6) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on t4 bmt4
-                     TID Cond: (ctid = '(1,1)'::tid)
-         ->  Nested Loop
+               Join Filter: (bmt1.c1 = c1.c1)
                ->  Nested Loop
-                     ->  CTE Scan on c1
-                     ->  Index Scan using t2_i1 on t2 bmt2
-                           Index Cond: (c1 = c1.c1)
-                           Filter: (ctid = '(1,1)'::tid)
-               ->  Bitmap Heap Scan on t3 bmt3
-                     Recheck Cond: (c1 = bmt2.c1)
-                     Filter: (ctid = '(1,1)'::tid)
-                     ->  Bitmap Index Scan on t3_i1
-                           Index Cond: (c1 = bmt2.c1)
+                     Join Filter: (bmt1.c1 = bmt4.c1)
+                     ->  Nested Loop
+                           ->  Seq Scan on t1 bmt1
+                                 Filter: ((c1 <> $5) AND (ctid = '(1,1)'::tid))
+                           ->  Bitmap Heap Scan on t3 bmt3
+                                 Recheck Cond: (c1 = bmt1.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                                 ->  Bitmap Index Scan on t3_pkey
+                                       Index Cond: (c1 = bmt1.c1)
+                     ->  Tid Scan on t4 bmt4
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  CTE Scan on c1
+         ->  Index Scan using t2_pkey on t2 bmt2
+               Index Cond: (c1 = bmt1.c1)
+               Filter: (ctid = '(1,1)'::tid)
 (54 rows)
 
 ----
 ---- No. S-2-3 RULE definition table
 ----
 -- No. S-2-3-1
--- TODO
+EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(19 rows)
+
+/*+TidScan(t1)SeqScan(t2)IndexScan(t3 t3_pkey)BitmapScan(t4 t4_pkey)
+SeqScan(r1)*/
+EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(r1)
+TidScan(t1)
+SeqScan(t2)
+IndexScan(t3 t3_pkey)
+BitmapScan(t4 t4_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (t2.c1 = t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3
+                                 Index Cond: (c1 = t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r1
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4
+               Recheck Cond: (c1 = t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = t1.c1)
+(20 rows)
+
+EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b1t1.c1 = b1t4.c1)
+         ->  Nested Loop
+               Join Filter: (b1t1.c1 = b1t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r1_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b1t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b1t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b1t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(19 rows)
+
+/*+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+SeqScan(r1_)*/
+EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+SeqScan(r1_)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (b1t2.c1 = b1t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3 b1t3
+                                 Index Cond: (c1 = b1t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r1_
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1 b1t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4 b1t4
+               Recheck Cond: (c1 = b1t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = b1t1.c1)
+(20 rows)
+
+-- No. S-2-3-2
+EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(39 rows)
+
+/*+TidScan(t1)SeqScan(t2)IndexScan(t3 t3_pkey)BitmapScan(t4 t4_pkey)
+SeqScan(r2)*/
+EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(r2)
+TidScan(t1)
+SeqScan(t2)
+IndexScan(t3 t3_pkey)
+BitmapScan(t4 t4_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(r2)
+TidScan(t1)
+SeqScan(t2)
+IndexScan(t3 t3_pkey)
+BitmapScan(t4 t4_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (t2.c1 = t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3
+                                 Index Cond: (c1 = t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r2
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4
+               Recheck Cond: (c1 = t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = t1.c1)
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (t2.c1 = t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3
+                                 Index Cond: (c1 = t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r2
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4
+               Recheck Cond: (c1 = t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = t1.c1)
+(41 rows)
+
+EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b1t1.c1 = b1t4.c1)
+         ->  Nested Loop
+               Join Filter: (b1t1.c1 = b1t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b1t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b1t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b1t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b2t1.c1 = b2t4.c1)
+         ->  Nested Loop
+               Join Filter: (b2t1.c1 = b2t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b2t2.c1 = b2t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b2t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b2t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b2t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b2t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(39 rows)
+
+/*+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
+SeqScan(r2_)*/
+EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+SeqScan(r2_)
+not used hint:
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+SeqScan(r2_)
+not used hint:
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (b1t2.c1 = b1t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3 b1t3
+                                 Index Cond: (c1 = b1t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r2_
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1 b1t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4 b1t4
+               Recheck Cond: (c1 = b1t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = b1t1.c1)
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           Join Filter: (b2t2.c1 = b2t3.c1)
+                           ->  Tid Scan on t2 b2t2
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Seq Scan on t3 b2t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r2_
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Bitmap Heap Scan on t1 b2t1
+                     Recheck Cond: (c1 = b2t2.c1)
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on t1_pkey
+                           Index Cond: (c1 = b2t2.c1)
+         ->  Index Scan using t4_pkey on t4 b2t4
+               Index Cond: (c1 = b2t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+(41 rows)
+
+-- No. S-2-3-3
+EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(59 rows)
+
+/*+TidScan(t1)SeqScan(t2)IndexScan(t3 t3_pkey)BitmapScan(t4 t4_pkey)
+SeqScan(r3)*/
+EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(r3)
+TidScan(t1)
+SeqScan(t2)
+IndexScan(t3 t3_pkey)
+BitmapScan(t4 t4_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(r3)
+TidScan(t1)
+SeqScan(t2)
+IndexScan(t3 t3_pkey)
+BitmapScan(t4 t4_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(r3)
+TidScan(t1)
+SeqScan(t2)
+IndexScan(t3 t3_pkey)
+BitmapScan(t4 t4_pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (t2.c1 = t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3
+                                 Index Cond: (c1 = t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r3
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4
+               Recheck Cond: (c1 = t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = t1.c1)
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (t2.c1 = t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3
+                                 Index Cond: (c1 = t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r3
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4
+               Recheck Cond: (c1 = t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = t1.c1)
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (t2.c1 = t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3
+                                 Index Cond: (c1 = t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r3
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4
+               Recheck Cond: (c1 = t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = t1.c1)
+(62 rows)
+
+EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b1t1.c1 = b1t4.c1)
+         ->  Nested Loop
+               Join Filter: (b1t1.c1 = b1t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b1t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b1t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b1t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b2t1.c1 = b2t4.c1)
+         ->  Nested Loop
+               Join Filter: (b2t1.c1 = b2t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b2t2.c1 = b2t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b2t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b2t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b2t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b2t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b3t1.c1 = b3t4.c1)
+         ->  Nested Loop
+               Join Filter: (b3t1.c1 = b3t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b3t2.c1 = b3t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b3t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b3t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b3t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b3t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(59 rows)
+
+/*+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
+IndexScan(b3t1 t1_pkey)BitmapScan(b3t2 t2_pkey)TidScan(b3t3)SeqScan(b3t4)
+SeqScan(r3_)*/
+EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+SeqScan(r3_)
+not used hint:
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+IndexScan(b3t1 t1_pkey)
+BitmapScan(b3t2 t2_pkey)
+TidScan(b3t3)
+SeqScan(b3t4)
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+SeqScan(r3_)
+not used hint:
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+IndexScan(b3t1 t1_pkey)
+BitmapScan(b3t2 t2_pkey)
+TidScan(b3t3)
+SeqScan(b3t4)
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(b3t1 t1_pkey)
+BitmapScan(b3t2 t2_pkey)
+TidScan(b3t3)
+SeqScan(b3t4)
+SeqScan(r3_)
+not used hint:
+TidScan(b1t1)
+SeqScan(b1t2)
+IndexScan(b1t3 t3_pkey)
+BitmapScan(b1t4 t4_pkey)
+BitmapScan(b2t1 t1_pkey)
+TidScan(b2t2)
+SeqScan(b2t3)
+IndexScan(b2t4 t4_pkey)
+duplication hint:
+error hint:
+
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               Join Filter: (b1t2.c1 = b1t1.c1)
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Index Scan using t3_pkey on t3 b1t3
+                                 Index Cond: (c1 = b1t2.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r3_
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Tid Scan on t1 b1t1
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Bitmap Heap Scan on t4 b1t4
+               Recheck Cond: (c1 = b1t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on t4_pkey
+                     Index Cond: (c1 = b1t1.c1)
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           Join Filter: (b2t2.c1 = b2t3.c1)
+                           ->  Tid Scan on t2 b2t2
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Seq Scan on t3 b2t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on r3_
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Bitmap Heap Scan on t1 b2t1
+                     Recheck Cond: (c1 = b2t2.c1)
+                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Bitmap Index Scan on t1_pkey
+                           Index Cond: (c1 = b2t2.c1)
+         ->  Index Scan using t4_pkey on t4 b2t4
+               Index Cond: (c1 = b2t1.c1)
+               Filter: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b3t1.c1 = b3t4.c1)
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Tid Scan on t3 b3t3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Bitmap Heap Scan on t2 b3t2
+                                 Recheck Cond: (c1 = b3t3.c1)
+                                 Filter: (ctid = '(1,1)'::tid)
+                                 ->  Bitmap Index Scan on t2_pkey
+                                       Index Cond: (c1 = b3t3.c1)
+                     ->  Seq Scan on r3_
+                           Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+               ->  Index Scan using t1_pkey on t1 b3t1
+                     Index Cond: (c1 = b3t2.c1)
+                     Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on t4 b3t4
+               Filter: (ctid = '(1,1)'::tid)
+(62 rows)
+
 ----
 ---- No. S-2-4 VALUES clause
 ----
@@ -2116,7 +2821,7 @@ error hint:
    Filter: (column1 = 1)
 (2 rows)
 
--- No. J-2-4-2
+-- No. S-2-4-2
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
                         QUERY PLAN                        
 ----------------------------------------------------------
@@ -3288,7 +3993,8 @@ SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
                  Index Cond: ((c1 IS NOT NULL) AND (c1 = $3))
 (17 rows)
 
-/*+BitmapScan(b1t1)BitmapScan(b2t1)BitmapScan(b3t1)BitmapScan(b4t1)*/
+/*+SeqScan(b1t1)IndexScan(b2t1 t1_pkey)BitmapScan(b3t1 t1_pkey)TidScan(b4t1)
+*/
 EXPLAIN (COSTS false) 
 WITH c1 (c1) AS (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1 WHERE b1t1.c1 = 1)
@@ -3298,40 +4004,36 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b2t1)
-BitmapScan(b3t1)
-BitmapScan(b4t1)
+IndexScan(b2t1 t1_pkey)
+BitmapScan(b3t1 t1_pkey)
+TidScan(b4t1)
 not used hint:
-BitmapScan(b1t1)
+SeqScan(b1t1)
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Result
    InitPlan 2 (returns $1)
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
-                   ->  Bitmap Heap Scan on t1 b2t1
-                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-                         ->  Bitmap Index Scan on t1_i1
-                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                   ->  Index Scan using t1_pkey on t1 b2t1
+                         Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
    InitPlan 4 (returns $3)
      ->  Result
            InitPlan 3 (returns $2)
              ->  Limit
-                   ->  Bitmap Heap Scan on t1 b4t1
-                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-                         ->  Bitmap Index Scan on t1_i1
-                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                   ->  Seq Scan on t1 b4t1
+                         Filter: ((c1 IS NOT NULL) AND (c1 = 1))
    InitPlan 5 (returns $4)
      ->  Limit
            ->  Bitmap Heap Scan on t1 b3t1
                  Recheck Cond: ((c1 IS NOT NULL) AND (c1 = $3))
-                 ->  Bitmap Index Scan on t1_i1
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: ((c1 IS NOT NULL) AND (c1 = $3))
-(23 rows)
+(19 rows)
 
 -- No. S-3-8-2
 EXPLAIN (COSTS false) 
@@ -3375,7 +4077,9 @@ SELECT max(b4t1.c1) FROM s1.t1 b4t1 JOIN s1.t2 b4t2 ON(b4t1.c1 = b4t2.c1) WHERE 
                Filter: (c1 = $2)
 (30 rows)
 
-/*+BitmapScan(b1t1)BitmapScan(b2t1)BitmapScan(b3t1)BitmapScan(b4t1)BitmapScan(b1t2)BitmapScan(b2t2)BitmapScan(b3t2)BitmapScan(b4t2)*/
+/*+SeqScan(b1t1)IndexScan(b2t1 t1_pkey)BitmapScan(b3t1 t1_pkey)TidScan(b4t1)
+TidScan(b1t2)SeqScan(b2t2)IndexScan(b3t2 t2_pkey)BitmapScan(b4t2 t2_pkey)
+*/
 EXPLAIN (COSTS false) 
 WITH cte1 (c1) AS (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1 JOIN s1.t2 b1t2 ON(b1t1.c1 = b1t2.c1) WHERE b1t1.c1 = 1)
@@ -3385,67 +4089,55 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1 JOIN s1.t2 b2t2 ON(b2t1.c1 = b2t2.c1) WHERE 
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 JOIN s1.t2 b4t2 ON(b4t1.c1 = b4t2.c1) WHERE b4t1.c1 = 1);
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b2t1)
-BitmapScan(b2t2)
-BitmapScan(b3t1)
-BitmapScan(b3t2)
-BitmapScan(b4t1)
-BitmapScan(b4t2)
+SeqScan(b1t1)
+TidScan(b1t2)
+IndexScan(b2t1 t1_pkey)
+SeqScan(b2t2)
+BitmapScan(b3t1 t1_pkey)
+IndexScan(b3t2 t2_pkey)
+TidScan(b4t1)
+BitmapScan(b4t2 t2_pkey)
 not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                      
-------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Aggregate
    CTE cte1
      ->  Aggregate
            ->  Nested Loop
-                 ->  Bitmap Heap Scan on t1 b1t1
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t1_i1
-                             Index Cond: (c1 = 1)
-                 ->  Bitmap Heap Scan on t2 b1t2
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t2_i1
-                             Index Cond: (c1 = 1)
+                 ->  Seq Scan on t1 b1t1
+                       Filter: (c1 = 1)
+                 ->  Seq Scan on t2 b1t2
+                       Filter: (c1 = 1)
    InitPlan 2 (returns $1)
      ->  Aggregate
            ->  Nested Loop
-                 ->  Bitmap Heap Scan on t1 b2t1
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t1_i1
-                             Index Cond: (c1 = 1)
-                 ->  Bitmap Heap Scan on t2 b2t2
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t2_i1
-                             Index Cond: (c1 = 1)
+                 ->  Index Scan using t1_pkey on t1 b2t1
+                       Index Cond: (c1 = 1)
+                 ->  Seq Scan on t2 b2t2
+                       Filter: (c1 = 1)
    InitPlan 3 (returns $2)
      ->  Aggregate
            ->  Nested Loop
-                 ->  Bitmap Heap Scan on t1 b4t1
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t1_i1
-                             Index Cond: (c1 = 1)
+                 ->  Seq Scan on t1 b4t1
+                       Filter: (c1 = 1)
                  ->  Bitmap Heap Scan on t2 b4t2
                        Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t2_i1
+                       ->  Bitmap Index Scan on t2_pkey
                              Index Cond: (c1 = 1)
    ->  Nested Loop
          ->  Nested Loop
                ->  Bitmap Heap Scan on t1 b3t1
                      Recheck Cond: (c1 = $2)
-                     ->  Bitmap Index Scan on t1_i1
+                     ->  Bitmap Index Scan on t1_pkey
                            Index Cond: (c1 = $2)
-               ->  Bitmap Heap Scan on t2 b3t2
-                     Recheck Cond: (c1 = $2)
-                     ->  Bitmap Index Scan on t2_i1
-                           Index Cond: (c1 = $2)
-         ->  CTE Scan on cte1
-               Filter: (c1 = $2)
-(46 rows)
+               ->  CTE Scan on cte1
+                     Filter: (c1 = $2)
+         ->  Index Scan using t2_pkey on t2 b3t2
+               Index Cond: (c1 = $2)
+(34 rows)
 
 -- No. S-3-8-3
 EXPLAIN (COSTS false) 
@@ -3487,7 +4179,9 @@ SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
                Filter: (c1 = $4)
 (28 rows)
 
-/*+BitmapScan(b1t1)BitmapScan(b2t1)BitmapScan(b3t1)BitmapScan(b4t1)BitmapScan(b1t2)BitmapScan(b3t2)*/
+/*+SeqScan(b1t1)IndexScan(b2t1 t1_pkey)BitmapScan(b3t1 t1_pkey)TidScan(b4t1)
+TidScan(b1t2)IndexScan(b3t2 t2_pkey)
+*/
 EXPLAIN (COSTS false) 
 WITH cte1 (c1) AS (
 SELECT max(b1t1.c1) FROM s1.t1 b1t1 JOIN s1.t2 b1t2 ON(b1t1.c1 = b1t2.c1) WHERE b1t1.c1 = 1)
@@ -3497,59 +4191,49 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(b1t1)
-BitmapScan(b1t2)
-BitmapScan(b2t1)
-BitmapScan(b3t1)
-BitmapScan(b3t2)
-BitmapScan(b4t1)
+SeqScan(b1t1)
+TidScan(b1t2)
+IndexScan(b2t1 t1_pkey)
+BitmapScan(b3t1 t1_pkey)
+IndexScan(b3t2 t2_pkey)
+TidScan(b4t1)
 not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                 
----------------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    CTE cte1
      ->  Aggregate
            ->  Nested Loop
-                 ->  Bitmap Heap Scan on t1 b1t1
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t1_i1
-                             Index Cond: (c1 = 1)
-                 ->  Bitmap Heap Scan on t2 b1t2
-                       Recheck Cond: (c1 = 1)
-                       ->  Bitmap Index Scan on t2_i1
-                             Index Cond: (c1 = 1)
+                 ->  Seq Scan on t1 b1t1
+                       Filter: (c1 = 1)
+                 ->  Seq Scan on t2 b1t2
+                       Filter: (c1 = 1)
    InitPlan 3 (returns $2)
      ->  Result
            InitPlan 2 (returns $1)
              ->  Limit
-                   ->  Bitmap Heap Scan on t1 b2t1
-                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-                         ->  Bitmap Index Scan on t1_i1
-                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                   ->  Index Scan using t1_pkey on t1 b2t1
+                         Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
    InitPlan 5 (returns $4)
      ->  Result
            InitPlan 4 (returns $3)
              ->  Limit
-                   ->  Bitmap Heap Scan on t1 b4t1
-                         Recheck Cond: ((c1 IS NOT NULL) AND (c1 = 1))
-                         ->  Bitmap Index Scan on t1_i1
-                               Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
+                   ->  Seq Scan on t1 b4t1
+                         Filter: ((c1 IS NOT NULL) AND (c1 = 1))
    ->  Nested Loop
          ->  Nested Loop
                ->  Bitmap Heap Scan on t1 b3t1
                      Recheck Cond: (c1 = $4)
-                     ->  Bitmap Index Scan on t1_i1
+                     ->  Bitmap Index Scan on t1_pkey
                            Index Cond: (c1 = $4)
-               ->  Bitmap Heap Scan on t2 b3t2
-                     Recheck Cond: (c1 = $4)
-                     ->  Bitmap Index Scan on t2_i1
-                           Index Cond: (c1 = $4)
-         ->  CTE Scan on cte1
-               Filter: (c1 = $4)
-(40 rows)
+               ->  CTE Scan on cte1
+                     Filter: (c1 = $4)
+         ->  Index Scan using t2_pkey on t2 b3t2
+               Index Cond: (c1 = $4)
+(30 rows)
 
 ----
 ---- No. S-3-9 inheritance table select type
@@ -3571,9 +4255,9 @@ not used hint:
 duplication hint:
 error hint:
 
-           QUERY PLAN           
---------------------------------
- Index Scan using p1_pkey on p1
+         QUERY PLAN          
+-----------------------------
+ Index Scan using p1_i on p1
    Index Cond: (c1 = 1)
 (2 rows)
 
@@ -3602,7 +4286,7 @@ error hint:
 ------------------------------------------------
  Result
    ->  Append
-         ->  Index Scan using p1_pkey on p1
+         ->  Index Scan using p1_i on p1
                Index Cond: (c1 = 1)
          ->  Index Scan using p1c1_i on p1c1 p1
                Index Cond: (c1 = 1)
@@ -3636,7 +4320,7 @@ error hint:
 ------------------------------------------------
  Result
    ->  Append
-         ->  Index Scan using p1_pkey on p1
+         ->  Index Scan using p1_i on p1
                Index Cond: (c1 = 1)
          ->  Index Scan using p1c1_i on p1c1 p1
                Index Cond: (c1 = 1)
@@ -3669,7 +4353,7 @@ error hint:
 ----------------------------------------------------
  Result
    ->  Append
-         ->  Index Scan using p2_pkey on p2
+         ->  Index Scan using p2_i on p2
                Index Cond: (c1 = 1)
          ->  Index Scan using p2c1_i on p2c1 p2
                Index Cond: (c1 = 1)
@@ -3707,7 +4391,7 @@ error hint:
 ----------------------------------------------------
  Result
    ->  Append
-         ->  Index Scan using p2_pkey on p2
+         ->  Index Scan using p2_i on p2
                Index Cond: (c1 = 1)
          ->  Index Scan using p2c1_i on p2c1 p2
                Index Cond: (c1 = 1)
