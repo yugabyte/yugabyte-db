@@ -4108,3 +4108,143 @@ error hint:
 SET enable_nestloop TO on;
 SET enable_mergejoin TO on;
 SET enable_hashjoin TO on;
+----
+---- No. J-3-4 hint state output
+----
+-- No. J-3-4-1
+/*+NestLoop(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-2
+/*+HashJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-3
+/*+MergeJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-4
+/*+NoNestLoop(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+NoNestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-5
+/*+NoHashJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+NoHashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-6
+/*+NoMergeJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+NoMergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-7
+/*+NestLoop()*/
+SELECT * FROM s1.t1 WHERE false;
+INFO:  hint syntax error at or near ")"
+DETAIL:  Relation name is necessary.
+ c1 | c2 | c3 | c4 
+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-8
+/*+NestLoop(t1)*/
+SELECT * FROM s1.t1 WHERE false;
+INFO:  hint syntax error at or near ")"
+DETAIL:  Specified relation more than two.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NestLoop(t1)
+
+ c1 | c2 | c3 | c4 
+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-9
+/*+NestLoop(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+
+-- No. J-3-4-10
+/*+NestLoop(t1 t2 t3)*/
+SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE false;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2 t3)
+not used hint:
+duplication hint:
+error hint:
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----+----+----+----+----
+(0 rows)
+

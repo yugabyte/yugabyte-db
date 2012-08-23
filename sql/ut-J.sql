@@ -676,3 +676,46 @@ SET enable_nestloop TO on;
 SET enable_mergejoin TO on;
 SET enable_hashjoin TO on;
 
+----
+---- No. J-3-4 hint state output
+----
+
+-- No. J-3-4-1
+/*+NestLoop(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-2
+/*+HashJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-3
+/*+MergeJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-4
+/*+NoNestLoop(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-5
+/*+NoHashJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-6
+/*+NoMergeJoin(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-7
+/*+NestLoop()*/
+SELECT * FROM s1.t1 WHERE false;
+
+-- No. J-3-4-8
+/*+NestLoop(t1)*/
+SELECT * FROM s1.t1 WHERE false;
+
+-- No. J-3-4-9
+/*+NestLoop(t1 t2)*/
+SELECT * FROM s1.t1, s1.t2 WHERE false;
+
+-- No. J-3-4-10
+/*+NestLoop(t1 t2 t3)*/
+SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE false;

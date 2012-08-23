@@ -4,15 +4,6 @@ SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
 
----- TODO 後で適切な位置に移動する
-----
----- No. J-3-4 hint state output
-----
-
--- No. J-3-4-7
-/*+Set(enable_indexscan off)NestLoop("")Set(enable_bitmapscan off)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-
 ----
 ---- No. A-5-1 hint format
 ----
