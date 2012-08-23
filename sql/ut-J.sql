@@ -618,11 +618,61 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
 ---- No. J-3-1 join method hint
 ----
 
--- No. J-3-1-1
+-- No. J-3-1-1~6
 SET enable_nestloop TO on;
 SET enable_mergejoin TO off;
 SET enable_hashjoin TO off;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoNestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoHashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoMergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-3-1-7~12
+SET enable_nestloop TO off;
+SET enable_mergejoin TO off;
+SET enable_hashjoin TO on;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoNestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoHashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoMergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-3-1-13~18
+SET enable_nestloop TO off;
+SET enable_mergejoin TO on;
+SET enable_hashjoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoNestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoHashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+NoMergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+SET enable_nestloop TO on;
+SET enable_mergejoin TO on;
+SET enable_hashjoin TO on;
 
