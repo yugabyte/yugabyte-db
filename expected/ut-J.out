@@ -4109,6 +4109,102 @@ SET enable_nestloop TO on;
 SET enable_mergejoin TO on;
 SET enable_hashjoin TO on;
 ----
+---- No. J-3-2 join inherit tables
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+              QUERY PLAN               
+---------------------------------------
+ Hash Join
+   Hash Cond: (s1.p2.c1 = s1.p1.c1)
+   ->  Append
+         ->  Seq Scan on p2
+         ->  Seq Scan on p2c1 p2
+         ->  Seq Scan on p2c2 p2
+         ->  Seq Scan on p2c3 p2
+         ->  Seq Scan on p2c1c1 p2
+         ->  Seq Scan on p2c1c2 p2
+         ->  Seq Scan on p2c2c1 p2
+         ->  Seq Scan on p2c2c2 p2
+         ->  Seq Scan on p2c3c1 p2
+         ->  Seq Scan on p2c3c2 p2
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on p1
+               ->  Seq Scan on p1c1 p1
+               ->  Seq Scan on p1c2 p1
+               ->  Seq Scan on p1c3 p1
+(19 rows)
+
+-- No. J-3-2-1
+/*+MergeJoin(p1 p2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(p1 p2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Merge Join
+   Merge Cond: (s1.p1.c1 = s1.p2.c1)
+   ->  Sort
+         Sort Key: s1.p1.c1
+         ->  Append
+               ->  Seq Scan on p1
+               ->  Seq Scan on p1c1 p1
+               ->  Seq Scan on p1c2 p1
+               ->  Seq Scan on p1c3 p1
+   ->  Sort
+         Sort Key: s1.p2.c1
+         ->  Append
+               ->  Seq Scan on p2
+               ->  Seq Scan on p2c1 p2
+               ->  Seq Scan on p2c2 p2
+               ->  Seq Scan on p2c3 p2
+               ->  Seq Scan on p2c1c1 p2
+               ->  Seq Scan on p2c1c2 p2
+               ->  Seq Scan on p2c2c1 p2
+               ->  Seq Scan on p2c2c2 p2
+               ->  Seq Scan on p2c3c1 p2
+               ->  Seq Scan on p2c3c2 p2
+(22 rows)
+
+-- No. J-3-2-2
+/*+MergeJoin(p1c1 p2c1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+MergeJoin(p1c1 p2c1)
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Hash Join
+   Hash Cond: (s1.p2.c1 = s1.p1.c1)
+   ->  Append
+         ->  Seq Scan on p2
+         ->  Seq Scan on p2c1 p2
+         ->  Seq Scan on p2c2 p2
+         ->  Seq Scan on p2c3 p2
+         ->  Seq Scan on p2c1c1 p2
+         ->  Seq Scan on p2c1c2 p2
+         ->  Seq Scan on p2c2c1 p2
+         ->  Seq Scan on p2c2c2 p2
+         ->  Seq Scan on p2c3c1 p2
+         ->  Seq Scan on p2c3c2 p2
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on p1
+               ->  Seq Scan on p1c1 p1
+               ->  Seq Scan on p1c2 p1
+               ->  Seq Scan on p1c3 p1
+(19 rows)
+
+----
 ---- No. J-3-4 hint state output
 ----
 -- No. J-3-4-1

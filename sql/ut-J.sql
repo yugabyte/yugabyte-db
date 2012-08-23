@@ -677,6 +677,19 @@ SET enable_mergejoin TO on;
 SET enable_hashjoin TO on;
 
 ----
+---- No. J-3-2 join inherit tables
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+
+-- No. J-3-2-1
+/*+MergeJoin(p1 p2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+
+-- No. J-3-2-2
+/*+MergeJoin(p1c1 p2c1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+
+----
 ---- No. J-3-4 hint state output
 ----
 
