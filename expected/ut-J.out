@@ -3734,3 +3734,36 @@ MergeJoin(*VALUES* t1 t2 t3)
    ->  Values Scan on "*VALUES*"
 (13 rows)
 
+----
+---- No. J-3-1 join method hint
+----
+-- No. J-3-1-1
+SET enable_nestloop TO on;
+SET enable_mergejoin TO off;
+SET enable_hashjoin TO off;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(4 rows)
+
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(4 rows)
+
