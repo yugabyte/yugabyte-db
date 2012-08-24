@@ -1394,7 +1394,7 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 		enforce_mask == ENABLE_HASHJOIN)
 		mask = enforce_mask;
 	else
-		mask = enforce_mask & global->init_scan_mask;
+		mask = enforce_mask & global->init_join_mask;
 
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
