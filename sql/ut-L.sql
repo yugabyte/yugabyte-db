@@ -626,3 +626,31 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 
+----
+---- No. L-3-5 hint state output
+----
+
+-- No. L-3-5-1
+/*+Leading()*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-5-2
+/*+Leading(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-5-3
+/*+Leading(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-5-4
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
