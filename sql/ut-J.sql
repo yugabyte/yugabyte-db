@@ -690,6 +690,27 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 
 ----
+---- No. J-3-3 conflict join method hint
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-3-3-1
+/*+HashJoin(t1 t2)NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-3-3-2
+/*+MergeJoin(t1 t2)HashJoin(t1 t2)NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-3-3-3
+/*+HashJoin(t1 t2)NestLoop(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+-- No. J-3-3-4
+/*+MergeJoin(t2 t1)HashJoin(t1 t2)NestLoop(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+
+----
 ---- No. J-3-4 hint state output
 ----
 
