@@ -3596,3 +3596,242 @@ error hint:
                      ->  Seq Scan on t2
 (10 rows)
 
+----
+---- No. L-3-2 GUC parameter to disable hints
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+                QUERY PLAN                
+------------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Merge Join
+         Merge Cond: (t1.c1 = t3.c1)
+         ->  Index Scan using t1_i1 on t1
+         ->  Index Scan using t3_i1 on t3
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(9 rows)
+
+-- No. L-3-2-1
+Set geqo_threshold = 3;
+Set geqo_seed = 0;
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Leading(t1 t2 t3)
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Merge Join
+         Merge Cond: (t1.c1 = t3.c1)
+         ->  Index Scan using t1_i1 on t1
+         ->  Index Scan using t3_i1 on t3
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(9 rows)
+
+Reset geqo_threshold;
+-- No. L-3-2-2
+Set geqo_threshold = 4;
+Set geqo_seed = 0;
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t1 t2 t3)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Hash Join
+   Hash Cond: (t3.c1 = t1.c1)
+   ->  Seq Scan on t3
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t2.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Sort
+                     Sort Key: t2.c1
+                     ->  Seq Scan on t2
+(10 rows)
+
+Reset geqo_threshold;
+-- No. L-3-2-3
+Set from_collapse_limit = 2;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = v2t1.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (v2t1.c1 = v2t2.c1)
+               ->  Index Scan using t1_i1 on t1 v2t1
+               ->  Sort
+                     Sort Key: v2t2.c1
+                     ->  Seq Scan on t2 v2t2
+(10 rows)
+
+/*+Leading(t1 v2t1 v2t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t1 v2t1 v2t2)
+not used hint:
+duplication hint:
+error hint:
+
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = v2t1.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (v2t1.c1 = v2t2.c1)
+               ->  Index Scan using t1_i1 on t1 v2t1
+               ->  Sort
+                     Sort Key: v2t2.c1
+                     ->  Seq Scan on t2 v2t2
+(10 rows)
+
+Reset from_collapse_limit;
+-- No. L-3-2-4
+Set from_collapse_limit = 3;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (v2t1.c1 = v2t2.c1)
+   ->  Merge Join
+         Merge Cond: (t1.c1 = v2t1.c1)
+         ->  Index Scan using t1_i1 on t1
+         ->  Index Scan using t1_i1 on t1 v2t1
+   ->  Sort
+         Sort Key: v2t2.c1
+         ->  Seq Scan on t2 v2t2
+(9 rows)
+
+/*+Leading(v2t1 v2t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(v2t1 v2t2 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = v2t1.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (v2t1.c1 = v2t2.c1)
+               ->  Index Scan using t1_i1 on t1 v2t1
+               ->  Sort
+                     Sort Key: v2t2.c1
+                     ->  Seq Scan on t2 v2t2
+(10 rows)
+
+Reset from_collapse_limit;
+-- No. L-3-2-5
+Set join_collapse_limit = 2;
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+                QUERY PLAN                
+------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t3.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (t3.c1 = t2.c1)
+               ->  Seq Scan on t3
+               ->  Hash
+                     ->  Seq Scan on t2
+(9 rows)
+
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+LOG:  pg_hint_plan:
+used hint:
+Leading(t1 t2 t3)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t3.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: (t3.c1 = t2.c1)
+               ->  Seq Scan on t3
+               ->  Hash
+                     ->  Seq Scan on t2
+(9 rows)
+
+Reset join_collapse_limit;
+-- No. L-3-2-6
+Set join_collapse_limit = 3;
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+                   QUERY PLAN                   
+------------------------------------------------
+ Hash Join
+   Hash Cond: (t3.c1 = t2.c1)
+   ->  Seq Scan on t3
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t2.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Sort
+                     Sort Key: t2.c1
+                     ->  Seq Scan on t2
+(10 rows)
+
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+LOG:  pg_hint_plan:
+used hint:
+Leading(t1 t2 t3)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Hash Join
+   Hash Cond: (t3.c1 = t2.c1)
+   ->  Seq Scan on t3
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t2.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Sort
+                     Sort Key: t2.c1
+                     ->  Seq Scan on t2
+(10 rows)
+
+Reset join_collapse_limit;

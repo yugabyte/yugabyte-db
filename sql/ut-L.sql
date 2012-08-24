@@ -523,3 +523,59 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND 
 /*+Leading(t1 t2 t3)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
 
+----
+---- No. L-3-2 GUC parameter to disable hints
+----
+
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+
+-- No. L-3-2-1
+Set geqo_threshold = 3;
+Set geqo_seed = 0;
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+Reset geqo_threshold;
+
+-- No. L-3-2-2
+Set geqo_threshold = 4;
+Set geqo_seed = 0;
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+Reset geqo_threshold;
+
+-- No. L-3-2-3
+Set from_collapse_limit = 2;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+/*+Leading(t1 v2t1 v2t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+Reset from_collapse_limit;
+
+-- No. L-3-2-4
+Set from_collapse_limit = 3;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+/*+Leading(v2t1 v2t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.v2 WHERE t1.c1 = v2.c1;
+Reset from_collapse_limit;
+
+-- No. L-3-2-5
+Set join_collapse_limit = 2;
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+Reset join_collapse_limit;
+
+-- No. L-3-2-6
+Set join_collapse_limit = 3;
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t3
+  JOIN s1.t2 ON (t3.c1 = t2.c1)
+  JOIN s1.t1 ON (t1.c1 = t3.c1);
+Reset join_collapse_limit;
+
