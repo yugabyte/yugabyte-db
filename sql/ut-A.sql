@@ -726,7 +726,6 @@ SHOW pg_hint_plan.debug_print;
 ----
 
 -- No. A-9-5-1
-CREATE EXTENSION pg_stat_statements;
 SELECT pg_stat_statements_reset();
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+Set(enable_seqscan off)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -736,6 +735,101 @@ SELECT s.query, s.calls
   JOIN pg_catalog.pg_database d
     ON (s.dbid = d.oid)
  ORDER BY 1;
+
+----
+---- No. A-10-1 duplicate hint
+----
+
+-- No. A-10-1-1
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
+/*+
+Set(enable_tidscan aaa)
+Set(enable_tidscan on)
+Set(enable_tidscan off)
+SeqScan(t4)
+IndexScan(t4)
+BitmapScan(t4)
+TidScan(t4)
+NestLoop(t4 t3)
+MergeJoin(t4 t3)
+HashJoin(t4 t3)
+Leading(t2 t1 t4 t3)
+Leading(t1 t4 t3 t2)
+Leading(t4 t3 t2 t1)
+*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
+
+-- No. A-10-1-2
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
+/*+
+SeqScan(t4)
+Set(enable_tidscan aaa)
+IndexScan(t4)
+NestLoop(t4 t3)
+Leading(t2 t1 t4 t3)
+Set(enable_tidscan on)
+BitmapScan(t4)
+MergeJoin(t4 t3)
+Leading(t1 t4 t3 t2)
+Set(enable_tidscan off)
+TidScan(t4)
+HashJoin(t4 t3)
+Leading(t4 t3 t2 t1)
+*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
+
+----
+---- No. A-10-2 restrict query type
+----
+
+-- No. A-10-2-1
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
+
+-- No. A-10-2-2
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+/*+IndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+/*+IndexScan(t1 t1_i)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+/*+IndexScan(t1 t1_i1)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+
+-- No. A-10-2-3
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+TidScan(t1)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+TidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
+
+----
+---- No. A-10-3 VIEW, RULE multi specified
+----
+
+-- No. A-10-3-1
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+/*+Leading(v1t1 v1t1)HashJoin(v1t1 v1t1)BitmapScan(v1t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+
+-- No. A-10-3-2
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+/*+Leading(v1t1 v1t1_)NestLoop(v1t1 v1t1_)SeqScan(v1t1)BitmapScan(v1t1_)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+
+-- No. A-10-3-3
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+/*+Leading(r4t1 r4t1)HashJoin(r4t1 r4t1)BitmapScan(r4t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+
+-- No. A-10-3-4
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+/*+Leading(r4t1 r5t1)NestLoop(r4t1 r5t1)SeqScan(r4t1)BitmapScan(r5t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
 
 ----
 ---- No. A-12-1 reset of global variable of core at the error
