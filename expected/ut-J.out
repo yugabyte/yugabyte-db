@@ -3834,11 +3834,13 @@ error hint:
 
              QUERY PLAN             
 ------------------------------------
- Nested Loop
-   ->  Seq Scan on t2
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
    ->  Index Scan using t1_i1 on t1
-         Index Cond: (c1 = t2.c1)
-(4 rows)
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
 
 /*+NoMergeJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -3851,11 +3853,12 @@ error hint:
 
           QUERY PLAN          
 ------------------------------
- Nested Loop
-   ->  Seq Scan on t2
-   ->  Index Scan using t1_i1 on t1
-         Index Cond: (c1 = t2.c1)
-(4 rows)
+ Hash Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
 
 -- No. J-3-1-7~12
 SET enable_nestloop TO off;
@@ -3936,12 +3939,13 @@ error hint:
 
              QUERY PLAN             
 ------------------------------------
- Hash Join
-   Hash Cond: (t1.c1 = t2.c1)
-   ->  Seq Scan on t1
-   ->  Hash
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_i1 on t1
+   ->  Sort
+         Sort Key: t2.c1
          ->  Seq Scan on t2
-(5 rows)
+(6 rows)
 
 /*+NoHashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
