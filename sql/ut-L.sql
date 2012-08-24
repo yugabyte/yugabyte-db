@@ -579,3 +579,18 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t3
   JOIN s1.t1 ON (t1.c1 = t3.c1);
 Reset join_collapse_limit;
 
+----
+---- No. L-3-3 join between parents or between children
+----
+
+-- No. L-3-3-1
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2c1 t1
+  JOIN s1.p2c2 t2 ON (t1.c1 = t2.c1)
+  JOIN s1.p2c3 t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-3-2
+/*+Leading(p2c1c1 p2c2c1 p2c3c1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2c1 t1
+  JOIN s1.p2c2 t2 ON (t1.c1 = t2.c1)
+  JOIN s1.p2c3 t3 ON (t1.c1 = t3.c1);

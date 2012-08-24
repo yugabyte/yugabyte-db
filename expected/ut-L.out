@@ -3835,3 +3835,74 @@ error hint:
 (10 rows)
 
 Reset join_collapse_limit;
+----
+---- No. L-3-3 join between parents or between children
+----
+-- No. L-3-3-1
+/*+Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2c1 t1
+  JOIN s1.p2c2 t2 ON (t1.c1 = t2.c1)
+  JOIN s1.p2c3 t3 ON (t1.c1 = t3.c1);
+LOG:  pg_hint_plan:
+used hint:
+Leading(t1 t2 t3)
+not used hint:
+duplication hint:
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t3.c1)
+   ->  Hash Join
+         Hash Cond: (t1.c1 = t2.c1)
+         ->  Append
+               ->  Seq Scan on p2c1 t1
+               ->  Seq Scan on p2c1c1 t1
+               ->  Seq Scan on p2c1c2 t1
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on p2c2 t2
+                     ->  Seq Scan on p2c2c1 t2
+                     ->  Seq Scan on p2c2c2 t2
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on p2c3 t3
+               ->  Seq Scan on p2c3c1 t3
+               ->  Seq Scan on p2c3c2 t3
+(18 rows)
+
+-- No. L-3-3-2
+/*+Leading(p2c1c1 p2c2c1 p2c3c1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p2c1 t1
+  JOIN s1.p2c2 t2 ON (t1.c1 = t2.c1)
+  JOIN s1.p2c3 t3 ON (t1.c1 = t3.c1);
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Leading(p2c1c1 p2c2c1 p2c3c1)
+duplication hint:
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Hash Join
+   Hash Cond: (t1.c1 = t3.c1)
+   ->  Hash Join
+         Hash Cond: (t1.c1 = t2.c1)
+         ->  Append
+               ->  Seq Scan on p2c1 t1
+               ->  Seq Scan on p2c1c1 t1
+               ->  Seq Scan on p2c1c2 t1
+         ->  Hash
+               ->  Append
+                     ->  Seq Scan on p2c2 t2
+                     ->  Seq Scan on p2c2c1 t2
+                     ->  Seq Scan on p2c2c2 t2
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on p2c3 t3
+               ->  Seq Scan on p2c3c1 t3
+               ->  Seq Scan on p2c3c2 t3
+(18 rows)
+
