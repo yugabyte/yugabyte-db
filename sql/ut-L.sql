@@ -594,3 +594,35 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2c1 t1
 EXPLAIN (COSTS false) SELECT * FROM s1.p2c1 t1
   JOIN s1.p2c2 t2 ON (t1.c1 = t2.c1)
   JOIN s1.p2c3 t3 ON (t1.c1 = t3.c1);
+
+----
+---- No. L-3-4 conflict leading hint
+----
+
+-- No. L-3-4-1
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+/*+Leading(t2 t3 t1)Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-4-2
+/*+Leading(t3 t1 t2)Leading(t2 t3 t1)Leading(t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-4-3
+/*+Leading(t2 t3 t1)Leading()*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
+-- No. L-3-4-4
+/*+Leading(t3 t1 t2)Leading(t2 t3 t1)Leading()*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1
+  JOIN s1.t2 ON (t1.c1 = t2.c1)
+  JOIN s1.t3 ON (t1.c1 = t3.c1);
+
