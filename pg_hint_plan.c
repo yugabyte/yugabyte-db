@@ -1358,12 +1358,24 @@ set_config_options(SetHint **options, int noptions, GucContext context)
 
 #define SET_CONFIG_OPTION(name, type_bits) \
 	set_config_option((name), \
-		(enforce_mask & (type_bits)) ? "true" : "false", \
+		(mask & (type_bits)) ? "true" : "false", \
 		context, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR)
 
 static void
 set_scan_config_options(unsigned char enforce_mask, GucContext context)
 {
+	unsigned char	mask;
+
+	if (enforce_mask == ENABLE_SEQSCAN || enforce_mask == ENABLE_INDEXSCAN ||
+		enforce_mask == ENABLE_BITMAPSCAN || enforce_mask == ENABLE_TIDSCAN
+#if PG_VERSION_NUM >= 90200
+		|| enforce_mask == ENABLE_INDEXONLYSCAN
+#endif
+		)
+		mask = enforce_mask;
+	else
+		mask = enforce_mask & global->init_scan_mask;
+
 	SET_CONFIG_OPTION("enable_seqscan", ENABLE_SEQSCAN);
 	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
 	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
@@ -1376,6 +1388,14 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 static void
 set_join_config_options(unsigned char enforce_mask, GucContext context)
 {
+	unsigned char	mask;
+
+	if (enforce_mask == ENABLE_NESTLOOP || enforce_mask == ENABLE_MERGEJOIN ||
+		enforce_mask == ENABLE_HASHJOIN)
+		mask = enforce_mask;
+	else
+		mask = enforce_mask & global->init_scan_mask;
+
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
 	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
