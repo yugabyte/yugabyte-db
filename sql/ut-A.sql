@@ -832,6 +832,57 @@ EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
 EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
 
 ----
+---- No. A-11-1 psql command
+----
+
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+/*+SeqScan(t1)*/
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+-- No. A-11-1-4
+\set FETCH_COUNT 0
+/*+SeqScan(t1)*/
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+-- No. A-11-1-5
+\set FETCH_COUNT 1
+/*+SeqScan(t1)*/
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+\unset FETCH_COUNT
+
+----
+---- No. A-12-4 PL/pgSQL function
+----
+
+-- No. A-12-4-1
+CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
+DECLARE
+    r text;
+BEGIN
+    FOR r IN EXPLAIN SELECT c4 FROM s1.t1 WHERE t1.c1 = 1
+    LOOP
+        RETURN NEXT r; -- return current row of SELECT
+    END LOOP;
+    RETURN;
+END
+$$;
+SELECT f1();
+/*+SeqScan(t1)*/
+SELECT f1();
+
+-- No. A-12-4-2
+/*+SeqScan(t1)*/CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
+DECLARE
+    r text;
+BEGIN
+    /*+SeqScan(t1)*/FOR r IN EXPLAIN /*+SeqScan(t1)*/SELECT c4 FROM s1.t1 WHERE t1.c1 = 1
+    LOOP
+        /*+SeqScan(t1)*/RETURN NEXT r; -- return current row of SELECT
+    END LOOP;
+    /*+SeqScan(t1)*/RETURN;
+END
+$$;
+SELECT f1();
+
+----
 ---- No. A-12-1 reset of global variable of core at the error
 ---- No. A-12-2 reset of global variable of original at the error
 ----

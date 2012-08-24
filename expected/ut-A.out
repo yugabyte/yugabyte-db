@@ -3142,6 +3142,119 @@ error hint:
 (6 rows)
 
 ----
+---- No. A-11-1 psql command
+----
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+ count 
+-------
+     1
+(1 row)
+
+/*+SeqScan(t1)*/
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ count 
+-------
+     1
+(1 row)
+
+-- No. A-11-1-4
+\set FETCH_COUNT 0
+/*+SeqScan(t1)*/
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ count 
+-------
+     1
+(1 row)
+
+-- No. A-11-1-5
+\set FETCH_COUNT 1
+/*+SeqScan(t1)*/
+SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
+ count 
+-------
+     1
+(1 row)
+
+\unset FETCH_COUNT
+----
+---- No. A-12-4 PL/pgSQL function
+----
+-- No. A-12-4-1
+CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
+DECLARE
+    r text;
+BEGIN
+    FOR r IN EXPLAIN SELECT c4 FROM s1.t1 WHERE t1.c1 = 1
+    LOOP
+        RETURN NEXT r; -- return current row of SELECT
+    END LOOP;
+    RETURN;
+END
+$$;
+SELECT f1();
+                               f1                               
+----------------------------------------------------------------
+ Index Scan using t1_i1 on t1  (cost=0.00..8.27 rows=1 width=3)
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+SeqScan(t1)*/
+SELECT f1();
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+SeqScan(t1)
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  PL/pgSQL function "f1" line 5 at FOR over SELECT rows
+                        f1                         
+---------------------------------------------------
+ Seq Scan on t1  (cost=0.00..18.50 rows=1 width=3)
+   Filter: (c1 = 1)
+(2 rows)
+
+-- No. A-12-4-2
+/*+SeqScan(t1)*/CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
+DECLARE
+    r text;
+BEGIN
+    /*+SeqScan(t1)*/FOR r IN EXPLAIN /*+SeqScan(t1)*/SELECT c4 FROM s1.t1 WHERE t1.c1 = 1
+    LOOP
+        /*+SeqScan(t1)*/RETURN NEXT r; -- return current row of SELECT
+    END LOOP;
+    /*+SeqScan(t1)*/RETURN;
+END
+$$;
+SELECT f1();
+                               f1                               
+----------------------------------------------------------------
+ Index Scan using t1_i1 on t1  (cost=0.00..8.27 rows=1 width=3)
+   Index Cond: (c1 = 1)
+(2 rows)
+
+----
 ---- No. A-12-1 reset of global variable of core at the error
 ---- No. A-12-2 reset of global variable of original at the error
 ----
