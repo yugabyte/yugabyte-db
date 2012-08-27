@@ -155,3 +155,27 @@ Set(client_min_messages DEBU)
 ----+----+----+----
 (0 rows)
 
+----
+---- No. G-2-4 debug message
+----
+-- No. G-2-4-1
+/*+SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) */
+SELECT * FROM s1.t1 a, s1.t2 b WHERE false;
+INFO:  hint syntax error at or near ") "
+DETAIL:  Specified relation more than two.
+INFO:  hint syntax error at or near "SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) "
+DETAIL:  Conflict scan method hint.
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(a)
+not used hint:
+SeqScan(c)
+duplication hint:
+SeqScan(a)
+error hint:
+NestLoop(a)
+
+ c1 | c2 | c3 | c4 | c1 | c2 | c3 | c4 
+----+----+----+----+----+----+----+----
+(0 rows)
+

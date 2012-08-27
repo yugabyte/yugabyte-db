@@ -65,3 +65,10 @@ SELECT * FROM s1.t1 WHERE false;
 /*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)*/
 SELECT * FROM s1.t1 WHERE false;
 
+----
+---- No. G-2-4 debug message
+----
+
+-- No. G-2-4-1
+/*+SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) */
+SELECT * FROM s1.t1 a, s1.t2 b WHERE false;
