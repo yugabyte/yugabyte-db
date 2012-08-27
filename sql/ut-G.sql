@@ -43,3 +43,25 @@ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 RESET ROLE;
 REVOKE SELECT ON ALL TABLES IN SCHEMA s1 FROM normal_user;
 REVOKE ALL ON SCHEMA s1 FROM PUBLIC;
+
+----
+---- No. G-2-3 conflict set hint
+----
+
+SET client_min_messages TO LOG;
+-- No. G-2-3-1
+/*+Set(enable_indexscan on)Set(enable_indexscan off)*/
+SELECT * FROM s1.t1 WHERE false;
+
+-- No. G-2-3-2
+/*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)*/
+SELECT * FROM s1.t1 WHERE false;
+
+-- No. G-2-3-3
+/*+Set(enable_indexscan on)Set(enable_indexscan o)*/
+SELECT * FROM s1.t1 WHERE false;
+
+-- No. G-2-3-4
+/*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)*/
+SELECT * FROM s1.t1 WHERE false;
+

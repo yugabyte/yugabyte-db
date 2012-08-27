@@ -74,3 +74,84 @@ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 RESET ROLE;
 REVOKE SELECT ON ALL TABLES IN SCHEMA s1 FROM normal_user;
 REVOKE ALL ON SCHEMA s1 FROM PUBLIC;
+----
+---- No. G-2-3 conflict set hint
+----
+SET client_min_messages TO LOG;
+-- No. G-2-3-1
+/*+Set(enable_indexscan on)Set(enable_indexscan off)*/
+SELECT * FROM s1.t1 WHERE false;
+INFO:  hint syntax error at or near "Set(enable_indexscan on)Set(enable_indexscan off)"
+DETAIL:  Conflict set hint.
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+not used hint:
+duplication hint:
+Set(enable_indexscan on)
+error hint:
+
+ c1 | c2 | c3 | c4 
+----+----+----+----
+(0 rows)
+
+-- No. G-2-3-2
+/*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)*/
+SELECT * FROM s1.t1 WHERE false;
+INFO:  hint syntax error at or near "Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)"
+DETAIL:  Conflict set hint.
+INFO:  hint syntax error at or near "Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)"
+DETAIL:  Conflict set hint.
+LOG:  pg_hint_plan:
+used hint:
+Set(client_min_messages DEBUG2)
+not used hint:
+duplication hint:
+Set(client_min_messages DEBUG5)
+Set(client_min_messages WARNING)
+error hint:
+
+ c1 | c2 | c3 | c4 
+----+----+----+----
+(0 rows)
+
+-- No. G-2-3-3
+/*+Set(enable_indexscan on)Set(enable_indexscan o)*/
+SELECT * FROM s1.t1 WHERE false;
+INFO:  hint syntax error at or near "Set(enable_indexscan on)Set(enable_indexscan o)"
+DETAIL:  Conflict set hint.
+INFO:  parameter "enable_indexscan" requires a Boolean value
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+Set(enable_indexscan on)
+error hint:
+Set(enable_indexscan o)
+
+ c1 | c2 | c3 | c4 
+----+----+----+----
+(0 rows)
+
+-- No. G-2-3-4
+/*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)*/
+SELECT * FROM s1.t1 WHERE false;
+INFO:  hint syntax error at or near "Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)"
+DETAIL:  Conflict set hint.
+INFO:  hint syntax error at or near "Set(client_min_messages WARNING)Set(client_min_messages DEBU)"
+DETAIL:  Conflict set hint.
+INFO:  invalid value for parameter "client_min_messages": "DEBU"
+HINT:  Available values: debug5, debug4, debug3, debug2, debug1, log, notice, warning, error.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+Set(client_min_messages DEBUG5)
+Set(client_min_messages WARNING)
+error hint:
+Set(client_min_messages DEBU)
+
+ c1 | c2 | c3 | c4 
+----+----+----+----
+(0 rows)
+
