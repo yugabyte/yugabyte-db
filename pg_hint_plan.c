@@ -1309,6 +1309,7 @@ set_config_option_wrapper(const char *name, const char *value,
 
 		ecxt = MemoryContextSwitchTo(ccxt);
 		errdata = CopyErrorData();
+		FlushErrorState();
 		ereport(elevel, (errcode(errdata->sqlerrcode),
 				errmsg("%s", errdata->message),
 				errdata->detail ? errdetail("%s", errdata->detail) : 0,
