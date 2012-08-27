@@ -5,7 +5,7 @@
 #
 
 MODULES = pg_hint_plan
-REGRESS = init base_plan pg_hint_plan prepare fdw ut-init ut-A ut-S ut-J ut-L ut-fini
+REGRESS = init base_plan pg_hint_plan prepare fdw ut-init ut-A ut-S ut-J ut-L ut-G ut-fini
 #REGRESS = ut-init ut-J ut-fini
 
 EXTRA_CLEAN = sql/fdw.sql expected/base_plan.out expected/prepare.out expected/fdw.out
