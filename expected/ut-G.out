@@ -58,7 +58,7 @@ SET ROLE normal_user;
 /*+Set(log_min_messages WARNING)*/
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  permission denied to set parameter "log_min_messages"
- c1 | c2 | c3 | c4
+ c1 | c2 | c3 | c4 
 ----+----+----+----
   1 |  1 |  1 | 1
 (1 row)
@@ -66,7 +66,7 @@ INFO:  permission denied to set parameter "log_min_messages"
 -- No. G-2-2-7
 /*+Set(enable_seqscan on)*/
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
- c1 | c2 | c3 | c4
+ c1 | c2 | c3 | c4 
 ----+----+----+----
   1 |  1 |  1 | 1
 (1 row)
