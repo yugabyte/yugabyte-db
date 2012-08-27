@@ -49,10 +49,6 @@ PG_MODULE_MAGIC;
 #define HINT_NOINDEXSCAN		"NoIndexScan"
 #define HINT_NOBITMAPSCAN		"NoBitmapScan"
 #define HINT_NOTIDSCAN			"NoTidScan"
-#if PG_VERSION_NUM >= 90200
-#define HINT_INDEXONLYSCAN		"IndexonlyScan"
-#define HINT_NOINDEXONLYSCAN	"NoIndexonlyScan"
-#endif
 #define HINT_NESTLOOP			"NestLoop"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
@@ -80,9 +76,6 @@ enum
 	ENABLE_INDEXSCAN = 0x02,
 	ENABLE_BITMAPSCAN = 0x04,
 	ENABLE_TIDSCAN = 0x08,
-#if PG_VERSION_NUM >= 90200
-	ENABLE_INDEXONLYSCAN = 0x10
-#endif
 } SCAN_TYPE_BITS;
 
 enum
@@ -94,10 +87,6 @@ enum
 
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | ENABLE_BITMAPSCAN \
 						| ENABLE_TIDSCAN)
-#if PG_VERSION_NUM >= 90200
-#define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | ENABLE_BITMAPSCAN \
-						| ENABLE_TIDSCAN | ENABLE_INDEXONLYSCAN)
-#endif
 #define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
@@ -335,10 +324,6 @@ static const HintParser parsers[] = {
 	{HINT_NOINDEXSCAN, ScanMethodHintCreate},
 	{HINT_NOBITMAPSCAN, ScanMethodHintCreate},
 	{HINT_NOTIDSCAN, ScanMethodHintCreate},
-#if PG_VERSION_NUM >= 90200
-	{HINT_INDEXONLYSCAN, ScanMethodHintCreate},
-	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate},
-#endif
 	{HINT_NESTLOOP, JoinMethodHintCreate},
 	{HINT_MERGEJOIN, JoinMethodHintCreate},
 	{HINT_HASHJOIN, JoinMethodHintCreate},
@@ -1131,9 +1116,6 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 	 * する。
 	 */
 	if (strcmp(keyword, HINT_INDEXSCAN) == 0 ||
-#if PG_VERSION_NUM >= 90200
-		strcmp(keyword, HINT_INDEXONLYSCAN) == 0 ||
-#endif
 		strcmp(keyword, HINT_BITMAPSCAN) == 0)
 	{
 		while (*str != ')' && *str != '\0')
@@ -1160,10 +1142,6 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 		hint->enforce_mask = ENABLE_BITMAPSCAN;
 	else if (strcasecmp(keyword, HINT_TIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_TIDSCAN;
-#if PG_VERSION_NUM >= 90200
-	else if (strcasecmp(keyword, HINT_INDEXONLYSCAN) == 0)
-		hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
-#endif
 	else if (strcasecmp(keyword, HINT_NOSEQSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_SEQSCAN;
 	else if (strcasecmp(keyword, HINT_NOINDEXSCAN) == 0)
@@ -1172,10 +1150,6 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_BITMAPSCAN;
 	else if (strcasecmp(keyword, HINT_NOTIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
-#if PG_VERSION_NUM >= 90200
-	else if (strcasecmp(keyword, HINT_NOINDEXONLYSCAN) == 0)
-		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
-#endif
 	else
 	{
 		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
@@ -1285,7 +1259,6 @@ SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
  * set GUC parameter functions
  */
 
-#if PG_VERSION_NUM < 90200
 static int
 set_config_option_wrapper(const char *name, const char *value,
 						  GucContext context, GucSource source,
@@ -1320,12 +1293,6 @@ set_config_option_wrapper(const char *name, const char *value,
 	return result;
 }
 
-#define set_config_option(name, value, context, source, \
-						  action, changeVal, elevel) \
-	set_config_option_wrapper(name, value, context, source, \
-							  action, changeVal, elevel)
-#endif
-
 static int
 set_config_options(SetHint **options, int noptions, GucContext context)
 {
@@ -1342,9 +1309,9 @@ set_config_options(SetHint **options, int noptions, GucContext context)
 		if (!hint_state_enabled(hint))
 			continue;
 
-		result = set_config_option(hint->name, hint->value, context,
-								   PGC_S_SESSION, GUC_ACTION_SAVE, true,
-								   pg_hint_plan_parse_messages);
+		result = set_config_option_wrapper(hint->name, hint->value, context,
+										   PGC_S_SESSION, GUC_ACTION_SAVE, true,
+										   pg_hint_plan_parse_messages);
 		if (result != 0)
 			hint->base.state = HINT_STATE_USED;
 		else
@@ -1355,7 +1322,7 @@ set_config_options(SetHint **options, int noptions, GucContext context)
 }
 
 #define SET_CONFIG_OPTION(name, type_bits) \
-	set_config_option((name), \
+	set_config_option_wrapper((name), \
 		(mask & (type_bits)) ? "true" : "false", \
 		context, PGC_S_SESSION, GUC_ACTION_SAVE, true, ERROR)
 
@@ -1366,9 +1333,6 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 
 	if (enforce_mask == ENABLE_SEQSCAN || enforce_mask == ENABLE_INDEXSCAN ||
 		enforce_mask == ENABLE_BITMAPSCAN || enforce_mask == ENABLE_TIDSCAN
-#if PG_VERSION_NUM >= 90200
-		|| enforce_mask == ENABLE_INDEXONLYSCAN
-#endif
 		)
 		mask = enforce_mask;
 	else
@@ -1378,9 +1342,6 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
 	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
 	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
-#if PG_VERSION_NUM >= 90200
-	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXONLYSCAN);
-#endif
 }
 
 static void
@@ -1518,10 +1479,6 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		global->init_scan_mask |= ENABLE_BITMAPSCAN;
 	if (enable_tidscan)
 		global->init_scan_mask |= ENABLE_TIDSCAN;
-#if PG_VERSION_NUM >= 90200
-	if (enable_indexonlyscan)
-		global->init_scan_mask |= ENABLE_INDEXONLYSCAN;
-#endif
 	if (enable_nestloop)
 		global->init_join_mask |= ENABLE_NESTLOOP;
 	if (enable_mergejoin)
