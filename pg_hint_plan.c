@@ -1304,9 +1304,6 @@ set_config_option_wrapper(const char *name, const char *value,
 		ErrorData	   *errdata;
 		MemoryContext	ecxt;
 
-		if (elevel >= ERROR)
-			PG_RE_THROW();
-
 		ecxt = MemoryContextSwitchTo(ccxt);
 		errdata = CopyErrorData();
 		FlushErrorState();
