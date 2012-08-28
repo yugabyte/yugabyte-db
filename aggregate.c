@@ -331,6 +331,10 @@ orafce_median4_finalfn(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 		
 	state = (MedianState *) PG_GETARG_POINTER(0);
+
+	if (state == NULL)
+		PG_RETURN_NULL();
+
 	qsort(state->d.float4_values, state->nelems, sizeof(float4), orafce_float4_cmp);
 
 	lidx = state->nelems / 2 + 1 - 1;
@@ -407,6 +411,10 @@ orafce_median8_finalfn(PG_FUNCTION_ARGS)
 		PG_RETURN_NULL();
 
 	state = (MedianState *) PG_GETARG_POINTER(0);
+
+	if (state == NULL)
+		PG_RETURN_NULL();
+
 	qsort(state->d.float8_values, state->nelems, sizeof(float8), orafce_float8_cmp);
 
 	lidx = state->nelems / 2 + 1 - 1;
