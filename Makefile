@@ -33,17 +33,17 @@ ifeq ($(shell echo $(VERSION) | grep -qE "8[.][123]" && echo yes || echo no),yes
 MODULES = src/pgtap
 endif
 
-# We need Perl.
-ifndef PERL
-PERL := $(shell which perl)
-endif
-
 # Load PGXS now that we've set all the variables it might need.
 ifdef NO_PGXS
 include $(top_builddir)/src/Makefile.global
 include $(top_srcdir)/contrib/contrib-global.mk
 else
 include $(PGXS)
+endif
+
+# We need Perl.
+ifndef PERL
+PERL := $(shell which perl)
 endif
 
 # Is TAP::Parser::SourceHandler::pgTAP installed?
