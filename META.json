@@ -1,0 +1,47 @@
+{
+    "name": "pg_partmaint",
+    "abstract": "Extension to manage partitioned tables by time or ID",
+    "version": "0.1.0",
+    "maintainer": [ 
+        "Keith Fiske <keith@omniti.com>"
+    ],
+    "license": "postgresql",
+    "generated_by": "Keith Fiske",
+    "release_status": "testing",
+    "prereqs": {
+        "runtime": {
+            "requires": {
+                "PostgreSQL": "9.1.0",
+                "pg_jobmon": "0.3.0"
+            }
+        }
+    },
+    "provides": {
+        "pg_partmaint": {
+            "file": "sql/pg_partmaint.sql",
+            "docfile": "doc/partmaint.md",
+            "version": "0.1.0",
+            "abstract": "Extension to manage partitioned tables by time or ID"
+        }
+    },
+    "resources": {
+        "bugtracker": {
+            "web": "https://github.com/keithf4/pg_partmaint/issues"
+        },
+        "repository": {
+            "url": "git://github.com/keithf4/pg_partmaint.git" ,
+            "web": "https://github.com/keithf4/pg_partmaint",
+            "type": "git"
+        }
+    },    
+    "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+    },
+    "tags": [
+        "partition",
+        "partitions",
+        "table",
+        "tables"
+    ]
+}
