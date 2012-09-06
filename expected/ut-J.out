@@ -4217,6 +4217,110 @@ error hint:
 (19 rows)
 
 ----
+---- No. J-3-3 conflict join method hint
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+             QUERY PLAN             
+------------------------------------
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
+   ->  Index Scan using t1_i1 on t1
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(6 rows)
+
+-- No. J-3-3-1
+/*+HashJoin(t1 t2)NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t1 t2)"
+DETAIL:  Conflict join method hint.
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+HashJoin(t1 t2)
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(4 rows)
+
+-- No. J-3-3-2
+/*+MergeJoin(t1 t2)HashJoin(t1 t2)NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "MergeJoin(t1 t2)HashJoin(t1 t2)NestLoop(t1 t2)"
+DETAIL:  Conflict join method hint.
+INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t1 t2)"
+DETAIL:  Conflict join method hint.
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+MergeJoin(t1 t2)
+HashJoin(t1 t2)
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(4 rows)
+
+-- No. J-3-3-3
+/*+HashJoin(t1 t2)NestLoop(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)"
+DETAIL:  Conflict join method hint.
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+HashJoin(t1 t2)
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(4 rows)
+
+-- No. J-3-3-4
+/*+MergeJoin(t2 t1)HashJoin(t1 t2)NestLoop(t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "MergeJoin(t2 t1)HashJoin(t1 t2)NestLoop(t2 t1)"
+DETAIL:  Conflict join method hint.
+INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)"
+DETAIL:  Conflict join method hint.
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+MergeJoin(t1 t2)
+HashJoin(t1 t2)
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(4 rows)
+
+----
 ---- No. J-3-4 hint state output
 ----
 -- No. J-3-4-1
