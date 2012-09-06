@@ -1,7 +1,50 @@
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.enable TO on;
 SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
 SET search_path TO public;
+
+----
+---- No. G-1-1 RULE definition table
+----
+
+-- No. G-1-1-1
+EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+
+-- No. G-1-1-2
+EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+
+-- No. G-1-1-3
+EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+
+RESET client_min_messages;
 
 ----
 ---- No. G-2-2 category of GUC parameter and role

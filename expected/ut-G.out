@@ -1,7 +1,681 @@
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.enable TO on;
 SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
 SET search_path TO public;
+----
+---- No. G-1-1 RULE definition table
+----
+-- No. G-1-1-1
+EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(19 rows)
+
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.c1 = t4.c1)
+               ->  Hash Join
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (t3.c1 = t2.c1)
+                           ->  Seq Scan on t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r1
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+(21 rows)
+
+EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b1t1.c1 = b1t4.c1)
+         ->  Nested Loop
+               Join Filter: (b1t1.c1 = b1t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r1_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b1t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b1t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b1t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(19 rows)
+
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (b1t1.c1 = b1t4.c1)
+               ->  Hash Join
+                     Hash Cond: (b1t2.c1 = b1t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (b1t3.c1 = b1t2.c1)
+                           ->  Seq Scan on t3 b1t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2 b1t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1 b1t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4 b1t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r1_
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+(21 rows)
+
+-- No. G-1-1-2
+EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(39 rows)
+
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.c1 = t4.c1)
+               ->  Hash Join
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (t3.c1 = t2.c1)
+                           ->  Seq Scan on t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r2
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.c1 = t4.c1)
+               ->  Hash Join
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (t3.c1 = t2.c1)
+                           ->  Seq Scan on t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r2
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+(43 rows)
+
+EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b1t1.c1 = b1t4.c1)
+         ->  Nested Loop
+               Join Filter: (b1t1.c1 = b1t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b1t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b1t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b1t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b2t1.c1 = b2t4.c1)
+         ->  Nested Loop
+               Join Filter: (b2t1.c1 = b2t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b2t2.c1 = b2t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r2_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b2t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b2t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b2t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b2t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(39 rows)
+
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (b1t1.c1 = b1t4.c1)
+               ->  Hash Join
+                     Hash Cond: (b1t2.c1 = b1t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (b1t3.c1 = b1t2.c1)
+                           ->  Seq Scan on t3 b1t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2 b1t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1 b1t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4 b1t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r2_
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (b2t1.c1 = b2t4.c1)
+               ->  Hash Join
+                     Hash Cond: (b2t2.c1 = b2t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (b2t3.c1 = b2t2.c1)
+                           ->  Seq Scan on t3 b2t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2 b2t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1 b2t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4 b2t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r2_
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+(43 rows)
+
+-- No. G-1-1-3
+EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (t1.c1 = t4.c1)
+         ->  Nested Loop
+               Join Filter: (t1.c1 = t3.c1)
+               ->  Nested Loop
+                     Join Filter: (t2.c1 = t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(59 rows)
+
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.c1 = t4.c1)
+               ->  Hash Join
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (t3.c1 = t2.c1)
+                           ->  Seq Scan on t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r3
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.c1 = t4.c1)
+               ->  Hash Join
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (t3.c1 = t2.c1)
+                           ->  Seq Scan on t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r3
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t1.c1 = t4.c1)
+               ->  Hash Join
+                     Hash Cond: (t2.c1 = t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (t3.c1 = t2.c1)
+                           ->  Seq Scan on t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r3
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+(65 rows)
+
+EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b1t1.c1 = b1t4.c1)
+         ->  Nested Loop
+               Join Filter: (b1t1.c1 = b1t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b1t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b1t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b1t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b1t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b2t1.c1 = b2t4.c1)
+         ->  Nested Loop
+               Join Filter: (b2t1.c1 = b2t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b2t2.c1 = b2t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b2t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b2t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b2t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b2t4
+               TID Cond: (ctid = '(1,1)'::tid)
+ 
+ Aggregate
+   ->  Nested Loop
+         Join Filter: (b3t1.c1 = b3t4.c1)
+         ->  Nested Loop
+               Join Filter: (b3t1.c1 = b3t3.c1)
+               ->  Nested Loop
+                     Join Filter: (b3t2.c1 = b3t1.c1)
+                     ->  Nested Loop
+                           ->  Tid Scan on r3_
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                                 Filter: (c1 = 1)
+                           ->  Seq Scan on t2 b3t2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t1 b3t1
+                           TID Cond: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 b3t3
+                     TID Cond: (ctid = '(1,1)'::tid)
+         ->  Tid Scan on t4 b3t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(59 rows)
+
+/*+
+Set(enable_tidscan off)Set(enable_nestloop off)
+*/
+EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_nestloop off)
+Set(enable_tidscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                             QUERY PLAN                              
+---------------------------------------------------------------------
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (b1t1.c1 = b1t4.c1)
+               ->  Hash Join
+                     Hash Cond: (b1t2.c1 = b1t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (b1t3.c1 = b1t2.c1)
+                           ->  Seq Scan on t3 b1t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2 b1t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1 b1t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4 b1t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r3_
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (b2t1.c1 = b2t4.c1)
+               ->  Hash Join
+                     Hash Cond: (b2t2.c1 = b2t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (b2t3.c1 = b2t2.c1)
+                           ->  Seq Scan on t3 b2t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2 b2t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1 b2t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4 b2t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r3_
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+ 
+ Aggregate
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (b3t1.c1 = b3t4.c1)
+               ->  Hash Join
+                     Hash Cond: (b3t2.c1 = b3t1.c1)
+                     ->  Hash Join
+                           Hash Cond: (b3t3.c1 = b3t2.c1)
+                           ->  Seq Scan on t3 b3t3
+                                 Filter: (ctid = '(1,1)'::tid)
+                           ->  Hash
+                                 ->  Seq Scan on t2 b3t2
+                                       Filter: (ctid = '(1,1)'::tid)
+                     ->  Hash
+                           ->  Seq Scan on t1 b3t1
+                                 Filter: (ctid = '(1,1)'::tid)
+               ->  Hash
+                     ->  Seq Scan on t4 b3t4
+                           Filter: (ctid = '(1,1)'::tid)
+         ->  Seq Scan on r3_
+               Filter: ((ctid = '(1,1)'::tid) AND (c1 = 1))
+(65 rows)
+
+RESET client_min_messages;
 ----
 ---- No. G-2-2 category of GUC parameter and role
 ----
