@@ -65,24 +65,23 @@ IF v_type = 'time-static' THEN
     v_1st_partition_name := p_parent_table || '_p' || to_char(v_1st_partition_timestamp, v_datetime_string);
     v_2nd_partition_name := p_parent_table || '_p' || to_char(v_2nd_partition_timestamp, v_datetime_string);
 
-    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ ';
-    v_trig_func := v_trig_func||'DECLARE ';
-    v_trig_func := v_trig_func||'BEGIN ';
-    v_trig_func := v_trig_func||'IF TG_OP = ''INSERT'' THEN ';
-    v_trig_func := v_trig_func||'IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_1st_partition_timestamp)|| ' THEN ';
-    v_trig_func := v_trig_func||'INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); ';
-    v_trig_func := v_trig_func||'ELSIF NEW.'||v_control||' >= '||quote_literal(v_1st_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_2nd_partition_timestamp)|| ' THEN ';
-    v_trig_func := v_trig_func||'INSERT INTO '||v_1st_partition_name||' VALUES (NEW.*); ';
-    v_trig_func := v_trig_func||'ELSIF NEW.'||v_control||' >= '||quote_literal(v_2nd_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_final_partition_timestamp)|| ' THEN ';
-    v_trig_func := v_trig_func||'INSERT INTO '||v_2nd_partition_name||' VALUES (NEW.*); ';
-    v_trig_func := v_trig_func||'ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_current_partition_timestamp)|| ' THEN ';
-    v_trig_func := v_trig_func||'INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); ';
-    v_trig_func := v_trig_func||'ELSE ';
-    v_trig_func := v_trig_func||'RAISE EXCEPTION ''ERROR: Attempt to insert data into parent table outside partition trigger boundaries: %'', NEW.'||v_control||';';
-    v_trig_func := v_trig_func||' END IF; ';
-    v_trig_func := v_trig_func||' END IF; ';
-    v_trig_func := v_trig_func||' RETURN NULL; ';
-    v_trig_func := v_trig_func||'END $t$;';
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+        BEGIN 
+        IF TG_OP = ''INSERT'' THEN 
+            IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_1st_partition_timestamp)|| ' THEN 
+                INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); 
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_1st_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_2nd_partition_timestamp)|| ' THEN 
+                INSERT INTO '||v_1st_partition_name||' VALUES (NEW.*); 
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_2nd_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_final_partition_timestamp)|| ' THEN 
+                INSERT INTO '||v_2nd_partition_name||' VALUES (NEW.*); 
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_current_partition_timestamp)|| ' THEN 
+                INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); 
+            ELSE 
+                RAISE EXCEPTION ''ERROR: Attempt to insert data into parent table outside partition trigger boundaries: %'', NEW.'||v_control||'; 
+            END IF; 
+        END IF; 
+        RETURN NULL; 
+        END $t$;';
 
     RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
