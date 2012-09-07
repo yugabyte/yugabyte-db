@@ -3,10 +3,9 @@ CREATE OR REPLACE FUNCTION part.create_parent(p_parent_table text, p_control tex
     AS $$
 DECLARE
 
-v_first_partition_time  timestamp;
 v_interval              interval;
-v_next_partition_name   text;
-v_next_partition_time   timestamp;
+v_last_partition_name   text;
+v_partition_time        timestamp[];
 v_tablename             text;
 
 BEGIN
@@ -20,7 +19,6 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
     RAISE EXCEPTION 'ID partitioning not supported yet. Try again later!';
 END IF;
 
-RAISE NOTICE 'test';
 EXECUTE 'LOCK TABLE '||p_parent_table||' IN ACCESS EXCLUSIVE MODE';
 
 CASE
@@ -39,18 +37,20 @@ CASE
     WHEN p_interval = 'quarter-hour' THEN
         v_interval = '15 mins';
     ELSE
-       -- v_interval := p_interval::int;
+        v_interval := p_interval::int;
 END CASE;
 
--- TODO do a test to make sure control column is of an appropriate type
--- TODO create array variable here that adds as many timestamp values to the array as equals p_premake
-v_first_partition_time := CURRENT_TIMESTAMP;
-v_next_partition_time := CURRENT_TIMESTAMP + v_interval;
+FOR i IN 0..p_premake LOOP
+    v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP + (v_interval*i))::timestamp);
+END LOOP;
 
-EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(v_interval)||','||quote_literal(ARRAY[v_first_partition_time, v_next_partition_time])||')' INTO v_next_partition_name;
+EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(v_interval)||','||quote_literal(v_partition_time)||')' INTO v_last_partition_name;
 
-INSERT INTO part.part_config (parent_table, type, part_interval, control, current_partition) VALUES
-        (p_parent_table, p_type, v_interval, p_control, v_next_partition_name);
+INSERT INTO part.part_config (parent_table, type, part_interval, control, last_partition) VALUES
+        (p_parent_table, p_type, v_interval, p_control, v_last_partition_name);
+
+EXECUTE 'SELECT part.create_function('||quote_literal(p_parent_table)||')';
+EXECUTE 'SELECT part.create_trigger('||quote_literal(p_parent_table)||')';
 
 EXCEPTION
     -- Catch if the conversion of the p_interval parameter to an integer doesn't work

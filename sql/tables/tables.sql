@@ -3,7 +3,7 @@ CREATE TABLE part.part_config (
     type part.partition_type NOT NULL,
     part_interval text NOT NULL,
     control text NOT NULL,
-    current_partition text,
+    last_partition text,
     CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
 );
 --SELECT pg_catalog.pg_extension_config_dump('part_config', '');

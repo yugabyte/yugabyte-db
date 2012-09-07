@@ -30,19 +30,19 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     END IF;
     IF p_interval = '30 mins' THEN
         IF date_part('minute', v_time) < 30 THEN
-            v_partition_name := v_partition_name || '30';
-        ELSE
             v_partition_name := v_partition_name || '00';
+        ELSE
+            v_partition_name := v_partition_name || '30';
         END IF;
     ELSIF p_interval = '15 mins' THEN
         IF date_part('minute', v_time) < 15 THEN
-            v_partition_name := v_partition_name || '15';
-        ELSIF date_part('minute', v_time) >= 15 AND date_part('minute', v_time) < 30 THEN
-            v_partition_name := v_partition_name || '30';
-        ELSIF date_part('minute', v_time) >= 30 AND date_part('minute', v_time) < 45 THEN
-            v_partition_name := v_partition_name || '45';
-        ELSE
             v_partition_name := v_partition_name || '00';
+        ELSIF date_part('minute', v_time) >= 15 AND date_part('minute', v_time) < 30 THEN
+            v_partition_name := v_partition_name || '15';
+        ELSIF date_part('minute', v_time) >= 30 AND date_part('minute', v_time) < 45 THEN
+            v_partition_name := v_partition_name || '30';
+        ELSE
+            v_partition_name := v_partition_name || '45';
         END IF;
     END IF;
 

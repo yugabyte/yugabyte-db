@@ -4,7 +4,6 @@ CREATE OR REPLACE FUNCTION part.create_trigger(p_parent_table text) RETURNS void
 DECLARE
 
 v_control               text;
-v_current_partition     text;
 v_part_interval         text;
 v_table_name            text;
 v_trig                  text;
@@ -15,11 +14,9 @@ BEGIN
 SELECT type
     , part_interval
     , control
-    , current_partition
 FROM part.part_config WHERE parent_table = p_parent_table
-INTO v_type, v_part_interval, v_control, v_current_partition;
+INTO v_type, v_part_interval, v_control;
 
--- Split off schema name if it exists
 IF position('.' in p_parent_table) > 0 THEN 
     v_table_name := substring(p_parent_table from position('.' in p_parent_table)+1);
 END IF;

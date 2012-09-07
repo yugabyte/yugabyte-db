@@ -4,8 +4,7 @@ CREATE OR REPLACE FUNCTION part.create_next_partition (p_parent_table text) RETU
 DECLARE
 
 v_datetime_string           text;
-v_current_partition              text;
-v_last_partition_name       text;
+v_last_partition            text;
 v_next_partition_timestamp  timestamp;
 v_part_interval             interval;
 v_tablename                 text;
@@ -16,15 +15,15 @@ BEGIN
 
 SELECT type
     , part_interval
-    , current_partition
+    , last_partition
 FROM part.part_config WHERE parent_table = p_parent_table
-INTO v_type, v_part_interval, v_current_partition;
+INTO v_type, v_part_interval, v_last_partition;
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
 -- Double check that last created partition exists
-IF v_current_partition IS NOT NULL THEN
+IF v_last_partition IS NOT NULL THEN
     SELECT tablename INTO v_tablename FROM pg_tables WHERE schemaname || '.' || tablename = p_parent_table;
     IF v_tablename IS NULL THEN
         RAISE EXCEPTION 'ERROR: previous partition missing. Unable to determine proper next partition name';
@@ -45,12 +44,12 @@ CASE
 END CASE;
 
 -- pull out datetime portion of last partition's tablename
-v_next_partition_timestamp := to_timestamp(substring(v_current_partition from char_length(p_parent_table||'_p')+1), v_datetime_string) + v_part_interval;
+v_next_partition_timestamp := to_timestamp(substring(v_last_partition from char_length(p_parent_table||'_p')+1), v_datetime_string) + v_part_interval;
 
-EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(v_part_interval)||','||quote_literal(ARRAY[v_next_partition_timestamp])||')' INTO v_last_partition_name; 
+EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(v_part_interval)||','||quote_literal(ARRAY[v_next_partition_timestamp])||')' INTO v_last_partition; 
 
-UPDATE part.part_config SET current_partition = v_last_partition_name WHERE parent_table = p_parent_table;
+UPDATE part.part_config SET last_partition = v_last_partition WHERE parent_table = p_parent_table;
 
-RAISE NOTICE 'v_last_partition_name: %',v_last_partition_name;
+RAISE NOTICE 'v_last_partition: %',v_last_partition;
 END
 $$;
