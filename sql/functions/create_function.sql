@@ -29,30 +29,31 @@ INTO v_type, v_part_interval, v_control;
 
 CASE
     WHEN v_part_interval = '00:15:00' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
+        v_datetime_string := 'IYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
             '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
     WHEN v_part_interval = '00:30:00' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
+        v_datetime_string := 'IYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
             '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
     WHEN v_part_interval = '01:00:00' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
+        v_datetime_string := 'IYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
      WHEN v_part_interval = '1 day' THEN
-        v_datetime_string := 'YYYY_MM_DD';
+        v_datetime_string := 'IYYY_MM_DD';
         v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
-    WHEN v_part_interval = '1 week' THEN
-        v_datetime_string := 'YYYYwWW';
+    WHEN v_part_interval = '1 week' OR v_part_interval = '7 days' THEN
+        v_datetime_string := 'IYYY"w"IW';
         v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 month' THEN
-        v_datetime_string := 'YYYY_MM';
+        v_datetime_string := 'IYYY_MM';
         v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 year' THEN
-        v_datetime_string := 'YYYY';
+        v_datetime_string := 'IYYY';
         v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
 END CASE;
 
+RAISE NOTICE 'string %', v_datetime_string;
 IF v_type = 'time-static' THEN
     
     v_prev_partition_timestamp := v_current_partition_timestamp - v_part_interval::interval;    
@@ -83,7 +84,7 @@ IF v_type = 'time-static' THEN
         RETURN NULL; 
         END $t$;';
 
-    RAISE NOTICE 'v_trig_func: %',v_trig_func;
+--    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
 ELSIF v_type = 'id-static' THEN

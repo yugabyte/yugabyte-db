@@ -6,6 +6,7 @@ DECLARE
 v_interval              interval;
 v_last_partition_name   text;
 v_partition_time        timestamp[];
+v_record                record;
 v_tablename             text;
 
 BEGIN
@@ -40,11 +41,24 @@ CASE
         v_interval := p_interval::int;
 END CASE;
 
+EXECUTE 'SELECT * FROM '||p_parent_table||' LIMIT 1' INTO v_record;
+IF v_record IS NOT NULL THEN
+    IF position('.' in p_parent_table) > 0 THEN 
+        v_tablename := substring(p_parent_table from position('.' in p_parent_table)+1);
+    END IF;
+
+    EXECUTE 'ALTER TABLE '||p_parent_table||' RENAME TO '||v_tablename||'_pre_partition';
+    EXECUTE 'CREATE TABLE '||p_parent_table||' (LIKE '||p_parent_table||'_pre_partition 
+        INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING COMMENTS)';
+
+END IF;
+
 FOR i IN 0..p_premake LOOP
     v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP + (v_interval*i))::timestamp);
 END LOOP;
 
-EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(v_interval)||','||quote_literal(v_partition_time)||')' INTO v_last_partition_name;
+
+EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','||quote_literal(v_interval)||','||quote_literal(v_partition_time)||')' INTO v_last_partition_name;
 
 INSERT INTO part.part_config (parent_table, type, part_interval, control, last_partition) VALUES
         (p_parent_table, p_type, v_interval, p_control, v_last_partition_name);

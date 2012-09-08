@@ -32,15 +32,15 @@ END IF;
 
 CASE
     WHEN v_part_interval = '1 year' THEN
-        v_datetime_string := 'YYYY';
+        v_datetime_string := 'IYYY';
     WHEN v_part_interval = '1 month' THEN
-        v_datetime_string := 'YYYY_MM';
-    WHEN v_part_interval = '1 week' THEN
-        v_datetime_string := 'YYYYwWW';
+        v_datetime_string := 'IYYY_MM';
+    WHEN v_part_interval = '1 week'  OR v_part_interval = '7 days' THEN
+        v_datetime_string := 'IYYY"w"IW';
     WHEN v_part_interval = '1 day' THEN
-        v_datetime_string := 'YYYY_MM_DD';
+        v_datetime_string := 'IYYY_MM_DD';
     WHEN v_part_interval = '1 hour' OR v_part_interval = '30 mins' OR v_part_interval = '15 mins' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
+        v_datetime_string := 'IYYY_MM_DD_HH24MI';
 END CASE;
 
 -- pull out datetime portion of last partition's tablename
