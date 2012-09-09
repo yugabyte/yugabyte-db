@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_function(p_parent_table text) RETURNS void
+CREATE OR REPLACE FUNCTION part.create_time_function(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -12,7 +12,7 @@ v_1st_partition_name            text;
 v_1st_partition_timestamp       timestamp;
 v_2nd_partition_name            text;
 v_2nd_partition_timestamp       timestamp;
-v_part_interval                 text;
+v_part_interval                 interval;
 v_prev_partition_name           text;
 v_prev_partition_timestamp      timestamp;
 v_trig_func                     text;
@@ -22,38 +22,42 @@ v_type                          text;
 BEGIN
 
 SELECT type
-    , part_interval
+    , part_interval::interval
     , control
-FROM part.part_config WHERE parent_table = p_parent_table
+FROM part.part_config 
+WHERE parent_table = p_parent_table
+AND (type = 'time-static' OR type = 'time-dynamic')
 INTO v_type, v_part_interval, v_control;
+IF NOT FOUND THEN
+    RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+END IF;
 
 CASE
-    WHEN v_part_interval = '00:15:00' THEN
-        v_datetime_string := 'IYYY_MM_DD_HH24MI';
+    WHEN v_part_interval = '15 mins' THEN
+        v_datetime_string := 'YYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
             '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
-    WHEN v_part_interval = '00:30:00' THEN
-        v_datetime_string := 'IYYY_MM_DD_HH24MI';
+    WHEN v_part_interval = '30 mins' THEN
+        v_datetime_string := 'YYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
             '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
-    WHEN v_part_interval = '01:00:00' THEN
-        v_datetime_string := 'IYYY_MM_DD_HH24MI';
+    WHEN v_part_interval = '1 hour' THEN
+        v_datetime_string := 'YYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
      WHEN v_part_interval = '1 day' THEN
-        v_datetime_string := 'IYYY_MM_DD';
+        v_datetime_string := 'YYYY_MM_DD';
         v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
-    WHEN v_part_interval = '1 week' OR v_part_interval = '7 days' THEN
+    WHEN v_part_interval = '1 week' THEN
         v_datetime_string := 'IYYY"w"IW';
         v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 month' THEN
-        v_datetime_string := 'IYYY_MM';
+        v_datetime_string := 'YYYY_MM';
         v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 year' THEN
-        v_datetime_string := 'IYYY';
+        v_datetime_string := 'YYYY';
         v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
 END CASE;
 
-RAISE NOTICE 'string %', v_datetime_string;
 IF v_type = 'time-static' THEN
     
     v_prev_partition_timestamp := v_current_partition_timestamp - v_part_interval::interval;    

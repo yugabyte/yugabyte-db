@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 2, p_debug boolean DEFAULT false) RETURNS void
+CREATE OR REPLACE FUNCTION part.create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -53,17 +53,22 @@ IF v_record IS NOT NULL THEN
 
 END IF;
 
-FOR i IN 0..p_premake LOOP
-    v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP + (v_interval*i))::timestamp);
-END LOOP;
+IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
+    FOR i IN 0..p_premake LOOP
+        v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP + (v_interval*i))::timestamp);
+    END LOOP;
 
-
-EXECUTE 'SELECT part.create_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','||quote_literal(v_interval)||','||quote_literal(v_partition_time)||')' INTO v_last_partition_name;
+    EXECUTE 'SELECT part.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','
+        ||quote_literal(v_interval)||','||quote_literal(v_partition_time)||')' INTO v_last_partition_name;
+END IF;
 
 INSERT INTO part.part_config (parent_table, type, part_interval, control, last_partition) VALUES
         (p_parent_table, p_type, v_interval, p_control, v_last_partition_name);
 
-EXECUTE 'SELECT part.create_function('||quote_literal(p_parent_table)||')';
+IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
+    EXECUTE 'SELECT part.create_time_function('||quote_literal(p_parent_table)||')';
+END IF;
+
 EXECUTE 'SELECT part.create_trigger('||quote_literal(p_parent_table)||')';
 
 EXCEPTION
