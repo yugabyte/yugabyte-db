@@ -33,26 +33,26 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
-CASE
-    WHEN v_part_interval = '15 mins' THEN
-        v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
-            '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
-    WHEN v_part_interval = '30 mins' THEN
-        v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
-            '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
-    WHEN v_part_interval = '1 hour' THEN
-        v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
-     WHEN v_part_interval = '1 day' THEN
-        v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
-    WHEN v_part_interval = '1 week' THEN
-        v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
-    WHEN v_part_interval = '1 month' THEN
-        v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
-    WHEN v_part_interval = '1 year' THEN
-        v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
-END CASE;
-
 IF v_type = 'time-static' THEN
+
+    CASE
+        WHEN v_part_interval = '15 mins' THEN
+            v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
+        WHEN v_part_interval = '30 mins' THEN
+            v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
+        WHEN v_part_interval = '1 hour' THEN
+            v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
+         WHEN v_part_interval = '1 day' THEN
+            v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
+        WHEN v_part_interval = '1 week' THEN
+            v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
+        WHEN v_part_interval = '1 month' THEN
+            v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
+        WHEN v_part_interval = '1 year' THEN
+            v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
+    END CASE;
     
     v_prev_partition_timestamp := v_current_partition_timestamp - v_part_interval::interval;    
     v_1st_partition_timestamp := v_current_partition_timestamp + v_part_interval::interval;
@@ -88,6 +88,49 @@ IF v_type = 'time-static' THEN
 ELSIF v_type = 'id-static' THEN
 
 ELSIF v_type = 'time-dynamic' THEN
+
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+        DECLARE
+            v_counter                   int; 
+            v_new_partition_name        text;
+            v_new_partition_timestamp   timestamp;
+            v_old_partition_name        text;
+            v_old_partition_timestamp   timestamp;
+            v_row                       record;
+            v_where                     text;
+        BEGIN 
+        IF TG_OP = ''INSERT'' THEN 
+            ';
+        CASE
+            WHEN v_part_interval = '15 mins' THEN 
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
+                    ''15min''::interval * floor(date_part(''minute'', NEW.'||v_control||') / 15.0);';
+            WHEN v_part_interval = '30 mins' THEN
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
+                    ''30min''::interval * floor(date_part(''minute'', NEW.'||v_control||') / 30.0);';
+            WHEN v_part_interval = '1 hour' THEN
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||');';
+             WHEN v_part_interval = '1 day' THEN
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''day'', NEW.'||v_control||');';
+            WHEN v_part_interval = '1 week' THEN
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''week'', NEW.'||v_control||');';
+            WHEN v_part_interval = '1 month' THEN
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''month'', NEW.'||v_control||');';
+            WHEN v_part_interval = '1 year' THEN
+                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''year'', NEW.'||v_control||');';
+        END CASE;
+
+        v_trig_func := v_trig_func||'
+            v_new_partition_name := '''||p_parent_table||'_p''|| to_char(v_new_partition_timestamp, '||quote_literal(v_datetime_string)||');
+        
+            EXECUTE ''INSERT INTO ''||v_new_partition_name||'' VALUES($1.*)'' USING NEW;
+        END IF;
+        
+        RETURN NULL; 
+        END $t$;';
+
+    RAISE NOTICE 'v_trig_func: %',v_trig_func;
+    EXECUTE v_trig_func;
 
 ELSIF v_type = 'id-dynamic' THEN
 

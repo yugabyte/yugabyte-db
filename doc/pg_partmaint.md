@@ -6,12 +6,12 @@ PostgreSQL Partition Maintenance Extension (pg_partmaint)
  * If turning an existing table with data into a partitioned set, please double check all permissions & constraints after the conversion. Constraints should be good, but permissions are not copied. Indexes are not recreated on the new parent either and should not be.
  * First parameter (p_parent_table) is the existing parent table
  * Second paramter (p_control) is the column that the partitioning will be based on. Must be a time based column (integer support for ID partitioning coming soon).
- * Third column (p_type) is one of 4 values to set the partitioning type that will be used (time-static is the only one currently supported)
+ * Third column (p_type) is one of 4 values to set the partitioning type that will be used
  
  > **time-static** - Trigger function inserts only into specifically named partitions (handles data for current partition, 2 partitions ahead and 1 behind).  Cannot handle inserts to parent table outside the hard-coded time window. Function is kept up to date by run_maintenance() function. Ideal for high TPS tables that get inserts of new data only.  
- > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static.  
- > **id-static** - Same functionality as time-static but for a numeric range instead of time.  
- > **id-dynamic** - Same functionality as time-dynamic but for a numeric range instead of time.  
+ > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. 
+ > **id-static** - Same functionality as time-static but for a numeric range instead of time. (coming soon)  
+ > **id-dynamic** - Same functionality as time-dynamic but for a numeric range instead of time. (coming soon)  
 
  * Fourth parameter (p_interval) is the time or numeric range interval for each partition. Supported values are:
 

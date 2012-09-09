@@ -51,12 +51,9 @@ LOOP
 
     v_last_partition_timestamp := to_timestamp(substring(v_row.last_partition from char_length(v_row.parent_table||'_p')+1), v_row.datetime_string);
 
+    -- Check and see how many premade partitions there are. If it's less than premake in config table, make another
     v_premade_count = EXTRACT('epoch' FROM (v_last_partition_timestamp - v_current_partition_timestamp)::interval) / EXTRACT('epoch' FROM v_row.part_interval::interval);
-    RAISE NOTICE 'v_premade_count %', v_premade_count;
-    -- If it's been longer than the parent table's destinated interval, make the next partition
---    RAISE NOTICE 'It''s been this long: %', (CURRENT_TIMESTAMP - v_current_partition_timestamp)::interval;
 
---    IF ((CURRENT_TIMESTAMP - v_current_partition_timestamp)::interval >= v_row.part_interval) THEN
     IF v_premade_count < v_row.premake THEN
         RAISE NOTICE 'Creating next partition';
         EXECUTE 'SELECT part.create_next_time_partition('||quote_literal(v_row.parent_table)||')';
