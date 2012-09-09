@@ -24,37 +24,31 @@ BEGIN
 SELECT type
     , part_interval::interval
     , control
+    , datetime_string
 FROM part.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'time-static' OR type = 'time-dynamic')
-INTO v_type, v_part_interval, v_control;
+INTO v_type, v_part_interval, v_control, v_datetime_string;
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
 CASE
     WHEN v_part_interval = '15 mins' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
             '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
     WHEN v_part_interval = '30 mins' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
             '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
     WHEN v_part_interval = '1 hour' THEN
-        v_datetime_string := 'YYYY_MM_DD_HH24MI';
         v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
      WHEN v_part_interval = '1 day' THEN
-        v_datetime_string := 'YYYY_MM_DD';
         v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 week' THEN
-        v_datetime_string := 'IYYY"w"IW';
         v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 month' THEN
-        v_datetime_string := 'YYYY_MM';
         v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
     WHEN v_part_interval = '1 year' THEN
-        v_datetime_string := 'YYYY';
         v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
 END CASE;
 

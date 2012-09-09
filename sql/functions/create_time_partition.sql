@@ -1,9 +1,8 @@
-CREATE OR REPLACE FUNCTION part.create_time_partition (p_parent_table text, p_control text, p_interval interval, p_partition_times timestamp[]) RETURNS text
+CREATE OR REPLACE FUNCTION part.create_time_partition (p_parent_table text, p_control text, p_interval interval, p_datetime_string text, p_partition_times timestamp[]) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
 
-v_datetime_string               text;
 v_partition_name                text;
 v_partition_timestamp_end       timestamp;
 v_partition_timestamp_start     timestamp;
@@ -17,15 +16,12 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     IF p_interval = '1 year' OR p_interval = '1 month' OR p_interval = '1 day' OR p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
         v_partition_name := v_partition_name || to_char(v_time, 'YYYY');
-        v_datetime_string := 'YYYY';
         
         IF p_interval = '1 month' OR p_interval = '1 day' OR p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
             v_partition_name := v_partition_name || '_' || to_char(v_time, 'MM');
-            v_datetime_string := v_datetime_string || '_MM';
 
             IF p_interval = '1 day' OR p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
                 v_partition_name := v_partition_name || '_' || to_char(v_time, 'DD');
-                v_datetime_string := v_datetime_string || '_DD';
 
                 IF p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
                     v_partition_name := v_partition_name || '_' || to_char(v_time, 'HH24');
@@ -48,20 +44,16 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                             v_partition_name := v_partition_name || '30';
                         END IF;
                     END IF;
-
-                    v_datetime_string := v_datetime_string || '_HH24MI';
-
                 END IF; -- end hour IF      
             END IF; -- end day IF
         END IF; -- end month IF
     ELSIF p_interval = '1 week' THEN
         v_partition_name := v_partition_name || to_char(v_time, 'IYYY') || 'w' || to_char(v_time, 'IW');
-        v_datetime_string := 'IYYY"w"IW';
     END IF; -- end year/week IF
 
 -- pull out datetime portion of last partition's tablename
-v_partition_timestamp_start := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), v_datetime_string);
-v_partition_timestamp_end := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), v_datetime_string) + p_interval;
+v_partition_timestamp_start := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string);
+v_partition_timestamp_end := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string) + p_interval;
 
 IF position('.' in p_parent_table) > 0 THEN 
     v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
