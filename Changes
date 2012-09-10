@@ -10,6 +10,8 @@ Revision history for pgTAP
   typos in the documentation. Thanks to Jay Levitt for the pull request!
 * Fixed broken examples in the `row_eq()` documentation. Thanks to @set5think
   for the report!
+* Fixed `has_tablespace()` to work on PostgreSQL 9.2, where its failure was
+  preventing pgTAP from even being installed.
 
 0.90.0 2011-12-03T20:18:16Z
 ---------------------------
