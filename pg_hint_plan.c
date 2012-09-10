@@ -10,6 +10,7 @@
  */
 #include "postgres.h"
 #include "commands/prepare.h"
+#include "mb/pg_wchar.h"
 #include "miscadmin.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/clauses.h"
@@ -836,14 +837,51 @@ skip_closed_parenthesis(const char *str)
 }
 
 /*
+ * truncate_identifier() --- truncate an identifier to NAMEDATALEN-1 bytes.
+ *
+ * The given string is modified in-place, if necessary.  A warning is
+ * issued if requested.
+ *
+ * We require the caller to pass in the string length since this saves a
+ * strlen() call in some common usages.
+ *
+ * This function was copied and edited from truncate_identifier() in
+ * src/backend/optimizer/path/allpaths.c
+ */
+static void
+truncate_identifier(char *ident, int len, bool warn, const char *str)
+{
+	if (len >= NAMEDATALEN)
+	{
+		len = pg_mbcliplen(ident, len, NAMEDATALEN - 1);
+		if (warn)
+		{
+			/*
+			 * We avoid using %.*s here because it can misbehave if the data
+			 * is not valid in what libc thinks is the prevailing encoding.
+			 */
+			char		buf[NAMEDATALEN];
+
+			memcpy(buf, ident, len);
+			buf[len] = '\0';
+			parse_ereport(str,
+						  ("Identifier \"%s\" will be truncated to \"%s\".",
+						   ident, buf));
+		}
+		ident[len] = '\0';
+	}
+}
+
+/*
  * 二重引用符で囲まれているかもしれないトークンを読み取り word 引数に palloc
  * で確保したバッファに格納してそのポインタを返す。
  *
  * 正常にパースできた場合は残りの文字列の先頭位置を、異常があった場合は NULL を
  * 返す。
+ * truncateがtrueの場合は、NAMEDATALENに切り詰める。
  */
 static const char *
-parse_quote_value(const char *str, char **word, char *value_type)
+parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 {
 	StringInfoData	buf;
 	bool			in_quote;
@@ -905,6 +943,10 @@ parse_quote_value(const char *str, char **word, char *value_type)
 
 		return NULL;
 	}
+
+	/*  */
+	if (truncate && strlen(buf.data) >= NAMEDATALEN)
+		truncate_identifier(buf.data, strlen(buf.data), true, str);
 
 	*word = buf.data;
 
@@ -1106,7 +1148,8 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 	/*
 	 * スキャン方式のヒントでリレーション名が読み取れない場合はヒント無効
 	 */
-	if ((str = parse_quote_value(str, &hint->relname, "relation name")) == NULL)
+	if ((str = parse_quote_value(str, &hint->relname, "relation name", true))
+		== NULL)
 		return NULL;
 
 	skip_space(str);
@@ -1122,7 +1165,7 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 		{
 			char	   *indexname;
 
-			str = parse_quote_value(str, &indexname, "index name");
+			str = parse_quote_value(str, &indexname, "index name", true);
 			if (str == NULL)
 				return NULL;
 
@@ -1170,7 +1213,8 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse,
 
 	hint->relnames = palloc(sizeof(char *));
 
-	while ((str = parse_quote_value(str, &relname, "relation name")) != NULL)
+	while ((str = parse_quote_value(str, &relname, "relation name", true))
+		   != NULL)
 	{
 		hint->nrels++;
 		hint->relnames = repalloc(hint->relnames, sizeof(char *) * hint->nrels);
@@ -1225,7 +1269,8 @@ LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse,
 	{
 		char   *relname;
 
-		if ((str = parse_quote_value(str, &relname, "relation name")) == NULL)
+		if ((str = parse_quote_value(str, &relname, "relation name", true))
+			== NULL)
 			return NULL;
 
 		hint->relations = lappend(hint->relations, relname);
@@ -1248,8 +1293,10 @@ LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse,
 static const char *
 SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
 {
-	if ((str = parse_quote_value(str, &hint->name, "parameter name")) == NULL ||
-		(str = parse_quote_value(str, &hint->value, "parameter value")) == NULL)
+	if ((str = parse_quote_value(str, &hint->name, "parameter name", false))
+		== NULL ||
+		(str = parse_quote_value(str, &hint->value, "parameter value", false))
+		== NULL)
 		return NULL;
 
 	return str;
