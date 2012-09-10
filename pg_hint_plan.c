@@ -1293,7 +1293,7 @@ LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse,
 static const char *
 SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
 {
-	if ((str = parse_quote_value(str, &hint->name, "parameter name", false))
+	if ((str = parse_quote_value(str, &hint->name, "parameter name", true))
 		== NULL ||
 		(str = parse_quote_value(str, &hint->value, "parameter value", false))
 		== NULL)
