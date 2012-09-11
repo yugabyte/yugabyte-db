@@ -1,5 +1,13 @@
+INSTALLATION
+-----------
+Still in early development, so not actually in extension format yet. Run install.sql located in root directory with psql from the pg_partman top level folder.
+
+    cd pg_partman
+    psql < install.sql
+
+
 LICENSE AND COPYRIGHT
----------------------
+-------------------
 
 PG Partition Manager (pg_partman) is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
 
