@@ -45,10 +45,12 @@ CASE
         v_time_interval = '15 mins';
         v_datetime_string := 'YYYY_MM_DD_HH24MI';
     ELSE
-        v_id_interval := p_interval::bigint;
+        IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
+            v_id_interval := p_interval::bigint;
+        ELSE
+            RAISE EXCEPTION 'Invalid interval for time based partitioning: %', p_interval;
+        END IF;
 END CASE;
-
-RAISE NOTICE 'Interval converted';
 
 EXECUTE 'SELECT max('||p_control||')::text FROM '||p_parent_table||' LIMIT 1' INTO v_max;
 IF v_max IS NOT NULL THEN
@@ -103,6 +105,6 @@ EXECUTE 'SELECT part.create_trigger('||quote_literal(p_parent_table)||')';
 EXCEPTION
     -- Catch if the conversion of the p_interval parameter to an integer doesn't work
     WHEN invalid_text_representation THEN
-        RAISE EXCEPTION 'Check interval parameter to ensure it is either a valid time period or an integer value for serial partitioning: %', SQLERRM;
+        RAISE EXCEPTION 'Check interval parameter to ensure it is a valid integer value for serial partitioning: %', SQLERRM;
 END
 $$;

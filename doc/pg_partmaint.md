@@ -1,6 +1,8 @@
 PostgreSQL Partition Maintenance Extension (pg_partmaint)
 --------------------------------------------------
 
+Extension to help make managing time or serial id based table partitioning easier. 
+
 *create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false)*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. If it has data, it will be renamed with the suffix _pre_partition, made part of the inheritance tree and a new parent table will be created with the original name (function to partition existing data coming soon).
  * If turning an existing table with data into a partitioned set, please double check all permissions & constraints after the conversion. Constraints should be good, but permissions are not copied. Indexes are not recreated on the new parent either and should not be.
@@ -9,9 +11,9 @@ PostgreSQL Partition Maintenance Extension (pg_partmaint)
  * Third column (p_type) is one of 4 values to set the partitioning type that will be used
  
  > **time-static** - Trigger function inserts only into specifically named partitions (handles data for current partition, 2 partitions ahead and 1 behind).  Cannot handle inserts to parent table outside the hard-coded time window. Function is kept up to date by run_maintenance() function. Ideal for high TPS tables that get inserts of new data only.  
- > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. 
- > **id-static** - Same functionality as time-static but for a numeric range instead of time. (coming soon)  
- > **id-dynamic** - Same functionality as time-dynamic but for a numeric range instead of time. (coming soon)  
+ > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. Be aware that if the appropriate partition doesn't yet exist for the data inserted, the insert will fail. This applies for data before the lowest partition and higher than the greatest premade partition.
+ > **id-static** - Same functionality as time-static but for a numeric range instead of time. When the id value has reached 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to be run separately.  
+ > **id-dynamic** - Same functionality and limitations as time-dynamic but for a numeric range instead of time. Uses same 50% rule as id-static to create future partitions. Does NOT require run_maintenance() function to be run separately.  
 
  * Fourth parameter (p_interval) is the time or numeric range interval for each partition. Supported values are:
 

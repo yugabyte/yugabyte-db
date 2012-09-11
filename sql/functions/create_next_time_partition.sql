@@ -41,7 +41,9 @@ v_next_partition_timestamp := to_timestamp(substring(v_last_partition from char_
 EXECUTE 'SELECT part.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','||quote_literal(v_part_interval)||','
     ||quote_literal(v_datetime_string)||','||quote_literal(ARRAY[v_next_partition_timestamp])||')' INTO v_last_partition; 
 
-UPDATE part.part_config SET last_partition = v_last_partition WHERE parent_table = p_parent_table;
+IF v_last_partition IS NOT NULL THEN
+    UPDATE part.part_config SET last_partition = v_last_partition WHERE parent_table = p_parent_table;
+END IF;
 
 END
 $$;

@@ -89,39 +89,34 @@ ELSIF v_type = 'time-dynamic' THEN
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
-            v_counter                   int; 
-            v_new_partition_name        text;
-            v_new_partition_timestamp   timestamp;
-            v_old_partition_name        text;
-            v_old_partition_timestamp   timestamp;
-            v_row                       record;
-            v_where                     text;
+            v_partition_name        text;
+            v_partition_timestamp   timestamp;
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             ';
         CASE
             WHEN v_part_interval = '15 mins' THEN 
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
                     ''15min''::interval * floor(date_part(''minute'', NEW.'||v_control||') / 15.0);';
             WHEN v_part_interval = '30 mins' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
                     ''30min''::interval * floor(date_part(''minute'', NEW.'||v_control||') / 30.0);';
             WHEN v_part_interval = '1 hour' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||');';
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||');';
              WHEN v_part_interval = '1 day' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''day'', NEW.'||v_control||');';
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''day'', NEW.'||v_control||');';
             WHEN v_part_interval = '1 week' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''week'', NEW.'||v_control||');';
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''week'', NEW.'||v_control||');';
             WHEN v_part_interval = '1 month' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''month'', NEW.'||v_control||');';
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''month'', NEW.'||v_control||');';
             WHEN v_part_interval = '1 year' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''year'', NEW.'||v_control||');';
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''year'', NEW.'||v_control||');';
         END CASE;
 
         v_trig_func := v_trig_func||'
-            v_new_partition_name := '''||p_parent_table||'_p''|| to_char(v_new_partition_timestamp, '||quote_literal(v_datetime_string)||');
+            v_partition_name := '''||p_parent_table||'_p''|| to_char(v_partition_timestamp, '||quote_literal(v_datetime_string)||');
         
-            EXECUTE ''INSERT INTO ''||v_new_partition_name||'' VALUES($1.*)'' USING NEW;
+            EXECUTE ''INSERT INTO ''||v_partition_name||'' VALUES($1.*)'' USING NEW;
         END IF;
         
         RETURN NULL; 

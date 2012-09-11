@@ -63,7 +63,7 @@ IF v_type = 'id-static' THEN
             ELSIF NEW.'||v_control||' >= '||v_2nd_partition_id||' AND NEW.'||v_control||' < '||quote_literal(v_final_partition_id)|| ' THEN 
                 INSERT INTO '||v_2nd_partition_name||' VALUES (NEW.*);
                 ';
-            -- There
+            -- If the first partition's function, don't have rule for previous partition
             IF v_prev_partition_id >= 0 THEN
             v_trig_func := v_trig_func ||'ELSIF NEW.'||v_control||' >= '||v_prev_partition_id||' AND NEW.'||v_control||' < '||v_current_partition_id|| ' THEN 
                 INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*);
@@ -76,9 +76,9 @@ IF v_type = 'id-static' THEN
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
                 v_next_partition_id := (substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint) + '||v_part_interval||';
-                IF ((v_next_partition_id - v_current_partition_id) / '||quote_literal(v_part_interval)||') <= '||quote_literal(v_premake)||' THEN 
+                IF ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' THEN 
                     v_next_partition_name := part.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
-                        ||quote_literal(v_part_interval)||', ARRAY[v_next_partition_id]);
+                        ||v_part_interval||', ARRAY[v_next_partition_id]);
                     UPDATE part.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                     PERFORM part.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
                 END IF;
@@ -94,39 +94,33 @@ ELSIF v_type = 'id-dynamic' THEN
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
-            v_counter                   int; 
-            v_new_partition_name        text;
-            v_new_partition_timestamp   timestamp;
-            v_old_partition_name        text;
-            v_old_partition_timestamp   timestamp;
-            v_row                       record;
-            v_where                     text;
+            v_current_partition_id      bigint;
+            v_current_partition_name    text;
+            v_last_partition            text := '||quote_literal(v_last_partition)||';
+            v_last_partition_id         bigint;
+            v_next_partition_id         bigint;
+            v_next_partition_name       text;   
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
-            ';
-        CASE
-            WHEN v_part_interval = '15 mins' THEN 
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
-                    ''15min''::interval * floor(date_part(''minute'', NEW.'||v_control||') / 15.0);';
-            WHEN v_part_interval = '30 mins' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||') + 
-                    ''30min''::interval * floor(date_part(''minute'', NEW.'||v_control||') / 30.0);';
-            WHEN v_part_interval = '1 hour' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''hour'', NEW.'||v_control||');';
-             WHEN v_part_interval = '1 day' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''day'', NEW.'||v_control||');';
-            WHEN v_part_interval = '1 week' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''week'', NEW.'||v_control||');';
-            WHEN v_part_interval = '1 month' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''month'', NEW.'||v_control||');';
-            WHEN v_part_interval = '1 year' THEN
-                v_trig_func := v_trig_func||'v_new_partition_timestamp := date_trunc(''year'', NEW.'||v_control||');';
-        END CASE;
+            v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
+            v_current_partition_name := '''||p_parent_table||'_p''||v_current_partition_id;
 
-        v_trig_func := v_trig_func||'
-            v_new_partition_name := '''||p_parent_table||'_p''|| to_char(v_new_partition_timestamp, '||quote_literal(v_datetime_string)||');
+            IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
+                v_last_partition_id = substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint;
+                v_next_partition_id := v_last_partition_id + '||v_part_interval||';
+                IF ((v_next_partition_id - v_current_partition_id) / '||quote_literal(v_part_interval)||') <= '||quote_literal(v_premake)||' THEN 
+                    v_next_partition_name := part.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
+                        ||quote_literal(v_part_interval)||', ARRAY[v_next_partition_id]);
+                    IF v_next_partition_name IS NOT NULL THEN
+                        UPDATE part.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
+                        PERFORM part.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                    END IF;
+                END IF;
+            END IF;
         
-            EXECUTE ''INSERT INTO ''||v_new_partition_name||'' VALUES($1.*)'' USING NEW;
+            EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
+
+            
         END IF;
         
         RETURN NULL; 

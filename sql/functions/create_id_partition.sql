@@ -12,6 +12,12 @@ BEGIN
 FOREACH v_id IN ARRAY p_partition_ids LOOP
     v_partition_name := p_parent_table||'_p'||v_id;
 
+    SELECT schemaname ||'.'|| tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
+
+    IF v_tablename IS NOT NULL THEN
+        CONTINUE;
+    END IF;
+
     IF position('.' in p_parent_table) > 0 THEN 
         v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
     END IF;

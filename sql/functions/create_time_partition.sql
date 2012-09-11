@@ -51,19 +51,24 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         v_partition_name := v_partition_name || to_char(v_time, 'IYYY') || 'w' || to_char(v_time, 'IW');
     END IF; -- end year/week IF
 
--- pull out datetime portion of last partition's tablename
-v_partition_timestamp_start := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string);
-v_partition_timestamp_end := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string) + p_interval;
+    -- pull out datetime portion of last partition's tablename
+    v_partition_timestamp_start := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string);
+    v_partition_timestamp_end := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string) + p_interval;
 
-IF position('.' in p_parent_table) > 0 THEN 
-    v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
-END IF;
+    SELECT schemaname ||'.'|| tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
+    IF v_tablename IS NOT NULL THEN
+        CONTINUE;
+    END IF;
 
-EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS) INHERITS ('||p_parent_table||')';
-EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
-    CHECK ('||p_control||'>='||quote_literal(v_partition_timestamp_start)||' AND '||p_control||'<'||quote_literal(v_partition_timestamp_end)||')';
+    IF position('.' in p_parent_table) > 0 THEN 
+        v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
+    END IF;
 
----- Call post_script() for given parent table
+    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS) INHERITS ('||p_parent_table||')';
+    EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
+        CHECK ('||p_control||'>='||quote_literal(v_partition_timestamp_start)||' AND '||p_control||'<'||quote_literal(v_partition_timestamp_end)||')';
+
+    ---- Call post_script() for given parent table
 
 END LOOP;
 
