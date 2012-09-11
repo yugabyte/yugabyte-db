@@ -24,7 +24,7 @@ Extension to help make managing time or serial id based table partitioning easie
  > **hourly** - One partition per hour  
  > **half-hour** - One partition per 30 minute interval on the half-hour (1200, 1230)  
  > **quarter-hour** - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)  
- > **id** - For ID based partitions, the range of that ID that should be set per partition (not yet supported)  
+ > **id** - For ID based partitions, the range of that ID that should be set per partition  
 
  * Fifth paramter (p_premake) is how many additional partitions to stay ahead of the current partition. Default value is 3. This will keep at minimum 4 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th.
  * Sixth parameter (p_debug) is to turn on additional debugging information (not yet working).
