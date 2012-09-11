@@ -85,8 +85,6 @@ IF v_type = 'time-static' THEN
 --    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
-ELSIF v_type = 'id-static' THEN
-
 ELSIF v_type = 'time-dynamic' THEN
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
@@ -132,10 +130,8 @@ ELSIF v_type = 'time-dynamic' THEN
     RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
-ELSIF v_type = 'id-dynamic' THEN
-
 ELSE
-    RAISE EXCEPTION 'ERROR: Invalid partitioning type given: %', v_type;
+    RAISE EXCEPTION 'ERROR: Invalid time partitioning type given: %', v_type;
 END IF;
 
 
