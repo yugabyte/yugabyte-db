@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.91.1
+0.91.1 2012-09-11T00:26:52Z
 ---------------------------
 * The OS name is restored to the call to `os_name()`. The `getos.sh` shell
   script was not getting called during `make`. Thanks to Peter Eisentraut for
