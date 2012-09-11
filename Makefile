@@ -25,7 +25,7 @@ VERSION = $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 
 # We support 8.1 and later.
 ifeq ($(shell echo $(VERSION) | grep -qE " 7[.]|8[.]0" && echo yes || echo no),yes)
-$(error pgTAP requires PostgreSQL 8.0 or later. This is $(VERSION))
+$(error pgTAP requires PostgreSQL 8.1 or later. This is $(VERSION))
 endif
 
 # Compile the C code only if we're on 8.3 or older.
