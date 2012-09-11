@@ -1,7 +1,7 @@
 LICENSE AND COPYRIGHT
 ---------------------
 
-pg_partmaint is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
+PG Partition Manager (pg_partman) is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
 
 Copyright (c) 2012 OmniTI, Inc.
 

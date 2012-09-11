@@ -1,4 +1,4 @@
-PostgreSQL Partition Maintenance Extension (pg_partmaint)
+PostgreSQL Partition Manager Extension (pg_partman)
 --------------------------------------------------
 
 Extension to help make managing time or serial id based table partitioning easier. 

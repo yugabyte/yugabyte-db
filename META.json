@@ -1,5 +1,5 @@
 {
-    "name": "pg_partmaint",
+    "name": "pg_partman",
     "abstract": "Extension to manage partitioned tables by time or ID",
     "version": "0.1.0",
     "maintainer": [ 
@@ -18,19 +18,19 @@
     },
     "provides": {
         "pg_partmaint": {
-            "file": "sql/pg_partmaint.sql",
-            "docfile": "doc/partmaint.md",
+            "file": "sql/pg_partman.sql",
+            "docfile": "doc/partman.md",
             "version": "0.1.0",
             "abstract": "Extension to manage partitioned tables by time or ID"
         }
     },
     "resources": {
         "bugtracker": {
-            "web": "https://github.com/keithf4/pg_partmaint/issues"
+            "web": "https://github.com/keithf4/pg_partman/issues"
         },
         "repository": {
-            "url": "git://github.com/keithf4/pg_partmaint.git" ,
-            "web": "https://github.com/keithf4/pg_partmaint",
+            "url": "git://github.com/keithf4/pg_partman.git" ,
+            "web": "https://github.com/keithf4/pg_partman",
             "type": "git"
         }
     },    
@@ -41,6 +41,7 @@
     "tags": [
         "partition",
         "partitions",
+        "partitioning",
         "table",
         "tables"
     ]

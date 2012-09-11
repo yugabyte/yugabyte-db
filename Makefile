@@ -1,4 +1,4 @@
-EXTENSION = pg_partmaint
+EXTENSION = pg_partman
 EXTVERSION = $(shell grep default_version $(EXTENSION).control | \
                sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
                
