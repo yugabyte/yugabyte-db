@@ -53,16 +53,6 @@ CASE
 END CASE;
 
 EXECUTE 'SELECT max('||p_control||')::text FROM '||p_parent_table||' LIMIT 1' INTO v_max;
-IF v_max IS NOT NULL THEN
-    IF position('.' in p_parent_table) > 0 THEN 
-        v_tablename := substring(p_parent_table from position('.' in p_parent_table)+1);
-    END IF;
-
-    EXECUTE 'ALTER TABLE '||p_parent_table||' RENAME TO '||v_tablename||'_pre_partition';
-    EXECUTE 'CREATE TABLE '||p_parent_table||' (LIKE '||p_parent_table||'_pre_partition 
-        INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING COMMENTS)';
-
-END IF;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
     FOR i IN 0..p_premake LOOP

@@ -126,7 +126,7 @@ ELSIF v_type = 'id-dynamic' THEN
         RETURN NULL; 
         END $t$;';
 
-    RAISE NOTICE 'v_trig_func: %',v_trig_func;
+--    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
 ELSE

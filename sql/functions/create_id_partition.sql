@@ -22,7 +22,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
     END IF;
 
-    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS) INHERITS ('||p_parent_table||')';
+    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING INDEXES) INHERITS ('||p_parent_table||')';
     EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
         CHECK ('||p_control||'>='||quote_literal(v_id)||' AND '||p_control||'<'||quote_literal(v_id + p_interval)||')';
 
