@@ -3057,10 +3057,10 @@ specified function (optionally with the specified signature) does *not* exist.
 **Parameters**
 
 `:source_type`
-: Data type of the source value.
+: Data type of the source value without typemod.
 
 `:target_type`
-: Data type of the target value.
+: Data type of the target value without typemod.
 
 `:schema`
 : Schema in which to find the operator function.
@@ -3083,6 +3083,15 @@ resolve the function name as a description. For example:
     SELECT has_cast( 'integer', 'bigint', 'int8'::NAME );
 
 pgTAP will generate a useful description if you don't provide one.
+
+Note that pgTAP does not compare typemods. So if you wanted to test for a cast
+between, say, a `uuid` type and `bit(128)`, this will not work:
+
+    SELECT has_cast( 'integer', 'bit(128)' );
+
+But this will:
+
+    SELECT has_cast( 'integer', 'bit' );
 
 ### `hasnt_cast()` ###
 
