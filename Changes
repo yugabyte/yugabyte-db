@@ -3,6 +3,7 @@ Revision history for pgTAP
 
 0.92.0
 ---------------------------
+* Added note about the lack of typemods to the documentation for `has_cast()`.
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------
