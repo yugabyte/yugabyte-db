@@ -76,7 +76,7 @@ IF v_type = 'time-static' THEN
             ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_current_partition_timestamp)|| ' THEN 
                 INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); 
             ELSE 
-                RAISE EXCEPTION ''ERROR: Attempt to insert data into parent table outside partition trigger boundaries: %'', NEW.'||v_control||'; 
+                RETURN NEW; 
             END IF; 
         END IF; 
         RETURN NULL; 
@@ -122,7 +122,7 @@ ELSIF v_type = 'time-dynamic' THEN
         RETURN NULL; 
         END $t$;';
 
-    RAISE NOTICE 'v_trig_func: %',v_trig_func;
+    --RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
 ELSE

@@ -68,8 +68,6 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
         CHECK ('||p_control||'>='||quote_literal(v_partition_timestamp_start)||' AND '||p_control||'<'||quote_literal(v_partition_timestamp_end)||')';
 
-    ---- Call post_script() for given parent table
-
 END LOOP;
 
 RETURN v_partition_name;
