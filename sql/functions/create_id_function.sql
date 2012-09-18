@@ -34,7 +34,7 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMON CREATE FUNCTION: '||p_parent_table);
+    v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
     v_step_id := add_step(v_job_id, 'Creating partition function for table '||p_parent_table);
 END IF;
 
@@ -159,9 +159,6 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-END IF;
-
-IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
@@ -170,8 +167,8 @@ EXCEPTION
         IF v_jobmon_schema IS NOT NULL THEN
             EXECUTE 'SELECT set_config(''search_path'',''part,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMON CREATE FUNCTION: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition function maintenance for table '||p_parent_table||'failed');
+                v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
+                v_step_id := add_step(v_job_id, 'Partition function maintenance for table '||p_parent_table||' failed');
             ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;

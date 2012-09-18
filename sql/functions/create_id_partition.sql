@@ -30,7 +30,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        v_job_id := add_job('PARTMON CREATE TABLE: '||p_parent_table);
+        v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
         v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_id||' to '||(v_id + p_interval)-1);
     END IF;
 
@@ -60,8 +60,8 @@ EXCEPTION
         IF v_jobmon_schema IS NOT NULL THEN
             EXECUTE 'SELECT set_config(''search_path'',''part,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMON CREATE TABLE: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition maintenance for table'||p_parent_table||'failed');
+                v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
+                v_step_id := add_step(v_job_id, 'Partition maintenance for table '||p_parent_table||' failed');
             ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;

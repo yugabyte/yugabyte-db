@@ -3,23 +3,38 @@ CREATE OR REPLACE FUNCTION part.create_time_function(p_parent_table text) RETURN
     AS $$
 DECLARE
 
+v_1st_partition_name            text;
+v_1st_partition_timestamp       timestamp;
+v_2nd_partition_name            text;
+v_2nd_partition_timestamp       timestamp;
 v_control                       text;
 v_current_partition_name        text;
 v_current_partition_timestamp   timestamp;
 v_datetime_string               text;
 v_final_partition_timestamp     timestamp;
-v_1st_partition_name            text;
-v_1st_partition_timestamp       timestamp;
-v_2nd_partition_name            text;
-v_2nd_partition_timestamp       timestamp;
+v_job_id                        bigint;
+v_jobmon_schema                 text;
+v_old_search_path               text;
 v_part_interval                 interval;
 v_prev_partition_name           text;
 v_prev_partition_timestamp      timestamp;
+v_step_id                       bigint;
 v_trig_func                     text;
 v_type                          text;
 
 
 BEGIN
+
+SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+IF v_jobmon_schema IS NOT NULL THEN
+    SELECT current_setting('search_path') INTO v_old_search_path;
+    EXECUTE 'SELECT set_config(''search_path'',''part,'||v_jobmon_schema||''',''false'')';
+END IF;
+
+IF v_jobmon_schema IS NOT NULL THEN
+    v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
+    v_step_id := add_step(v_job_id, 'Creating partition function for table '||p_parent_table);
+END IF;
 
 SELECT type
     , part_interval::interval
@@ -85,6 +100,10 @@ IF v_type = 'time-static' THEN
 --    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'OK', 'Added function for current time interval: '||v_current_partition_timestamp||' to '||(v_1st_partition_timestamp-'1sec'::interval));
+    END IF;
+
 ELSIF v_type = 'time-dynamic' THEN
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
@@ -125,10 +144,35 @@ ELSIF v_type = 'time-dynamic' THEN
     --RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'OK', 'Added function for dynamic time table: '||p_parent_table);
+    END IF;
+
 ELSE
     RAISE EXCEPTION 'ERROR: Invalid time partitioning type given: %', v_type;
 END IF;
 
+IF v_jobmon_schema IS NOT NULL THEN
+    PERFORM close_job(v_job_id);
+    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+END IF;
+
+EXCEPTION
+    WHEN OTHERS THEN
+        IF v_jobmon_schema IS NOT NULL THEN
+            EXECUTE 'SELECT set_config(''search_path'',''part,'||v_jobmon_schema||''',''false'')';
+            IF v_job_id IS NULL THEN
+                v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
+                v_step_id := add_step(v_job_id, 'Partition function maintenance for table '||p_parent_table||' failed');
+            ELSIF v_step_id IS NULL THEN
+                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
+            END IF;
+            PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            PERFORM fail_job(v_job_id);
+            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+        END IF;
+
+        RAISE EXCEPTION '%', SQLERRM;
 
 END
 $$;
