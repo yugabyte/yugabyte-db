@@ -23,6 +23,7 @@
 #include "optimizer/planner.h"
 #include "optimizer/prep.h"
 #include "optimizer/restrictinfo.h"
+#include "parser/scansup.h"
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -837,42 +838,6 @@ skip_closed_parenthesis(const char *str)
 }
 
 /*
- * truncate_identifier() --- truncate an identifier to NAMEDATALEN-1 bytes.
- *
- * The given string is modified in-place, if necessary.  A warning is
- * issued if requested.
- *
- * We require the caller to pass in the string length since this saves a
- * strlen() call in some common usages.
- *
- * This function was copied and edited from truncate_identifier() in
- * src/backend/optimizer/path/allpaths.c
- */
-static void
-truncate_identifier(char *ident, int len, bool warn, const char *str)
-{
-	if (len >= NAMEDATALEN)
-	{
-		len = pg_mbcliplen(ident, len, NAMEDATALEN - 1);
-		if (warn)
-		{
-			/*
-			 * We avoid using %.*s here because it can misbehave if the data
-			 * is not valid in what libc thinks is the prevailing encoding.
-			 */
-			char		buf[NAMEDATALEN];
-
-			memcpy(buf, ident, len);
-			buf[len] = '\0';
-			parse_ereport(str,
-						  ("Identifier \"%s\" will be truncated to \"%s\".",
-						   ident, buf));
-		}
-		ident[len] = '\0';
-	}
-}
-
-/*
  * 二重引用符で囲まれているかもしれないトークンを読み取り word 引数に palloc
  * で確保したバッファに格納してそのポインタを返す。
  *
@@ -944,9 +909,9 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 		return NULL;
 	}
 
-	/*  */
-	if (truncate && strlen(buf.data) >= NAMEDATALEN)
-		truncate_identifier(buf.data, strlen(buf.data), true, str);
+	/* Truncate name if it's overlength */
+	if (truncate)
+		truncate_identifier(buf.data, strlen(buf.data), true);
 
 	*word = buf.data;
 
