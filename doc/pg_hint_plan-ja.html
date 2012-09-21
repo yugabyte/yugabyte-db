@@ -132,6 +132,7 @@ postgres=# </pre>
 <h4>GUCパラメータ</h4>
 <p>そのクエリの実行計画を作成している間だけGUCパラメータを変更できるヒントのグループで、「Set」のみが含まれます。</p>
 <p>設定したいGUCパラメータとそのパラメータの値を指定してください。<a href="http://www.postgresql.org/docs/9.1/static/sql-set.html">SET</a>コマンドで指定できるGUCパラメータならば全て指定できますが、効果があるのは<a href="http://www.postgresql.org/docs/9.1/static/runtime-config-query.html">問い合わせ計画</a>のGUCパラメータのみです。同じGUCパラメータに対して複数のGUCパラメータのヒントを指定した場合は、最後に指定したヒントが適用されます。</p>
+<p>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作は、<a href="#restrictions">使用上の注意と制約</a>を参照してください。</p>
 
 <h3 id="hint-GUC">pg_hint_planのGUCパラメータ</h3>
 <p>pg_hint_planの動作を制御するGUCパラメータを以下に記述します。</p>
@@ -282,6 +283,13 @@ postgres-#   ORDER BY a.aid;
 (6 行)
 
 postgres=#</pre>
+<dt>Setヒントの制限</dt>
+<dd>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作を、以下に示します。
+<ul>
+<li>pg_hint_plan.enableおよびpg_hint_plan.debug_printを指定した場合は、無視されます。</li>
+<li>pg_hint_plan.message_levelを指定した場合は、構文エラーと一部のSetヒントのエラーについてはクエリ開始時の設定レベルで出力され、それ以外のメッセージについてはSetヒントで指定したレベルで出力されます。</li>
+</ul>
+</dd>
 
 </dl>
 
