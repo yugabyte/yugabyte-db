@@ -1287,18 +1287,17 @@ set_config_option_wrapper(const char *name, const char *value,
 	PG_CATCH();
 	{
 		ErrorData	   *errdata;
-		MemoryContext	ecxt;
 
-		ecxt = MemoryContextSwitchTo(ccxt);
+		/* Save error info */
+		MemoryContextSwitchTo(ccxt);
 		errdata = CopyErrorData();
 		FlushErrorState();
+
 		ereport(elevel, (errcode(errdata->sqlerrcode),
 				errmsg("%s", errdata->message),
 				errdata->detail ? errdetail("%s", errdata->detail) : 0,
 				errdata->hint ? errhint("%s", errdata->hint) : 0));
 		FreeErrorData(errdata);
-
-		MemoryContextSwitchTo(ecxt);
 	}
 	PG_END_TRY();
 

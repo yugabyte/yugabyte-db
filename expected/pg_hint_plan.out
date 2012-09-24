@@ -5196,3 +5196,24 @@ NOTICE:  identifier "12345678901234567890123456789012345678901234567890123456789
 ERROR:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
 SET cursor_tuple_fraction TO 1234567890123456789012345678901234567890123456789012345678901234;
 ERROR:  1.23457e+63 is outside the valid range for parameter "cursor_tuple_fraction" (0 .. 1)
+-- multi error
+/*+ Set(enable_seqscan 100)Set(seq_page_cost on)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  parameter "enable_seqscan" requires a Boolean value
+INFO:  parameter "seq_page_cost" requires a numeric value
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Set(enable_seqscan 100)
+Set(seq_page_cost on)
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
