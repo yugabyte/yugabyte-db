@@ -2834,7 +2834,7 @@ EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), 
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near "t2)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
                         QUERY PLAN                        
 ----------------------------------------------------------
  Nested Loop
@@ -4585,7 +4585,7 @@ error hint:
 /*+SeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4597,7 +4597,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+SeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4734,7 +4734,7 @@ error hint:
 /*+TidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4746,7 +4746,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+TidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4775,7 +4775,7 @@ error hint:
 /*+NoSeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4787,7 +4787,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+NoSeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4816,7 +4816,7 @@ error hint:
 /*+NoIndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4828,7 +4828,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+NoIndexScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4857,7 +4857,7 @@ error hint:
 /*+NoBitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4869,7 +4869,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+NoBitmapScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4898,7 +4898,7 @@ error hint:
 /*+NoTidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -4910,7 +4910,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+NoTidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1

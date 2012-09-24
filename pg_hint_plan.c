@@ -345,7 +345,7 @@ _PG_init(void)
 {
 	/* Define custom GUC variables. */
 	DefineCustomBoolVariable("pg_hint_plan.enable",
-			 "Instructions or hints to the planner using block comments.",
+			 "Force planner to use plans specified in the hint comment preceding to the query.",
 							 NULL,
 							 &pg_hint_plan_enable,
 							 true,
@@ -356,7 +356,7 @@ _PG_init(void)
 							 NULL);
 
 	DefineCustomBoolVariable("pg_hint_plan.debug_print",
-							 "Logs each query's parse results of the hint.",
+							 "Logs results of hint parsing.",
 							 NULL,
 							 &pg_hint_plan_debug_print,
 							 false,
@@ -367,7 +367,7 @@ _PG_init(void)
 							 NULL);
 
 	DefineCustomEnumVariable("pg_hint_plan.parse_messages",
-							 "Messege level of the parse error.",
+							 "Messege level of parse errors.",
 							 NULL,
 							 &pg_hint_plan_parse_messages,
 							 INFO,
@@ -812,7 +812,7 @@ skip_opened_parenthesis(const char *str)
 
 	if (*str != '(')
 	{
-		parse_ereport(str, ("Opened parenthesis is necessary."));
+		parse_ereport(str, ("Opening parenthesis is necessary."));
 		return NULL;
 	}
 
@@ -828,7 +828,7 @@ skip_closed_parenthesis(const char *str)
 
 	if (*str != ')')
 	{
-		parse_ereport(str, ("Closed parenthesis is necessary."));
+		parse_ereport(str, ("Closing parenthesis is necessary."));
 		return NULL;
 	}
 
@@ -981,7 +981,7 @@ parse_hints(PlanHint *plan, Query *parse, const char *str)
 
 		if (parser->keyword == NULL)
 		{
-			parse_ereport(head, ("Keyword \"%s\" does not exist.", buf.data));
+			parse_ereport(head, ("Unrecognized hint keyword \"%s\".", buf.data));
 			pfree(buf.data);
 			return;
 		}
@@ -1037,7 +1037,7 @@ parse_head_comment(Query *parse)
 	/* 入れ子にしたブロックコメントはサポートしない */
 	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
 	{
-		parse_ereport(head, ("Block comments nest doesn't supported."));
+		parse_ereport(head, ("Nested block comments are not supported."));
 		return NULL;
 	}
 
@@ -1247,7 +1247,7 @@ LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse,
 	if (list_length(hint->relations) < 2)
 	{
 		parse_ereport(hint->base.hint_str,
-					  ("In %s hint, specified relation name 2 or more.",
+					  ("%s hint requires at least two relations.",
 					   HINT_LEADING));
 		hint->base.state = HINT_STATE_ERROR;
 	}
@@ -1803,7 +1803,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 			if (bms_is_member(relid, hint->joinrelids))
 			{
 				parse_ereport(hint->base.hint_str,
-							  ("Relation name \"%s\" is duplicate.", relname));
+							  ("Relation name \"%s\" is duplicated.", relname));
 				hint->base.state = HINT_STATE_ERROR;
 				break;
 			}
@@ -1852,7 +1852,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 		if (bms_is_member(relid, joinrelids))
 		{
 			parse_ereport(lhint->base.hint_str,
-						  ("Relation name \"%s\" is duplicate.", relname));
+						  ("Relation name \"%s\" is duplicated.", relname));
 			lhint->base.state = HINT_STATE_ERROR;
 			bms_free(joinrelids);
 			return;
@@ -2037,7 +2037,7 @@ get_num_baserels(List *initial_rels)
 		else
 		{
 			/* other values not expected here */
-			elog(ERROR, "unrecognized reloptkind type: %d", rel->reloptkind);
+			elog(ERROR, "Unrecognized reloptkind type: %d", rel->reloptkind);
 		}
 	}
 
@@ -2132,10 +2132,10 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				set_plain_rel_pathlist(root, rel, rte);
 			}
 			else
-				elog(ERROR, "unexpected relkind: %c", rte->relkind);
+				elog(ERROR, "Unexpected relkind: %c", rte->relkind);
 		}
 		else
-			elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
+			elog(ERROR, "Unexpected rtekind: %d", (int) rel->rtekind);
 	}
 }
 

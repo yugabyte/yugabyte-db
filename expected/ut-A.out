@@ -72,7 +72,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near "/* nest comment */ */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;"
-DETAIL:  Block comments nest doesn't supported.
+DETAIL:  Nested block comments are not supported.
           QUERY PLAN          
 ------------------------------
  Index Scan using t1_i1 on t1
@@ -1244,7 +1244,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**/" WHERE "/**/".c1 = 1;
 INFO:  hint syntax error at or near "/**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**/" WHERE "/**/".c1 = 1;"
-DETAIL:  Block comments nest doesn't supported.
+DETAIL:  Nested block comments are not supported.
              QUERY PLAN              
 -------------------------------------
  Index Scan using t1_i1 on t1 "/**/"
@@ -1255,7 +1255,7 @@ DETAIL:  Block comments nest doesn't supported.
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**//**//**/" WHERE "/**//**//**/".c1 = 1;
 INFO:  hint syntax error at or near "/**//**//**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**//**//**/" WHERE "/**//**//**/".c1 = 1;"
-DETAIL:  Block comments nest doesn't supported.
+DETAIL:  Nested block comments are not supported.
                  QUERY PLAN                  
 ---------------------------------------------
  Index Scan using t1_i1 on t1 "/**//**//**/"
@@ -1273,7 +1273,7 @@ INFO:  hint syntax error at or near "/**/あ")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "tT()"" 	
 Set/**/あ" WHERE "tT()"" 	
 Set/**/あ".c1 = 1;"
-DETAIL:  Block comments nest doesn't supported.
+DETAIL:  Nested block comments are not supported.
                 QUERY PLAN                
 ------------------------------------------
  Index Scan using t1_i1 on t1 "tT()""    
@@ -1309,7 +1309,7 @@ error hint:
 /*+Set(enable_indexscan off)Set enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near "enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -1329,7 +1329,7 @@ error hint:
 /*+Set(enable_indexscan off)Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near "Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -1389,7 +1389,7 @@ error hint:
 /*+Set(enable_indexscan off)NoSet(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near "NoSet(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Keyword "NoSet" does not exist.
+DETAIL:  Unrecognized hint keyword "NoSet".
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -1409,7 +1409,7 @@ error hint:
 /*+Set(enable_indexscan off)"Set"(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near ""Set"(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Keyword ""Set"" does not exist.
+DETAIL:  Unrecognized hint keyword ""Set"".
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -1430,7 +1430,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near "/* value */off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;"
-DETAIL:  Block comments nest doesn't supported.
+DETAIL:  Nested block comments are not supported.
           QUERY PLAN          
 ------------------------------
  Index Scan using t1_i1 on t1
@@ -1737,7 +1737,7 @@ DEBUG:  StartTransactionCommand
 DEBUG:  StartTransaction
 DEBUG:  name: unnamed; blockState:       DEFAULT; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
 DEBUG:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
 DEBUG:  CommitTransactionCommand
 DEBUG:  CommitTransaction
 DEBUG:  name: unnamed; blockState:       STARTED; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
@@ -1793,7 +1793,7 @@ DEBUG:  StartTransactionCommand
 DEBUG:  StartTransaction
 DEBUG:  name: unnamed; blockState:       DEFAULT; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
 DEBUG:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
 DEBUG:  CommitTransactionCommand
 DEBUG:  CommitTransaction
 DEBUG:  name: unnamed; blockState:       STARTED; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
@@ -1849,7 +1849,7 @@ DEBUG:  StartTransactionCommand
 DEBUG:  StartTransaction
 DEBUG:  name: unnamed; blockState:       DEFAULT; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
 DEBUG:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
 DEBUG:  CommitTransactionCommand
 DEBUG:  CommitTransaction
 DEBUG:  name: unnamed; blockState:       STARTED; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
@@ -1879,7 +1879,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 DEBUG:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -1902,7 +1902,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 DEBUG:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -1925,7 +1925,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 LOG:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -1948,7 +1948,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -1957,7 +1957,7 @@ DETAIL:  Opened parenthesis is necessary.
 SET client_min_messages TO notice;
 /*+Set*/SELECT 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -1973,7 +1973,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 NOTICE:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -1996,7 +1996,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 WARNING:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -2019,7 +2019,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 ERROR:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
 SET client_min_messages TO fatal;
 /*+Set*/SELECT 1;
 -- No. A-6-4-11
@@ -2033,7 +2033,7 @@ SHOW pg_hint_plan.parse_messages;
 
 /*+Set*/SELECT 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Opened parenthesis is necessary.
+DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -2075,7 +2075,7 @@ SHOW pg_hint_plan.parse_messages;
 -- No. A-7-1-1
 /*+"Set"(enable_indexscan on)*/SELECT 1;
 INFO:  hint syntax error at or near ""Set"(enable_indexscan on)"
-DETAIL:  Keyword ""Set"" does not exist.
+DETAIL:  Unrecognized hint keyword ""Set"".
  ?column? 
 ----------
         1
@@ -2091,7 +2091,7 @@ DETAIL:  Parameter name is necessary.
 
 /*+Set(enable_indexscan on*/SELECT 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
  ?column? 
 ----------
         1
@@ -3272,7 +3272,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near "NestLoop(t1 t1)"
-DETAIL:  Relation name "t1" is duplicate.
+DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
@@ -3335,7 +3335,7 @@ SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 ERROR:  hint syntax error at or near "NestLoop(t1 t1)"
-DETAIL:  Relation name "t1" is duplicate.
+DETAIL:  Relation name "t1" is duplicated.
 SELECT name, setting FROM settings;
            name            |  setting  
 ---------------------------+-----------
@@ -3432,7 +3432,7 @@ SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 ERROR:  hint syntax error at or near "NestLoop(t1 t1)"
-DETAIL:  Relation name "t1" is duplicate.
+DETAIL:  Relation name "t1" is duplicated.
 SELECT name, setting FROM settings;
            name            |  setting  
 ---------------------------+-----------

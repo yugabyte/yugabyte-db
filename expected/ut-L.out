@@ -541,7 +541,7 @@ error hint:
 /*+Leading(t4 t2 t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 INFO:  hint syntax error at or near "Leading(t4 t2 t3 t4)"
-DETAIL:  Relation name "t4" is duplicate.
+DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -596,7 +596,7 @@ error hint:
 /*+Leading(t4 t2 t2 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 INFO:  hint syntax error at or near "Leading(t4 t2 t2 t4)"
-DETAIL:  Relation name "t2" is duplicate.
+DETAIL:  Relation name "t2" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -3992,7 +3992,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 INFO:  hint syntax error at or near "Leading()"
-DETAIL:  In Leading hint, specified relation name 2 or more.
+DETAIL:  Leading hint requires at least two relations.
 INFO:  hint syntax error at or near "Leading(t2 t3 t1)Leading()"
 DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
@@ -4022,7 +4022,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 INFO:  hint syntax error at or near "Leading()"
-DETAIL:  In Leading hint, specified relation name 2 or more.
+DETAIL:  Leading hint requires at least two relations.
 INFO:  hint syntax error at or near "Leading(t3 t1 t2)Leading(t2 t3 t1)Leading()"
 DETAIL:  Conflict leading hint.
 INFO:  hint syntax error at or near "Leading(t2 t3 t1)Leading()"
@@ -4058,7 +4058,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 INFO:  hint syntax error at or near "Leading()"
-DETAIL:  In Leading hint, specified relation name 2 or more.
+DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4085,7 +4085,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 INFO:  hint syntax error at or near "Leading(t1)"
-DETAIL:  In Leading hint, specified relation name 2 or more.
+DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:

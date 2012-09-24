@@ -358,7 +358,7 @@ error hint:
 /*+HashJoin(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near "HashJoin(t1 t1)"
-DETAIL:  Relation name "t1" is duplicate.
+DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -380,9 +380,9 @@ HashJoin(t1 t1)
 /*+HashJoin(t1 t1)HashJoin(t2 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near "HashJoin(t1 t1)HashJoin(t2 t2)"
-DETAIL:  Relation name "t1" is duplicate.
+DETAIL:  Relation name "t1" is duplicated.
 INFO:  hint syntax error at or near "HashJoin(t2 t2)"
-DETAIL:  Relation name "t2" is duplicate.
+DETAIL:  Relation name "t2" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -418,7 +418,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND 
 /*+HashJoin(t1 t2 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 INFO:  hint syntax error at or near "HashJoin(t1 t2 t1 t2)"
-DETAIL:  Relation name "t1" is duplicate.
+DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:

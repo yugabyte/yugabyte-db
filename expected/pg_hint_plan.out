@@ -43,7 +43,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "Test (t1 t2) "
-DETAIL:  Keyword "Test" does not exist.
+DETAIL:  Unrecognized hint keyword "Test".
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -88,7 +88,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "/* nest comment */ */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;"
-DETAIL:  Block comments nest doesn't supported.
+DETAIL:  Nested block comments are not supported.
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -241,7 +241,7 @@ error hint:
 /*+Set(work_mem TO "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near ""1MB")"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -253,7 +253,7 @@ DETAIL:  Closed parenthesis is necessary.
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  hint syntax error at or near "t2)"
-DETAIL:  Closed parenthesis is necessary.
+DETAIL:  Closing parenthesis is necessary.
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -643,7 +643,7 @@ DETAIL:  Relation name is necessary.
 /*+Leading( )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  hint syntax error at or near "Leading( )"
-DETAIL:  In Leading hint, specified relation name 2 or more.
+DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -670,7 +670,7 @@ Leading()
 /*+Leading( t3 )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  hint syntax error at or near "Leading( t3 )"
-DETAIL:  In Leading hint, specified relation name 2 or more.
+DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -797,7 +797,7 @@ error hint:
 /*+Leading(t3 t4 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  hint syntax error at or near "Leading(t3 t4 t4)"
-DETAIL:  Relation name "t4" is duplicate.
+DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
