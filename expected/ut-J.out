@@ -4420,7 +4420,7 @@ DETAIL:  Relation name is necessary.
 /*+NestLoop(t1)*/
 SELECT * FROM s1.t1 WHERE false;
 INFO:  hint syntax error at or near ")"
-DETAIL:  Specified relation more than two.
+DETAIL:  NestLoop hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:

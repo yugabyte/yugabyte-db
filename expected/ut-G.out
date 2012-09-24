@@ -836,7 +836,7 @@ Set(client_min_messages DEBU)
 /*+SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) */
 SELECT * FROM s1.t1 a, s1.t2 b WHERE false;
 INFO:  hint syntax error at or near ") "
-DETAIL:  Specified relation more than two.
+DETAIL:  NestLoop hint requires at least two relations.
 INFO:  hint syntax error at or near "SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) "
 DETAIL:  Conflict scan method hint.
 LOG:  pg_hint_plan:
