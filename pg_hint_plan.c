@@ -1196,7 +1196,9 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse,
 	/* Join 対象のテーブルは最低でも2つ指定する必要がある */
 	if (hint->nrels < 2)
 	{
-		parse_ereport(str, ("Specified relation more than two."));
+		parse_ereport(str,
+					  ("%s hint requires at least two relations.",
+					   hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
 	}
 
