@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
+CREATE FUNCTION create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -43,7 +43,7 @@ SELECT type
     , control
     , premake
     , last_partition
-FROM part.part_config 
+FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'id-static' OR type = 'id-dynamic')
 INTO v_type, v_part_interval, v_control, v_premake, v_last_partition;
@@ -92,10 +92,10 @@ IF v_type = 'id-static' THEN
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
                 v_next_partition_id := (substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint) + '||v_part_interval||';
                 IF ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' THEN 
-                    v_next_partition_name := part.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
+                    v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
                         ||v_part_interval||', ARRAY[v_next_partition_id]);
-                    UPDATE part.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
-                    PERFORM part.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                    UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
+                    PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
                 END IF;
             END IF;
         END IF; 
@@ -128,11 +128,11 @@ ELSIF v_type = 'id-dynamic' THEN
                 v_last_partition_id = substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint;
                 v_next_partition_id := v_last_partition_id + '||v_part_interval||';
                 IF ((v_next_partition_id - v_current_partition_id) / '||quote_literal(v_part_interval)||') <= '||quote_literal(v_premake)||' THEN 
-                    v_next_partition_name := part.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
+                    v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
                         ||quote_literal(v_part_interval)||', ARRAY[v_next_partition_id]);
                     IF v_next_partition_name IS NOT NULL THEN
-                        UPDATE part.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
-                        PERFORM part.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                        UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
+                        PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
                     END IF;
                 END IF;
             END IF;

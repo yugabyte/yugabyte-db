@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_id_partition (p_parent_table text, p_control text, p_interval bigint, p_partition_ids bigint[]) RETURNS text
+CREATE FUNCTION create_id_partition (p_parent_table text, p_control text, p_interval bigint, p_partition_ids bigint[]) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE

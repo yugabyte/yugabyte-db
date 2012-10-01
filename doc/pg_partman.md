@@ -36,4 +36,20 @@ For this extension, the attributes of the child partitions are all obtained from
  * Will automatically pre-create the new partition, keeping ahead by the number set as the **premake**. 
  * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run hourly, etc.
 
+*create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
+ * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set. 
+ * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will prevent a failure from causing an extensive rollback.
+ * First parameter (p_parent_table) is the existing parent table.
+ * Second parameter is how many partitions will be made in a single run of the function. Default value is 1.
+ * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty.
 
+*create_prev_id_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
+ * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set. 
+ * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will prevent a failure from causing an extensive rollback.
+ * First parameter (p_parent_table) is the existing parent table.
+ * Second parameter is how many partitions will be made in a single run of the function. Default value is 1.
+ * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty.
+
+*check_parent() RETURNS SETOF (parent table, count)*
+ * Run this function to monitor that the parent tables of the partition sets that pg_partmon manages do not get rows inserted to them.
+ * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.

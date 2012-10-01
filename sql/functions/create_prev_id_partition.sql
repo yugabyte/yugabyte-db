@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_prev_id_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint
+CREATE FUNCTION create_prev_id_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -20,7 +20,7 @@ BEGIN
 SELECT type
     , part_interval::bigint
     , control
-FROM part.part_config 
+FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'id-static' OR type = 'id-dynamic')
 INTO v_type, v_part_interval, v_control;
@@ -42,7 +42,7 @@ RAISE NOTICE 'v_partition_id: %',v_partition_id;
     v_max_partition_id := v_min_partition_id + (v_part_interval*(i+1));
 RAISE NOTICE 'v_max_partition_id: %',v_max_partition_id;
 
-    v_sql := 'SELECT part.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
+    v_sql := 'SELECT @extschema@.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
     ||v_part_interval||','||quote_literal(v_partition_id)||')';
     RAISE NOTICE 'v_sql: %', v_sql;
     EXECUTE v_sql INTO v_last_partition_name;

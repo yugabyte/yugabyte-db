@@ -1,4 +1,4 @@
-CREATE FUNCTION part.run_maintenance() RETURNS void 
+CREATE FUNCTION run_maintenance() RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -17,7 +17,7 @@ v_sql := 'SELECT parent_table
     , part_interval::interval
     , control
     , last_partition
-FROM part.part_config where type = ''time-static'' or type = ''time-dynamic''';
+FROM @extschema@.part_config where type = ''time-static'' or type = ''time-dynamic''';
 
 FOR v_row IN 
 SELECT parent_table
@@ -27,7 +27,7 @@ SELECT parent_table
     , premake
     , datetime_string
     , last_partition
-FROM part.part_config WHERE type = 'time-static' OR type = 'time-dynamic'
+FROM @extschema@.part_config WHERE type = 'time-static' OR type = 'time-dynamic'
 LOOP
     
     CASE
@@ -56,11 +56,11 @@ LOOP
 
     IF v_premade_count < v_row.premake THEN
         RAISE NOTICE 'Creating next partition';
-        EXECUTE 'SELECT part.create_next_time_partition('||quote_literal(v_row.parent_table)||')';
+        EXECUTE 'SELECT @extschema@.create_next_time_partition('||quote_literal(v_row.parent_table)||')';
     END IF;
 
     IF v_row.type = 'time-static' THEN
-        EXECUTE 'SELECT part.create_time_function('||quote_literal(v_row.parent_table)||')';
+        EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
     END IF;
 
 END LOOP; -- end of main loop

@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_time_function(p_parent_table text) RETURNS void
+CREATE FUNCTION create_time_function(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -40,7 +40,7 @@ SELECT type
     , part_interval::interval
     , control
     , datetime_string
-FROM part.part_config 
+FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'time-static' OR type = 'time-dynamic')
 INTO v_type, v_part_interval, v_control, v_datetime_string;

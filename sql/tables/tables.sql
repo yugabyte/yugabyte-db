@@ -1,4 +1,4 @@
-CREATE TABLE part.part_config (
+CREATE TABLE part_config (
     parent_table text NOT NULL,
     type part.partition_type NOT NULL,
     part_interval text NOT NULL,
@@ -9,5 +9,5 @@ CREATE TABLE part.part_config (
     last_partition text,
     CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
 );
-CREATE INDEX part_config_type_idx ON part.part_config (type);
---SELECT pg_catalog.pg_extension_config_dump('part_config', '');
+CREATE INDEX part_config_type_idx ON @extschema@.part_config (type);
+SELECT pg_catalog.pg_extension_config_dump('part_config', '');

@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_time_partition (p_parent_table text, p_control text, p_interval interval, p_datetime_string text, p_partition_times timestamp[]) RETURNS text
+CREATE FUNCTION create_time_partition (p_parent_table text, p_control text, p_interval interval, p_datetime_string text, p_partition_times timestamp[]) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE

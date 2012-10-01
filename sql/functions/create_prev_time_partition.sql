@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint
+CREATE FUNCTION create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -22,7 +22,7 @@ SELECT type
     , part_interval::interval
     , control
     , datetime_string
-FROM part.part_config 
+FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'time-static' OR type = 'time-dynamic')
 INTO v_type, v_part_interval, v_control, v_datetime_string;
@@ -61,7 +61,7 @@ RAISE NOTICE 'v_partition_timestamp: %',v_partition_timestamp;
     v_max_partition_timestamp := v_min_partition_timestamp + (v_part_interval*(i+1));
 RAISE NOTICE 'v_max_partition_timestamp: %',v_max_partition_timestamp;
 
-    v_sql := 'SELECT part.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
+    v_sql := 'SELECT @extschema@.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
     ||quote_literal(v_part_interval)||','||quote_literal(v_datetime_string)||','||quote_literal(v_partition_timestamp)||')';
     RAISE NOTICE 'v_sql: %', v_sql;
     EXECUTE v_sql INTO v_last_partition_name;

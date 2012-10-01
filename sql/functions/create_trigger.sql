@@ -1,4 +1,4 @@
-CREATE FUNCTION part.create_trigger(p_parent_table text) RETURNS void
+CREATE FUNCTION create_trigger(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
