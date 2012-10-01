@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false) RETURNS void
+CREATE FUNCTION part.create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -12,7 +12,8 @@ v_last_partition_name   text;
 v_old_search_path       text;
 v_partition_time        timestamp[];
 v_partition_id          bigint[];
-v_max                   text;
+v_max                   bigint;
+v_starting_partition_id bigint;
 v_step_id               bigint;
 v_tablename             text;
 v_time_interval         interval;
@@ -84,10 +85,11 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
 END IF;
 
 IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
-  --  EXECUTE 'SELECT COALESCE(max('||p_control||')::text, '0') FROM '||p_parent_table||' LIMIT 1' INTO v_max;
-  --  v_max := v_max::bigint;
+    -- If there is already data, start partitioning with the highest current value
+    EXECUTE 'SELECT COALESCE(max('||p_control||')::bigint, 0) FROM '||p_parent_table||' LIMIT 1' INTO v_max;
+    v_starting_partition_id := v_max - (v_max % v_id_interval);
     FOR i IN 0..p_premake LOOP
-        v_partition_id = array_append(v_partition_id, v_id_interval*i);
+        v_partition_id = array_append(v_partition_id, (v_id_interval*i)+v_starting_partition_id);
     END LOOP;
 
     EXECUTE 'SELECT part.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','
@@ -108,18 +110,12 @@ END IF;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
     EXECUTE 'SELECT part.create_time_function('||quote_literal(p_parent_table)||')';
-
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time function created');
     END IF;
 ELSIF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
-    IF v_max IS NOT NULL THEN
-        v_current_id := v_max::bigint;
-    ELSE
-        v_current_id := 0;
-    END IF;
+    v_current_id := COALESCE(v_max, 0);    
     EXECUTE 'SELECT part.create_id_function('||quote_literal(p_parent_table)||','||v_current_id||')';  
-
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID function created');
     END IF;
@@ -151,5 +147,6 @@ EXCEPTION
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
+        RAISE EXCEPTION '%', SQLERRM;
 END
 $$;

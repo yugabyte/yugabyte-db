@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_trigger(p_parent_table text) RETURNS void
+CREATE FUNCTION part.create_trigger(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -13,10 +13,10 @@ IF position('.' in p_parent_table) > 0 THEN
 END IF;
 
 
-v_trig := 'CREATE TRIGGER '||v_tablename||'_part_trig BEFORE INSERT OR UPDATE OR DELETE ON '||p_parent_table||
+v_trig := 'CREATE TRIGGER '||v_tablename||'_part_trig BEFORE INSERT ON '||p_parent_table||
     ' FOR EACH ROW EXECUTE PROCEDURE '||p_parent_table||'_part_trig_func()';
 
-RAISE NOTICE 'v_trig: %', v_trig;
+--RAISE NOTICE 'v_trig: %', v_trig;
 EXECUTE v_trig;
 
 END

@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_time_partition (p_parent_table text, p_control text, p_interval interval, p_datetime_string text, p_partition_times timestamp[]) RETURNS text
+CREATE FUNCTION part.create_time_partition (p_parent_table text, p_control text, p_interval interval, p_datetime_string text, p_partition_times timestamp[]) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -80,9 +80,10 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
     END IF;
 
-    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING INDEXES) INHERITS ('||p_parent_table||')';
-    EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
+    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING INDEXES)';
+    EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check
         CHECK ('||p_control||'>='||quote_literal(v_partition_timestamp_start)||' AND '||p_control||'<'||quote_literal(v_partition_timestamp_end)||')';
+    EXECUTE 'ALTER TABLE '||v_partition_name||' INHERIT '||p_parent_table;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -104,15 +105,13 @@ EXCEPTION
             IF v_job_id IS NULL THEN
                 v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
                 v_step_id := add_step(v_job_id, 'Partition maintenance for table '||p_parent_table||' failed');
-            ELSIF v_step_id IS NULL THEN
+                    RAISE EXCEPTION '%', SQLERRM;ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;
             PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
-
         RAISE EXCEPTION '%', SQLERRM;
-
 END
 $$;

@@ -1,4 +1,3 @@
 default_version = '0.1.0'
 comment = 'Extension to manage partitioned tables by time or ID'
-requires = 'pg_jobmon'
 relocatable = false

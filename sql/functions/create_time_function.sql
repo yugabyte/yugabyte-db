@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_time_function(p_parent_table text) RETURNS void
+CREATE FUNCTION part.create_time_function(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -171,8 +171,6 @@ EXCEPTION
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
-
         RAISE EXCEPTION '%', SQLERRM;
-
 END
 $$;

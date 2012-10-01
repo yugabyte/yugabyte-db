@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
+CREATE FUNCTION part.create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -136,10 +136,7 @@ ELSIF v_type = 'id-dynamic' THEN
                     END IF;
                 END IF;
             END IF;
-        
             EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
-
-            
         END IF;
         
         RETURN NULL; 
@@ -147,7 +144,6 @@ ELSIF v_type = 'id-dynamic' THEN
 
 --    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
-
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Added function for dynamic id table: '||p_parent_table);
@@ -176,9 +172,6 @@ EXCEPTION
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
-
         RAISE EXCEPTION '%', SQLERRM;
-
-
 END
 $$;

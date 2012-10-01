@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.run_maintenance() RETURNS void 
+CREATE FUNCTION part.run_maintenance() RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE

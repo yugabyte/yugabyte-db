@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION part.create_next_time_partition (p_parent_table text) RETURNS void
+CREATE FUNCTION part.create_next_time_partition (p_parent_table text) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE

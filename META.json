@@ -11,7 +11,9 @@
     "prereqs": {
         "runtime": {
             "requires": {
-                "PostgreSQL": "9.1.0",
+                "PostgreSQL": "9.1.0"
+            },
+            "recommends": {
                 "pg_jobmon": "0.3.0"
             }
         }
@@ -19,7 +21,7 @@
     "provides": {
         "pg_partmaint": {
             "file": "sql/pg_partman.sql",
-            "docfile": "doc/partman.md",
+            "docfile": "doc/pg_partman.md",
             "version": "0.1.0",
             "abstract": "Extension to manage partitioned tables by time or ID"
         }
