@@ -1477,6 +1477,8 @@ push_stack(PlanHint *plan)
 static void
 pop_stack(void)
 {
+	PlanHintDelete(current_hint);
+
 	/* ヒントのスタックが空の場合はエラーを返す */
 	if(PlanHintStack == NIL)
 	{
@@ -1562,7 +1564,6 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (pg_hint_plan_debug_print)
 		PlanHintDump(current_hint);
 
-	PlanHintDelete(current_hint);
 	/*current_hint = NULL;*/
 	pop_stack();
 
