@@ -95,6 +95,7 @@ enum
 
 typedef struct Hint Hint;
 typedef struct PlanHint PlanHint;
+typedef struct PlanHintStack PlanHintStack;
 
 typedef Hint *(*HintCreateFunction) (const char *hint_str,
 									 const char *keyword);
@@ -208,6 +209,15 @@ struct PlanHint
 	GucContext		context;			/* which GUC parameters can we set? */
 };
 
+struct PlanHintStack
+{
+	PlanHint	  *plan_hint;
+	PlanHintStack *next;
+};
+
+struct PlanHintStack *head = NULL;
+
+
 /*
  * Describes a hint parser module which is bound with particular hint keyword.
  */
@@ -220,6 +230,9 @@ typedef struct HintParser
 /* Module callbacks */
 void		_PG_init(void);
 void		_PG_fini(void);
+
+static void push_stack(PlanHint *plan);
+static void pop_stack(void);
 
 static void pg_hint_plan_ProcessUtility(Node *parsetree,
 										const char *queryString,
@@ -1457,11 +1470,49 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 								isTopLevel, dest, completionTag);
 }
 
+static void
+push_stack(PlanHint *plan)
+{
+	struct PlanHintStack *hint_stack;
+
+/*elog(WARNING,"push");*/
+	hint_stack = palloc(sizeof(PlanHintStack));
+	hint_stack->plan_hint = plan;
+	hint_stack->next = head;
+	head = hint_stack;
+
+global = head->plan_hint;
+}
+
+static void
+pop_stack(void)
+{
+	struct PlanHintStack *hint_stack;
+
+/*elog(WARNING,"pop");*/
+	if(!head)
+	{
+		elog(ERROR, "hint stack is empty");
+		return;
+	}
+
+	hint_stack = head;
+	head = hint_stack->next;
+
+	pfree(hint_stack);
+
+if(!head)
+	global = NULL;
+else
+	global = head->plan_hint;
+}
+
 static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	int				save_nestlevel;
 	PlannedStmt	   *result;
+	PlanHint	   *plan;
 
 	/*
 	 * hintが指定されない、または空のhintを指定された場合は通常のparser処理をお
@@ -1469,7 +1520,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * 他のフック関数で実行されるhint処理をスキップするために、global 変数をNULL
 	 * に設定しておく。
 	 */
-	if (!pg_hint_plan_enable || (global = parse_head_comment(parse)) == NULL)
+	if (!pg_hint_plan_enable || (plan = parse_head_comment(parse)) == NULL)
 	{
 		global = NULL;
 
@@ -1478,6 +1529,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		else
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
+
+	/*global = plan;*/
+	push_stack(plan);
 
 	/* Set hint で指定されたGUCパラメータを設定する */
 	save_nestlevel = set_config_options(global->set_hints,
@@ -1516,7 +1570,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		PlanHintDump(global);
 
 	PlanHintDelete(global);
-	global = NULL;
+	/*global = NULL;*/
+	pop_stack();
 
 	return result;
 }
