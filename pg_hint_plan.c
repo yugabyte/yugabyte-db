@@ -1514,13 +1514,16 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	PlannedStmt	   *result;
 	PlanHint	   *plan;
 
+	/* 有効なヒントを保存する。 */
+	plan = parse_head_comment(parse);
+
 	/*
 	 * hintが指定されない、または空のhintを指定された場合は通常のparser処理をお
 	 * こなう。
 	 * 他のフック関数で実行されるhint処理をスキップするために、global 変数をNULL
 	 * に設定しておく。
 	 */
-	if (!pg_hint_plan_enable || (plan = parse_head_comment(parse)) == NULL)
+	if (!pg_hint_plan_enable || plan == NULL)
 	{
 		global = NULL;
 
