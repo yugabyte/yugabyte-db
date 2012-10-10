@@ -95,7 +95,6 @@ enum
 
 typedef struct Hint Hint;
 typedef struct PlanHint PlanHint;
-typedef struct PlanHintStack PlanHintStack;
 
 typedef Hint *(*HintCreateFunction) (const char *hint_str,
 									 const char *keyword);
@@ -209,15 +208,6 @@ struct PlanHint
 	GucContext		context;			/* which GUC parameters can we set? */
 };
 
-struct PlanHintStack
-{
-	PlanHint	  *plan_hint;
-	PlanHintStack *next;
-};
-
-struct PlanHintStack *head = NULL;
-
-
 /*
  * Describes a hint parser module which is bound with particular hint keyword.
  */
@@ -323,6 +313,9 @@ static join_search_hook_type prev_join_search = NULL;
 
 /* フック関数をまたがって使用する情報を管理する */
 static PlanHint *current_hint = NULL;
+
+/* 有効なヒントをスタック構造で管理する */
+static List *PlanHintStack = NIL;
 
 /*
  * EXECUTEコマンド実行時に、ステートメント名を格納する。
@@ -1470,41 +1463,38 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 								isTopLevel, dest, completionTag);
 }
 
+/*  */
 static void
 push_stack(PlanHint *plan)
 {
-	struct PlanHintStack *hint_stack;
+	/* 新しいヒントをスタックに積む。 */
+	PlanHintStack = lcons(plan, PlanHintStack);
 
-/*elog(WARNING,"push");*/
-	hint_stack = palloc(sizeof(PlanHintStack));
-	hint_stack->plan_hint = plan;
-	hint_stack->next = head;
-	head = hint_stack;
-
-current_hint = head->plan_hint;
+	/* 先ほどスタックに積んだヒントを現在のヒントとしてcurrent_hintに格納する。 */
+	current_hint = (PlanHint *) lfirst(list_head(PlanHintStack));
 }
 
 static void
 pop_stack(void)
 {
-	struct PlanHintStack *hint_stack;
-
-/*elog(WARNING,"pop");*/
-	if(!head)
+	/* ヒントのスタックが空の場合はエラーを返す */
+	if(PlanHintStack == NIL)
 	{
 		elog(ERROR, "hint stack is empty");
 		return;
 	}
+	/* ヒントのスタックから一番上のものを取り除く。 */
+	PlanHintStack = list_delete_first(PlanHintStack);
 
-	hint_stack = head;
-	head = hint_stack->next;
-
-	pfree(hint_stack);
-
-if(!head)
-	current_hint = NULL;
-else
-	current_hint = head->plan_hint;
+	/* 
+	 * ヒントのスタックが空の場合は、current_hintの中身を削除する。
+	 * ヒントのスタックが残っている場合は、current_hintにスタックの一番上の値を
+	 * 格納する。
+	 */
+	if(PlanHintStack == NIL)
+		current_hint = NULL;
+	else
+		current_hint = (PlanHint *) lfirst(list_head(PlanHintStack));
 }
 
 static PlannedStmt *
