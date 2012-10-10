@@ -1477,6 +1477,7 @@ push_stack(PlanHint *plan)
 static void
 pop_stack(void)
 {
+	/* current_hintで使用しているメモリを開放する。 */
 	PlanHintDelete(current_hint);
 
 	/* ヒントのスタックが空の場合はエラーを返す */
@@ -1525,7 +1526,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
 
-	/*current_hint = plan;*/
+	/* 現在のヒントをスタックに積む。 */
 	push_stack(plan);
 
 	/* Set hint で指定されたGUCパラメータを設定する */
@@ -1564,7 +1565,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (pg_hint_plan_debug_print)
 		PlanHintDump(current_hint);
 
-	/*current_hint = NULL;*/
+	/*
+	 * 現在のヒントで使用中のメモリを開放し、スタックから取り除く。
+	 * その後、現在のヒントの値をスタックに積む前のものに戻す。
+	 */
 	pop_stack();
 
 	return result;
