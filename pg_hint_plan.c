@@ -322,7 +322,7 @@ static get_relation_info_hook_type prev_get_relation_info = NULL;
 static join_search_hook_type prev_join_search = NULL;
 
 /* フック関数をまたがって使用する情報を管理する */
-static PlanHint *global = NULL;
+static PlanHint *current_hint = NULL;
 
 /*
  * EXECUTEコマンド実行時に、ステートメント名を格納する。
@@ -1362,7 +1362,7 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 		)
 		mask = enforce_mask;
 	else
-		mask = enforce_mask & global->init_scan_mask;
+		mask = enforce_mask & current_hint->init_scan_mask;
 
 	SET_CONFIG_OPTION("enable_seqscan", ENABLE_SEQSCAN);
 	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
@@ -1379,7 +1379,7 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 		enforce_mask == ENABLE_HASHJOIN)
 		mask = enforce_mask;
 	else
-		mask = enforce_mask & global->init_join_mask;
+		mask = enforce_mask & current_hint->init_join_mask;
 
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
@@ -1481,7 +1481,7 @@ push_stack(PlanHint *plan)
 	hint_stack->next = head;
 	head = hint_stack;
 
-global = head->plan_hint;
+current_hint = head->plan_hint;
 }
 
 static void
@@ -1502,9 +1502,9 @@ pop_stack(void)
 	pfree(hint_stack);
 
 if(!head)
-	global = NULL;
+	current_hint = NULL;
 else
-	global = head->plan_hint;
+	current_hint = head->plan_hint;
 }
 
 static PlannedStmt *
@@ -1520,12 +1520,12 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	/*
 	 * hintが指定されない、または空のhintを指定された場合は通常のparser処理をお
 	 * こなう。
-	 * 他のフック関数で実行されるhint処理をスキップするために、global 変数をNULL
+	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数をNULL
 	 * に設定しておく。
 	 */
 	if (!pg_hint_plan_enable || plan == NULL)
 	{
-		global = NULL;
+		current_hint = NULL;
 
 		if (prev_planner)
 			return (*prev_planner) (parse, cursorOptions, boundParams);
@@ -1533,28 +1533,28 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
 
-	/*global = plan;*/
+	/*current_hint = plan;*/
 	push_stack(plan);
 
 	/* Set hint で指定されたGUCパラメータを設定する */
-	save_nestlevel = set_config_options(global->set_hints,
-										global->num_hints[HINT_TYPE_SET],
-										global->context);
+	save_nestlevel = set_config_options(current_hint->set_hints,
+										current_hint->num_hints[HINT_TYPE_SET],
+										current_hint->context);
 
 	if (enable_seqscan)
-		global->init_scan_mask |= ENABLE_SEQSCAN;
+		current_hint->init_scan_mask |= ENABLE_SEQSCAN;
 	if (enable_indexscan)
-		global->init_scan_mask |= ENABLE_INDEXSCAN;
+		current_hint->init_scan_mask |= ENABLE_INDEXSCAN;
 	if (enable_bitmapscan)
-		global->init_scan_mask |= ENABLE_BITMAPSCAN;
+		current_hint->init_scan_mask |= ENABLE_BITMAPSCAN;
 	if (enable_tidscan)
-		global->init_scan_mask |= ENABLE_TIDSCAN;
+		current_hint->init_scan_mask |= ENABLE_TIDSCAN;
 	if (enable_nestloop)
-		global->init_join_mask |= ENABLE_NESTLOOP;
+		current_hint->init_join_mask |= ENABLE_NESTLOOP;
 	if (enable_mergejoin)
-		global->init_join_mask |= ENABLE_MERGEJOIN;
+		current_hint->init_join_mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
-		global->init_join_mask |= ENABLE_HASHJOIN;
+		current_hint->init_join_mask |= ENABLE_HASHJOIN;
 
 	if (prev_planner)
 		result = (*prev_planner) (parse, cursorOptions, boundParams);
@@ -1570,10 +1570,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * Print hint if debugging.
 	 */
 	if (pg_hint_plan_debug_print)
-		PlanHintDump(global);
+		PlanHintDump(current_hint);
 
-	PlanHintDelete(global);
-	/*global = NULL;*/
+	PlanHintDelete(current_hint);
+	/*current_hint = NULL;*/
 	pop_stack();
 
 	return result;
@@ -1606,9 +1606,9 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 	 * スキャン方式のヒントのリストから、検索対象のリレーションと名称が一致する
 	 * ヒントを検索する。
 	 */
-	for (i = 0; i < global->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+	for (i = 0; i < current_hint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
 	{
-		ScanMethodHint *hint = global->scan_hints[i];
+		ScanMethodHint *hint = current_hint->scan_hints[i];
 
 		/* すでに無効となっているヒントは検索対象にしない。 */
 		if (!hint_state_enabled(hint))
@@ -1690,15 +1690,15 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
 
 	/* 有効なヒントが指定されなかった場合は処理をスキップする。 */
-	if (!global)
+	if (!current_hint)
 		return;
 
 	if (inhparent)
 	{
 		/* store does relids of parent table. */
-		global->parent_relid = rel->relid;
+		current_hint->parent_relid = rel->relid;
 	}
-	else if (global->parent_relid != 0)
+	else if (current_hint->parent_relid != 0)
 	{
 		/*
 		 * We use the same GUC parameter if this table is the child table of a
@@ -1712,31 +1712,31 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
 
 			/* This rel is child table. */
-			if (appinfo->parent_relid == global->parent_relid &&
+			if (appinfo->parent_relid == current_hint->parent_relid &&
 				appinfo->child_relid == rel->relid)
 			{
-				if (global->parent_hint)
-					delete_indexes(global->parent_hint, rel);
+				if (current_hint->parent_hint)
+					delete_indexes(current_hint->parent_hint, rel);
 
 				return;
 			}
 		}
 
 		/* This rel is not inherit table. */
-		global->parent_relid = 0;
-		global->parent_hint = NULL;
+		current_hint->parent_relid = 0;
+		current_hint->parent_hint = NULL;
 	}
 
 	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
 	if ((hint = find_scan_hint(root, rel)) == NULL)
 	{
-		set_scan_config_options(global->init_scan_mask, global->context);
+		set_scan_config_options(current_hint->init_scan_mask, current_hint->context);
 		return;
 	}
-	set_scan_config_options(hint->enforce_mask, global->context);
+	set_scan_config_options(hint->enforce_mask, current_hint->context);
 	hint->base.state = HINT_STATE_USED;
 	if (inhparent)
-		global->parent_hint = hint;
+		current_hint->parent_hint = hint;
 
 	delete_indexes(hint, rel);
 }
@@ -1809,7 +1809,7 @@ find_join_hint(Relids joinrelids)
 	List	   *join_hint;
 	ListCell   *l;
 
-	join_hint = global->join_hint_level[bms_num_members(joinrelids)];
+	join_hint = current_hint->join_hint_level[bms_num_members(joinrelids)];
 
 	foreach(l, join_hint)
 	{
@@ -1959,7 +1959,7 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 	}
 
 	if (hint_state_enabled(lhint))
-		set_join_config_options(DISABLE_ALL_JOIN, global->context);
+		set_join_config_options(DISABLE_ALL_JOIN, current_hint->context);
 
 	lhint->base.state = HINT_STATE_USED;
 
@@ -2067,7 +2067,7 @@ make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 
 	save_nestlevel = NewGUCNestLevel();
 
-	set_join_config_options(hint->enforce_mask, global->context);
+	set_join_config_options(hint->enforce_mask, current_hint->context);
 
 	rel = pg_hint_plan_make_join_rel(root, rel1, rel2);
 	hint->base.state = HINT_STATE_USED;
@@ -2117,7 +2117,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	 * pg_hint_planが無効、または有効なヒントが1つも指定されなかった場合は、標準
 	 * の処理を行う。
 	 */
-	if (!global)
+	if (!current_hint)
 	{
 		if (prev_join_search)
 			return (*prev_join_search) (root, levels_needed, initial_rels);
@@ -2128,7 +2128,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	}
 
 	/* We apply scan method hint rebuild scan path. */
-	rebuild_scan_path(global, root, levels_needed, initial_rels);
+	rebuild_scan_path(current_hint, root, levels_needed, initial_rels);
 
 	/*
 	 * GEQOを使用する条件を満たした場合は、GEQOを用いた結合方式の検索を行う。
@@ -2139,29 +2139,29 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 		return geqo(root, levels_needed, initial_rels);
 
 	nbaserel = get_num_baserels(initial_rels);
-	global->join_hint_level = palloc0(sizeof(List *) * (nbaserel + 1));
+	current_hint->join_hint_level = palloc0(sizeof(List *) * (nbaserel + 1));
 	join_method_hints = palloc0(sizeof(JoinMethodHint *) * (nbaserel + 1));
 
-	transform_join_hints(global, root, nbaserel, initial_rels,
+	transform_join_hints(current_hint, root, nbaserel, initial_rels,
 						 join_method_hints);
 
 	rel = pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
 
 	for (i = 2; i <= nbaserel; i++)
 	{
-		list_free(global->join_hint_level[i]);
+		list_free(current_hint->join_hint_level[i]);
 
 		/* free Leading hint only */
 		if (join_method_hints[i] != NULL &&
 			join_method_hints[i]->enforce_mask == ENABLE_ALL_JOIN)
 			JoinMethodHintDelete(join_method_hints[i]);
 	}
-	pfree(global->join_hint_level);
+	pfree(current_hint->join_hint_level);
 	pfree(join_method_hints);
 
-	if (global->num_hints[HINT_TYPE_LEADING] > 0 &&
-		hint_state_enabled(global->leading_hint))
-		set_join_config_options(global->init_join_mask, global->context);
+	if (current_hint->num_hints[HINT_TYPE_LEADING] > 0 &&
+		hint_state_enabled(current_hint->leading_hint))
+		set_join_config_options(current_hint->init_join_mask, current_hint->context);
 
 	return rel;
 }
@@ -2211,11 +2211,11 @@ do { \
 	ScanMethodHint *hint = NULL; \
 	if ((hint = find_scan_hint((root), (innerrel))) != NULL) \
 	{ \
-		set_scan_config_options(hint->enforce_mask, global->context); \
+		set_scan_config_options(hint->enforce_mask, current_hint->context); \
 		hint->base.state = HINT_STATE_USED; \
 	} \
 	add_paths_to_joinrel((root), (joinrel), (outerrel), (innerrel), (jointype), (sjinfo), (restrictlist)); \
 	if (hint != NULL) \
-		set_scan_config_options(global->init_scan_mask, global->context); \
+		set_scan_config_options(current_hint->init_scan_mask, current_hint->context); \
 } while(0)
 #include "make_join_rel.c"
