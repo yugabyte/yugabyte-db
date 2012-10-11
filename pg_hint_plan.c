@@ -1507,16 +1507,32 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	PlannedStmt	   *result;
 	PlanHint	   *plan;
 
-	/* 有効なヒントを保存する。 */
+
+	/*
+	 * pg_hint_planが無効である場合は通常のparser処理をおこなう。
+	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数
+	 * をNULLに設定しておく。
+	 */
+	if (!pg_hint_plan_enable)
+	{
+		current_hint = NULL;
+
+		if (prev_planner)
+			return (*prev_planner) (parse, cursorOptions, boundParams);
+		else
+			return standard_planner(parse, cursorOptions, boundParams);
+	}
+
+	/* 有効なヒント句を保存する。 */
 	plan = parse_head_comment(parse);
 
 	/*
 	 * hintが指定されない、または空のhintを指定された場合は通常のparser処理をお
 	 * こなう。
-	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数をNULL
-	 * に設定しておく。
+	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数
+	 * をNULLに設定しておく。
 	 */
-	if (!pg_hint_plan_enable || plan == NULL)
+	if (!plan)
 	{
 		current_hint = NULL;
 
