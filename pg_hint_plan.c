@@ -1549,10 +1549,24 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (enable_hashjoin)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
 
-	if (prev_planner)
-		result = (*prev_planner) (parse, cursorOptions, boundParams);
-	else
-		result = standard_planner(parse, cursorOptions, boundParams);
+	/*
+	 * ヒントの引数で指定したaliasnameでエラーとなった場合、GUCパラメータと
+	 * current_hintをpg_hint_plan_planner関数の実行前の状態に戻す。 
+	 */
+	PG_TRY();
+	{
+		if (prev_planner)
+			result = (*prev_planner) (parse, cursorOptions, boundParams);
+		else
+			result = standard_planner(parse, cursorOptions, boundParams);
+	}
+	PG_CATCH();
+	{
+		AtEOXact_GUC(true, save_nestlevel);
+		pop_stack();
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/*
 	 * Restore the GUC variables we set above.
