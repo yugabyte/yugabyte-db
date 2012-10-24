@@ -1559,8 +1559,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
 
 	/*
-	 * ヒントの引数で指定したaliasnameでエラーとなった場合、GUCパラメータと
-	 * current_hintをpg_hint_plan_planner関数の実行前の状態に戻す。 
+	 * プラン作成中にエラーとなった場合、GUCパラメータと current_hintを
+	 * pg_hint_plan_planner 関数の実行前の状態に戻す。 
 	 */
 	PG_TRY();
 	{
@@ -1571,16 +1571,15 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 	PG_CATCH();
 	{
+		/*
+		 * プランナ起動前の状態に戻すため、GUCパラメータを復元し、ヒント情報を
+		 * 一つ削除する。
+		 */
 		AtEOXact_GUC(true, save_nestlevel);
 		pop_stack();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
-
-	/*
-	 * Restore the GUC variables we set above.
-	 */
-	AtEOXact_GUC(true, save_nestlevel);
 
 	/*
 	 * Print hint if debugging.
@@ -1589,9 +1588,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		PlanHintDump(current_hint);
 
 	/*
-	 * 現在のヒントで使用中のメモリを開放し、スタックから取り除く。
-	 * その後、現在のヒントの値をスタックに積む前のものに戻す。
+	 * プランナ起動前の状態に戻すため、GUCパラメータを復元し、ヒント情報を一つ
+	 * 削除する。
 	 */
+	AtEOXact_GUC(true, save_nestlevel);
 	pop_stack();
 
 	return result;
