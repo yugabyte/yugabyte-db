@@ -1463,7 +1463,10 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 								isTopLevel, dest, completionTag);
 }
 
-/*  */
+/*
+ * ヒント用スタック構造にヒントをプッシュする。なお、List構造体でヒント用スタッ
+ * ク構造を実装していて、リストの先頭がスタックの一番上に該当する。
+ */
 static void
 push_hint(PlanHint *plan)
 {
