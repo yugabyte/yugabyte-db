@@ -961,7 +961,8 @@ parse_hints(PlanHint *plan, Query *parse, const char *str)
 			}
 
 			/*
-			 * 出来上がったヒント情報を追加。スロットが足りない場合は二倍に拡張する。
+			 * 出来上がったヒント情報を追加。スロットが足りない場合は二倍に拡張
+			 * する。
 			 */
 			if (plan->nall_hints == 0)
 			{
@@ -985,7 +986,8 @@ parse_hints(PlanHint *plan, Query *parse, const char *str)
 
 		if (parser->keyword == NULL)
 		{
-			parse_ereport(head, ("Unrecognized hint keyword \"%s\".", buf.data));
+			parse_ereport(head, ("Unrecognized hint keyword \"%s\".",
+								 buf.data));
 			pfree(buf.data);
 			return;
 		}
@@ -1078,8 +1080,8 @@ parse_head_comment(Query *parse)
 		if (i + 1 >= plan->nall_hints)
 			break;
 
-		if (AllHintCmp(plan->all_hints + i, plan->all_hints + i + 1, false) ==
-			0)
+		if (AllHintCmp(plan->all_hints + i, plan->all_hints + i + 1, false)
+			== 0)
 		{
 			const char *HintTypeName[] = {"scan method", "join method",
 										  "leading", "set"};
@@ -1468,7 +1470,9 @@ push_hint(PlanHint *plan)
 	/* 新しいヒントをスタックに積む。 */
 	PlanHintStack = lcons(plan, PlanHintStack);
 
-	/* 先ほどスタックに積んだヒントを現在のヒントとしてcurrent_hintに格納する。 */
+	/*
+	 * 先ほどスタックに積んだヒントを現在のヒントとしてcurrent_hintに格納する。
+	 */
 	current_hint = (PlanHint *) lfirst(list_head(PlanHintStack));
 }
 
@@ -1479,7 +1483,7 @@ pop_hint(void)
 	if(PlanHintStack == NIL)
 		elog(ERROR, "hint stack is empty");
 
-	/* 
+	/*
 	 * ヒントのスタックから一番上のものを取り出して解放する。 current_hint
 	 * 常に最上段ヒントを指すが、スタックが空の場合はNULLにする。
 	 */
@@ -1557,7 +1561,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 	/*
 	 * プラン作成中にエラーとなった場合、GUCパラメータと current_hintを
-	 * pg_hint_plan_planner 関数の実行前の状態に戻す。 
+	 * pg_hint_plan_planner 関数の実行前の状態に戻す。
 	 */
 	PG_TRY();
 	{
@@ -1745,7 +1749,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
 	if ((hint = find_scan_hint(root, rel)) == NULL)
 	{
-		set_scan_config_options(current_hint->init_scan_mask, current_hint->context);
+		set_scan_config_options(current_hint->init_scan_mask,
+								current_hint->context);
 		return;
 	}
 	set_scan_config_options(hint->enforce_mask, current_hint->context);
@@ -1757,8 +1762,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 }
 
 /*
- * aliasnameがクエリ中に指定した別名と一致する場合は、そのインデックスを返し、一致
- * する別名がなければ0を返す。
+ * aliasnameがクエリ中に指定した別名と一致する場合は、そのインデックスを返し、一
+ * 致する別名がなければ0を返す。
  * aliasnameがクエリ中に複数回指定された場合は、-1を返す。
  */
 static int
@@ -1894,8 +1899,8 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 	}
 
 	/*
-	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせてjoin method hint
-	 * のフォーマットに変換する。
+	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせて
+	 * join method hint のフォーマットに変換する。
 	 */
 	if (plan->num_hints[HINT_TYPE_LEADING] == 0)
 		return;
@@ -2016,8 +2021,7 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level,
 		ScanMethodHint *hint;
 
 		/*
-		 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成
-		 * する。
+		 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成する。
 		 */
 		if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
 			continue;
