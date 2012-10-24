@@ -60,7 +60,6 @@ PG_MODULE_MAGIC;
 #define HINT_LEADING			"Leading"
 #define HINT_SET				"Set"
 
-
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
 #define parse_ereport(str, detail) \
@@ -279,7 +278,6 @@ static List *accumulate_append_subpath(List *subpaths, Path *path);
 static void set_dummy_rel_pathlist(RelOptInfo *rel);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
-
 
 /* GUC variables */
 static bool	pg_hint_plan_enable = true;
@@ -1499,7 +1497,6 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	PlanHint	   *plan;
-
 
 	/*
 	 * pg_hint_planが無効である場合は通常のparser処理をおこなう。
