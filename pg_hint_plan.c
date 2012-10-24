@@ -1476,7 +1476,7 @@ push_hint(PlanHint *plan)
 	/*
 	 * 先ほどスタックに積んだヒントを現在のヒントとしてcurrent_hintに格納する。
 	 */
-	current_hint = (PlanHint *) lfirst(list_head(PlanHintStack));
+	current_hint = plan;
 }
 
 static void
