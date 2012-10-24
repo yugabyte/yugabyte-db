@@ -220,8 +220,8 @@ typedef struct HintParser
 void		_PG_init(void);
 void		_PG_fini(void);
 
-static void push_stack(PlanHint *plan);
-static void pop_stack(void);
+static void push_hint(PlanHint *plan);
+static void pop_hint(void);
 
 static void pg_hint_plan_ProcessUtility(Node *parsetree,
 										const char *queryString,
@@ -1463,7 +1463,7 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 
 /*  */
 static void
-push_stack(PlanHint *plan)
+push_hint(PlanHint *plan)
 {
 	/* 新しいヒントをスタックに積む。 */
 	PlanHintStack = lcons(plan, PlanHintStack);
@@ -1473,7 +1473,7 @@ push_stack(PlanHint *plan)
 }
 
 static void
-pop_stack(void)
+pop_hint(void)
 {
 	/* ヒントのスタックが空の場合はエラーを返す */
 	if(PlanHintStack == NIL)
@@ -1533,7 +1533,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/* 現在のヒントをスタックに積む。 */
-	push_stack(plan);
+	push_hint(plan);
 
 	/* Set hint で指定されたGUCパラメータを設定する */
 	save_nestlevel = set_config_options(current_hint->set_hints,
@@ -1573,7 +1573,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		 * 一つ削除する。
 		 */
 		AtEOXact_GUC(true, save_nestlevel);
-		pop_stack();
+		pop_hint();
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1589,7 +1589,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * 削除する。
 	 */
 	AtEOXact_GUC(true, save_nestlevel);
-	pop_stack();
+	pop_hint();
 
 	return result;
 }
