@@ -1477,23 +1477,16 @@ push_stack(PlanHint *plan)
 static void
 pop_stack(void)
 {
-	/* current_hintで使用しているメモリを開放する。 */
-	PlanHintDelete(current_hint);
-
 	/* ヒントのスタックが空の場合はエラーを返す */
 	if(PlanHintStack == NIL)
-	{
 		elog(ERROR, "hint stack is empty");
-		return;
-	}
-	/* ヒントのスタックから一番上のものを取り除く。 */
-	PlanHintStack = list_delete_first(PlanHintStack);
 
 	/* 
-	 * ヒントのスタックが空の場合は、current_hintの中身を削除する。
-	 * ヒントのスタックが残っている場合は、current_hintにスタックの一番上の値を
-	 * 格納する。
+	 * ヒントのスタックから一番上のものを取り出して解放する。 current_hint
+	 * 常に最上段ヒントを指すが、スタックが空の場合はNULLにする。
 	 */
+	PlanHintStack = list_delete_first(PlanHintStack);
+	PlanHintDelete(current_hint);
 	if(PlanHintStack == NIL)
 		current_hint = NULL;
 	else
