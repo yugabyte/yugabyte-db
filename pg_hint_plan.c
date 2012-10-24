@@ -100,7 +100,7 @@ typedef Hint *(*HintCreateFunction) (const char *hint_str,
 typedef void (*HintDeleteFunction) (Hint *hint);
 typedef void (*HintDumpFunction) (Hint *hint, StringInfo buf);
 typedef int (*HintCmpFunction) (const Hint *a, const Hint *b);
-typedef const char *(*HintParseFunction) (Hint *hint, PlanHint *plan,
+typedef const char *(*HintParseFunction) (Hint *hint, PlanHint *planhint,
 										  Query *parse, const char *str);
 
 /* hint types */
@@ -220,7 +220,7 @@ typedef struct HintParser
 void		_PG_init(void);
 void		_PG_fini(void);
 
-static void push_hint(PlanHint *plan);
+static void push_hint(PlanHint *planhint);
 static void pop_hint(void);
 
 static void pg_hint_plan_ProcessUtility(Node *parsetree,
@@ -241,25 +241,25 @@ static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword);
 static void ScanMethodHintDelete(ScanMethodHint *hint);
 static void ScanMethodHintDump(ScanMethodHint *hint, StringInfo buf);
 static int ScanMethodHintCmp(const ScanMethodHint *a, const ScanMethodHint *b);
-static const char *ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan,
+static const char *ScanMethodHintParse(ScanMethodHint *hint, PlanHint *planhint,
 									   Query *parse, const char *str);
 static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword);
 static void JoinMethodHintDelete(JoinMethodHint *hint);
 static void JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf);
 static int JoinMethodHintCmp(const JoinMethodHint *a, const JoinMethodHint *b);
-static const char *JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan,
+static const char *JoinMethodHintParse(JoinMethodHint *hint, PlanHint *planhint,
 									   Query *parse, const char *str);
 static Hint *LeadingHintCreate(const char *hint_str, const char *keyword);
 static void LeadingHintDelete(LeadingHint *hint);
 static void LeadingHintDump(LeadingHint *hint, StringInfo buf);
 static int LeadingHintCmp(const LeadingHint *a, const LeadingHint *b);
-static const char *LeadingHintParse(LeadingHint *hint, PlanHint *plan,
+static const char *LeadingHintParse(LeadingHint *hint, PlanHint *planhint,
 									Query *parse, const char *str);
 static Hint *SetHintCreate(const char *hint_str, const char *keyword);
 static void SetHintDelete(SetHint *hint);
 static void SetHintDump(SetHint *hint, StringInfo buf);
 static int SetHintCmp(const SetHint *a, const SetHint *b);
-static const char *SetHintParse(SetHint *hint, PlanHint *plan, Query *parse,
+static const char *SetHintParse(SetHint *hint, PlanHint *planhint, Query *parse,
 								const char *str);
 
 RelOptInfo *pg_hint_plan_standard_join_search(PlannerInfo *root,
@@ -549,43 +549,43 @@ SetHintDelete(SetHint *hint)
 static PlanHint *
 PlanHintCreate(void)
 {
-	PlanHint   *hint;
+	PlanHint   *planhint;
 
-	hint = palloc(sizeof(PlanHint));
-	hint->hint_str = NULL;
-	hint->nall_hints = 0;
-	hint->max_all_hints = 0;
-	hint->all_hints = NULL;
-	memset(hint->num_hints, 0, sizeof(hint->num_hints));
-	hint->scan_hints = NULL;
-	hint->init_scan_mask = 0;
-	hint->parent_relid = 0;
-	hint->parent_hint = NULL;
-	hint->join_hints = NULL;
-	hint->init_join_mask = 0;
-	hint->join_hint_level = NULL;
-	hint->leading_hint = NULL;
-	hint->context = superuser() ? PGC_SUSET : PGC_USERSET;
-	hint->set_hints = NULL;
+	planhint = palloc(sizeof(PlanHint));
+	planhint->hint_str = NULL;
+	planhint->nall_hints = 0;
+	planhint->max_all_hints = 0;
+	planhint->all_hints = NULL;
+	memset(planhint->num_hints, 0, sizeof(planhint->num_hints));
+	planhint->scan_hints = NULL;
+	planhint->init_scan_mask = 0;
+	planhint->parent_relid = 0;
+	planhint->parent_hint = NULL;
+	planhint->join_hints = NULL;
+	planhint->init_join_mask = 0;
+	planhint->join_hint_level = NULL;
+	planhint->leading_hint = NULL;
+	planhint->context = superuser() ? PGC_SUSET : PGC_USERSET;
+	planhint->set_hints = NULL;
 
-	return hint;
+	return planhint;
 }
 
 static void
-PlanHintDelete(PlanHint *hint)
+PlanHintDelete(PlanHint *planhint)
 {
 	int			i;
 
-	if (!hint)
+	if (!planhint)
 		return;
 
-	if (hint->hint_str)
-		pfree(hint->hint_str);
+	if (planhint->hint_str)
+		pfree(planhint->hint_str);
 
-	for (i = 0; i < hint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
-		hint->all_hints[i]->delete_func(hint->all_hints[i]);
-	if (hint->all_hints)
-		pfree(hint->all_hints);
+	for (i = 0; i < planhint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
+		planhint->all_hints[i]->delete_func(planhint->all_hints[i]);
+	if (planhint->all_hints)
+		pfree(planhint->all_hints);
 }
 
 /*
@@ -683,27 +683,27 @@ SetHintDump(SetHint *hint, StringInfo buf)
 }
 
 static void
-all_hint_dump(PlanHint *hint, StringInfo buf, const char *title,
+all_hint_dump(PlanHint *planhint, StringInfo buf, const char *title,
 			  HintStatus state)
 {
 	int	i;
 
 	appendStringInfo(buf, "%s:\n", title);
-	for (i = 0; i < hint->nall_hints; i++)
+	for (i = 0; i < planhint->nall_hints; i++)
 	{
-		if (hint->all_hints[i]->state != state)
+		if (planhint->all_hints[i]->state != state)
 			continue;
 
-		hint->all_hints[i]->dump_func(hint->all_hints[i], buf);
+		planhint->all_hints[i]->dump_func(planhint->all_hints[i], buf);
 	}
 }
 
 static void
-PlanHintDump(PlanHint *hint)
+PlanHintDump(PlanHint *planhint)
 {
 	StringInfoData	buf;
 
-	if (!hint)
+	if (!planhint)
 	{
 		elog(LOG, "pg_hint_plan:\nno hint");
 		return;
@@ -712,10 +712,10 @@ PlanHintDump(PlanHint *hint)
 	initStringInfo(&buf);
 
 	appendStringInfoString(&buf, "pg_hint_plan:\n");
-	all_hint_dump(hint, &buf, "used hint", HINT_STATE_USED);
-	all_hint_dump(hint, &buf, "not used hint", HINT_STATE_NOTUSED);
-	all_hint_dump(hint, &buf, "duplication hint", HINT_STATE_DUPLICATION);
-	all_hint_dump(hint, &buf, "error hint", HINT_STATE_ERROR);
+	all_hint_dump(planhint, &buf, "used hint", HINT_STATE_USED);
+	all_hint_dump(planhint, &buf, "not used hint", HINT_STATE_NOTUSED);
+	all_hint_dump(planhint, &buf, "duplication hint", HINT_STATE_DUPLICATION);
+	all_hint_dump(planhint, &buf, "error hint", HINT_STATE_ERROR);
 
 	elog(LOG, "%s", buf.data);
 
@@ -923,7 +923,7 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 }
 
 static void
-parse_hints(PlanHint *plan, Query *parse, const char *str)
+parse_hints(PlanHint *planhint, Query *parse, const char *str)
 {
 	StringInfoData	buf;
 	char		   *head;
@@ -952,7 +952,7 @@ parse_hints(PlanHint *plan, Query *parse, const char *str)
 
 			/* parser of each hint does parse in a parenthesis. */
 			if ((str = skip_opened_parenthesis(str)) == NULL ||
-				(str = hint->parser_func(hint, plan, parse, str)) == NULL ||
+				(str = hint->parser_func(hint, planhint, parse, str)) == NULL ||
 				(str = skip_closed_parenthesis(str)) == NULL)
 			{
 				hint->delete_func(hint);
@@ -964,20 +964,21 @@ parse_hints(PlanHint *plan, Query *parse, const char *str)
 			 * 出来上がったヒント情報を追加。スロットが足りない場合は二倍に拡張
 			 * する。
 			 */
-			if (plan->nall_hints == 0)
+			if (planhint->nall_hints == 0)
 			{
-				plan->max_all_hints = HINT_ARRAY_DEFAULT_INITSIZE;
-				plan->all_hints = palloc(sizeof(Hint *) * plan->max_all_hints);
+				planhint->max_all_hints = HINT_ARRAY_DEFAULT_INITSIZE;
+				planhint->all_hints = palloc(
+									  sizeof(Hint *) * planhint->max_all_hints);
 			}
-			else if (plan->nall_hints == plan->max_all_hints)
+			else if (planhint->nall_hints == planhint->max_all_hints)
 			{
-				plan->max_all_hints *= 2;
-				plan->all_hints = repalloc(plan->all_hints,
-										sizeof(Hint *) * plan->max_all_hints);
+				planhint->max_all_hints *= 2;
+				planhint->all_hints = repalloc(planhint->all_hints,
+									  sizeof(Hint *) * planhint->max_all_hints);
 			}
 
-			plan->all_hints[plan->nall_hints] = hint;
-			plan->nall_hints++;
+			planhint->all_hints[planhint->nall_hints] = hint;
+			planhint->nall_hints++;
 
 			skip_space(str);
 
@@ -1007,7 +1008,7 @@ parse_head_comment(Query *parse)
 	char	   *tail;
 	int			len;
 	int			i;
-	PlanHint   *plan;
+	PlanHint   *planhint;
 
 	/* get client-supplied query string. */
 	if (stmt_name)
@@ -1054,64 +1055,65 @@ parse_head_comment(Query *parse)
 	head[len] = '\0';
 	p = head;
 
-	plan = PlanHintCreate();
-	plan->hint_str = head;
+	planhint = PlanHintCreate();
+	planhint->hint_str = head;
 
 	/* parse each hint. */
-	parse_hints(plan, parse, p);
+	parse_hints(planhint, parse, p);
 
 	/* When nothing specified a hint, we free PlanHint and returns NULL. */
-	if (plan->nall_hints == 0)
+	if (planhint->nall_hints == 0)
 	{
-		PlanHintDelete(plan);
+		PlanHintDelete(planhint);
 		return NULL;
 	}
 
 	/* パースしたヒントを並び替える */
-	qsort(plan->all_hints, plan->nall_hints, sizeof(Hint *), AllHintCmpIsOrder);
+	qsort(planhint->all_hints, planhint->nall_hints, sizeof(Hint *),
+		  AllHintCmpIsOrder);
 
 	/* 重複したヒントを検索する */
-	for (i = 0; i < plan->nall_hints; i++)
+	for (i = 0; i < planhint->nall_hints; i++)
 	{
-		Hint   *hint = plan->all_hints[i];
+		Hint   *hint = planhint->all_hints[i];
 
-		plan->num_hints[hint->type]++;
+		planhint->num_hints[hint->type]++;
 
-		if (i + 1 >= plan->nall_hints)
+		if (i + 1 >= planhint->nall_hints)
 			break;
 
-		if (AllHintCmp(plan->all_hints + i, plan->all_hints + i + 1, false)
+		if (AllHintCmp(planhint->all_hints + i, planhint->all_hints + i + 1, false)
 			== 0)
 		{
 			const char *HintTypeName[] = {"scan method", "join method",
 										  "leading", "set"};
 
-			parse_ereport(plan->all_hints[i]->hint_str,
+			parse_ereport(planhint->all_hints[i]->hint_str,
 						  ("Conflict %s hint.", HintTypeName[hint->type]));
-			plan->all_hints[i]->state = HINT_STATE_DUPLICATION;
+			planhint->all_hints[i]->state = HINT_STATE_DUPLICATION;
 		}
 	}
 
-	plan->scan_hints = (ScanMethodHint **) plan->all_hints;
-	plan->join_hints = (JoinMethodHint **) plan->all_hints +
-		plan->num_hints[HINT_TYPE_SCAN_METHOD];
-	plan->leading_hint = (LeadingHint *) plan->all_hints[
-		plan->num_hints[HINT_TYPE_SCAN_METHOD] +
-		plan->num_hints[HINT_TYPE_JOIN_METHOD] +
-		plan->num_hints[HINT_TYPE_LEADING] - 1];
-	plan->set_hints = (SetHint **) plan->all_hints +
-		plan->num_hints[HINT_TYPE_SCAN_METHOD] +
-		plan->num_hints[HINT_TYPE_JOIN_METHOD] +
-		plan->num_hints[HINT_TYPE_LEADING];
+	planhint->scan_hints = (ScanMethodHint **) planhint->all_hints;
+	planhint->join_hints = (JoinMethodHint **) planhint->all_hints +
+		planhint->num_hints[HINT_TYPE_SCAN_METHOD];
+	planhint->leading_hint = (LeadingHint *) planhint->all_hints[
+		planhint->num_hints[HINT_TYPE_SCAN_METHOD] +
+		planhint->num_hints[HINT_TYPE_JOIN_METHOD] +
+		planhint->num_hints[HINT_TYPE_LEADING] - 1];
+	planhint->set_hints = (SetHint **) planhint->all_hints +
+		planhint->num_hints[HINT_TYPE_SCAN_METHOD] +
+		planhint->num_hints[HINT_TYPE_JOIN_METHOD] +
+		planhint->num_hints[HINT_TYPE_LEADING];
 
-	return plan;
+	return planhint;
 }
 
 /*
  * スキャン方式ヒントのカッコ内をパースする
  */
 static const char *
-ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
+ScanMethodHintParse(ScanMethodHint *hint, PlanHint *planhint, Query *parse,
 					const char *str)
 {
 	const char *keyword = hint->base.keyword;
@@ -1174,7 +1176,7 @@ ScanMethodHintParse(ScanMethodHint *hint, PlanHint *plan, Query *parse,
 }
 
 static const char *
-JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse,
+JoinMethodHintParse(JoinMethodHint *hint, PlanHint *planhint, Query *parse,
 					const char *str)
 {
 	char	   *relname;
@@ -1233,7 +1235,7 @@ JoinMethodHintParse(JoinMethodHint *hint, PlanHint *plan, Query *parse,
 }
 
 static const char *
-LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse,
+LeadingHintParse(LeadingHint *hint, PlanHint *planhint, Query *parse,
 				 const char *str)
 {
 	skip_space(str);
@@ -1264,7 +1266,7 @@ LeadingHintParse(LeadingHint *hint, PlanHint *plan, Query *parse,
 }
 
 static const char *
-SetHintParse(SetHint *hint, PlanHint *plan, Query *parse, const char *str)
+SetHintParse(SetHint *hint, PlanHint *planhint, Query *parse, const char *str)
 {
 	if ((str = parse_quote_value(str, &hint->name, "parameter name", true))
 		== NULL ||
@@ -1468,15 +1470,15 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
  * ク構造を実装していて、リストの先頭がスタックの一番上に該当する。
  */
 static void
-push_hint(PlanHint *plan)
+push_hint(PlanHint *planhint)
 {
 	/* 新しいヒントをスタックに積む。 */
-	PlanHintStack = lcons(plan, PlanHintStack);
+	PlanHintStack = lcons(planhint, PlanHintStack);
 
 	/*
 	 * 先ほどスタックに積んだヒントを現在のヒントとしてcurrent_hintに格納する。
 	 */
-	current_hint = plan;
+	current_hint = planhint;
 }
 
 static void
@@ -1503,7 +1505,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	int				save_nestlevel;
 	PlannedStmt	   *result;
-	PlanHint	   *plan;
+	PlanHint	   *planhint;
 
 	/*
 	 * pg_hint_planが無効である場合は通常のparser処理をおこなう。
@@ -1521,7 +1523,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/* 有効なヒント句を保存する。 */
-	plan = parse_head_comment(parse);
+	planhint = parse_head_comment(parse);
 
 	/*
 	 * hintが指定されない、または空のhintを指定された場合は通常のparser処理をお
@@ -1529,7 +1531,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数
 	 * をNULLに設定しておく。
 	 */
-	if (!plan)
+	if (!planhint)
 	{
 		current_hint = NULL;
 
@@ -1540,7 +1542,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/* 現在のヒントをスタックに積む。 */
-	push_hint(plan);
+	push_hint(planhint);
 
 	/* Set hint で指定されたGUCパラメータを設定する */
 	save_nestlevel = set_config_options(current_hint->set_hints,
@@ -1849,7 +1851,7 @@ find_join_hint(Relids joinrelids)
  * 結合方式のヒントを使用しやすい構造に変換する。
  */
 static void
-transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
+transform_join_hints(PlanHint *planhint, PlannerInfo *root, int nbaserel,
 		List *initial_rels, JoinMethodHint **join_method_hints)
 {
 	int				i;
@@ -1859,9 +1861,9 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 	int				njoinrels;
 	ListCell	   *l;
 
-	for (i = 0; i < plan->num_hints[HINT_TYPE_JOIN_METHOD]; i++)
+	for (i = 0; i < planhint->num_hints[HINT_TYPE_JOIN_METHOD]; i++)
 	{
-		JoinMethodHint *hint = plan->join_hints[i];
+		JoinMethodHint *hint = planhint->join_hints[i];
 		int	j;
 
 		if (!hint_state_enabled(hint) || hint->nrels > nbaserel)
@@ -1897,18 +1899,18 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 		if (relid <= 0 || hint->base.state == HINT_STATE_ERROR)
 			continue;
 
-		plan->join_hint_level[hint->nrels] =
-			lappend(plan->join_hint_level[hint->nrels], hint);
+		planhint->join_hint_level[hint->nrels] =
+			lappend(planhint->join_hint_level[hint->nrels], hint);
 	}
 
 	/*
 	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせて
 	 * join method hint のフォーマットに変換する。
 	 */
-	if (plan->num_hints[HINT_TYPE_LEADING] == 0)
+	if (planhint->num_hints[HINT_TYPE_LEADING] == 0)
 		return;
 
-	lhint = plan->leading_hint;
+	lhint = planhint->leading_hint;
 	if (!hint_state_enabled(lhint))
 		return;
 
@@ -1921,7 +1923,8 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 		JoinMethodHint *hint;
 
 		relid =
-			find_relid_aliasname(root, relname, initial_rels, plan->hint_str);
+			find_relid_aliasname(root, relname, initial_rels,
+								 planhint->hint_str);
 
 		if (relid == -1)
 		{
@@ -1976,9 +1979,9 @@ transform_join_hints(PlanHint *plan, PlannerInfo *root, int nbaserel,
 	for (i = 2; i <= njoinrels; i++)
 	{
 		/* Leading で指定した組み合わせ以外の join hint を削除する */
-		list_free(plan->join_hint_level[i]);
+		list_free(planhint->join_hint_level[i]);
 
-		plan->join_hint_level[i] = lappend(NIL, join_method_hints[i]);
+		planhint->join_hint_level[i] = lappend(NIL, join_method_hints[i]);
 	}
 
 	if (hint_state_enabled(lhint))
@@ -2012,7 +2015,7 @@ set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 }
 
 static void
-rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level,
+rebuild_scan_path(PlanHint *planhint, PlannerInfo *root, int level,
 				  List *initial_rels)
 {
 	ListCell   *l;
@@ -2040,10 +2043,11 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level,
 		 * path を再生成する。
 		 */
 		if ((hint = find_scan_hint(root, rel)) == NULL)
-			set_scan_config_options(plan->init_scan_mask, plan->context);
+			set_scan_config_options(planhint->init_scan_mask,
+									planhint->context);
 		else
 		{
-			set_scan_config_options(hint->enforce_mask, plan->context);
+			set_scan_config_options(hint->enforce_mask, planhint->context);
 			hint->base.state = HINT_STATE_USED;
 		}
 
@@ -2063,7 +2067,7 @@ rebuild_scan_path(PlanHint *plan, PlannerInfo *root, int level,
 	/*
 	 * Restore the GUC variables we set above.
 	 */
-	set_scan_config_options(plan->init_scan_mask, plan->context);
+	set_scan_config_options(planhint->init_scan_mask, planhint->context);
 }
 
 /*
@@ -2183,7 +2187,8 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 
 	if (current_hint->num_hints[HINT_TYPE_LEADING] > 0 &&
 		hint_state_enabled(current_hint->leading_hint))
-		set_join_config_options(current_hint->init_join_mask, current_hint->context);
+		set_join_config_options(current_hint->init_join_mask,
+								current_hint->context);
 
 	return rel;
 }
