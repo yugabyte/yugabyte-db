@@ -1483,6 +1483,10 @@ push_hint(PlanHint *planhint)
 	current_hint = planhint;
 }
 
+/*
+ * ヒント用スタック構造から不要になったヒントをポップする。取り出されたヒントは
+ * 自動的に破棄される。
+ */
 static void
 pop_hint(void)
 {
@@ -1491,8 +1495,8 @@ pop_hint(void)
 		elog(ERROR, "hint stack is empty");
 
 	/*
-	 * ヒントのスタックから一番上のものを取り出して解放する。 current_hint
-	 * 常に最上段ヒントを指すが、スタックが空の場合はNULLにする。
+	 * ヒントのスタックから一番上のものを取り出して解放する。 current_hintは
+	 * 常に最上段ヒントを指す(スタックが空の場合はNULL)。
 	 */
 	PlanHintStack = list_delete_first(PlanHintStack);
 	PlanHintDelete(current_hint);
