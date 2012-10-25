@@ -86,8 +86,8 @@ enum
 	ENABLE_HASHJOIN = 0x04
 } JOIN_TYPE_BITS;
 
-#define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | ENABLE_BITMAPSCAN \
-						| ENABLE_TIDSCAN)
+#define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
+						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN)
 #define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
@@ -967,14 +967,15 @@ parse_hints(PlanHint *planhint, Query *parse, const char *str)
 			if (planhint->nall_hints == 0)
 			{
 				planhint->max_all_hints = HINT_ARRAY_DEFAULT_INITSIZE;
-				planhint->all_hints = palloc(
-									  sizeof(Hint *) * planhint->max_all_hints);
+				planhint->all_hints = (Hint **)
+					palloc(sizeof(Hint *) * planhint->max_all_hints);
 			}
 			else if (planhint->nall_hints == planhint->max_all_hints)
 			{
 				planhint->max_all_hints *= 2;
-				planhint->all_hints = repalloc(planhint->all_hints,
-									  sizeof(Hint *) * planhint->max_all_hints);
+				planhint->all_hints = (Hint **)
+					repalloc(planhint->all_hints,
+							 sizeof(Hint *) * planhint->max_all_hints);
 			}
 
 			planhint->all_hints[planhint->nall_hints] = hint;
@@ -987,8 +988,8 @@ parse_hints(PlanHint *planhint, Query *parse, const char *str)
 
 		if (parser->keyword == NULL)
 		{
-			parse_ereport(head, ("Unrecognized hint keyword \"%s\".",
-								 buf.data));
+			parse_ereport(head,
+						  ("Unrecognized hint keyword \"%s\".", buf.data));
 			pfree(buf.data);
 			return;
 		}
@@ -1082,11 +1083,12 @@ parse_head_comment(Query *parse)
 		if (i + 1 >= planhint->nall_hints)
 			break;
 
-		if (AllHintCmp(planhint->all_hints + i, planhint->all_hints + i + 1, false)
-			== 0)
+		if (AllHintCmp(planhint->all_hints + i, planhint->all_hints + i + 1,
+					   false) == 0)
 		{
-			const char *HintTypeName[] = {"scan method", "join method",
-										  "leading", "set"};
+			const char *HintTypeName[] = {
+				"scan method", "join method", "leading", "set"
+			};
 
 			parse_ereport(planhint->all_hints[i]->hint_str,
 						  ("Conflict %s hint.", HintTypeName[hint->type]));
@@ -1787,8 +1789,8 @@ find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
 
 		Assert(i == root->simple_rel_array[i]->relid);
 
-		if (RelnameCmp(&aliasname, &root->simple_rte_array[i]->eref->aliasname)
-			!= 0)
+		if (RelnameCmp(&aliasname,
+					   &root->simple_rte_array[i]->eref->aliasname) != 0)
 			continue;
 
 		foreach(l, initial_rels)
@@ -1904,8 +1906,8 @@ transform_join_hints(PlanHint *planhint, PlannerInfo *root, int nbaserel,
 	}
 
 	/*
-	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせて
-	 * join method hint のフォーマットに変換する。
+	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせて join method
+	 * hint のフォーマットに変換する。
 	 */
 	if (planhint->num_hints[HINT_TYPE_LEADING] == 0)
 		return;
