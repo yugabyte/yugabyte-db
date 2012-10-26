@@ -772,26 +772,31 @@ SetHintCmp(const SetHint *a, const SetHint *b)
 }
 
 static int
-AllHintCmp(const void *a, const void *b, bool order)
+HintCmp(const void *a, const void *b)
 {
 	const Hint *hinta = *((const Hint **) a);
 	const Hint *hintb = *((const Hint **) b);
-	int			result = 0;
 
 	if (hinta->type != hintb->type)
 		return hinta->type - hintb->type;
 
-	if ((result = hinta->cmp_func(hinta, hintb)) != 0 || !order)
-		return result;
+	return hinta->cmp_func(hinta, hintb);
 
-	/* ヒント句で指定した順を返す */
-	return hinta->hint_str - hintb->hint_str;
 }
 
+/* ヒント句で指定した順を返す */
 static int
-AllHintCmpIsOrder(const void *a, const void *b)
+HintCmpIsOrder(const void *a, const void *b)
 {
-	return AllHintCmp(a, b, true);
+	const Hint *hinta = *((const Hint **) a);
+	const Hint *hintb = *((const Hint **) b);
+	int		result;
+
+	result = HintCmp(a, b);
+	if (result == 0)
+		result = hinta->hint_str - hintb->hint_str;
+
+	return result;
 }
 
 /*
@@ -1071,7 +1076,7 @@ parse_head_comment(Query *parse)
 
 	/* パースしたヒントを並び替える */
 	qsort(hstate->all_hints, hstate->nall_hints, sizeof(Hint *),
-		  AllHintCmpIsOrder);
+		  HintCmpIsOrder);
 
 	/* 重複したヒントを検索する */
 	for (i = 0; i < hstate->nall_hints; i++)
@@ -1083,8 +1088,7 @@ parse_head_comment(Query *parse)
 		if (i + 1 >= hstate->nall_hints)
 			break;
 
-		if (AllHintCmp(hstate->all_hints + i, hstate->all_hints + i + 1,
-					   false) == 0)
+		if (HintCmp(hstate->all_hints + i, hstate->all_hints + i + 1) == 0)
 		{
 			const char *HintTypeName[] = {
 				"scan method", "join method", "leading", "set"
