@@ -788,7 +788,6 @@ HintCmp(const void *a, const void *b)
 		return hinta->type - hintb->type;
 
 	return hinta->cmp_func(hinta, hintb);
-
 }
 
 /* ヒント句で指定した順を返す */
@@ -1088,20 +1087,26 @@ parse_head_comment(Query *parse)
 	/* 重複したヒントを検索する */
 	for (i = 0; i < hstate->nall_hints; i++)
 	{
-		Hint   *hint = hstate->all_hints[i];
+		Hint   *cur_hint = hstate->all_hints[i];
+		Hint   *next_hint;
 
 		/* Count up hints per hint-type. */
-		hstate->num_hints[hint->type]++;
+		hstate->num_hints[cur_hint->type]++;
 
 		/* If we don't have next, nothing to compare. */
 		if (i + 1 >= hstate->nall_hints)
 			break;
+		next_hint = hstate->all_hints[i + 1];
 
-		if (HintCmp(hstate->all_hints + i, hstate->all_hints + i + 1) == 0)
+		/*
+		 * We need to pass address of hint pointers, because HintCmp has
+		 * been designed to be used with qsort.
+		 */
+		if (HintCmp(&cur_hint, &next_hint) == 0)
 		{
-			parse_ereport(hstate->all_hints[i]->hint_str,
-						  ("Conflict %s hint.", HintTypeName[hint->type]));
-			hstate->all_hints[i]->state = HINT_STATE_DUPLICATION;
+			parse_ereport(cur_hint->hint_str,
+						  ("Conflict %s hint.", HintTypeName[cur_hint->type]));
+			cur_hint->state = HINT_STATE_DUPLICATION;
 		}
 	}
 
