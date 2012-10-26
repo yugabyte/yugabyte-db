@@ -1090,8 +1090,10 @@ parse_head_comment(Query *parse)
 	{
 		Hint   *hint = hstate->all_hints[i];
 
+		/* Count up hints per hint-type. */
 		hstate->num_hints[hint->type]++;
 
+		/* If we don't have next, nothing to compare. */
 		if (i + 1 >= hstate->nall_hints)
 			break;
 
@@ -1103,6 +1105,10 @@ parse_head_comment(Query *parse)
 		}
 	}
 
+	/*
+	 * Make sure that per-type array pointers point proper position in the
+	 * array which consists of all hints.
+	 */
 	hstate->scan_hints = (ScanMethodHint **) hstate->all_hints;
 	hstate->join_hints = (JoinMethodHint **) hstate->all_hints +
 		hstate->num_hints[HINT_TYPE_SCAN_METHOD];
