@@ -786,7 +786,7 @@ HintCmp(const void *a, const void *b)
 
 /* ヒント句で指定した順を返す */
 static int
-HintCmpIsOrder(const void *a, const void *b)
+HintCmpWithPos(const void *a, const void *b)
 {
 	const Hint *hinta = *((const Hint **) a);
 	const Hint *hintb = *((const Hint **) b);
@@ -1076,7 +1076,7 @@ parse_head_comment(Query *parse)
 
 	/* パースしたヒントを並び替える */
 	qsort(hstate->all_hints, hstate->nall_hints, sizeof(Hint *),
-		  HintCmpIsOrder);
+		  HintCmpWithPos);
 
 	/* 重複したヒントを検索する */
 	for (i = 0; i < hstate->nall_hints; i++)
