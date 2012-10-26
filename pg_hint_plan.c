@@ -113,6 +113,13 @@ typedef enum HintType
 	HINT_TYPE_SET
 } HintType;
 
+static const char *HintTypeName[] = {
+	"scan method",
+	"join method",
+	"leading",
+	"set"
+};
+
 /* hint status */
 typedef enum HintStatus
 {
@@ -1090,10 +1097,6 @@ parse_head_comment(Query *parse)
 
 		if (HintCmp(hstate->all_hints + i, hstate->all_hints + i + 1) == 0)
 		{
-			const char *HintTypeName[] = {
-				"scan method", "join method", "leading", "set"
-			};
-
 			parse_ereport(hstate->all_hints[i]->hint_str,
 						  ("Conflict %s hint.", HintTypeName[hint->type]));
 			hstate->all_hints[i]->state = HINT_STATE_DUPLICATION;
