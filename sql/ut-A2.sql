@@ -43,10 +43,19 @@ EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
 ----
 
 --No.13-3-1
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_2)*/
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 --No.13-3-2
+EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_2)*/
+EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 --No.13-3-3
+EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_2)*/
+EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 ----
 ---- No. A-13-4 output of debugging log on hint status
