@@ -34,10 +34,9 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 ----
 
 --No.13-2-1
-
---No.13-2-2
-
---No.13-2-3
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_1)*/
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 ----
 ---- No. A-13-3 output number of times of debugging log

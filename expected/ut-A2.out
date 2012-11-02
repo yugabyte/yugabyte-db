@@ -30,8 +30,30 @@ $$ LANGUAGE plpgsql IMMUTABLE;
 ---- No. A-13-2 use hint of main query
 ----
 --No.13-2-1
---No.13-2-2
---No.13-2-3
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+NOTICE:  nested_planner(1)
+            QUERY PLAN            
+----------------------------------
+ Index Scan using t1_i1 on t1 t_1
+(1 row)
+
+/*+SeqScan(t_1)*/
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+NOTICE:  nested_planner(1)
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+        QUERY PLAN        
+--------------------------
+ Sort
+   Sort Key: c1
+   ->  Seq Scan on t1 t_1
+(3 rows)
+
 ----
 ---- No. A-13-3 output number of times of debugging log
 ----
