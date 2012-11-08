@@ -193,14 +193,15 @@ not used hint:
 duplication hint:
 error hint:
 
-                 QUERY PLAN                 
---------------------------------------------
- Hash Join
-   Hash Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1
-   ->  Hash
-         ->  Index Scan using t2_pkey on t2
-(5 rows)
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Index Scan using t2_pkey on t2
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(6 rows)
 
 /*+Set(work_mem "1M")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -626,18 +627,18 @@ INFO:  hint syntax error at or near ""
 DETAIL:  Relation name is necessary.
                     QUERY PLAN                    
 --------------------------------------------------
- Merge Join
-   Merge Cond: (t1.id = t4.id)
+ Nested Loop
    ->  Merge Join
-         Merge Cond: (t1.id = t3.id)
+         Merge Cond: (t1.id = t4.id)
          ->  Merge Join
                Merge Cond: (t1.id = t2.id)
                ->  Index Scan using t1_pkey on t1
                ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
-   ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
+         ->  Sort
+               Sort Key: t4.id
+               ->  Seq Scan on t4
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t1.id)
 (12 rows)
 
 /*+Leading( )*/
@@ -653,18 +654,18 @@ Leading()
 
                     QUERY PLAN                    
 --------------------------------------------------
- Merge Join
-   Merge Cond: (t1.id = t4.id)
+ Nested Loop
    ->  Merge Join
-         Merge Cond: (t1.id = t3.id)
+         Merge Cond: (t1.id = t4.id)
          ->  Merge Join
                Merge Cond: (t1.id = t2.id)
                ->  Index Scan using t1_pkey on t1
                ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
-   ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
+         ->  Sort
+               Sort Key: t4.id
+               ->  Seq Scan on t4
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t1.id)
 (12 rows)
 
 /*+Leading( t3 )*/
@@ -680,18 +681,18 @@ Leading(t3)
 
                     QUERY PLAN                    
 --------------------------------------------------
- Merge Join
-   Merge Cond: (t1.id = t4.id)
+ Nested Loop
    ->  Merge Join
-         Merge Cond: (t1.id = t3.id)
+         Merge Cond: (t1.id = t4.id)
          ->  Merge Join
                Merge Cond: (t1.id = t2.id)
                ->  Index Scan using t1_pkey on t1
                ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
-   ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
+         ->  Sort
+               Sort Key: t4.id
+               ->  Seq Scan on t4
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t1.id)
 (12 rows)
 
 /*+Leading( t3 t4 )*/
@@ -807,18 +808,18 @@ Leading(t3 t4 t4)
 
                     QUERY PLAN                    
 --------------------------------------------------
- Merge Join
-   Merge Cond: (t1.id = t4.id)
+ Nested Loop
    ->  Merge Join
-         Merge Cond: (t1.id = t3.id)
+         Merge Cond: (t1.id = t4.id)
          ->  Merge Join
                Merge Cond: (t1.id = t2.id)
                ->  Index Scan using t1_pkey on t1
                ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
-   ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
+         ->  Sort
+               Sort Key: t4.id
+               ->  Seq Scan on t4
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t1.id)
 (12 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
@@ -887,21 +888,21 @@ error hint:
 
 -- single table scan hint test
 EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Index Scan using t1_pkey on t1  (cost=1.89..10.16 rows=1 width=4)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Index Only Scan using t1_pkey on t1  (cost=1.90..10.18 rows=1 width=4)
    Index Cond: (id = $3)
    InitPlan 2 (returns $1)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 1 (returns $0)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 4 (returns $3)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 3 (returns $2)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
 (14 rows)
 
@@ -914,21 +915,21 @@ not used hint:
 duplication hint:
 error hint:
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Index Scan using t1_pkey on t1  (cost=29.34..37.61 rows=1 width=4)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Index Only Scan using t1_pkey on t1  (cost=29.35..37.63 rows=1 width=4)
    Index Cond: (id = $2)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
    InitPlan 3 (returns $2)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 2 (returns $1)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
 (14 rows)
 
@@ -941,21 +942,21 @@ not used hint:
 duplication hint:
 error hint:
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Index Scan using t1_pkey on t1  (cost=29.34..37.61 rows=1 width=4)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Index Only Scan using t1_pkey on t1  (cost=29.35..37.63 rows=1 width=4)
    Index Cond: (id = $2)
    InitPlan 2 (returns $1)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 1 (returns $0)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 3 (returns $2)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
 (14 rows)
 
@@ -968,23 +969,23 @@ not used hint:
 duplication hint:
 error hint:
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=6.15..10.17 rows=1 width=4)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=6.17..10.18 rows=1 width=4)
    Recheck Cond: (id = $3)
    InitPlan 2 (returns $1)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 1 (returns $0)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 4 (returns $3)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 3 (returns $2)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
          Index Cond: (id = $3)
 (16 rows)
 
@@ -1000,19 +1001,19 @@ error hint:
 
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Index Scan using t1_pkey on t1  (cost=56.78..65.05 rows=1 width=4)
+ Index Only Scan using t1_pkey on t1  (cost=56.80..65.08 rows=1 width=4)
    Index Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
    InitPlan 2 (returns $1)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
 (14 rows)
 
@@ -1026,23 +1027,23 @@ not used hint:
 duplication hint:
 error hint:
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=33.60..37.61 rows=1 width=4)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=33.62..37.63 rows=1 width=4)
    Recheck Cond: (id = $2)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
    InitPlan 3 (returns $2)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 2 (returns $1)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
          Index Cond: (id = $2)
 (16 rows)
 
@@ -1056,23 +1057,23 @@ not used hint:
 duplication hint:
 error hint:
 
-                                             QUERY PLAN                                              
------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=33.60..37.61 rows=1 width=4)
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=33.62..37.63 rows=1 width=4)
    Recheck Cond: (id = $2)
    InitPlan 2 (returns $1)
      ->  Result  (cost=0.94..0.95 rows=1 width=0)
            InitPlan 1 (returns $0)
              ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 3 (returns $2)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
          Index Cond: (id = $2)
 (16 rows)
 
@@ -1089,21 +1090,21 @@ error hint:
 
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=61.04..65.05 rows=1 width=4)
+ Bitmap Heap Scan on t1  (cost=61.07..65.09 rows=1 width=4)
    Recheck Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
    InitPlan 2 (returns $1)
-     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
                        Index Cond: (id < 10)
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
          Index Cond: (id = $1)
 (16 rows)
 
@@ -2928,10 +2929,10 @@ error hint:
          ->  Bitmap Index Scan on t2_pkey
                Index Cond: (id < 10)
    ->  Bitmap Heap Scan on t1
-         Recheck Cond: ((id < 10) AND (id = t2.id))
+         Recheck Cond: ((id = t2.id) AND (id < 10))
          Filter: (ctid = '(1,1)'::tid)
          ->  Bitmap Index Scan on t1_pkey
-               Index Cond: ((id < 10) AND (id = t2.id))
+               Index Cond: ((id = t2.id) AND (id < 10))
 (11 rows)
 
 -- outer join test
@@ -2971,14 +2972,13 @@ not used hint:
 duplication hint:
 error hint:
 
-          QUERY PLAN          
-------------------------------
- Hash Full Join
-   Hash Cond: (t1.id = t2.id)
-   ->  Seq Scan on t1
-   ->  Hash
-         ->  Seq Scan on t2
-(5 rows)
+              QUERY PLAN              
+--------------------------------------
+ Merge Full Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
 
 -- inherite table test
 SET constraint_exclusion TO off;
@@ -3986,7 +3986,7 @@ error hint:
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (5 rows)
 
 /*+MergeJoin(p1 t1)*/
@@ -4111,7 +4111,7 @@ error hint:
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (5 rows)
 
 /*+MergeJoin(p1 t1)*/
@@ -4163,7 +4163,7 @@ EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 5
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (5 rows)
 
 SET constraint_exclusion TO on;
@@ -4174,7 +4174,7 @@ EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 5
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (5 rows)
 
 SET constraint_exclusion TO off;
@@ -4193,7 +4193,7 @@ error hint:
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (5 rows)
 
 /*+IndexScan(p1)*/
@@ -4212,7 +4212,7 @@ error hint:
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (6 rows)
 
 /*+BitmapScan(p1)*/
@@ -4233,7 +4233,7 @@ error hint:
          ->  Bitmap Index Scan on p1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (8 rows)
 
 /*+TidScan(p1)*/
@@ -4252,7 +4252,7 @@ error hint:
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (6 rows)
 
 SET constraint_exclusion TO on;
@@ -4271,7 +4271,7 @@ error hint:
    ->  Seq Scan on p1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (5 rows)
 
 /*+IndexScan(p1)*/
@@ -4290,7 +4290,7 @@ error hint:
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (6 rows)
 
 /*+BitmapScan(p1)*/
@@ -4311,7 +4311,7 @@ error hint:
          ->  Bitmap Index Scan on p1_pkey
                Index Cond: ((id >= 50) AND (id <= 51))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (8 rows)
 
 /*+TidScan(p1)*/
@@ -4330,7 +4330,7 @@ error hint:
          TID Cond: (ctid = '(1,1)'::tid)
          Filter: ((id >= 50) AND (id <= 51))
    ->  Index Scan using t1_pkey on t1
-         Index Cond: ((id < 10) AND (id = p1.id))
+         Index Cond: ((id = p1.id) AND (id < 10))
 (6 rows)
 
 -- quote test
@@ -4433,8 +4433,8 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
@@ -4442,8 +4442,8 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                  Merge Cond: (t1_5.id = t3_5.id)
                  ->  Merge Join
                        Merge Cond: (t1_5.id = t2_5.id)
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t1_pkey on t1 t1_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
                  ->  Sort
                        Sort Key: t3_5.id
                        ->  Seq Scan on t3 t3_5
@@ -4453,8 +4453,8 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                  Merge Cond: (t1_2.id = t3_2.id)
                  ->  Merge Join
                        Merge Cond: (t1_2.id = t2_2.id)
-                       ->  Index Scan using t1_pkey on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t1_pkey on t1 t1_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
                  ->  Sort
                        Sort Key: t3_2.id
                        ->  Seq Scan on t3 t3_2
@@ -4464,8 +4464,8 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                  Merge Cond: (t1_4.id = t3_4.id)
                  ->  Merge Join
                        Merge Cond: (t1_4.id = t2_4.id)
-                       ->  Index Scan using t1_pkey on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t1_pkey on t1 t1_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
                  ->  Sort
                        Sort Key: t3_4.id
                        ->  Seq Scan on t3 t3_4
@@ -4474,15 +4474,15 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                ->  Nested Loop
                      ->  Nested Loop
                            ->  Nested Loop
-                                 ->  Index Scan using t1_pkey on t1 t1_1
+                                 ->  Index Only Scan using t1_pkey on t1 t1_1
                                        Index Cond: (id = $2)
-                                 ->  Seq Scan on t3 t3_1
-                                       Filter: (id = $2)
-                           ->  Index Scan using t2_pkey on t2 t2_1
-                                 Index Cond: (id = $2)
-                     ->  Index Scan using t1_pkey on t1 t1_3
+                                 ->  Index Only Scan using t2_pkey on t2 t2_1
+                                       Index Cond: (id = $2)
+                           ->  Seq Scan on t3 t3_1
+                                 Filter: (id = $2)
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
                            Index Cond: (id = $2)
-               ->  Index Scan using t2_pkey on t2 t2_3
+               ->  Index Only Scan using t2_pkey on t2 t2_3
                      Index Cond: (id = $2)
          ->  Seq Scan on t3 t3_3
                Filter: (id = $2)
@@ -4513,38 +4513,38 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_5.id = t3_5.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t1_pkey on t1 t1_5
                              Index Cond: (id = t2_5.id)
                  ->  Sort
                        Sort Key: t3_5.id
                        ->  Seq Scan on t3 t3_5
-   InitPlan 2 (returns $2)
+   InitPlan 2 (returns $3)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_2.id = t3_2.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                       ->  Index Scan using t1_pkey on t1 t1_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
                  ->  Sort
                        Sort Key: t3_2.id
                        ->  Seq Scan on t3 t3_2
-   InitPlan 3 (returns $3)
+   InitPlan 3 (returns $5)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_4.id = t3_4.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                       ->  Index Scan using t1_pkey on t1 t1_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t1_pkey on t1 t1_4
                              Index Cond: (id = t2_4.id)
                  ->  Sort
                        Sort Key: t3_4.id
@@ -4554,20 +4554,20 @@ error hint:
                ->  Nested Loop
                      ->  Nested Loop
                            ->  Nested Loop
-                                 ->  Index Scan using t2_pkey on t2 t2_1
-                                       Index Cond: (id = $3)
-                                 ->  Seq Scan on t3 t3_1
-                                       Filter: (id = $3)
-                           ->  Index Scan using t1_pkey on t1 t1_1
-                                 Index Cond: (id = $3)
-                     ->  Index Scan using t1_pkey on t1 t1_3
-                           Index Cond: (id = $3)
-               ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $3)
+                                 ->  Index Only Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $5)
+                                 ->  Index Only Scan using t2_pkey on t2 t2_1
+                                       Index Cond: (id = $5)
+                           ->  Seq Scan on t3 t3_1
+                                 Filter: (id = $5)
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $5)
+               ->  Index Only Scan using t2_pkey on t2 t2_3
+                     Index Cond: (id = $5)
          ->  Seq Scan on t3 t3_3
-               Filter: (id = $3)
+               Filter: (id = $5)
    ->  CTE Scan on c1_1
-         Filter: (id = $3)
+         Filter: (id = $5)
 (53 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
@@ -4594,38 +4594,38 @@ Leading(a t1_1 t1_2 t1_4 t1_5)
 duplication hint:
 error hint:
 
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_5.id = t3_5.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t1_pkey on t1 t1_5
                              Index Cond: (id = t2_5.id)
                  ->  Sort
                        Sort Key: t3_5.id
                        ->  Seq Scan on t3 t3_5
-   InitPlan 2 (returns $2)
+   InitPlan 2 (returns $3)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_2.id = t3_2.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                       ->  Index Scan using t1_pkey on t1 t1_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
                  ->  Sort
                        Sort Key: t3_2.id
                        ->  Seq Scan on t3 t3_2
-   InitPlan 3 (returns $3)
+   InitPlan 3 (returns $5)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_4.id = t3_4.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                       ->  Index Scan using t1_pkey on t1 t1_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t1_pkey on t1 t1_4
                              Index Cond: (id = t2_4.id)
                  ->  Sort
                        Sort Key: t3_4.id
@@ -4635,20 +4635,20 @@ error hint:
                ->  Nested Loop
                      ->  Nested Loop
                            ->  Nested Loop
-                                 ->  Index Scan using t2_pkey on t2 t2_1
-                                       Index Cond: (id = $3)
-                                 ->  Seq Scan on t3 t3_1
-                                       Filter: (id = $3)
-                           ->  Index Scan using t1_pkey on t1 t1_1
-                                 Index Cond: (id = $3)
-                     ->  Index Scan using t1_pkey on t1 t1_3
-                           Index Cond: (id = $3)
-               ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $3)
+                                 ->  Index Only Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $5)
+                                 ->  Index Only Scan using t2_pkey on t2 t2_1
+                                       Index Cond: (id = $5)
+                           ->  Seq Scan on t3 t3_1
+                                 Filter: (id = $5)
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $5)
+               ->  Index Only Scan using t2_pkey on t2 t2_3
+                     Index Cond: (id = $5)
          ->  Seq Scan on t3 t3_3
-               Filter: (id = $3)
+               Filter: (id = $5)
    ->  CTE Scan on c1_1
-         Filter: (id = $3)
+         Filter: (id = $5)
 (53 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
@@ -4675,8 +4675,8 @@ NestLoop(t1_5 t2_5)
 duplication hint:
 error hint:
 
-                            QUERY PLAN                             
--------------------------------------------------------------------
+                               QUERY PLAN                               
+------------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
@@ -4684,33 +4684,33 @@ error hint:
                  Merge Cond: (t2_5.id = t1_5.id)
                  ->  Merge Join
                        Merge Cond: (t2_5.id = t3_5.id)
-                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
                        ->  Sort
                              Sort Key: t3_5.id
                              ->  Seq Scan on t3 t3_5
-                 ->  Index Scan using t1_pkey on t1 t1_5
+                 ->  Index Only Scan using t1_pkey on t1 t1_5
    InitPlan 2 (returns $1)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t2_2.id = t1_2.id)
                  ->  Merge Join
                        Merge Cond: (t2_2.id = t3_2.id)
-                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
                        ->  Sort
                              Sort Key: t3_2.id
                              ->  Seq Scan on t3 t3_2
-                 ->  Index Scan using t1_pkey on t1 t1_2
+                 ->  Index Only Scan using t1_pkey on t1 t1_2
    InitPlan 3 (returns $2)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t2_4.id = t1_4.id)
                  ->  Merge Join
                        Merge Cond: (t2_4.id = t3_4.id)
-                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
                        ->  Sort
                              Sort Key: t3_4.id
                              ->  Seq Scan on t3 t3_4
-                 ->  Index Scan using t1_pkey on t1 t1_4
+                 ->  Index Only Scan using t1_pkey on t1 t1_4
    ->  Nested Loop
          ->  Nested Loop
                ->  Nested Loop
@@ -4720,15 +4720,15 @@ error hint:
                                        Filter: (id = $2)
                                  ->  CTE Scan on c1_1
                                        Filter: (id = $2)
-                           ->  Index Scan using t2_pkey on t2 t2_3
+                           ->  Index Only Scan using t2_pkey on t2 t2_3
                                  Index Cond: (id = $2)
-                     ->  Index Scan using t1_pkey on t1 t1_3
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
                            Index Cond: (id = $2)
                ->  Seq Scan on t3 t3_1
                      Filter: (id = $2)
-         ->  Index Scan using t2_pkey on t2 t2_1
+         ->  Index Only Scan using t2_pkey on t2 t2_1
                Index Cond: (id = $2)
-   ->  Index Scan using t1_pkey on t1 t1_1
+   ->  Index Only Scan using t1_pkey on t1 t1_1
          Index Cond: (id = $2)
 (53 rows)
 
@@ -4744,8 +4744,8 @@ SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.i
 ) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
 SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
 );
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
@@ -4753,8 +4753,8 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                  Merge Cond: (t1_5.id = t3_5.id)
                  ->  Merge Join
                        Merge Cond: (t1_5.id = t2_5.id)
-                       ->  Index Scan using t1_pkey on t1 t1_5
-                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t1_pkey on t1 t1_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
                  ->  Sort
                        Sort Key: t3_5.id
                        ->  Seq Scan on t3 t3_5
@@ -4764,8 +4764,8 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                  Merge Cond: (t1_2.id = t3_2.id)
                  ->  Merge Join
                        Merge Cond: (t1_2.id = t2_2.id)
-                       ->  Index Scan using t1_pkey on t1 t1_2
-                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t1_pkey on t1 t1_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
                  ->  Sort
                        Sort Key: t3_2.id
                        ->  Seq Scan on t3 t3_2
@@ -4775,28 +4775,28 @@ SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t
                  Merge Cond: (t1_4.id = t3_4.id)
                  ->  Merge Join
                        Merge Cond: (t1_4.id = t2_4.id)
-                       ->  Index Scan using t1_pkey on t1 t1_4
-                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t1_pkey on t1 t1_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
                  ->  Sort
                        Sort Key: t3_4.id
                        ->  Seq Scan on t3 t3_4
    ->  Nested Loop
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Index Scan using t1_pkey on t1 t1_1
+                     ->  Index Only Scan using t1_pkey on t1 t1_1
                            Index Cond: (id = $2)
-                     ->  Seq Scan on t3 t3_1
-                           Filter: (id = $2)
-               ->  Index Scan using t2_pkey on t2 t2_1
-                     Index Cond: (id = $2)
+                     ->  Index Only Scan using t2_pkey on t2 t2_1
+                           Index Cond: (id = $2)
+               ->  Seq Scan on t3 t3_1
+                     Filter: (id = $2)
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Index Scan using t1_pkey on t1 t1_3
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
                            Index Cond: (id = $2)
-                     ->  Seq Scan on t3 t3_3
-                           Filter: (id = $2)
-               ->  Index Scan using t2_pkey on t2 t2_3
-                     Index Cond: (id = $2)
+                     ->  Index Only Scan using t2_pkey on t2 t2_3
+                           Index Cond: (id = $2)
+               ->  Seq Scan on t3 t3_3
+                     Filter: (id = $2)
    ->  CTE Scan on c1_1
          Filter: (id = $2)
 (53 rows)
@@ -4824,38 +4824,38 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_5.id = t3_5.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t1_pkey on t1 t1_5
                              Index Cond: (id = t2_5.id)
                  ->  Sort
                        Sort Key: t3_5.id
                        ->  Seq Scan on t3 t3_5
-   InitPlan 2 (returns $2)
+   InitPlan 2 (returns $3)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_2.id = t3_2.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                       ->  Index Scan using t1_pkey on t1 t1_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
                  ->  Sort
                        Sort Key: t3_2.id
                        ->  Seq Scan on t3 t3_2
-   InitPlan 3 (returns $3)
+   InitPlan 3 (returns $5)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_4.id = t3_4.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                       ->  Index Scan using t1_pkey on t1 t1_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t1_pkey on t1 t1_4
                              Index Cond: (id = t2_4.id)
                  ->  Sort
                        Sort Key: t3_4.id
@@ -4863,22 +4863,22 @@ error hint:
    ->  Nested Loop
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Index Scan using t2_pkey on t2 t2_1
-                           Index Cond: (id = $3)
-                     ->  Seq Scan on t3 t3_1
-                           Filter: (id = $3)
-               ->  Index Scan using t1_pkey on t1 t1_1
-                     Index Cond: (id = $3)
+                     ->  Index Only Scan using t1_pkey on t1 t1_1
+                           Index Cond: (id = $5)
+                     ->  Index Only Scan using t2_pkey on t2 t2_1
+                           Index Cond: (id = $5)
+               ->  Seq Scan on t3 t3_1
+                     Filter: (id = $5)
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Index Scan using t2_pkey on t2 t2_3
-                           Index Cond: (id = $3)
-                     ->  Seq Scan on t3 t3_3
-                           Filter: (id = $3)
-               ->  Index Scan using t1_pkey on t1 t1_3
-                     Index Cond: (id = $3)
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $5)
+                     ->  Index Only Scan using t2_pkey on t2 t2_3
+                           Index Cond: (id = $5)
+               ->  Seq Scan on t3 t3_3
+                     Filter: (id = $5)
    ->  CTE Scan on c1_1
-         Filter: (id = $3)
+         Filter: (id = $5)
 (53 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
@@ -4905,38 +4905,38 @@ Leading(a t1_1 t1_2 t1_4 t1_5)
 duplication hint:
 error hint:
 
-                          QUERY PLAN                           
----------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_5.id = t3_5.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_5
-                       ->  Index Scan using t1_pkey on t1 t1_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t1_pkey on t1 t1_5
                              Index Cond: (id = t2_5.id)
                  ->  Sort
                        Sort Key: t3_5.id
                        ->  Seq Scan on t3 t3_5
-   InitPlan 2 (returns $2)
+   InitPlan 2 (returns $3)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_2.id = t3_2.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_2
-                       ->  Index Scan using t1_pkey on t1 t1_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t1_pkey on t1 t1_2
                              Index Cond: (id = t2_2.id)
                  ->  Sort
                        Sort Key: t3_2.id
                        ->  Seq Scan on t3 t3_2
-   InitPlan 3 (returns $3)
+   InitPlan 3 (returns $5)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t1_4.id = t3_4.id)
                  ->  Nested Loop
-                       ->  Index Scan using t2_pkey on t2 t2_4
-                       ->  Index Scan using t1_pkey on t1 t1_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t1_pkey on t1 t1_4
                              Index Cond: (id = t2_4.id)
                  ->  Sort
                        Sort Key: t3_4.id
@@ -4944,22 +4944,22 @@ error hint:
    ->  Nested Loop
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Index Scan using t2_pkey on t2 t2_1
-                           Index Cond: (id = $3)
-                     ->  Seq Scan on t3 t3_1
-                           Filter: (id = $3)
-               ->  Index Scan using t1_pkey on t1 t1_1
-                     Index Cond: (id = $3)
+                     ->  Index Only Scan using t1_pkey on t1 t1_1
+                           Index Cond: (id = $5)
+                     ->  Index Only Scan using t2_pkey on t2 t2_1
+                           Index Cond: (id = $5)
+               ->  Seq Scan on t3 t3_1
+                     Filter: (id = $5)
          ->  Nested Loop
                ->  Nested Loop
-                     ->  Index Scan using t2_pkey on t2 t2_3
-                           Index Cond: (id = $3)
-                     ->  Seq Scan on t3 t3_3
-                           Filter: (id = $3)
-               ->  Index Scan using t1_pkey on t1 t1_3
-                     Index Cond: (id = $3)
+                     ->  Index Only Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $5)
+                     ->  Index Only Scan using t2_pkey on t2 t2_3
+                           Index Cond: (id = $5)
+               ->  Seq Scan on t3 t3_3
+                     Filter: (id = $5)
    ->  CTE Scan on c1_1
-         Filter: (id = $3)
+         Filter: (id = $5)
 (53 rows)
 
 /*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
@@ -4986,8 +4986,8 @@ NestLoop(t1_5 t2_5)
 duplication hint:
 error hint:
 
-                               QUERY PLAN                                
--------------------------------------------------------------------------
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
  Nested Loop
    CTE c1_1
      ->  Aggregate
@@ -4995,51 +4995,51 @@ error hint:
                  Merge Cond: (t2_5.id = t1_5.id)
                  ->  Merge Join
                        Merge Cond: (t2_5.id = t3_5.id)
-                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Only Scan using t2_pkey on t2 t2_5
                        ->  Sort
                              Sort Key: t3_5.id
                              ->  Seq Scan on t3 t3_5
-                 ->  Index Scan using t1_pkey on t1 t1_5
+                 ->  Index Only Scan using t1_pkey on t1 t1_5
    InitPlan 2 (returns $1)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t2_2.id = t1_2.id)
                  ->  Merge Join
                        Merge Cond: (t2_2.id = t3_2.id)
-                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Only Scan using t2_pkey on t2 t2_2
                        ->  Sort
                              Sort Key: t3_2.id
                              ->  Seq Scan on t3 t3_2
-                 ->  Index Scan using t1_pkey on t1 t1_2
+                 ->  Index Only Scan using t1_pkey on t1 t1_2
    InitPlan 3 (returns $2)
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (t2_4.id = t1_4.id)
                  ->  Merge Join
                        Merge Cond: (t2_4.id = t3_4.id)
-                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Only Scan using t2_pkey on t2 t2_4
                        ->  Sort
                              Sort Key: t3_4.id
                              ->  Seq Scan on t3 t3_4
-                 ->  Index Scan using t1_pkey on t1 t1_4
+                 ->  Index Only Scan using t1_pkey on t1 t1_4
    ->  Nested Loop
          ->  Nested Loop
                ->  Nested Loop
                      ->  Nested Loop
                            ->  Nested Loop
-                                 ->  Index Scan using t2_pkey on t2 t2_3
+                                 ->  Index Only Scan using t2_pkey on t2 t2_3
                                        Index Cond: (id = $2)
                                  ->  Seq Scan on t3 t3_3
                                        Filter: (id = $2)
-                           ->  Index Scan using t1_pkey on t1 t1_3
+                           ->  Index Only Scan using t1_pkey on t1 t1_3
                                  Index Cond: (id = $2)
                      ->  CTE Scan on c1_1
                            Filter: (id = $2)
                ->  Seq Scan on t3 t3_1
                      Filter: (id = $2)
-         ->  Index Scan using t2_pkey on t2 t2_1
+         ->  Index Only Scan using t2_pkey on t2 t2_1
                Index Cond: (id = $2)
-   ->  Index Scan using t1_pkey on t1 t1_1
+   ->  Index Only Scan using t1_pkey on t1 t1_1
          Index Cond: (id = $2)
 (53 rows)
 
