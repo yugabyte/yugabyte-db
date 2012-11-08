@@ -27,6 +27,9 @@
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#if PG_VERSION_NUM >= 90200
+#include "catalog/pg_class.h"
+#endif
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -281,8 +284,15 @@ static void make_rels_by_clauseless_joins(PlannerInfo *root,
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									Index rti, RangeTblEntry *rte);
+#if PG_VERSION_NUM >= 90200
+static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
+						   List *live_childrels,
+						   List *all_child_pathkeys);
+#endif
 static List *accumulate_append_subpath(List *subpaths, Path *path);
+#if PG_VERSION_NUM < 90200
 static void set_dummy_rel_pathlist(RelOptInfo *rel);
+#endif
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
@@ -1311,8 +1321,13 @@ set_config_option_wrapper(const char *name, const char *value,
 
 	PG_TRY();
 	{
+#if PG_VERSION_NUM >= 90200
+		result = set_config_option(name, value, context, source,
+								   action, changeVal, 0);
+#else
 		result = set_config_option(name, value, context, source,
 								   action, changeVal);
+#endif
 	}
 	PG_CATCH();
 	{
@@ -2026,7 +2041,11 @@ static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Consider sequential scan */
+#if PG_VERSION_NUM >= 90200
+	add_path(rel, create_seqscan_path(root, rel, NULL));
+#else
 	add_path(rel, create_seqscan_path(root, rel));
+#endif
 
 	/* Consider index scans */
 	create_index_paths(root, rel);
@@ -2228,7 +2247,15 @@ static void
 set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				 Index rti, RangeTblEntry *rte)
 {
+#if PG_VERSION_NUM >= 90200
+	if (IS_DUMMY_REL(rel))
+	{
+		/* We already proved the relation empty, so nothing more to do */
+	}
+	else if (rte->inh)
+#else
 	if (rte->inh)
+#endif
 	{
 		/* It's an "append relation", process accordingly */
 		set_append_rel_pathlist(root, rel, rti, rte);
