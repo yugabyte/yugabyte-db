@@ -206,6 +206,7 @@ error hint:
                    QUERY PLAN                   
 ------------------------------------------------
  Nested Loop
+   Join Filter: (t1.c1 = t4.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
          ->  Index Scan using t1_i1 on t1
@@ -217,8 +218,8 @@ error hint:
                      ->  Hash
                            ->  Seq Scan on t2
    ->  Index Scan using t4_i1 on t4
-         Index Cond: (c1 = t1.c1)
-(13 rows)
+         Index Cond: (c1 = t3.c1)
+(14 rows)
 
 ----
 ---- No. L-1-4 conflict table name
@@ -308,18 +309,20 @@ error hint:
                    QUERY PLAN                   
 ------------------------------------------------
  Nested Loop
+   Join Filter: (s1.t1.c1 = s2.t1.c1)
    ->  Nested Loop
+         Join Filter: (t2.c1 = s1.t1.c1)
          ->  Merge Join
                Merge Cond: (t3.c1 = t2.c1)
                ->  Index Scan using t3_i1 on t3
                ->  Sort
                      Sort Key: t2.c1
                      ->  Seq Scan on t2
-         ->  Index Scan using t1_pkey on t1
-               Index Cond: (c1 = t2.c1)
-   ->  Index Scan using t1_i1 on t1
-         Index Cond: (c1 = t2.c1)
-(12 rows)
+         ->  Index Scan using t1_i1 on t1
+               Index Cond: (c1 = t3.c1)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (c1 = t3.c1)
+(14 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 s2t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2t1.c1;
                    QUERY PLAN                   
@@ -351,13 +354,13 @@ error hint:
 -------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t3.c1)
+   ->  Nested Loop
          ->  Merge Join
                Merge Cond: (t1.c1 = s2t1.c1)
                ->  Index Scan using t1_i1 on t1
                ->  Index Scan using t1_pkey on t1 s2t1
          ->  Index Scan using t3_i1 on t3
+               Index Cond: (c1 = t1.c1)
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -365,8 +368,8 @@ error hint:
 
 -- No. L-1-4-3
 EXPLAIN (COSTS false) SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1) FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                          QUERY PLAN                           
----------------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Merge Join
    Merge Cond: (s1.t1.c1 = s1.t2.c1)
    InitPlan 1 (returns $0)
@@ -377,9 +380,9 @@ EXPLAIN (COSTS false) SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2, s1.t3, s1.
                        Merge Cond: (s1.t1.c1 = s1.t4.c1)
                        ->  Merge Join
                              Merge Cond: (s1.t1.c1 = s1.t3.c1)
-                             ->  Index Scan using t1_i1 on t1
-                             ->  Index Scan using t3_i1 on t3
-                       ->  Index Scan using t4_i1 on t4
+                             ->  Index Only Scan using t1_i1 on t1
+                             ->  Index Only Scan using t3_i1 on t3
+                       ->  Index Only Scan using t4_i1 on t4
                  ->  Sort
                        Sort Key: s1.t2.c1
                        ->  Seq Scan on t2
@@ -412,7 +415,7 @@ error hint:
      ->  Aggregate
            ->  Merge Join
                  Merge Cond: (s1.t1.c1 = s1.t2.c1)
-                 ->  Index Scan using t1_i1 on t1
+                 ->  Index Only Scan using t1_i1 on t1
                  ->  Sort
                        Sort Key: s1.t2.c1
                        ->  Hash Join
@@ -1136,7 +1139,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t
                Merge Cond: (t1.c1 = t3.c1)
                ->  Index Scan using t1_i1 on t1
                ->  Index Scan using t3_i1 on t3
-         ->  Index Scan using t4_i1 on t4
+         ->  Index Only Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
          ->  Seq Scan on t2
@@ -1154,6 +1157,7 @@ error hint:
                    QUERY PLAN                   
 ------------------------------------------------
  Nested Loop
+   Join Filter: (t1.c1 = t4.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
          ->  Index Scan using t1_i1 on t1
@@ -1164,9 +1168,9 @@ error hint:
                      ->  Seq Scan on t3
                      ->  Hash
                            ->  Seq Scan on t2
-   ->  Index Scan using t4_i1 on t4
-         Index Cond: (c1 = t1.c1)
-(13 rows)
+   ->  Index Only Scan using t4_i1 on t4
+         Index Cond: (c1 = t3.c1)
+(14 rows)
 
 /*+Leading(t4 t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t4) st4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = st4.c1;
@@ -1641,16 +1645,16 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
    ->  Nested Loop
          Join Filter: (bmt1.c1 = bmt4.c1)
          ->  Nested Loop
-               Join Filter: (bmt1.c1 = bmt2.c1)
+               Join Filter: (bmt1.c1 = bmt3.c1)
                ->  Nested Loop
-                     Join Filter: (bmt1.c1 = bmt3.c1)
+                     Join Filter: (bmt1.c1 = bmt2.c1)
                      ->  Tid Scan on t1 bmt1
                            TID Cond: (ctid = '(1,1)'::tid)
                            Filter: ((c1 <> $0) AND (c1 <> $1))
-                     ->  Tid Scan on t3 bmt3
-                           TID Cond: (ctid = '(1,1)'::tid)
-               ->  Seq Scan on t2 bmt2
-                     Filter: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 bmt2
+                           Filter: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t3 bmt3
+                     TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 bmt4
                TID Cond: (ctid = '(1,1)'::tid)
 (48 rows)
@@ -2522,20 +2526,20 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
    ->  Nested Loop
          Join Filter: (bmt1.c1 = c1.c1)
          ->  Nested Loop
-               Join Filter: (bmt1.c1 = bmt2.c1)
+               Join Filter: (bmt1.c1 = bmt4.c1)
                ->  Nested Loop
-                     Join Filter: (bmt3.c1 = bmt1.c1)
+                     Join Filter: (bmt1.c1 = bmt3.c1)
                      ->  Nested Loop
-                           Join Filter: (bmt3.c1 = bmt4.c1)
-                           ->  Tid Scan on t3 bmt3
+                           Join Filter: (bmt1.c1 = bmt2.c1)
+                           ->  Tid Scan on t1 bmt1
                                  TID Cond: (ctid = '(1,1)'::tid)
-                           ->  Tid Scan on t4 bmt4
-                                 TID Cond: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 bmt1
+                                 Filter: (c1 <> $2)
+                           ->  Seq Scan on t2 bmt2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t3 bmt3
                            TID Cond: (ctid = '(1,1)'::tid)
-                           Filter: (c1 <> $2)
-               ->  Seq Scan on t2 bmt2
-                     Filter: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t4 bmt4
+                     TID Cond: (ctid = '(1,1)'::tid)
          ->  CTE Scan on c1
 (67 rows)
 
@@ -2678,20 +2682,20 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
    ->  Nested Loop
          Join Filter: (bmt1.c1 = c1.c1)
          ->  Nested Loop
-               Join Filter: (bmt1.c1 = bmt2.c1)
+               Join Filter: (bmt1.c1 = bmt4.c1)
                ->  Nested Loop
-                     Join Filter: (bmt3.c1 = bmt1.c1)
+                     Join Filter: (bmt1.c1 = bmt3.c1)
                      ->  Nested Loop
-                           Join Filter: (bmt3.c1 = bmt4.c1)
-                           ->  Tid Scan on t3 bmt3
+                           Join Filter: (bmt1.c1 = bmt2.c1)
+                           ->  Tid Scan on t1 bmt1
                                  TID Cond: (ctid = '(1,1)'::tid)
-                           ->  Tid Scan on t4 bmt4
-                                 TID Cond: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 bmt1
+                                 Filter: (c1 <> $3)
+                           ->  Seq Scan on t2 bmt2
+                                 Filter: (ctid = '(1,1)'::tid)
+                     ->  Tid Scan on t3 bmt3
                            TID Cond: (ctid = '(1,1)'::tid)
-                           Filter: (c1 <> $3)
-               ->  Seq Scan on t2 bmt2
-                     Filter: (ctid = '(1,1)'::tid)
+               ->  Tid Scan on t4 bmt4
+                     TID Cond: (ctid = '(1,1)'::tid)
          ->  CTE Scan on c1
 (46 rows)
 
@@ -2780,15 +2784,15 @@ EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (t1.c1 = t3.c1)
                ->  Nested Loop
-                     Join Filter: (t2.c1 = t1.c1)
+                     Join Filter: (t1.c1 = t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r1
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4
@@ -2836,15 +2840,15 @@ EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (b1t1.c1 = b1t3.c1)
                ->  Nested Loop
-                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     Join Filter: (b1t1.c1 = b1t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r1_
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2 b1t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 b1t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1 b1t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 b1t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3 b1t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b1t4
@@ -2893,15 +2897,15 @@ EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (t1.c1 = t3.c1)
                ->  Nested Loop
-                     Join Filter: (t2.c1 = t1.c1)
+                     Join Filter: (t1.c1 = t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r2
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4
@@ -2913,15 +2917,15 @@ EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (t1.c1 = t3.c1)
                ->  Nested Loop
-                     Join Filter: (t2.c1 = t1.c1)
+                     Join Filter: (t1.c1 = t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r2
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4
@@ -2996,15 +3000,15 @@ EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (b1t1.c1 = b1t3.c1)
                ->  Nested Loop
-                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     Join Filter: (b1t1.c1 = b1t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r2_
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2 b1t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 b1t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1 b1t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 b1t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3 b1t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b1t4
@@ -3016,15 +3020,15 @@ EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (b2t1.c1 = b2t3.c1)
                ->  Nested Loop
-                     Join Filter: (b2t2.c1 = b2t1.c1)
+                     Join Filter: (b2t1.c1 = b2t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r2_
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2 b2t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 b2t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1 b2t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 b2t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3 b2t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b2t4
@@ -3103,15 +3107,15 @@ EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (t1.c1 = t3.c1)
                ->  Nested Loop
-                     Join Filter: (t2.c1 = t1.c1)
+                     Join Filter: (t1.c1 = t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r3
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4
@@ -3123,15 +3127,15 @@ EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (t1.c1 = t3.c1)
                ->  Nested Loop
-                     Join Filter: (t2.c1 = t1.c1)
+                     Join Filter: (t1.c1 = t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r3
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4
@@ -3143,15 +3147,15 @@ EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (t1.c1 = t3.c1)
                ->  Nested Loop
-                     Join Filter: (t2.c1 = t1.c1)
+                     Join Filter: (t1.c1 = t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r3
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4
@@ -3253,15 +3257,15 @@ EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (b1t1.c1 = b1t3.c1)
                ->  Nested Loop
-                     Join Filter: (b1t2.c1 = b1t1.c1)
+                     Join Filter: (b1t1.c1 = b1t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r3_
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2 b1t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 b1t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1 b1t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 b1t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3 b1t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b1t4
@@ -3273,15 +3277,15 @@ EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (b2t1.c1 = b2t3.c1)
                ->  Nested Loop
-                     Join Filter: (b2t2.c1 = b2t1.c1)
+                     Join Filter: (b2t1.c1 = b2t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r3_
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2 b2t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 b2t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1 b2t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 b2t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3 b2t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b2t4
@@ -3293,15 +3297,15 @@ EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
          ->  Nested Loop
                Join Filter: (b3t1.c1 = b3t3.c1)
                ->  Nested Loop
-                     Join Filter: (b3t2.c1 = b3t1.c1)
+                     Join Filter: (b3t1.c1 = b3t2.c1)
                      ->  Nested Loop
                            ->  Tid Scan on r3_
                                  TID Cond: (ctid = '(1,1)'::tid)
                                  Filter: (c1 = 1)
-                           ->  Seq Scan on t2 b3t2
-                                 Filter: (ctid = '(1,1)'::tid)
-                     ->  Tid Scan on t1 b3t1
-                           TID Cond: (ctid = '(1,1)'::tid)
+                           ->  Tid Scan on t1 b3t1
+                                 TID Cond: (ctid = '(1,1)'::tid)
+                     ->  Seq Scan on t2 b3t2
+                           Filter: (ctid = '(1,1)'::tid)
                ->  Tid Scan on t3 b3t3
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b3t4
@@ -3403,19 +3407,17 @@ error hint:
 ----
 -- No. L-2-4-1
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
-                      QUERY PLAN                       
--------------------------------------------------------
- Merge Join
-   Merge Cond: (t1.c1 = t2.c1)
+                   QUERY PLAN                    
+-------------------------------------------------
+ Nested Loop
+   ->  Hash Join
+         Hash Cond: (t2.c1 = "*VALUES*".column1)
+         ->  Seq Scan on t2
+         ->  Hash
+               ->  Values Scan on "*VALUES*"
    ->  Index Scan using t1_i1 on t1
-   ->  Sort
-         Sort Key: t2.c1
-         ->  Hash Join
-               Hash Cond: (t2.c1 = "*VALUES*".column1)
-               ->  Seq Scan on t2
-               ->  Hash
-                     ->  Values Scan on "*VALUES*"
-(10 rows)
+         Index Cond: (c1 = t2.c1)
+(8 rows)
 
 /*+ Leading(t3 t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
@@ -3448,36 +3450,33 @@ not used hint:
 duplication hint:
 error hint:
 
-                        QUERY PLAN                         
------------------------------------------------------------
- Hash Join
-   Hash Cond: (t2.c1 = t1.c1)
-   ->  Seq Scan on t2
-   ->  Hash
-         ->  Nested Loop
-               ->  Values Scan on "*VALUES*"
-               ->  Index Scan using t1_i1 on t1
-                     Index Cond: (c1 = "*VALUES*".column1)
-(8 rows)
+                     QUERY PLAN                      
+-----------------------------------------------------
+ Nested Loop
+   ->  Nested Loop
+         ->  Values Scan on "*VALUES*"
+         ->  Index Scan using t1_i1 on t1
+               Index Cond: (c1 = "*VALUES*".column1)
+   ->  Index Scan using t2_i1 on t2
+         Index Cond: (c1 = t1.c1)
+(7 rows)
 
 -- No. L-2-4-2
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                         QUERY PLAN                          
--------------------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Nested Loop
    Join Filter: (t1.c1 = "*VALUES*".column1)
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t2.c1)
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t2.c1 = "*VALUES*".column1)
+               ->  Seq Scan on t2
+               ->  Hash
+                     ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
-         ->  Sort
-               Sort Key: t2.c1
-               ->  Hash Join
-                     Hash Cond: (t2.c1 = "*VALUES*".column1)
-                     ->  Seq Scan on t2
-                     ->  Hash
-                           ->  Values Scan on "*VALUES*"
+               Index Cond: (c1 = t2.c1)
    ->  Values Scan on "*VALUES*"
-(13 rows)
+(11 rows)
 
 /*+ Leading(t4 t3 t2 t1) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
@@ -3488,20 +3487,20 @@ not used hint:
 duplication hint:
 error hint:
 
-                           QUERY PLAN                           
-----------------------------------------------------------------
+                    QUERY PLAN                     
+---------------------------------------------------
  Nested Loop
    Join Filter: (t1.c1 = "*VALUES*".column1)
    ->  Nested Loop
-         Join Filter: ("*VALUES*".column1 = "*VALUES*".column1)
+         Join Filter: (t1.c1 = "*VALUES*".column1)
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t2.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Sort
+                     Sort Key: t2.c1
+                     ->  Seq Scan on t2
          ->  Values Scan on "*VALUES*"
-         ->  Values Scan on "*VALUES*"
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t2.c1)
-         ->  Index Scan using t1_i1 on t1
-         ->  Sort
-               Sort Key: t2.c1
-               ->  Seq Scan on t2
+   ->  Values Scan on "*VALUES*"
 (12 rows)
 
 /*+ Leading(*VALUES* t3 t2 t1) */
@@ -3515,22 +3514,20 @@ Leading(*VALUES* t3 t2 t1)
 duplication hint:
 error hint:
 
-                         QUERY PLAN                          
--------------------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Nested Loop
    Join Filter: (t1.c1 = "*VALUES*".column1)
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t2.c1)
+   ->  Nested Loop
+         ->  Hash Join
+               Hash Cond: (t2.c1 = "*VALUES*".column1)
+               ->  Seq Scan on t2
+               ->  Hash
+                     ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
-         ->  Sort
-               Sort Key: t2.c1
-               ->  Hash Join
-                     Hash Cond: (t2.c1 = "*VALUES*".column1)
-                     ->  Seq Scan on t2
-                     ->  Hash
-                           ->  Values Scan on "*VALUES*"
+               Index Cond: (c1 = t2.c1)
    ->  Values Scan on "*VALUES*"
-(13 rows)
+(11 rows)
 
 ----
 ---- No. L-3-1 leading the order of table joins
