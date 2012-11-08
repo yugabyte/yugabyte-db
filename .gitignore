@@ -1,5 +1,6 @@
 # Global excludes across all subdirectories
 *.so
+core.c
 tags
 regression.*
 
