@@ -101,6 +101,7 @@ SELECT * FROM settings;
  enable_bitmapscan         | on        | Query Tuning / Planner Method Configuration
  enable_hashagg            | on        | Query Tuning / Planner Method Configuration
  enable_hashjoin           | on        | Query Tuning / Planner Method Configuration
+ enable_indexonlyscan      | on        | Query Tuning / Planner Method Configuration
  enable_indexscan          | on        | Query Tuning / Planner Method Configuration
  enable_material           | on        | Query Tuning / Planner Method Configuration
  enable_mergejoin          | on        | Query Tuning / Planner Method Configuration
@@ -109,5 +110,5 @@ SELECT * FROM settings;
  enable_sort               | on        | Query Tuning / Planner Method Configuration
  enable_tidscan            | on        | Query Tuning / Planner Method Configuration
  client_min_messages       | notice    | Reporting and Logging / When to Log
-(29 rows)
+(30 rows)
 
