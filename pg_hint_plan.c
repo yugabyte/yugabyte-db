@@ -62,6 +62,10 @@ PG_MODULE_MAGIC;
 #define HINT_NOHASHJOIN			"NoHashJoin"
 #define HINT_LEADING			"Leading"
 #define HINT_SET				"Set"
+#if PG_VERSION_NUM >= 90200
+#define HINT_INDEXONLYSCAN		"IndexOnlyScan"
+#define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
+#endif
 
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
@@ -80,6 +84,9 @@ enum
 	ENABLE_INDEXSCAN = 0x02,
 	ENABLE_BITMAPSCAN = 0x04,
 	ENABLE_TIDSCAN = 0x08,
+#if PG_VERSION_NUM >= 90200
+	ENABLE_INDEXONLYSCAN = 0x10
+#endif
 } SCAN_TYPE_BITS;
 
 enum
@@ -89,8 +96,14 @@ enum
 	ENABLE_HASHJOIN = 0x04
 } JOIN_TYPE_BITS;
 
+#if PG_VERSION_NUM >= 90200
+#define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
+						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN | \
+						 ENABLE_INDEXONLYSCAN)
+#else
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
 						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN)
+#endif
 #define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
@@ -355,6 +368,10 @@ static const HintParser parsers[] = {
 	{HINT_NOHASHJOIN, JoinMethodHintCreate},
 	{HINT_LEADING, LeadingHintCreate},
 	{HINT_SET, SetHintCreate},
+#if PG_VERSION_NUM >= 90200
+	{HINT_INDEXONLYSCAN, ScanMethodHintCreate},
+	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate},
+#endif
 	{NULL, NULL}
 };
 
@@ -1162,6 +1179,9 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 	 * する。
 	 */
 	if (strcmp(keyword, HINT_INDEXSCAN) == 0 ||
+#if PG_VERSION_NUM >= 90200
+		strcmp(keyword, HINT_INDEXONLYSCAN) == 0 ||
+#endif
 		strcmp(keyword, HINT_BITMAPSCAN) == 0)
 	{
 		while (*str != ')' && *str != '\0')
@@ -1196,6 +1216,12 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_BITMAPSCAN;
 	else if (strcasecmp(keyword, HINT_NOTIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
+#if PG_VERSION_NUM >= 90200
+	else if (strcasecmp(keyword, HINT_INDEXONLYSCAN) == 0)
+		hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
+	else if (strcasecmp(keyword, HINT_NOINDEXONLYSCAN) == 0)
+		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
+#endif
 	else
 	{
 		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
@@ -1389,6 +1415,9 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 
 	if (enforce_mask == ENABLE_SEQSCAN || enforce_mask == ENABLE_INDEXSCAN ||
 		enforce_mask == ENABLE_BITMAPSCAN || enforce_mask == ENABLE_TIDSCAN
+#if PG_VERSION_NUM >= 90200
+		|| enforce_mask == (ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN)
+#endif
 		)
 		mask = enforce_mask;
 	else
@@ -1398,6 +1427,9 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
 	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
 	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
+#if PG_VERSION_NUM >= 90200
+	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXONLYSCAN);
+#endif
 }
 
 static void
@@ -1602,6 +1634,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		current_hint->init_join_mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
+#if PG_VERSION_NUM >= 90200
+	if (enable_indexonlyscan)
+		current_hint->init_scan_mask |= ENABLE_INDEXONLYSCAN;
+#endif
 
 	/*
 	 * プラン作成中にエラーとなった場合、GUCパラメータと current_hintを

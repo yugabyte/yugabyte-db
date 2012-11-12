@@ -682,8 +682,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Aggregate
    InitPlan 1 (returns $2)
      ->  Aggregate
@@ -697,7 +697,7 @@ error hint:
                                    Recheck Cond: (c1 = b1t2.c1)
                                    ->  Bitmap Index Scan on t4_pkey
                                          Index Cond: (c1 = b1t2.c1)
-                       ->  Index Only Scan using t3_pkey on t3 b1t3
+                       ->  Index Scan using t3_pkey on t3 b1t3
                              Index Cond: (c1 = b1t4.c1)
                  ->  Hash
                        ->  Seq Scan on t1 b1t1
@@ -708,7 +708,7 @@ error hint:
                      Hash Cond: (bmt1.c1 = bmt2.c1)
                      ->  Seq Scan on t1 bmt1
                      ->  Hash
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
                      ->  Bitmap Index Scan on t3_pkey
@@ -801,8 +801,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    InitPlan 1 (returns $2)
      ->  Aggregate
@@ -816,7 +816,7 @@ error hint:
                                    Recheck Cond: (c1 = b1t2.c1)
                                    ->  Bitmap Index Scan on t4_pkey
                                          Index Cond: (c1 = b1t2.c1)
-                       ->  Index Only Scan using t3_pkey on t3 b1t3
+                       ->  Index Scan using t3_pkey on t3 b1t3
                              Index Cond: (c1 = b1t4.c1)
                  ->  Hash
                        ->  Seq Scan on t1 b1t1
@@ -827,7 +827,7 @@ error hint:
                  ->  Merge Join
                        Merge Cond: (b2t1.c1 = b2t2.c1)
                        ->  Nested Loop
-                             ->  Index Only Scan using t4_pkey on t4 b2t4
+                             ->  Index Scan using t4_pkey on t4 b2t4
                              ->  Bitmap Heap Scan on t1 b2t1
                                    Recheck Cond: (c1 = b2t4.c1)
                                    ->  Bitmap Index Scan on t1_pkey
@@ -844,7 +844,7 @@ error hint:
                      Hash Cond: (bmt1.c1 = bmt2.c1)
                      ->  Seq Scan on t1 bmt1
                      ->  Hash
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
                      ->  Bitmap Index Scan on t3_pkey
@@ -885,8 +885,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Aggregate
    ->  Hash Join
          Hash Cond: (bmt1.c1 = bmt4.c1)
@@ -895,7 +895,7 @@ error hint:
                      Hash Cond: (bmt1.c1 = bmt2.c1)
                      ->  Seq Scan on t1 bmt1
                      ->  Hash
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
                      ->  Bitmap Index Scan on t3_pkey
@@ -936,8 +936,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                            QUERY PLAN                             
+-------------------------------------------------------------------
  Aggregate
    ->  Hash Join
          Hash Cond: (bmt1.c1 = bmt4.c1)
@@ -946,7 +946,7 @@ error hint:
                      Hash Cond: (bmt1.c1 = bmt2.c1)
                      ->  Seq Scan on t1 bmt1
                      ->  Hash
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
                      ->  Bitmap Index Scan on t3_pkey
@@ -1017,8 +1017,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                               QUERY PLAN                               
-------------------------------------------------------------------------
+                             QUERY PLAN                             
+--------------------------------------------------------------------
  Aggregate
    InitPlan 1 (returns $2)
      ->  Aggregate
@@ -1032,7 +1032,7 @@ error hint:
                                    Recheck Cond: (c1 = b1t2.c1)
                                    ->  Bitmap Index Scan on t4_pkey
                                          Index Cond: (c1 = b1t2.c1)
-                       ->  Index Only Scan using t3_pkey on t3 b1t3
+                       ->  Index Scan using t3_pkey on t3 b1t3
                              Index Cond: (c1 = b1t4.c1)
                  ->  Hash
                        ->  Seq Scan on t1 b1t1
@@ -1044,7 +1044,7 @@ error hint:
                      ->  Seq Scan on t1 bmt1
                            Filter: (c1 <> $2)
                      ->  Hash
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
                      ->  Bitmap Index Scan on t3_pkey
@@ -1138,8 +1138,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    InitPlan 1 (returns $2)
      ->  Aggregate
@@ -1153,7 +1153,7 @@ error hint:
                                    Recheck Cond: (c1 = b1t2.c1)
                                    ->  Bitmap Index Scan on t4_pkey
                                          Index Cond: (c1 = b1t2.c1)
-                       ->  Index Only Scan using t3_pkey on t3 b1t3
+                       ->  Index Scan using t3_pkey on t3 b1t3
                              Index Cond: (c1 = b1t4.c1)
                  ->  Hash
                        ->  Seq Scan on t1 b1t1
@@ -1164,7 +1164,7 @@ error hint:
                  ->  Merge Join
                        Merge Cond: (b2t1.c1 = b2t2.c1)
                        ->  Nested Loop
-                             ->  Index Only Scan using t4_pkey on t4 b2t4
+                             ->  Index Scan using t4_pkey on t4 b2t4
                              ->  Bitmap Heap Scan on t1 b2t1
                                    Recheck Cond: (c1 = b2t4.c1)
                                    ->  Bitmap Index Scan on t1_pkey
@@ -1182,7 +1182,7 @@ error hint:
                      ->  Seq Scan on t1 bmt1
                            Filter: ((c1 <> $2) AND (c1 <> $4))
                      ->  Hash
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
                      ->  Bitmap Index Scan on t3_pkey
@@ -1277,7 +1277,7 @@ error hint:
                                    Recheck Cond: (c1 = b1t2.c1)
                                    ->  Bitmap Index Scan on t4_pkey
                                          Index Cond: (c1 = b1t2.c1)
-                       ->  Index Only Scan using t3_pkey on t3 b1t3
+                       ->  Index Scan using t3_pkey on t3 b1t3
                              Index Cond: (c1 = b1t4.c1)
                  ->  Hash
                        ->  Seq Scan on t1 b1t1
@@ -1290,7 +1290,7 @@ error hint:
                            ->  Seq Scan on t1 bmt1
                            ->  Hash
                                  ->  CTE Scan on c1
-                     ->  Index Only Scan using t2_pkey on t2 bmt2
+                     ->  Index Scan using t2_pkey on t2 bmt2
                            Index Cond: (c1 = bmt1.c1)
                ->  Bitmap Heap Scan on t3 bmt3
                      Recheck Cond: (c1 = bmt1.c1)
@@ -1400,8 +1400,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                             QUERY PLAN                              
+---------------------------------------------------------------------
  Aggregate
    CTE c1
      ->  Aggregate
@@ -1415,7 +1415,7 @@ error hint:
                                    Recheck Cond: (c1 = b1t2.c1)
                                    ->  Bitmap Index Scan on t4_pkey
                                          Index Cond: (c1 = b1t2.c1)
-                       ->  Index Only Scan using t3_pkey on t3 b1t3
+                       ->  Index Scan using t3_pkey on t3 b1t3
                              Index Cond: (c1 = b1t4.c1)
                  ->  Hash
                        ->  Seq Scan on t1 b1t1
@@ -1426,7 +1426,7 @@ error hint:
                  ->  Merge Join
                        Merge Cond: (b2t1.c1 = b2t2.c1)
                        ->  Nested Loop
-                             ->  Index Only Scan using t4_pkey on t4 b2t4
+                             ->  Index Scan using t4_pkey on t4 b2t4
                              ->  Bitmap Heap Scan on t1 b2t1
                                    Recheck Cond: (c1 = b2t4.c1)
                                    ->  Bitmap Index Scan on t1_pkey
@@ -1447,7 +1447,7 @@ error hint:
                                  ->  Seq Scan on t1 bmt1
                                  ->  Hash
                                        ->  CTE Scan on c1
-                           ->  Index Only Scan using t2_pkey on t2 bmt2
+                           ->  Index Scan using t2_pkey on t2 bmt2
                                  Index Cond: (c1 = bmt1.c1)
                      ->  Bitmap Heap Scan on t3 bmt3
                            Recheck Cond: (c1 = bmt1.c1)
@@ -4005,7 +4005,7 @@ error hint:
      ->  Result
            InitPlan 1 (returns $0)
              ->  Limit
-                   ->  Index Only Scan using t1_pkey on t1 b2t1
+                   ->  Index Scan using t1_pkey on t1 b2t1
                          Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
    InitPlan 4 (returns $3)
      ->  Result
@@ -4087,8 +4087,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN                          
---------------------------------------------------------------
+                       QUERY PLAN                        
+---------------------------------------------------------
  Aggregate
    CTE cte1
      ->  Aggregate
@@ -4100,7 +4100,7 @@ error hint:
    InitPlan 2 (returns $1)
      ->  Aggregate
            ->  Nested Loop
-                 ->  Index Only Scan using t1_pkey on t1 b2t1
+                 ->  Index Scan using t1_pkey on t1 b2t1
                        Index Cond: (c1 = 1)
                  ->  Seq Scan on t2 b2t2
                        Filter: (c1 = 1)
@@ -4119,7 +4119,7 @@ error hint:
                      Recheck Cond: (c1 = $2)
                      ->  Bitmap Index Scan on t1_pkey
                            Index Cond: (c1 = $2)
-               ->  Index Only Scan using t2_pkey on t2 b3t2
+               ->  Index Scan using t2_pkey on t2 b3t2
                      Index Cond: (c1 = $2)
          ->  CTE Scan on cte1
                Filter: (c1 = $2)
@@ -4201,7 +4201,7 @@ error hint:
      ->  Result
            InitPlan 2 (returns $1)
              ->  Limit
-                   ->  Index Only Scan using t1_pkey on t1 b2t1
+                   ->  Index Scan using t1_pkey on t1 b2t1
                          Index Cond: ((c1 IS NOT NULL) AND (c1 = 1))
    InitPlan 5 (returns $4)
      ->  Result
@@ -4215,7 +4215,7 @@ error hint:
                      Recheck Cond: (c1 = $4)
                      ->  Bitmap Index Scan on t1_pkey
                            Index Cond: (c1 = $4)
-               ->  Index Only Scan using t2_pkey on t2 b3t2
+               ->  Index Scan using t2_pkey on t2 b3t2
                      Index Cond: (c1 = $4)
          ->  CTE Scan on cte1
                Filter: (c1 = $4)
