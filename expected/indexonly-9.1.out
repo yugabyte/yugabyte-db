@@ -1,0 +1,125 @@
+LOAD 'pg_hint_plan';
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+--
+-- IndexOnlyScan hint test
+--
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1 t_1
+   Filter: (c2 < 1000)
+(2 rows)
+
+/*+IndexOnlyScan(t_1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(t_1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1 t_1
+   Filter: (c2 < 1000)
+(2 rows)
+
+/*+IndexOnlyScan(t_1 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1 t_1
+   Filter: (c2 < 1000)
+(2 rows)
+
+/*+IndexOnlyScan(t_1 ti1_i2 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i2 ti1_i1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1 t_1
+   Filter: (c2 < 1000)
+(2 rows)
+
+/*+IndexOnlyScan(t_1 ti1_pred)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_pred)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1 t_1
+   Filter: (c2 < 1000)
+(2 rows)
+
+/*+IndexOnlyScan(t_1 ti1_i)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1 t_1
+   Filter: (c2 < 1000)
+(2 rows)
+
+/*+IndexScan(t_1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Index Scan using ti1_i1 on ti1 t_1
+   Index Cond: (c2 < 1000)
+(2 rows)
+
+--
+-- NoIndexOnlyScan hint test
+--
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
+             QUERY PLAN             
+------------------------------------
+ Index Scan using ti1_i1 on ti1 t_1
+   Index Cond: (c2 < 10)
+(2 rows)
+
+/*+NoIndexOnlyScan(t_1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(t_1)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+             QUERY PLAN             
+------------------------------------
+ Index Scan using ti1_i1 on ti1 t_1
+   Index Cond: (c2 < 10)
+(2 rows)
+
+/*+NoIndexOnlyScan(t_1 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(t_1 ti1_i1)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+             QUERY PLAN             
+------------------------------------
+ Index Scan using ti1_i1 on ti1 t_1
+   Index Cond: (c2 < 10)
+(2 rows)
+
+/*+NoIndexScan(t_1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Bitmap Heap Scan on ti1 t_1
+   Recheck Cond: (c2 < 10)
+   ->  Bitmap Index Scan on ti1_i2
+         Index Cond: (c2 < 10)
+(4 rows)
+
