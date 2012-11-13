@@ -292,6 +292,11 @@ postgres=#</pre>
 </dd>
 <dt>メッセージの出力レベル</dt>
 <dd>ヒントに誤りがあった場合に出力されるメッセージのレベルは、基本的には<a href="#hint-GUC"></a>に指定したレベルです。ただし、ヒントに指定したオブジェクトの長さが、識別子の最大長(デフォルトでは63バイト)を超えた際に切り詰めた場合は、NOTICEで出力します。</dd>
+<dt>IndexOnlyScanヒントの制限(PostgreSQL バージョン9.2以降)</dt>
+<dd>IndexOnlyScanヒントを指定しても、指定したテーブルに複数のインデックスが存在するときはIndex Only Scanを選択できるインデックスが存在してもIndex Scanを選択する場合があります。この場合は、IndexOnlyScanヒントにテーブルだけでなく、そのテーブルでIndex Only Scanを選択できるインデックスも指定してください。そのインデックスを使ったIndex Only Scanが選択されます。
+</dd>
+<dt>NoIndexScanヒントの制限(PostgreSQL バージョン9.2以降)</dt>
+<dd>NoIndexScanヒントを指定した場合は、指定したテーブルでプランを生成するときにIndex ScanだけでなくIndex Only Scanも選択されません。</dd>
 
 </dl>
 
