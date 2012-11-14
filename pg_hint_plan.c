@@ -54,6 +54,10 @@ PG_MODULE_MAGIC;
 #define HINT_NOINDEXSCAN		"NoIndexScan"
 #define HINT_NOBITMAPSCAN		"NoBitmapScan"
 #define HINT_NOTIDSCAN			"NoTidScan"
+#if PG_VERSION_NUM >= 90200
+#define HINT_INDEXONLYSCAN		"IndexOnlyScan"
+#define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
+#endif
 #define HINT_NESTLOOP			"NestLoop"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
@@ -62,10 +66,6 @@ PG_MODULE_MAGIC;
 #define HINT_NOHASHJOIN			"NoHashJoin"
 #define HINT_LEADING			"Leading"
 #define HINT_SET				"Set"
-#if PG_VERSION_NUM >= 90200
-#define HINT_INDEXONLYSCAN		"IndexOnlyScan"
-#define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
-#endif
 
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
@@ -360,6 +360,10 @@ static const HintParser parsers[] = {
 	{HINT_NOINDEXSCAN, ScanMethodHintCreate},
 	{HINT_NOBITMAPSCAN, ScanMethodHintCreate},
 	{HINT_NOTIDSCAN, ScanMethodHintCreate},
+#if PG_VERSION_NUM >= 90200
+	{HINT_INDEXONLYSCAN, ScanMethodHintCreate},
+	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate},
+#endif
 	{HINT_NESTLOOP, JoinMethodHintCreate},
 	{HINT_MERGEJOIN, JoinMethodHintCreate},
 	{HINT_HASHJOIN, JoinMethodHintCreate},
@@ -368,10 +372,6 @@ static const HintParser parsers[] = {
 	{HINT_NOHASHJOIN, JoinMethodHintCreate},
 	{HINT_LEADING, LeadingHintCreate},
 	{HINT_SET, SetHintCreate},
-#if PG_VERSION_NUM >= 90200
-	{HINT_INDEXONLYSCAN, ScanMethodHintCreate},
-	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate},
-#endif
 	{NULL, NULL}
 };
 
@@ -1628,16 +1628,16 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		current_hint->init_scan_mask |= ENABLE_BITMAPSCAN;
 	if (enable_tidscan)
 		current_hint->init_scan_mask |= ENABLE_TIDSCAN;
+#if PG_VERSION_NUM >= 90200
+	if (enable_indexonlyscan)
+		current_hint->init_scan_mask |= ENABLE_INDEXONLYSCAN;
+#endif
 	if (enable_nestloop)
 		current_hint->init_join_mask |= ENABLE_NESTLOOP;
 	if (enable_mergejoin)
 		current_hint->init_join_mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
-#if PG_VERSION_NUM >= 90200
-	if (enable_indexonlyscan)
-		current_hint->init_scan_mask |= ENABLE_INDEXONLYSCAN;
-#endif
 
 	/*
 	 * プラン作成中にエラーとなった場合、GUCパラメータと current_hintを
