@@ -34,7 +34,7 @@
 <tr><td nowrap>IndexScan(テーブル[ インデックス...])</td>
   <td>指定したテーブルについて、Index Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。</td></tr>
 <tr><td nowrap>IndexOnlyScan(テーブル[ インデックス...])</td>
-  <td>指定したテーブルについて、コストが最小となるIndex Only ScanまたはIndex Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Only ScanまたはIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。また、これらの場合以外にも、インデックスが持つ値だけでなくテーブルの値も必要な場合はIndexScanを選択します。PostgreSQL バージョン9.2以降で動作します。</td></tr>
+  <td>指定したテーブルについて、コストが最小となるIndex Only ScanまたはIndex Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるIndex Only ScanまたはIndex Scanを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。また、これらの場合以外にも、インデックスが持つ値だけでなくテーブルの値も必要な場合はIndexScanを選択します。PostgreSQL 9.2以降で動作します。</td></tr>
 <tr><td nowrap>BitmapScan(テーブル[ インデックス...])</td>
   <td>指定したテーブルについて、Bitmap Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるインデックスを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。</td></tr>
 <tr><td nowrap>NoSeqScan(テーブル)</td>
@@ -44,7 +44,7 @@
 <tr><td nowrap>NoIndexScan(テーブル)</td>
   <td>指定したテーブルについて、Index Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
 <tr><td nowrap>NoIndexOnlyScan(テーブル)</td>
-  <td>指定したテーブルについて、Index Only Scan以外でコストが最小となるスキャン方式を選択します。PostgreSQL バージョン9.2以降で動作します。</td></tr>
+  <td>指定したテーブルについて、Index Only Scan以外でコストが最小となるスキャン方式を選択します。PostgreSQL 9.2以降で動作します。</td></tr>
 <tr><td nowrap>NoBitmapScan(テーブル)</td>
   <td>指定したテーブルについて、Bitmap Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
 
