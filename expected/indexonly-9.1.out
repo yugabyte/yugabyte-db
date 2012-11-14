@@ -4,6 +4,7 @@ SET client_min_messages TO LOG;
 --
 -- IndexOnlyScan hint test
 --
+-- 1.ヒントつきクエリとの比較用
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
       QUERY PLAN       
 -----------------------
@@ -11,6 +12,18 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
    Filter: (c2 < 1000)
 (2 rows)
 
+-- 2.テーブルを指定、1と比較
+/*+IndexOnlyScan(ti1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1
+   Filter: (c2 < 1000)
+(2 rows)
+
+-- 3.エイリアスを指定、1と比較
 /*+IndexOnlyScan(t_1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
 INFO:  hint syntax error at or near "IndexOnlyScan(t_1)"
@@ -21,9 +34,21 @@ DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
    Filter: (c2 < 1000)
 (2 rows)
 
-/*+IndexOnlyScan(t_1 ti1_i1)*/
+-- 4.インデックスを指定、1と比較
+/*+IndexOnlyScan(ti1_i2)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 < 1000;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1_i2)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+      QUERY PLAN       
+-----------------------
+ Seq Scan on ti1
+   Filter: (c2 < 1000)
+(2 rows)
+
+-- 5.エイリアスとインデックスを指定・指定したインデックスを使用、2と比較
+/*+IndexOnlyScan(t_1 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
-INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i1)"
+INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i2)"
 DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
       QUERY PLAN       
 -----------------------
@@ -31,6 +56,7 @@ DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
    Filter: (c2 < 1000)
 (2 rows)
 
+-- 6.エイリアス1つとインデックス2つを指定、2つ目のインデックスを使用、5と比較
 /*+IndexOnlyScan(t_1 ti1_i2 ti1_i1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
 INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i2 ti1_i1)"
@@ -41,6 +67,8 @@ DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
    Filter: (c2 < 1000)
 (2 rows)
 
+-- 7.Index ScanとIndex Only Scanの両方で使用しないようなインデックスを指定、
+--   5と比較
 /*+IndexOnlyScan(t_1 ti1_pred)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
 INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_pred)"
@@ -51,6 +79,7 @@ DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
    Filter: (c2 < 1000)
 (2 rows)
 
+-- 8.存在しないインデックスを指定
 /*+IndexOnlyScan(t_1 ti1_i)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
 INFO:  hint syntax error at or near "IndexOnlyScan(t_1 ti1_i)"
@@ -61,6 +90,10 @@ DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
    Filter: (c2 < 1000)
 (2 rows)
 
+--
+-- IndexScan hint test
+--
+-- 1.IndexScanヒントが今までどおり使えることの確認
 /*+IndexScan(t_1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 1000;
 LOG:  pg_hint_plan:
@@ -79,6 +112,7 @@ error hint:
 --
 -- NoIndexOnlyScan hint test
 --
+-- 1.ヒントつきクエリとの比較用
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
              QUERY PLAN             
 ------------------------------------
@@ -86,6 +120,18 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
    Index Cond: (c2 < 10)
 (2 rows)
 
+-- 2.テーブルを指定、1と比較
+/*+NoIndexOnlyScan(ti1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 < 10;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(ti1)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i1 on ti1
+   Index Cond: (c2 < 10)
+(2 rows)
+
+-- 3.エイリアスを指定、1と比較
 /*+NoIndexOnlyScan(t_1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
 INFO:  hint syntax error at or near "NoIndexOnlyScan(t_1)"
@@ -96,6 +142,18 @@ DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
    Index Cond: (c2 < 10)
 (2 rows)
 
+-- 4.インデックスを指定、1と比較
+/*+NoIndexOnlyScan(ti1_i2)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 < 10;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(ti1_i2)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i1 on ti1
+   Index Cond: (c2 < 10)
+(2 rows)
+
+-- 5.エイリアスとインデックスを指定、2と比較
 /*+NoIndexOnlyScan(t_1 ti1_i1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
 INFO:  hint syntax error at or near "NoIndexOnlyScan(t_1 ti1_i1)"
@@ -106,6 +164,10 @@ DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
    Index Cond: (c2 < 10)
 (2 rows)
 
+--
+-- NoIndexScan hint test
+--
+-- 1.Index ScanだけでなIndex Only Scanも選択されないことの確認
 /*+NoIndexScan(t_1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 t_1 WHERE c2 < 10;
 LOG:  pg_hint_plan:
