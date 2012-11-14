@@ -295,7 +295,7 @@ postgres=#</pre>
 <dt>IndexOnlyScanヒントの制限(PostgreSQL 9.2以降)</dt>
 <dd>IndexOnlyScanヒントを指定しても、Index Scanが選択される場合があります。それは、ヒント対象となるテーブルに複数のインデックスが存在する場合です。この場合は、IndexOnlyScanヒントにテーブルだけでなく、そのテーブルでIndex Only Scanを選択できるインデックスも指定してください。そのインデックスを使ったIndex Only Scanが選択されます。</dd>
 <dt>NoIndexScanヒントの制限(PostgreSQL 9.2以降)</dt>
-<dd>NoIndexScanヒントを指定した場合は、指定したテーブルでプランを生成するときにIndex ScanだけでなくIndex Only Scanも選択されません。</dd>
+<dd>NoIndexScanヒントを指定した場合は、Index ScanだけでなくIndex Only Scanも選択されません。</dd>
 
 </dl>
 
