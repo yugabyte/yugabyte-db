@@ -5,10 +5,10 @@
 #
 
 MODULES = pg_hint_plan
-REGRESS = init base_plan pg_hint_plan fdw ut-init ut-A ut-A2 ut-S ut-J ut-L ut-G ut-fini indexonly
+REGRESS = init base_plan pg_hint_plan fdw ut-init ut-A ut-A2 ut-S ut-J ut-L ut-G ut-fini indexonly create_execute
 #REGRESS = ut-init ut-J ut-fini
 
-EXTRA_CLEAN = core.c sql/fdw.sql expected/init.out expected/base_plan.out expected/pg_hint_plan.out expected/fdw.out expected/ut-A.out expected/ut-A2.out expected/ut-S.out expected/ut-J.out expected/ut-L.out expected/ut-G.out expected/indexonly.out
+EXTRA_CLEAN = core.c sql/fdw.sql expected/init.out expected/base_plan.out expected/pg_hint_plan.out expected/fdw.out expected/ut-A.out expected/ut-A2.out expected/ut-S.out expected/ut-J.out expected/ut-L.out expected/ut-G.out expected/indexonly.out expected/create_execute.out
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
@@ -36,8 +36,10 @@ expected/base_plan.out: expected/base_plan-$(MAJORVERSION).out
 	cp expected/base_plan-$(MAJORVERSION).out expected/base_plan.out
 expected/indexonly.out: expected/indexonly-$(MAJORVERSION).out
 	cp expected/indexonly-$(MAJORVERSION).out expected/indexonly.out
+expected/create_execute.out: expected/create_execute-$(MAJORVERSION).out
+	cp expected/create_execute-$(MAJORVERSION).out expected/create_execute.out
 
-installcheck: expected/init.out expected/base_plan.out expected/pg_hint_plan.out expected/ut-A.out expected/ut-A2.out expected/ut-S.out expected/ut-J.out expected/ut-L.out expected/ut-G.out expected/indexonly.out
+installcheck: expected/init.out expected/base_plan.out expected/pg_hint_plan.out expected/ut-A.out expected/ut-A2.out expected/ut-S.out expected/ut-J.out expected/ut-L.out expected/ut-G.out expected/indexonly.out expected/create_execute.out
 
 # pg_hint_plan.c includes core.c and make_join_rel.c
 pg_hint_plan.o: core.c make_join_rel.c
