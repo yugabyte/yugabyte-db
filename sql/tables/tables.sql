@@ -1,6 +1,6 @@
 CREATE TABLE part_config (
     parent_table text NOT NULL,
-    type part.partition_type NOT NULL,
+    type @extschema@.partition_type NOT NULL,
     part_interval text NOT NULL,
     control text NOT NULL,
     premake int NOT NULL,
