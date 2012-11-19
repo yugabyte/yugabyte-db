@@ -1501,6 +1501,28 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 		stmt_name = stmt->name;
 	}
 
+#if PG_VERSION_NUM >= 90200
+	/*
+	 * EXECUTEコマンドならば、PREPARE時に指定されたクエリ文字列を取得し、ヒント
+	 * 句の候補として設定する
+	 */
+	if (IsA(node, CreateTableAsStmt))
+	{
+		CreateTableAsStmt	   *stmt;
+		Query		   *query;
+
+		stmt = (CreateTableAsStmt *) node;
+		Assert(IsA(stmt->query, Query));
+		query = (Query *) stmt->query;
+
+		if (query->commandType == CMD_UTILITY &&
+			IsA(query->utilityStmt, ExecuteStmt))
+		{
+			ExecuteStmt *estmt = (ExecuteStmt *) query->utilityStmt;
+			stmt_name = estmt->name;
+		}
+	}
+#endif
 	if (stmt_name)
 	{
 		PG_TRY();
