@@ -30,7 +30,7 @@ EXECUTE 'LOCK TABLE '||p_parent_table||' IN ACCESS EXCLUSIVE MODE';
 SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
 IF v_jobmon_schema IS NOT NULL THEN
     SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''part,'||v_jobmon_schema||''',''false'')';
+    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -136,7 +136,7 @@ PERFORM close_job(v_job_id);
 EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''part,'||v_jobmon_schema||''',''false'')';
+            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
                 v_job_id := add_job('PARTMAN CREATE PARENT: '||p_parent_table);
                 v_step_id := add_step(v_job_id, 'Partition creation for table '||p_parent_table||' failed');
