@@ -183,15 +183,15 @@ error hint:
 (2 rows)
 
 -- No. S-3-4-24
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
-     QUERY PLAN      
----------------------
- Seq Scan on ti1
-   Filter: (c1 >= 1)
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
 (2 rows)
 
 /*+IndexOnlyScan(ti1 ti1_hash)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_hash)
@@ -199,20 +199,22 @@ not used hint:
 duplication hint:
 error hint:
 
-     QUERY PLAN      
----------------------
-
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_hash on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
 
 -- No. S-3-4-25
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
-     QUERY PLAN      
----------------------
- Seq Scan on ti1
-   Filter: (c1 >= 1)
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 1)
 (2 rows)
 
 /*+IndexOnlyScan(ti1 ti1_gist)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_gist)
@@ -222,18 +224,20 @@ error hint:
 
             QUERY PLAN            
 ----------------------------------
-
+ Index Scan using ti1_gist on ti1
+   Index Cond: (c1 < 1)
+(2 rows)
 
 -- No. S-3-4-26
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
-     QUERY PLAN      
----------------------
- Seq Scan on ti1
-   Filter: (c1 >= 1)
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
 (2 rows)
 
 /*+IndexOnlyScan(ti1 ti1_gin)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_gin)
@@ -241,20 +245,22 @@ not used hint:
 duplication hint:
 error hint:
 
-     QUERY PLAN      
----------------------
-
+     QUERY PLAN     
+--------------------
+ Seq Scan on ti1
+   Filter: (c1 = 1)
+(2 rows)
 
 -- No. S-3-4-27
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
-     QUERY PLAN      
----------------------
- Seq Scan on ti1
-   Filter: (c1 >= 1)
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 100)
 (2 rows)
 
 /*+IndexOnlyScan(ti1 ti1_expr)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_expr)
@@ -262,12 +268,15 @@ not used hint:
 duplication hint:
 error hint:
 
-     QUERY PLAN      
----------------------
-
+            QUERY PLAN             
+-----------------------------------
+ Index Scan using ti1_expr on ti1
+   Index Cond: ((c1 < 100) = true)
+   Filter: (c1 < 100)
+(3 rows)
 
 -- No. S-3-4-28
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE lower(c4) >= '1';
+EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
              QUERY PLAN             
 ------------------------------------
  Seq Scan on ti1
@@ -275,7 +284,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE lower(c4) >= '1';
 (2 rows)
 
 /*+IndexOnlyScan(ti1 ti1_pred)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE lower(c4) >= '1';
+EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pred)
@@ -285,7 +294,9 @@ error hint:
 
                QUERY PLAN               
 ----------------------------------------
-
+ Index Scan using ti1_pred on ti1
+   Index Cond: (lower(c4) >= '1'::text)
+(2 rows)
 
 -- No. S-3-4-29
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
@@ -354,7 +365,9 @@ error hint:
 
                                   QUERY PLAN                                   
 -------------------------------------------------------------------------------
-
+ Seq Scan on ti1
+   Filter: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+(2 rows)
 
 -- No. S-3-4-32
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
@@ -445,7 +458,7 @@ error hint:
 ----
 -- No. S-3-13-25
 /*+IndexOnlyScan(ti1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1)
@@ -453,13 +466,15 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN            
-----------------------------------
-
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 >= 1)
+(2 rows)
 
 -- No. S-3-13-26
 /*+IndexOnlyScan(ti1 ti1_pkey)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pkey)
@@ -467,13 +482,15 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN            
-----------------------------------
-
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_pkey on ti1
+   Index Cond: (c1 >= 1)
+(2 rows)
 
 -- No. S-3-13-27
 /*+IndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pkey ti1_btree)
@@ -481,13 +498,15 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN             
------------------------------------
-
+               QUERY PLAN               
+----------------------------------------
+ Index Only Scan using ti1_btree on ti1
+   Index Cond: (c1 >= 1)
+(2 rows)
 
 -- No. S-3-13-28
 /*+NoIndexOnlyScan(ti1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
 NoIndexOnlyScan(ti1)
@@ -495,34 +514,31 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN             
------------------------------------
- Tid Scan on ti1
-   TID Cond: (ctid = '(1,1)'::tid)
-   Filter: (c1 = 1)
-(3 rows)
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
 
 -- No. S-3-13-29
 /*+NoIndexOnlyScan(ti1 ti1_pkey)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 INFO:  hint syntax error at or near "ti1_pkey)"
 DETAIL:  Closing parenthesis is necessary.
-            QUERY PLAN             
------------------------------------
- Tid Scan on ti1
-   TID Cond: (ctid = '(1,1)'::tid)
-   Filter: (c1 = 1)
-(3 rows)
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
 
 -- No. S-3-13-30
 /*+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
 DETAIL:  Closing parenthesis is necessary.
-            QUERY PLAN             
------------------------------------
- Tid Scan on ti1
-   TID Cond: (ctid = '(1,1)'::tid)
-   Filter: (c1 = 1)
-(3 rows)
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
 

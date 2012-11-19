@@ -57,29 +57,29 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 -- No. S-3-4-24
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 /*+IndexOnlyScan(ti1 ti1_hash)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 -- No. S-3-4-25
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
 /*+IndexOnlyScan(ti1 ti1_gist)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
 
 -- No. S-3-4-26
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 /*+IndexOnlyScan(ti1 ti1_gin)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 -- No. S-3-4-27
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
 /*+IndexOnlyScan(ti1 ti1_expr)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
 
 -- No. S-3-4-28
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE lower(c4) >= '1';
+EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
 /*+IndexOnlyScan(ti1 ti1_pred)*/
-EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE lower(c4) >= '1';
+EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
 
 -- No. S-3-4-29
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
@@ -128,24 +128,24 @@ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
 
 -- No. S-3-13-25
 /*+IndexOnlyScan(ti1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 -- No. S-3-13-26
 /*+IndexOnlyScan(ti1 ti1_pkey)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 -- No. S-3-13-27
 /*+IndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 -- No. S-3-13-28
 /*+NoIndexOnlyScan(ti1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 -- No. S-3-13-29
 /*+NoIndexOnlyScan(ti1 ti1_pkey)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 -- No. S-3-13-30
 /*+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
