@@ -1,5 +1,5 @@
 LOAD 'pg_hint_plan';
-SET pg_hint_plan.enable TO on;
+SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
@@ -428,67 +428,67 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 -- No. A-6-1-1
 SET ROLE super_user;
 SET pg_hint_plan.debug_print TO off;
-SHOW pg_hint_plan.enable;
+SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
-SET pg_hint_plan.enable TO off;
+SET pg_hint_plan.enable_hint TO off;
 SET pg_hint_plan.debug_print TO on;
 SET pg_hint_plan.parse_messages TO error;
-SHOW pg_hint_plan.enable;
+SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
-RESET pg_hint_plan.enable;
+RESET pg_hint_plan.enable_hint;
 RESET pg_hint_plan.debug_print;
 RESET pg_hint_plan.parse_messages;
-SHOW pg_hint_plan.enable;
+SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
 
 -- No. A-6-1-2
 SET ROLE normal_user;
-SHOW pg_hint_plan.enable;
+SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
-SET pg_hint_plan.enable TO off;
+SET pg_hint_plan.enable_hint TO off;
 SET pg_hint_plan.debug_print TO on;
 SET pg_hint_plan.parse_messages TO error;
-SHOW pg_hint_plan.enable;
+SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
-RESET pg_hint_plan.enable;
+RESET pg_hint_plan.enable_hint;
 RESET pg_hint_plan.debug_print;
 RESET pg_hint_plan.parse_messages;
-SHOW pg_hint_plan.enable;
+SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
 
 RESET ROLE;
 
 ----
----- No. A-6-2 original GUC parameter pg_hint_plan.enable
+---- No. A-6-2 original GUC parameter pg_hint_plan.enable_hint
 ----
 
 -- No. A-6-2-1
-SET pg_hint_plan.enable TO on;
-SHOW pg_hint_plan.enable;
+SET pg_hint_plan.enable_hint TO on;
+SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-6-2-2
-SET pg_hint_plan.enable TO off;
-SHOW pg_hint_plan.enable;
+SET pg_hint_plan.enable_hint TO off;
+SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-6-2-3
-SET pg_hint_plan.enable TO DEFAULT;
-SHOW pg_hint_plan.enable;
+SET pg_hint_plan.enable_hint TO DEFAULT;
+SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-6-2-4
-SET pg_hint_plan.enable TO enable;
-SHOW pg_hint_plan.enable;
+SET pg_hint_plan.enable_hint TO enable;
+SHOW pg_hint_plan.enable_hint;
 
 ----
 ---- No. A-6-3 original GUC parameter pg_hint_plan.debug_print
@@ -974,7 +974,7 @@ LOAD 'pg_hint_plan';
 SELECT name, setting FROM settings;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 
-SET pg_hint_plan.enable TO on;
+SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;

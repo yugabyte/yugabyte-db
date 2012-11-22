@@ -12,10 +12,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-SET pg_hint_plan.enable TO off;
+SET pg_hint_plan.enable_hint TO off;
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-SET pg_hint_plan.enable TO on;
+SET pg_hint_plan.enable_hint TO on;
 
 /*Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;

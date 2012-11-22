@@ -2,7 +2,7 @@ LOAD 'pg_hint_plan';
 SET search_path TO public;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
-SET pg_hint_plan.enable TO on;
+SET pg_hint_plan.enable_hint TO on;
 
 CREATE EXTENSION file_fdw;
 CREATE SERVER file_server FOREIGN DATA WRAPPER file_fdw;
