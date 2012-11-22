@@ -142,7 +142,7 @@ postgres=# </pre>
 <tr><th>GUCパラメータ</th><th>説明</th><th>デフォルト値</th></tr>
 </tr></thead>
 <tbody>
-<tr><td>pg_hint_plan.enable</td>
+<tr><td>pg_hint_plan.enable_hint</td>
   <td>pg_hint_planの機能を有効または無効にします。</td><td>on</td></tr>
 <tr><td>pg_hint_plan.debug_print</td>
   <td>pg_hint_planのデバッグ出力を有効にします。メッセージはLOGメッセージレベルで出力されますので、デフォルトではサーバログに出力され、クライアントには渡されません。</td><td>off</td></tr>
@@ -294,7 +294,7 @@ postgres=#</pre>
 <dt>Setヒントの制限</dt>
 <dd>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作を、以下に示します。
 <ul>
-<li>pg_hint_plan.enableおよびpg_hint_plan.debug_printを指定した場合は、無視されます。</li>
+<li>pg_hint_plan.enable_hintおよびpg_hint_plan.debug_printを指定した場合は、無視されます。</li>
 <li>pg_hint_plan.message_levelを指定した場合は、構文エラーと一部のSetヒントのエラーについてはクエリ開始時の設定レベルで出力され、それ以外のメッセージについてはSetヒントで指定したレベルで出力されます。</li>
 </ul>
 </dd>
