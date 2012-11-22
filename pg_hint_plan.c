@@ -310,7 +310,7 @@ RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
 /* GUC variables */
-static bool	pg_hint_plan_enable = true;
+static bool	pg_hint_plan_enable_hint = true;
 static bool	pg_hint_plan_debug_print = false;
 static int	pg_hint_plan_parse_messages = INFO;
 
@@ -382,10 +382,10 @@ void
 _PG_init(void)
 {
 	/* Define custom GUC variables. */
-	DefineCustomBoolVariable("pg_hint_plan.enable",
+	DefineCustomBoolVariable("pg_hint_plan.enable_hint",
 			 "Force planner to use plans specified in the hint comment preceding to the query.",
 							 NULL,
-							 &pg_hint_plan_enable,
+							 &pg_hint_plan_enable_hint,
 							 true,
 							 PGC_USERSET,
 							 0,
@@ -1459,7 +1459,7 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 {
 	Node				   *node;
 
-	if (!pg_hint_plan_enable)
+	if (!pg_hint_plan_enable_hint)
 	{
 		if (prev_ProcessUtility)
 			(*prev_ProcessUtility) (parsetree, queryString, params,
@@ -1605,7 +1605,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数
 	 * をNULLに設定しておく。
 	 */
-	if (!pg_hint_plan_enable)
+	if (!pg_hint_plan_enable_hint)
 	{
 		current_hint = NULL;
 
