@@ -9,6 +9,8 @@ REGRESS = init base_plan pg_hint_plan fdw ut-init ut-A ut-A2 ut-S ut-J ut-L ut-G
 
 REGRESSION_EXPECTED = expected/init.out expected/base_plan.out expected/pg_hint_plan.out expected/ut-A.out expected/ut-A2.out expected/ut-S.out expected/ut-J.out expected/ut-L.out expected/ut-G.out expected/indexonly.out expected/create_execute.out
 
+REGRESS_OPTS = --encoding=UTF8
+
 EXTRA_CLEAN = core.c sql/fdw.sql expected/fdw.out $(REGRESSION_EXPECTED)
 
 PG_CONFIG = pg_config
