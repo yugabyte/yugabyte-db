@@ -339,15 +339,18 @@ static planner_hook_type prev_planner = NULL;
 static get_relation_info_hook_type prev_get_relation_info = NULL;
 static join_search_hook_type prev_join_search = NULL;
 
-/* フック関数をまたがって使用する情報を管理する */
+/* Hold reference to currently active hint */
 static HintState *current_hint = NULL;
 
-/* 有効なヒントをスタック構造で管理する */
+/*
+ * List of hint contexts.  We treat the head of the list as the Top of the
+ * context stack, so current_hint always points the first element of this list.
+ */
 static List *HintStateStack = NIL;
 
 /*
- * EXECUTEコマンド実行時に、ステートメント名を格納する。
- * その他のコマンドの場合は、NULLに設定する。
+ * Holds statement name during executing EXECUTE command.  NULL for other
+ * statements.
  */
 static char	   *stmt_name = NULL;
 
@@ -405,7 +408,7 @@ _PG_init(void)
 							 NULL);
 
 	DefineCustomEnumVariable("pg_hint_plan.parse_messages",
-							 "Messege level of parse errors.",
+							 "Message level of parse errors.",
 							 NULL,
 							 &pg_hint_plan_parse_messages,
 							 INFO,
@@ -817,7 +820,10 @@ HintCmp(const void *a, const void *b)
 	return hinta->cmp_func(hinta, hintb);
 }
 
-/* ヒント句で指定した順を返す */
+/*
+ * Returns byte offset of hint b from hint a.  If hint a was specified before
+ * b, positive value is returned.
+ */
 static int
 HintCmpWithPos(const void *a, const void *b)
 {
@@ -835,7 +841,6 @@ HintCmpWithPos(const void *a, const void *b)
 /*
  * parse functions
  */
-
 static const char *
 parse_keyword(const char *str, StringInfo buf)
 {
@@ -880,12 +885,11 @@ skip_closed_parenthesis(const char *str)
 }
 
 /*
- * 二重引用符で囲まれているかもしれないトークンを読み取り word 引数に palloc
- * で確保したバッファに格納してそのポインタを返す。
+ * Parse a token from str, and store malloc'd copy into word.  A token can be
+ * quoted with '"'.  Return value is pointer to unparsed portion of original
+ * string, or NULL if an error occurred.
  *
- * 正常にパースできた場合は残りの文字列の先頭位置を、異常があった場合は NULL を
- * 返す。
- * truncateがtrueの場合は、NAMEDATALENに切り詰める。
+ * Parsed token is truncated within NAMEDATALEN-1 bytes, when truncate is true.
  */
 static const char *
 parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
@@ -893,7 +897,7 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 	StringInfoData	buf;
 	bool			in_quote;
 
-	/* 先頭のスペースは読み飛ばす。 */
+	/* Skip leading spaces. */
 	skip_space(str);
 
 	initStringInfo(&buf);
@@ -909,7 +913,7 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 	{
 		if (in_quote)
 		{
-			/* 二重引用符が閉じられていない場合はパース中断 */
+			/* Double quotation must be closed. */
 			if (*str == '\0')
 			{
 				pfree(buf.data);
@@ -918,11 +922,14 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 			}
 
 			/*
-			 * エスケープ対象のダブルクウォートをスキップする。
-			 * もしブロックコメントの開始文字列や終了文字列もオブジェクト名とし
-			 * て使用したい場合は、/ と * もエスケープ対象とすることで使用できる
-			 * が、処理対象としていない。もしテーブル名にこれらの文字が含まれる
-			 * 場合は、エイリアスを指定する必要がある。
+			 * Skip escaped double quotation.
+			 * 
+			 * We don't allow slash-asterisk and asterisk-slash (delimiters of
+			 * block comments) to be an object name, so users must specify
+			 * alias for such object names.
+			 *
+			 * Those special names can be allowed if we care escaped slashes
+			 * and asterisks, but we don't.
 			 */
 			if (*str == '"')
 			{
@@ -951,7 +958,7 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 		return NULL;
 	}
 
-	/* Truncate name if it's overlength */
+	/* Truncate name if it's too long */
 	if (truncate)
 		truncate_identifier(buf.data, strlen(buf.data), true);
 
@@ -999,8 +1006,8 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			}
 
 			/*
-			 * 出来上がったヒント情報を追加。スロットが足りない場合は二倍に拡張
-			 * する。
+			 * Add hint information into all_hints array.  If we don't have
+			 * enough space, double the array.
 			 */
 			if (hstate->nall_hints == 0)
 			{
@@ -1080,14 +1087,14 @@ parse_head_comment(Query *parse)
 		return NULL;
 	}
 
-	/* 入れ子にしたブロックコメントはサポートしない */
+	/* We don't support nested block comments. */
 	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
 	{
 		parse_ereport(head, ("Nested block comments are not supported."));
 		return NULL;
 	}
 
-	/* ヒント句部分を切り出す */
+	/* Make a copy of hint. */
 	len = tail - p;
 	head = palloc(len + 1);
 	memcpy(head, p, len);
@@ -1107,11 +1114,14 @@ parse_head_comment(Query *parse)
 		return NULL;
 	}
 
-	/* パースしたヒントを並び替える */
+	/* Sort hints in order of original position. */
 	qsort(hstate->all_hints, hstate->nall_hints, sizeof(Hint *),
 		  HintCmpWithPos);
 
-	/* 重複したヒントを検索する */
+	/*
+	 * If we have hints which are specified for an object, mark preceding one
+	 * as 'duplicated' to ignore it in planner phase.
+	 */
 	for (i = 0; i < hstate->nall_hints; i++)
 	{
 		Hint   *cur_hint = hstate->all_hints[i];
@@ -1157,7 +1167,7 @@ parse_head_comment(Query *parse)
 }
 
 /*
- * スキャン方式ヒントのカッコ内をパースする
+ * Parse inside of parentheses of scan-method hints.
  */
 static const char *
 ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
@@ -1165,19 +1175,14 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 {
 	const char *keyword = hint->base.keyword;
 
-	/*
-	 * スキャン方式のヒントでリレーション名が読み取れない場合はヒント無効
-	 */
+	/* Given hint is invalid if relation name can't be parsed. */
 	if ((str = parse_quote_value(str, &hint->relname, "relation name", true))
 		== NULL)
 		return NULL;
 
 	skip_space(str);
 
-	/*
-	 * インデックスリストを受け付けるヒントであれば、インデックス参照をパース
-	 * する。
-	 */
+	/* Parse index name(s) if given hint accepts. */
 	if (strcmp(keyword, HINT_INDEXSCAN) == 0 ||
 #if PG_VERSION_NUM >= 90200
 		strcmp(keyword, HINT_INDEXONLYSCAN) == 0 ||
@@ -1197,9 +1202,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		}
 	}
 
-	/*
-	 * ヒントごとに決まっている許容スキャン方式をビットマスクとして設定
-	 */
+	/* Set a bit for specified hint. */
 	if (strcasecmp(keyword, HINT_SEQSCAN) == 0)
 		hint->enforce_mask = ENABLE_SEQSCAN;
 	else if (strcasecmp(keyword, HINT_INDEXSCAN) == 0)
@@ -1257,7 +1260,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 	if (str == NULL)
 		return NULL;
 
-	/* Join 対象のテーブルは最低でも2つ指定する必要がある */
+	/* A join hint requires at least two relations to be specified. */
 	if (hint->nrels < 2)
 	{
 		parse_ereport(str,
@@ -1266,7 +1269,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 		hint->base.state = HINT_STATE_ERROR;
 	}
 
-	/* テーブル名順にソートする */
+	/* Sort hints in alphabetical order of relation names. */
 	qsort(hint->relnames, hint->nrels, sizeof(char *), RelnameCmp);
 
 	if (strcasecmp(keyword, HINT_NESTLOOP) == 0)
@@ -1309,7 +1312,7 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 		skip_space(str);
 	}
 
-	/* テーブル指定が2つ未満の場合は、Leading ヒントはエラーとする */
+	/* A Leading hint requires at least two relations to be specified. */
 	if (list_length(hint->relations) < 2)
 	{
 		parse_ereport(hint->base.hint_str,
@@ -1475,7 +1478,8 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	if (IsA(node, ExplainStmt))
 	{
 		/*
-		 * EXPLAIN対象のクエリのパースツリーを取得する
+		 * Draw out parse tree of actual query from Query struct of EXPLAIN
+		 * statement.
 		 */
 		ExplainStmt	   *stmt;
 		Query		   *query;
@@ -1490,8 +1494,8 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	}
 
 	/*
-	 * EXECUTEコマンドならば、PREPARE時に指定されたクエリ文字列を取得し、ヒント
-	 * 句の候補として設定する
+	 * If the query was a EXECUTE or CREATE TABLE AS EXECUTE, get query string
+	 * specified to preceding PREPARE command to use it as source of hints.
 	 */
 	if (IsA(node, ExecuteStmt))
 	{
@@ -1500,11 +1504,10 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 		stmt = (ExecuteStmt *) node;
 		stmt_name = stmt->name;
 	}
-
 #if PG_VERSION_NUM >= 90200
 	/*
-	 * EXECUTEコマンドならば、PREPARE時に指定されたクエリ文字列を取得し、ヒント
-	 * 句の候補として設定する
+	 * CREATE AS EXECUTE behavior has changed since 9.2, so we must handle it
+	 * specially here.
 	 */
 	if (IsA(node, CreateTableAsStmt))
 	{
@@ -1555,35 +1558,30 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 }
 
 /*
- * ヒント用スタック構造にヒントをプッシュする。なお、List構造体でヒント用スタッ
- * ク構造を実装していて、リストの先頭がスタックの一番上に該当する。
+ * Push a hint into hint stack which is implemented with List struct.  Head of
+ * list is top of stack.
  */
 static void
 push_hint(HintState *hstate)
 {
-	/* 新しいヒントをスタックに積む。 */
+	/* Prepend new hint to the list means pushing to stack. */
 	HintStateStack = lcons(hstate, HintStateStack);
 
-	/*
-	 * 先ほどスタックに積んだヒントを現在のヒントとしてcurrent_hintに格納する。
-	 */
+	/* Pushed hint is the one which should be used hereafter. */
 	current_hint = hstate;
 }
 
-/*
- * ヒント用スタック構造から不要になったヒントをポップする。取り出されたヒントは
- * 自動的に破棄される。
- */
+/* Pop a hint from hint stack.  Popped hint is automatically discarded. */
 static void
 pop_hint(void)
 {
-	/* ヒントのスタックが空の場合はエラーを返す */
+	/* Hint stack must not be empty. */
 	if(HintStateStack == NIL)
 		elog(ERROR, "hint stack is empty");
 
 	/*
-	 * ヒントのスタックから一番上のものを取り出して解放する。 current_hintは
-	 * 常に最上段ヒントを指す(スタックが空の場合はNULL)。
+	 * Take a hint at the head from the list, and free it.  Switch current_hint
+	 * to point new head (NULL if the list is empty).
 	 */
 	HintStateStack = list_delete_first(HintStateStack);
 	HintStateDelete(current_hint);
@@ -1601,9 +1599,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	HintState	   *hstate;
 
 	/*
-	 * pg_hint_planが無効である場合は通常のparser処理をおこなう。
-	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数
-	 * をNULLに設定しておく。
+	 * Use standard planner if pg_hint_plan is disabled.  Other hook functions
+	 * try to change plan with current_hint if any, so set it to NULL.
 	 */
 	if (!pg_hint_plan_enable_hint)
 	{
@@ -1615,14 +1612,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
 
-	/* 有効なヒント句を保存する。 */
+	/* Create hint struct from parse tree. */
 	hstate = parse_head_comment(parse);
 
 	/*
-	 * hintが指定されない、または空のhintを指定された場合は通常のparser処理をお
-	 * こなう。
-	 * 他のフック関数で実行されるhint処理をスキップするために、current_hint 変数
-	 * をNULLに設定しておく。
+	 * Use standard planner if the statement has not valid hint.  Other hook
+	 * functions try to change plan with current_hint if any, so set it to
+	 * NULL.
 	 */
 	if (!hstate)
 	{
@@ -1634,10 +1630,12 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
 
-	/* 現在のヒントをスタックに積む。 */
+	/*
+	 * Push new hint struct to the hint stack to disable previous hint context.
+	 */
 	push_hint(hstate);
 
-	/* Set hint で指定されたGUCパラメータを設定する */
+	/* Set GUC parameters which are specified with Set hint. */
 	save_nestlevel = set_config_options(current_hint->set_hints,
 										current_hint->num_hints[HINT_TYPE_SET],
 										current_hint->context);
@@ -1662,8 +1660,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
 
 	/*
-	 * プラン作成中にエラーとなった場合、GUCパラメータと current_hintを
-	 * pg_hint_plan_planner 関数の実行前の状態に戻す。
+	 * Use PG_TRY mechanism to recover GUC parameters and current_hint to the
+	 * state when this planner started when error occurred in planner.
 	 */
 	PG_TRY();
 	{
@@ -1675,8 +1673,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	PG_CATCH();
 	{
 		/*
-		 * プランナ起動前の状態に戻すため、GUCパラメータを復元し、ヒント情報を
-		 * 一つ削除する。
+		 * Rollback changes of GUC parameters, and pop current hint context
+		 * from hint stack to rewind the state.
 		 */
 		AtEOXact_GUC(true, save_nestlevel);
 		pop_hint();
@@ -1684,15 +1682,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 	PG_END_TRY();
 
-	/*
-	 * Print hint if debugging.
-	 */
+	/* Print hint in debug mode. */
 	if (pg_hint_plan_debug_print)
 		HintStateDump(current_hint);
 
 	/*
-	 * プランナ起動前の状態に戻すため、GUCパラメータを復元し、ヒント情報を一つ
-	 * 削除する。
+	 * Rollback changes of GUC parameters, and pop current hint context from
+	 * hint stack to rewind the state.
 	 */
 	AtEOXact_GUC(true, save_nestlevel);
 	pop_hint();
@@ -1701,7 +1697,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 }
 
 /*
- * aliasnameと一致するSCANヒントを探す
+ * Return scan method hint which matches given aliasname.
  */
 static ScanMethodHint *
 find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
@@ -1710,28 +1706,25 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 	int				i;
 
 	/*
-	 * RELOPT_BASEREL でなければ、scan method ヒントが適用しない。
-	 * 子テーブルの場合はRELOPT_OTHER_MEMBER_RELとなるが、サポート対象外とする。
-	 * また、通常のリレーション以外は、スキャン方式を選択できない。
+	 * We can't apply scan method hint if the relation is:
+	 *   - not a base relation
+	 *   - not an ordinary relation (such as join and subquery)
 	 */
 	if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
 		return NULL;
 
 	rte = root->simple_rte_array[rel->relid];
 
-	/* 外部表はスキャン方式が選択できない。 */
+	/* We can't force scan method of foreign tables */
 	if (rte->relkind == RELKIND_FOREIGN_TABLE)
 		return NULL;
 
-	/*
-	 * スキャン方式のヒントのリストから、検索対象のリレーションと名称が一致する
-	 * ヒントを検索する。
-	 */
+	/* Find scan method hint, which matches given names, from the list. */
 	for (i = 0; i < current_hint->num_hints[HINT_TYPE_SCAN_METHOD]; i++)
 	{
 		ScanMethodHint *hint = current_hint->scan_hints[i];
 
-		/* すでに無効となっているヒントは検索対象にしない。 */
+		/* We ignore disabled hints. */
 		if (!hint_state_enabled(hint))
 			continue;
 
@@ -1810,7 +1803,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (prev_get_relation_info)
 		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
 
-	/* 有効なヒントが指定されなかった場合は処理をスキップする。 */
+	/* Do nothing if we don't have valid hint in this context. */
 	if (!current_hint)
 		return;
 
@@ -1848,7 +1841,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 		current_hint->parent_hint = NULL;
 	}
 
-	/* scan hint が指定されない場合は、GUCパラメータをリセットする。 */
+	/*
+	 * If scan method hint was given, reset GUC parameters which control
+	 * planner behavior about choosing scan methods.
+	 */
 	if ((hint = find_scan_hint(root, rel)) == NULL)
 	{
 		set_scan_config_options(current_hint->init_scan_mask,
@@ -1864,9 +1860,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 }
 
 /*
- * aliasnameがクエリ中に指定した別名と一致する場合は、そのインデックスを返し、一
- * 致する別名がなければ0を返す。
- * aliasnameがクエリ中に複数回指定された場合は、-1を返す。
+ * Return index of relation which matches given aliasname, or 0 if not found.
+ * If same aliasname was used multiple times in a query, return -1.
  */
 static int
 find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
@@ -1923,7 +1918,7 @@ find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
 }
 
 /*
- * relidビットマスクと一致するヒントを探す
+ * Return join hint which matches given joinrelids.
  */
 static JoinMethodHint *
 find_join_hint(Relids joinrelids)
@@ -1945,7 +1940,12 @@ find_join_hint(Relids joinrelids)
 }
 
 /*
- * 結合方式のヒントを使用しやすい構造に変換する。
+ * Transform join method hint into handy form.
+ * 
+ *   - create bitmap of relids from alias names, to make it easier to check
+ *     whether a join path matches a join method hint.
+ *   - add join method hints which are necessary to enforce join order
+ *     specified by Leading hint
  */
 static void
 transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
@@ -1958,6 +1958,10 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 	int				njoinrels;
 	ListCell	   *l;
 
+	/*
+	 * Create bitmap of relids from alias names for each join method hint.
+	 * Bitmaps are more handy than strings in join searching.
+	 */
 	for (i = 0; i < hstate->num_hints[HINT_TYPE_JOIN_METHOD]; i++)
 	{
 		JoinMethodHint *hint = hstate->join_hints[i];
@@ -2000,18 +2004,26 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			lappend(hstate->join_hint_level[hint->nrels], hint);
 	}
 
-	/*
-	 * 有効なLeading ヒントが指定されている場合は、結合順にあわせて join method
-	 * hint のフォーマットに変換する。
-	 */
+	/* Do nothing if no Leading hint was supplied. */
 	if (hstate->num_hints[HINT_TYPE_LEADING] == 0)
 		return;
 
+	/* Do nothing if Leading hint is invalid. */
 	lhint = hstate->leading_hint;
 	if (!hint_state_enabled(lhint))
 		return;
 
-	/* Leading hint は、全ての join 方式が有効な hint として登録する */
+	/*
+	 * We need join method hints which fit specified join order in every join
+	 * level.  For example, Leading(A B C) virtually requires following join
+	 * method hints, if no join method hint supplied:
+	 *   - level 1: none
+	 *   - level 2: NestLoop(A B), MergeJoin(A B), HashJoin(A B)
+	 *   - level 3: NestLoop(A B C), MergeJoin(A B C), HashJoin(A B C)
+	 *
+	 * If we already have join method hint which fits specified join order in
+	 * that join level, we leave it as-is and don't add new hints.
+	 */
 	joinrelids = NULL;
 	njoinrels = 0;
 	foreach(l, lhint->relations)
@@ -2019,19 +2031,22 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		char   *relname = (char *)lfirst(l);
 		JoinMethodHint *hint;
 
-		relid =
-			find_relid_aliasname(root, relname, initial_rels,
-								 hstate->hint_str);
-
+		/*
+		 * Find relid of the relation which has given name.  If we have the
+		 * name given in Leading hint multiple times in the join, nothing to
+		 * do.
+		 */
+		relid = find_relid_aliasname(root, relname, initial_rels,
+									 hstate->hint_str);
 		if (relid == -1)
 		{
 			bms_free(joinrelids);
 			return;
 		}
-
 		if (relid == 0)
 			continue;
 
+		/* Found relid must not be in joinrelids. */
 		if (bms_is_member(relid, joinrelids))
 		{
 			parse_ereport(lhint->base.hint_str,
@@ -2041,18 +2056,24 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			return;
 		}
 
+		/* Create bitmap of relids for current join level. */
 		joinrelids = bms_add_member(joinrelids, relid);
 		njoinrels++;
 
+		/* We never have join method hint for single relation. */
 		if (njoinrels < 2)
 			continue;
 
+		/*
+		 * If we don't have join method hint, create new one for the
+		 * join combination with all join methods are enabled.
+		 */
 		hint = find_join_hint(joinrelids);
 		if (hint == NULL)
 		{
 			/*
 			 * Here relnames is not set, since Relids bitmap is sufficient to
-			 * control paths of this query afterwards.
+			 * control paths of this query afterward.
 			 */
 			hint = (JoinMethodHint *) JoinMethodHintCreate(lhint->base.hint_str,
 														   HINT_LEADING);
@@ -2073,9 +2094,12 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 	if (njoinrels < 2)
 		return;
 
+	/*
+	 * Delete all join hints which have different combination from Leading
+	 * hint.
+	 */
 	for (i = 2; i <= njoinrels; i++)
 	{
-		/* Leading で指定した組み合わせ以外の join hint を削除する */
 		list_free(hstate->join_hint_level[i]);
 
 		hstate->join_hint_level[i] = lappend(NIL, join_method_hints[i]);
@@ -2127,21 +2151,20 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 		RangeTblEntry  *rte;
 		ScanMethodHint *hint;
 
-		/*
-		 * スキャン方式が選択できるリレーションのみ、スキャンパスを再生成する。
-		 */
+		/* Skip relations which we can't choose scan method. */
 		if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
 			continue;
 
 		rte = root->simple_rte_array[rel->relid];
 
-		/* 外部表はスキャン方式が選択できない。 */
+		/* We can't force scan method of foreign tables */
 		if (rte->relkind == RELKIND_FOREIGN_TABLE)
 			continue;
 
 		/*
-		 * scan method hint が指定されていなければ、初期値のGUCパラメータでscan
-		 * path を再生成する。
+		 * Create scan paths with GUC parameters which are at the beginning of
+		 * planner if scan method hint is not specified, otherwise use
+		 * specified hints and mark the hint as used.
 		 */
 		if ((hint = find_scan_hint(root, rel)) == NULL)
 			set_scan_config_options(hstate->init_scan_mask,
@@ -2172,10 +2195,10 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 }
 
 /*
- * make_join_rel() をラップする関数
+ * wrapper of make_join_rel()
  *
- * ヒントにしたがって、enabele_* パラメータを変更した上で、make_join_rel()を
- * 呼び出す。
+ * call make_join_rel() after changing enable_* parameters according to given
+ * hints.
  */
 static RelOptInfo *
 make_join_rel_wrapper(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
@@ -2241,8 +2264,8 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	int			i;
 
 	/*
-	 * pg_hint_planが無効、または有効なヒントが1つも指定されなかった場合は、標準
-	 * の処理を行う。
+	 * Use standard planner (or geqo planner) if pg_hint_plan is disabled or no
+	 * valid hint is supplied.
 	 */
 	if (!current_hint)
 	{
@@ -2258,9 +2281,8 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	rebuild_scan_path(current_hint, root, levels_needed, initial_rels);
 
 	/*
-	 * GEQOを使用する条件を満たした場合は、GEQOを用いた結合方式の検索を行う。
-	 * このとき、スキャン方式のヒントとSetヒントのみが有効になり、結合方式や結合
-	 * 順序はヒント句は無効になりGEQOのアルゴリズムで決定される。
+	 * In the case using GEQO, only scan method hints and Set hints have
+	 * effect.  Join method and join order is not controllable by hints.
 	 */
 	if (enable_geqo && levels_needed >= geqo_threshold)
 		return geqo(root, levels_needed, initial_rels);
