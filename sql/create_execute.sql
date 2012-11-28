@@ -30,10 +30,20 @@ DEALLOCATE p1;
 /*+BitmapScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
 /*+SeqScan(t1)*/
-EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 /*+SeqScan(t1)*/
-EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 -- No. A-8-1-11
@@ -47,9 +57,14 @@ DEALLOCATE p1;
 
 /*+BitmapScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
-EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
-EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 -- No. A-8-1-13
@@ -64,9 +79,19 @@ DEALLOCATE p1;
 
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
 /*+BitmapScan(t1)*/
-EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 /*+BitmapScan(t1)*/
-EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
