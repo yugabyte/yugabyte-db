@@ -3247,6 +3247,78 @@ error hint:
    Index Cond: (c1 = 1)
 (2 rows)
 
+-- No. S-3-1-17
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
+          QUERY PLAN          
+------------------------------
+ Index Scan using t1_i1 on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+IndexOnlyScan(t1)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(t1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+          QUERY PLAN          
+------------------------------
+ Index Scan using t1_i1 on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-1-18
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on t1
+   Filter: (c1 >= 1)
+(2 rows)
+
+/*+IndexOnlyScan(t1)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(t1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on t1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-1-19
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
+          QUERY PLAN          
+------------------------------
+ Index Scan using t1_i1 on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+NoIndexOnlyScan(t1)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(t1)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+          QUERY PLAN          
+------------------------------
+ Index Scan using t1_i1 on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-1-20
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on t1
+   Filter: (c1 >= 1)
+(2 rows)
+
+/*+NoIndexOnlyScan(t1)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 >= 1;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(t1)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on t1
+   Filter: (c1 >= 1)
+(2 rows)
+
 ----
 ---- No. S-3-3 index name specified
 ----
@@ -3280,6 +3352,13 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 
 RESET enable_tidscan;
 RESET enable_indexscan;
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c2 >= 1)
+(2 rows)
+
 -- No. S-3-3-1
 /*+IndexScan(ti1 ti1_i3)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
@@ -3387,6 +3466,39 @@ error hint:
    ->  Bitmap Index Scan on ti1_i2
          Index Cond: (c2 = 1)
 (5 rows)
+
+-- No. S-3-3-7
+/*+IndexOnlyScan(ti1 ti1_i3)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_i3)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c2 >= 1)
+(2 rows)
+
+-- No. S-3-3-8
+/*+IndexOnlyScan(ti1 ti1_i3 ti1_i2)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_i3 ti1_i2)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c2 >= 1)
+(2 rows)
+
+-- No. S-3-3-9
+/*+IndexOnlyScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c2 >= 1)
+(2 rows)
 
 ----
 ---- No. S-3-4 index type
@@ -3819,6 +3931,208 @@ error hint:
          Index Cond: (c2 = 1)
 (5 rows)
 
+-- No. S-3-4-23
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_btree)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_btree)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-4-24
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_hash)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_hash)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-4-25
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_gist)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_gist)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 1)
+(2 rows)
+
+-- No. S-3-4-26
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_gin)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_gin)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-4-27
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 100)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_expr)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_expr)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 < 100)
+(2 rows)
+
+-- No. S-3-4-28
+EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on ti1
+   Filter: (lower(c4) >= '1'::text)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_pred)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+             QUERY PLAN             
+------------------------------------
+ Seq Scan on ti1
+   Filter: (lower(c4) >= '1'::text)
+(2 rows)
+
+-- No. S-3-4-29
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_uniq)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_uniq)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-4-30
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_multi)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_multi)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-4-31
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE to_tsvector('english', c4) @@ 'a & b';
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+   ->  Bitmap Index Scan on ti1_ts
+         Index Cond: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+(4 rows)
+
+/*+IndexOnlyScan(ti1 ti1_ts)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE to_tsvector('english', c4) @@ 'a & b';
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_ts)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Bitmap Heap Scan on ti1
+   Recheck Cond: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+   ->  Bitmap Index Scan on ti1_ts
+         Index Cond: (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery)
+(4 rows)
+
+-- No. S-3-4-32
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_pkey)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-4-33
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c2 >= 1)
+(2 rows)
+
+/*+IndexOnlyScan(ti1 ti1_c2_key)*/
+EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_c2_key)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c2 >= 1)
+(2 rows)
+
 ----
 ---- No. S-3-5 not used index
 ----
@@ -3854,6 +4168,17 @@ error hint:
    Filter: (c1 = 100)
 (2 rows)
 
+-- No. S-3-5-3
+/*+IndexOnlyScan(ti1 ti1_pred)*/
+EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_pred)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using ti1_uniq on ti1  (cost=0.00..8.27 rows=1 width=4)
+   Index Cond: (c1 = 100)
+(2 rows)
+
 ----
 ---- No. S-3-6 not exist index
 ----
@@ -3887,6 +4212,17 @@ error hint:
 ----------------------
  Seq Scan on ti1
    Filter: (c1 = 100)
+(2 rows)
+
+-- No. S-3-6-3
+/*+IndexOnlyScan(ti1 not_exist)*/
+EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 not_exist)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+                             QUERY PLAN                             
+--------------------------------------------------------------------
+ Index Scan using ti1_uniq on ti1  (cost=0.00..8.27 rows=1 width=4)
+   Index Cond: (c1 = 100)
 (2 rows)
 
 ----
@@ -4917,4 +5253,70 @@ DETAIL:  Closing parenthesis is necessary.
    TID Cond: (ctid = '(1,1)'::tid)
    Filter: (c1 = 1)
 (3 rows)
+
+-- No. S-3-13-25
+/*+IndexOnlyScan(ti1)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-13-26
+/*+IndexOnlyScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_pkey)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-13-27
+/*+IndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+INFO:  hint syntax error at or near "IndexOnlyScan(ti1 ti1_pkey ti1_btree)"
+DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
+     QUERY PLAN      
+---------------------
+ Seq Scan on ti1
+   Filter: (c1 >= 1)
+(2 rows)
+
+-- No. S-3-13-28
+/*+NoIndexOnlyScan(ti1)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(ti1)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-13-29
+/*+NoIndexOnlyScan(ti1 ti1_pkey)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(ti1 ti1_pkey)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+-- No. S-3-13-30
+/*+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
+EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+INFO:  hint syntax error at or near "NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)"
+DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
+            QUERY PLAN            
+----------------------------------
+ Index Scan using ti1_uniq on ti1
+   Index Cond: (c1 = 1)
+(2 rows)
 
