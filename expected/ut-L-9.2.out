@@ -910,46 +910,47 @@ error hint:
 (10 rows)
 
 -- No. L-1-6-8
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3'), (4,4,4,'4')) AS t4  (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+                      QUERY PLAN                       
+-------------------------------------------------------
  Nested Loop
-   Join Filter: ("*VALUES*".column1 = "*VALUES*".column1)
-   ->  Hash Join
-         Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
-         ->  Values Scan on "*VALUES*"
-         ->  Hash
-               ->  Hash Join
-                     Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
+   Join Filter: ("*VALUES*".column1 = t4.c1)
+   ->  Nested Loop
+         Join Filter: ("*VALUES*".column1 = t3.c1)
+         ->  Hash Join
+               Hash Cond: (t2.c1 = "*VALUES*".column1)
+               ->  Seq Scan on t2
+               ->  Hash
                      ->  Values Scan on "*VALUES*"
-                     ->  Hash
-                           ->  Values Scan on "*VALUES*"
-   ->  Values Scan on "*VALUES*"
-(12 rows)
+         ->  Index Scan using t3_i1 on t3
+               Index Cond: (c1 = t2.c1)
+   ->  Index Scan using t4_i1 on t4
+         Index Cond: (c1 = t3.c1)
+(13 rows)
 
 /*+Leading(t4 t3 t2 t1)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3'), (4,4,4,'4')) AS t4  (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 LOG:  pg_hint_plan:
 used hint:
-not used hint:
 Leading(t4 t3 t2 t1)
+not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                 QUERY PLAN                  
+---------------------------------------------
  Nested Loop
-   Join Filter: ("*VALUES*".column1 = "*VALUES*".column1)
-   ->  Hash Join
-         Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
-         ->  Values Scan on "*VALUES*"
-         ->  Hash
-               ->  Hash Join
-                     Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
-                     ->  Values Scan on "*VALUES*"
-                     ->  Hash
-                           ->  Values Scan on "*VALUES*"
+   Join Filter: (t2.c1 = "*VALUES*".column1)
    ->  Values Scan on "*VALUES*"
+   ->  Hash Join
+         Hash Cond: (t3.c1 = t2.c1)
+         ->  Hash Join
+               Hash Cond: (t3.c1 = t4.c1)
+               ->  Seq Scan on t3
+               ->  Hash
+                     ->  Seq Scan on t4
+         ->  Hash
+               ->  Seq Scan on t2
 (12 rows)
 
 -- No. L-1-6-9
