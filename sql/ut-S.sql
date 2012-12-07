@@ -797,11 +797,11 @@ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
 
 -- No. S-3-6-1
 /*+IndexScan(ti1 not_exist)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100;
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 
 -- No. S-3-6-2
 /*+BitmapScan(ti1 not_exist)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100;
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 
 -- No. S-3-6-3
 /*+IndexOnlyScan(ti1 not_exist)*/

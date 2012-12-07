@@ -4264,7 +4264,7 @@ error hint:
 ----
 -- No. S-3-6-1
 /*+IndexScan(ti1 not_exist)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100;
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 not_exist)
@@ -4272,15 +4272,15 @@ not used hint:
 duplication hint:
 error hint:
 
-      QUERY PLAN      
-----------------------
- Seq Scan on ti1
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 100)
 (2 rows)
 
 -- No. S-3-6-2
 /*+BitmapScan(ti1 not_exist)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100;
+EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 not_exist)
@@ -4288,9 +4288,9 @@ not used hint:
 duplication hint:
 error hint:
 
-      QUERY PLAN      
-----------------------
- Seq Scan on ti1
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 100)
 (2 rows)
 

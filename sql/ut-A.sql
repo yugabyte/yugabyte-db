@@ -888,28 +888,18 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '
 
 -- No. A-10-2-1
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
-/*+HashJoin(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
-/*+MergeJoin(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
 
 -- No. A-10-2-2
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
-/*+IndexScan(t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
-/*+IndexScan(t1 t1_i)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
 /*+IndexScan(t1 t1_i1)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
 
 -- No. A-10-2-3
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+TidScan(t1)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-/*+TidScan(t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
 
 ----
 ---- No. A-10-3 VIEW, RULE multi specified
@@ -953,10 +943,10 @@ SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
 \unset FETCH_COUNT
 
 ----
----- No. A-12-4 PL/pgSQL function
+---- No. A-11-4 PL/pgSQL function
 ----
 
--- No. A-12-4-1
+-- No. A-11-4-1
 CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
 DECLARE
     r text;
@@ -972,7 +962,7 @@ SELECT f1();
 /*+SeqScan(t1)*/
 SELECT f1();
 
--- No. A-12-4-2
+-- No. A-11-4-2
 /*+SeqScan(t1)*/CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
 DECLARE
     r text;
@@ -1074,6 +1064,8 @@ SELECT name, setting FROM settings;
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \connect
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
 LOAD 'pg_hint_plan';
 SELECT name, setting FROM settings;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -1082,6 +1074,8 @@ SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
+RESET enable_indexscan;
+RESET enable_mergejoin;
 
 ----
 ---- No. A-13 call planner recursively
