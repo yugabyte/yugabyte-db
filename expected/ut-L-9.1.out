@@ -866,7 +866,7 @@ error hint:
 (13 rows)
 
 -- No. L-1-6-6
--- refer fdw.sql
+-- refer ut-fdw.sql
 -- No. L-1-6-7
 EXPLAIN (COSTS false) SELECT * FROM s1.f1() t1, s1.f1() t2, s1.f1() t3, s1.f1() t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
                  QUERY PLAN                 

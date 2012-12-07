@@ -122,7 +122,7 @@ EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class t1, pg_catalog.pg_class 
 EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class t1, pg_catalog.pg_class t2 WHERE t1.oid = t2.oid;
 
 -- No. J-1-6-6
--- refer fdw.sql
+-- refer ut-fdw.sql
 
 -- No. J-1-6-7
 EXPLAIN (COSTS false) SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;

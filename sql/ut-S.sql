@@ -108,7 +108,7 @@ EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class WHERE oid = 1;
 EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class WHERE oid = 1;
 
 -- No. S-1-5-6
--- refer fdw.sql
+-- refer ut-fdw.sql
 
 -- No. S-1-5-7
 EXPLAIN (COSTS false) SELECT * FROM s1.f1() AS ft1 WHERE ft1.c1 = 1;
