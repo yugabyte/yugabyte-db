@@ -656,7 +656,12 @@ EXPLAIN (COSTS false) EXECUTE p1;
 DEALLOCATE p1;
 
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 -- No. A-8-1-1
@@ -673,10 +678,20 @@ DEALLOCATE p1;
 /*+BitmapScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
 /*+SeqScan(t1)*/
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
 UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 /*+SeqScan(t1)*/
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 -- No. A-8-1-3
@@ -690,9 +705,14 @@ DEALLOCATE p1;
 
 /*+BitmapScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
 UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 -- No. A-8-1-5
@@ -707,10 +727,94 @@ DEALLOCATE p1;
 
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
 /*+BitmapScan(t1)*/
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
 UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 /*+BitmapScan(t1)*/
-EXPLAIN (COSTS false) EXECUTE p1 (1);
+EXPLAIN (COSTS false) EXECUTE p1 (1000);
+DEALLOCATE p1;
+
+-- No. A-8-1-9
+-- No. A-8-1-10
+/*+SeqScan(t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
+DEALLOCATE p1;
+
+/*+BitmapScan(t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+DEALLOCATE p1;
+
+-- No. A-8-1-11
+-- No. A-8-1-12
+/*+SeqScan(t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
+DEALLOCATE p1;
+
+/*+BitmapScan(t1)*/
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+DEALLOCATE p1;
+
+-- No. A-8-1-13
+-- No. A-8-1-14
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
+DEALLOCATE p1;
+
+PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 < $1;
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
+UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 ----
@@ -784,28 +888,18 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '
 
 -- No. A-10-2-1
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
-/*+HashJoin(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
-/*+MergeJoin(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
 
 -- No. A-10-2-2
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
-/*+IndexScan(t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
-/*+IndexScan(t1 t1_i)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
 /*+IndexScan(t1 t1_i1)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1 AND t1.ctid = '(1,1)';
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
 
 -- No. A-10-2-3
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+TidScan(t1)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-/*+TidScan(t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
 
 ----
 ---- No. A-10-3 VIEW, RULE multi specified
@@ -849,10 +943,10 @@ SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
 \unset FETCH_COUNT
 
 ----
----- No. A-12-4 PL/pgSQL function
+---- No. A-11-4 PL/pgSQL function
 ----
 
--- No. A-12-4-1
+-- No. A-11-4-1
 CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
 DECLARE
     r text;
@@ -868,7 +962,7 @@ SELECT f1();
 /*+SeqScan(t1)*/
 SELECT f1();
 
--- No. A-12-4-2
+-- No. A-11-4-2
 /*+SeqScan(t1)*/CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
 DECLARE
     r text;
@@ -970,6 +1064,8 @@ SELECT name, setting FROM settings;
 /*+Set(enable_indexscan on)Set(geqo_threshold 100)IndexScan(t2)MergeJoin(t1 t2)Leading(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \connect
+SET enable_indexscan TO off;
+SET enable_mergejoin TO off;
 LOAD 'pg_hint_plan';
 SELECT name, setting FROM settings;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
@@ -978,4 +1074,142 @@ SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
+RESET enable_indexscan;
+RESET enable_mergejoin;
 
+----
+---- No. A-13 call planner recursively
+----
+
+CREATE OR REPLACE FUNCTION nested_planner(cnt int) RETURNS int AS $$
+DECLARE
+    new_cnt int;
+BEGIN
+    RAISE NOTICE 'nested_planner(%)', cnt;
+
+    /* 再帰終了の判断 */
+    IF cnt <= 1 THEN
+        RETURN 0;
+    END IF;
+
+    EXECUTE '/*+ IndexScan(t_1) */'
+            ' SELECT nested_planner($1) FROM s1.t1 t_1'
+            ' JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)'
+            ' ORDER BY t_1.c1 LIMIT 1'
+        INTO new_cnt USING cnt - 1;
+
+    RETURN new_cnt;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+----
+---- No. A-13-2 use hint of main query
+----
+
+--No.13-2-1
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_1)*/
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+
+----
+---- No. A-13-3 output number of times of debugging log
+----
+
+--No.13-3-1
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_2)*/
+EXPLAIN (COSTS false) SELECT nested_planner(1) FROM s1.t1 t_1 ORDER BY t_1.c1;
+
+--No.13-3-2
+EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_2)*/
+EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
+
+--No.13-3-3
+EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
+/*+SeqScan(t_2)*/
+EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
+
+----
+---- No. A-13-4 output of debugging log on hint status
+----
+
+--No.13-4-1
+/*+HashJoin(t_1 t_2)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 t_1
+   JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+  ORDER BY t_1.c1;
+
+--No.13-4-2
+/*+HashJoin(st_1 st_2)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 st_1
+   JOIN s1.t2 st_2 ON (st_1.c1 = st_2.c1)
+  ORDER BY st_1.c1;
+
+--No.13-4-3
+/*+HashJoin(t_1 t_2)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 st_1
+   JOIN s1.t2 st_2 ON (st_1.c1 = st_2.c1)
+  ORDER BY st_1.c1;
+
+--No.13-4-4
+/*+HashJoin(st_1 st_2)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 t_1
+   JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+  ORDER BY t_1.c1;
+
+--No.13-4-5
+/*+HashJoin(t_1 t_1)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 t_1
+  ORDER BY t_1.c1;
+
+--No.13-4-6
+CREATE OR REPLACE FUNCTION nested_planner_one_t(cnt int) RETURNS int AS $$
+DECLARE
+    new_cnt int;
+BEGIN
+    RAISE NOTICE 'nested_planner_one_t(%)', cnt;
+
+    IF cnt <= 1 THEN
+        RETURN 0;
+    END IF;
+
+    EXECUTE '/*+ IndexScan(t_1) */'
+            ' SELECT nested_planner_one_t($1) FROM s1.t1 t_1'
+            ' ORDER BY t_1.c1 LIMIT 1'
+        INTO new_cnt USING cnt - 1;
+
+    RETURN new_cnt;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+EXPLAIN (COSTS false)
+ SELECT nested_planner_one_t(2) FROM s1.t1 t_1
+   JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+  ORDER BY t_1.c1;
+/*+HashJoin(t_1 t_1)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner_one_t(2) FROM s1.t1 t_1
+   JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+  ORDER BY t_1.c1;
+
+DROP FUNCTION nested_planner_one_t(int);
+
+--No.13-4-7
+/*+HashJoin(t_1 t_1)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 t_1
+   JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+  ORDER BY t_1.c1;
+
+--No.13-4-8
+/*+MergeJoin(t_1 t_2)HashJoin(t_1 t_2)*/
+EXPLAIN (COSTS false)
+ SELECT nested_planner(2) FROM s1.t1 t_1
+   JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+  ORDER BY t_1.c1;

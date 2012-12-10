@@ -43,7 +43,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 /*+HashJoin(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 
--- No. J-1-3-1
+-- No. J-1-3-2
 /*+HashJoin(t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 
@@ -122,7 +122,7 @@ EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class t1, pg_catalog.pg_class 
 EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class t1, pg_catalog.pg_class t2 WHERE t1.oid = t2.oid;
 
 -- No. J-1-6-6
--- refer fdw.sql
+-- refer ut-fdw.sql
 
 -- No. J-1-6-7
 EXPLAIN (COSTS false) SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
@@ -130,11 +130,11 @@ EXPLAIN (COSTS false) SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
 EXPLAIN (COSTS false) SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
 
 -- No. J-1-6-8
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
 /*+NestLoop(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
-/*+NestLoop(*VALUES* *VALUES*)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
+/*+NestLoop(*VALUES* t2)*/
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
 
 -- No. J-1-6-9
 EXPLAIN (COSTS false) WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) SELECT * FROM s1.t1, c1 WHERE t1.c1 = c1.c1;

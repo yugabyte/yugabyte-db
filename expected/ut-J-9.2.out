@@ -139,7 +139,7 @@ error hint:
          ->  Seq Scan on t2
 (5 rows)
 
--- No. J-1-3-1
+-- No. J-1-3-2
 /*+HashJoin(t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 LOG:  pg_hint_plan:
@@ -598,7 +598,7 @@ error hint:
 (4 rows)
 
 -- No. J-1-6-6
--- refer fdw.sql
+-- refer ut-fdw.sql
 -- No. J-1-6-7
 EXPLAIN (COSTS false) SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
            QUERY PLAN           
@@ -628,18 +628,18 @@ error hint:
 (5 rows)
 
 -- No. J-1-6-8
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
-                       QUERY PLAN                       
---------------------------------------------------------
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
+                QUERY PLAN                 
+-------------------------------------------
  Hash Join
-   Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
-   ->  Values Scan on "*VALUES*"
+   Hash Cond: (t2.c1 = "*VALUES*".column1)
+   ->  Seq Scan on t2
    ->  Hash
          ->  Values Scan on "*VALUES*"
 (5 rows)
 
 /*+NestLoop(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -647,32 +647,30 @@ NestLoop(t1 t2)
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                QUERY PLAN                 
+-------------------------------------------
  Hash Join
-   Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
-   ->  Values Scan on "*VALUES*"
+   Hash Cond: (t2.c1 = "*VALUES*".column1)
+   ->  Seq Scan on t2
    ->  Hash
          ->  Values Scan on "*VALUES*"
 (5 rows)
 
-/*+NestLoop(*VALUES* *VALUES*)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t2 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "NestLoop(*VALUES* *VALUES*)"
-DETAIL:  Relation name "*VALUES*" is ambiguous.
+/*+NestLoop(*VALUES* t2)*/
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
 LOG:  pg_hint_plan:
 used hint:
+NestLoop(*VALUES* t2)
 not used hint:
 duplication hint:
 error hint:
-NestLoop(*VALUES* *VALUES*)
 
-                       QUERY PLAN                       
---------------------------------------------------------
- Hash Join
-   Hash Cond: ("*VALUES*".column1 = "*VALUES*".column1)
-   ->  Values Scan on "*VALUES*"
-   ->  Hash
+                 QUERY PLAN                  
+---------------------------------------------
+ Nested Loop
+   Join Filter: ("*VALUES*".column1 = t2.c1)
+   ->  Seq Scan on t2
+   ->  Materialize
          ->  Values Scan on "*VALUES*"
 (5 rows)
 
