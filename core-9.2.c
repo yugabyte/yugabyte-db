@@ -315,6 +315,7 @@ generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 															NULL));
 	}
 }
+
 /*
  * accumulate_append_subpath
  *		Add a subpath to the list being built for an Append or MergeAppend
@@ -337,7 +338,6 @@ accumulate_append_subpath(List *subpaths, Path *path)
 	else
 		return lappend(subpaths, path);
 }
-
 
 /*
  * standard_join_search
