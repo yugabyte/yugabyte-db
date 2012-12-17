@@ -66,6 +66,10 @@ RAISE NOTICE 'v_max_partition_timestamp: %',v_max_partition_timestamp;
     RAISE NOTICE 'v_sql: %', v_sql;
     EXECUTE v_sql INTO v_last_partition_name;
 
+    -- create_time_partition() already checks to see if the partition exists and skips creation if it does. 
+    -- So this function will still work with already existing partitions to get all data moved out of parent table up to and including when
+    -- pg_partman was used to set up partitioning.
+
     v_sql := 'WITH partition_data AS (
             DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||quote_literal(v_min_partition_timestamp)||
                 ' AND '||v_control||' < '||quote_literal(v_max_partition_timestamp)||' RETURNING *)

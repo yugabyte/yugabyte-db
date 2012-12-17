@@ -1,4 +1,6 @@
-CREATE FUNCTION run_maintenance() RETURNS void 
+-- Only re-create partition functions if a new partition is made. 
+
+CREATE OR REPLACE FUNCTION run_maintenance() RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
