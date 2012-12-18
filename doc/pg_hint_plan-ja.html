@@ -194,7 +194,7 @@ postgres-#   ORDER BY a.aid;
 postgres=# </pre>
 </dd>
 <dt>オブジェクト名の引用符付け</dt>
-<dd>ヒントに記述するオブジェクト名や別名が閉じ括弧（)）、二重引用符（"）、空白（スペース、タブ、改行のいずれか）を含む場合は、通常のSQL文で使う場合と同じように二重引用符(")で囲んでください。二重引用符を含むオブジェクト名は、二重引用符で括ったうえで二重引用符を二重引用符でエスケープしてください(例: 「quoted"table"name」→「 "quoted"table""name"」)。</dd>
+<dd>ヒントに記述するオブジェクト名や別名が閉じ括弧（)）、二重引用符（"）、空白（スペース、タブ、改行のいずれか）を含む場合は、通常のSQL文で使う場合と同じように二重引用符(")で囲んでください。二重引用符を含むオブジェクト名は、二重引用符で括ったうえで二重引用符を二重引用符でエスケープしてください(例: 「quoted"table"name」→「"quoted""table""name"」)。</dd>
 <dt>同一名称テーブルの区別</dt>
 <dd>スキーマ違いや同一テーブルの複数回使用などでクエリ中に同一名称のテーブルが複数回出現する場合は、テーブルに別名をつけてそれぞれのテーブルを区別してください。以下の例の1つ目のSQL文では、HashJoin(t1 t1)をヒントに指定したとき、ヒント対象のオブジェクトが特定できずにエラーになっています。2つ目のSQL文では、各テーブルにptやstという別名をつけているため、実行計画作成時にヒントで指定した通りにHash Joinを選択しています。
 </p>
@@ -259,7 +259,35 @@ postgres=#</pre>
 <dt>VIEWおよびRULEに対する制限</dt>
 <dd>VIEWやRULEを定義したテーブルを複数用いるときに、各VIEW内のテーブルの別名やRULE書き換え後のクエリのテーブルの別名が重複した場合は、ヒントの対象を区別できません。区別する場合は、各VIEW内のテーブルの別名やRULE書き換え後のクエリのテーブルの別名を重複させないでください。</dd>
 <dt>クエリに明記されていないテーブルへのヒント適用</dt>
-<dd>ヒントで指定した名称と一致すれば、VIEW定義や関数内クエリなどに出現するテーブルについても、ヒントを指定したクエリ内と同じようにヒントが適用されます。このため、ヒントの適用有無や適用するヒントをそれぞれのテーブルで変えたい場合は、別のエイリアスを指定してください。</dd>
+<dd>ヒントで指定した名称と一致すれば、VIEW定義や関数内クエリなどに出現するテーブルについても、ヒントを指定したクエリ内と同じようにヒントが適用されます。このため、ヒントの適用有無や適用するヒントをそれぞれのテーブルで変えたい場合は、別のエイリアスを指定してください。</br>
+以下の例では、ビュー定義で使われている「t1」というエイリアスをSeqScanヒントで指定したことで、表スキャンとビュー経由のスキャンの両方でSeq Scanが選択されています。ビュー定義で使用されている「t1」とは別のエイリアスを実表に指定することで、個別にスキャン方式を制御できます。
+<pre>
+postgres=# CREATE VIEW view1 AS SELECT * FROM table1 <span class="strong">t1</span>;
+CREATE TABLE
+postgres=# /*+ SeqScan(<span class="strong">t1</span>) */
+postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t1</span> JOIN view1 t2 ON (t1.key = t2.key) WHERE t2.key = 1;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Nested Loop  (cost=0.00..358.01 rows=1 width=16)
+   ->  Seq Scan on table1 <span class="strong">t1</span>  (cost=0.00..179.00 rows=1 width=8)
+         Filter: (key = 1)
+   ->  Seq Scan on table1 <span class="strong">t1</span>  (cost=0.00..179.00 rows=1 width=8)
+         Filter: (key = 1)
+(5 rows)
+
+postgres=# /*+ SeqScan(<span class="strong">t3</span>) */
+postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t3</span> JOIN view1 t2 ON (t1.key = t2.key) WHERE t2.key = 1;
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Nested Loop  (cost=0.00..187.29 rows=1 width=16)
+   ->  Seq Scan on table1 <span class="strong">t3</span>  (cost=0.00..179.00 rows=1 width=8)
+         Filter: (key = 1)
+   ->  Index Scan using foo_pkey on table1 t1  (cost=0.00..8.28 rows=1 width=8)
+         Index Cond: (key = 1)
+(5 rows)
+
+</pre>
+</dd>
 <dt>マルチステートメントにおける制限</dt>
 <dd>クエリがマルチステートメントで実行される場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。2つ目以降のクエリに指定したヒントは無視します。psqlコマンドで-cオプションで複数のクエリを指定した場合などにマルチステートメントで実行されます。</dd>
 <dt>RULEにおける制限</dt>
