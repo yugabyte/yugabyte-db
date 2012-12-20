@@ -771,15 +771,15 @@ check_secure_locality(const char *path)
 	Datum	values[1];
 	char	nulls[1] = {' '};
 
-	/* hack for availbility regress test */
-	if (strcmp(path, "/tmp/regress_orafce") == 0)
-		return;
-
 	values[0] = CStringGetTextDatum(path);
 
 	/*
 	 * SELECT 1 FROM utl_file.utl_file_dir
-	 *   WHERE substring($1, 1, length(dir) + 1) = dir || '/'
+	 *   WHERE CASE WHEN substring(dir from '.$') = '/' THEN
+	 *     substring($1, 1, length(dir)) = dir
+	 *   ELSE
+	 *     substring($1, 1, length(dir) + 1) = dir || '/'
+	 *   END
 	 */
 
 	if (SPI_connect() < 0)
@@ -792,7 +792,11 @@ check_secure_locality(const char *path)
 		/* Don't use LIKE not to escape '_' and '%' */
 		SPIPlanPtr p = SPI_prepare(
 		    "SELECT 1 FROM utl_file.utl_file_dir"
-			" WHERE substring($1, 1, length(dir) + 1) = dir || '/'",
+	 	        " WHERE CASE WHEN substring(dir from '.$') = '/' THEN"
+	 	        "  substring($1, 1, length(dir)) = dir"
+	 	        " ELSE"
+	 	        "  substring($1, 1, length(dir) + 1) = dir || '/'"
+	 	        " END",
 		    1, argtypes);
 
 		if (p == NULL || (plan = SPI_saveplan(p)) == NULL)
