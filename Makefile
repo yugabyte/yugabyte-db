@@ -43,7 +43,7 @@ LIBS := $(filter-out -lxslt, $(LIBS))
 
 plvlex.o: sqlparse.o
 
-sqlparse.o: $(srcdir)/sqlscan.c                                                                                                                      
+sqlparse.o: $(srcdir)/sqlscan.c
 
 $(srcdir)/sqlparse.h: $(srcdir)/sqlparse.c ;
 
@@ -56,7 +56,7 @@ ifdef YACC
 	mv -f y.tab.c sqlparse.c
 	mv -f y.tab.h sqlparse.h
 else
-	@$(missing) bison $< $@
+	bison -d $(BISONFLAGS) -o $@ $<
 endif
 endif
 
@@ -64,7 +64,7 @@ $(srcdir)/sqlscan.c: sqlscan.l
 ifdef FLEX
 	$(FLEX) $(FLEXFLAGS) -o'$@' $<
 else
-	@$(missing) flex $< $@
+	flex $(FLEXFLAGS) -o'$@' $<
 endif
 
 distprep: $(srcdir)/sqlparse.c $(srcdir)/sqlscan.c
@@ -78,4 +78,3 @@ endif
 
 orafunc.sql.in:
 	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in
-
