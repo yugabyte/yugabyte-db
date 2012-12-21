@@ -18,74 +18,26 @@
 
 <div class="index">
 <ol>
-<li><a href="#name">pg_hint_planとは？</a></li>
-<li><a href="#description">機能概要</a></li>
-<li><a href="#install">インストール</a>
-<ol>
-  <li><a href="#requirement">動作環境</a></li>
-  <li><a href="#build">ビルド</a></li>
-</ol>
-</li>
+<li><a href="#name">名前</a></li>
+<li><a href="#synopsis">概要</a></li>
+<li><a href="#description">機能説明</a>
+<li><a href="#install">インストール</a></li>
 <li><a href="#uninstall">アンインストール</a></li>
-<li><a href="#usage">使い方</a>
-<ol>
-  <li><a href="#hint-load">pg_hint_planのロード</a></li>
-  <li><a href="#hint-rule">ヒントの記述方法</a></li>
-  <li><a href="#hint-group">ヒントのグループ</a></li>
-  <li><a href="#hint-GUC">pg_hint_planのGUCパラメータ</a></li>
-</ol>
-</li>
 <li><a href="#restrictions">使用上の注意と制約</a></li>
+<li><a href="#requirement">動作環境</a></li>
 <li><a href="#seealso">関連項目</a></li>
 <li><a href="hint_list-ja.html">Appendix A. ヒント一覧</a></li>
 </div>
 
-<h2 id="name">pg_hint_planとは？</h2>
-<p>pg_hint_planは、元のSQL文を変えずに実行計画を制御するためのツールです。</p>
+<h2 id="name">名前</h2>
+<p>pg_hint_plan -- 特殊なコメント中にヒント情報を記述することで、SQL文やGUCパラメータを変えずに実行計画を制御します。</p>
 
-<h2 id="description">機能概要</h2>
-<p>pg_hint_planを用いると、ヒントを記述したブロックコメントをSQL文の前に加えることで、実行計画を制御することができます。</p>
+<h2 id="synopsis">概要</h2>
+<p>PostgreSQLはコストベースオプティマイザを採用しており、SQL文と統計情報を元に可能なアクセスパスのコストを見積もり、最もコストの低い実行計画を選択します。オプティマイザは可能な限りよい実行計画を作成使用としますが、カラム間の相関関係などは考慮しないため、複雑なクエリでは常に最適なプランが選択されるとは限りません。</p>
+<p>pg_hint_planを用いると、ヒントを記述したブロックコメントをSQL文の前に加えることで、SQL文やGUCパラメータを変更することなく実行計画を制御することができます。</p>
 
-<h2 id="install">インストール</h2>
-<p>pg_hint_planのインストール方法について説明します。</p>
-
-<h3 id="requirement">動作環境</h3>
-<dl>
-<dt>PostgreSQL</dt>
-  <dd>バージョン 9.1.4、9.2.1</dd>
-<dt>動作検証済みOS</dt>
-  <dd>RHEL 6.1</dd>
-</dl>
-
-<h3 id="build">ビルド</h3>
-<p>pg_hint_planをソースコードからビルドする場合、pg_hint_planのソースを展開したディレクトリでmake → make installの順に実行してください。make installはPostgreSQLをインストールしたOSユーザで実行してください。なお、pg_hint_planのビルドにはpgxsを使用するので、RPM版のPostgreSQLを使用している環境では、postgresql-devel パッケージが必要です。</p>
-<p>以下にビルドの例を示します。</p>
-<pre>
-$ tar xzvf pg_hint_plan-1.0.0.tar.gz
-$ cd pg_hint_plan-1.0.0
-$ make
-$ su
-# make install
-</pre>
-
-<h2 id="uninstall">アンインストール</h2>
-<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。make uninstallはPostgreSQLをインストールしたOSユーザで実行してください。</p>
-<p>以下にアンインストールの例を示します。</p>
-<pre>
-$ cd pg_hint_plan-1.0.0
-$ su
-# make uninstall
-</pre>
-
-<h2 id="usage">使い方</h2>
-<p>pg_hint_planの使い方について説明します。</p>
-
-<h3 id="hint-load">pg_hint_planのロード</h3>
-<p>pg_hint_planを使うには、以下の例のようにpg_hint_planの共有ライブラリをロードしてください。全てのセッションでpg_hint_planを有効にするには、shared_preload_libraries GUCパラメータに'pg_hint_plan'を追加してからサーバを再起動して下さい。</p>
-<pre>
-postgres=# LOAD 'pg_hint_plan';
-LOAD
-postgres=# </pre>
+<h2 id="description">機能説明</h2>
+<p>pg_hint_planの機能について説明します。</p>
 
 <h3 id="hint-rule">ヒントの記述方法</h3>
 <p>ヒントはクエリ文字列の先頭のブロックコメント内に記述してください。ブロックコメントをヒントとして認識させるには、ブロックコメントの開始直後にプラス（+）を指定する必要があります。ヒントの対象は、カッコ内にオブジェクト名または別名(別名)で指定してください。オブジェクト名は、スペース、タブ、または改行のいずれかで区切って指定してください。</p>
@@ -164,6 +116,37 @@ pg_hint_plan.parse_messages = 'debug2'
 <p>
 PostgreSQL 9.2以降ではcustom_variable_classesは廃止されているため、pg_hint_planのGUCパラメータを標準のGUCパラメータと同様に記述することができます。
 </p>
+
+<h2 id="install">インストール</h2>
+<p>pg_hint_planのインストール方法について説明します。</p>
+
+<h3 id="build">ビルド</h3>
+<p>pg_hint_planをソースコードからビルドする場合、pg_hint_planのソースを展開したディレクトリでmake → make installの順に実行してください。make installはPostgreSQLをインストールしたOSユーザで実行してください。なお、pg_hint_planのビルドにはpgxsを使用するので、RPM版のPostgreSQLを使用している環境では、postgresql-devel パッケージが必要です。</p>
+<p>以下にビルドの例を示します。</p>
+<pre>
+$ tar xzvf pg_hint_plan-1.0.0.tar.gz
+$ cd pg_hint_plan-1.0.0
+$ make
+$ su
+# make install
+</pre>
+
+<h3 id="hint-load">pg_hint_planのロード</h3>
+<p>特定のセッションでのみpg_hint_planを使う場合は、以下の例のようにpg_hint_planの共有ライブラリをLOADコマンドでロードしてください。一般ユーザで利用する場合は$libdir/pluginsにもインストールする必要があるので注意して下さい。
+<pre>
+postgres=# LOAD 'pg_hint_plan';
+LOAD
+postgres=# </pre></p>
+<p>全てのセッションでpg_hint_planを有効にするには、shared_preload_libraries GUCパラメータに'pg_hint_plan'を追加してからサーバを再起動して下さい。</p>
+
+<h2 id="uninstall">アンインストール</h2>
+<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。make uninstallはPostgreSQLをインストールしたOSユーザで実行してください。</p>
+<p>以下にアンインストールの例を示します。</p>
+<pre>
+$ cd pg_hint_plan-1.0.0
+$ su
+# make uninstall
+</pre>
 
 <h2 id="restrictions">使用上の注意と制約</h2>
 <p>pg_hint_planを使用する際には、以下の注意と制約があります。</p>
@@ -347,6 +330,14 @@ postgres=#</pre>
 </ul>
 </dd>
 
+</dl>
+
+<h2 id="requirement">動作環境</h2>
+<dl>
+<dt>PostgreSQL</dt>
+  <dd>バージョン 9.1.4、9.2.1</dd>
+<dt>動作検証済みOS</dt>
+  <dd>RHEL 6.1</dd>
 </dl>
 
 <h2 id="seealso">関連項目</h2>
