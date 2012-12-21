@@ -23,6 +23,7 @@
 <li><a href="#description">機能説明</a>
 <li><a href="#install">インストール</a></li>
 <li><a href="#uninstall">アンインストール</a></li>
+<li><a href="#examples">使用例</a></li>
 <li><a href="#restrictions">使用上の注意と制約</a></li>
 <li><a href="#requirement">動作環境</a></li>
 <li><a href="#seealso">関連項目</a></li>
@@ -147,6 +148,46 @@ $ cd pg_hint_plan-1.0.0
 $ su
 # make uninstall
 </pre>
+
+<h2 id="examples">使用例</h2>
+<h3>スキャン方式</h3>
+<p>スキャン方式のヒントでは、スキャン対象のテーブルを指定します。IndexScanヒントで特定のインデックスを使用したい場合は、オプションでインデックスも指定できます。以下の例では、table1はSeq Scan、table2は主キーインデックスでのIndex Scanを選択させています。
+<pre>
+postgres=# /*+
+postgres*#     SeqScan(t1)
+postgres*#     IndexScan(t2 t2_pkey)
+postgres*#  */
+postgres-# SELECT * FROM table1 t1 JOIN table table2 t2 ON (t1.key = t2.key);
+...
+</pre>
+</p>
+
+<h3>結合方式/結合順序</h3>
+<p>結合方式や結合順序のヒントでは、結合対象のテーブルのリストを指定します。以下の例では、table1とtabele2を直接結合する場合はNested Loopを、table1とtable2とtable3を結合する場合はMerge Joinを選択させています。また、コスト見積もりによってはtable1とtable2が直接結合されない場合がありえるため、table1とtable2を結合してからtable3を結合するようにLeadingヒントを併用しています。
+<pre>
+postgres=# /*+
+postgres*#     NestLoop(t1 t2)
+postgres*#     MergeJoin(t1 t2 t3)
+postgres*#     Leading(t1 t2 t3)
+postgres*#  */
+postgres-# SELECT * FROM table1 t1
+postgres-#     JOIN table table2 t2 ON (t1.key = t2.key)
+postgres-#     JOIN table table3 t3 ON (t2.key = t3.key);
+...
+</pre>
+</p>
+
+<h3>GUCパラメータ</h3>
+<p>
+GUCパラメータのヒントでは、GUCパラメータと値のペアを指定します。以下の例では、このクエリの実行計画を作成する間だけrandom_page_costを2.0に変更しています。
+<pre>
+postgres=# /*+
+postgres*#     Set(random_page_cost 2.0)
+postgres*#  */
+postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
+...
+</pre>
+</p>
 
 <h2 id="restrictions">使用上の注意と制約</h2>
 <p>pg_hint_planを使用する際には、以下の注意と制約があります。</p>
