@@ -1,5 +1,5 @@
 # intarray extension
-comment = 'functions and operators that emulates a basic functions and packages from Oracle RDBMS'
-default_version = '3.03'
+comment = 'Functions and operators that emulate a subset of functions and packages from the Oracle RDBMS'
+default_version = '3.0.5'
 module_pathname = '$libdir/orafunc'
 relocatable = false
