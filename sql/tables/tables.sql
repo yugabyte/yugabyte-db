@@ -3,7 +3,7 @@ CREATE TABLE part_config (
     type @extschema@.partition_type NOT NULL,
     part_interval text NOT NULL,
     control text NOT NULL,
-    premake int NOT NULL,
+    premake int NOT NULL DEFAULT 4,
     retention int,
     datetime_string text,
     last_partition text,

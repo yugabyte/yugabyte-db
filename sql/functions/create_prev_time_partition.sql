@@ -1,3 +1,6 @@
+/*
+ * Populate the child table(s) of a time-based partition set with old data from the original parent
+ */
 CREATE FUNCTION create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -50,6 +53,8 @@ CASE
         v_min_partition_timestamp := date_trunc('week', v_min_control);
     WHEN v_part_interval = '1 month' THEN
         v_min_partition_timestamp := date_trunc('month', v_min_control);
+    WHEN v_part_interval = '3 months' THEN
+        v_min_partition_timestamp := date_trunc('quarter', v_min_control);
     WHEN v_part_interval = '1 year' THEN
         v_min_partition_timestamp := date_trunc('year', v_min_control);
 END CASE;

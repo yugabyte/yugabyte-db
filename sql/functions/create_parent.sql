@@ -1,4 +1,7 @@
-CREATE FUNCTION create_parent(p_parent_table text, p_control text, p_type @extschema@.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false) RETURNS void
+/*
+ * Function to turn a table into the parent of a partition set
+ */
+CREATE FUNCTION create_parent(p_parent_table text, p_control text, p_type @extschema@.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -34,7 +37,7 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMON SETUP PARENT: '||p_parent_table);
+    v_job_id := add_job('PARTMAN SETUP PARENT: '||p_parent_table);
     v_step_id := add_step(v_job_id, 'Creating initial partitions on new parent table: '||p_parent_table);
 END IF;
 
@@ -42,6 +45,9 @@ CASE
     WHEN p_interval = 'yearly' THEN
         v_time_interval = '1 year';
         v_datetime_string := 'YYYY';
+    WHEN p_interval = 'quarterly' THEN
+        v_time_interval = '3 months';
+        v_datetime_string = 'YYYY"q"Q';
     WHEN p_interval = 'monthly' THEN
         v_time_interval = '1 month';
         v_datetime_string := 'YYYY_MM';
@@ -129,9 +135,10 @@ EXECUTE 'SELECT @extschema@.create_trigger('||quote_literal(p_parent_table)||')'
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', 'Done');
+    PERFORM close_job(v_job_id);
+    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
-PERFORM close_job(v_job_id);
 
 EXCEPTION
     WHEN OTHERS THEN

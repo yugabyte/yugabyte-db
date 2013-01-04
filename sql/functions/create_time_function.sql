@@ -1,3 +1,6 @@
+/*
+ * Create the trigger function for the parent table of a time-based partition set
+ */
 CREATE FUNCTION create_time_function(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -65,6 +68,8 @@ IF v_type = 'time-static' THEN
             v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
         WHEN v_part_interval = '1 month' THEN
             v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
+        WHEN v_part_interval = '3 months' THEN
+            v_current_partition_timestamp := date_trunc('quarter', CURRENT_TIMESTAMP);
         WHEN v_part_interval = '1 year' THEN
             v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
     END CASE;
@@ -128,6 +133,8 @@ ELSIF v_type = 'time-dynamic' THEN
                 v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''week'', NEW.'||v_control||');';
             WHEN v_part_interval = '1 month' THEN
                 v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''month'', NEW.'||v_control||');';
+            WHEN v_part_interval = '3 months' THEN
+                v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''quarter'', NEW.'||v_control||');';
             WHEN v_part_interval = '1 year' THEN
                 v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''year'', NEW.'||v_control||');';
         END CASE;

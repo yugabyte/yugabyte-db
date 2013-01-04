@@ -1,3 +1,6 @@
+/*
+ * Function to create a child table in a time-based partition set
+ */
 CREATE FUNCTION create_time_partition (p_parent_table text, p_control text, p_interval interval, p_datetime_string text, p_partition_times timestamp[]) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -9,9 +12,11 @@ v_old_search_path               text;
 v_partition_name                text;
 v_partition_timestamp_end       timestamp;
 v_partition_timestamp_start     timestamp;
+v_quarter                       text;
 v_step_id                       bigint;
 v_tablename                     text;
 v_time                          timestamp;
+v_year                          text;
 
 BEGIN
 
@@ -66,6 +71,24 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     v_partition_timestamp_start := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string);
     v_partition_timestamp_end := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string) + p_interval;
 
+    -- "Q" is ignored in to_timestamp, so handle special case
+    IF p_interval = '3 months' THEN
+        v_year := to_char(v_time, 'YYYY');
+        v_quarter := to_char(v_time, 'Q');
+        v_partition_name := v_partition_name || v_year || 'q' || v_quarter;
+        CASE 
+            WHEN v_quarter = '1' THEN
+                v_partition_timestamp_start := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
+            WHEN v_quarter = '2' THEN
+                v_partition_timestamp_start := to_timestamp(v_year || '-04-01', 'YYYY-MM-DD');
+            WHEN v_quarter = '3' THEN
+                v_partition_timestamp_start := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
+            WHEN v_quarter = '4' THEN
+                v_partition_timestamp_start := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
+        END CASE;
+        v_partition_timestamp_end := v_partition_timestamp_start + p_interval;
+    END IF;
+
     SELECT schemaname ||'.'|| tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_tablename IS NOT NULL THEN
         CONTINUE;
@@ -105,7 +128,7 @@ EXCEPTION
             IF v_job_id IS NULL THEN
                 v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
                 v_step_id := add_step(v_job_id, 'Partition maintenance for table '||p_parent_table||' failed');
-                    RAISE EXCEPTION '%', SQLERRM;ELSIF v_step_id IS NULL THEN
+            ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;
             PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));

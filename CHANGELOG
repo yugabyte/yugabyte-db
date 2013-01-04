@@ -1,0 +1,11 @@
+0.1.2
+-- Added support for quarterly time partitioning (trickier than it first appeared)
+-- Fixed bug in run_maintenance() that would give an invalid cast to integer error.
+-- Fixed some calls to pg_jobmon that were outside the checks to see if it's actually installed
+-- Properly reset search path back to original before partman functions were run if pg_jobmon is being used
+-- Changed the default premake to 4 instead of 3. This will cause pg_jobmon's default monitoring for 3 consecutive failing jobs to trigger an before the last premade partition is used up.
+-- Added optional jobmon logging to run_maintenance() so that if it fails, pg_jobmon can notify that maintenance didn't work.
+
+
+0.1.1
+-- Only re-create partition functions if a new partition is made. 
