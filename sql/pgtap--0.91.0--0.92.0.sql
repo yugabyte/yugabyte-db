@@ -583,3 +583,17 @@ RETURNS TEXT AS $$
         array_to_string($2, ', ') || ') should be owned by ' || quote_ident($3)
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _get_latest ( text )
+RETURNS integer[] AS $$
+DECLARE
+    ret integer[];
+BEGIN
+    EXECUTE 'SELECT ARRAY[ id, value] FROM __tcache__ WHERE label = ' ||
+    quote_literal($1) || ' AND id = (SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
+    quote_literal($1) || ') LIMIT 1' INTO ret;
+    RETURN ret;
+EXCEPTION WHEN undefined_table THEN
+   RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
+END;
+$$ LANGUAGE plpgsql strict;
