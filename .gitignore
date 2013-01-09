@@ -11,3 +11,4 @@ bbin
 /sql/pgtap--?.??.?.sql
 /sql/pgtap-core--*
 /sql/pgtap-schema--*
+*.sql.orig
