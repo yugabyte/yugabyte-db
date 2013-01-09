@@ -61,117 +61,117 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test rel_owner_is() with a table.
+-- Test relation_owner_is() with a table.
 SELECT * FROM check_test(
-    rel_owner_is('public', 'sometab', current_user, 'mumble'),
+    relation_owner_is('public', 'sometab', current_user, 'mumble'),
 	true,
-    'rel_owner_is(sch, tab, user, desc)',
+    'relation_owner_is(sch, tab, user, desc)',
     'mumble',
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('public', 'sometab', current_user),
+    relation_owner_is('public', 'sometab', current_user),
 	true,
-    'rel_owner_is(sch, tab, user)',
+    'relation_owner_is(sch, tab, user)',
     'Relation public.sometab should be owned by ' || current_user,
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('__not__public', 'sometab', current_user, 'mumble'),
+    relation_owner_is('__not__public', 'sometab', current_user, 'mumble'),
 	false,
-    'rel_owner_is(non-sch, tab, user)',
+    'relation_owner_is(non-sch, tab, user)',
     'mumble',
     '    Relation __not__public.sometab does not exist'
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('public', '__not__sometab', current_user, 'mumble'),
+    relation_owner_is('public', '__not__sometab', current_user, 'mumble'),
 	false,
-    'rel_owner_is(sch, non-tab, user)',
+    'relation_owner_is(sch, non-tab, user)',
     'mumble',
     '    Relation public.__not__sometab does not exist'
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('sometab', current_user, 'mumble'),
+    relation_owner_is('sometab', current_user, 'mumble'),
 	true,
-    'rel_owner_is(tab, user, desc)',
+    'relation_owner_is(tab, user, desc)',
     'mumble',
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('sometab', current_user),
+    relation_owner_is('sometab', current_user),
 	true,
-    'rel_owner_is(tab, user)',
+    'relation_owner_is(tab, user)',
     'Relation sometab should be owned by ' || current_user,
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('__not__sometab', current_user, 'mumble'),
+    relation_owner_is('__not__sometab', current_user, 'mumble'),
 	false,
-    'rel_owner_is(non-tab, user)',
+    'relation_owner_is(non-tab, user)',
     'mumble',
     '    Relation __not__sometab does not exist'
 );
 
 /****************************************************************************/
--- Test rel_owner_is() with a schema.
+-- Test relation_owner_is() with a schema.
 SELECT * FROM check_test(
-    rel_owner_is('public', 'someseq', current_user, 'mumble'),
+    relation_owner_is('public', 'someseq', current_user, 'mumble'),
 	true,
-    'rel_owner_is(sch, seq, user, desc)',
+    'relation_owner_is(sch, seq, user, desc)',
     'mumble',
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('public', 'someseq', current_user),
+    relation_owner_is('public', 'someseq', current_user),
 	true,
-    'rel_owner_is(sch, seq, user)',
+    'relation_owner_is(sch, seq, user)',
     'Relation public.someseq should be owned by ' || current_user,
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('__not__public', 'someseq', current_user, 'mumble'),
+    relation_owner_is('__not__public', 'someseq', current_user, 'mumble'),
 	false,
-    'rel_owner_is(non-sch, seq, user)',
+    'relation_owner_is(non-sch, seq, user)',
     'mumble',
     '    Relation __not__public.someseq does not exist'
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('public', '__not__someseq', current_user, 'mumble'),
+    relation_owner_is('public', '__not__someseq', current_user, 'mumble'),
 	false,
-    'rel_owner_is(sch, non-seq, user)',
+    'relation_owner_is(sch, non-seq, user)',
     'mumble',
     '    Relation public.__not__someseq does not exist'
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('someseq', current_user, 'mumble'),
+    relation_owner_is('someseq', current_user, 'mumble'),
 	true,
-    'rel_owner_is(seq, user, desc)',
+    'relation_owner_is(seq, user, desc)',
     'mumble',
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('someseq', current_user),
+    relation_owner_is('someseq', current_user),
 	true,
-    'rel_owner_is(seq, user)',
+    'relation_owner_is(seq, user)',
     'Relation someseq should be owned by ' || current_user,
     ''
 );
 
 SELECT * FROM check_test(
-    rel_owner_is('__not__someseq', current_user, 'mumble'),
+    relation_owner_is('__not__someseq', current_user, 'mumble'),
 	false,
-    'rel_owner_is(non-seq, user)',
+    'relation_owner_is(non-seq, user)',
     'mumble',
     '    Relation __not__someseq does not exist'
 );

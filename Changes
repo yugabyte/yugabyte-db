@@ -11,7 +11,7 @@ Revision history for pgTAP
 * Added `has_foreign_table()` and `hasnt_foreign_table()`.
 * Added `has_composite()` and `hasnt_composite()`.
 * Added new ownership assertion functions:
-  + `rel_owner_is()`
+  + `relation_owner_is()`
   + `table_owner_is()`
   + `view_owner_is()`
   + `sequence_owner_is()`

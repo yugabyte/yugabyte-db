@@ -102,8 +102,8 @@ RETURNS NAME AS $$
        AND pg_catalog.pg_table_is_visible(c.oid)
 $$ LANGUAGE SQL;
 
--- rel_owner_is ( schema, relation, user, description )
-CREATE OR REPLACE FUNCTION rel_owner_is ( NAME, NAME, NAME, TEXT )
+-- relation_owner_is ( schema, relation, user, description )
+CREATE OR REPLACE FUNCTION relation_owner_is ( NAME, NAME, NAME, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     owner NAME := _get_rel_owner($1, $2);
@@ -119,17 +119,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- rel_owner_is ( schema, relation, user )
-CREATE OR REPLACE FUNCTION rel_owner_is ( NAME, NAME, NAME )
+-- relation_owner_is ( schema, relation, user )
+CREATE OR REPLACE FUNCTION relation_owner_is ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT rel_owner_is(
+    SELECT relation_owner_is(
         $1, $2, $3,
         'Relation ' || quote_ident($1) || '.' || quote_ident($2) || ' should be owned by ' || quote_ident($3)
     );
 $$ LANGUAGE sql;
 
--- rel_owner_is ( relation, user, description )
-CREATE OR REPLACE FUNCTION rel_owner_is ( NAME, NAME, TEXT )
+-- relation_owner_is ( relation, user, description )
+CREATE OR REPLACE FUNCTION relation_owner_is ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
 DECLARE
     owner NAME := _get_rel_owner($1);
@@ -145,10 +145,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- rel_owner_is ( relation, user )
-CREATE OR REPLACE FUNCTION rel_owner_is ( NAME, NAME )
+-- relation_owner_is ( relation, user )
+CREATE OR REPLACE FUNCTION relation_owner_is ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT rel_owner_is(
+    SELECT relation_owner_is(
         $1, $2,
         'Relation ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
