@@ -2487,6 +2487,9 @@ search path. Example:
 If you omit the test description, it will be set to "Table `:table` should
 exist".
 
+Note that this function will not recognize foreign tables; use
+`has_foreign_table()` to test for the presence of foreign tables.
+
 ### `hasnt_table()` ###
 
     SELECT hasnt_table( :schema, :table, :description );
@@ -2600,6 +2603,53 @@ exist".
 
 This function is the inverse of `has_sequence()`. The test passes if the
 specified sequence does *not* exist.
+
+### `has_foreign_table()` ###
+
+    SELECT has_foreign_table( :schema, :table, :description );
+    SELECT has_foreign_table( :table, :description );
+    SELECT has_foreign_table( :table );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the foreign table.
+
+`:table`
+: Name of a foreign table.
+
+`:description`
+: A short description of the test.
+
+This function tests whether or not a foreign table exists in the database. The
+first argument is a schema name, the second is a foreign table name, and the
+third is the test description. If you omit the schema, the foreign table must
+be visible in the search path. Example:
+
+    SELECT has_foreign_table('myschema', 'some_foriegn_table');
+
+If you omit the test description, it will be set to "Foreign table `:table`
+should exist".
+
+### `hasnt_foreign_table()` ###
+
+    SELECT hasnt_foreign_table( :schema, :table, :description );
+    SELECT hasnt_foreign_table( :table, :description );
+    SELECT hasnt_foreign_table( :table );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the foreign table.
+
+`:table`
+: Name of a foreign table.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_foreign_table()`. The test passes if the
+specified forieign table does *not* exist.
 
 ### `has_type()` ###
 

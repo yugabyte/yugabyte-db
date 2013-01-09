@@ -1,5 +1,5 @@
 \unset ECHO
-1..678
+1..713
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -678,3 +678,38 @@ ok 675 - domain_type_isnt(nondomain, type, desc) should have the proper diagnost
 ok 676 - domain_type_isnt(type, type, desc) should fail
 ok 677 - domain_type_isnt(type, type, desc) should have the proper description
 ok 678 - domain_type_isnt(type, type, desc) should have the proper diagnostics
+ok 679 - has_foreign_table(non-existent table) should fail
+ok 680 - has_foreign_table(non-existent table) should have the proper description
+ok 681 - has_foreign_table(non-existent table) should have the proper diagnostics
+ok 682 - has_foreign_table(non-existent schema, tab) should fail
+ok 683 - has_foreign_table(non-existent schema, tab) should have the proper description
+ok 684 - has_foreign_table(non-existent schema, tab) should have the proper diagnostics
+ok 685 - has_foreign_table(sch, non-existent table, desc) should fail
+ok 686 - has_foreign_table(sch, non-existent table, desc) should have the proper description
+ok 687 - has_foreign_table(sch, non-existent table, desc) should have the proper diagnostics
+ok 688 - has_foreign_table(tab, desc) should pass
+ok 689 - has_foreign_table(tab, desc) should have the proper description
+ok 690 - has_foreign_table(tab, desc) should have the proper diagnostics
+ok 691 - has_foreign_table(sch, tab, desc) should pass
+ok 692 - has_foreign_table(sch, tab, desc) should have the proper description
+ok 693 - has_foreign_table(sch, tab, desc) should have the proper diagnostics
+ok 694 - has_foreign_table(sch, view, desc) should fail
+ok 695 - has_foreign_table(sch, view, desc) should have the proper description
+ok 696 - has_foreign_table(sch, view, desc) should have the proper diagnostics
+ok 697 - has_foreign_table(type, desc) should fail
+ok 698 - has_foreign_table(type, desc) should have the proper description
+ok 699 - has_foreign_table(type, desc) should have the proper diagnostics
+ok 700 - hasnt_foreign_table(non-existent table) should pass
+ok 701 - hasnt_foreign_table(non-existent table) should have the proper description
+ok 702 - hasnt_foreign_table(non-existent table) should have the proper diagnostics
+ok 703 - hasnt_foreign_table(non-existent schema, tab) should pass
+ok 704 - hasnt_foreign_table(non-existent schema, tab) should have the proper description
+ok 705 - hasnt_foreign_table(sch, non-existent tab, desc) should pass
+ok 706 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper description
+ok 707 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper diagnostics
+ok 708 - hasnt_foreign_table(tab, desc) should fail
+ok 709 - hasnt_foreign_table(tab, desc) should have the proper description
+ok 710 - hasnt_foreign_table(tab, desc) should have the proper diagnostics
+ok 711 - hasnt_foreign_table(sch, tab, desc) should fail
+ok 712 - hasnt_foreign_table(sch, tab, desc) should have the proper description
+ok 713 - hasnt_foreign_table(sch, tab, desc) should have the proper diagnostics

@@ -11,3 +11,39 @@ RETURNS BOOLEAN AS $$
            AND a.attname = $2
     );
 $$ LANGUAGE SQL;
+
+-- has_foreign_table( schema, table, description )
+CREATE OR REPLACE FUNCTION has_foreign_table ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'f', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_foreign_table( table, description )
+CREATE OR REPLACE FUNCTION has_foreign_table ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'f', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- has_foreign_table( table )
+CREATE OR REPLACE FUNCTION has_foreign_table ( NAME )
+RETURNS TEXT AS $$
+    SELECT has_foreign_table( $1, 'Foreign table ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_foreign_table( schema, table, description )
+CREATE OR REPLACE FUNCTION hasnt_foreign_table ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'f', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_foreign_table( table, description )
+CREATE OR REPLACE FUNCTION hasnt_foreign_table ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'f', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_foreign_table( table )
+CREATE OR REPLACE FUNCTION hasnt_foreign_table ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_foreign_table( $1, 'Foreign table ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE SQL;
