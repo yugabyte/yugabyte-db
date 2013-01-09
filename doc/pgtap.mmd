@@ -2661,7 +2661,7 @@ specified forieign table does *not* exist.
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find the sequence.
+: Name of a schema in which to find the data type.
 
 `:type`
 : Name of a data type.
@@ -2698,7 +2698,7 @@ are a part of it, use the column testing functions to verify them, like so:
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find the sequence.
+: Name of a schema in which to find the data type.
 
 `:type`
 : Name of a data type.
@@ -2708,6 +2708,58 @@ are a part of it, use the column testing functions to verify them, like so:
 
 This function is the inverse of `has_type()`. The test passes if the specified
 type does *not* exist.
+
+### `has_composite()` ###
+
+    SELECT has_composite( schema, type, description );
+    SELECT has_composite( schema, type );
+    SELECT has_composite( type, description );
+    SELECT has_composite( type );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the composite type.
+
+`:composite type`
+: Name of a composite type.
+
+`:description`
+: A short description of the test.
+
+This function tests whether or not a composite type exists in the database.
+The first argument is a schema name, the second is the name of a composite
+type, and the third is the test description. If you omit the schema, the
+composite type must be visible in the search path. If you omit the test
+description, it will be set to "Composite type `:composite type` should
+exist". Example:
+
+    SELECT has_composite( 'myschema', 'somecomposite' );
+
+If you're passing a schema and composite type rather than composite type and
+description, be sure to cast the arguments to `name` values so that your
+composite type name doesn't get treated as a description.
+
+### `hasnt_composite()` ###
+
+    SELECT hasnt_composite( schema, type, description );
+    SELECT hasnt_composite( schema, type );
+    SELECT hasnt_composite( type, description );
+    SELECT hasnt_composite( type );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the composite type.
+
+`:composite type`
+: Name of a composite type.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_composite()`. The test passes if the
+specified composite type does *not* exist.
 
 ### `has_domain()` ###
 
@@ -2719,7 +2771,7 @@ type does *not* exist.
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find the sequence.
+: Name of a schema in which to find the domain.
 
 `:domain`
 : Name of a domain.
@@ -2749,7 +2801,7 @@ get treated as a description.
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find the sequence.
+: Name of a schema in which to find the domain.
 
 `:domain`
 : Name of a domain.
@@ -2770,7 +2822,7 @@ domain does *not* exist.
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find the sequence.
+: Name of a schema in which to find the enum.
 
 `:enum`
 : Name of a enum.
@@ -2800,7 +2852,7 @@ treated as a description.
 **Parameters**
 
 `:schema`
-: Name of a schema in which to find the sequence.
+: Name of a schema in which to find the enum.
 
 `:enum`
 : Name of a enum.

@@ -8,6 +8,7 @@ Revision history for pgTAP
 * Added check to ensure a table is visible in tests for column defaults.
   Thanks to Henk Enting for the report.
 * Added `has_foreign_table()` and `hasnt_foreign_table()`.
+* Added `has_composite()` and `hasnt_composite()`.
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------

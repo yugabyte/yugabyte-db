@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(713);
+SELECT plan(749);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -433,6 +433,108 @@ SELECT * FROM check_test(
     hasnt_sequence( 'public', 'someseq', 'desc' ),
     false,
     'hasnt_sequence(sch, sequence, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test has_composite().
+
+SELECT * FROM check_test(
+    has_composite( '__SDFSDFD__' ),
+    false,
+    'has_composite(non-existent composite type)',
+    'Composite type "__SDFSDFD__" should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_composite( '__SDFSDFD__', 'lol' ),
+    false,
+    'has_composite(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_composite( 'foo', '__SDFSDFD__', 'desc' ),
+    false,
+    'has_composite(sch, non-existent composite type, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_composite( 'sometype', 'lol' ),
+    true,
+    'has_composite(tab, desc)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_composite( 'public', 'sometype', 'desc' ),
+    true,
+    'has_composite(sch, tab, desc)',
+    'desc',
+    ''
+);
+
+-- It should ignore views and tables.
+SELECT * FROM check_test(
+    has_composite( 'pg_catalog', 'pg_composites', 'desc' ),
+    false,
+    'has_composite(sch, view, desc)',
+    'desc',
+    ''
+);
+SELECT * FROM check_test(
+    has_composite( 'sometab', 'desc' ),
+    false,
+    'has_composite(type, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_composite().
+
+SELECT * FROM check_test(
+    hasnt_composite( '__SDFSDFD__' ),
+    true,
+    'hasnt_composite(non-existent composite type)',
+    'Composite type "__SDFSDFD__" should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_composite( '__SDFSDFD__', 'lol' ),
+    true,
+    'hasnt_composite(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_composite( 'foo', '__SDFSDFD__', 'desc' ),
+    true,
+    'hasnt_composite(sch, non-existent tab, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_composite( 'sometype', 'lol' ),
+    false,
+    'hasnt_composite(tab, desc)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_composite( 'public', 'sometype', 'desc' ),
+    false,
+    'hasnt_composite(sch, tab, desc)',
     'desc',
     ''
 );

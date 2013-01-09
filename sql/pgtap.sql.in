@@ -976,6 +976,42 @@ RETURNS TEXT AS $$
     SELECT hasnt_foreign_table( $1, 'Foreign table ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
+-- has_composite( schema, type, description )
+CREATE OR REPLACE FUNCTION has_composite ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'c', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_composite( type, description )
+CREATE OR REPLACE FUNCTION has_composite ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'c', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- has_composite( type )
+CREATE OR REPLACE FUNCTION has_composite ( NAME )
+RETURNS TEXT AS $$
+    SELECT has_composite( $1, 'Composite type ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_composite( schema, type, description )
+CREATE OR REPLACE FUNCTION hasnt_composite ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'c', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_composite( type, description )
+CREATE OR REPLACE FUNCTION hasnt_composite ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'c', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_composite( type )
+CREATE OR REPLACE FUNCTION hasnt_composite ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_composite( $1, 'Composite type ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION _cexists ( NAME, NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
