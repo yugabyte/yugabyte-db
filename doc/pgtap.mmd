@@ -5165,7 +5165,10 @@ Tests the ownership of a relation. Relations are tables, views, seqences,
 composite types, foreign tables, and toast tables. If the `:description`
 argument is omitted, an appropriate description will be created. Examples:
 
-    SELECT rel_owner_is( 'public', 'mytable', 'someuser', 'mytable should be owned by someuser' );
+    SELECT rel_owner_is(
+        'public', 'mytable', 'someuser',
+        'mytable should be owned by someuser'
+    );
     SELECT rel_owner_is( current_schema(), 'mysequence', current_user );
 
 In the event that the test fails because the relation in question does not
@@ -5206,7 +5209,10 @@ diagnostics will look something like:
 Tests the ownership of a table. If the `:description` argument is omitted, an
 appropriate description will be created. Examples:
 
-    SELECT table_owner_is( 'public', 'mytable', 'someuser', 'mytable should be owned by someuser' );
+    SELECT table_owner_is(
+        'public', 'mytable', 'someuser',
+        'mytable should be owned by someuser'
+    );
     SELECT table_owner_is( 'widgets', current_user );
 
 In the event that the test fails because the table in question does not
@@ -5247,7 +5253,10 @@ diagnostics will look something like:
 Tests the ownership of a view. If the `:description` argument is omitted, an
 appropriate description will be created. Examples:
 
-    SELECT view_owner_is( 'public', 'myview', 'someuser', 'myview should be owned by someuser' );
+    SELECT view_owner_is(
+        'public', 'myview', 'someuser',
+        'myview should be owned by someuser'
+    );
     SELECT view_owner_is( 'widgets', current_user );
 
 In the event that the test fails because the view in question does not
@@ -5288,7 +5297,10 @@ diagnostics will look something like:
 Tests the ownership of a sequence. If the `:description` argument is omitted, an
 appropriate description will be created. Examples:
 
-    SELECT sequence_owner_is( 'public', 'mysequence', 'someuser', 'mysequence should be owned by someuser' );
+    SELECT sequence_owner_is(
+        'public', 'mysequence', 'someuser',
+        'mysequence should be owned by someuser'
+    );
     SELECT sequence_owner_is( 'widgets', current_user );
 
 In the event that the test fails because the sequence in question does not
@@ -5302,6 +5314,50 @@ If the test fails because the sequence is not owned by the specified user, the
 diagnostics will look something like:
 
     # Failed test 17: "Sequence bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
+### `composite_owner_is ()` ###
+
+    SELECT composite_owner_is ( :schema, :composite, :user, :description );
+    SELECT composite_owner_is ( :composite, :user, :description );
+    SELECT composite_owner_is ( :schema, :composite, :user );
+    SELECT composite_owner_is ( :composite, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:composite` type.
+
+`:composite`
+: Name of a composite type.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a composite. If the `:description` argument is omitted, an
+appropriate description will be created. Examples:
+
+    SELECT composite_owner_is(
+        'public', 'mycomposite', 'someuser',
+        'mycomposite should be owned by someuser'
+    );
+    SELECT composite_owner_is( 'widgets', current_user );
+
+In the event that the test fails because the composite in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Composite type foo should be owned by www"
+    #     Composite type foo does not exist
+
+If the test fails because the composite is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Composite type bar should be owned by root"
     #         have: postgres
     #         want: root
 

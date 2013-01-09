@@ -1,5 +1,5 @@
 \unset ECHO
-1..135
+1..162
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -135,3 +135,30 @@ ok 132 - sequence_owner_is(sch, view, user, desc) should have the proper diagnos
 ok 133 - sequence_owner_is(view, user, desc) should fail
 ok 134 - sequence_owner_is(view, user, desc) should have the proper description
 ok 135 - sequence_owner_is(view, user, desc) should have the proper diagnostics
+ok 136 - composite_owner_is(sch, composite, user, desc) should pass
+ok 137 - composite_owner_is(sch, composite, user, desc) should have the proper description
+ok 138 - composite_owner_is(sch, composite, user, desc) should have the proper diagnostics
+ok 139 - composite_owner_is(sch, composite, user) should pass
+ok 140 - composite_owner_is(sch, composite, user) should have the proper description
+ok 141 - composite_owner_is(sch, composite, user) should have the proper diagnostics
+ok 142 - composite_owner_is(non-sch, composite, user) should fail
+ok 143 - composite_owner_is(non-sch, composite, user) should have the proper description
+ok 144 - composite_owner_is(non-sch, composite, user) should have the proper diagnostics
+ok 145 - composite_owner_is(sch, non-composite, user) should fail
+ok 146 - composite_owner_is(sch, non-composite, user) should have the proper description
+ok 147 - composite_owner_is(sch, non-composite, user) should have the proper diagnostics
+ok 148 - composite_owner_is(composite, user, desc) should pass
+ok 149 - composite_owner_is(composite, user, desc) should have the proper description
+ok 150 - composite_owner_is(composite, user, desc) should have the proper diagnostics
+ok 151 - composite_owner_is(composite, user) should pass
+ok 152 - composite_owner_is(composite, user) should have the proper description
+ok 153 - composite_owner_is(composite, user) should have the proper diagnostics
+ok 154 - composite_owner_is(non-composite, user) should fail
+ok 155 - composite_owner_is(non-composite, user) should have the proper description
+ok 156 - composite_owner_is(non-composite, user) should have the proper diagnostics
+ok 157 - composite_owner_is(sch, view, user, desc) should fail
+ok 158 - composite_owner_is(sch, view, user, desc) should have the proper description
+ok 159 - composite_owner_is(sch, view, user, desc) should have the proper diagnostics
+ok 160 - composite_owner_is(view, user, desc) should fail
+ok 161 - composite_owner_is(view, user, desc) should have the proper description
+ok 162 - composite_owner_is(view, user, desc) should have the proper diagnostics

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(135);
+SELECT plan(162);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -399,6 +399,81 @@ SELECT * FROM check_test(
     'sequence_owner_is(view, user, desc)',
     'mumble',
     '    Sequence someview does not exist'
+);
+
+/****************************************************************************/
+-- Test composite_owner_is().
+SELECT * FROM check_test(
+    composite_owner_is('public', 'sometype', current_user, 'mumble'),
+	true,
+    'composite_owner_is(sch, composite, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('public', 'sometype', current_user),
+	true,
+    'composite_owner_is(sch, composite, user)',
+    'Composite type public.sometype should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('__not__public', 'sometype', current_user, 'mumble'),
+	false,
+    'composite_owner_is(non-sch, composite, user)',
+    'mumble',
+    '    Composite type __not__public.sometype does not exist'
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('public', '__not__sometype', current_user, 'mumble'),
+	false,
+    'composite_owner_is(sch, non-composite, user)',
+    'mumble',
+    '    Composite type public.__not__sometype does not exist'
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('sometype', current_user, 'mumble'),
+	true,
+    'composite_owner_is(composite, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('sometype', current_user),
+	true,
+    'composite_owner_is(composite, user)',
+    'Composite type sometype should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('__not__sometype', current_user, 'mumble'),
+	false,
+    'composite_owner_is(non-composite, user)',
+    'mumble',
+    '    Composite type __not__sometype does not exist'
+);
+
+-- It should ignore the view.
+SELECT * FROM check_test(
+    composite_owner_is('public', 'someview', current_user, 'mumble'),
+	false,
+    'composite_owner_is(sch, view, user, desc)',
+    'mumble',
+    '    Composite type public.someview does not exist'
+);
+
+SELECT * FROM check_test(
+    composite_owner_is('someview', current_user, 'mumble'),
+	false,
+    'composite_owner_is(view, user, desc)',
+    'mumble',
+    '    Composite type someview does not exist'
 );
 
 /****************************************************************************/
