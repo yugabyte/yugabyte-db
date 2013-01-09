@@ -2460,6 +2460,54 @@ the test description, it will be set to "Schema `:schema` should exist".
 This function is the inverse of `has_schema()`. The test passes if the
 specified schema does *not* exist.
 
+### `has_relation()` ###
+
+    SELECT has_relation( :schema, :relation, :description );
+    SELECT has_relation( :relation, :description );
+    SELECT has_relation( :relation );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the relation.
+
+`:relation`
+: Name of a relation.
+
+`:description`
+: A short description of the test.
+
+This function tests whether or not a relation exists in the database.
+Relations are tables, views, seqences, composite types, foreign tables, and
+toast tables. The first argument is a schema name, the second is a relation
+name, and the third is the test description. If you omit the schema, the
+relation must be visible in the search path. Example:
+
+    SELECT has_relation('myschema', 'somerelation');
+
+If you omit the test description, it will be set to "Relation `:relation`
+should exist".
+
+### `hasnt_relation()` ###
+
+    SELECT hasnt_relation( :schema, :relation, :description );
+    SELECT hasnt_relation( :relation, :description );
+    SELECT hasnt_relation( :relation );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the relation.
+
+`:relation`
+: Name of a relation.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_relation()`. The test passes if the
+specified relation does *not* exist.
+
 ### `has_table()` ###
 
     SELECT has_table( :schema, :table, :description );
@@ -6183,10 +6231,7 @@ To Do
 * Add `schema, table, colname` variations of the table-checking functions
   (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
   description to be optional if the schema is included in the function call.
-* Add functions to test for object ownership.
-  + `table_owner_is()`
-  + `view_owner_is()`
-  + `sequence_owner_is()`
+* Add more functions to test for object ownership.
   + `function_owner_is()`
   + etc.
 * Add some sort of tests for permisions. Something like:

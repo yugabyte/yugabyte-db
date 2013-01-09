@@ -432,3 +432,60 @@ RETURNS TEXT AS $$
         'Foreign table ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _relexists ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_namespace n
+          JOIN pg_catalog.pg_class c ON n.oid = c.relnamespace
+         WHERE n.nspname = $1
+           AND c.relname = $2
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _relexists ( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_class c
+         WHERE pg_catalog.pg_table_is_visible(c.oid)
+           AND c.relname = $1
+    );
+$$ LANGUAGE SQL;
+
+-- has_relation( schema, relation, description )
+CREATE OR REPLACE FUNCTION has_relation ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _relexists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_relation( relation, description )
+CREATE OR REPLACE FUNCTION has_relation ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _relexists( $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- has_relation( relation )
+CREATE OR REPLACE FUNCTION has_relation ( NAME )
+RETURNS TEXT AS $$
+    SELECT has_relation( $1, 'Relation ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_relation( schema, relation, description )
+CREATE OR REPLACE FUNCTION hasnt_relation ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _relexists( $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_relation( relation, description )
+CREATE OR REPLACE FUNCTION hasnt_relation ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _relexists( $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_relation( relation )
+CREATE OR REPLACE FUNCTION hasnt_relation ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_relation( $1, 'Relation ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE SQL;

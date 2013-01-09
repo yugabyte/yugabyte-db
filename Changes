@@ -7,6 +7,7 @@ Revision history for pgTAP
 * Added note about the lack of typemods to the documentation for `has_cast()`.
 * Added check to ensure a table is visible in tests for column defaults.
   Thanks to Henk Enting for the report.
+* Added `has_relation()` and `hasnt_relation()`.
 * Added `has_foreign_table()` and `hasnt_foreign_table()`.
 * Added `has_composite()` and `hasnt_composite()`.
 * Added new ownership assertion functions:

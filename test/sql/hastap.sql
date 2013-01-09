@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(749);
+SELECT plan(785);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -2251,6 +2251,109 @@ BEGIN
     RETURN;
 END;
 $$ LANGUAGE PLPGSQL;
+
+/****************************************************************************/
+-- Test has_relation().
+
+SELECT * FROM check_test(
+    has_relation( '__SDFSDFD__' ),
+    false,
+    'has_relation(non-existent relation)',
+    'Relation "__SDFSDFD__" should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_relation( '__SDFSDFD__', 'lol' ),
+    false,
+    'has_relation(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_relation( 'foo', '__SDFSDFD__', 'desc' ),
+    false,
+    'has_relation(sch, non-existent relation, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_relation( 'pg_type', 'lol' ),
+    true,
+    'has_relation(tab, desc)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_relation( 'pg_catalog', 'pg_type', 'desc' ),
+    true,
+    'has_relation(sch, tab, desc)',
+    'desc',
+    ''
+);
+
+-- It should not ignore views and types.
+SELECT * FROM check_test(
+    has_relation( 'pg_catalog', 'pg_type', 'desc' ),
+    true,
+    'has_relation(sch, view, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_relation( 'sometype', 'desc' ),
+    true,
+    'has_relation(type, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_relation().
+
+SELECT * FROM check_test(
+    hasnt_relation( '__SDFSDFD__' ),
+    true,
+    'hasnt_relation(non-existent relation)',
+    'Relation "__SDFSDFD__" should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_relation( '__SDFSDFD__', 'lol' ),
+    true,
+    'hasnt_relation(non-existent schema, tab)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_relation( 'foo', '__SDFSDFD__', 'desc' ),
+    true,
+    'hasnt_relation(sch, non-existent tab, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_relation( 'pg_type', 'lol' ),
+    false,
+    'hasnt_relation(tab, desc)',
+    'lol',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_relation( 'pg_catalog', 'pg_type', 'desc' ),
+    false,
+    'hasnt_relation(sch, tab, desc)',
+    'desc',
+    ''
+);
 
 SELECT * FROM test_fdw();
 
