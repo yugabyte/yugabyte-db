@@ -892,7 +892,7 @@ skip_closed_parenthesis(const char *str)
  * Parsed token is truncated within NAMEDATALEN-1 bytes, when truncate is true.
  */
 static const char *
-parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
+parse_quote_value(const char *str, char **word, bool truncate)
 {
 	StringInfoData	buf;
 	bool			in_quote;
@@ -946,14 +946,9 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 
 	if (buf.len == 0)
 	{
-		char   *type;
-
-		type = pstrdup(value_type);
-		type[0] = toupper(type[0]);
 		parse_ereport(str, ("Zero-length delimited string."));
 
 		pfree(buf.data);
-		pfree(type);
 
 		return NULL;
 	}
@@ -1176,7 +1171,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 	const char *keyword = hint->base.keyword;
 
 	/* Given hint is invalid if relation name can't be parsed. */
-	if ((str = parse_quote_value(str, &hint->relname, "relation name", true))
+	if ((str = parse_quote_value(str, &hint->relname, true))
 		== NULL)
 		return NULL;
 
@@ -1193,7 +1188,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		{
 			char	   *indexname;
 
-			str = parse_quote_value(str, &indexname, "index name", true);
+			str = parse_quote_value(str, &indexname, true);
 			if (str == NULL)
 				return NULL;
 
@@ -1245,7 +1240,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 
 	hint->relnames = palloc(sizeof(char *));
 
-	while ((str = parse_quote_value(str, &relname, "relation name", true))
+	while ((str = parse_quote_value(str, &relname, true))
 		   != NULL)
 	{
 		hint->nrels++;
@@ -1303,7 +1298,7 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 	{
 		char   *relname;
 
-		if ((str = parse_quote_value(str, &relname, "relation name", true))
+		if ((str = parse_quote_value(str, &relname, true))
 			== NULL)
 			return NULL;
 
@@ -1327,9 +1322,9 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 static const char *
 SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 {
-	if ((str = parse_quote_value(str, &hint->name, "parameter name", true))
+	if ((str = parse_quote_value(str, &hint->name, true))
 		== NULL ||
-		(str = parse_quote_value(str, &hint->value, "parameter value", false))
+		(str = parse_quote_value(str, &hint->value, false))
 		== NULL)
 		return NULL;
 
