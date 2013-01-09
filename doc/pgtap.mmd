@@ -5140,6 +5140,48 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `rel_owner_is ()` ###
+
+    SELECT rel_owner_is ( :schema, :relation, :user, :description );
+    SELECT rel_owner_is ( :relation, :user, :description );
+    SELECT rel_owner_is ( :schema, :relation, :user );
+    SELECT rel_owner_is ( :relation, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to the `:relation`.
+
+`:relation`
+: Name of a relation.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a relation. Relations are tables, views, seqences,
+composite types, foreign tables, and toast tables. If the `:description`
+argument is omitted, an appropriate description will be created. Examples:
+
+    SELECT rel_owner_is( 'public', 'mytable', 'someuser', 'mytable should be owned by someuser' );
+    SELECT rel_owner_is( current_schema(), 'mysequence', current_user );
+
+In the event that the test fails because the relation in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Relation foo should be owned by www"
+    #     Relation foo does not exist
+
+If the test fails because the relation is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Relation bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
 No Test for the Wicked
 ======================
 
