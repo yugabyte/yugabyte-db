@@ -917,7 +917,7 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 			if (*str == '\0')
 			{
 				pfree(buf.data);
-				parse_ereport(str, ("Unterminated quoted %s.", value_type));
+				parse_ereport(str, ("Unterminated quoted string."));
 				return NULL;
 			}
 
@@ -950,7 +950,7 @@ parse_quote_value(const char *str, char **word, char *value_type, bool truncate)
 
 		type = pstrdup(value_type);
 		type[0] = toupper(type[0]);
-		parse_ereport(str, ("%s is necessary.", type));
+		parse_ereport(str, ("Zero-length delimited string."));
 
 		pfree(buf.data);
 		pfree(type);
@@ -2247,7 +2247,7 @@ get_num_baserels(List *initial_rels)
 		else
 		{
 			/* other values not expected here */
-			elog(ERROR, "Unrecognized reloptkind type: %d", rel->reloptkind);
+			elog(ERROR, "unrecognized reloptkind type: %d", rel->reloptkind);
 		}
 	}
 
@@ -2350,10 +2350,10 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				set_plain_rel_pathlist(root, rel, rte);
 			}
 			else
-				elog(ERROR, "Unexpected relkind: %c", rte->relkind);
+				elog(ERROR, "unexpected relkind: %c", rte->relkind);
 		}
 		else
-			elog(ERROR, "Unexpected rtekind: %d", (int) rel->rtekind);
+			elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
 	}
 }
 
