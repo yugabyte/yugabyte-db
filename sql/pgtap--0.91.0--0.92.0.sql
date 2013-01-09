@@ -380,3 +380,55 @@ RETURNS TEXT AS $$
         'Composite type ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
 $$ LANGUAGE sql;
+
+-- foreign_table_owner_is ( schema, table, user, description )
+CREATE OR REPLACE FUNCTION foreign_table_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('f'::char, $1, $2);
+BEGIN
+    -- Make sure the table exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Foreign table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- foreign_table_owner_is ( schema, table, user )
+CREATE OR REPLACE FUNCTION foreign_table_owner_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT foreign_table_owner_is(
+        $1, $2, $3,
+        'Foreign table ' || quote_ident($1) || '.' || quote_ident($2) || ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- foreign_table_owner_is ( table, user, description )
+CREATE OR REPLACE FUNCTION foreign_table_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('f'::char, $1);
+BEGIN
+    -- Make sure the table exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Foreign table ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- foreign_table_owner_is ( table, user )
+CREATE OR REPLACE FUNCTION foreign_table_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT foreign_table_owner_is(
+        $1, $2,
+        'Foreign table ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

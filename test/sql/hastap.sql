@@ -2000,7 +2000,7 @@ CREATE FUNCTION test_fdw() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
-    IF pg_version_num() >= 92100 THEN
+    IF pg_version_num() >= 90100 THEN
         CREATE FOREIGN DATA WRAPPER dummy;
         CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
         CREATE FOREIGN TABLE public.my_fdw (id int) SERVER foo;

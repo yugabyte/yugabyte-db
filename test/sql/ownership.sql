@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(162);
+SELECT plan(189);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -476,6 +476,169 @@ SELECT * FROM check_test(
     '    Composite type someview does not exist'
 );
 
+/****************************************************************************/
+-- Test foreign_table_owner_is().
+CREATE FUNCTION test_fdw() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 90100 THEN
+        CREATE FOREIGN DATA WRAPPER dummy;
+        CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
+        CREATE FOREIGN TABLE public.my_fdw (id int) SERVER foo;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('public', 'my_fdw', current_user, 'mumble'),
+	        true,
+            'foreign_table_owner_is(sch, tab, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('public', 'my_fdw', current_user),
+	        true,
+            'foreign_table_owner_is(sch, tab, user)',
+            'Foreign table public.my_fdw should be owned by ' || current_user,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('__not__public', 'my_fdw', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(non-sch, tab, user)',
+            'mumble',
+            '    Foreign table __not__public.my_fdw does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('public', '__not__my_fdw', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(sch, non-tab, user)',
+            'mumble',
+            '    Foreign table public.__not__my_fdw does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('my_fdw', current_user, 'mumble'),
+	        true,
+            'foreign_table_owner_is(tab, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('my_fdw', current_user),
+	        true,
+            'foreign_table_owner_is(tab, user)',
+            'Foreign table my_fdw should be owned by ' || current_user,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('__not__my_fdw', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(non-tab, user)',
+            'mumble',
+            '    Foreign table __not__my_fdw does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- It should ignore the table.
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('public', 'sometab', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(sch, tab, user, desc)',
+            'mumble',
+            '    Foreign table public.sometab does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            foreign_table_owner_is('sometab', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(tab, user, desc)',
+            'mumble',
+        '    Foreign table sometab does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    ELSE
+        -- Fake it with table_owner_is().
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('public', 'sometab', current_user, 'mumble'),
+	        true,
+            'foreign_table_owner_is(sch, tab, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('public', 'sometab', current_user),
+	        true,
+            'foreign_table_owner_is(sch, tab, user)',
+            'Table public.sometab should be owned by ' || current_user,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('__not__public', 'sometab', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(non-sch, tab, user)',
+            'mumble',
+            '    Table __not__public.sometab does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('public', '__not__sometab', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(sch, non-tab, user)',
+            'mumble',
+            '    Table public.__not__sometab does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('sometab', current_user, 'mumble'),
+	        true,
+            'foreign_table_owner_is(tab, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('sometab', current_user),
+	        true,
+            'foreign_table_owner_is(tab, user)',
+            'Table sometab should be owned by ' || current_user,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('__not__sometab', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(non-tab, user)',
+            'mumble',
+            '    Table __not__sometab does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- It should ignore the sequence.
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('public', 'someseq', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(sch, seq, user, desc)',
+            'mumble',
+            '    Table public.someseq does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_owner_is('someseq', current_user, 'mumble'),
+	        false,
+            'foreign_table_owner_is(seq, user, desc)',
+            'mumble',
+        '    Table someseq does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_fdw();
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();

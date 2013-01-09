@@ -2626,7 +2626,7 @@ first argument is a schema name, the second is a foreign table name, and the
 third is the test description. If you omit the schema, the foreign table must
 be visible in the search path. Example:
 
-    SELECT has_foreign_table('myschema', 'some_foriegn_table');
+    SELECT has_foreign_table('myschema', 'some_foreign_table');
 
 If you omit the test description, it will be set to "Foreign table `:table`
 should exist".
@@ -2649,7 +2649,7 @@ should exist".
 : A short description of the test.
 
 This function is the inverse of `has_foreign_table()`. The test passes if the
-specified forieign table does *not* exist.
+specified foreign table does *not* exist.
 
 ### `has_type()` ###
 
@@ -5215,6 +5215,9 @@ appropriate description will be created. Examples:
     );
     SELECT table_owner_is( 'widgets', current_user );
 
+Note that this function will not recognize foreign tables; use
+`foreign_table_owner_is()` to test for the presence of foreign tables.
+
 In the event that the test fails because the table in question does not
 actually exist or is not visible, you will see an appropriate diagnostic such
 as:
@@ -5358,6 +5361,50 @@ If the test fails because the composite is not owned by the specified user, the
 diagnostics will look something like:
 
     # Failed test 17: "Composite type bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
+### `foreign_table_owner_is ()` ###
+
+    SELECT foreign_table_owner_is ( :schema, :foreign_table, :user, :description );
+    SELECT foreign_table_owner_is ( :foreign_table, :user, :description );
+    SELECT foreign_table_owner_is ( :schema, :foreign_table, :user );
+    SELECT foreign_table_owner_is ( :foreign_table, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:foreign_table`.
+
+`:foreign_table`
+: Name of a foreign table.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a foreign table. If the `:description` argument is
+omitted, an appropriate description will be created. Examples:
+
+    SELECT foreign_table_owner_is(
+        'public', 'mytable', 'someuser',
+        'mytable should be owned by someuser'
+    );
+    SELECT foreign_table_owner_is( 'widgets', current_user );
+
+In the event that the test fails because the table in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Foreign table foo should be owned by www"
+    #     Foreign table foo does not exist
+
+If the test fails because the table is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Foreign table bar should be owned by root"
     #         have: postgres
     #         want: root
 
