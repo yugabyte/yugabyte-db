@@ -21,6 +21,8 @@ Revision history for pgTAP
 * Changed the uninformative error 'relation "__tcache__" does not exist' to
   the more useful 'You tried to run a test without a plan! Gotta have a plan'.
   Thanks to Steven Samuel Cole for the report (issue #22).
+* Changed `triggers_are()` so that it ignores internal triggers on PostgreSQL
+  9.1 and higher. Thanks to Sherrylyn Branchaw for the report!
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------

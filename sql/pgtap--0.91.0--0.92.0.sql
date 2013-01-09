@@ -597,3 +597,95 @@ EXCEPTION WHEN undefined_table THEN
    RAISE EXCEPTION 'You tried to run a test without a plan! Gotta have a plan';
 END;
 $$ LANGUAGE plpgsql strict;
+
+CREATE OR REPLACE FUNCTION _trig ( NAME, NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_trigger t
+          JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+          JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = $1
+           AND c.relname = $2
+           AND t.tgname  = $3
+           AND NOT t.tgisinternal
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _trig ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_trigger t
+          JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+         WHERE c.relname = $1
+           AND t.tgname  = $2
+           AND NOT t.tgisinternal
+    );
+$$ LANGUAGE SQL;
+
+-- triggers_are( schema, table, triggers[], description )
+CREATE OR REPLACE FUNCTION triggers_are( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'triggers',
+        ARRAY(
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1
+               AND c.relname = $2
+               AND NOT t.tgisinternal
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname = $1
+               AND c.relname = $2
+               AND NOT t.tgisinternal
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
+-- triggers_are( table, triggers[], description )
+CREATE OR REPLACE FUNCTION triggers_are( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'triggers',
+        ARRAY(
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relname = $1
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND NOT t.tgisinternal
+            EXCEPT
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+        ),
+        ARRAY(
+            SELECT $2[i]
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT t.tgname
+              FROM pg_catalog.pg_trigger t
+              JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+              JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND NOT t.tgisinternal
+        ),
+        $3
+    );
+$$ LANGUAGE SQL;
+
