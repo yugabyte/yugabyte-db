@@ -13,6 +13,7 @@ Revision history for pgTAP
   + `rel_owner_is()`
   + `table_owner_is()`
   + `view_owner_is()`
+  + `sequence_owner_is()`
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------

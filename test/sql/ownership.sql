@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(108);
+SELECT plan(135);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -326,6 +326,80 @@ SELECT * FROM check_test(
     '    View someseq does not exist'
 );
 
+/****************************************************************************/
+-- Test sequence_owner_is().
+SELECT * FROM check_test(
+    sequence_owner_is('public', 'someseq', current_user, 'mumble'),
+	true,
+    'sequence_owner_is(sch, sequence, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('public', 'someseq', current_user),
+	true,
+    'sequence_owner_is(sch, sequence, user)',
+    'Sequence public.someseq should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('__not__public', 'someseq', current_user, 'mumble'),
+	false,
+    'sequence_owner_is(non-sch, sequence, user)',
+    'mumble',
+    '    Sequence __not__public.someseq does not exist'
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('public', '__not__someseq', current_user, 'mumble'),
+	false,
+    'sequence_owner_is(sch, non-sequence, user)',
+    'mumble',
+    '    Sequence public.__not__someseq does not exist'
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('someseq', current_user, 'mumble'),
+	true,
+    'sequence_owner_is(sequence, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('someseq', current_user),
+	true,
+    'sequence_owner_is(sequence, user)',
+    'Sequence someseq should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('__not__someseq', current_user, 'mumble'),
+	false,
+    'sequence_owner_is(non-sequence, user)',
+    'mumble',
+    '    Sequence __not__someseq does not exist'
+);
+
+-- It should ignore the view.
+SELECT * FROM check_test(
+    sequence_owner_is('public', 'someview', current_user, 'mumble'),
+	false,
+    'sequence_owner_is(sch, view, user, desc)',
+    'mumble',
+    '    Sequence public.someview does not exist'
+);
+
+SELECT * FROM check_test(
+    sequence_owner_is('someview', current_user, 'mumble'),
+	false,
+    'sequence_owner_is(view, user, desc)',
+    'mumble',
+    '    Sequence someview does not exist'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.

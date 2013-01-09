@@ -5264,6 +5264,47 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `sequence_owner_is ()` ###
+
+    SELECT sequence_owner_is ( :schema, :sequence, :user, :description );
+    SELECT sequence_owner_is ( :sequence, :user, :description );
+    SELECT sequence_owner_is ( :schema, :sequence, :user );
+    SELECT sequence_owner_is ( :sequence, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:sequence`.
+
+`:sequence`
+: Name of a sequence.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a sequence. If the `:description` argument is omitted, an
+appropriate description will be created. Examples:
+
+    SELECT sequence_owner_is( 'public', 'mysequence', 'someuser', 'mysequence should be owned by someuser' );
+    SELECT sequence_owner_is( 'widgets', current_user );
+
+In the event that the test fails because the sequence in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Sequence foo should be owned by www"
+    #     Sequence foo does not exist
+
+If the test fails because the sequence is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Sequence bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
 No Test for the Wicked
 ======================
 

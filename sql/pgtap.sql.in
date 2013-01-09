@@ -7675,3 +7675,54 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+-- sequence_owner_is ( schema, sequence, user, description )
+CREATE OR REPLACE FUNCTION sequence_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('S'::char, $1, $2);
+BEGIN
+    -- Make sure the sequence exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_owner_is ( schema, sequence, user )
+CREATE OR REPLACE FUNCTION sequence_owner_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT sequence_owner_is(
+        $1, $2, $3,
+        'Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- sequence_owner_is ( sequence, user, description )
+CREATE OR REPLACE FUNCTION sequence_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('S'::char, $1);
+BEGIN
+    -- Make sure the sequence exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Sequence ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_owner_is ( sequence, user )
+CREATE OR REPLACE FUNCTION sequence_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT sequence_owner_is(
+        $1, $2,
+        'Sequence ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

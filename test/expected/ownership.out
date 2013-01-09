@@ -1,5 +1,5 @@
 \unset ECHO
-1..108
+1..135
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -108,3 +108,30 @@ ok 105 - view_owner_is(sch, seq, user, desc) should have the proper diagnostics
 ok 106 - view_owner_is(seq, user, desc) should fail
 ok 107 - view_owner_is(seq, user, desc) should have the proper description
 ok 108 - view_owner_is(seq, user, desc) should have the proper diagnostics
+ok 109 - sequence_owner_is(sch, sequence, user, desc) should pass
+ok 110 - sequence_owner_is(sch, sequence, user, desc) should have the proper description
+ok 111 - sequence_owner_is(sch, sequence, user, desc) should have the proper diagnostics
+ok 112 - sequence_owner_is(sch, sequence, user) should pass
+ok 113 - sequence_owner_is(sch, sequence, user) should have the proper description
+ok 114 - sequence_owner_is(sch, sequence, user) should have the proper diagnostics
+ok 115 - sequence_owner_is(non-sch, sequence, user) should fail
+ok 116 - sequence_owner_is(non-sch, sequence, user) should have the proper description
+ok 117 - sequence_owner_is(non-sch, sequence, user) should have the proper diagnostics
+ok 118 - sequence_owner_is(sch, non-sequence, user) should fail
+ok 119 - sequence_owner_is(sch, non-sequence, user) should have the proper description
+ok 120 - sequence_owner_is(sch, non-sequence, user) should have the proper diagnostics
+ok 121 - sequence_owner_is(sequence, user, desc) should pass
+ok 122 - sequence_owner_is(sequence, user, desc) should have the proper description
+ok 123 - sequence_owner_is(sequence, user, desc) should have the proper diagnostics
+ok 124 - sequence_owner_is(sequence, user) should pass
+ok 125 - sequence_owner_is(sequence, user) should have the proper description
+ok 126 - sequence_owner_is(sequence, user) should have the proper diagnostics
+ok 127 - sequence_owner_is(non-sequence, user) should fail
+ok 128 - sequence_owner_is(non-sequence, user) should have the proper description
+ok 129 - sequence_owner_is(non-sequence, user) should have the proper diagnostics
+ok 130 - sequence_owner_is(sch, view, user, desc) should fail
+ok 131 - sequence_owner_is(sch, view, user, desc) should have the proper description
+ok 132 - sequence_owner_is(sch, view, user, desc) should have the proper diagnostics
+ok 133 - sequence_owner_is(view, user, desc) should fail
+ok 134 - sequence_owner_is(view, user, desc) should have the proper description
+ok 135 - sequence_owner_is(view, user, desc) should have the proper diagnostics
