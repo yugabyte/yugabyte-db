@@ -1,5 +1,5 @@
 \unset ECHO
-1..54
+1..81
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -54,3 +54,30 @@ ok 51 - rel_owner_is(seq, user) should have the proper diagnostics
 ok 52 - rel_owner_is(non-seq, user) should fail
 ok 53 - rel_owner_is(non-seq, user) should have the proper description
 ok 54 - rel_owner_is(non-seq, user) should have the proper diagnostics
+ok 55 - table_owner_is(sch, tab, user, desc) should pass
+ok 56 - table_owner_is(sch, tab, user, desc) should have the proper description
+ok 57 - table_owner_is(sch, tab, user, desc) should have the proper diagnostics
+ok 58 - table_owner_is(sch, tab, user) should pass
+ok 59 - table_owner_is(sch, tab, user) should have the proper description
+ok 60 - table_owner_is(sch, tab, user) should have the proper diagnostics
+ok 61 - table_owner_is(non-sch, tab, user) should fail
+ok 62 - table_owner_is(non-sch, tab, user) should have the proper description
+ok 63 - table_owner_is(non-sch, tab, user) should have the proper diagnostics
+ok 64 - table_owner_is(sch, non-tab, user) should fail
+ok 65 - table_owner_is(sch, non-tab, user) should have the proper description
+ok 66 - table_owner_is(sch, non-tab, user) should have the proper diagnostics
+ok 67 - table_owner_is(tab, user, desc) should pass
+ok 68 - table_owner_is(tab, user, desc) should have the proper description
+ok 69 - table_owner_is(tab, user, desc) should have the proper diagnostics
+ok 70 - table_owner_is(tab, user) should pass
+ok 71 - table_owner_is(tab, user) should have the proper description
+ok 72 - table_owner_is(tab, user) should have the proper diagnostics
+ok 73 - table_owner_is(non-tab, user) should fail
+ok 74 - table_owner_is(non-tab, user) should have the proper description
+ok 75 - table_owner_is(non-tab, user) should have the proper diagnostics
+ok 76 - table_owner_is(sch, seq, user, desc) should fail
+ok 77 - table_owner_is(sch, seq, user, desc) should have the proper description
+ok 78 - table_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 79 - table_owner_is(seq, user, desc) should fail
+ok 80 - table_owner_is(seq, user, desc) should have the proper description
+ok 81 - table_owner_is(seq, user, desc) should have the proper diagnostics

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(54);
+SELECT plan(81);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -173,6 +173,82 @@ SELECT * FROM check_test(
     'mumble',
     '    Relation __not__someseq does not exist'
 );
+
+/****************************************************************************/
+-- Test table_owner_is() with a table.
+SELECT * FROM check_test(
+    table_owner_is('public', 'sometab', current_user, 'mumble'),
+	true,
+    'table_owner_is(sch, tab, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    table_owner_is('public', 'sometab', current_user),
+	true,
+    'table_owner_is(sch, tab, user)',
+    'Table public.sometab should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    table_owner_is('__not__public', 'sometab', current_user, 'mumble'),
+	false,
+    'table_owner_is(non-sch, tab, user)',
+    'mumble',
+    '    Table __not__public.sometab does not exist'
+);
+
+SELECT * FROM check_test(
+    table_owner_is('public', '__not__sometab', current_user, 'mumble'),
+	false,
+    'table_owner_is(sch, non-tab, user)',
+    'mumble',
+    '    Table public.__not__sometab does not exist'
+);
+
+SELECT * FROM check_test(
+    table_owner_is('sometab', current_user, 'mumble'),
+	true,
+    'table_owner_is(tab, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    table_owner_is('sometab', current_user),
+	true,
+    'table_owner_is(tab, user)',
+    'Table sometab should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    table_owner_is('__not__sometab', current_user, 'mumble'),
+	false,
+    'table_owner_is(non-tab, user)',
+    'mumble',
+    '    Table __not__sometab does not exist'
+);
+
+-- It should ignore the sequence.
+SELECT * FROM check_test(
+    table_owner_is('public', 'someseq', current_user, 'mumble'),
+	false,
+    'table_owner_is(sch, seq, user, desc)',
+    'mumble',
+    '    Table public.someseq does not exist'
+);
+
+SELECT * FROM check_test(
+    table_owner_is('someseq', current_user, 'mumble'),
+	false,
+    'table_owner_is(seq, user, desc)',
+    'mumble',
+    '    Table someseq does not exist'
+);
+
 
 /****************************************************************************/
 -- Finish the tests and clean up.

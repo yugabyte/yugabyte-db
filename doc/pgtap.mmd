@@ -5150,7 +5150,7 @@ diagnostics will look something like:
 **Parameters**
 
 `:schema`
-: Name of a schema in which to the `:relation`.
+: Name of a schema in which find to the `:relation`.
 
 `:relation`
 : Name of a relation.
@@ -5179,6 +5179,47 @@ If the test fails because the relation is not owned by the specified user, the
 diagnostics will look something like:
 
     # Failed test 17: "Relation bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
+### `table_owner_is ()` ###
+
+    SELECT table_owner_is ( :schema, :table, :user, :description );
+    SELECT table_owner_is ( :table, :user, :description );
+    SELECT table_owner_is ( :schema, :table, :user );
+    SELECT table_owner_is ( :table, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table`.
+
+`:table`
+: Name of a table.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a table. If the `:description` argument is omitted, an
+appropriate description will be created. Examples:
+
+    SELECT table_owner_is( 'public', 'mytable', 'someuser', 'mytable should be owned by someuser' );
+    SELECT table_owner_is( 'widgets', current_user );
+
+In the event that the test fails because the table in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Table foo should be owned by www"
+    #     Table foo does not exist
+
+If the test fails because the table is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Table bar should be owned by root"
     #         have: postgres
     #         want: root
 
