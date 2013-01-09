@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(81);
+SELECT plan(108);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -12,6 +12,8 @@ CREATE TABLE public.sometab(
     numb    NUMERIC(10, 2),
     "myInt" NUMERIC(8)
 );
+
+CREATE VIEW public.someview AS SELECT * FROM public.sometab;
 
 CREATE TYPE public.sometype AS (
     id    INT,
@@ -175,7 +177,7 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test table_owner_is() with a table.
+-- Test table_owner_is().
 SELECT * FROM check_test(
     table_owner_is('public', 'sometab', current_user, 'mumble'),
 	true,
@@ -247,6 +249,81 @@ SELECT * FROM check_test(
     'table_owner_is(seq, user, desc)',
     'mumble',
     '    Table someseq does not exist'
+);
+
+/****************************************************************************/
+-- Test view_owner_is().
+SELECT * FROM check_test(
+    view_owner_is('public', 'someview', current_user, 'mumble'),
+	true,
+    'view_owner_is(sch, view, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    view_owner_is('public', 'someview', current_user),
+	true,
+    'view_owner_is(sch, view, user)',
+    'View public.someview should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    view_owner_is('__not__public', 'someview', current_user, 'mumble'),
+	false,
+    'view_owner_is(non-sch, view, user)',
+    'mumble',
+    '    View __not__public.someview does not exist'
+);
+
+SELECT * FROM check_test(
+    view_owner_is('public', '__not__someview', current_user, 'mumble'),
+	false,
+    'view_owner_is(sch, non-view, user)',
+    'mumble',
+    '    View public.__not__someview does not exist'
+);
+
+SELECT * FROM check_test(
+    view_owner_is('someview', current_user, 'mumble'),
+	true,
+    'view_owner_is(view, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    view_owner_is('someview', current_user),
+	true,
+    'view_owner_is(view, user)',
+    'View someview should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    view_owner_is('__not__someview', current_user, 'mumble'),
+	false,
+    'view_owner_is(non-view, user)',
+    'mumble',
+    '    View __not__someview does not exist'
+);
+
+-- It should ignore the sequence.
+SELECT * FROM check_test(
+    view_owner_is('public', 'someseq', current_user, 'mumble'),
+	false,
+    'view_owner_is(sch, seq, user, desc)',
+    'mumble',
+    '    View public.someseq does not exist'
+);
+
+SELECT * FROM check_test(
+    view_owner_is('someseq', current_user, 'mumble'),
+	false,
+    'view_owner_is(seq, user, desc)',
+    'mumble',
+    '    View someseq does not exist'
 );
 
 

@@ -1,5 +1,5 @@
 \unset ECHO
-1..81
+1..108
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -81,3 +81,30 @@ ok 78 - table_owner_is(sch, seq, user, desc) should have the proper diagnostics
 ok 79 - table_owner_is(seq, user, desc) should fail
 ok 80 - table_owner_is(seq, user, desc) should have the proper description
 ok 81 - table_owner_is(seq, user, desc) should have the proper diagnostics
+ok 82 - view_owner_is(sch, view, user, desc) should pass
+ok 83 - view_owner_is(sch, view, user, desc) should have the proper description
+ok 84 - view_owner_is(sch, view, user, desc) should have the proper diagnostics
+ok 85 - view_owner_is(sch, view, user) should pass
+ok 86 - view_owner_is(sch, view, user) should have the proper description
+ok 87 - view_owner_is(sch, view, user) should have the proper diagnostics
+ok 88 - view_owner_is(non-sch, view, user) should fail
+ok 89 - view_owner_is(non-sch, view, user) should have the proper description
+ok 90 - view_owner_is(non-sch, view, user) should have the proper diagnostics
+ok 91 - view_owner_is(sch, non-view, user) should fail
+ok 92 - view_owner_is(sch, non-view, user) should have the proper description
+ok 93 - view_owner_is(sch, non-view, user) should have the proper diagnostics
+ok 94 - view_owner_is(view, user, desc) should pass
+ok 95 - view_owner_is(view, user, desc) should have the proper description
+ok 96 - view_owner_is(view, user, desc) should have the proper diagnostics
+ok 97 - view_owner_is(view, user) should pass
+ok 98 - view_owner_is(view, user) should have the proper description
+ok 99 - view_owner_is(view, user) should have the proper diagnostics
+ok 100 - view_owner_is(non-view, user) should fail
+ok 101 - view_owner_is(non-view, user) should have the proper description
+ok 102 - view_owner_is(non-view, user) should have the proper diagnostics
+ok 103 - view_owner_is(sch, seq, user, desc) should fail
+ok 104 - view_owner_is(sch, seq, user, desc) should have the proper description
+ok 105 - view_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 106 - view_owner_is(seq, user, desc) should fail
+ok 107 - view_owner_is(seq, user, desc) should have the proper description
+ok 108 - view_owner_is(seq, user, desc) should have the proper diagnostics

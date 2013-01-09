@@ -224,3 +224,55 @@ RETURNS TEXT AS $$
         'Table ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
 $$ LANGUAGE sql;
+
+-- view_owner_is ( schema, view, user, description )
+CREATE OR REPLACE FUNCTION view_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('v'::char, $1, $2);
+BEGIN
+    -- Make sure the view exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    View ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- view_owner_is ( schema, view, user )
+CREATE OR REPLACE FUNCTION view_owner_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT view_owner_is(
+        $1, $2, $3,
+        'View ' || quote_ident($1) || '.' || quote_ident($2) || ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- view_owner_is ( view, user, description )
+CREATE OR REPLACE FUNCTION view_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('v'::char, $1);
+BEGIN
+    -- Make sure the view exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    View ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- view_owner_is ( view, user )
+CREATE OR REPLACE FUNCTION view_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT view_owner_is(
+        $1, $2,
+        'View ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

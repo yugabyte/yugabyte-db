@@ -5223,6 +5223,47 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `view_owner_is ()` ###
+
+    SELECT view_owner_is ( :schema, :view, :user, :description );
+    SELECT view_owner_is ( :view, :user, :description );
+    SELECT view_owner_is ( :schema, :view, :user );
+    SELECT view_owner_is ( :view, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:view`.
+
+`:view`
+: Name of a view.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a view. If the `:description` argument is omitted, an
+appropriate description will be created. Examples:
+
+    SELECT view_owner_is( 'public', 'myview', 'someuser', 'myview should be owned by someuser' );
+    SELECT view_owner_is( 'widgets', current_user );
+
+In the event that the test fails because the view in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "View foo should be owned by www"
+    #     View foo does not exist
+
+If the test fails because the view is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "View bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
 No Test for the Wicked
 ======================
 
