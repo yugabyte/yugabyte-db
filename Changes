@@ -17,6 +17,7 @@ Revision history for pgTAP
   + `sequence_owner_is()`
   + `composite_owner_is()`
   + `foreign_table_owner_is()`
+  + `function_owner_is()`
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------

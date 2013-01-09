@@ -489,3 +489,97 @@ CREATE OR REPLACE FUNCTION hasnt_relation ( NAME )
 RETURNS TEXT AS $$
     SELECT hasnt_relation( $1, 'Relation ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
+
+DROP VIEW tap_funky;
+CREATE VIEW tap_funky
+ AS SELECT p.oid         AS oid,
+           n.nspname     AS schema,
+           p.proname     AS name,
+           pg_catalog.pg_get_userbyid(p.proowner) AS owner,
+           array_to_string(p.proargtypes::regtype[], ',') AS args,
+           CASE p.proretset WHEN TRUE THEN 'setof ' ELSE '' END
+             || p.prorettype::regtype AS returns,
+           p.prolang     AS langoid,
+           p.proisstrict AS is_strict,
+           p.proisagg    AS is_agg,
+           p.prosecdef   AS is_definer,
+           p.proretset   AS returns_set,
+           p.provolatile::char AS volatility,
+           pg_catalog.pg_function_is_visible(p.oid) AS is_visible
+      FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
+;
+
+CREATE OR REPLACE FUNCTION _get_func_owner ( NAME, NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT owner
+      FROM tap_funky
+     WHERE schema = $1
+       AND name   = $2
+       AND args   = array_to_string($3, ',')
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_func_owner ( NAME, NAME[] )
+RETURNS NAME AS $$
+    SELECT owner
+      FROM tap_funky
+     WHERE name = $1
+       AND args = array_to_string($2, ',')
+       AND is_visible
+$$ LANGUAGE SQL;
+
+-- function_owner_is( schema, function, args[], user, description )
+CREATE OR REPLACE FUNCTION function_owner_is ( NAME, NAME, NAME[], NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_func_owner($1, $2, $3);
+BEGIN
+    -- Make sure the function exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            E'    Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+                    array_to_string($3, ', ') || ') does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $4, $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_owner_is( schema, function, args[], user )
+CREATE OR REPLACE FUNCTION function_owner_is( NAME, NAME, NAME[], NAME )
+RETURNS TEXT AS $$
+    SELECT function_owner_is(
+        $1, $2, $3, $4,
+        'Function ' || quote_ident($1) || '.' || quote_ident($2) || '(' ||
+        array_to_string($3, ', ') || ') should be owned by ' || quote_ident($4)
+    );
+$$ LANGUAGE sql;
+
+-- function_owner_is( function, args[], user, description )
+CREATE OR REPLACE FUNCTION function_owner_is ( NAME, NAME[], NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_func_owner($1, $2);
+BEGIN
+    -- Make sure the function exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Function ' || quote_ident($1) || '(' ||
+                    array_to_string($2, ', ') || ') does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_owner_is( function, args[], user )
+CREATE OR REPLACE FUNCTION function_owner_is( NAME, NAME[], NAME )
+RETURNS TEXT AS $$
+    SELECT function_owner_is(
+        $1, $2, $3,
+        'Function ' || quote_ident($1) || '(' ||
+        array_to_string($2, ', ') || ') should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;

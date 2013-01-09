@@ -1,5 +1,5 @@
 \unset ECHO
-1..189
+1..228
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -189,3 +189,42 @@ ok 186 - foreign_table_owner_is(sch, tab, user, desc) should have the proper dia
 ok 187 - foreign_table_owner_is(tab, user, desc) should fail
 ok 188 - foreign_table_owner_is(tab, user, desc) should have the proper description
 ok 189 - foreign_table_owner_is(tab, user, desc) should have the proper diagnostics
+ok 190 - function_owner_is(sch, function, args[integer], user, desc) should pass
+ok 191 - function_owner_is(sch, function, args[integer], user, desc) should have the proper description
+ok 192 - function_owner_is(sch, function, args[integer], user, desc) should have the proper diagnostics
+ok 193 - function_owner_is(sch, function, args[integer], user) should pass
+ok 194 - function_owner_is(sch, function, args[integer], user) should have the proper description
+ok 195 - function_owner_is(sch, function, args[integer], user) should have the proper diagnostics
+ok 196 - function_owner_is(sch, function, args[], user, desc) should pass
+ok 197 - function_owner_is(sch, function, args[], user, desc) should have the proper description
+ok 198 - function_owner_is(sch, function, args[], user, desc) should have the proper diagnostics
+ok 199 - function_owner_is(sch, function, args[], user) should pass
+ok 200 - function_owner_is(sch, function, args[], user) should have the proper description
+ok 201 - function_owner_is(sch, function, args[], user) should have the proper diagnostics
+ok 202 - function_owner_is(function, args[integer], user, desc) should pass
+ok 203 - function_owner_is(function, args[integer], user, desc) should have the proper description
+ok 204 - function_owner_is(function, args[integer], user, desc) should have the proper diagnostics
+ok 205 - function_owner_is(function, args[integer], user) should pass
+ok 206 - function_owner_is(function, args[integer], user) should have the proper description
+ok 207 - function_owner_is(function, args[integer], user) should have the proper diagnostics
+ok 208 - function_owner_is(function, args[], user, desc) should pass
+ok 209 - function_owner_is(function, args[], user, desc) should have the proper description
+ok 210 - function_owner_is(function, args[], user, desc) should have the proper diagnostics
+ok 211 - function_owner_is(function, args[], user) should pass
+ok 212 - function_owner_is(function, args[], user) should have the proper description
+ok 213 - function_owner_is(function, args[], user) should have the proper diagnostics
+ok 214 - function_owner_is(sch, non-function, args[integer], user, desc) should fail
+ok 215 - function_owner_is(sch, non-function, args[integer], user, desc) should have the proper description
+ok 216 - function_owner_is(sch, non-function, args[integer], user, desc) should have the proper diagnostics
+ok 217 - function_owner_is(non-sch, function, args[integer], user, desc) should fail
+ok 218 - function_owner_is(non-sch, function, args[integer], user, desc) should have the proper description
+ok 219 - function_owner_is(non-sch, function, args[integer], user, desc) should have the proper diagnostics
+ok 220 - function_owner_is(non-function, args[integer], user, desc) should fail
+ok 221 - function_owner_is(non-function, args[integer], user, desc) should have the proper description
+ok 222 - function_owner_is(non-function, args[integer], user, desc) should have the proper diagnostics
+ok 223 - function_owner_is(sch, function, args[integer], non-user, desc) should fail
+ok 224 - function_owner_is(sch, function, args[integer], non-user, desc) should have the proper description
+ok 225 - function_owner_is(sch, function, args[integer], non-user, desc) should have the proper diagnostics
+ok 226 - function_owner_is(function, args[integer], non-user, desc) should fail
+ok 227 - function_owner_is(function, args[integer], non-user, desc) should have the proper description
+ok 228 - function_owner_is(function, args[integer], non-user, desc) should have the proper diagnostics

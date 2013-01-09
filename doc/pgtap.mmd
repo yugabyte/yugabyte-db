@@ -5456,6 +5456,53 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `function_owner_is ()` ###
+
+    SELECT function_owner_is ( :schema, :function, :args, :user, :description );
+    SELECT function_owner_is ( :function, :args, :user, :description );
+    SELECT function_owner_is ( :schema, :function, :args, :user );
+    SELECT function_owner_is ( :function, :args, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:function`.
+
+`:function`
+: Name of a function.
+
+`:args`
+: Array of data types of the function arguments.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a function. If the `:description` argument is omitted,
+an appropriate description will be created. Examples:
+
+    SELECT function_owner_is(
+        'public', 'frobulate', ARRAY['integer', 'text'], 'someuser',
+        'public.frobulate(integer, text) should be owned by someuser'
+    );
+    SELECT function_owner_is( 'masticate', ARRAY['text'], current_user );
+
+In the event that the test fails because the function in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Function foo() should be owned by www"
+    #     Function foo() does not exist
+
+If the test fails because the function is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Function bar() should be owned by root"
+    #         have: postgres
+    #         want: root
+
 No Test for the Wicked
 ======================
 
@@ -6231,9 +6278,6 @@ To Do
 * Add `schema, table, colname` variations of the table-checking functions
   (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
   description to be optional if the schema is included in the function call.
-* Add more functions to test for object ownership.
-  + `function_owner_is()`
-  + etc.
 * Add some sort of tests for permisions. Something like:
   `table_privs_are(:table, :user, :privs[])`, and would have variations for
   database, sequence, function, language, schema, and tablespace.

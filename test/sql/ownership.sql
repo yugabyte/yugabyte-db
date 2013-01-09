@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(189);
+SELECT plan(228);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -23,6 +23,8 @@ CREATE TYPE public.sometype AS (
 CREATE SEQUENCE public.someseq;
 
 CREATE SCHEMA someschema;
+
+CREATE FUNCTION public.somefunction(int) RETURNS VOID LANGUAGE SQL AS '';
 
 RESET client_min_messages;
 
@@ -639,8 +641,116 @@ END;
 $$ LANGUAGE PLPGSQL;
 
 SELECT * FROM test_fdw();
+
+/****************************************************************************/
+-- Test function_owner_is().
+SELECT * FROM check_test(
+    function_owner_is('public', 'somefunction', ARRAY['integer'], current_user, 'mumble'),
+	true,
+    'function_owner_is(sch, function, args[integer], user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('public', 'somefunction', ARRAY['integer'], current_user),
+	true,
+    'function_owner_is(sch, function, args[integer], user)',
+    'Function public.somefunction(integer) should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('public', 'test_fdw', ARRAY[]::NAME[], current_user, 'mumble'),
+	true,
+    'function_owner_is(sch, function, args[], user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('public', 'test_fdw', ARRAY[]::NAME[], current_user),
+	true,
+    'function_owner_is(sch, function, args[], user)',
+    'Function public.test_fdw() should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('somefunction', ARRAY['integer'], current_user, 'mumble'),
+	true,
+    'function_owner_is(function, args[integer], user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('somefunction', ARRAY['integer'], current_user),
+	true,
+    'function_owner_is(function, args[integer], user)',
+    'Function somefunction(integer) should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('test_fdw', ARRAY[]::NAME[], current_user, 'mumble'),
+	true,
+    'function_owner_is(function, args[], user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('test_fdw', ARRAY[]::NAME[], current_user),
+	true,
+    'function_owner_is(function, args[], user)',
+    'Function test_fdw() should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    function_owner_is('public', '__non__function', ARRAY['integer'], current_user, 'mumble'),
+	false,
+    'function_owner_is(sch, non-function, args[integer], user, desc)',
+    'mumble',
+    '    Function public.__non__function(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    function_owner_is('__non__public', 'function', ARRAY['integer'], current_user, 'mumble'),
+	false,
+    'function_owner_is(non-sch, function, args[integer], user, desc)',
+    'mumble',
+    '    Function __non__public.function(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    function_owner_is('__non__function', ARRAY['integer'], current_user, 'mumble'),
+	false,
+    'function_owner_is(non-function, args[integer], user, desc)',
+    'mumble',
+    '    Function __non__function(integer) does not exist'
+);
+
+SELECT * FROM check_test(
+    function_owner_is('public', 'somefunction', ARRAY['integer'], 'no one', 'mumble'),
+	false,
+    'function_owner_is(sch, function, args[integer], non-user, desc)',
+    'mumble',
+    '        have: ' || current_user || '
+        want: no one'
+);
+
+SELECT * FROM check_test(
+    function_owner_is('somefunction', ARRAY['integer'], 'no one', 'mumble'),
+	false,
+    'function_owner_is(function, args[integer], non-user, desc)',
+    'mumble',
+    '        have: ' || current_user || '
+        want: no one'
+);
+
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
-
