@@ -29,7 +29,8 @@ Revision history for pgTAP
   Thanks to Peter Eisentraut and Taylor Ralston for [the
   nudging](https://github.com/theory/pgtap/issues/15).
 * Added `isnt_empty()` to ensure that a query does not return the empty set.
-* Fixed `has_index()` to better handle indexes with expressions.
+* Fixed `has_index()` to properly handle indexes composed of both columns and
+  expressions.
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------
