@@ -679,7 +679,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) mismatch',
     '',
-    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
+    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Number of columns or their types differ between the queries:' END || '
         have: (1,foo)
         want: (foo,1)'
 );
@@ -704,9 +704,7 @@ BEGIN
             false,
             'results_eq(values, values) subtle mismatch',
             '',
-            '   Columns differ between queries:
-        have: (1,foo)
-        want: (1,foo)' ) AS a(b) LOOP
+            '   Number of columns or their types differ between the queries' ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
     END IF;
@@ -721,7 +719,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) fail column count',
     '',
-    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Columns differ between queries:' END || '
+    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Number of columns or their types differ between the queries:' END || '
         have: (1)
         want: (foo,1)'
 );

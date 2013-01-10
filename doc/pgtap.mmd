@@ -1207,7 +1207,7 @@ sets, or if results are of different data types, you'll get diagnostics like
 so:
 
     # Failed test 148
-    #     Column types differ between queries:
+    #     Number of columns or their types differ between the queries:
     #         have: (1)
     #         want: (foo,1)
 
@@ -1215,9 +1215,12 @@ On PostgreSQL 8.3 and down, the rows are cast to text for comparison, rather
 than compared as `record` objects. The downside to this necessity is that the
 test cannot detect incompatibilities in column numbers or types, or
 differences in columns that convert to the same text representation. For
-example, a `NULL` column will be equivalent to an empty string. The upshot:
-read failure diagnostics carefully and pay attention to data types on 8.3 and
-down.
+example, a `NULL` column will be equivalent to an empty string. As a result,
+pgTAP will not show the `have` and `want` values if they are the same, just
+the error message, like so:
+
+    # Failed test 149
+    #     Number of columns or their types differ between the queries
 
 ### `results_ne()` ###
 

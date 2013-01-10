@@ -6404,9 +6404,11 @@ BEGIN
 EXCEPTION
     WHEN datatype_mismatch THEN
         RETURN ok( false, $3 ) || E'\n' || diag(
-            E'    Columns differ between queries:\n' ||
-            '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-            '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
+            E'    Number of columns or their types differ between the queries' ||
+            CASE WHEN have_rec::TEXT = want_rec::text THEN '' ELSE E':\n' ||
+                '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
+                '        want: ' || CASE WHEN want_found THEN want_rec::text ELSE 'NULL' END
+            END
         );
 END;
 $$ LANGUAGE plpgsql;
