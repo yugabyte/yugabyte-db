@@ -756,19 +756,21 @@ RETURNS TEXT AS $$
     SELECT isnt_empty( $1, NULL );
 $$ LANGUAGE sql;
 
+DROP FUNCTION _ikeys( NAME, NAME, NAME );
+DROP FUNCTION _ikeys( NAME, NAME );
+DROP FUNCTION _iexpr( NAME, NAME, NAME );
+DROP FUNCTION _iexpr( NAME, NAME );
+
 CREATE OR REPLACE FUNCTION _ikeys( NAME, NAME, NAME)
-RETURNS NAME[] AS $$
+RETURNS TEXT[] AS $$
     SELECT ARRAY(
-        SELECT COALESCE(a.attname, pg_catalog.pg_get_expr( x.indexprs, ct.oid ))
+        SELECT pg_catalog.pg_get_indexdef( ci.oid, s.i + 1, false)
           FROM pg_catalog.pg_index x
           JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
           JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
           JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
           JOIN generate_series(0, current_setting('max_index_keys')::int - 1) s(i)
             ON x.indkey[s.i] IS NOT NULL
-          LEFT JOIN pg_catalog.pg_attribute a
-            ON ct.oid = a.attrelid
-           AND a.attnum = x.indkey[s.i]
          WHERE ct.relname = $2
            AND ci.relname = $3
            AND n.nspname  = $1
@@ -777,26 +779,20 @@ RETURNS NAME[] AS $$
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _ikeys( NAME, NAME)
-RETURNS NAME[] AS $$
+RETURNS TEXT[] AS $$
     SELECT ARRAY(
-        SELECT COALESCE(a.attname, pg_catalog.pg_get_expr( x.indexprs, ct.oid ))
+        SELECT pg_catalog.pg_get_indexdef( ci.oid, s.i + 1, false)
           FROM pg_catalog.pg_index x
           JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
           JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
           JOIN generate_series(0, current_setting('max_index_keys')::int - 1) s(i)
             ON x.indkey[s.i] IS NOT NULL
-          LEFT JOIN pg_catalog.pg_attribute a
-            ON ct.oid = a.attrelid
-           AND a.attnum = x.indkey[s.i]
          WHERE ct.relname = $1
            AND ci.relname = $2
            AND pg_catalog.pg_table_is_visible(ct.oid)
          ORDER BY s.i
     );
 $$ LANGUAGE sql;
-
-DROP FUNCTION _iexpr( NAME, NAME, NAME );
-DROP FUNCTION _iexpr( NAME, NAME );
 
 -- has_index( schema, table, index, columns[], description )
 CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, NAME[], text )

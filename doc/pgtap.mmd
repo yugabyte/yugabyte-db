@@ -2971,7 +2971,8 @@ Checks for the existence of an index associated with the named table. The
 and the description. The columns argument may be a string naming one column or
 expression, or an array of column names and/or expressions. For expressions,
 you must use lowercase for all SQL keywords and functions to properly compare
-to PostgreSQL's internal form of the expression. A few examples:
+to PostgreSQL's internal form of the expression. Non-functional expressions
+should also be wrapped in parentheses. A few examples:
 
     SELECT has_index(
         'myschema',
@@ -2982,7 +2983,7 @@ to PostgreSQL's internal form of the expression. A few examples:
     );
 
     SELECT has_index('myschema', 'sometable', 'anidx', 'somecolumn');
-    SELECT has_index('myschema', 'sometable', 'loweridx', 'lower(somecolumn)');
+    SELECT has_index('myschema', 'sometable', 'loweridx', '(somearray[1])');
     SELECT has_index('sometable', 'someindex');
 
 If you find that the function call seems to be getting confused, cast the
