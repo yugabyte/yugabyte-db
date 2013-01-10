@@ -28,6 +28,7 @@ Revision history for pgTAP
   reduce confusion when the rows have the same values of different types.
   Thanks to Peter Eisentraut and Taylor Ralston for [the
   nudging](https://github.com/theory/pgtap/issues/15).
+* Added `isnt_empty()` to ensure that a query does not return the empty set.
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------

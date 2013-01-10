@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(518);
+SELECT plan(542);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -2346,6 +2346,73 @@ BEGIN
 END;
 $$ LANGUAGE PLPGSQL;
 SELECT * FROM test_empty_fail();
+
+/****************************************************************************/
+-- Now test isnt_empty().
+SELECT * FROM check_test(
+    isnt_empty( 'SELECT 1', 'whatever' ),
+    true,
+    'isnt_empty(sql, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_empty( 'SELECT 1 WHERE FALSE', 'whatever' ),
+    false,
+    'isnt_empty(sql, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_empty( 'SELECT 1 WHERE FALSE' ),
+    false,
+    'isnt_empty(sql)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_empty( 'SELECT 1' ),
+    true,
+    'isnt_empty(sql)',
+    '',
+    ''
+);
+
+PREPARE someset(boolean) AS SELECT * FROM names WHERE $1;
+SELECT * FROM check_test(
+    isnt_empty( 'EXECUTE someset(true)', 'whatever' ),
+    true,
+    'isnt_empty(prepared, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_empty( 'EXECUTE someset(false)', 'whatever' ),
+    false,
+    'isnt_empty(prepared, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_empty( 'EXECUTE someset(true)' ),
+    true,
+    'isnt_empty(prepared)',
+    '',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_empty( 'EXECUTE someset(false)' ),
+    false,
+    'isnt_empty(prepared)',
+    '',
+    ''
+);
 
 /****************************************************************************/
 -- Test row_eq().

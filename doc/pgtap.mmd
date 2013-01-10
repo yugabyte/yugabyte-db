@@ -1535,6 +1535,23 @@ fails and the results are displayed in the failure diagnostics, like so:
     #         (1,Jacob,false)
     #         (2,Emily,false)
 
+### `isnt_empty()` ###
+
+    SELECT isnt_empty( :sql, :description );
+    SELECT isnt_empty( :sql );
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `is_empty()`. The test passes if the specified
+query, when executed, returns at least one row. If it returns no rows, the
+test fails.
+
 ### `row_eq()` ###
 
     SELECT row_eq( :sql, :record, :description );

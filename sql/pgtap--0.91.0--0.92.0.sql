@@ -732,3 +732,26 @@ EXCEPTION
         );
 END;
 $$ LANGUAGE plpgsql;
+
+-- isnt_empty( sql, description )
+CREATE OR REPLACE FUNCTION isnt_empty( TEXT, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    res  BOOLEAN := FALSE;
+    rec  RECORD;
+BEGIN
+    -- Find extra records.
+    FOR rec in EXECUTE _query($1) LOOP
+        res := TRUE;
+        EXIT;
+    END LOOP;
+
+    RETURN ok(res, $2);
+END;
+$$ LANGUAGE plpgsql;
+
+-- isnt_empty( sql )
+CREATE OR REPLACE FUNCTION isnt_empty( TEXT )
+RETURNS TEXT AS $$
+    SELECT isnt_empty( $1, NULL );
+$$ LANGUAGE sql;
