@@ -6271,39 +6271,6 @@ No changes. Everything should just work.
   + `regtype` to `text`
 * Two operators, `=` and `<>`, are added to compare `name[]` values.
 
-To Do
-=====
-* Add parameter names matching the docs so parameters can be passed by name on
-  9.0 and higher.
-* Add `isnt_empty()` to complement `is_empty()`.
-* Add variants of `set_eq()`, `bag_eq()`, and `results_eq()` that take an
-  array of records as the second argument.
-* Add `schema, table, colname` variations of the table-checking functions
-  (`table_has_column()`, `col_type_is()`, etc.). That is, allow the
-  description to be optional if the schema is included in the function call.
-* Add some sort of tests for permisions. Something like:
-  `table_privs_are(:table, :user, :privs[])`, and would have variations for
-  database, sequence, function, language, schema, and tablespace.
-* Have `has_function()` manage OUT, INOUT, and VARIADIC arguments.
-* Useful schema testing functions to consider adding:
-  + `sequence_has_range()`
-  + `sequence_increments_by()`
-  + `sequence_starts_at()`
-  + `sequence_cycles()`
-* Useful result testing function to consider adding (but might require C
-  code): `rowtype_is()`
-* Split test functions into separate files (and maybe distributions?):
-  + One with scalar comparison functions: `ok()`, `is()`, `like()`, etc.
-  + One with relation comparison functions: `set_eq()`, `results_eq()`, etc.
-  + One with schema testing functions: `has_table()`, `tables_are()`, etc.
-* Add useful negation function tests:
-  + `isnt_definer()`
-  + `isnt_strict()`
-  + `isnt_aggregate()`
-* Modify function testing assertions so that functions can be specified with
-  full signatures, so that a polymorphic functions can be independently tested
-  for language, volatility, etc.
-
 Metadata
 ========
 
