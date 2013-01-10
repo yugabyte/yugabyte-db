@@ -2958,7 +2958,7 @@ enum does *not* exist.
 : Name of an index.
 
 `:columns`
-: Array of the columns in the index.
+: Array of the columns and/or expressions in the index.
 
 `:column`
 : Idexed column name or expression.
@@ -2969,21 +2969,20 @@ enum does *not* exist.
 Checks for the existence of an index associated with the named table. The
 `:schema` argument is optional, as is the column name or names or expression,
 and the description. The columns argument may be a string naming one column or
-an array of column names. It may also be a string representing an expression,
-such as `lower(foo)`. For expressions, you must use lowercase for all SQL
-keywords and functions to properly compare to PostgreSQL's internal form of
-the expression. A few examples:
+expression, or an array of column names and/or expressions. For expressions,
+you must use lowercase for all SQL keywords and functions to properly compare
+to PostgreSQL's internal form of the expression. A few examples:
 
     SELECT has_index(
         'myschema',
         'sometable',
         'myindex',
-        ARRAY[ 'somecolumn', 'anothercolumn' ],
+        ARRAY[ 'somecolumn', 'anothercolumn', 'lower(txtcolumn)' ],
         'Index "myindex" should exist'
     );
 
     SELECT has_index('myschema', 'sometable', 'anidx', 'somecolumn');
-    SELECT has_index('myschema', 'sometable', 'loweridx', 'LOWER(somecolumn)');
+    SELECT has_index('myschema', 'sometable', 'loweridx', 'lower(somecolumn)');
     SELECT has_index('sometable', 'someindex');
 
 If you find that the function call seems to be getting confused, cast the

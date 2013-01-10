@@ -755,3 +755,105 @@ CREATE OR REPLACE FUNCTION isnt_empty( TEXT )
 RETURNS TEXT AS $$
     SELECT isnt_empty( $1, NULL );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _ikeys( NAME, NAME, NAME)
+RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT COALESCE(a.attname, pg_catalog.pg_get_expr( x.indexprs, ct.oid ))
+          FROM pg_catalog.pg_index x
+          JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+          JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+          JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
+          JOIN generate_series(0, current_setting('max_index_keys')::int - 1) s(i)
+            ON x.indkey[s.i] IS NOT NULL
+          LEFT JOIN pg_catalog.pg_attribute a
+            ON ct.oid = a.attrelid
+           AND a.attnum = x.indkey[s.i]
+         WHERE ct.relname = $2
+           AND ci.relname = $3
+           AND n.nspname  = $1
+         ORDER BY s.i
+    );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _ikeys( NAME, NAME)
+RETURNS NAME[] AS $$
+    SELECT ARRAY(
+        SELECT COALESCE(a.attname, pg_catalog.pg_get_expr( x.indexprs, ct.oid ))
+          FROM pg_catalog.pg_index x
+          JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+          JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+          JOIN generate_series(0, current_setting('max_index_keys')::int - 1) s(i)
+            ON x.indkey[s.i] IS NOT NULL
+          LEFT JOIN pg_catalog.pg_attribute a
+            ON ct.oid = a.attrelid
+           AND a.attnum = x.indkey[s.i]
+         WHERE ct.relname = $1
+           AND ci.relname = $2
+           AND pg_catalog.pg_table_is_visible(ct.oid)
+         ORDER BY s.i
+    );
+$$ LANGUAGE sql;
+
+DROP FUNCTION _iexpr( NAME, NAME, NAME );
+DROP FUNCTION _iexpr( NAME, NAME );
+
+-- has_index( schema, table, index, columns[], description )
+CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, NAME[], text )
+RETURNS TEXT AS $$
+DECLARE
+     index_cols name[];
+BEGIN
+    index_cols := _ikeys($1, $2, $3 );
+
+    IF index_cols IS NULL OR index_cols = '{}'::name[] THEN
+        RETURN ok( false, $5 ) || E'\n'
+            || diag( 'Index ' || quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || ' not found');
+    END IF;
+
+    RETURN is(
+        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( index_cols, ', ' ) || ')',
+        quote_ident($3) || ' ON ' || quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string( $4, ', ' ) || ')',
+        $5
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, NAME, text )
+RETURNS TEXT AS $$
+    SELECT has_index( $1, $2, $3, ARRAY[$4], $5 );
+$$ LANGUAGE sql;
+
+-- has_index( table, index, columns[], description )
+CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME[], text )
+RETURNS TEXT AS $$
+DECLARE
+     index_cols name[];
+BEGIN
+    index_cols := _ikeys($1, $2 );
+
+    IF index_cols IS NULL OR index_cols = '{}'::name[] THEN
+        RETURN ok( false, $4 ) || E'\n'
+            || diag( 'Index ' || quote_ident($2) || ' ON ' || quote_ident($1) || ' not found');
+    END IF;
+
+    RETURN is(
+        quote_ident($2) || ' ON ' || quote_ident($1) || '(' || array_to_string( index_cols, ', ' ) || ')',
+        quote_ident($2) || ' ON ' || quote_ident($1) || '(' || array_to_string( $3, ', ' ) || ')',
+        $4
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION has_index ( NAME, NAME, NAME, text )
+RETURNS TEXT AS $$
+    SELECT CASE WHEN _is_schema( $1 ) THEN
+        -- Looking for schema.table index.
+            ok ( _have_index( $1, $2, $3 ), $4)
+        ELSE
+        -- Looking for particular columns.
+            has_index( $1, $2, ARRAY[$3], $4 )
+      END;
+$$ LANGUAGE sql;
+
+

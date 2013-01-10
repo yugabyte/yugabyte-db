@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(225);
+SELECT plan(231);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -16,6 +16,7 @@ CREATE INDEX idx_hey ON public.sometab(numb);
 CREATE INDEX idx_foo ON public.sometab using hash(name);
 CREATE INDEX idx_bar ON public.sometab(numb, name);
 CREATE UNIQUE INDEX idx_baz ON public.sometab(LOWER(name));
+CREATE INDEX idx_mul ON public.sometab(numb, LOWER(name));
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -73,6 +74,22 @@ SELECT * FROM check_test(
     has_index( 'public', 'sometab', 'idx_baz', 'lower(name)', 'whatever' ),
     true,
     'has_index() functional',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_baz', ARRAY['lower(name)'], 'whatever' ),
+    true,
+    'has_index() [functional]',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_index( 'public', 'sometab', 'idx_mul', ARRAY['numb', 'lower(name)'], 'whatever' ),
+    true,
+    'has_index() [col, expr]',
     'whatever',
     ''
 );
