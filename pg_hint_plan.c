@@ -1029,7 +1029,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			char   *keyword = parser->keyword;
 			Hint   *hint;
 
-			if (strcmp(buf.data, keyword) != 0)
+			if (strcasecmp(buf.data, keyword) != 0)
 				continue;
 
 			hint = parser->create_func(head, keyword);
