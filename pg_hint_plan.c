@@ -194,6 +194,7 @@ typedef struct SetHint
 	Hint	base;
 	char   *name;				/* name of variable */
 	char   *value;
+	List   *words;
 } SetHint;
 
 /*
@@ -566,6 +567,7 @@ SetHintCreate(const char *hint_str, const char *keyword)
 	hint->base.parser_func = (HintParseFunction) SetHintParse;
 	hint->name = NULL;
 	hint->value = NULL;
+	hint->words = NIL;
 
 	return (Hint *) hint;
 }
@@ -580,6 +582,8 @@ SetHintDelete(SetHint *hint)
 		pfree(hint->name);
 	if (hint->value)
 		pfree(hint->value);
+	if (hint->words)
+		list_free(hint->words);
 	pfree(hint);
 }
 
@@ -663,11 +667,14 @@ ScanMethodHintDump(ScanMethodHint *hint, StringInfo buf)
 	ListCell   *l;
 
 	appendStringInfo(buf, "%s(", hint->base.keyword);
-	dump_quote_value(buf, hint->relname);
-	foreach(l, hint->indexnames)
+	if (hint->relname != NULL)
 	{
-		appendStringInfoCharMacro(buf, ' ');
-		dump_quote_value(buf, (char *) lfirst(l));
+		dump_quote_value(buf, hint->relname);
+		foreach(l, hint->indexnames)
+		{
+			appendStringInfoCharMacro(buf, ' ');
+			dump_quote_value(buf, (char *) lfirst(l));
+		}
 	}
 	appendStringInfoString(buf, ")\n");
 }
@@ -678,11 +685,14 @@ JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf)
 	int	i;
 
 	appendStringInfo(buf, "%s(", hint->base.keyword);
-	dump_quote_value(buf, hint->relnames[0]);
-	for (i = 1; i < hint->nrels; i++)
+	if (hint->relnames != NULL)
 	{
-		appendStringInfoCharMacro(buf, ' ');
-		dump_quote_value(buf, hint->relnames[i]);
+		dump_quote_value(buf, hint->relnames[0]);
+		for (i = 1; i < hint->nrels; i++)
+		{
+			appendStringInfoCharMacro(buf, ' ');
+			dump_quote_value(buf, hint->relnames[i]);
+		}
 	}
 	appendStringInfoString(buf, ")\n");
 
@@ -712,10 +722,19 @@ LeadingHintDump(LeadingHint *hint, StringInfo buf)
 static void
 SetHintDump(SetHint *hint, StringInfo buf)
 {
+	bool		is_first = true;
+	ListCell   *l;
+
 	appendStringInfo(buf, "%s(", HINT_SET);
-	dump_quote_value(buf, hint->name);
-	appendStringInfoCharMacro(buf, ' ');
-	dump_quote_value(buf, hint->value);
+	foreach(l, hint->words)
+	{
+		if (is_first)
+			is_first = false;
+		else
+			appendStringInfoCharMacro(buf, ' ');
+
+		dump_quote_value(buf, (char *) lfirst(l));
+	}
 	appendStringInfo(buf, ")\n");
 }
 
@@ -816,7 +835,10 @@ HintCmp(const void *a, const void *b)
 
 	if (hinta->type != hintb->type)
 		return hinta->type - hintb->type;
-
+	if (hinta->state == HINT_STATE_ERROR)
+		return -1;
+	if (hintb->state == HINT_STATE_ERROR)
+		return 1;
 	return hinta->cmp_func(hinta, hintb);
 }
 
@@ -923,7 +945,7 @@ parse_quote_value(const char *str, char **word, bool truncate)
 
 			/*
 			 * Skip escaped double quotation.
-			 * 
+			 *
 			 * We don't allow slash-asterisk and asterisk-slash (delimiters of
 			 * block comments) to be an object name, so users must specify
 			 * alias for such object names.
@@ -962,6 +984,40 @@ parse_quote_value(const char *str, char **word, bool truncate)
 	return str;
 }
 
+static const char *
+parse_parentheses(const char *str, List **name_list, HintType type)
+{
+	char   *name;
+	bool	truncate = true;
+
+	if ((str = skip_opened_parenthesis(str)) == NULL)
+		return NULL;
+
+	skip_space(str);
+
+	/* Store words in a parenthesis in a list. */
+	while(*str != ')' && *str != '\0')
+	{
+		if ((str = parse_quote_value(str, &name, truncate)) == NULL)
+		{
+			list_free(*name_list);
+			return NULL;
+		}
+
+		*name_list = lappend(*name_list, name);
+		skip_space(str);
+
+		if (type == HINT_TYPE_SET)
+		{
+			truncate = false;
+		}
+	}
+
+	if ((str = skip_closed_parenthesis(str)) == NULL)
+		return NULL;
+	return str;
+}
+
 static void
 parse_hints(HintState *hstate, Query *parse, const char *str)
 {
@@ -991,9 +1047,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			hint = parser->create_func(head, keyword);
 
 			/* parser of each hint does parse in a parenthesis. */
-			if ((str = skip_opened_parenthesis(str)) == NULL ||
-				(str = hint->parser_func(hint, hstate, parse, str)) == NULL ||
-				(str = skip_closed_parenthesis(str)) == NULL)
+			if ((str = hint->parser_func(hint, hstate, parse, str)) == NULL)
 			{
 				hint->delete_func(hint);
 				pfree(buf.data);
@@ -1169,32 +1223,41 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 					const char *str)
 {
 	const char *keyword = hint->base.keyword;
+	List	   *name_list = NIL;
+	int			length;
 
-	/* Given hint is invalid if relation name can't be parsed. */
-	if ((str = parse_quote_value(str, &hint->relname, true))
-		== NULL)
+	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
 		return NULL;
 
-	skip_space(str);
-
-	/* Parse index name(s) if given hint accepts. */
-	if (strcmp(keyword, HINT_INDEXSCAN) == 0 ||
-#if PG_VERSION_NUM >= 90200
-		strcmp(keyword, HINT_INDEXONLYSCAN) == 0 ||
-#endif
-		strcmp(keyword, HINT_BITMAPSCAN) == 0)
+	/* Parse relation name and index name(s) if given hint accepts. */
+	length = list_length(name_list);
+	if (length > 0)
 	{
-		while (*str != ')' && *str != '\0')
+		hint->relname = linitial(name_list);
+		hint->indexnames = list_delete_first(name_list);
+
+		/* check the kerword to need the only relation. */
+		if (strcmp(keyword, HINT_INDEXSCAN) != 0 &&
+#if PG_VERSION_NUM >= 90200
+			strcmp(keyword, HINT_INDEXONLYSCAN) != 0 &&
+#endif
+			strcmp(keyword, HINT_BITMAPSCAN) != 0 &&
+			length != 1)
 		{
-			char	   *indexname;
-
-			str = parse_quote_value(str, &indexname, true);
-			if (str == NULL)
-				return NULL;
-
-			hint->indexnames = lappend(hint->indexnames, indexname);
-			skip_space(str);
+			parse_ereport(str,
+						  ("%s hint requires only one relation.",
+						   hint->base.keyword));
+			hint->base.state = HINT_STATE_ERROR;
+			return str;
 		}
+	}
+	else
+	{
+		parse_ereport(str,
+					  ("%s hint requires a relation.",
+					   hint->base.keyword));
+		hint->base.state = HINT_STATE_ERROR;
+		return str;
 	}
 
 	/* Set a bit for specified hint. */
@@ -1233,27 +1296,29 @@ static const char *
 JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 					const char *str)
 {
-	char	   *relname;
 	const char *keyword = hint->base.keyword;
+	List	   *name_list = NIL;
 
-	skip_space(str);
+	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
+		return NULL;
 
-	hint->relnames = palloc(sizeof(char *));
+	hint->nrels = list_length(name_list);
 
-	while ((str = parse_quote_value(str, &relname, true))
-		   != NULL)
+	if (hint->nrels > 0)
 	{
-		hint->nrels++;
-		hint->relnames = repalloc(hint->relnames, sizeof(char *) * hint->nrels);
-		hint->relnames[hint->nrels - 1] = relname;
+		ListCell   *l;
+		int			i = 0;
 
-		skip_space(str);
-		if (*str == ')')
-			break;
+		/* save the data on the list in array of join hint struct. */
+		hint->relnames = palloc(sizeof(char *) * hint->nrels);
+		foreach (l, name_list)
+		{
+			hint->relnames[i] = lfirst(l);
+			i++;
+		}
 	}
 
-	if (str == NULL)
-		return NULL;
+	list_free(name_list);
 
 	/* A join hint requires at least two relations to be specified. */
 	if (hint->nrels < 2)
@@ -1262,6 +1327,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 					  ("%s hint requires at least two relations.",
 					   hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
+		return str;
 	}
 
 	/* Sort hints in alphabetical order of relation names. */
@@ -1292,20 +1358,12 @@ static const char *
 LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 				 const char *str)
 {
-	skip_space(str);
+	List   *name_list = NIL;
 
-	while (*str != ')')
-	{
-		char   *relname;
+	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
+		return NULL;
 
-		if ((str = parse_quote_value(str, &relname, true))
-			== NULL)
-			return NULL;
-
-		hint->relations = lappend(hint->relations, relname);
-
-		skip_space(str);
-	}
+	hint->relations = name_list;
 
 	/* A Leading hint requires at least two relations to be specified. */
 	if (list_length(hint->relations) < 2)
@@ -1322,11 +1380,26 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 static const char *
 SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 {
-	if ((str = parse_quote_value(str, &hint->name, true))
-		== NULL ||
-		(str = parse_quote_value(str, &hint->value, false))
-		== NULL)
+	List   *name_list = NIL;
+
+	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
 		return NULL;
+
+	hint->words = name_list;
+
+	/* need only parameter's name and parameter's value to set GUC parameter. */
+	if (list_length(name_list) == 2)
+	{
+		hint->name = linitial(name_list);
+		hint->value = lsecond(name_list);
+	}
+	else
+	{
+		parse_ereport(hint->base.hint_str,
+					  ("%s hint requires two relations.",
+					   HINT_SET));
+		hint->base.state = HINT_STATE_ERROR;
+	}
 
 	return str;
 }
@@ -1936,7 +2009,7 @@ find_join_hint(Relids joinrelids)
 
 /*
  * Transform join method hint into handy form.
- * 
+ *
  *   - create bitmap of relids from alias names, to make it easier to check
  *     whether a join path matches a join method hint.
  *   - add join method hints which are necessary to enforce join order

@@ -4401,8 +4401,15 @@ error hint:
 -- No. J-3-4-7
 /*+NestLoop()*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near ")"
-DETAIL:  Relation name is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NestLoop hint requires at least two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NestLoop()
+
  c1 | c2 | c3 | c4 
 ----+----+----+----
 (0 rows)
@@ -4410,7 +4417,7 @@ DETAIL:  Relation name is necessary.
 -- No. J-3-4-8
 /*+NestLoop(t1)*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near ")"
+INFO:  hint syntax error at or near ""
 DETAIL:  NestLoop hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:

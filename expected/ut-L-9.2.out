@@ -3991,13 +3991,11 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 INFO:  hint syntax error at or near "Leading()"
 DETAIL:  Leading hint requires at least two relations.
-INFO:  hint syntax error at or near "Leading(t2 t3 t1)Leading()"
-DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
+Leading(t2 t3 t1)
 not used hint:
 duplication hint:
-Leading(t2 t3 t1)
 error hint:
 Leading()
 
@@ -4005,14 +4003,15 @@ Leading()
 ------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t3.c1)
-         ->  Index Scan using t1_i1 on t1
-         ->  Index Scan using t3_i1 on t3
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
-         ->  Seq Scan on t2
-(9 rows)
+         ->  Hash Join
+               Hash Cond: (t3.c1 = t2.c1)
+               ->  Seq Scan on t3
+               ->  Hash
+                     ->  Seq Scan on t2
+(10 rows)
 
 -- No. L-3-4-4
 /*+Leading(t3 t1 t2)Leading(t2 t3 t1)Leading()*/
@@ -4023,14 +4022,12 @@ INFO:  hint syntax error at or near "Leading()"
 DETAIL:  Leading hint requires at least two relations.
 INFO:  hint syntax error at or near "Leading(t3 t1 t2)Leading(t2 t3 t1)Leading()"
 DETAIL:  Conflict leading hint.
-INFO:  hint syntax error at or near "Leading(t2 t3 t1)Leading()"
-DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
+Leading(t2 t3 t1)
 not used hint:
 duplication hint:
 Leading(t3 t1 t2)
-Leading(t2 t3 t1)
 error hint:
 Leading()
 
@@ -4038,14 +4035,15 @@ Leading()
 ------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t3.c1)
-         ->  Index Scan using t1_i1 on t1
-         ->  Index Scan using t3_i1 on t3
+   ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
-         ->  Seq Scan on t2
-(9 rows)
+         ->  Hash Join
+               Hash Cond: (t3.c1 = t2.c1)
+               ->  Seq Scan on t3
+               ->  Hash
+                     ->  Seq Scan on t2
+(10 rows)
 
 ----
 ---- No. L-3-5 hint state output

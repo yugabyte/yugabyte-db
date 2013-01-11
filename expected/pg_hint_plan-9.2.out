@@ -241,8 +241,15 @@ error hint:
 
 /*+Set(work_mem TO "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near ""1MB")"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near "Set(work_mem TO "1MB")"
+DETAIL:  Set hint requires two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Set(work_mem TO 1MB)
+
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -253,8 +260,15 @@ DETAIL:  Closing parenthesis is necessary.
 
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near "t2)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan(t1 t2)
+
               QUERY PLAN              
 --------------------------------------
  Merge Join
@@ -624,7 +638,7 @@ error hint:
 /*+Leading( */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
 INFO:  hint syntax error at or near ""
-DETAIL:  Relation name is necessary.
+DETAIL:  Closing parenthesis is necessary.
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop

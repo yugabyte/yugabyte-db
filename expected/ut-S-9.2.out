@@ -2819,8 +2819,15 @@ EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), 
 
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "t2)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan(t1 t2)
+
                         QUERY PLAN                        
 ----------------------------------------------------------
  Nested Loop
@@ -5005,8 +5012,15 @@ error hint:
 -- No. S-3-13-2
 /*+SeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan(ti1 ti1_pkey)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5017,8 +5031,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-3
 /*+SeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan(ti1 ti1_pkey ti1_btree)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5154,8 +5175,15 @@ error hint:
 -- No. S-3-13-11
 /*+TidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  TidScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+TidScan(ti1 ti1_pkey)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5166,8 +5194,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-12
 /*+TidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  TidScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+TidScan(ti1 ti1_pkey ti1_btree)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5195,8 +5230,15 @@ error hint:
 -- No. S-3-13-14
 /*+NoSeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoSeqScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoSeqScan(ti1 ti1_pkey)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5207,8 +5249,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-15
 /*+NoSeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoSeqScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoSeqScan(ti1 ti1_pkey ti1_btree)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5236,8 +5285,15 @@ error hint:
 -- No. S-3-13-17
 /*+NoIndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoIndexScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoIndexScan(ti1 ti1_pkey)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5248,8 +5304,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-18
 /*+NoIndexScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoIndexScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoIndexScan(ti1 ti1_pkey ti1_btree)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5277,8 +5340,15 @@ error hint:
 -- No. S-3-13-20
 /*+NoBitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoBitmapScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoBitmapScan(ti1 ti1_pkey)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5289,8 +5359,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-21
 /*+NoBitmapScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoBitmapScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoBitmapScan(ti1 ti1_pkey ti1_btree)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5318,8 +5395,15 @@ error hint:
 -- No. S-3-13-23
 /*+NoTidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoTidScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoTidScan(ti1 ti1_pkey)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5330,8 +5414,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-24
 /*+NoTidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoTidScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoTidScan(ti1 ti1_pkey ti1_btree)
+
             QUERY PLAN             
 -----------------------------------
  Tid Scan on ti1
@@ -5406,8 +5497,15 @@ error hint:
 -- No. S-3-13-29
 /*+NoIndexOnlyScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
-INFO:  hint syntax error at or near "ti1_pkey)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoIndexOnlyScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoIndexOnlyScan(ti1 ti1_pkey)
+
               QUERY PLAN               
 ---------------------------------------
  Index Only Scan using ti1_uniq on ti1
@@ -5417,8 +5515,15 @@ DETAIL:  Closing parenthesis is necessary.
 -- No. S-3-13-30
 /*+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
-INFO:  hint syntax error at or near "ti1_pkey ti1_btree)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  NoIndexOnlyScan hint requires only one relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)
+
               QUERY PLAN               
 ---------------------------------------
  Index Only Scan using ti1_uniq on ti1

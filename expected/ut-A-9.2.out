@@ -899,8 +899,17 @@ error hint:
 -- No. A-7-2-4
 /*+SeqScan())*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 ")" WHERE ")".c1 = 1;
-INFO:  hint syntax error at or near "))"
-DETAIL:  Relation name is necessary.
+INFO:  hint syntax error at or near ")"
+DETAIL:  SeqScan hint requires a relation.
+INFO:  hint syntax error at or near ")"
+DETAIL:  Unrecognized hint keyword ")".
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan()
+
             QUERY PLAN            
 ----------------------------------
  Index Scan using t1_i1 on t1 ")"
@@ -942,7 +951,7 @@ error hint:
 /*+SeqScan(")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 """" WHERE """".c1 = 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Unterminated quoted relation name.
+DETAIL:  Unterminated quoted string.
             QUERY PLAN             
 -----------------------------------
  Index Scan using t1_i1 on t1 """"
@@ -983,8 +992,15 @@ error hint:
 -- No. A-7-2-6
 /*+SeqScan( )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 " " WHERE " ".c1 = 1;
-INFO:  hint syntax error at or near ")"
-DETAIL:  Relation name is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires a relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan()
+
             QUERY PLAN            
 ----------------------------------
  Index Scan using t1_i1 on t1 " "
@@ -1025,8 +1041,15 @@ error hint:
 -- No. A-7-2-7
 /*+SeqScan(	)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "	" WHERE "	".c1 = 1;
-INFO:  hint syntax error at or near ")"
-DETAIL:  Relation name is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires a relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan()
+
             QUERY PLAN             
 -----------------------------------
  Index Scan using t1_i1 on t1 "  "
@@ -1070,8 +1093,15 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "
 " WHERE "
 ".c1 = 1;
-INFO:  hint syntax error at or near ")"
-DETAIL:  Relation name is necessary.
+INFO:  hint syntax error at or near ""
+DETAIL:  SeqScan hint requires a relation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+SeqScan()
+
            QUERY PLAN           
 --------------------------------
  Index Scan using t1_i1 on t1 "
@@ -1328,28 +1358,28 @@ error hint:
 -- No. A-5-6-2
 /*+Set(enable_indexscan off)Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near "Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Closing parenthesis is necessary.
+INFO:  hint syntax error at or near "Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)"
+DETAIL:  Set hint requires two relations.
 LOG:  pg_hint_plan:
 used hint:
+SeqScan(t1)
 Set(enable_indexscan off)
 not used hint:
 duplication hint:
 error hint:
+Set(enable_tidscan off Set(enable_bitmapscan off)
 
-            QUERY PLAN            
-----------------------------------
- Bitmap Heap Scan on t1
-   Recheck Cond: (c1 = 1)
-   ->  Bitmap Index Scan on t1_i1
-         Index Cond: (c1 = 1)
-(4 rows)
+     QUERY PLAN     
+--------------------
+ Seq Scan on t1
+   Filter: (c1 = 1)
+(2 rows)
 
 -- No. A-5-6-3
 /*+Set(enable_indexscan off)Set(enable_tidscan "off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near ""
-DETAIL:  Unterminated quoted parameter value.
+DETAIL:  Unterminated quoted string.
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -1369,7 +1399,7 @@ error hint:
 /*+Set(enable_indexscan off)SeqScan("")Set(enable_bitmapscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near ")Set(enable_bitmapscan off)"
-DETAIL:  Relation name is necessary.
+DETAIL:  Zero-length delimited string.
 LOG:  pg_hint_plan:
 used hint:
 Set(enable_indexscan off)
@@ -2082,8 +2112,10 @@ DETAIL:  Unrecognized hint keyword ""Set"".
 (1 row)
 
 /*+Set()(enable_indexscan on)*/SELECT 1;
-INFO:  hint syntax error at or near ")(enable_indexscan on)"
-DETAIL:  Parameter name is necessary.
+INFO:  hint syntax error at or near "Set()(enable_indexscan on)"
+DETAIL:  Set hint requires two relations.
+INFO:  hint syntax error at or near "(enable_indexscan on)"
+DETAIL:  Unrecognized hint keyword "".
  ?column? 
 ----------
         1
