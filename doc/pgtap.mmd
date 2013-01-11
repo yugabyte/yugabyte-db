@@ -5554,8 +5554,11 @@ database objects? Let's find out!
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a user to access a table. If the
-`:description` argument is omitted, an appropriate description will be
+Tests the privileges granted to a user to access a table. Consult [the
+documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE)
+for the list of table privileges available in your version of PostgreSQL.
+
+If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
 
     SELECT table_privs_are(
