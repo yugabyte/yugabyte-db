@@ -1029,7 +1029,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			char   *keyword = parser->keyword;
 			Hint   *hint;
 
-			if (strcasecmp(buf.data, keyword) != 0)
+			if (strcmp(buf.data, keyword) != 0)
 				continue;
 
 			hint = parser->create_func(head, keyword);
@@ -1249,26 +1249,26 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 	}
 
 	/* Set a bit for specified hint. */
-	if (strcasecmp(keyword, HINT_SEQSCAN) == 0)
+	if (strcmp(keyword, HINT_SEQSCAN) == 0)
 		hint->enforce_mask = ENABLE_SEQSCAN;
-	else if (strcasecmp(keyword, HINT_INDEXSCAN) == 0)
+	else if (strcmp(keyword, HINT_INDEXSCAN) == 0)
 		hint->enforce_mask = ENABLE_INDEXSCAN;
-	else if (strcasecmp(keyword, HINT_BITMAPSCAN) == 0)
+	else if (strcmp(keyword, HINT_BITMAPSCAN) == 0)
 		hint->enforce_mask = ENABLE_BITMAPSCAN;
-	else if (strcasecmp(keyword, HINT_TIDSCAN) == 0)
+	else if (strcmp(keyword, HINT_TIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_TIDSCAN;
-	else if (strcasecmp(keyword, HINT_NOSEQSCAN) == 0)
+	else if (strcmp(keyword, HINT_NOSEQSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_SEQSCAN;
-	else if (strcasecmp(keyword, HINT_NOINDEXSCAN) == 0)
+	else if (strcmp(keyword, HINT_NOINDEXSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXSCAN;
-	else if (strcasecmp(keyword, HINT_NOBITMAPSCAN) == 0)
+	else if (strcmp(keyword, HINT_NOBITMAPSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_BITMAPSCAN;
-	else if (strcasecmp(keyword, HINT_NOTIDSCAN) == 0)
+	else if (strcmp(keyword, HINT_NOTIDSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
 #if PG_VERSION_NUM >= 90200
-	else if (strcasecmp(keyword, HINT_INDEXONLYSCAN) == 0)
+	else if (strcmp(keyword, HINT_INDEXONLYSCAN) == 0)
 		hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
-	else if (strcasecmp(keyword, HINT_NOINDEXONLYSCAN) == 0)
+	else if (strcmp(keyword, HINT_NOINDEXONLYSCAN) == 0)
 		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
 #endif
 	else
@@ -1324,17 +1324,17 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 	/* Sort hints in alphabetical order of relation names. */
 	qsort(hint->relnames, hint->nrels, sizeof(char *), RelnameCmp);
 
-	if (strcasecmp(keyword, HINT_NESTLOOP) == 0)
+	if (strcmp(keyword, HINT_NESTLOOP) == 0)
 		hint->enforce_mask = ENABLE_NESTLOOP;
-	else if (strcasecmp(keyword, HINT_MERGEJOIN) == 0)
+	else if (strcmp(keyword, HINT_MERGEJOIN) == 0)
 		hint->enforce_mask = ENABLE_MERGEJOIN;
-	else if (strcasecmp(keyword, HINT_HASHJOIN) == 0)
+	else if (strcmp(keyword, HINT_HASHJOIN) == 0)
 		hint->enforce_mask = ENABLE_HASHJOIN;
-	else if (strcasecmp(keyword, HINT_NONESTLOOP) == 0)
+	else if (strcmp(keyword, HINT_NONESTLOOP) == 0)
 		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
-	else if (strcasecmp(keyword, HINT_NOMERGEJOIN) == 0)
+	else if (strcmp(keyword, HINT_NOMERGEJOIN) == 0)
 		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
-	else if (strcasecmp(keyword, HINT_NOHASHJOIN) == 0)
+	else if (strcmp(keyword, HINT_NOHASHJOIN) == 0)
 		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
 	else
 	{
