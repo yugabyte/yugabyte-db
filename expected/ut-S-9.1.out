@@ -2834,7 +2834,7 @@ EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), 
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near ""
-DETAIL:  SeqScan hint requires only one relation.
+DETAIL:  SeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4928,7 +4928,7 @@ error hint:
 /*+SeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  SeqScan hint requires only one relation.
+DETAIL:  SeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4947,7 +4947,7 @@ SeqScan(ti1 ti1_pkey)
 /*+SeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  SeqScan hint requires only one relation.
+DETAIL:  SeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5091,7 +5091,7 @@ error hint:
 /*+TidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  TidScan hint requires only one relation.
+DETAIL:  TidScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5110,7 +5110,7 @@ TidScan(ti1 ti1_pkey)
 /*+TidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  TidScan hint requires only one relation.
+DETAIL:  TidScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5146,7 +5146,7 @@ error hint:
 /*+NoSeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoSeqScan hint requires only one relation.
+DETAIL:  NoSeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5165,7 +5165,7 @@ NoSeqScan(ti1 ti1_pkey)
 /*+NoSeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoSeqScan hint requires only one relation.
+DETAIL:  NoSeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5201,7 +5201,7 @@ error hint:
 /*+NoIndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoIndexScan hint requires only one relation.
+DETAIL:  NoIndexScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5220,7 +5220,7 @@ NoIndexScan(ti1 ti1_pkey)
 /*+NoIndexScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoIndexScan hint requires only one relation.
+DETAIL:  NoIndexScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5256,7 +5256,7 @@ error hint:
 /*+NoBitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoBitmapScan hint requires only one relation.
+DETAIL:  NoBitmapScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5275,7 +5275,7 @@ NoBitmapScan(ti1 ti1_pkey)
 /*+NoBitmapScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoBitmapScan hint requires only one relation.
+DETAIL:  NoBitmapScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5311,7 +5311,7 @@ error hint:
 /*+NoTidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoTidScan hint requires only one relation.
+DETAIL:  NoTidScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -5330,7 +5330,7 @@ NoTidScan(ti1 ti1_pkey)
 /*+NoTidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near ""
-DETAIL:  NoTidScan hint requires only one relation.
+DETAIL:  NoTidScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:

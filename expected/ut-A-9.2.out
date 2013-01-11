@@ -1359,7 +1359,7 @@ error hint:
 /*+Set(enable_indexscan off)Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 INFO:  hint syntax error at or near "Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Set hint requires two relations.
+DETAIL:  Set hint requires name and value of GUC parameter.
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
@@ -2113,7 +2113,7 @@ DETAIL:  Unrecognized hint keyword ""Set"".
 
 /*+Set()(enable_indexscan on)*/SELECT 1;
 INFO:  hint syntax error at or near "Set()(enable_indexscan on)"
-DETAIL:  Set hint requires two relations.
+DETAIL:  Set hint requires name and value of GUC parameter.
 INFO:  hint syntax error at or near "(enable_indexscan on)"
 DETAIL:  Unrecognized hint keyword "".
  ?column? 
