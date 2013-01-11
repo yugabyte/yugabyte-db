@@ -983,7 +983,7 @@ parse_parentheses(const char *str, List **name_list, HintType type)
 
 	skip_space(str);
 
-	/* Store words in a parenthesis in a list. */
+	/* Store words in parentheses into name_list. */
 	while(*str != ')' && *str != '\0')
 	{
 		if ((str = parse_quote_value(str, &name, truncate)) == NULL)
@@ -1155,7 +1155,7 @@ parse_head_comment(Query *parse)
 	qsort(hstate->all_hints, hstate->nall_hints, sizeof(Hint *),
 		  HintCmpWithPos);
 
-	/* Count up hints per hint-type. */
+	/* Count number of hints per hint-type. */
 	for (i = 0; i < hstate->nall_hints; i++)
 	{
 		Hint   *cur_hint = hstate->all_hints[i];
@@ -1163,16 +1163,19 @@ parse_head_comment(Query *parse)
 	}
 
 	/*
-	 * If we have hints which are specified for an object, mark preceding one
-	 * as 'duplicated' to ignore it in planner phase.
-	 * We need to pass address of hint pointers, because HintCmp has
-	 * been designed to be used with qsort.
+	 * If an object (or a set of objects) has multiple hints of same hint-type,
+	 * only the last hint is valid and others are igonred in planning.
+	 * Hints except the last are marked as 'duplicated' to remember the order.
 	 */
 	for (i = 0; i < hstate->nall_hints - 1; i++)
 	{
 		Hint   *cur_hint = hstate->all_hints[i];
 		Hint   *next_hint = hstate->all_hints[i + 1];
 
+		/*
+		 * Note that we need to pass addresses of hint pointers, because
+		 * HintCmp is designed to sort array of Hint* by qsort.
+		 */
 		if (HintCmp(&cur_hint, &next_hint) == 0)
 		{
 			hint_ereport(cur_hint->hint_str,
@@ -1221,7 +1224,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		hint->relname = linitial(name_list);
 		hint->indexnames = list_delete_first(name_list);
 
-		/* check the kerword to need the only relation. */
+		/* check whether the hint accepts index name(s). */
 		if (strcmp(keyword, HINT_INDEXSCAN) != 0 &&
 #if PG_VERSION_NUM >= 90200
 			strcmp(keyword, HINT_INDEXONLYSCAN) != 0 &&
@@ -1230,7 +1233,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 			length != 1)
 		{
 			hint_ereport(str,
-						  ("%s hint requires only one relation.",
+						  ("%s hint accepts only one relation.",
 						   hint->base.keyword));
 			hint->base.state = HINT_STATE_ERROR;
 			return str;
@@ -1294,7 +1297,10 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 		ListCell   *l;
 		int			i = 0;
 
-		/* save the data on the list in array of join hint struct. */
+		/*
+		 * Transform relation names from list to array to sort them with qsort
+		 * after.
+		 */
 		hint->relnames = palloc(sizeof(char *) * hint->nrels);
 		foreach (l, name_list)
 		{
@@ -1305,7 +1311,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 
 	list_free(name_list);
 
-	/* A join hint requires at least two relations to be specified. */
+	/* A join hint requires at least two relations */
 	if (hint->nrels < 2)
 	{
 		hint_ereport(str,
@@ -1350,7 +1356,7 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 
 	hint->relations = name_list;
 
-	/* A Leading hint requires at least two relations to be specified. */
+	/* A Leading hint requires at least two relations */
 	if (list_length(hint->relations) < 2)
 	{
 		hint_ereport(hint->base.hint_str,
@@ -1372,7 +1378,7 @@ SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 
 	hint->words = name_list;
 
-	/* need only parameter's name and parameter's value to set GUC parameter. */
+	/* We need both name and value to set GUC parameter. */
 	if (list_length(name_list) == 2)
 	{
 		hint->name = linitial(name_list);
@@ -1381,7 +1387,7 @@ SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 	else
 	{
 		hint_ereport(hint->base.hint_str,
-					  ("%s hint requires two relations.",
+					  ("%s hint requires name and value of GUC parameter.",
 					   HINT_SET));
 		hint->base.state = HINT_STATE_ERROR;
 	}
