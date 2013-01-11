@@ -1,5 +1,6 @@
 /*
  * Function to manage pre-creation of the next partitions in a time-based partition set
+ * Also manages dropping old partitions if the retention option is set
  */
 CREATE FUNCTION run_maintenance() RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
@@ -7,9 +8,10 @@ CREATE FUNCTION run_maintenance() RETURNS void
 DECLARE
 
 v_adv_lock                      boolean;
-v_count                         int := 0;
+v_create_count                  int := 0;
 v_current_partition_timestamp   timestamp;
 v_datetime_string               text;
+v_drop_count                    int := 0;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_last_partition_timestamp      timestamp;
@@ -93,21 +95,31 @@ LOOP
     v_premade_count = EXTRACT('epoch' FROM (v_last_partition_timestamp - v_current_partition_timestamp)::interval) / EXTRACT('epoch' FROM v_row.part_interval::interval);
 
     IF v_premade_count < v_row.premake THEN
-        RAISE NOTICE 'Creating next partition';
         EXECUTE 'SELECT @extschema@.create_next_time_partition('||quote_literal(v_row.parent_table)||')';
-
+        v_create_count := v_create_count + 1;
         IF v_row.type = 'time-static' THEN
             EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
         END IF;
     END IF;
 
-    v_count := v_count + 1;
+END LOOP; -- end of creation loop
 
-END LOOP; -- end of main loop
+-- Manage dropping old partitions if retention option is set
+FOR v_row IN 
+    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND (type = 'time-static' OR type = 'time-dynamic')
+LOOP
+    v_drop_count := v_drop_count + @extschema@.drop_time_partition(v_row.parent_table);   
+END LOOP; 
+FOR v_row IN 
+    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND (type = 'id-static' OR type = 'id-dynamic')
+LOOP
+    v_drop_count := v_drop_count + @extschema@.drop_id_partition(v_row.parent_table);
+END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_count||' partitons made');
+    PERFORM update_step(v_step_id, 'OK', 'Partition maintenance finished. '||v_create_count||' partitons made. '||v_drop_count||' partitions dropped.');
     PERFORM close_job(v_job_id);
+    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
 PERFORM pg_advisory_unlock(hashtext('pg_partman run_maintenance'));

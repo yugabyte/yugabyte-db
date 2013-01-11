@@ -1,6 +1,11 @@
+PG Partition Manager
+====================
+
+pg_partman is an extension to create and manage both time-based and serial-based table partition sets. Child table & trigger function creation is all managed by the extension itself. Tables with existing data can also have their data partitioned in easily managed smaller batches. Optional retention policy can automatically drop partitions no longer needed.
+
 INSTALLATION
------------
-Recommended: pg_jobmon (>0.3.0). PG Job Monitor will automatically be used if it is installed.
+------------
+Recommended: pg_jobmon (>=1.0.0). PG Job Monitor will automatically be used if it is installed.
 
 In directory where you downloaded mimeo to run
 
@@ -40,7 +45,7 @@ LICENSE AND COPYRIGHT
 
 PG Partition Manager (pg_partman) is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
 
-Copyright (c) 2012 OmniTI, Inc.
+Copyright (c) 2013 OmniTI, Inc.
 
 Permission to use, copy, modify, and distribute this software and its documentation for any purpose, without fee, and without a written agreement is hereby granted, provided that the above copyright notice and this paragraph and the following two paragraphs appear in all copies.
 

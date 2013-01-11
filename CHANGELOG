@@ -1,3 +1,10 @@
+0.2.0
+-- New functions to manage dropping old partitions. Does not actually need to be called directly unless necessary. Use run_maintenance() function.
+-- Added ability to run_maintenance() function to manage dropping old tables in addition to managing time-based partitioning.
+-- Removed raise notice in run_maintenance and make sure old search path is reset after function finishes running.
+-- Lot of documentation updates
+
+
 0.1.2
 -- Added support for quarterly time partitioning (trickier than it first appeared)
 -- Fixed bug in run_maintenance() that would give an invalid cast to integer error.

@@ -4,7 +4,9 @@ CREATE TABLE part_config (
     part_interval text NOT NULL,
     control text NOT NULL,
     premake int NOT NULL DEFAULT 4,
-    retention int,
+    retention text,
+    retention_keep_table boolean NOT NULL DEFAULT true,
+    retention_keep_index boolean NOT NULL DEFAULT true,
     datetime_string text,
     last_partition text,
     CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table)
