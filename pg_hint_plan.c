@@ -1167,27 +1167,24 @@ parse_head_comment(Query *parse)
 	qsort(hstate->all_hints, hstate->nall_hints, sizeof(Hint *),
 		  HintCmpWithPos);
 
-	/*
-	 * If we have hints which are specified for an object, mark preceding one
-	 * as 'duplicated' to ignore it in planner phase.
-	 */
+	/* Count up hints per hint-type. */
 	for (i = 0; i < hstate->nall_hints; i++)
 	{
 		Hint   *cur_hint = hstate->all_hints[i];
-		Hint   *next_hint;
-
-		/* Count up hints per hint-type. */
 		hstate->num_hints[cur_hint->type]++;
+	}
 
-		/* If we don't have next, nothing to compare. */
-		if (i + 1 >= hstate->nall_hints)
-			break;
-		next_hint = hstate->all_hints[i + 1];
+	/*
+	 * If we have hints which are specified for an object, mark preceding one
+	 * as 'duplicated' to ignore it in planner phase.
+	 * We need to pass address of hint pointers, because HintCmp has
+	 * been designed to be used with qsort.
+	 */
+	for (i = 0; i < hstate->nall_hints - 1; i++)
+	{
+		Hint   *cur_hint = hstate->all_hints[i];
+		Hint   *next_hint = hstate->all_hints[i + 1];
 
-		/*
-		 * We need to pass address of hint pointers, because HintCmp has
-		 * been designed to be used with qsort.
-		 */
 		if (HintCmp(&cur_hint, &next_hint) == 0)
 		{
 			parse_ereport(cur_hint->hint_str,
