@@ -159,7 +159,7 @@ struct Hint
 	HintDeleteFunction	delete_func;
 	HintDumpFunction	dump_func;
 	HintCmpFunction		cmp_func;
-	HintParseFunction	parser_func;
+	HintParseFunction	parse_func;
 };
 
 /* scan method hints */
@@ -462,7 +462,7 @@ ScanMethodHintCreate(const char *hint_str, const char *keyword)
 	hint->base.delete_func = (HintDeleteFunction) ScanMethodHintDelete;
 	hint->base.dump_func = (HintDumpFunction) ScanMethodHintDump;
 	hint->base.cmp_func = (HintCmpFunction) ScanMethodHintCmp;
-	hint->base.parser_func = (HintParseFunction) ScanMethodHintParse;
+	hint->base.parse_func = (HintParseFunction) ScanMethodHintParse;
 	hint->relname = NULL;
 	hint->indexnames = NIL;
 	hint->enforce_mask = 0;
@@ -495,7 +495,7 @@ JoinMethodHintCreate(const char *hint_str, const char *keyword)
 	hint->base.delete_func = (HintDeleteFunction) JoinMethodHintDelete;
 	hint->base.dump_func = (HintDumpFunction) JoinMethodHintDump;
 	hint->base.cmp_func = (HintCmpFunction) JoinMethodHintCmp;
-	hint->base.parser_func = (HintParseFunction) JoinMethodHintParse;
+	hint->base.parse_func = (HintParseFunction) JoinMethodHintParse;
 	hint->nrels = 0;
 	hint->relnames = NULL;
 	hint->enforce_mask = 0;
@@ -535,7 +535,7 @@ LeadingHintCreate(const char *hint_str, const char *keyword)
 	hint->base.delete_func = (HintDeleteFunction)LeadingHintDelete;
 	hint->base.dump_func = (HintDumpFunction) LeadingHintDump;
 	hint->base.cmp_func = (HintCmpFunction) LeadingHintCmp;
-	hint->base.parser_func = (HintParseFunction) LeadingHintParse;
+	hint->base.parse_func = (HintParseFunction) LeadingHintParse;
 	hint->relations = NIL;
 
 	return (Hint *) hint;
@@ -564,7 +564,7 @@ SetHintCreate(const char *hint_str, const char *keyword)
 	hint->base.delete_func = (HintDeleteFunction) SetHintDelete;
 	hint->base.dump_func = (HintDumpFunction) SetHintDump;
 	hint->base.cmp_func = (HintCmpFunction) SetHintCmp;
-	hint->base.parser_func = (HintParseFunction) SetHintParse;
+	hint->base.parse_func = (HintParseFunction) SetHintParse;
 	hint->name = NULL;
 	hint->value = NULL;
 	hint->words = NIL;
@@ -1047,7 +1047,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			hint = parser->create_func(head, keyword);
 
 			/* parser of each hint does parse in a parenthesis. */
-			if ((str = hint->parser_func(hint, hstate, parse, str)) == NULL)
+			if ((str = hint->parse_func(hint, hstate, parse, str)) == NULL)
 			{
 				hint->delete_func(hint);
 				pfree(buf.data);
