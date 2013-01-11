@@ -875,29 +875,17 @@ parse_keyword(const char *str, StringInfo buf)
 }
 
 static const char *
-skip_opened_parenthesis(const char *str)
+skip_parenthesis(const char *str, char parenthesis)
 {
 	skip_space(str);
 
-	if (*str != '(')
+	if (*str != parenthesis)
 	{
-		hint_ereport(str, ("Opening parenthesis is necessary."));
-		return NULL;
-	}
-
-	str++;
-
-	return str;
-}
-
-static const char *
-skip_closed_parenthesis(const char *str)
-{
-	skip_space(str);
-
-	if (*str != ')')
-	{
-		hint_ereport(str, ("Closing parenthesis is necessary."));
+		if (parenthesis == '(')
+			hint_ereport(str, ("Opening parenthesis is necessary."));
+		else if (parenthesis == ')')
+			hint_ereport(str, ("Closing parenthesis is necessary."));
+			
 		return NULL;
 	}
 
@@ -990,7 +978,7 @@ parse_parentheses(const char *str, List **name_list, HintType type)
 	char   *name;
 	bool	truncate = true;
 
-	if ((str = skip_opened_parenthesis(str)) == NULL)
+	if ((str = skip_parenthesis(str, '(')) == NULL)
 		return NULL;
 
 	skip_space(str);
@@ -1013,7 +1001,7 @@ parse_parentheses(const char *str, List **name_list, HintType type)
 		}
 	}
 
-	if ((str = skip_closed_parenthesis(str)) == NULL)
+	if ((str = skip_parenthesis(str, ')')) == NULL)
 		return NULL;
 	return str;
 }
