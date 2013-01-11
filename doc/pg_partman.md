@@ -65,7 +65,7 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 *check_parent() RETURNS SETOF (parent table, count)*
- * Run this function to monitor that the parent tables of the partition sets that pg_partmon manages do not get rows inserted to them.
+ * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
  * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
 
 *drop_time_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
@@ -101,8 +101,8 @@ Tables
                               Default is TRUE to keep the table and only uninherit it. Set to FALSE to have the child tables removed from the database completely.
     retention_keep_index    - Boolean value to determine whether indexes are dropped for child tables that are uninherited. 
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
-    datetime_string text    - For time-based partitioning, this is the datetime format string used when naming child partitions. 
+    datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
                               **DO NOT CHANGE THIS VALUE** or you will break automated partition management.
-    last_partition text     - The last successfully created partition.
+    last_partition          - The last successfully created partition.
                               **DO NOT CHANGE THIS VALUE** or you will break automated partition management.
 
