@@ -5523,6 +5523,78 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+Prvileged Access
+----------------
+
+So we know who owns the objects. But what about other roles? Can they access
+database objects? Let's find out!
+
+### `table_privs_are()`
+
+
+    SELECT table_privs_are ( :schema, :table, :user, :privileges, :description );
+    SELECT table_privs_are ( :schema, :table, :user, :privileges );
+    SELECT table_privs_are ( :table, :user, :privileges, :description );
+    SELECT table_privs_are ( :table, :user, :privileges );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:user`
+: Name of a user.
+
+`:privileges`
+: An array of table privileges the user should be granted to the table.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a user to access a table. If the
+`:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT table_privs_are(
+        'public', 'frobulate', 'fred', ARRAY['SELECT', 'DELETE'],
+        'Fred should be able to select and delete on frobulate'
+    );
+    SELECT table_privs_are( 'widgets', 'slim', ARRAY['INSERT', 'UPDATE'] );
+
+If the user is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted SELECT on widgets"
+    #     Extra privileges:
+    #           DELETE
+    #           INSERT
+    #           UPDATE
+
+Likewise if the user is not granted some of the specified permissions on the
+table:
+
+    # Failed test 15: "Role kurk should be granted SELECT, INSERT, UPDATE on widgets"
+    #     Missing privileges:
+    #           INSERT
+    #           UPDATE
+
+In the event that the test fails because the table in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted SELECT on widgets"
+    #     Table widgets does not exist
+
+If the test fails because the userd does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted SELECT on widgets"
+    #     Role slip does not exist
+
+
 No Test for the Wicked
 ======================
 

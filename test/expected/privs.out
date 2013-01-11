@@ -1,0 +1,31 @@
+\unset ECHO
+ok 1 - table_privs_are(sch, tab, role, privs, desc) should pass
+ok 2 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 3 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 4 - table_privs_are(sch, tab, role, privs) should pass
+ok 5 - table_privs_are(sch, tab, role, privs) should have the proper description
+ok 6 - table_privs_are(sch, tab, role, privs) should have the proper diagnostics
+ok 7 - table_privs_are(tab, role, privs, desc) should pass
+ok 8 - table_privs_are(tab, role, privs, desc) should have the proper description
+ok 9 - table_privs_are(tab, role, privs, desc) should have the proper diagnostics
+ok 10 - table_privs_are(tab, role, privs) should pass
+ok 11 - table_privs_are(tab, role, privs) should have the proper description
+ok 12 - table_privs_are(tab, role, privs) should have the proper diagnostics
+ok 13 - table_privs_are(sch, tab, role, some privs, desc) should fail
+ok 14 - table_privs_are(sch, tab, role, some privs, desc) should have the proper description
+ok 15 - table_privs_are(sch, tab, role, some privs, desc) should have the proper diagnostics
+ok 16 - table_privs_are(tab, role, some privs, desc) should fail
+ok 17 - table_privs_are(tab, role, some privs, desc) should have the proper description
+ok 18 - table_privs_are(tab, role, some privs, desc) should have the proper diagnostics
+ok 19 - table_privs_are(sch, tab, other, privs, desc) should fail
+ok 20 - table_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 21 - table_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 22 - table_privs_are(sch, tab, other, privs, desc) should pass
+ok 23 - table_privs_are(sch, tab, other, privs, desc) should have the proper description
+ok 24 - table_privs_are(sch, tab, other, privs, desc) should have the proper diagnostics
+ok 25 - table_privs_are(sch, tab, role, privs, desc) should fail
+ok 26 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 27 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 28 - table_privs_are(sch, tab, role, privs, desc) should fail
+ok 29 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
+ok 30 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics

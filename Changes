@@ -31,6 +31,7 @@ Revision history for pgTAP
 * Added `isnt_empty()` to ensure that a query does not return the empty set.
 * Fixed `has_index()` to properly handle indexes composed of both columns and
   expressions.
+* Added `table_privs_are()` for testing a user's access to a table.
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------
