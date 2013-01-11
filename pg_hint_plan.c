@@ -69,7 +69,7 @@ PG_MODULE_MAGIC;
 
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
-#define parse_ereport(str, detail) \
+#define hint_ereport(str, detail) \
 	ereport(pg_hint_plan_parse_messages, \
 			(errmsg("hint syntax error at or near \"%s\"", (str)), \
 			 errdetail detail))
@@ -881,7 +881,7 @@ skip_opened_parenthesis(const char *str)
 
 	if (*str != '(')
 	{
-		parse_ereport(str, ("Opening parenthesis is necessary."));
+		hint_ereport(str, ("Opening parenthesis is necessary."));
 		return NULL;
 	}
 
@@ -897,7 +897,7 @@ skip_closed_parenthesis(const char *str)
 
 	if (*str != ')')
 	{
-		parse_ereport(str, ("Closing parenthesis is necessary."));
+		hint_ereport(str, ("Closing parenthesis is necessary."));
 		return NULL;
 	}
 
@@ -939,7 +939,7 @@ parse_quote_value(const char *str, char **word, bool truncate)
 			if (*str == '\0')
 			{
 				pfree(buf.data);
-				parse_ereport(str, ("Unterminated quoted string."));
+				hint_ereport(str, ("Unterminated quoted string."));
 				return NULL;
 			}
 
@@ -968,7 +968,7 @@ parse_quote_value(const char *str, char **word, bool truncate)
 
 	if (buf.len == 0)
 	{
-		parse_ereport(str, ("Zero-length delimited string."));
+		hint_ereport(str, ("Zero-length delimited string."));
 
 		pfree(buf.data);
 
@@ -1082,7 +1082,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 
 		if (parser->keyword == NULL)
 		{
-			parse_ereport(head,
+			hint_ereport(head,
 						  ("Unrecognized hint keyword \"%s\".", buf.data));
 			pfree(buf.data);
 			return;
@@ -1132,14 +1132,14 @@ parse_head_comment(Query *parse)
 	/* find hint end keyword. */
 	if ((tail = strstr(p, HINT_END)) == NULL)
 	{
-		parse_ereport(head, ("Unterminated block comment."));
+		hint_ereport(head, ("Unterminated block comment."));
 		return NULL;
 	}
 
 	/* We don't support nested block comments. */
 	if ((head = strstr(p, BLOCK_COMMENT_START)) != NULL && head < tail)
 	{
-		parse_ereport(head, ("Nested block comments are not supported."));
+		hint_ereport(head, ("Nested block comments are not supported."));
 		return NULL;
 	}
 
@@ -1187,7 +1187,7 @@ parse_head_comment(Query *parse)
 
 		if (HintCmp(&cur_hint, &next_hint) == 0)
 		{
-			parse_ereport(cur_hint->hint_str,
+			hint_ereport(cur_hint->hint_str,
 						  ("Conflict %s hint.", HintTypeName[cur_hint->type]));
 			cur_hint->state = HINT_STATE_DUPLICATION;
 		}
@@ -1241,7 +1241,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 			strcmp(keyword, HINT_BITMAPSCAN) != 0 &&
 			length != 1)
 		{
-			parse_ereport(str,
+			hint_ereport(str,
 						  ("%s hint requires only one relation.",
 						   hint->base.keyword));
 			hint->base.state = HINT_STATE_ERROR;
@@ -1250,7 +1250,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 	}
 	else
 	{
-		parse_ereport(str,
+		hint_ereport(str,
 					  ("%s hint requires a relation.",
 					   hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
@@ -1282,7 +1282,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 #endif
 	else
 	{
-		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
+		hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
 		return NULL;
 	}
 
@@ -1320,7 +1320,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 	/* A join hint requires at least two relations to be specified. */
 	if (hint->nrels < 2)
 	{
-		parse_ereport(str,
+		hint_ereport(str,
 					  ("%s hint requires at least two relations.",
 					   hint->base.keyword));
 		hint->base.state = HINT_STATE_ERROR;
@@ -1344,7 +1344,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
 	else
 	{
-		parse_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
+		hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
 		return NULL;
 	}
 
@@ -1365,7 +1365,7 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 	/* A Leading hint requires at least two relations to be specified. */
 	if (list_length(hint->relations) < 2)
 	{
-		parse_ereport(hint->base.hint_str,
+		hint_ereport(hint->base.hint_str,
 					  ("%s hint requires at least two relations.",
 					   HINT_LEADING));
 		hint->base.state = HINT_STATE_ERROR;
@@ -1392,7 +1392,7 @@ SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 	}
 	else
 	{
-		parse_ereport(hint->base.hint_str,
+		hint_ereport(hint->base.hint_str,
 					  ("%s hint requires two relations.",
 					   HINT_SET));
 		hint->base.state = HINT_STATE_ERROR;
@@ -1967,7 +1967,7 @@ find_relid_aliasname(PlannerInfo *root, char *aliasname, List *initial_rels,
 
 			if (found != 0)
 			{
-				parse_ereport(str,
+				hint_ereport(str,
 							  ("Relation name \"%s\" is ambiguous.",
 							   aliasname));
 				return -1;
@@ -2053,7 +2053,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 			if (bms_is_member(relid, hint->joinrelids))
 			{
-				parse_ereport(hint->base.hint_str,
+				hint_ereport(hint->base.hint_str,
 							  ("Relation name \"%s\" is duplicated.", relname));
 				hint->base.state = HINT_STATE_ERROR;
 				break;
@@ -2114,7 +2114,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		/* Found relid must not be in joinrelids. */
 		if (bms_is_member(relid, joinrelids))
 		{
-			parse_ereport(lhint->base.hint_str,
+			hint_ereport(lhint->base.hint_str,
 						  ("Relation name \"%s\" is duplicated.", relname));
 			lhint->base.state = HINT_STATE_ERROR;
 			bms_free(joinrelids);
