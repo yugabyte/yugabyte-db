@@ -1,4 +1,5 @@
 \unset ECHO
+1..48
 ok 1 - table_privs_are(sch, tab, role, privs, desc) should pass
 ok 2 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
 ok 3 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
@@ -29,3 +30,21 @@ ok 27 - table_privs_are(sch, tab, role, privs, desc) should have the proper diag
 ok 28 - table_privs_are(sch, tab, role, privs, desc) should fail
 ok 29 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
 ok 30 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
+ok 31 - db_privs_are(db, role, privs, desc) should pass
+ok 32 - db_privs_are(db, role, privs, desc) should have the proper description
+ok 33 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 34 - db_privs_are(db, role, privs, desc) should pass
+ok 35 - db_privs_are(db, role, privs, desc) should have the proper description
+ok 36 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 37 - db_privs_are(non-db, role, privs, desc) should fail
+ok 38 - db_privs_are(non-db, role, privs, desc) should have the proper description
+ok 39 - db_privs_are(non-db, role, privs, desc) should have the proper diagnostics
+ok 40 - db_privs_are(db, non-role, privs, desc) should fail
+ok 41 - db_privs_are(db, non-role, privs, desc) should have the proper description
+ok 42 - db_privs_are(db, non-role, privs, desc) should have the proper diagnostics
+ok 43 - db_privs_are(db, ungranted, privs, desc) should fail
+ok 44 - db_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 45 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 46 - db_privs_are(db, ungranted, privs, desc) should fail
+ok 47 - db_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 48 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics

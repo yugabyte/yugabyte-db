@@ -870,7 +870,6 @@ BEGIN
 END;
 $$ language plpgsql;
 
-
 CREATE OR REPLACE FUNCTION _get_table_privs(NAME, TEXT)
 RETURNS TEXT[] AS $$
 DECLARE
@@ -976,5 +975,72 @@ RETURNS TEXT AS $$
         $1, $2, $3,
         'Role ' || quote_ident($2) || ' should be granted '
             || array_to_string($3, ', ') || ' on table ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _db_privs()
+RETURNS NAME[] AS $$
+DECLARE
+    pgversion INTEGER := pg_version_num();
+BEGIN
+    IF pgversion < 80200 THEN
+        RETURN ARRAY['CREATE', 'TEMPORARY'];
+    ELSE
+        RETURN ARRAY['CREATE', 'CONNECT', 'TEMPORARY'];
+    END IF;
+END;
+$$ language plpgsql;
+
+CREATE OR REPLACE FUNCTION _get_db_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := _db_privs();
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        BEGIN
+            IF pg_catalog.has_database_privilege($1, $2, privs[i]) THEN
+                grants := grants || privs[i];
+            END IF;
+        EXCEPTION WHEN invalid_catalog_name THEN
+            -- Not a valid db name.
+            RETURN '{invalid_catalog_name}';
+        WHEN undefined_object THEN
+            -- Not a valid role.
+            RETURN '{undefined_object}';
+        WHEN invalid_parameter_value THEN
+            -- Not a valid permission on this version of PostgreSQL; ignore;
+        END;
+    END LOOP;
+    RETURN grants;
+END;
+$$ LANGUAGE plpgsql;
+
+-- db_privs_are ( db, user, privileges[], description )
+CREATE OR REPLACE FUNCTION db_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_db_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'invalid_catalog_name' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Database ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_object' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- db_privs_are ( db, user, privileges[] )
+CREATE OR REPLACE FUNCTION db_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT db_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || array_to_string($3, ', ') || ' on database ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;

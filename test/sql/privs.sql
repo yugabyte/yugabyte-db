@@ -1,8 +1,8 @@
 \unset ECHO
 \i test/setup.sql
 
---SELECT plan(24);
-SELECT * FROM no_plan();
+SELECT plan(48);
+--SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
@@ -128,6 +128,68 @@ SELECT * FROM check_test(
     'table_privs_are(sch, tab, role, privs, desc)',
     'whatever',
     '    Role __nonesuch does not exist'
+);
+
+/****************************************************************************/
+-- Test db_privilege_is().
+
+SELECT * FROM check_test(
+    db_privs_are( current_database(), current_user, _db_privs(), 'whatever' ),
+    true,
+    'db_privs_are(db, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    db_privs_are( current_database(), current_user, _db_privs() ),
+    true,
+    'db_privs_are(db, role, privs, desc)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(_db_privs(), ', ') || ' on database ' || current_database(),
+    ''
+);
+
+-- Try nonexistent database.
+SELECT * FROM check_test(
+    db_privs_are( '__nonesuch', current_user, _db_privs(), 'whatever' ),
+    false,
+    'db_privs_are(non-db, role, privs, desc)',
+    'whatever',
+    '    Database __nonesuch does not exist'
+);
+
+-- Try nonexistent user.
+SELECT * FROM check_test(
+    db_privs_are( current_database(), '__noone', _db_privs(), 'whatever' ),
+    false,
+    'db_privs_are(db, non-role, privs, desc)',
+    'whatever',
+    '    Role __noone does not exist'
+);
+
+-- Try another user.
+SELECT * FROM check_test(
+    db_privs_are( current_database(), '__someone_else', _db_privs(), 'whatever' ),
+    false,
+    'db_privs_are(db, ungranted, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        CREATE'
+);
+
+-- Try a subset of privs.
+SELECT * FROM check_test(
+    db_privs_are(
+        current_database(), current_user,
+        CASE WHEN pg_version_num() < 80200 THEN ARRAY['CREATE'] ELSE ARRAY['CREATE', 'CONNECT'] END,
+        'whatever'
+    ),
+    false,
+    'db_privs_are(db, ungranted, privs, desc)',
+    'whatever',
+    '    Extra privileges:
+        TEMPORARY'
 );
 
 /****************************************************************************/

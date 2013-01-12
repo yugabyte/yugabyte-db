@@ -5529,13 +5529,72 @@ Prvileged Access
 So we know who owns the objects. But what about other roles? Can they access
 database objects? Let's find out!
 
+### `db_privs_are()`
+
+    SELECT db_privs_are ( :db, :role, :privileges, :description );
+    SELECT db_privs_are ( :db, :role, :privileges );
+
+**Parameters**
+
+`:db`
+: Name of a database.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of table privileges the role should be granted to the database.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a database. Consult [the
+documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-DATABASE)
+for the list of database privileges available in your version of PostgreSQL.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT db_privs_are(
+        'flipr', 'fred', ARRAY['CONNECT', 'TEMPORARY'],
+        'Fred should be granted CONNECT and TERMPORARY on db "flipr"'
+    );
+    SELECT db_privs_are( 'dept_corrections', ARRAY['CREATE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted CREATE on banks"
+    #     Extra privileges:
+    #           CONNECT
+    #           TEMPORARY
+
+Likewise if the role is not granted some of the specified permissions on the
+database:
+
+    # Failed test 15: "Role kurk should be granted CONNECT, TEMPORARY on banks"
+    #     Missing privileges:
+    #           CREATE
+
+In the event that the test fails because the database in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted CONNECT on maindb"
+    #     Database maindb does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted CONNECT, CREATE on widgets"
+    #     Role slim does not exist
+
 ### `table_privs_are()`
 
-
-    SELECT table_privs_are ( :schema, :table, :user, :privileges, :description );
-    SELECT table_privs_are ( :schema, :table, :user, :privileges );
-    SELECT table_privs_are ( :table, :user, :privileges, :description );
-    SELECT table_privs_are ( :table, :user, :privileges );
+    SELECT table_privs_are ( :schema, :table, :role, :privileges, :description );
+    SELECT table_privs_are ( :schema, :table, :role, :privileges );
+    SELECT table_privs_are ( :table, :role, :privileges, :description );
+    SELECT table_privs_are ( :table, :role, :privileges );
 
 **Parameters**
 
@@ -5545,16 +5604,16 @@ database objects? Let's find out!
 `:table`
 : Name of a table.
 
-`:user`
-: Name of a user.
+`:role`
+: Name of a user or group role.
 
 `:privileges`
-: An array of table privileges the user should be granted to the table.
+: An array of table privileges the role should be granted to the table.
 
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a user to access a table. Consult [the
+Tests the privileges granted to a role to access a table. Consult [the
 documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE)
 for the list of table privileges available in your version of PostgreSQL.
 
@@ -5567,7 +5626,7 @@ created. Examples:
     );
     SELECT table_privs_are( 'widgets', 'slim', ARRAY['INSERT', 'UPDATE'] );
 
-If the user is granted permissions other than those specified, the diagnostics
+If the role is granted permissions other than those specified, the diagnostics
 will list the extra permissions, like so:
 
     # Failed test 14: "Role bob should be granted SELECT on widgets"
@@ -5576,7 +5635,7 @@ will list the extra permissions, like so:
     #           INSERT
     #           UPDATE
 
-Likewise if the user is not granted some of the specified permissions on the
+Likewise if the role is not granted some of the specified permissions on the
 table:
 
     # Failed test 15: "Role kurk should be granted SELECT, INSERT, UPDATE on widgets"
@@ -5591,12 +5650,11 @@ as:
     # Failed test 16: "Role slim should be granted SELECT on widgets"
     #     Table widgets does not exist
 
-If the test fails because the userd does not exist, the diagnostics will look
+If the test fails because the role does not exist, the diagnostics will look
 something like:
 
     # Failed test 17: "Role slim should be granted SELECT on widgets"
-    #     Role slip does not exist
-
+    #     Role slim does not exist
 
 No Test for the Wicked
 ======================
