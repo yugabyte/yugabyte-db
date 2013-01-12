@@ -5656,6 +5656,73 @@ something like:
     # Failed test 17: "Role slim should be granted SELECT on widgets"
     #     Role slim does not exist
 
+### `function_privs_are()`
+
+    SELECT function_privs_are ( :schema, :function, :args, :role, :privileges, :description );
+    SELECT function_privs_are ( :schema, :function, :args, :role, :privileges );
+    SELECT function_privs_are ( :function, :args, :role, :privileges, :description );
+    SELECT function_privs_are ( :function, :args, :role, :privileges );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the function.
+
+`:function`
+: Name of a function.
+
+`:args`
+: Array of function arguments.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of function privileges the role should be granted to the function.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a function. Consult [the
+documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-FUNCTION)
+for the list of function privileges available in your version of PostgreSQL.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT function_privs_are(
+        'public', 'frobulate', ARRAY['integer'], 'fred', ARRAY['EXECUTE'],
+        'Fred should be able to execute frobulate(int)'
+    );
+    SELECT function_privs_are( 'bake', '{}', 'slim', '{}');
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted no privileges on foo()"
+    #     Extra privileges:
+    #           EXECUTE
+
+Likewise if the role is not granted some of the specified permissions on the
+function:
+
+    # Failed test 15: "Role kurk should be granted EXECUTE foo()"
+    #     Missing privileges:
+    #           EXECUTE
+
+In the event that the test fails because the function in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted EXECUTE on foo(int)"
+    #     Function foo(int) does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted EXECUTE on foo()"
+    #     Role slim does not exist
+
 No Test for the Wicked
 ======================
 

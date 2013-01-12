@@ -1,8 +1,8 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(48);
---SELECT * FROM no_plan();
+--SELECT plan(48);
+SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
@@ -190,6 +190,208 @@ SELECT * FROM check_test(
     'whatever',
     '    Extra privileges:
         TEMPORARY'
+);
+
+/****************************************************************************/
+-- Test function_privilege_is().
+CREATE OR REPLACE FUNCTION public.foo(int, text) RETURNS VOID LANGUAGE SQL AS '';
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'function_privs_are(sch, func, args, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE']
+    ),
+    true,
+    'Role ' || current_user || ' should be granted EXECUTE on function public.foo(integer, text)'
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'function_privs_are(func, args, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE']
+    ),
+    true,
+    'function_privs_are(func, args, role, privs)',
+    'Role ' || current_user || ' should be granted EXECUTE on function foo(integer, text)'
+    ''
+);
+
+-- Try a nonexistent funtion.
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', '__nonesuch', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    false,
+    'function_privs_are(sch, non-func, args, role, privs, desc)',
+    'whatever',
+    '    Function public.__nonesuch(integer, text) does not exist'
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        '__nonesuch', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    false,
+    'function_privs_are(non-func, args, role, privs, desc)',
+    'whatever',
+    '    Function __nonesuch(integer, text) does not exist'
+);
+
+-- Try a nonexistent user.
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        '__noone', ARRAY['EXECUTE'], 'whatever'
+    ),
+    false,
+    'function_privs_are(sch, func, args, noone, privs, desc)',
+    'whatever',
+    '    Role __noone does not exist'
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        '__noone', ARRAY['EXECUTE'], 'whatever'
+    ),
+    false,
+    'function_privs_are(func, args, noone, privs, desc)',
+    'whatever',
+    '    Role __noone does not exist'
+);
+
+-- Try an unprivileged user.
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'function_privs_are(sch, func, args, other, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'function_privs_are(func, args, other, privs, desc)',
+    'whatever',
+    ''
+);
+
+REVOKE EXECUTE ON FUNCTION public.foo(int, text) FROM PUBLIC;
+
+-- Now fail.
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY['EXECUTE'], 'whatever'
+    ),
+    false,
+    'function_privs_are(sch, func, args, unpriv, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        EXECUTE'
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY['EXECUTE'], 'whatever'
+    ),
+    false,
+    'function_privs_are(func, args, unpriv, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        EXECUTE'
+);
+
+-- It should work for an empty array.
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY[]::text[], 'whatever'
+    ),
+    true,
+    'function_privs_are(sch, func, args, unpriv, empty, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY[]::text[]
+    ),
+    true,
+    'function_privs_are(sch, func, args, unpriv, empty)',
+    'Role __someone_else should be granted no privileges on function public.foo(integer, text)'
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        '__someone_else', ARRAY[]::text[]
+    ),
+    true,
+    'function_privs_are(func, args, unpriv, empty)',
+    'Role __someone_else should be granted no privileges on function foo(integer, text)'
+    ''
+);
+
+-- Empty for the current user should yeild an extra permission.
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'foo', ARRAY['integer', 'text'],
+        current_user, ARRAY[]::text[], 'whatever'
+    ),
+    false,
+    'function_privs_are(sch, func, args, unpriv, privs, desc)',
+    'whatever',
+    '    Extra privileges:
+        EXECUTE'
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'foo', ARRAY['integer', 'text'],
+        current_user, ARRAY[]::text[], 'whatever'
+    ),
+    false,
+    'function_privs_are(func, args, unpriv, privs, desc)',
+    'whatever',
+    '    Extra privileges:
+        EXECUTE'
 );
 
 /****************************************************************************/

@@ -7927,7 +7927,6 @@ BEGIN
 END;
 $$ language plpgsql;
 
-
 CREATE OR REPLACE FUNCTION _get_table_privs(NAME, TEXT)
 RETURNS TEXT[] AS $$
 DECLARE
@@ -8102,3 +8101,4 @@ RETURNS TEXT AS $$
             || array_to_string($3, ', ') || ' on database ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
+
