@@ -12,7 +12,7 @@ SET search_path = ha,public,pg_catalog;
 RESET client_min_messages;
 
 /****************************************************************************/
--- Test table_privilege_is().
+-- Test table_privs_are().
 
 SELECT * FROM check_test(
     table_privs_are( 'ha', 'sometab', current_user, _table_privs(), 'whatever' ),
@@ -737,6 +737,137 @@ SELECT * FROM check_test(
     false,
     'sequence_privs_are(seq, role, no privs)',
     'Role __nonesuch should be granted no privileges on sequence someseq' ,
+    '    Role __nonesuch does not exist'
+);
+
+/****************************************************************************/
+-- Test any_column_privs_are().
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
+    true,
+    'any_column_privs_are(sch, tab, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'] ),
+    true,
+    'any_column_privs_are(sch, tab, role, privs)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ') || ' on any column in ha.sometab' ,
+    ''
+);
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
+    true,
+    'any_column_privs_are(tab, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'] ),
+    true,
+    'any_column_privs_are(tab, role, privs)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ') || ' on any column in sometab' ,
+    ''
+);
+
+CREATE OR REPLACE FUNCTION run_extra_fails() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
+DECLARE
+    allowed_privs TEXT[];
+    test_privs    TEXT[];
+    missing_privs TEXT[];
+    tap           record;
+    last_index    INTEGER;
+BEGIN
+    -- Test table failure.
+    allowed_privs := ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'];
+    last_index    := array_upper(allowed_privs, 1);
+    FOR i IN 1..last_index - 2 LOOP
+        test_privs := test_privs || allowed_privs[i];
+    END LOOP;
+    FOR i IN last_index - 1..last_index LOOP
+        missing_privs := missing_privs || allowed_privs[i];
+    END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+        any_column_privs_are( 'ha', 'sometab', current_user, test_privs, 'whatever' ),
+            false,
+            'any_column_privs_are(sch, tab, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
+        ' || array_to_string(missing_privs, E'\n        ')
+    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+            any_column_privs_are( 'sometab', current_user, test_privs, 'whatever' ),
+            false,
+            'any_column_privs_are(tab, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
+        ' || array_to_string(missing_privs, E'\n        ')
+    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+END;
+$$;
+
+SELECT * FROM run_extra_fails();
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'sometab', '__someone_else', ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
+    false,
+    'any_column_privs_are(sch, tab, other, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        ' || array_to_string(ARRAY['REFERENCES'], E'\n        ')
+);
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'sometab', '__someone_else', ARRAY[
+        'SELECT', 'INSERT', 'UPDATE'
+    ], 'whatever'),
+    true,
+    'any_column_privs_are(sch, tab, other, privs, desc)',
+    'whatever',
+    ''
+);
+
+-- Try a non-existent table.
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'nonesuch', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
+    false,
+    'any_column_privs_are(sch, tab, role, privs, desc)',
+    'whatever',
+    '    Table ha.nonesuch does not exist'
+);
+
+-- Try a non-existent user.
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'sometab', '__nonesuch', ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
+    false,
+    'any_column_privs_are(sch, tab, role, privs, desc)',
+    'whatever',
+    '    Role __nonesuch does not exist'
+);
+
+-- Test default description with no permissions.
+SELECT * FROM check_test(
+    any_column_privs_are( 'ha', 'sometab', '__nonesuch', '{}'::text[] ),
+    false,
+    'any_column_privs_are(sch, tab, role, no privs)',
+    'Role __nonesuch should be granted no privileges on any column in ha.sometab' ,
+    '    Role __nonesuch does not exist'
+);
+
+SELECT * FROM check_test(
+    any_column_privs_are( 'sometab', '__nonesuch', '{}'::text[] ),
+    false,
+    'any_column_privs_are(tab, role, no privs)',
+    'Role __nonesuch should be granted no privileges on any column in sometab' ,
     '    Role __nonesuch does not exist'
 );
 
