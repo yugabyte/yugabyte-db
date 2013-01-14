@@ -5529,10 +5529,10 @@ Prvileged Access
 So we know who owns the objects. But what about other roles? Can they access
 database objects? Let's find out!
 
-### `db_privs_are()`
+### `database_privs_are()`
 
-    SELECT db_privs_are ( :db, :role, :privileges, :description );
-    SELECT db_privs_are ( :db, :role, :privileges );
+    SELECT database_privs_are ( :db, :role, :privileges, :description );
+    SELECT database_privs_are ( :db, :role, :privileges );
 
 **Parameters**
 
@@ -5555,11 +5555,11 @@ for the list of database privileges available in your version of PostgreSQL.
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
 
-    SELECT db_privs_are(
+    SELECT database_privs_are(
         'flipr', 'fred', ARRAY['CONNECT', 'TEMPORARY'],
         'Fred should be granted CONNECT and TERMPORARY on db "flipr"'
     );
-    SELECT db_privs_are( 'dept_corrections', ARRAY['CREATE'] );
+    SELECT database_privs_are( 'dept_corrections', ARRAY['CREATE'] );
 
 If the role is granted permissions other than those specified, the diagnostics
 will list the extra permissions, like so:

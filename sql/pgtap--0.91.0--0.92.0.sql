@@ -1017,8 +1017,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- db_privs_are ( db, user, privileges[], description )
-CREATE OR REPLACE FUNCTION db_privs_are ( NAME, NAME, NAME[], TEXT )
+-- database_privs_are ( db, user, privileges[], description )
+CREATE OR REPLACE FUNCTION database_privs_are ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
     grants TEXT[] := _get_db_privs( $2, quote_ident($1) );
@@ -1036,10 +1036,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- db_privs_are ( db, user, privileges[] )
-CREATE OR REPLACE FUNCTION db_privs_are ( NAME, NAME, NAME[] )
+-- database_privs_are ( db, user, privileges[] )
+CREATE OR REPLACE FUNCTION database_privs_are ( NAME, NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT db_privs_are(
+    SELECT database_privs_are(
         $1, $2, $3,
         'Role ' || quote_ident($2) || ' should be granted '
             || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END

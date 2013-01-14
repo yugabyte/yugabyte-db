@@ -35,27 +35,27 @@ ok 33 - table_privs_are(sch, tab, role, no privs) should have the proper diagnos
 ok 34 - table_privs_are(tab, role, no privs) should fail
 ok 35 - table_privs_are(tab, role, no privs) should have the proper description
 ok 36 - table_privs_are(tab, role, no privs) should have the proper diagnostics
-ok 37 - db_privs_are(db, role, privs, desc) should pass
-ok 38 - db_privs_are(db, role, privs, desc) should have the proper description
-ok 39 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
-ok 40 - db_privs_are(db, role, privs, desc) should pass
-ok 41 - db_privs_are(db, role, privs, desc) should have the proper description
-ok 42 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
-ok 43 - db_privs_are(non-db, role, privs, desc) should fail
-ok 44 - db_privs_are(non-db, role, privs, desc) should have the proper description
-ok 45 - db_privs_are(non-db, role, privs, desc) should have the proper diagnostics
-ok 46 - db_privs_are(db, non-role, privs, desc) should fail
-ok 47 - db_privs_are(db, non-role, privs, desc) should have the proper description
-ok 48 - db_privs_are(db, non-role, privs, desc) should have the proper diagnostics
-ok 49 - db_privs_are(db, ungranted, privs, desc) should fail
-ok 50 - db_privs_are(db, ungranted, privs, desc) should have the proper description
-ok 51 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
-ok 52 - db_privs_are(db, ungranted, privs, desc) should fail
-ok 53 - db_privs_are(db, ungranted, privs, desc) should have the proper description
-ok 54 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
-ok 55 - db_privs_are(db, non-role, no privs) should fail
-ok 56 - db_privs_are(db, non-role, no privs) should have the proper description
-ok 57 - db_privs_are(db, non-role, no privs) should have the proper diagnostics
+ok 37 - database_privs_are(db, role, privs, desc) should pass
+ok 38 - database_privs_are(db, role, privs, desc) should have the proper description
+ok 39 - database_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 40 - database_privs_are(db, role, privs, desc) should pass
+ok 41 - database_privs_are(db, role, privs, desc) should have the proper description
+ok 42 - database_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 43 - database_privs_are(non-db, role, privs, desc) should fail
+ok 44 - database_privs_are(non-db, role, privs, desc) should have the proper description
+ok 45 - database_privs_are(non-db, role, privs, desc) should have the proper diagnostics
+ok 46 - database_privs_are(db, non-role, privs, desc) should fail
+ok 47 - database_privs_are(db, non-role, privs, desc) should have the proper description
+ok 48 - database_privs_are(db, non-role, privs, desc) should have the proper diagnostics
+ok 49 - database_privs_are(db, ungranted, privs, desc) should fail
+ok 50 - database_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 51 - database_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 52 - database_privs_are(db, ungranted, privs, desc) should fail
+ok 53 - database_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 54 - database_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 55 - database_privs_are(db, non-role, no privs) should fail
+ok 56 - database_privs_are(db, non-role, no privs) should have the proper description
+ok 57 - database_privs_are(db, non-role, no privs) should have the proper diagnostics
 ok 58 - function_privs_are(sch, func, args, role, privs, desc) should pass
 ok 59 - function_privs_are(sch, func, args, role, privs, desc) should have the proper description
 ok 60 - function_privs_are(sch, func, args, role, privs, desc) should have the proper diagnostics

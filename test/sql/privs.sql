@@ -152,17 +152,17 @@ SELECT * FROM check_test(
 -- Test db_privilege_is().
 
 SELECT * FROM check_test(
-    db_privs_are( current_database(), current_user, _db_privs(), 'whatever' ),
+    database_privs_are( current_database(), current_user, _db_privs(), 'whatever' ),
     true,
-    'db_privs_are(db, role, privs, desc)',
+    'database_privs_are(db, role, privs, desc)',
     'whatever',
     ''
 );
 
 SELECT * FROM check_test(
-    db_privs_are( current_database(), current_user, _db_privs() ),
+    database_privs_are( current_database(), current_user, _db_privs() ),
     true,
-    'db_privs_are(db, role, privs, desc)',
+    'database_privs_are(db, role, privs, desc)',
     'Role ' || current_user || ' should be granted '
          || array_to_string(_db_privs(), ', ') || ' on database ' || current_database(),
     ''
@@ -170,27 +170,27 @@ SELECT * FROM check_test(
 
 -- Try nonexistent database.
 SELECT * FROM check_test(
-    db_privs_are( '__nonesuch', current_user, _db_privs(), 'whatever' ),
+    database_privs_are( '__nonesuch', current_user, _db_privs(), 'whatever' ),
     false,
-    'db_privs_are(non-db, role, privs, desc)',
+    'database_privs_are(non-db, role, privs, desc)',
     'whatever',
     '    Database __nonesuch does not exist'
 );
 
 -- Try nonexistent user.
 SELECT * FROM check_test(
-    db_privs_are( current_database(), '__noone', _db_privs(), 'whatever' ),
+    database_privs_are( current_database(), '__noone', _db_privs(), 'whatever' ),
     false,
-    'db_privs_are(db, non-role, privs, desc)',
+    'database_privs_are(db, non-role, privs, desc)',
     'whatever',
     '    Role __noone does not exist'
 );
 
 -- Try another user.
 SELECT * FROM check_test(
-    db_privs_are( current_database(), '__someone_else', _db_privs(), 'whatever' ),
+    database_privs_are( current_database(), '__someone_else', _db_privs(), 'whatever' ),
     false,
-    'db_privs_are(db, ungranted, privs, desc)',
+    'database_privs_are(db, ungranted, privs, desc)',
     'whatever',
     '    Missing privileges:
         CREATE'
@@ -198,13 +198,13 @@ SELECT * FROM check_test(
 
 -- Try a subset of privs.
 SELECT * FROM check_test(
-    db_privs_are(
+    database_privs_are(
         current_database(), current_user,
         CASE WHEN pg_version_num() < 80200 THEN ARRAY['CREATE'] ELSE ARRAY['CREATE', 'CONNECT'] END,
         'whatever'
     ),
     false,
-    'db_privs_are(db, ungranted, privs, desc)',
+    'database_privs_are(db, ungranted, privs, desc)',
     'whatever',
     '    Extra privileges:
         TEMPORARY'
@@ -212,9 +212,9 @@ SELECT * FROM check_test(
 
 -- Try testing default description for no permissions.
 SELECT * FROM check_test(
-    db_privs_are( current_database(), '__noone', '{}'::text[] ),
+    database_privs_are( current_database(), '__noone', '{}'::text[] ),
     false,
-    'db_privs_are(db, non-role, no privs)',
+    'database_privs_are(db, non-role, no privs)',
     'Role __noone should be granted no privileges on database ' || current_database(),
     '    Role __noone does not exist'
 );

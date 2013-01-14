@@ -32,7 +32,7 @@ Revision history for pgTAP
 * Fixed `has_index()` to properly handle indexes composed of both columns and
   expressions.
 * Added new functions for testing a user's access to database objects:
-  + `db_privs_are()`
+  + `database_privs_are()`
   + `table_privs_are()`
   + `function_privs_are()`
   + `language_privs_are()`
