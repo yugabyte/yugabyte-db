@@ -5548,9 +5548,14 @@ database objects? Let's find out!
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a role to access a database. Consult [the
-documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-DATABASE)
-for the list of database privileges available in your version of PostgreSQL.
+Tests the privileges granted to a role to access a database. The available
+database privileges are:
+
+* CREATE
+* CONNECT
+* TEMPORARY
+
+Although CONNECT is not available before PostgreSQL 8.2.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -5608,9 +5613,11 @@ something like:
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a role to access a schema. Consult [the
-documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-SCHEMA)
-for the list of schema privileges available in your version of PostgreSQL.
+Tests the privileges granted to a role to access a schema. The available
+schema privileges are:
+
+* CREATE
+* USAGE
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -5673,9 +5680,20 @@ something like:
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a role to access a table. Consult [the
-documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-TABLE)
-for the list of table privileges available in your version of PostgreSQL.
+Tests the privileges granted to a role to access a table. The available
+table privileges are:
+
+* DELETE
+* INSERT
+* REFERENCES
+* RULE
+* SELECT
+* TRIGGER
+* TRUNCATE
+* UPDATE
+
+Note that the privilege RULE is not available aftter PostgreSQL 8.1, and that
+TRIGGER was added in 8.4.
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -5743,9 +5761,10 @@ something like:
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a role to access a function. Consult [the
-documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-FUNCTION)
-for the list of function privileges available in your version of PostgreSQL.
+Tests the privileges granted to a role to access a function. The available
+function privileges are:
+
+* EXECUTE
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
@@ -5802,9 +5821,10 @@ something like:
 `:description`
 : A short description of the test.
 
-Tests the privileges granted to a role to access a language. Consult [the
-documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-LANGUAGE)
-for the list of language privileges available in your version of PostgreSQL.
+Tests the privileges granted to a role to access a language. The available
+function privileges are:
+
+* USAGE
 
 If the `:description` argument is omitted, an appropriate description will be
 created. Examples:
