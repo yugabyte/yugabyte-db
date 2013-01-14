@@ -38,6 +38,7 @@ Revision history for pgTAP
   + `table_privs_are()`
   + `sequence_privs_are()`
   + `any_column_privs_are()`
+  + `column_privs_are()`
   + `function_privs_are()`
   + `language_privs_are()`
 

@@ -5939,6 +5939,88 @@ something like:
     # Failed test 17: "Role slim should be granted SELECT on columns in widgets"
     #     Role slim does not exist
 
+### `column_privs_are()`
+
+    SELECT column_privs_are ( :schema, :table, :column, :role, :privileges, :description );
+    SELECT column_privs_are ( :schema, :table, :column, :role, :privileges );
+    SELECT column_privs_are ( :table, :column, :role, :privileges, :description );
+    SELECT column_privs_are ( :table, :column, :role, :privileges );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the table.
+
+`:table`
+: Name of a table.
+
+`:column`
+: Name of a column.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of column privileges the role should be granted to the column.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a single column. The
+available column privileges are:
+
+* INSERT
+* REFERENCES
+* SELECT
+* UPDATE
+
+Note that column privileges were added in PostgreSQL 8.4, so this function
+will likley throw an exception on earlier versions.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT column_privs_are(
+        'public', 'frobulate', 'id', 'fred', ARRAY['SELECT', 'UPDATE'],
+        'Fred should be able to select and update frobulate.id'
+    );
+    SELECT column_privs_are( 'widgets', 'name', 'slim', ARRAY['INSERT', 'UPDATE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted SELECT on widgets.foo"
+    #     Extra privileges:
+    #           INSERT
+    #           UPDATE
+
+Likewise if the role is not granted some of the specified permissions on the
+table:
+
+    # Failed test 15: "Role kurk should be granted SELECT, INSERT, UPDATE on widgets.foo"
+    #     Missing privileges:
+    #           INSERT
+    #           UPDATE
+
+In the event that the test fails because the table in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted SELECT on widgets.foo"
+    #     Table widgets does not exist
+
+If the test fails because the column does not actually exist or is not
+visible, the diagnostics will tell you:
+
+    # Failed test 17: "Role slim should be granted SELECT on gadgets.foo"
+    #     Column gadgets.foo does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 18: "Role slim should be granted SELECT on gadgets.foo"
+    #     Role slim does not exist
+
 ### `function_privs_are()`
 
     SELECT function_privs_are ( :schema, :function, :args, :role, :privileges, :description );
