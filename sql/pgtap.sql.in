@@ -8102,3 +8102,77 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _get_func_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_function_privilege($1, $2, 'EXECUTE') THEN
+        RETURN '{EXECUTE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION
+    -- Not a valid func name.
+    WHEN undefined_function THEN RETURN '{undefined_function}';
+    -- Not a valid role.
+    WHEN undefined_object   THEN RETURN '{undefined_object}';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _fprivs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_func_privs($2, $1);
+BEGIN
+    IF grants[1] = 'undefined_function' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Function ' || $1 || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_object' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- function_privs_are ( schema, function, args[], user, privileges[], description )
+CREATE OR REPLACE FUNCTION function_privs_are ( NAME, NAME, NAME[], NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _fprivs_are(
+        quote_ident($1) || '.' || quote_ident($2) || '(' || array_to_string($3, ', ') || ')',
+        $4, $5, $6
+    );
+$$ LANGUAGE SQL;
+
+-- function_privs_are ( schema, function, args[], user, privileges[] )
+CREATE OR REPLACE FUNCTION function_privs_are ( NAME, NAME, NAME[], NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT function_privs_are(
+        $1, $2, $3, $4, $5,
+        'Role ' || quote_ident($4) || ' should be granted '
+            || CASE WHEN $5[1] IS NULL THEN 'no privileges' ELSE array_to_string($5, ', ') END
+            || ' on function ' || quote_ident($1) || '.' || quote_ident($2)
+            || '(' || array_to_string($3, ', ') || ')'
+    );
+$$ LANGUAGE SQL;
+
+-- function_privs_are ( function, args[], user, privileges[], description )
+CREATE OR REPLACE FUNCTION function_privs_are ( NAME, NAME[], NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _fprivs_are(
+        quote_ident($1) || '(' || array_to_string($2, ', ') || ')',
+        $3, $4, $5
+    );
+$$ LANGUAGE SQL;
+
+-- function_privs_are ( function, args[], user, privileges[] )
+CREATE OR REPLACE FUNCTION function_privs_are ( NAME, NAME[], NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT function_privs_are(
+        $1, $2, $3, $4,
+        'Role ' || quote_ident($3) || ' should be granted '
+            || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
+            || ' on function ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ')'
+    );
+$$ LANGUAGE SQL;
