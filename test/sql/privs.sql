@@ -1,8 +1,8 @@
 \unset ECHO
 \i test/setup.sql
 
---SELECT plan(48);
-SELECT * FROM no_plan();
+SELECT plan(103);
+--SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
@@ -130,6 +130,24 @@ SELECT * FROM check_test(
     '    Role __nonesuch does not exist'
 );
 
+-- Test default description with no permissions.
+SELECT * FROM check_test(
+    table_privs_are( 'ha', 'sometab', '__nonesuch', '{}'::text[] ),
+    false,
+    'table_privs_are(sch, tab, role, no privs)',
+    'Role __nonesuch should be granted no privileges on table ha.sometab' ,
+    '    Role __nonesuch does not exist'
+);
+
+SELECT * FROM check_test(
+    table_privs_are( 'sometab', '__nonesuch', '{}'::text[] ),
+    false,
+    'table_privs_are(tab, role, no privs)',
+    'Role __nonesuch should be granted no privileges on table sometab' ,
+    '    Role __nonesuch does not exist'
+);
+
+
 /****************************************************************************/
 -- Test db_privilege_is().
 
@@ -191,6 +209,16 @@ SELECT * FROM check_test(
     '    Extra privileges:
         TEMPORARY'
 );
+
+-- Try testing default description for no permissions.
+SELECT * FROM check_test(
+    db_privs_are( current_database(), '__noone', '{}'::text[] ),
+    false,
+    'db_privs_are(db, non-role, no privs)',
+    'Role __noone should be granted no privileges on database ' || current_database(),
+    '    Role __noone does not exist'
+);
+
 
 /****************************************************************************/
 -- Test function_privilege_is().

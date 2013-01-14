@@ -1,4 +1,5 @@
 \unset ECHO
+1..103
 ok 1 - table_privs_are(sch, tab, role, privs, desc) should pass
 ok 2 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
 ok 3 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
@@ -29,68 +30,76 @@ ok 27 - table_privs_are(sch, tab, role, privs, desc) should have the proper diag
 ok 28 - table_privs_are(sch, tab, role, privs, desc) should fail
 ok 29 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
 ok 30 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
-ok 31 - db_privs_are(db, role, privs, desc) should pass
-ok 32 - db_privs_are(db, role, privs, desc) should have the proper description
-ok 33 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
-ok 34 - db_privs_are(db, role, privs, desc) should pass
-ok 35 - db_privs_are(db, role, privs, desc) should have the proper description
-ok 36 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
-ok 37 - db_privs_are(non-db, role, privs, desc) should fail
-ok 38 - db_privs_are(non-db, role, privs, desc) should have the proper description
-ok 39 - db_privs_are(non-db, role, privs, desc) should have the proper diagnostics
-ok 40 - db_privs_are(db, non-role, privs, desc) should fail
-ok 41 - db_privs_are(db, non-role, privs, desc) should have the proper description
-ok 42 - db_privs_are(db, non-role, privs, desc) should have the proper diagnostics
-ok 43 - db_privs_are(db, ungranted, privs, desc) should fail
-ok 44 - db_privs_are(db, ungranted, privs, desc) should have the proper description
-ok 45 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
-ok 46 - db_privs_are(db, ungranted, privs, desc) should fail
-ok 47 - db_privs_are(db, ungranted, privs, desc) should have the proper description
-ok 48 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
-ok 49 - function_privs_are(sch, func, args, role, privs, desc) should pass
-ok 50 - function_privs_are(sch, func, args, role, privs, desc) should have the proper description
-ok 51 - function_privs_are(sch, func, args, role, privs, desc) should have the proper diagnostics
-ok 52 - Role david should be granted EXECUTE on function public.foo(integer, text) should pass
-ok 53 - function_privs_are(func, args, role, privs, desc) should pass
-ok 54 - function_privs_are(func, args, role, privs, desc) should have the proper description
-ok 55 - function_privs_are(func, args, role, privs, desc) should have the proper diagnostics
-ok 56 - function_privs_are(func, args, role, privs) should pass
-ok 57 - function_privs_are(func, args, role, privs) should have the proper description
-ok 58 - function_privs_are(sch, non-func, args, role, privs, desc) should fail
-ok 59 - function_privs_are(sch, non-func, args, role, privs, desc) should have the proper description
-ok 60 - function_privs_are(sch, non-func, args, role, privs, desc) should have the proper diagnostics
-ok 61 - function_privs_are(non-func, args, role, privs, desc) should fail
-ok 62 - function_privs_are(non-func, args, role, privs, desc) should have the proper description
-ok 63 - function_privs_are(non-func, args, role, privs, desc) should have the proper diagnostics
-ok 64 - function_privs_are(sch, func, args, noone, privs, desc) should fail
-ok 65 - function_privs_are(sch, func, args, noone, privs, desc) should have the proper description
-ok 66 - function_privs_are(sch, func, args, noone, privs, desc) should have the proper diagnostics
-ok 67 - function_privs_are(func, args, noone, privs, desc) should fail
-ok 68 - function_privs_are(func, args, noone, privs, desc) should have the proper description
-ok 69 - function_privs_are(func, args, noone, privs, desc) should have the proper diagnostics
-ok 70 - function_privs_are(sch, func, args, other, privs, desc) should pass
-ok 71 - function_privs_are(sch, func, args, other, privs, desc) should have the proper description
-ok 72 - function_privs_are(sch, func, args, other, privs, desc) should have the proper diagnostics
-ok 73 - function_privs_are(func, args, other, privs, desc) should pass
-ok 74 - function_privs_are(func, args, other, privs, desc) should have the proper description
-ok 75 - function_privs_are(func, args, other, privs, desc) should have the proper diagnostics
-ok 76 - function_privs_are(sch, func, args, unpriv, privs, desc) should fail
-ok 77 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper description
-ok 78 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper diagnostics
-ok 79 - function_privs_are(func, args, unpriv, privs, desc) should fail
-ok 80 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
-ok 81 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics
-ok 82 - function_privs_are(sch, func, args, unpriv, empty, desc) should pass
-ok 83 - function_privs_are(sch, func, args, unpriv, empty, desc) should have the proper description
-ok 84 - function_privs_are(sch, func, args, unpriv, empty, desc) should have the proper diagnostics
-ok 85 - function_privs_are(sch, func, args, unpriv, empty) should pass
-ok 86 - function_privs_are(sch, func, args, unpriv, empty) should have the proper description
-ok 87 - function_privs_are(func, args, unpriv, empty) should pass
-ok 88 - function_privs_are(func, args, unpriv, empty) should have the proper description
-ok 89 - function_privs_are(sch, func, args, unpriv, privs, desc) should fail
-ok 90 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper description
-ok 91 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper diagnostics
-ok 92 - function_privs_are(func, args, unpriv, privs, desc) should fail
-ok 93 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
-ok 94 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics
-1..94
+ok 31 - table_privs_are(sch, tab, role, no privs) should fail
+ok 32 - table_privs_are(sch, tab, role, no privs) should have the proper description
+ok 33 - table_privs_are(sch, tab, role, no privs) should have the proper diagnostics
+ok 34 - table_privs_are(tab, role, no privs) should fail
+ok 35 - table_privs_are(tab, role, no privs) should have the proper description
+ok 36 - table_privs_are(tab, role, no privs) should have the proper diagnostics
+ok 37 - db_privs_are(db, role, privs, desc) should pass
+ok 38 - db_privs_are(db, role, privs, desc) should have the proper description
+ok 39 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 40 - db_privs_are(db, role, privs, desc) should pass
+ok 41 - db_privs_are(db, role, privs, desc) should have the proper description
+ok 42 - db_privs_are(db, role, privs, desc) should have the proper diagnostics
+ok 43 - db_privs_are(non-db, role, privs, desc) should fail
+ok 44 - db_privs_are(non-db, role, privs, desc) should have the proper description
+ok 45 - db_privs_are(non-db, role, privs, desc) should have the proper diagnostics
+ok 46 - db_privs_are(db, non-role, privs, desc) should fail
+ok 47 - db_privs_are(db, non-role, privs, desc) should have the proper description
+ok 48 - db_privs_are(db, non-role, privs, desc) should have the proper diagnostics
+ok 49 - db_privs_are(db, ungranted, privs, desc) should fail
+ok 50 - db_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 51 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 52 - db_privs_are(db, ungranted, privs, desc) should fail
+ok 53 - db_privs_are(db, ungranted, privs, desc) should have the proper description
+ok 54 - db_privs_are(db, ungranted, privs, desc) should have the proper diagnostics
+ok 55 - db_privs_are(db, non-role, no privs) should fail
+ok 56 - db_privs_are(db, non-role, no privs) should have the proper description
+ok 57 - db_privs_are(db, non-role, no privs) should have the proper diagnostics
+ok 58 - function_privs_are(sch, func, args, role, privs, desc) should pass
+ok 59 - function_privs_are(sch, func, args, role, privs, desc) should have the proper description
+ok 60 - function_privs_are(sch, func, args, role, privs, desc) should have the proper diagnostics
+ok 61 - Role david should be granted EXECUTE on function public.foo(integer, text) should pass
+ok 62 - function_privs_are(func, args, role, privs, desc) should pass
+ok 63 - function_privs_are(func, args, role, privs, desc) should have the proper description
+ok 64 - function_privs_are(func, args, role, privs, desc) should have the proper diagnostics
+ok 65 - function_privs_are(func, args, role, privs) should pass
+ok 66 - function_privs_are(func, args, role, privs) should have the proper description
+ok 67 - function_privs_are(sch, non-func, args, role, privs, desc) should fail
+ok 68 - function_privs_are(sch, non-func, args, role, privs, desc) should have the proper description
+ok 69 - function_privs_are(sch, non-func, args, role, privs, desc) should have the proper diagnostics
+ok 70 - function_privs_are(non-func, args, role, privs, desc) should fail
+ok 71 - function_privs_are(non-func, args, role, privs, desc) should have the proper description
+ok 72 - function_privs_are(non-func, args, role, privs, desc) should have the proper diagnostics
+ok 73 - function_privs_are(sch, func, args, noone, privs, desc) should fail
+ok 74 - function_privs_are(sch, func, args, noone, privs, desc) should have the proper description
+ok 75 - function_privs_are(sch, func, args, noone, privs, desc) should have the proper diagnostics
+ok 76 - function_privs_are(func, args, noone, privs, desc) should fail
+ok 77 - function_privs_are(func, args, noone, privs, desc) should have the proper description
+ok 78 - function_privs_are(func, args, noone, privs, desc) should have the proper diagnostics
+ok 79 - function_privs_are(sch, func, args, other, privs, desc) should pass
+ok 80 - function_privs_are(sch, func, args, other, privs, desc) should have the proper description
+ok 81 - function_privs_are(sch, func, args, other, privs, desc) should have the proper diagnostics
+ok 82 - function_privs_are(func, args, other, privs, desc) should pass
+ok 83 - function_privs_are(func, args, other, privs, desc) should have the proper description
+ok 84 - function_privs_are(func, args, other, privs, desc) should have the proper diagnostics
+ok 85 - function_privs_are(sch, func, args, unpriv, privs, desc) should fail
+ok 86 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper description
+ok 87 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 88 - function_privs_are(func, args, unpriv, privs, desc) should fail
+ok 89 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
+ok 90 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 91 - function_privs_are(sch, func, args, unpriv, empty, desc) should pass
+ok 92 - function_privs_are(sch, func, args, unpriv, empty, desc) should have the proper description
+ok 93 - function_privs_are(sch, func, args, unpriv, empty, desc) should have the proper diagnostics
+ok 94 - function_privs_are(sch, func, args, unpriv, empty) should pass
+ok 95 - function_privs_are(sch, func, args, unpriv, empty) should have the proper description
+ok 96 - function_privs_are(func, args, unpriv, empty) should pass
+ok 97 - function_privs_are(func, args, unpriv, empty) should have the proper description
+ok 98 - function_privs_are(sch, func, args, unpriv, privs, desc) should fail
+ok 99 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper description
+ok 100 - function_privs_are(sch, func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 101 - function_privs_are(func, args, unpriv, privs, desc) should fail
+ok 102 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
+ok 103 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics

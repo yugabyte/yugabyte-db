@@ -944,8 +944,8 @@ RETURNS TEXT AS $$
     SELECT table_privs_are(
         $1, $2, $3, $4,
         'Role ' || quote_ident($3) || ' should be granted '
-            || array_to_string($4, ', ') || ' on table '
-            || quote_ident($1) || '.' || quote_ident($2)
+            || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
+            || ' on table '|| quote_ident($1) || '.' || quote_ident($2)
     );
 $$ LANGUAGE SQL;
 
@@ -956,11 +956,11 @@ DECLARE
     grants TEXT[] := _get_table_privs( $2, quote_ident($1) );
 BEGIN
     IF grants[1] = 'undefined_table' THEN
-        RETURN ok(FALSE, $5) || E'\n' || diag(
+        RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
         );
     ELSIF grants[1] = 'undefined_object' THEN
-        RETURN ok(FALSE, $5) || E'\n' || diag(
+        RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
     END IF;
@@ -974,7 +974,8 @@ RETURNS TEXT AS $$
     SELECT table_privs_are(
         $1, $2, $3,
         'Role ' || quote_ident($2) || ' should be granted '
-            || array_to_string($3, ', ') || ' on table ' || quote_ident($1)
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on table ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
 
@@ -1041,7 +1042,8 @@ RETURNS TEXT AS $$
     SELECT db_privs_are(
         $1, $2, $3,
         'Role ' || quote_ident($2) || ' should be granted '
-            || array_to_string($3, ', ') || ' on database ' || quote_ident($1)
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on database ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
 
