@@ -36,6 +36,7 @@ Revision history for pgTAP
   + `tablespace_privs_are()`
   + `schema_privs_are()`
   + `table_privs_are()`
+  + `sequence_privs_are()`
   + `function_privs_are()`
   + `language_privs_are()`
 

@@ -7909,24 +7909,6 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _table_privs()
-RETURNS NAME[] AS $$
-DECLARE
-    pgversion INTEGER := pg_version_num();
-BEGIN
-    IF pgversion < 80200 THEN RETURN ARRAY[
-        'DELETE', 'INSERT', 'REFERENCES', 'RULE', 'SELECT', 'TRIGGER', 'UPDATE'
-    ];
-    ELSIF pgversion < 80400 THEN RETURN ARRAY[
-        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'UPDATE'
-    ];
-    ELSE RETURN ARRAY[
-        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'
-    ];
-    END IF;
-END;
-$$ language plpgsql;
-
 CREATE OR REPLACE FUNCTION _get_table_privs(NAME, TEXT)
 RETURNS TEXT[] AS $$
 DECLARE
@@ -7951,6 +7933,24 @@ BEGIN
     RETURN grants;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _table_privs()
+RETURNS NAME[] AS $$
+DECLARE
+    pgversion INTEGER := pg_version_num();
+BEGIN
+    IF pgversion < 80200 THEN RETURN ARRAY[
+        'DELETE', 'INSERT', 'REFERENCES', 'RULE', 'SELECT', 'TRIGGER', 'UPDATE'
+    ];
+    ELSIF pgversion < 80400 THEN RETURN ARRAY[
+        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'UPDATE'
+    ];
+    ELSE RETURN ARRAY[
+        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'
+    ];
+    END IF;
+END;
+$$ language plpgsql;
 
 CREATE OR REPLACE FUNCTION _assets_are ( text, text[], text[], TEXT )
 RETURNS TEXT AS $$
@@ -8322,6 +8322,91 @@ RETURNS TEXT AS $$
         'Role ' || quote_ident($2) || ' should be granted '
             || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
             || ' on tablespace ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_sequence_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['SELECT', 'UPDATE', 'USAGE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        BEGIN
+            IF pg_catalog.has_sequence_privilege($1, $2, privs[i]) THEN
+                grants := grants || privs[i];
+            END IF;
+        EXCEPTION WHEN undefined_table THEN
+            -- Not a valid sequence name.
+            RETURN '{undefined_table}';
+        WHEN undefined_object THEN
+            -- Not a valid role.
+            RETURN '{undefined_role}';
+        WHEN invalid_parameter_value THEN
+            -- Not a valid permission on this version of PostgreSQL; ignore;
+        END;
+    END LOOP;
+    RETURN grants;
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_privs_are ( schema, sequence, user, privileges[], description )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_sequence_privs( $3, quote_ident($1) || '.' || quote_ident($2) );
+BEGIN
+    IF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Role ' || quote_ident($3) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $4, $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_privs_are ( schema, sequence, user, privileges[] )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT sequence_privs_are(
+        $1, $2, $3, $4,
+        'Role ' || quote_ident($3) || ' should be granted '
+            || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
+            || ' on sequence '|| quote_ident($1) || '.' || quote_ident($2)
+    );
+$$ LANGUAGE SQL;
+
+-- sequence_privs_are ( sequence, user, privileges[], description )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_sequence_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_privs_are ( sequence, user, privileges[] )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT sequence_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on sequence ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
 

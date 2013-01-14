@@ -7,6 +7,7 @@ SELECT * FROM no_plan();
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
 CREATE TABLE ha.sometab(id INT);
+CREATE SEQUENCE ha.someseq;
 SET search_path = ha,public,pg_catalog;
 RESET client_min_messages;
 
@@ -146,7 +147,6 @@ SELECT * FROM check_test(
     'Role __nonesuch should be granted no privileges on table sometab' ,
     '    Role __nonesuch does not exist'
 );
-
 
 /****************************************************************************/
 -- Test database_privileges_are().
@@ -604,6 +604,140 @@ SELECT * FROM check_test(
     'tablespace_privs_are(tablespace, role, no privs)',
     'Role __someone_else should be granted no privileges on tablespace pg_default',
     ''
+);
+
+/****************************************************************************/
+-- Test sequence_privilege_is().
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
+    true,
+    'sequence_privs_are(sch, seq, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
+    true,
+    'sequence_privs_are(sch, seq, role, privs)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ') || ' on sequence ha.someseq' ,
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
+    true,
+    'sequence_privs_are(seq, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
+    true,
+    'sequence_privs_are(seq, role, privs)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ') || ' on sequence someseq' ,
+    ''
+);
+
+CREATE OR REPLACE FUNCTION run_extra_fails() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
+DECLARE
+    allowed_privs TEXT[];
+    test_privs    TEXT[];
+    missing_privs TEXT[];
+    tap           record;
+    last_index    INTEGER;
+BEGIN
+    -- Test sequence failure.
+    allowed_privs := ARRAY['USAGE', 'SELECT', 'UPDATE'];
+    last_index    := array_upper(allowed_privs, 1);
+    FOR i IN 1..last_index - 2 LOOP
+        test_privs := test_privs || allowed_privs[i];
+    END LOOP;
+    FOR i IN last_index - 1..last_index LOOP
+        missing_privs := missing_privs || allowed_privs[i];
+    END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+        sequence_privs_are( 'ha', 'someseq', current_user, test_privs, 'whatever' ),
+            false,
+            'sequence_privs_are(sch, seq, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
+        ' || array_to_string(missing_privs, E'\n        ')
+    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'someseq', current_user, test_privs, 'whatever' ),
+            false,
+            'sequence_privs_are(seq, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
+        ' || array_to_string(missing_privs, E'\n        ')
+    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+END;
+$$;
+
+SELECT * FROM run_extra_fails();
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'someseq', '__someone_else', ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
+    false,
+    'sequence_privs_are(sch, seq, other, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        ' || array_to_string(ARRAY['SELECT', 'UPDATE', 'USAGE'], E'\n        ')
+);
+
+-- Grant them some permission.
+GRANT SELECT, UPDATE ON ha.someseq TO __someone_else;
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'someseq', '__someone_else', ARRAY[
+        'SELECT', 'UPDATE'
+    ], 'whatever'),
+    true,
+    'sequence_privs_are(sch, seq, other, privs, desc)',
+    'whatever',
+    ''
+);
+
+-- Try a non-existent sequence.
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'nonesuch', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
+    false,
+    'sequence_privs_are(sch, seq, role, privs, desc)',
+    'whatever',
+    '    Sequence ha.nonesuch does not exist'
+);
+
+-- Try a non-existent user.
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'someseq', '__nonesuch', ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
+    false,
+    'sequence_privs_are(sch, seq, role, privs, desc)',
+    'whatever',
+    '    Role __nonesuch does not exist'
+);
+
+-- Test default description with no permissions.
+SELECT * FROM check_test(
+    sequence_privs_are( 'ha', 'someseq', '__nonesuch', '{}'::text[] ),
+    false,
+    'sequence_privs_are(sch, seq, role, no privs)',
+    'Role __nonesuch should be granted no privileges on sequence ha.someseq' ,
+    '    Role __nonesuch does not exist'
+);
+
+SELECT * FROM check_test(
+    sequence_privs_are( 'someseq', '__nonesuch', '{}'::text[] ),
+    false,
+    'sequence_privs_are(seq, role, no privs)',
+    'Role __nonesuch should be granted no privileges on sequence someseq' ,
+    '    Role __nonesuch does not exist'
 );
 
 /****************************************************************************/

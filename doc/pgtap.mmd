@@ -5794,6 +5794,78 @@ something like:
     # Failed test 17: "Role slim should be granted SELECT on widgets"
     #     Role slim does not exist
 
+### `sequence_privs_are()`
+
+    SELECT sequence_privs_are ( :schema, :sequence, :role, :privileges, :description );
+    SELECT sequence_privs_are ( :schema, :sequence, :role, :privileges );
+    SELECT sequence_privs_are ( :sequence, :role, :privileges, :description );
+    SELECT sequence_privs_are ( :sequence, :role, :privileges );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the sequence.
+
+`:sequence`
+: Name of a sequence.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of sequence privileges the role should be granted to the sequence.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a sequence. The available
+sequence privileges are:
+
+* SELECT
+* UPDATE
+* USAGE
+
+Note that sequence privileges were added in PostgreSQL 9.0, so this function
+will likley throw an exception on earlier versions.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT sequence_privs_are(
+        'public', 'seq_ids', 'fred', ARRAY['SELECT', 'UPDATE'],
+        'Fred should be able to select and update seq_ids'
+    );
+    SELECT sequence_privs_are( 'seq_u', 'slim', ARRAY['USAGE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted SELECT on seq_foo_id"
+    #     Extra privileges:
+    #           UPDATE
+    #           USAGE
+
+Likewise if the role is not granted some of the specified permissions on the
+sequence:
+
+    # Failed test 15: "Role kurk should be granted USAGE on seq_widgets"
+    #     Missing privileges:
+    #           SELECT
+    #           UPDATE
+
+In the event that the test fails because the sequence in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted SELECT on seq_widgets"
+    #     Sequence widgets does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted SELECT on seq_widgets"
+    #     Role slim does not exist
+
 ### `function_privs_are()`
 
     SELECT function_privs_are ( :schema, :function, :args, :role, :privileges, :description );
