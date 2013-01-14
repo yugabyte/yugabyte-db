@@ -5594,6 +5594,66 @@ something like:
     # Failed test 17: "Role slim should be granted CONNECT, CREATE on database widgets"
     #     Role slim does not exist
 
+### `tablespace_privs_are()`
+
+    SELECT tablespace_privs_are ( :tablespace, :role, :privileges, :description );
+    SELECT tablespace_privs_are ( :tablespace, :role, :privileges );
+
+**Parameters**
+
+`:tablespace`
+: Name of a tablespace.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of table privileges the role should be granted to the tablespace.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a tablespace. The available
+function privileges are:
+
+* CREATE
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT tablespace_privs_are(
+        'ssd', 'fred', ARRAY['CREATE'],
+        'Fred should be granted CREATE on tablespace "ssd"'
+    );
+    SELECT tablespace_privs_are( 'san', ARRAY['CREATE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted no privileges on tablespace hdd"
+    #     Extra privileges:
+    #           CREATE
+
+Likewise if the role is not granted some of the specified permissions on the
+tablespace:
+
+    # Failed test 15: "Role kurk should be granted USAGE on ssd"
+    #     Missing privileges:
+    #           CREATE
+
+In the event that the test fails because the tablespace in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted CREATE on tablespace tape"
+    #     Tablespace tape does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted CREATE on san"
+    #     Role slim does not exist
+
 ### `schema_privs_are()`
 
     SELECT schema_privs_are ( :schema, :role, :privileges, :description );
@@ -5831,7 +5891,7 @@ created. Examples:
 
     SELECT language_privs_are(
         'plpgsql', 'fred', ARRAY['USAGE'],
-        'Fred should be granted USAGE on db "flipr"'
+        'Fred should be granted USAGE on language "flipr"'
     );
     SELECT language_privs_are( 'plperl', ARRAY['USAGE'] );
 
@@ -5845,7 +5905,7 @@ will list the extra permissions, like so:
 Likewise if the role is not granted some of the specified permissions on the
 language:
 
-    # Failed test 15: "Role kurk should be granted USGAE on banks"
+    # Failed test 15: "Role kurk should be granted USAGE on banks"
     #     Missing privileges:
     #           USAGE
 
@@ -5854,7 +5914,7 @@ actually exist or is not visible, you will see an appropriate diagnostic such
 as:
 
     # Failed test 16: "Role slim should be granted USAGE on plr"
-    #     Language maindb does not exist
+    #     Language plr does not exist
 
 If the test fails because the role does not exist, the diagnostics will look
 something like:

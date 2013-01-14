@@ -550,6 +550,63 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test tablespace_privilege_is().
+
+SELECT * FROM check_test(
+    tablespace_privs_are( 'pg_default', current_user, '{CREATE}', 'whatever' ),
+    true,
+    'tablespace_privs_are(tablespace, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    tablespace_privs_are( 'pg_default', current_user, '{CREATE}' ),
+    true,
+    'tablespace_privs_are(tablespace, role, privs, desc)',
+    'Role ' || current_user || ' should be granted CREATE on tablespace pg_default',
+    ''
+);
+
+-- Try nonexistent tablespace.
+SELECT * FROM check_test(
+    tablespace_privs_are( '__nonesuch', current_user, '{CREATE}', 'whatever' ),
+    false,
+    'tablespace_privs_are(non-tablespace, role, privs, desc)',
+    'whatever',
+    '    Tablespace __nonesuch does not exist'
+);
+
+-- Try nonexistent user.
+SELECT * FROM check_test(
+    tablespace_privs_are( 'pg_default', '__noone', '{CREATE}', 'whatever' ),
+    false,
+    'tablespace_privs_are(tablespace, non-role, privs, desc)',
+    'whatever',
+    '    Role __noone does not exist'
+);
+
+-- Try another user.
+REVOKE CREATE ON TABLESPACE pg_default FROM public;
+SELECT * FROM check_test(
+    tablespace_privs_are( 'pg_default', '__someone_else', '{CREATE}', 'whatever' ),
+    false,
+    'tablespace_privs_are(tablespace, ungranted, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        CREATE'
+);
+
+-- Try testing default description for no permissions.
+SELECT * FROM check_test(
+    tablespace_privs_are( 'pg_default', '__someone_else', '{}'::text[] ),
+    true,
+    'tablespace_privs_are(tablespace, role, no privs)',
+    'Role __someone_else should be granted no privileges on tablespace pg_default',
+    ''
+);
+
+/****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
