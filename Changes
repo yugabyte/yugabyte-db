@@ -35,6 +35,7 @@ Revision history for pgTAP
   + `db_privs_are()`
   + `table_privs_are()`
   + `function_privs_are()`
+  + `language_privs_are()`
 
 0.91.1 2012-09-11T00:26:52Z
 ---------------------------

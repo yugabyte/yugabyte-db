@@ -5723,6 +5723,65 @@ something like:
     # Failed test 17: "Role slim should be granted EXECUTE on foo()"
     #     Role slim does not exist
 
+### `language_privs_are()`
+
+    SELECT language_privs_are ( :lang, :role, :privileges, :description );
+    SELECT language_privs_are ( :lang, :role, :privileges );
+
+**Parameters**
+
+`:lang`
+: Name of a language.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of table privileges the role should be granted to the language.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a language. Consult [the
+documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-LANGUAGE)
+for the list of language privileges available in your version of PostgreSQL.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT language_privs_are(
+        'plpgsql', 'fred', ARRAY['USAGE'],
+        'Fred should be granted USAGE on db "flipr"'
+    );
+    SELECT language_privs_are( 'plperl', ARRAY['USAGE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted no privileges on banks"
+    #     Extra privileges:
+    #           USAGE
+
+Likewise if the role is not granted some of the specified permissions on the
+language:
+
+    # Failed test 15: "Role kurk should be granted USGAE on banks"
+    #     Missing privileges:
+    #           USAGE
+
+In the event that the test fails because the language in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted USAGE on plr"
+    #     Language maindb does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted USAGE on pllolcode"
+    #     Role slim does not exist
+
 No Test for the Wicked
 ======================
 

@@ -1,8 +1,8 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(103);
---SELECT * FROM no_plan();
+--SELECT plan(103);
+SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
@@ -219,7 +219,6 @@ SELECT * FROM check_test(
     '    Role __noone does not exist'
 );
 
-
 /****************************************************************************/
 -- Test function_privilege_is().
 CREATE OR REPLACE FUNCTION public.foo(int, text) RETURNS VOID LANGUAGE SQL AS '';
@@ -420,6 +419,63 @@ SELECT * FROM check_test(
     'whatever',
     '    Extra privileges:
         EXECUTE'
+);
+
+/****************************************************************************/
+-- Test language_privilege_is().
+
+SELECT * FROM check_test(
+    language_privs_are( 'plpgsql', current_user, '{USAGE}', 'whatever' ),
+    true,
+    'language_privs_are(lang, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    language_privs_are( 'plpgsql', current_user, '{USAGE}' ),
+    true,
+    'language_privs_are(lang, role, privs, desc)',
+    'Role ' || current_user || ' should be granted USAGE on language plpgsql',
+    ''
+);
+
+-- Try nonexistent language.
+SELECT * FROM check_test(
+    language_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
+    false,
+    'language_privs_are(non-lang, role, privs, desc)',
+    'whatever',
+    '    Language __nonesuch does not exist'
+);
+
+-- Try nonexistent user.
+SELECT * FROM check_test(
+    language_privs_are( 'plpgsql', '__noone', '{USAGE}', 'whatever' ),
+    false,
+    'language_privs_are(lang, non-role, privs, desc)',
+    'whatever',
+    '    Role __noone does not exist'
+);
+
+-- Try another user.
+REVOKE USAGE ON LANGUAGE plpgsql FROM public;
+SELECT * FROM check_test(
+    language_privs_are( 'plpgsql', '__someone_else', '{USAGE}', 'whatever' ),
+    false,
+    'language_privs_are(lang, ungranted, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        USAGE'
+);
+
+-- Try testing default description for no permissions.
+SELECT * FROM check_test(
+    language_privs_are( 'plpgsql', '__someone_else', '{}'::text[] ),
+    true,
+    'language_privs_are(lang, role, no privs)',
+    'Role __someone_else should be granted no privileges on language plpgsql',
+    ''
 );
 
 /****************************************************************************/

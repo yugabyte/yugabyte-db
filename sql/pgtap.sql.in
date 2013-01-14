@@ -7943,7 +7943,7 @@ BEGIN
             RETURN '{undefined_table}';
         WHEN undefined_object THEN
             -- Not a valid role.
-            RETURN '{undefined_object}';
+            RETURN '{undefined_role}';
         WHEN invalid_parameter_value THEN
             -- Not a valid permission on this version of PostgreSQL; ignore;
         END;
@@ -7986,7 +7986,7 @@ BEGIN
         RETURN ok(FALSE, $5) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $5) || E'\n' || diag(
             '    Role ' || quote_ident($3) || ' does not exist'
         );
@@ -8016,7 +8016,7 @@ BEGIN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
@@ -8065,7 +8065,7 @@ BEGIN
             RETURN '{invalid_catalog_name}';
         WHEN undefined_object THEN
             -- Not a valid role.
-            RETURN '{undefined_object}';
+            RETURN '{undefined_role}';
         WHEN invalid_parameter_value THEN
             -- Not a valid permission on this version of PostgreSQL; ignore;
         END;
@@ -8084,7 +8084,7 @@ BEGIN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Database ' || quote_ident($1) || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
@@ -8116,7 +8116,7 @@ EXCEPTION
     -- Not a valid func name.
     WHEN undefined_function THEN RETURN '{undefined_function}';
     -- Not a valid role.
-    WHEN undefined_object   THEN RETURN '{undefined_object}';
+    WHEN undefined_object   THEN RETURN '{undefined_role}';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -8129,7 +8129,7 @@ BEGIN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Function ' || $1 || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
@@ -8178,3 +8178,52 @@ RETURNS TEXT AS $$
             || ' on function ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ')'
     );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_lang_privs (NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_language_privilege($1, $2, 'USAGE') THEN
+        RETURN '{USAGE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION WHEN undefined_object THEN
+    -- Same error code for unknown user and language. So figure out which.      
+    RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
+        '{undefined_role}'
+    ELSE
+        '{undefined_language}'
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- language_privs_are ( lang, user, privileges[], description )
+CREATE OR REPLACE FUNCTION language_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_lang_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_language' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Language ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- language_privs_are ( lang, user, privileges[] )
+CREATE OR REPLACE FUNCTION language_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT language_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on language ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+

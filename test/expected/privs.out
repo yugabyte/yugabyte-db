@@ -1,5 +1,4 @@
 \unset ECHO
-1..103
 ok 1 - table_privs_are(sch, tab, role, privs, desc) should pass
 ok 2 - table_privs_are(sch, tab, role, privs, desc) should have the proper description
 ok 3 - table_privs_are(sch, tab, role, privs, desc) should have the proper diagnostics
@@ -103,3 +102,22 @@ ok 100 - function_privs_are(sch, func, args, unpriv, privs, desc) should have th
 ok 101 - function_privs_are(func, args, unpriv, privs, desc) should fail
 ok 102 - function_privs_are(func, args, unpriv, privs, desc) should have the proper description
 ok 103 - function_privs_are(func, args, unpriv, privs, desc) should have the proper diagnostics
+ok 104 - language_privs_are(lang, role, privs, desc) should pass
+ok 105 - language_privs_are(lang, role, privs, desc) should have the proper description
+ok 106 - language_privs_are(lang, role, privs, desc) should have the proper diagnostics
+ok 107 - language_privs_are(lang, role, privs, desc) should pass
+ok 108 - language_privs_are(lang, role, privs, desc) should have the proper description
+ok 109 - language_privs_are(lang, role, privs, desc) should have the proper diagnostics
+ok 110 - language_privs_are(non-lang, role, privs, desc) should fail
+ok 111 - language_privs_are(non-lang, role, privs, desc) should have the proper description
+ok 112 - language_privs_are(non-lang, role, privs, desc) should have the proper diagnostics
+ok 113 - language_privs_are(lang, non-role, privs, desc) should fail
+ok 114 - language_privs_are(lang, non-role, privs, desc) should have the proper description
+ok 115 - language_privs_are(lang, non-role, privs, desc) should have the proper diagnostics
+ok 116 - language_privs_are(lang, ungranted, privs, desc) should fail
+ok 117 - language_privs_are(lang, ungranted, privs, desc) should have the proper description
+ok 118 - language_privs_are(lang, ungranted, privs, desc) should have the proper diagnostics
+ok 119 - language_privs_are(lang, role, no privs) should pass
+ok 120 - language_privs_are(lang, role, no privs) should have the proper description
+ok 121 - language_privs_are(lang, role, no privs) should have the proper diagnostics
+1..121
