@@ -149,7 +149,7 @@ SELECT * FROM check_test(
 
 
 /****************************************************************************/
--- Test db_privilege_is().
+-- Test database_privileges_are().
 
 SELECT * FROM check_test(
     database_privs_are( current_database(), current_user, _db_privs(), 'whatever' ),
@@ -476,6 +476,77 @@ SELECT * FROM check_test(
     'language_privs_are(lang, role, no privs)',
     'Role __someone_else should be granted no privileges on language plpgsql',
     ''
+);
+
+/****************************************************************************/
+-- Test schema_privileges_are().
+
+SELECT * FROM check_test(
+    schema_privs_are( current_schema(), current_user, ARRAY['CREATE', 'USAGE'], 'whatever' ),
+    true,
+    'schema_privs_are(schema, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    schema_privs_are( current_schema(), current_user, ARRAY['CREATE', 'USAGE'] ),
+    true,
+    'schema_privs_are(schema, role, privs, desc)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(ARRAY['CREATE', 'USAGE'], ', ') || ' on schema ' || current_schema(),
+    ''
+);
+
+-- Try nonexistent schema.
+SELECT * FROM check_test(
+    schema_privs_are( '__nonesuch', current_user, ARRAY['CREATE', 'USAGE'], 'whatever' ),
+    false,
+    'schema_privs_are(non-schema, role, privs, desc)',
+    'whatever',
+    '    Schema __nonesuch does not exist'
+);
+
+-- Try nonexistent user.
+SELECT * FROM check_test(
+    schema_privs_are( current_schema(), '__noone', ARRAY['CREATE', 'USAGE'], 'whatever' ),
+    false,
+    'schema_privs_are(schema, non-role, privs, desc)',
+    'whatever',
+    '    Role __noone does not exist'
+);
+
+-- Try another user.
+SELECT * FROM check_test(
+    schema_privs_are( current_schema(), '__someone_else', ARRAY['CREATE', 'USAGE'], 'whatever' ),
+    false,
+    'schema_privs_are(schema, ungranted, privs, desc)',
+    'whatever',
+    '    Missing privileges:
+        CREATE
+        USAGE'
+);
+
+-- Try a subset of privs.
+SELECT * FROM check_test(
+    schema_privs_are(
+        current_schema(), current_user, ARRAY['CREATE'],
+        'whatever'
+    ),
+    false,
+    'schema_privs_are(schema, ungranted, privs, desc)',
+    'whatever',
+    '    Extra privileges:
+        USAGE'
+);
+
+-- Try testing default description for no permissions.
+SELECT * FROM check_test(
+    schema_privs_are( current_schema(), '__noone', '{}'::text[] ),
+    false,
+    'schema_privs_are(schema, non-role, no privs)',
+    'Role __noone should be granted no privileges on schema ' || current_schema(),
+    '    Role __noone does not exist'
 );
 
 /****************************************************************************/

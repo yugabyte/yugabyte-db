@@ -5564,7 +5564,7 @@ created. Examples:
 If the role is granted permissions other than those specified, the diagnostics
 will list the extra permissions, like so:
 
-    # Failed test 14: "Role bob should be granted CREATE on banks"
+    # Failed test 14: "Role bob should be granted CREATE on database banks"
     #     Extra privileges:
     #           CONNECT
     #           TEMPORARY
@@ -5572,7 +5572,7 @@ will list the extra permissions, like so:
 Likewise if the role is not granted some of the specified permissions on the
 database:
 
-    # Failed test 15: "Role kurk should be granted CONNECT, TEMPORARY on banks"
+    # Failed test 15: "Role kurk should be granted CONNECT, TEMPORARY on database banks"
     #     Missing privileges:
     #           CREATE
 
@@ -5580,13 +5580,73 @@ In the event that the test fails because the database in question does not
 actually exist or is not visible, you will see an appropriate diagnostic such
 as:
 
-    # Failed test 16: "Role slim should be granted CONNECT on maindb"
+    # Failed test 16: "Role slim should be granted CONNECT on database maindb"
     #     Database maindb does not exist
 
 If the test fails because the role does not exist, the diagnostics will look
 something like:
 
-    # Failed test 17: "Role slim should be granted CONNECT, CREATE on widgets"
+    # Failed test 17: "Role slim should be granted CONNECT, CREATE on database widgets"
+    #     Role slim does not exist
+
+### `schema_privs_are()`
+
+    SELECT schema_privs_are ( :schema, :role, :privileges, :description );
+    SELECT schema_privs_are ( :schema, :role, :privileges );
+
+**Parameters**
+
+`:schema`
+: Name of a schema.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of table privileges the role should be granted to the schema.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a schema. Consult [the
+documentation](http://www.postgresql.org/docs/current/static/functions-info.html#FUNCTIONS-INFO-ACCESS-SCHEMA)
+for the list of schema privileges available in your version of PostgreSQL.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT schema_privs_are(
+        'flipr', 'fred', ARRAY['CREATE', 'USAGE'],
+        'Fred should be granted CREATE and USAGE on schema "flipr"'
+    );
+    SELECT schema_privs_are( 'hr', ARRAY['USAGE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted no privileges on schema pinata"
+    #     Extra privileges:
+    #           CREATE
+    #           USAGE
+
+Likewise if the role is not granted some of the specified permissions on the
+schema:
+
+    # Failed test 15: "Role kurk should be granted CREATE, USAGE on schema stuff"
+    #     Missing privileges:
+    #           CREATE
+
+In the event that the test fails because the schema in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted USAGE on schema main"
+    #     Schema main does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted CREATE, USAGE on schema admin"
     #     Role slim does not exist
 
 ### `table_privs_are()`

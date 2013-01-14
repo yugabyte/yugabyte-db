@@ -8227,3 +8227,52 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _get_schema_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['CREATE', 'USAGE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        IF pg_catalog.has_schema_privilege($1, $2, privs[i]) THEN
+            grants := grants || privs[i];
+        END IF;
+    END LOOP;
+    RETURN grants;
+EXCEPTION
+    -- Not a valid schema name.
+    WHEN invalid_schema_name THEN RETURN '{invalid_schema_name}';
+    -- Not a valid role.
+    WHEN undefined_object   THEN RETURN '{undefined_role}';
+END;
+$$ LANGUAGE plpgsql;
+
+-- schema_privs_are ( schema, user, privileges[], description )
+CREATE OR REPLACE FUNCTION schema_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_schema_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'invalid_schema_name' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Schema ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- schema_privs_are ( schema, user, privileges[] )
+CREATE OR REPLACE FUNCTION schema_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT schema_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on schema ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;

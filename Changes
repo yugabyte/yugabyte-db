@@ -33,6 +33,7 @@ Revision history for pgTAP
   expressions.
 * Added new functions for testing a user's access to database objects:
   + `database_privs_are()`
+  + `schema_privs_are()`
   + `table_privs_are()`
   + `function_privs_are()`
   + `language_privs_are()`
