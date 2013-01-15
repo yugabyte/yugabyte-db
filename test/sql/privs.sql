@@ -1,8 +1,8 @@
 \unset ECHO
 \i test/setup.sql
 
---SELECT plan(103);
-SELECT * FROM no_plan();
+SELECT plan(304);
+--SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
