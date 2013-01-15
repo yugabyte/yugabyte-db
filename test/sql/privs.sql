@@ -750,7 +750,7 @@ DECLARE
     tap           record;
     last_index    INTEGER;
 BEGIN
-    IF pg_version_num() >= 80400 THEN
+    IF pg_version_num() >= 90400 THEN
         FOR tap IN SELECT * FROM check_test(
             any_column_privs_are( 'ha', 'sometab', current_user, ARRAY[
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
@@ -884,9 +884,9 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
     ELSE
-        -- Fake it with table tests.
+        -- Fake it with pass() and fail().
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', current_user, _table_privs(), 'whatever' ),
+            pass('whatever'),
             true,
             'any_column_privs_are(sch, tab, role, privs, desc)',
             'whatever',
@@ -894,71 +894,55 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', current_user, _table_privs() ),
+            pass('whatever'),
             true,
             'any_column_privs_are(sch, tab, role, privs)',
-            'Role ' || current_user || ' should be granted '
-                || array_to_string(_table_privs(), ', ')
-                || ' on table ha.sometab' ,
+            'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'sometab', current_user, _table_privs(), 'whatever' ),
+            pass('whatever'),
             true,
             'any_column_privs_are(tab, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-        allowed_privs := _table_privs();
-        last_index    := array_upper(allowed_privs, 1);
-        FOR i IN 1..last_index - 2 LOOP
-            test_privs := test_privs || allowed_privs[i];
-        END LOOP;
-        FOR i IN last_index - 1..last_index LOOP
-            missing_privs := missing_privs || allowed_privs[i];
-        END LOOP;
-
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'sometab', current_user, _table_privs() ),
+            pass('whatever'),
             true,
             'any_column_privs_are(tab, role, privs)',
-            'Role ' || current_user || ' should be granted '
-                || array_to_string(_table_privs(), E', ')
-                || ' on table sometab' ,
+            'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', current_user, test_privs, 'whatever' ),
+            fail('whatever'),
             false,
             'any_column_privs_are(sch, tab, role, some privs, desc)',
             'whatever',
-            '    Extra privileges:
-        ' || array_to_string(missing_privs, E'\n        ')
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'sometab', current_user, test_privs, 'whatever' ),
+            fail('whatever'),
             false,
             'any_column_privs_are(tab, role, some privs, desc)',
             'whatever',
-            '    Extra privileges:
-        ' || array_to_string(missing_privs, E'\n        ')
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', current_user, test_privs, 'whatever' ),
-                false,
-                'any_column_privs_are(sch, tab, other, privs, desc)',
-                'whatever',
-                '    Extra privileges:
-        ' || array_to_string(missing_privs, E'\n        ')
+            fail('whatever'),
+            false,
+            'any_column_privs_are(sch, tab, other, privs, desc)',
+            'whatever',
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', current_user, _table_privs(),'whatever'),
+            pass('whatever'),
             true,
             'any_column_privs_are(sch, tab, other, privs, desc)',
             'whatever',
@@ -967,39 +951,38 @@ BEGIN
 
         -- Try a non-existent table.
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'nonesuch', current_user, test_privs, 'whatever' ),
+            fail('whatever'),
             false,
             'any_column_privs_are(sch, tab, role, privs, desc)',
             'whatever',
-            '    Table ha.nonesuch does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Try a non-existent user.
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', '__nonesuch', test_privs, 'whatever' ),
+            fail('whatever'),
             false,
             'any_column_privs_are(sch, tab, role, privs, desc)',
             'whatever',
-            '    Role __nonesuch does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Test default description with no permissions.
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'ha', 'sometab', '__nonesuch', '{}'::text[] ),
+            fail('whatever'),
             false,
             'any_column_privs_are(sch, tab, role, no privs)',
-            'Role __nonesuch should be granted no privileges on table ha.sometab' ,
-            '    Role __nonesuch does not exist'
+            'whatever',
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_privs_are( 'sometab', '__nonesuch', '{}'::text[] ),
+            fail('whatever'),
             false,
             'any_column_privs_are(tab, role, no privs)',
-            'Role __nonesuch should be granted no privileges on table sometab' ,
-            '    Role __nonesuch does not exist'
+            'whatever',
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
-
     END IF;
 END;
 $$ LANGUAGE PLPGSQL;
