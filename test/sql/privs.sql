@@ -1015,7 +1015,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', current_user, '{USAGE}', 'whatever' ),
             true,
-            'fdw_privs_are(lang, role, privs, desc)',
+            'fdw_privs_are(fdw, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1023,7 +1023,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', current_user, '{USAGE}' ),
             true,
-            'fdw_privs_are(lang, role, privs, desc)',
+            'fdw_privs_are(fdw, role, privs, desc)',
             'Role ' || current_user || ' should be granted USAGE on FDW dummy',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1033,7 +1033,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
             false,
-            'fdw_privs_are(non-lang, role, privs, desc)',
+            'fdw_privs_are(non-fdw, role, privs, desc)',
             'whatever',
             '    FDW __nonesuch does not exist'
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1043,7 +1043,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', '__noone', '{USAGE}', 'whatever' ),
             false,
-            'fdw_privs_are(lang, non-role, privs, desc)',
+            'fdw_privs_are(fdw, non-role, privs, desc)',
             'whatever',
             '    Role __noone does not exist'
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1053,7 +1053,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', '__someone_else', '{USAGE}', 'whatever' ),
             false,
-            'fdw_privs_are(lang, ungranted, privs, desc)',
+            'fdw_privs_are(fdw, ungranted, privs, desc)',
             'whatever',
             '    Missing privileges:
         USAGE'
@@ -1063,7 +1063,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', '__someone_else', '{}'::text[] ),
             true,
-            'fdw_privs_are(lang, role, no privs)',
+            'fdw_privs_are(fdw, role, no privs)',
             'Role __someone_else should be granted no privileges on FDW dummy',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1073,7 +1073,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             language_privs_are( 'plpgsql', current_user, '{USAGE}', 'whatever' ),
             true,
-            'fdw_privs_are(lang, role, privs, desc)',
+            'fdw_privs_are(fdw, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1081,7 +1081,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             language_privs_are( 'plpgsql', current_user, '{USAGE}' ),
             true,
-            'fdw_privs_are(lang, role, privs, desc)',
+            'fdw_privs_are(fdw, role, privs, desc)',
             'Role ' || current_user || ' should be granted USAGE on language plpgsql',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1091,7 +1091,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             language_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
             false,
-            'fdw_privs_are(non-lang, role, privs, desc)',
+            'fdw_privs_are(non-fdw, role, privs, desc)',
             'whatever',
             '    Language __nonesuch does not exist'
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1101,7 +1101,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             language_privs_are( 'plpgsql', '__noone', '{USAGE}', 'whatever' ),
             false,
-            'fdw_privs_are(lang, non-role, privs, desc)',
+            'fdw_privs_are(fdw, non-role, privs, desc)',
             'whatever',
             '    Role __noone does not exist'
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1111,7 +1111,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             language_privs_are( 'plpgsql', '__someone_else', '{USAGE}', 'whatever' ),
             false,
-            'fdw_privs_are(lang, ungranted, privs, desc)',
+            'fdw_privs_are(fdw, ungranted, privs, desc)',
             'whatever',
             '    Missing privileges:
         USAGE'
@@ -1121,7 +1121,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             language_privs_are( 'plpgsql', '__someone_else', '{}'::text[] ),
             true,
-            'fdw_privs_are(lang, role, no privs)',
+            'fdw_privs_are(fdw, role, no privs)',
             'Role __someone_else should be granted no privileges on language plpgsql',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1132,6 +1132,134 @@ END;
 $$ LANGUAGE plpgsql;
 
 SELECT * FROM test_fdw();
+
+CREATE FUNCTION test_server() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 80400 THEN
+        CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
+
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'foo', current_user, '{USAGE}', 'whatever' ),
+            true,
+            'server_privs_are(server, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'foo', current_user, '{USAGE}' ),
+            true,
+            'server_privs_are(server, role, privs, desc)',
+            'Role ' || current_user || ' should be granted USAGE on server foo',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent server.
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
+            false,
+            'server_privs_are(non-server, role, privs, desc)',
+            'whatever',
+            '    Server __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent user.
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'foo', '__noone', '{USAGE}', 'whatever' ),
+            false,
+            'server_privs_are(server, non-role, privs, desc)',
+            'whatever',
+            '    Role __noone does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try another user.
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'foo', '__someone_else', '{USAGE}', 'whatever' ),
+            false,
+            'server_privs_are(server, ungranted, privs, desc)',
+            'whatever',
+            '    Missing privileges:
+        USAGE'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try testing default description for no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'foo', '__someone_else', '{}'::text[] ),
+            true,
+            'server_privs_are(server, role, no privs)',
+            'Role __someone_else should be granted no privileges on server foo',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+    ELSE
+        -- Fake it with language_privs_are().
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', current_user, '{USAGE}', 'whatever' ),
+            true,
+            'server_privs_are(server, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', current_user, '{USAGE}' ),
+            true,
+            'server_privs_are(server, role, privs, desc)',
+            'Role ' || current_user || ' should be granted USAGE on language plpgsql',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent fdw.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
+            false,
+            'server_privs_are(non-server, role, privs, desc)',
+            'whatever',
+            '    Language __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent user.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', '__noone', '{USAGE}', 'whatever' ),
+            false,
+            'server_privs_are(server, non-role, privs, desc)',
+            'whatever',
+            '    Role __noone does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try another user.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', '__someone_else', '{USAGE}', 'whatever' ),
+            false,
+            'server_privs_are(server, ungranted, privs, desc)',
+            'whatever',
+            '    Missing privileges:
+        USAGE'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try testing default description for no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', '__someone_else', '{}'::text[] ),
+            true,
+            'server_privs_are(server, role, no privs)',
+            'Role __someone_else should be granted no privileges on language plpgsql',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM test_server();
 
 
 /****************************************************************************/

@@ -6204,12 +6204,75 @@ actually exist or is not visible, you will see an appropriate diagnostic such
 as:
 
     # Failed test 16: "Role slim should be granted USAGE on FDW sqlite"
-    #     FDW sqlite plr does not exist
+    #     FDW sqlite does not exist
 
 If the test fails because the role does not exist, the diagnostics will look
 something like:
 
     # Failed test 17: "Role slim should be granted USAGE on sqlite"
+    #     Role slim does not exist
+
+### `server_privs_are()`
+
+    SELECT server_privs_are ( :server, :role, :privileges, :description );
+    SELECT server_privs_are ( :server, :role, :privileges );
+
+**Parameters**
+
+`:server`
+: Name of a server.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of table privileges the role should be granted to the server.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a server. The available
+function privileges are:
+
+* USAGE
+
+Note that server privileges were added in PostgreSQL 8.4, so this function
+will likley throw an exception on earlier versions.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT server_privs_are(
+        'otherdb', 'fred', ARRAY['USAGE'],
+        'Fred should be granted USAGE on server "otherdb"'
+    );
+    SELECT server_privs_are( 'myserv', ARRAY['USAGE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted no privileges on myserv"
+    #     Extra privileges:
+    #           USAGE
+
+Likewise if the role is not granted some of the specified permissions on the
+server:
+
+    # Failed test 15: "Role kurk should be granted USAGE on oltp"
+    #     Missing privileges:
+    #           USAGE
+
+In the event that the test fails because the server in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted USAGE on server oltp"
+    #     server oltp does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted USAGE on oltp"
     #     Role slim does not exist
 
 No Test for the Wicked
