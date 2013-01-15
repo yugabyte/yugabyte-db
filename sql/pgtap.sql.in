@@ -7909,6 +7909,30 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _assets_are ( text, text[], text[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _areni(
+        $1,
+        ARRAY(
+            SELECT UPPER($2[i]) AS thing
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+            EXCEPT
+            SELECT $3[i]
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+             ORDER BY thing
+        ),
+        ARRAY(
+            SELECT $3[i] AS thing
+              FROM generate_series(1, array_upper($3, 1)) s(i)
+            EXCEPT
+            SELECT UPPER($2[i])
+              FROM generate_series(1, array_upper($2, 1)) s(i)
+             ORDER BY thing
+        ),
+        $4
+    );
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION _get_table_privs(NAME, TEXT)
 RETURNS TEXT[] AS $$
 DECLARE
@@ -7951,30 +7975,6 @@ BEGIN
     END IF;
 END;
 $$ language plpgsql;
-
-CREATE OR REPLACE FUNCTION _assets_are ( text, text[], text[], TEXT )
-RETURNS TEXT AS $$
-    SELECT _areni(
-        $1,
-        ARRAY(
-            SELECT UPPER($2[i]) AS thing
-              FROM generate_series(1, array_upper($2, 1)) s(i)
-            EXCEPT
-            SELECT $3[i]
-              FROM generate_series(1, array_upper($3, 1)) s(i)
-             ORDER BY thing
-        ),
-        ARRAY(
-            SELECT $3[i] AS thing
-              FROM generate_series(1, array_upper($3, 1)) s(i)
-            EXCEPT
-            SELECT UPPER($2[i])
-              FROM generate_series(1, array_upper($2, 1)) s(i)
-             ORDER BY thing
-        ),
-        $4
-    );
-$$ LANGUAGE SQL;
 
 -- table_privs_are ( schema, table, user, privileges[], description )
 CREATE OR REPLACE FUNCTION table_privs_are ( NAME, NAME, NAME, NAME[], TEXT )
@@ -8188,7 +8188,7 @@ BEGIN
         RETURN '{}';
     END IF;
 EXCEPTION WHEN undefined_object THEN
-    -- Same error code for unknown user or language. So figure out which.      
+    -- Same error code for unknown user or language. So figure out which.
     RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
         '{undefined_role}'
     ELSE
@@ -8286,7 +8286,7 @@ BEGIN
         RETURN '{}';
     END IF;
 EXCEPTION WHEN undefined_object THEN
-    -- Same error code for unknown user or tablespace. So figure out which.      
+    -- Same error code for unknown user or tablespace. So figure out which.
     RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
         '{undefined_role}'
     ELSE
@@ -8507,7 +8507,7 @@ BEGIN
         END IF;
     END LOOP;
     RETURN grants;
-EXCEPTION 
+EXCEPTION
     -- Not a valid column name.
     WHEN undefined_column THEN RETURN '{undefined_column}';
     -- Not a valid table name.
@@ -8595,7 +8595,7 @@ BEGIN
         RETURN '{}';
     END IF;
 EXCEPTION WHEN undefined_object THEN
-    -- Same error code for unknown user or fdw. So figure out which.      
+    -- Same error code for unknown user or fdw. So figure out which.
     RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
         '{undefined_role}'
     ELSE
@@ -8663,7 +8663,7 @@ BEGIN
         RETURN '{}';
     END IF;
 EXCEPTION WHEN undefined_object THEN
-    -- Same error code for unknown user or server. So figure out which.      
+    -- Same error code for unknown user or server. So figure out which.
     RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
         '{undefined_role}'
     ELSE
@@ -8701,4 +8701,3 @@ RETURNS TEXT AS $$
             || ' on server ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
-

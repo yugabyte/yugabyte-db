@@ -852,49 +852,6 @@ RETURNS TEXT AS $$
       END;
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION _table_privs()
-RETURNS NAME[] AS $$
-DECLARE
-    pgversion INTEGER := pg_version_num();
-BEGIN
-    IF pgversion < 80200 THEN RETURN ARRAY[
-        'DELETE', 'INSERT', 'REFERENCES', 'RULE', 'SELECT', 'TRIGGER', 'UPDATE'
-    ];
-    ELSIF pgversion < 80400 THEN RETURN ARRAY[
-        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'UPDATE'
-    ];
-    ELSE RETURN ARRAY[
-        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'
-    ];
-    END IF;
-END;
-$$ language plpgsql;
-
-CREATE OR REPLACE FUNCTION _get_table_privs(NAME, TEXT)
-RETURNS TEXT[] AS $$
-DECLARE
-    privs  TEXT[] := _table_privs();
-    grants TEXT[] := '{}';
-BEGIN
-    FOR i IN 1..array_upper(privs, 1) LOOP
-        BEGIN
-            IF pg_catalog.has_table_privilege($1, $2, privs[i]) THEN
-                grants := grants || privs[i];
-            END IF;
-        EXCEPTION WHEN undefined_table THEN
-            -- Not a valid table name.
-            RETURN '{undefined_table}';
-        WHEN undefined_object THEN
-            -- Not a valid role.
-            RETURN '{undefined_object}';
-        WHEN invalid_parameter_value THEN
-            -- Not a valid permission on this version of PostgreSQL; ignore;
-        END;
-    END LOOP;
-    RETURN grants;
-END;
-$$ LANGUAGE plpgsql;
-
 CREATE OR REPLACE FUNCTION _assets_are ( text, text[], text[], TEXT )
 RETURNS TEXT AS $$
     SELECT _areni(
@@ -919,6 +876,49 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _get_table_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := _table_privs();
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        BEGIN
+            IF pg_catalog.has_table_privilege($1, $2, privs[i]) THEN
+                grants := grants || privs[i];
+            END IF;
+        EXCEPTION WHEN undefined_table THEN
+            -- Not a valid table name.
+            RETURN '{undefined_table}';
+        WHEN undefined_object THEN
+            -- Not a valid role.
+            RETURN '{undefined_role}';
+        WHEN invalid_parameter_value THEN
+            -- Not a valid permission on this version of PostgreSQL; ignore;
+        END;
+    END LOOP;
+    RETURN grants;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _table_privs()
+RETURNS NAME[] AS $$
+DECLARE
+    pgversion INTEGER := pg_version_num();
+BEGIN
+    IF pgversion < 80200 THEN RETURN ARRAY[
+        'DELETE', 'INSERT', 'REFERENCES', 'RULE', 'SELECT', 'TRIGGER', 'UPDATE'
+    ];
+    ELSIF pgversion < 80400 THEN RETURN ARRAY[
+        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'UPDATE'
+    ];
+    ELSE RETURN ARRAY[
+        'DELETE', 'INSERT', 'REFERENCES', 'SELECT', 'TRIGGER', 'TRUNCATE', 'UPDATE'
+    ];
+    END IF;
+END;
+$$ language plpgsql;
+
 -- table_privs_are ( schema, table, user, privileges[], description )
 CREATE OR REPLACE FUNCTION table_privs_are ( NAME, NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
@@ -929,7 +929,7 @@ BEGIN
         RETURN ok(FALSE, $5) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $5) || E'\n' || diag(
             '    Role ' || quote_ident($3) || ' does not exist'
         );
@@ -945,7 +945,7 @@ RETURNS TEXT AS $$
         $1, $2, $3, $4,
         'Role ' || quote_ident($3) || ' should be granted '
             || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
-            || ' on table '|| quote_ident($1) || '.' || quote_ident($2)
+            || ' on table ' || quote_ident($1) || '.' || quote_ident($2)
     );
 $$ LANGUAGE SQL;
 
@@ -959,7 +959,7 @@ BEGIN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
@@ -1008,7 +1008,7 @@ BEGIN
             RETURN '{invalid_catalog_name}';
         WHEN undefined_object THEN
             -- Not a valid role.
-            RETURN '{undefined_object}';
+            RETURN '{undefined_role}';
         WHEN invalid_parameter_value THEN
             -- Not a valid permission on this version of PostgreSQL; ignore;
         END;
@@ -1027,7 +1027,7 @@ BEGIN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Database ' || quote_ident($1) || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
@@ -1059,7 +1059,7 @@ EXCEPTION
     -- Not a valid func name.
     WHEN undefined_function THEN RETURN '{undefined_function}';
     -- Not a valid role.
-    WHEN undefined_object   THEN RETURN '{undefined_object}';
+    WHEN undefined_object   THEN RETURN '{undefined_role}';
 END;
 $$ LANGUAGE plpgsql;
 
@@ -1072,7 +1072,7 @@ BEGIN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Function ' || $1 || ' does not exist'
         );
-    ELSIF grants[1] = 'undefined_object' THEN
+    ELSIF grants[1] = 'undefined_role' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
             '    Role ' || quote_ident($2) || ' does not exist'
         );
@@ -1119,5 +1119,528 @@ RETURNS TEXT AS $$
         'Role ' || quote_ident($3) || ' should be granted '
             || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
             || ' on function ' || quote_ident($1) || '(' || array_to_string($2, ', ') || ')'
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_lang_privs (NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_language_privilege($1, $2, 'USAGE') THEN
+        RETURN '{USAGE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION WHEN undefined_object THEN
+    -- Same error code for unknown user or language. So figure out which.
+    RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
+        '{undefined_role}'
+    ELSE
+        '{undefined_language}'
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- language_privs_are ( lang, user, privileges[], description )
+CREATE OR REPLACE FUNCTION language_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_lang_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_language' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Language ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- language_privs_are ( lang, user, privileges[] )
+CREATE OR REPLACE FUNCTION language_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT language_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on language ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_schema_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['CREATE', 'USAGE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        IF pg_catalog.has_schema_privilege($1, $2, privs[i]) THEN
+            grants := grants || privs[i];
+        END IF;
+    END LOOP;
+    RETURN grants;
+EXCEPTION
+    -- Not a valid schema name.
+    WHEN invalid_schema_name THEN RETURN '{invalid_schema_name}';
+    -- Not a valid role.
+    WHEN undefined_object   THEN RETURN '{undefined_role}';
+END;
+$$ LANGUAGE plpgsql;
+
+-- schema_privs_are ( schema, user, privileges[], description )
+CREATE OR REPLACE FUNCTION schema_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_schema_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'invalid_schema_name' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Schema ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- schema_privs_are ( schema, user, privileges[] )
+CREATE OR REPLACE FUNCTION schema_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT schema_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on schema ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_tablespaceprivs (NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_tablespace_privilege($1, $2, 'CREATE') THEN
+        RETURN '{CREATE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION WHEN undefined_object THEN
+    -- Same error code for unknown user or tablespace. So figure out which.
+    RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
+        '{undefined_role}'
+    ELSE
+        '{undefined_tablespace}'
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- tablespace_privs_are ( tablespace, user, privileges[], description )
+CREATE OR REPLACE FUNCTION tablespace_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_tablespaceprivs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_tablespace' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Tablespace ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- tablespace_privs_are ( tablespace, user, privileges[] )
+CREATE OR REPLACE FUNCTION tablespace_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT tablespace_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on tablespace ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_sequence_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['SELECT', 'UPDATE', 'USAGE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        BEGIN
+            IF pg_catalog.has_sequence_privilege($1, $2, privs[i]) THEN
+                grants := grants || privs[i];
+            END IF;
+        EXCEPTION WHEN undefined_table THEN
+            -- Not a valid sequence name.
+            RETURN '{undefined_table}';
+        WHEN undefined_object THEN
+            -- Not a valid role.
+            RETURN '{undefined_role}';
+        WHEN invalid_parameter_value THEN
+            -- Not a valid permission on this version of PostgreSQL; ignore;
+        END;
+    END LOOP;
+    RETURN grants;
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_privs_are ( schema, sequence, user, privileges[], description )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_sequence_privs( $3, quote_ident($1) || '.' || quote_ident($2) );
+BEGIN
+    IF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Role ' || quote_ident($3) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $4, $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_privs_are ( schema, sequence, user, privileges[] )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT sequence_privs_are(
+        $1, $2, $3, $4,
+        'Role ' || quote_ident($3) || ' should be granted '
+            || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
+            || ' on sequence '|| quote_ident($1) || '.' || quote_ident($2)
+    );
+$$ LANGUAGE SQL;
+
+-- sequence_privs_are ( sequence, user, privileges[], description )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_sequence_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- sequence_privs_are ( sequence, user, privileges[] )
+CREATE OR REPLACE FUNCTION sequence_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT sequence_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on sequence ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_ac_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        BEGIN
+            IF pg_catalog.has_any_column_privilege($1, $2, privs[i]) THEN
+                grants := grants || privs[i];
+            END IF;
+        EXCEPTION WHEN undefined_table THEN
+            -- Not a valid table name.
+            RETURN '{undefined_table}';
+        WHEN undefined_object THEN
+            -- Not a valid role.
+            RETURN '{undefined_role}';
+        WHEN invalid_parameter_value THEN
+            -- Not a valid permission on this version of PostgreSQL; ignore;
+        END;
+    END LOOP;
+    RETURN grants;
+END;
+$$ LANGUAGE plpgsql;
+
+-- any_column_privs_are ( schema, table, user, privileges[], description )
+CREATE OR REPLACE FUNCTION any_column_privs_are ( NAME, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_ac_privs( $3, quote_ident($1) || '.' || quote_ident($2) );
+BEGIN
+    IF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Role ' || quote_ident($3) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $4, $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- any_column_privs_are ( schema, table, user, privileges[] )
+CREATE OR REPLACE FUNCTION any_column_privs_are ( NAME, NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT any_column_privs_are(
+        $1, $2, $3, $4,
+        'Role ' || quote_ident($3) || ' should be granted '
+            || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
+            || ' on any column in '|| quote_ident($1) || '.' || quote_ident($2)
+    );
+$$ LANGUAGE SQL;
+
+-- any_column_privs_are ( table, user, privileges[], description )
+CREATE OR REPLACE FUNCTION any_column_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_ac_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- any_column_privs_are ( table, user, privileges[] )
+CREATE OR REPLACE FUNCTION any_column_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT any_column_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on any column in ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_col_privs(NAME, TEXT, NAME)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        IF pg_catalog.has_column_privilege($1, $2, $3, privs[i]) THEN
+            grants := grants || privs[i];
+        END IF;
+    END LOOP;
+    RETURN grants;
+EXCEPTION
+    -- Not a valid column name.
+    WHEN undefined_column THEN RETURN '{undefined_column}';
+    -- Not a valid table name.
+    WHEN undefined_table THEN RETURN '{undefined_table}';
+    -- Not a valid role.
+    WHEN undefined_object THEN RETURN '{undefined_role}';
+END;
+$$ LANGUAGE plpgsql;
+
+-- column_privs_are ( schema, table, column, user, privileges[], description )
+CREATE OR REPLACE FUNCTION column_privs_are ( NAME, NAME, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_col_privs( $4, quote_ident($1) || '.' || quote_ident($2), $3 );
+BEGIN
+    IF grants[1] = 'undefined_column' THEN
+        RETURN ok(FALSE, $6) || E'\n' || diag(
+            '    Column ' || quote_ident($1) || '.' || quote_ident($2) || '.' || quote_ident($3)
+            || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $6) || E'\n' || diag(
+            '    Table ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $6) || E'\n' || diag(
+            '    Role ' || quote_ident($4) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $5, $6);
+END;
+$$ LANGUAGE plpgsql;
+
+-- column_privs_are ( schema, table, column, user, privileges[] )
+CREATE OR REPLACE FUNCTION column_privs_are ( NAME, NAME, NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT column_privs_are(
+        $1, $2, $3, $4, $5,
+        'Role ' || quote_ident($4) || ' should be granted '
+            || CASE WHEN $5[1] IS NULL THEN 'no privileges' ELSE array_to_string($5, ', ') END
+            || ' on column ' || quote_ident($1) || '.' || quote_ident($2) || '.' || quote_ident($3)
+    );
+$$ LANGUAGE SQL;
+
+-- column_privs_are ( table, column, user, privileges[], description )
+CREATE OR REPLACE FUNCTION column_privs_are ( NAME, NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_col_privs( $3, quote_ident($1), $2 );
+BEGIN
+    IF grants[1] = 'undefined_column' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Column ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_table' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Table ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            '    Role ' || quote_ident($3) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $4, $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- column_privs_are ( table, column, user, privileges[] )
+CREATE OR REPLACE FUNCTION column_privs_are ( NAME, NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT column_privs_are(
+        $1, $2, $3, $4,
+        'Role ' || quote_ident($3) || ' should be granted '
+            || CASE WHEN $4[1] IS NULL THEN 'no privileges' ELSE array_to_string($4, ', ') END
+            || ' on column ' || quote_ident($1) || '.' || quote_ident($2)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_fdw_privs (NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_foreign_data_wrapper_privilege($1, $2, 'USAGE') THEN
+        RETURN '{USAGE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION WHEN undefined_object THEN
+    -- Same error code for unknown user or fdw. So figure out which.
+    RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
+        '{undefined_role}'
+    ELSE
+        '{undefined_fdw}'
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- fdw_privs_are ( fdw, user, privileges[], description )
+CREATE OR REPLACE FUNCTION fdw_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_fdw_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_fdw' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    FDW ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- fdw_privs_are ( fdw, user, privileges[] )
+CREATE OR REPLACE FUNCTION fdw_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT fdw_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on FDW ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_schema_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['CREATE', 'USAGE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        IF pg_catalog.has_schema_privilege($1, $2, privs[i]) THEN
+            grants := grants || privs[i];
+        END IF;
+    END LOOP;
+    RETURN grants;
+EXCEPTION
+    -- Not a valid schema name.
+    WHEN invalid_schema_name THEN RETURN '{invalid_schema_name}';
+    -- Not a valid role.
+    WHEN undefined_object   THEN RETURN '{undefined_role}';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _get_server_privs (NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_server_privilege($1, $2, 'USAGE') THEN
+        RETURN '{USAGE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION WHEN undefined_object THEN
+    -- Same error code for unknown user or server. So figure out which.
+    RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
+        '{undefined_role}'
+    ELSE
+        '{undefined_server}'
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- server_privs_are ( server, user, privileges[], description )
+CREATE OR REPLACE FUNCTION server_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_server_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_server' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Server ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- server_privs_are ( server, user, privileges[] )
+CREATE OR REPLACE FUNCTION server_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT server_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on server ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
