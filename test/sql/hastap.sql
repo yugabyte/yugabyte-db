@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(785);
+SELECT plan(786);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -2092,7 +2092,7 @@ BEGIN
             hasnt_foreign_table( '__SDFSDFD__', 'lol' ),
             true,
             'hasnt_foreign_table(non-existent schema, tab)',
-            'lol'
+            'lol',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;
@@ -2214,7 +2214,7 @@ BEGIN
             hasnt_table( '__SDFSDFD__', 'lol' ),
             true,
             'hasnt_foreign_table(non-existent schema, tab)',
-            'lol'
+            'lol',
             ''
         ) AS b LOOP
             RETURN NEXT tap.b;

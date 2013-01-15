@@ -1,5 +1,5 @@
 \unset ECHO
-1..785
+1..786
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -776,12 +776,13 @@ ok 773 - hasnt_foreign_table(non-existent table) should have the proper descript
 ok 774 - hasnt_foreign_table(non-existent table) should have the proper diagnostics
 ok 775 - hasnt_foreign_table(non-existent schema, tab) should pass
 ok 776 - hasnt_foreign_table(non-existent schema, tab) should have the proper description
-ok 777 - hasnt_foreign_table(sch, non-existent tab, desc) should pass
-ok 778 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper description
-ok 779 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper diagnostics
-ok 780 - hasnt_foreign_table(tab, desc) should fail
-ok 781 - hasnt_foreign_table(tab, desc) should have the proper description
-ok 782 - hasnt_foreign_table(tab, desc) should have the proper diagnostics
-ok 783 - hasnt_foreign_table(sch, tab, desc) should fail
-ok 784 - hasnt_foreign_table(sch, tab, desc) should have the proper description
-ok 785 - hasnt_foreign_table(sch, tab, desc) should have the proper diagnostics
+ok 777 - hasnt_foreign_table(non-existent schema, tab) should have the proper diagnostics
+ok 778 - hasnt_foreign_table(sch, non-existent tab, desc) should pass
+ok 779 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper description
+ok 780 - hasnt_foreign_table(sch, non-existent tab, desc) should have the proper diagnostics
+ok 781 - hasnt_foreign_table(tab, desc) should fail
+ok 782 - hasnt_foreign_table(tab, desc) should have the proper description
+ok 783 - hasnt_foreign_table(tab, desc) should have the proper diagnostics
+ok 784 - hasnt_foreign_table(sch, tab, desc) should fail
+ok 785 - hasnt_foreign_table(sch, tab, desc) should have the proper description
+ok 786 - hasnt_foreign_table(sch, tab, desc) should have the proper diagnostics

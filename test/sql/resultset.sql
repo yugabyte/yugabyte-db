@@ -993,9 +993,23 @@ DECLARE
 BEGIN
     IF pg_version_num() < 80400 THEN
         -- 8.3 and earlier cast records to text, so subtlety is out.
-        RETURN NEXT pass('results_eq(values, values) subtle mismatch should fail');
-        RETURN NEXT pass('results_eq(values, values) subtle mismatch should have the proper description');
-        RETURN NEXT pass('results_eq(values, values) subtle mismatch should have the proper diagnostics');
+        -- Fake out pg_regress by running equivalent tests with fail().
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'results_eq(values, values) subtle mismatch',
+            'whatever',
+            ''
+        ) AS a(b) LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'results_eq(values, values) integer type mismatch',
+            'whatever',
+            ''
+        ) AS a(b) LOOP RETURN NEXT tap.b; END LOOP;
+
     ELSE
         -- 8.4 does true record comparisions, yay!
         FOR tap IN SELECT * FROM check_test(

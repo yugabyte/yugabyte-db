@@ -367,7 +367,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     function_privs_are(
         'public', 'foo', ARRAY['integer', 'text'],
-        '__someone_else', ARRAY[]::text[], 'whatever'
+        '__someone_else', '{}'::text[], 'whatever'
     ),
     true,
     'function_privs_are(sch, func, args, unpriv, empty, desc)',
@@ -378,7 +378,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     function_privs_are(
         'public', 'foo', ARRAY['integer', 'text'],
-        '__someone_else', ARRAY[]::text[]
+        '__someone_else', '{}'::text[]
     ),
     true,
     'function_privs_are(sch, func, args, unpriv, empty)',
@@ -389,7 +389,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     function_privs_are(
         'foo', ARRAY['integer', 'text'],
-        '__someone_else', ARRAY[]::text[]
+        '__someone_else', '{}'::text[]
     ),
     true,
     'function_privs_are(func, args, unpriv, empty)',
@@ -401,7 +401,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     function_privs_are(
         'public', 'foo', ARRAY['integer', 'text'],
-        current_user, ARRAY[]::text[], 'whatever'
+        current_user, '{}'::text[], 'whatever'
     ),
     false,
     'function_privs_are(sch, func, args, unpriv, privs, desc)',
@@ -413,7 +413,7 @@ SELECT * FROM check_test(
 SELECT * FROM check_test(
     function_privs_are(
         'foo', ARRAY['integer', 'text'],
-        current_user, ARRAY[]::text[], 'whatever'
+        current_user, '{}'::text[], 'whatever'
     ),
     false,
     'function_privs_are(func, args, unpriv, privs, desc)',
@@ -1201,7 +1201,7 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Grant them some permission.
-        GRANT SELECT, INSERT, UPDATE (id) ON ha.sometab TO __someone_else;
+        EXECUTE 'GRANT SELECT, INSERT, UPDATE (id) ON ha.sometab TO __someone_else;';
 
         FOR tap IN SELECT * FROM check_test(
             column_privs_are( 'ha', 'sometab', 'id', '__someone_else', ARRAY[
@@ -1367,7 +1367,7 @@ DECLARE
     tap record;
 BEGIN
     IF pg_version_num() >= 80400 THEN
-        CREATE FOREIGN DATA WRAPPER dummy;
+        EXECUTE 'CREATE FOREIGN DATA WRAPPER dummy;';
 
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', current_user, '{USAGE}', 'whatever' ),
@@ -1494,7 +1494,7 @@ DECLARE
     tap record;
 BEGIN
     IF pg_version_num() >= 80400 THEN
-        CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
+        EXECUTE 'CREATE SERVER foo FOREIGN DATA WRAPPER dummy;';
 
         FOR tap IN SELECT * FROM check_test(
             server_privs_are( 'foo', current_user, '{USAGE}', 'whatever' ),

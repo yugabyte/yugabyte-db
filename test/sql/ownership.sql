@@ -663,7 +663,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_owner_is('public', 'test_fdw', ARRAY[]::NAME[], current_user, 'mumble'),
+    function_owner_is('public', 'test_fdw', '{}'::NAME[], current_user, 'mumble'),
 	true,
     'function_owner_is(sch, function, args[], user, desc)',
     'mumble',
@@ -671,7 +671,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_owner_is('public', 'test_fdw', ARRAY[]::NAME[], current_user),
+    function_owner_is('public', 'test_fdw', '{}'::NAME[], current_user),
 	true,
     'function_owner_is(sch, function, args[], user)',
     'Function public.test_fdw() should be owned by ' || current_user,
@@ -695,7 +695,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_owner_is('test_fdw', ARRAY[]::NAME[], current_user, 'mumble'),
+    function_owner_is('test_fdw', '{}'::NAME[], current_user, 'mumble'),
 	true,
     'function_owner_is(function, args[], user, desc)',
     'mumble',
@@ -703,7 +703,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_owner_is('test_fdw', ARRAY[]::NAME[], current_user),
+    function_owner_is('test_fdw', '{}'::NAME[], current_user),
 	true,
     'function_owner_is(function, args[], user)',
     'Function test_fdw() should be owned by ' || current_user,
