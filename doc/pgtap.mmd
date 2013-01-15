@@ -7023,6 +7023,7 @@ No changes. Everything should just work.
 ------------
 * The `sequence_privs_are()` function does not work, because privileges could
   not be granted on sequences before 9.0.
+
 * The `triggers_are()` function does not ignore internally-created triggers.
 
 8.3 and Down
@@ -7031,11 +7032,14 @@ No changes. Everything should just work.
   to text before comparing them. This means that things will mainly be
   correct, but it also means that two queries with incompatible types that
   convert to the same text string may be considered incorrectly equivalent.
+
 * A C function, `pg_typeof()`, is built and installed in a DSO. This is for
   compatibility with the same function that ships in 8.4 core, and is required
   for `cmp_ok()` and `isa_ok()` to work.
+
 * The variadic forms of `diag()` and `collect_tap()` are not available.
   You can pass an array of TAP to `collect_tap()`, however.
+
 * These permission-testing functions don't work, because one cannot grant
   permissions on the relevant objects until 8.4:
 
@@ -7056,6 +7060,7 @@ No changes. Everything should just work.
   + `text[]` to `text`
   + `name[]` to `text`
   + `regtype` to `text`
+
 * Two operators, `=` and `<>`, are added to compare `name[]` values.
 
 Metadata

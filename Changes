@@ -3,7 +3,7 @@ Revision history for pgTAP
 
 0.92.0
 ---------------------------
-* Fixed some mis-spellings of `SELECT` in documentation examples.
+* Fixed some misspellings of `SELECT` in documentation examples.
 * Added note about the lack of typemods to the documentation for `has_cast()`.
 * Added check to ensure a table is visible in tests for column defaults.
   Thanks to Henk Enting for the report.
