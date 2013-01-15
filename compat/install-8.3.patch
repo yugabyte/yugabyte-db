@@ -1,5 +1,5 @@
---- sql/pgtap.sql.saf	2012-09-10 16:57:28.000000000 -0700
-+++ sql/pgtap.sql	2012-09-10 16:57:48.000000000 -0700
+--- sql/pgtap.sql.saf	2013-01-15 12:09:45.000000000 -0800
++++ sql/pgtap.sql	2013-01-15 12:10:18.000000000 -0800
 @@ -9,6 +9,11 @@
  RETURNS text AS 'SELECT current_setting(''server_version'')'
  LANGUAGE SQL IMMUTABLE;
@@ -12,7 +12,7 @@
  CREATE OR REPLACE FUNCTION pg_version_num()
  RETURNS integer AS $$
      SELECT s.a[1]::int * 10000
-@@ -6254,7 +6259,7 @@
+@@ -6302,7 +6307,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -21,7 +21,7 @@
              RETURN ok( false, $3 ) || E'\n' || diag(
                  '    Results differ beginning at row ' || rownum || E':\n' ||
                  '        have: ' || CASE WHEN have_found THEN have_rec::text ELSE 'NULL' END || E'\n' ||
-@@ -6409,7 +6414,7 @@
+@@ -6459,7 +6464,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -30,7 +30,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6595,13 +6600,7 @@
+@@ -6668,13 +6673,7 @@
  $$ LANGUAGE sql;
  
  -- collect_tap( tap, tap, tap )
@@ -45,7 +45,7 @@
  RETURNS TEXT AS $$
      SELECT array_to_string($1, E'\n');
  $$ LANGUAGE sql;
-@@ -7073,7 +7072,7 @@
+@@ -7146,7 +7145,7 @@
      rec    RECORD;
  BEGIN
      EXECUTE _query($1) INTO rec;
