@@ -1,0 +1,34 @@
+--- sql/pgtap.sql.saf   2013-01-15 12:01:39.000000000 -0800
++++ sql/pgtap.sql   2013-01-15 12:01:55.000000000 -0800
+@@ -7172,7 +7172,6 @@
+               JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1
+                AND c.relname = $2
+-               AND NOT t.tgisinternal
+             EXCEPT
+             SELECT $3[i]
+               FROM generate_series(1, array_upper($3, 1)) s(i)
+@@ -7187,7 +7186,6 @@
+               JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+              WHERE n.nspname = $1
+                AND c.relname = $2
+-               AND NOT t.tgisinternal
+         ),
+         $4
+     );
+@@ -7211,7 +7209,6 @@
+               JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+              WHERE c.relname = $1
+                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+-               AND NOT t.tgisinternal
+             EXCEPT
+             SELECT $2[i]
+               FROM generate_series(1, array_upper($2, 1)) s(i)
+@@ -7225,7 +7222,6 @@
+               JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
+               JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+                AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+-               AND NOT t.tgisinternal
+         ),
+         $3
+     );
