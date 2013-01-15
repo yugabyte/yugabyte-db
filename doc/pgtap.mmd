@@ -3168,9 +3168,9 @@ regard to its arguments. Some examples:
 
 The `:args` argument should be formatted as it would be displayed in the view
 of a function using the `\df` command in `psql`. For example, even if you have
-a numeric column with a precision of 8, you should specify
-`ARRAY['numeric']`". If you created a `varchar(64)` column, you should pass
-the `:args` argument as `ARRAY['character varying']`.
+a numeric column with a precision of 8, you should specify `ARRAY['numeric']`.
+If you created a `varchar(64)` column, you should pass the `:args` argument as
+`ARRAY['character varying']`.
 
 If you wish to use the two-argument form of `has_function()`, specifying only
 the schema and the function name, you must cast the `:function` argument to
@@ -4510,7 +4510,7 @@ wrong, for example:
 
 If the function does not exist, you'll be told that, too.
 
-    # Failed test 212: "Function myschema.grab() should be written in sql
+    # Failed test 212: "Function myschema.grab() should be written in sql"
     #     Function myschema.grab() does not exist
 
 But then you check with `has_function()` first, right?
@@ -4661,7 +4661,7 @@ reasonable substitute will be created. Examples:
 
 If the function does not exist, a handy diagnostic message will let you know:
 
-    # Failed test 290: "Function nasty() should be strict
+    # Failed test 290: "Function nasty() should be strict"
     #     Function nasty() does not exist
 
 But then you check with `has_function()` first, right?
@@ -4706,7 +4706,7 @@ Examples:
 
 If the function does not exist, a handy diagnostic message will let you know:
 
-    # Failed test 290: "Function nasty() should be strict
+    # Failed test 290: "Function nasty() should be strict"
     #     Function nasty() does not exist
 
 But then you check with `has_function()` first, right?
@@ -4764,7 +4764,7 @@ wrong, for example:
 
 If the function does not exist, you'll be told that, too.
 
-    # Failed test 212: "Function myschema.grab() should be IMMUTABLE
+    # Failed test 212: "Function myschema.grab() should be IMMUTABLE"
     #     Function myschema.grab() does not exist
 
 But then you check with `has_function()` first, right?
