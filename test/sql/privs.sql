@@ -1074,10 +1074,10 @@ BEGIN
 
         FOR tap IN SELECT * FROM check_test(
             column_privs_are( 'ha', 'sometab', 'id', current_user, test_privs, 'whatever' ),
-                false,
-                'column_privs_are(sch, tab, role, some privs, desc)',
-                'whatever',
-                '    Extra privileges:
+            false,
+            'column_privs_are(sch, tab, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
         ' || array_to_string(missing_privs, E'\n        ')
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1099,7 +1099,7 @@ BEGIN
             'whatever',
             '    Missing privileges:
         ' || array_to_string(ARRAY['REFERENCES'], E'\n        ')
-    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Grant them some permission.
         GRANT SELECT, INSERT, UPDATE (id) ON ha.sometab TO __someone_else;
@@ -1154,7 +1154,105 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
     ELSE
-        -- Fake it with table_privs_are().
+        -- Fake it.
+       FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(sch, tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(sch, tab, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(tab, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(sch, tab, role, some privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(tab, role, some privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(sch, tab, other, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(sch, tab, other, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try a non-existent table.
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(sch, tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try a non-existent user.
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(sch, tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Test default description with no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(sch, tab, role, no privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'column_privs_are(tab, role, no privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
     END IF;
 END;
