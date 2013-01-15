@@ -750,7 +750,7 @@ DECLARE
     tap           record;
     last_index    INTEGER;
 BEGIN
-    IF pg_version_num() >= 90400 THEN
+    IF pg_version_num() >= 80400 THEN
         FOR tap IN SELECT * FROM check_test(
             any_column_privs_are( 'ha', 'sometab', current_user, ARRAY[
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
@@ -1310,9 +1310,9 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
     ELSE
-        -- Fake it with language_privs_are().
+        -- Fake it with pass() and fail().
         FOR tap IN SELECT * FROM check_test(
-            language_privs_are( 'plpgsql', current_user, '{USAGE}', 'whatever' ),
+            pass('whatever'),
             true,
             'fdw_privs_are(fdw, role, privs, desc)',
             'whatever',
@@ -1320,50 +1320,49 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            language_privs_are( 'plpgsql', current_user, '{USAGE}' ),
+            pass('whatever'),
             true,
             'fdw_privs_are(fdw, role, privs, desc)',
-            'Role ' || current_user || ' should be granted USAGE on language plpgsql',
+            'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
 
         -- Try nonexistent fdw.
         FOR tap IN SELECT * FROM check_test(
-            language_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
+            fail('whatever'),
             false,
             'fdw_privs_are(non-fdw, role, privs, desc)',
             'whatever',
-            '    Language __nonesuch does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
 
         -- Try nonexistent user.
         FOR tap IN SELECT * FROM check_test(
-            language_privs_are( 'plpgsql', '__noone', '{USAGE}', 'whatever' ),
+            fail('whatever'),
             false,
             'fdw_privs_are(fdw, non-role, privs, desc)',
             'whatever',
-            '    Role __noone does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
 
         -- Try another user.
         FOR tap IN SELECT * FROM check_test(
-            language_privs_are( 'plpgsql', '__someone_else', '{USAGE}', 'whatever' ),
+            fail('whatever'),
             false,
             'fdw_privs_are(fdw, ungranted, privs, desc)',
             'whatever',
-            '    Missing privileges:
-        USAGE'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Try testing default description for no permissions.
         FOR tap IN SELECT * FROM check_test(
-            language_privs_are( 'plpgsql', '__someone_else', '{}'::text[] ),
+            pass('whatever'),
             true,
             'fdw_privs_are(fdw, role, no privs)',
-            'Role __someone_else should be granted no privileges on language plpgsql',
+            'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
