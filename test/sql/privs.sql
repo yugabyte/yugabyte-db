@@ -51,8 +51,8 @@ SELECT * FROM check_test(
 CREATE OR REPLACE FUNCTION run_extra_fails() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
 DECLARE
     allowed_privs TEXT[];
-    test_privs    TEXT[];
-    missing_privs TEXT[];
+    test_privs    TEXT[] := '{}';
+    missing_privs TEXT[] := '{}';
     tap           record;
     last_index    INTEGER;
 BEGIN

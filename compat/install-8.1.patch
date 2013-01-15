@@ -1,6 +1,6 @@
---- sql/pgtap.sql.saf	2012-09-10 17:09:02.000000000 -0700
-+++ sql/pgtap.sql	2012-09-10 17:09:26.000000000 -0700
-@@ -1990,13 +1990,13 @@
+--- sql/pgtap.sql.saf	2013-01-15 14:04:18.000000000 -0800
++++ sql/pgtap.sql	2013-01-15 14:04:23.000000000 -0800
+@@ -2122,13 +2122,13 @@
  CREATE OR REPLACE FUNCTION _constraint ( NAME, NAME, CHAR, NAME[], TEXT, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -18,7 +18,7 @@
      END LOOP;
      IF array_upper(keys, 0) = 1 THEN
          have := 'No ' || $6 || ' constriants';
-@@ -2014,13 +2014,13 @@
+@@ -2146,13 +2146,13 @@
  CREATE OR REPLACE FUNCTION _constraint ( NAME, CHAR, NAME[], TEXT, TEXT )
  RETURNS TEXT AS $$
  DECLARE
@@ -36,7 +36,7 @@
      END LOOP;
      IF array_upper(keys, 0) = 1 THEN
          have := 'No ' || $5 || ' constriants';
-@@ -5687,7 +5687,7 @@
+@@ -5735,7 +5735,7 @@
  CREATE OR REPLACE FUNCTION _runem( text[], boolean )
  RETURNS SETOF TEXT AS $$
  DECLARE
@@ -45,7 +45,7 @@
      lbound int := array_lower($1, 1);
  BEGIN
      IF lbound IS NULL THEN RETURN; END IF;
-@@ -5695,8 +5695,8 @@
+@@ -5743,8 +5743,8 @@
          -- Send the name of the function to diag if warranted.
          IF $2 THEN RETURN NEXT diag( $1[i] || '()' ); END IF;
          -- Execute the tap function and return its results.
@@ -56,7 +56,7 @@
          END LOOP;
      END LOOP;
      RETURN;
-@@ -5766,14 +5766,14 @@
+@@ -5814,14 +5814,14 @@
      setup    ALIAS FOR $3;
      teardown ALIAS FOR $4;
      tests    ALIAS FOR $5;
@@ -73,7 +73,7 @@
      EXCEPTION
          -- Catch all exceptions and simply rethrow custom exceptions. This
          -- will roll back everything in the above block.
-@@ -5788,15 +5788,15 @@
+@@ -5836,15 +5836,15 @@
                  IF verbos THEN RETURN NEXT diag_test_name(tests[i]); END IF;
  
                  -- Run the setup functions.
@@ -93,7 +93,7 @@
  
                  -- Remember how many failed and then roll back.
                  num_faild := num_faild + num_failed();
-@@ -5811,7 +5811,7 @@
+@@ -5859,7 +5859,7 @@
          END LOOP;
  
          -- Run the shutdown functions.
@@ -102,7 +102,7 @@
  
          -- Raise an exception to rollback any changes.
          RAISE EXCEPTION '__TAP_ROLLBACK__';
-@@ -5822,8 +5822,8 @@
+@@ -5870,8 +5870,8 @@
          END IF;
      END;
      -- Finish up.
@@ -113,7 +113,7 @@
      END LOOP;
  
      -- Clean up and return.
-@@ -7052,7 +7052,7 @@
+@@ -7125,7 +7125,7 @@
  DECLARE
      rec    RECORD;
  BEGIN
