@@ -1005,6 +1005,135 @@ SELECT * FROM check_test(
     '    Role __nonesuch does not exist'
 );
 
+CREATE FUNCTION test_fdw() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 80400 THEN
+        CREATE FOREIGN DATA WRAPPER dummy;
+
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'dummy', current_user, '{USAGE}', 'whatever' ),
+            true,
+            'fdw_privs_are(lang, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'dummy', current_user, '{USAGE}' ),
+            true,
+            'fdw_privs_are(lang, role, privs, desc)',
+            'Role ' || current_user || ' should be granted USAGE on FDW dummy',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent fdw.
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
+            false,
+            'fdw_privs_are(non-lang, role, privs, desc)',
+            'whatever',
+            '    FDW __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent user.
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'dummy', '__noone', '{USAGE}', 'whatever' ),
+            false,
+            'fdw_privs_are(lang, non-role, privs, desc)',
+            'whatever',
+            '    Role __noone does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try another user.
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'dummy', '__someone_else', '{USAGE}', 'whatever' ),
+            false,
+            'fdw_privs_are(lang, ungranted, privs, desc)',
+            'whatever',
+            '    Missing privileges:
+        USAGE'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try testing default description for no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'dummy', '__someone_else', '{}'::text[] ),
+            true,
+            'fdw_privs_are(lang, role, no privs)',
+            'Role __someone_else should be granted no privileges on FDW dummy',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+    ELSE
+        -- Fake it with language_privs_are().
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', current_user, '{USAGE}', 'whatever' ),
+            true,
+            'fdw_privs_are(lang, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', current_user, '{USAGE}' ),
+            true,
+            'fdw_privs_are(lang, role, privs, desc)',
+            'Role ' || current_user || ' should be granted USAGE on language plpgsql',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent fdw.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( '__nonesuch', current_user, '{USAGE}', 'whatever' ),
+            false,
+            'fdw_privs_are(non-lang, role, privs, desc)',
+            'whatever',
+            '    Language __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try nonexistent user.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', '__noone', '{USAGE}', 'whatever' ),
+            false,
+            'fdw_privs_are(lang, non-role, privs, desc)',
+            'whatever',
+            '    Role __noone does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+
+        -- Try another user.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', '__someone_else', '{USAGE}', 'whatever' ),
+            false,
+            'fdw_privs_are(lang, ungranted, privs, desc)',
+            'whatever',
+            '    Missing privileges:
+        USAGE'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try testing default description for no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            language_privs_are( 'plpgsql', '__someone_else', '{}'::text[] ),
+            true,
+            'fdw_privs_are(lang, role, no privs)',
+            'Role __someone_else should be granted no privileges on language plpgsql',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT * FROM test_fdw();
+
+
 /****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();

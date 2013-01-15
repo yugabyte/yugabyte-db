@@ -8585,3 +8585,71 @@ RETURNS TEXT AS $$
             || ' on column ' || quote_ident($1) || '.' || quote_ident($2)
     );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_fdw_privs (NAME, TEXT)
+RETURNS TEXT[] AS $$
+BEGIN
+    IF pg_catalog.has_foreign_data_wrapper_privilege($1, $2, 'USAGE') THEN
+        RETURN '{USAGE}';
+    ELSE
+        RETURN '{}';
+    END IF;
+EXCEPTION WHEN undefined_object THEN
+    -- Same error code for unknown user or fdw. So figure out which.      
+    RETURN CASE WHEN SQLERRM LIKE '%' || $1 || '%' THEN
+        '{undefined_role}'
+    ELSE
+        '{undefined_fdw}'
+    END;
+END;
+$$ LANGUAGE plpgsql;
+
+-- fdw_privs_are ( fdw, user, privileges[], description )
+CREATE OR REPLACE FUNCTION fdw_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_fdw_privs( $2, quote_ident($1) );
+BEGIN
+    IF grants[1] = 'undefined_fdw' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    FDW ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- fdw_privs_are ( fdw, user, privileges[] )
+CREATE OR REPLACE FUNCTION fdw_privs_are ( NAME, NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT fdw_privs_are(
+        $1, $2, $3,
+        'Role ' || quote_ident($2) || ' should be granted '
+            || CASE WHEN $3[1] IS NULL THEN 'no privileges' ELSE array_to_string($3, ', ') END
+            || ' on FDW ' || quote_ident($1)
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_schema_privs(NAME, TEXT)
+RETURNS TEXT[] AS $$
+DECLARE
+    privs  TEXT[] := ARRAY['CREATE', 'USAGE'];
+    grants TEXT[] := '{}';
+BEGIN
+    FOR i IN 1..array_upper(privs, 1) LOOP
+        IF pg_catalog.has_schema_privilege($1, $2, privs[i]) THEN
+            grants := grants || privs[i];
+        END IF;
+    END LOOP;
+    RETURN grants;
+EXCEPTION
+    -- Not a valid schema name.
+    WHEN invalid_schema_name THEN RETURN '{invalid_schema_name}';
+    -- Not a valid role.
+    WHEN undefined_object   THEN RETURN '{undefined_role}';
+END;
+$$ LANGUAGE plpgsql;

@@ -6149,6 +6149,69 @@ something like:
     # Failed test 17: "Role slim should be granted USAGE on pllolcode"
     #     Role slim does not exist
 
+### `fdw_privs_are()`
+
+    SELECT fdw_privs_are ( :fdw, :role, :privileges, :description );
+    SELECT fdw_privs_are ( :fdw, :role, :privileges );
+
+**Parameters**
+
+`:fdw`
+: Name of a foreign data wrapper.
+
+`:role`
+: Name of a user or group role.
+
+`:privileges`
+: An array of table privileges the role should be granted to the foreign data wrapper.
+
+`:description`
+: A short description of the test.
+
+Tests the privileges granted to a role to access a foreign data wrapper. The
+available function privileges are:
+
+* USAGE
+
+Note that foreign data wrapper privileges were added in PostgreSQL 8.4, so
+this function will likley throw an exception on earlier versions.
+
+If the `:description` argument is omitted, an appropriate description will be
+created. Examples:
+
+    SELECT fdw_privs_are(
+        'oracle', 'fred', ARRAY['USAGE'],
+        'Fred should be granted USAGE on fdw "oracle"'
+    );
+    SELECT fdw_privs_are( 'log_csv', ARRAY['USAGE'] );
+
+If the role is granted permissions other than those specified, the diagnostics
+will list the extra permissions, like so:
+
+    # Failed test 14: "Role bob should be granted no privileges on odbc"
+    #     Extra privileges:
+    #           USAGE
+
+Likewise if the role is not granted some of the specified permissions on the
+fdw:
+
+    # Failed test 15: "Role kurk should be granted USAGE on odbc"
+    #     Missing privileges:
+    #           USAGE
+
+In the event that the test fails because the fdw in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Role slim should be granted USAGE on FDW sqlite"
+    #     FDW sqlite plr does not exist
+
+If the test fails because the role does not exist, the diagnostics will look
+something like:
+
+    # Failed test 17: "Role slim should be granted USAGE on sqlite"
+    #     Role slim does not exist
+
 No Test for the Wicked
 ======================
 
