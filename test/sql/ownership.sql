@@ -719,11 +719,11 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    function_owner_is('__non__public', 'function', ARRAY['integer'], current_user, 'mumble'),
+    function_owner_is('__non__public', 'afunction', ARRAY['integer'], current_user, 'mumble'),
 	false,
     'function_owner_is(non-sch, function, args[integer], user, desc)',
     'mumble',
-    '    Function __non__public.function(integer) does not exist'
+    '    Function __non__public.afunction(integer) does not exist'
 );
 
 SELECT * FROM check_test(
