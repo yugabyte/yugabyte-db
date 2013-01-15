@@ -742,42 +742,7 @@ SELECT * FROM check_test(
 
 /****************************************************************************/
 -- Test any_column_privs_are().
-
-SELECT * FROM check_test(
-    any_column_privs_are( 'ha', 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
-    true,
-    'any_column_privs_are(sch, tab, role, privs, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    any_column_privs_are( 'ha', 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'] ),
-    true,
-    'any_column_privs_are(sch, tab, role, privs)',
-    'Role ' || current_user || ' should be granted '
-         || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ') || ' on any column in ha.sometab' ,
-    ''
-);
-
-SELECT * FROM check_test(
-    any_column_privs_are( 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
-    true,
-    'any_column_privs_are(tab, role, privs, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    any_column_privs_are( 'sometab', current_user, ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'] ),
-    true,
-    'any_column_privs_are(tab, role, privs)',
-    'Role ' || current_user || ' should be granted '
-         || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ') || ' on any column in sometab' ,
-    ''
-);
-
-CREATE OR REPLACE FUNCTION run_extra_fails() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
+CREATE FUNCTION test_anycols() RETURNS SETOF TEXT AS $$
 DECLARE
     allowed_privs TEXT[];
     test_privs    TEXT[];
@@ -785,37 +750,147 @@ DECLARE
     tap           record;
     last_index    INTEGER;
 BEGIN
-    -- Test table failure.
-    allowed_privs := ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'];
-    last_index    := array_upper(allowed_privs, 1);
-    FOR i IN 1..last_index - 2 LOOP
-        test_privs := test_privs || allowed_privs[i];
-    END LOOP;
-    FOR i IN last_index - 1..last_index LOOP
-        missing_privs := missing_privs || allowed_privs[i];
-    END LOOP;
+    IF pg_version_num() >= 80400 THEN
+        FOR tap IN SELECT * FROM check_test(
+            any_column_privs_are( 'ha', 'sometab', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'any_column_privs_are(sch, tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-    FOR tap IN SELECT * FROM check_test(
-        any_column_privs_are( 'ha', 'sometab', current_user, test_privs, 'whatever' ),
+        FOR tap IN SELECT * FROM check_test(
+            any_column_privs_are( 'ha', 'sometab', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ] ),
+            true,
+            'any_column_privs_are(sch, tab, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
+                || ' on any column in ha.sometab' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            any_column_privs_are( 'sometab', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'any_column_privs_are(tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            any_column_privs_are( 'sometab', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ] ),
+            true,
+            'any_column_privs_are(tab, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
+                || ' on any column in sometab' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Test table failure.
+        allowed_privs := ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'];
+        last_index    := array_upper(allowed_privs, 1);
+        FOR i IN 1..last_index - 2 LOOP
+            test_privs := test_privs || allowed_privs[i];
+        END LOOP;
+        FOR i IN last_index - 1..last_index LOOP
+            missing_privs := missing_privs || allowed_privs[i];
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            any_column_privs_are( 'ha', 'sometab', current_user, test_privs, 'whatever' ),
             false,
             'any_column_privs_are(sch, tab, role, some privs, desc)',
             'whatever',
             '    Extra privileges:
         ' || array_to_string(missing_privs, E'\n        ')
-    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-    FOR tap IN SELECT * FROM check_test(
+        FOR tap IN SELECT * FROM check_test(
             any_column_privs_are( 'sometab', current_user, test_privs, 'whatever' ),
             false,
             'any_column_privs_are(tab, role, some privs, desc)',
             'whatever',
             '    Extra privileges:
         ' || array_to_string(missing_privs, E'\n        ')
-    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
-END;
-$$;
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    ELSE
+        -- Fake it with table tests.
+        FOR tap IN SELECT * FROM check_test(
+            table_privs_are( 'ha', 'sometab', current_user, _table_privs(), 'whatever' ),
+            true,
+            'any_column_privs_are(sch, tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM run_extra_fails();
+        FOR tap IN SELECT * FROM check_test(
+            table_privs_are( 'ha', 'sometab', current_user, _table_privs() ),
+            true,
+            'any_column_privs_are(sch, tab, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(_table_privs(), ', ')
+                || ' on table ha.sometab' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_privs_are( 'sometab', current_user, _table_privs(), 'whatever' ),
+            true,
+            'any_column_privs_are(tab, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        allowed_privs := _table_privs();
+        last_index    := array_upper(allowed_privs, 1);
+        FOR i IN 1..last_index - 2 LOOP
+            test_privs := test_privs || allowed_privs[i];
+        END LOOP;
+        FOR i IN last_index - 1..last_index LOOP
+            missing_privs := missing_privs || allowed_privs[i];
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_privs_are( 'sometab', current_user, _table_privs() ),
+            true,
+            'any_column_privs_are(tab, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(_table_privs(), E', ')
+                || ' on table sometab' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_privs_are( 'ha', 'sometab', current_user, test_privs, 'whatever' ),
+            false,
+            'any_column_privs_are(sch, tab, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
+        ' || array_to_string(missing_privs, E'\n        ')
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            table_privs_are( 'sometab', current_user, test_privs, 'whatever' ),
+            false,
+            'any_column_privs_are(tab, role, some privs, desc)',
+            'whatever',
+            '    Extra privileges:
+        ' || array_to_string(missing_privs, E'\n        ')
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    END IF;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_anycols();
 
 SELECT * FROM check_test(
     any_column_privs_are( 'ha', 'sometab', '__someone_else', ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], 'whatever' ),
