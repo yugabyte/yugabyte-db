@@ -3,9 +3,14 @@ PostgreSQL Partition Manager Extension (pg_partman)
 
 About
 -----
-Extension to help make managing time or serial id based table partitioning easier.
+pg_partman is an extension to help make managing time or serial id based table partitioning easier.
 
-For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc) & constraints. Permissions are not yet handled, but are coming soon. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables gives a more central place to manage things that's a little more natural than a configuration table or using setup functions.
+For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc) & constraints. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables gives a more central place to manage things that's a little more natural than a configuration table or using setup functions.
+
+I'm trying to find a way to also inherit the permissions from the parent table in a similar way as above, but until I do that, the following method has been implemented. The "part_grants" table stores csv lists of the grants and roles that should be applied to the parent and all child tables. These grants will be applied to any new partitions as well as re-applying them to the parent and all other child tables whenever a new partition is made. Assume that all grants will be applied in a single command (there is currently a primary key on the parent_table column of the part_grants table). Grants are only applied, never revoked. Here's an example of what to insert there:
+
+    INSERT INTO partman.part_config (parent_table, grants, roles) 
+    VALUES ('my_parent_table', 'INSERT,UPDATE,DELETE', 'role1,role2,role3');
 
 If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
 
@@ -52,14 +57,14 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
 
 *create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set. 
- * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will prevent a failure from causing an extensive rollback and avoid transactional locks.
+ * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located.
  * p_batch - how many partitions will be made in a single run of the function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 *create_prev_id_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
  * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set. 
- * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will prevent a failure from causing an extensive rollback and avoid transactional locks.
+ * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located.
  * p_batch - how many partitions will be made in a single run of the function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
@@ -69,23 +74,28 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
  * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
 
 *drop_time_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
- * This function is used to drop child tables from a time-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables. Function can be called directly if needed.
+ * This function is used to drop child tables from a time-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
  * p_parent_table - the existing parent table of a time-based partition set.
  * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
 
 *drop_id_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
- * This function is used to drop child tables from an id-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables. Function can be called directly if needed.
+ * This function is used to drop child tables from an id-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
  * p_parent_table - the existing parent table of a time-based partition set.
  * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
+
+*apply_grants(p_parent_table text)*
+ * This function is used to apply grants that are set in the part_grants table. It is called automatically any time a new partition is made and shouldn't be called directly unless needed.
+ * It will apply configured grants to the parent table and all child tables every run.
+ * Grants are only applied, never revoked.
 
 
 Tables
 ------
 *part_config*  
-    Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are  
-    **retention**, **retention_keep_table**, & **retention_keep_index** to set the partition set's retention policy.   
+    Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are
+    **retention**, **retention_keep_table**, & **retention_keep_index** to set the partition set's retention policy or **premake** to change the default.   
     The rest are managed by the extension itself and should not be changed unless absolutely necessary.
 
     parent_table            - Parent table of the partition set
@@ -102,7 +112,11 @@ Tables
     retention_keep_index    - Boolean value to determine whether indexes are dropped for child tables that are uninherited. 
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
     datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
-                              **DO NOT CHANGE THIS VALUE** or you will break automated partition management.
-    last_partition          - The last successfully created partition.
-                              **DO NOT CHANGE THIS VALUE** or you will break automated partition management.
+    last_partition          - Tracks the last successfully created partition and used to determine the next one.
 
+*part_grants*
+    Stores grants and the roles to apply them to for partition table sets
+
+    parent_table        - Parent table of the partition set
+    grants              - A comma separated list of the grants to apply to all tables in a partition set (Ex. INSERT,UPDATE,DELETE)
+    roles               - A comma separated list of the roles to apply these grants to (Ex. role1,role2,role3)

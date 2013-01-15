@@ -1,3 +1,7 @@
+0.3.0
+-- Added grants configuration table to propagate permissions to newly created child partitions. Will also apply those permissions to the parent table and all existing child tables whenever a new partition is created. Permissions are only granted, never revoked. See docs for more info.
+
+
 0.2.0
 -- New functions to manage dropping old partitions. Does not actually need to be called directly unless necessary. Use run_maintenance() function.
 -- Added ability to run_maintenance() function to manage dropping old tables in addition to managing time-based partitioning.

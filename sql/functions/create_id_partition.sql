@@ -1,3 +1,6 @@
+/*
+ * Function to create id partitions
+ */
 CREATE FUNCTION create_id_partition (p_parent_table text, p_control text, p_interval bigint, p_partition_ids bigint[]) RETURNS text
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -49,6 +52,9 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     END IF;
 
 END LOOP;
+
+-- Apply grants if configured
+PERFORM @extschema@.apply_grants(p_parent_table);
 
 IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';

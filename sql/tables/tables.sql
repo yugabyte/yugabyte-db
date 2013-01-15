@@ -13,3 +13,10 @@ CREATE TABLE part_config (
 );
 CREATE INDEX part_config_type_idx ON @extschema@.part_config (type);
 SELECT pg_catalog.pg_extension_config_dump('part_config', '');
+
+
+CREATE TABLE part_grants (
+    parent_table text PRIMARY KEY REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE,
+    grants text,
+    roles text
+);

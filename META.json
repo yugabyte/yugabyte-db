@@ -1,7 +1,7 @@
 {
     "name": "pg_partman",
     "abstract": "Extension to manage partitioned tables by time or ID",
-    "version": "0.2.0",
+    "version": "0.3.0",
     "maintainer": [ 
         "Keith Fiske <keith@omniti.com>"
     ],
@@ -20,9 +20,9 @@
     },
     "provides": {
         "pg_partmaint": {
-            "file": "sql/pg_partman-0.2.0.sql",
+            "file": "sql/pg_partman--0.3.0.sql",
             "docfile": "doc/pg_partman.md",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "abstract": "Extension to manage partitioned tables by time or ID"
         }
     },
