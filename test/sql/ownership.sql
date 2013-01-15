@@ -485,9 +485,11 @@ DECLARE
     tap record;
 BEGIN
     IF pg_version_num() >= 90100 THEN
-        CREATE FOREIGN DATA WRAPPER dummy;
-        CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
-        CREATE FOREIGN TABLE public.my_fdw (id int) SERVER foo;
+        EXECUTE $E$
+            CREATE FOREIGN DATA WRAPPER dummy;
+            CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
+            CREATE FOREIGN TABLE public.my_fdw (id int) SERVER foo;
+        $E$;
 
         FOR tap IN SELECT * FROM check_test(
             foreign_table_owner_is('public', 'my_fdw', current_user, 'mumble'),
@@ -559,12 +561,12 @@ BEGIN
 	        false,
             'foreign_table_owner_is(tab, user, desc)',
             'mumble',
-        '    Foreign table sometab does not exist'
+            '    Foreign table sometab does not exist'
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
     ELSE
-        -- Fake it with table_owner_is().
+        -- Fake it with pass() and fail().
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('public', 'sometab', current_user, 'mumble'),
+            pass('mumble'),
 	        true,
             'foreign_table_owner_is(sch, tab, user, desc)',
             'mumble',
@@ -572,31 +574,31 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('public', 'sometab', current_user),
+            pass('mumble'),
 	        true,
             'foreign_table_owner_is(sch, tab, user)',
-            'Table public.sometab should be owned by ' || current_user,
+            'mumble',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('__not__public', 'sometab', current_user, 'mumble'),
+            fail('mumble'),
 	        false,
             'foreign_table_owner_is(non-sch, tab, user)',
             'mumble',
-            '    Table __not__public.sometab does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('public', '__not__sometab', current_user, 'mumble'),
+            fail('mumble'),
 	        false,
             'foreign_table_owner_is(sch, non-tab, user)',
             'mumble',
-            '    Table public.__not__sometab does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('sometab', current_user, 'mumble'),
+            pass('mumble'),
 	        true,
             'foreign_table_owner_is(tab, user, desc)',
             'mumble',
@@ -604,36 +606,36 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('sometab', current_user),
+            pass('mumble'),
 	        true,
             'foreign_table_owner_is(tab, user)',
-            'Table sometab should be owned by ' || current_user,
+            'mumble',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('__not__sometab', current_user, 'mumble'),
+            fail('mumble'),
 	        false,
             'foreign_table_owner_is(non-tab, user)',
             'mumble',
-            '    Table __not__sometab does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-        -- It should ignore the sequence.
+        -- It should ignore the table.
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('public', 'someseq', current_user, 'mumble'),
+            fail('mumble'),
 	        false,
-            'foreign_table_owner_is(sch, seq, user, desc)',
+            'foreign_table_owner_is(sch, tab, user, desc)',
             'mumble',
-            '    Table public.someseq does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            table_owner_is('someseq', current_user, 'mumble'),
+            fail('mumble'),
 	        false,
-            'foreign_table_owner_is(seq, user, desc)',
+            'foreign_table_owner_is(tab, user, desc)',
             'mumble',
-        '    Table someseq does not exist'
+            ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
     END IF;
     RETURN;

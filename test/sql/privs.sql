@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(304);
+SELECT plan(305);
 --SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
@@ -240,6 +240,7 @@ SELECT * FROM check_test(
         current_user, ARRAY['EXECUTE']
     ),
     true,
+    'function_privs_are(sch, func, args, role, privs)',
     'Role ' || current_user || ' should be granted EXECUTE on function public.foo(integer, text)'
     ''
 );

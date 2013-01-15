@@ -1999,11 +1999,13 @@ SELECT * FROM check_test(
 CREATE FUNCTION test_fdw() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
-BEGIN
+BEGIN   
     IF pg_version_num() >= 90100 THEN
-        CREATE FOREIGN DATA WRAPPER dummy;
-        CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
-        CREATE FOREIGN TABLE public.my_fdw (id int) SERVER foo;
+        EXECUTE $E$
+            CREATE FOREIGN DATA WRAPPER dummy;
+            CREATE SERVER foo FOREIGN DATA WRAPPER dummy;
+            CREATE FOREIGN TABLE public.my_fdw (id int) SERVER foo;
+        $E$;
 
         FOR tap IN SELECT * FROM check_test(
             has_foreign_table( '__SDFSDFD__' ),
