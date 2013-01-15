@@ -609,41 +609,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test sequence_privilege_is().
 
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
-    true,
-    'sequence_privs_are(sch, seq, role, privs, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
-    true,
-    'sequence_privs_are(sch, seq, role, privs)',
-    'Role ' || current_user || ' should be granted '
-         || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ') || ' on sequence ha.someseq' ,
-    ''
-);
-
-SELECT * FROM check_test(
-    sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
-    true,
-    'sequence_privs_are(seq, role, privs, desc)',
-    'whatever',
-    ''
-);
-
-SELECT * FROM check_test(
-    sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
-    true,
-    'sequence_privs_are(seq, role, privs)',
-    'Role ' || current_user || ' should be granted '
-         || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ') || ' on sequence someseq' ,
-    ''
-);
-
-CREATE OR REPLACE FUNCTION run_extra_fails() RETURNS SETOF TEXT LANGUAGE plpgsql AS $$
+CREATE FUNCTION test_sequence() RETURNS SETOF TEXT AS $$
 DECLARE
     allowed_privs TEXT[];
     test_privs    TEXT[];
@@ -651,94 +617,243 @@ DECLARE
     tap           record;
     last_index    INTEGER;
 BEGIN
-    -- Test sequence failure.
-    allowed_privs := ARRAY['USAGE', 'SELECT', 'UPDATE'];
-    last_index    := array_upper(allowed_privs, 1);
-    FOR i IN 1..last_index - 2 LOOP
-        test_privs := test_privs || allowed_privs[i];
-    END LOOP;
-    FOR i IN last_index - 1..last_index LOOP
-        missing_privs := missing_privs || allowed_privs[i];
-    END LOOP;
+    IF pg_version_num() >= 90000 THEN
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', current_user, ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'sequence_privs_are(sch, seq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-    FOR tap IN SELECT * FROM check_test(
-        sequence_privs_are( 'ha', 'someseq', current_user, test_privs, 'whatever' ),
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
+            true,
+            'sequence_privs_are(sch, seq, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
+                || ' on sequence ha.someseq' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'someseq', current_user, ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'sequence_privs_are(seq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
+            true,
+            'sequence_privs_are(seq, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
+                || ' on sequence someseq' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Test sequence failure.
+        allowed_privs := ARRAY['USAGE', 'SELECT', 'UPDATE'];
+        last_index    := array_upper(allowed_privs, 1);
+        FOR i IN 1..last_index - 2 LOOP
+            test_privs := test_privs || allowed_privs[i];
+        END LOOP;
+        FOR i IN last_index - 1..last_index LOOP
+            missing_privs := missing_privs || allowed_privs[i];
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', current_user, test_privs, 'whatever' ),
             false,
             'sequence_privs_are(sch, seq, role, some privs, desc)',
             'whatever',
             '    Extra privileges:
         ' || array_to_string(missing_privs, E'\n        ')
-    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-    FOR tap IN SELECT * FROM check_test(
+        FOR tap IN SELECT * FROM check_test(
             sequence_privs_are( 'someseq', current_user, test_privs, 'whatever' ),
             false,
             'sequence_privs_are(seq, role, some privs, desc)',
             'whatever',
             '    Extra privileges:
         ' || array_to_string(missing_privs, E'\n        ')
-    ) AS b LOOP RETURN NEXT tap.b; END LOOP;
-END;
-$$;
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM run_extra_fails();
-
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'someseq', '__someone_else', ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
-    false,
-    'sequence_privs_are(sch, seq, other, privs, desc)',
-    'whatever',
-    '    Missing privileges:
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', '__someone_else', ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            false,
+            'sequence_privs_are(sch, seq, other, privs, desc)',
+            'whatever',
+            '    Missing privileges:
         ' || array_to_string(ARRAY['SELECT', 'UPDATE', 'USAGE'], E'\n        ')
-);
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
--- Grant them some permission.
-GRANT SELECT, UPDATE ON ha.someseq TO __someone_else;
+        -- Grant them some permission.
+        GRANT SELECT, UPDATE ON ha.someseq TO __someone_else;
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', '__someone_else', ARRAY[
+                'SELECT', 'UPDATE'
+            ], 'whatever'),
+            true,
+            'sequence_privs_are(sch, seq, other, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'someseq', '__someone_else', ARRAY[
-        'SELECT', 'UPDATE'
-    ], 'whatever'),
-    true,
-    'sequence_privs_are(sch, seq, other, privs, desc)',
-    'whatever',
-    ''
-);
+        -- Try a non-existent sequence.
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'nonesuch', current_user, ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            false,
+            'sequence_privs_are(sch, seq, role, privs, desc)',
+            'whatever',
+            '    Sequence ha.nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
--- Try a non-existent sequence.
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'nonesuch', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
-    false,
-    'sequence_privs_are(sch, seq, role, privs, desc)',
-    'whatever',
-    '    Sequence ha.nonesuch does not exist'
-);
+        -- Try a non-existent user.
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', '__nonesuch', ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            false,
+            'sequence_privs_are(sch, seq, role, privs, desc)',
+            'whatever',
+            '    Role __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
--- Try a non-existent user.
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'someseq', '__nonesuch', ARRAY['USAGE', 'SELECT', 'UPDATE'], 'whatever' ),
-    false,
-    'sequence_privs_are(sch, seq, role, privs, desc)',
-    'whatever',
-    '    Role __nonesuch does not exist'
-);
+        -- Test default description with no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ha', 'someseq', '__nonesuch', '{}'::text[] ),
+            false,
+            'sequence_privs_are(sch, seq, role, no privs)',
+            'Role __nonesuch should be granted no privileges on sequence ha.someseq' ,
+            '    Role __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
--- Test default description with no permissions.
-SELECT * FROM check_test(
-    sequence_privs_are( 'ha', 'someseq', '__nonesuch', '{}'::text[] ),
-    false,
-    'sequence_privs_are(sch, seq, role, no privs)',
-    'Role __nonesuch should be granted no privileges on sequence ha.someseq' ,
-    '    Role __nonesuch does not exist'
-);
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'someseq', '__nonesuch', '{}'::text[] ),
+            false,
+            'sequence_privs_are(seq, role, no privs)',
+            'Role __nonesuch should be granted no privileges on sequence someseq' ,
+            '    Role __nonesuch does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-    sequence_privs_are( 'someseq', '__nonesuch', '{}'::text[] ),
-    false,
-    'sequence_privs_are(seq, role, no privs)',
-    'Role __nonesuch should be granted no privileges on sequence someseq' ,
-    '    Role __nonesuch does not exist'
-);
+    ELSE
+        -- Fake it with pass() and fail().
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(sch, seq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(sch, seq, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(seq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(seq, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(sch, seq, role, some privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(seq, role, some privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(sch, seq, other, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Grant them some permission.
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(sch, seq, other, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try a non-existent sequence.
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(sch, seq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Try a non-existent user.
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(sch, seq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        -- Test default description with no permissions.
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(sch, seq, role, no privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('whatever'),
+            false,
+            'sequence_privs_are(seq, role, no privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    END IF;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_sequence();
 
 /****************************************************************************/
 -- Test any_column_privs_are().
