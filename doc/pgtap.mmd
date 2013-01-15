@@ -7009,10 +7009,20 @@ instead:
 To see the specifics for each version of PostgreSQL, consult the files in the
 `compat/` directory in the pgTAP distribution.
 
-8.4 and Up
+9.1 and Up
 ----------
 
 No changes. Everything should just work.
+
+9.0 and Down
+------------
+* The `foreign_table_owner_is()` function will not work, because, of course,
+  there were no foreign tables until 9.1.
+
+8.4 and Down
+------------
+* The `sequence_privs_are()` function does not work, because privileges could
+  not be granted on sequences before 9.0.
 
 8.3 and Down
 ------------
@@ -7025,6 +7035,13 @@ No changes. Everything should just work.
   for `cmp_ok()` and `isa_ok()` to work.
 * The variadic forms of `diag()` and `collect_tap()` are not available.
   You can pass an array of TAP to `collect_tap()`, however.
+* These permission-testing functions don't work, because one cannot grant
+  permissions on the relevant objects until 8.4:
+
+  + `has_any_column_privilege()`
+  + `has_column_privilege()`
+  + `has_foreign_data_wrapper_privilege()`
+  + `has_server_privilege()`
 
 8.2 and Down
 ------------
