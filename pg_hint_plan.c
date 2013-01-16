@@ -108,11 +108,38 @@ enum
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
 
+/* hint keyword of enum type*/
+typedef enum HintKeyword
+{
+	HINT_KEYWORD_SEQSCAN,
+	HINT_KEYWORD_INDEXSCAN,
+	HINT_KEYWORD_BITMAPSCAN,
+	HINT_KEYWORD_TIDSCAN,
+	HINT_KEYWORD_NOSEQSCAN,
+	HINT_KEYWORD_NOINDEXSCAN,
+	HINT_KEYWORD_NOBITMAPSCAN,
+	HINT_KEYWORD_NOTIDSCAN,
+#if PG_VERSION_NUM >= 90200
+	HINT_KEYWORD_INDEXONLYSCAN,
+	HINT_KEYWORD_NOINDEXONLYSCAN,
+#endif
+	HINT_KEYWORD_NESTLOOP,
+	HINT_KEYWORD_MERGEJOIN,
+	HINT_KEYWORD_HASHJOIN,
+	HINT_KEYWORD_NONESTLOOP,
+	HINT_KEYWORD_NOMERGEJOIN,
+	HINT_KEYWORD_NOHASHJOIN,
+	HINT_KEYWORD_LEADING,
+	HINT_KEYWORD_SET,
+	HINT_KEYWORD_UNRECOGNIZED
+} HintKeyword;
+
 typedef struct Hint Hint;
 typedef struct HintState HintState;
 
 typedef Hint *(*HintCreateFunction) (const char *hint_str,
-									 const char *keyword);
+									 const char *keyword,
+									 HintKeyword hint_keyword);
 typedef void (*HintDeleteFunction) (Hint *hint);
 typedef void (*HintDumpFunction) (Hint *hint, StringInfo buf);
 typedef int (*HintCmpFunction) (const Hint *a, const Hint *b);
@@ -154,6 +181,7 @@ struct Hint
 {
 	const char		   *hint_str;		/* must not do pfree */
 	const char		   *keyword;		/* must not do pfree */
+	HintKeyword			hint_keyword;
 	HintType			type;
 	HintStatus			state;
 	HintDeleteFunction	delete_func;
@@ -238,6 +266,7 @@ typedef struct HintParser
 {
 	char			   *keyword;
 	HintCreateFunction	create_func;
+	HintKeyword			hint_keyword;
 } HintParser;
 
 /* Module callbacks */
@@ -261,25 +290,29 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
 											int levels_needed,
 											List *initial_rels);
 
-static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword);
+static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword,
+								  HintKeyword hint_keyword);
 static void ScanMethodHintDelete(ScanMethodHint *hint);
 static void ScanMethodHintDump(ScanMethodHint *hint, StringInfo buf);
 static int ScanMethodHintCmp(const ScanMethodHint *a, const ScanMethodHint *b);
 static const char *ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
-static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword);
+static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword,
+								  HintKeyword hint_keyword);
 static void JoinMethodHintDelete(JoinMethodHint *hint);
 static void JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf);
 static int JoinMethodHintCmp(const JoinMethodHint *a, const JoinMethodHint *b);
 static const char *JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
-static Hint *LeadingHintCreate(const char *hint_str, const char *keyword);
+static Hint *LeadingHintCreate(const char *hint_str, const char *keyword,
+							   HintKeyword hint_keyword);
 static void LeadingHintDelete(LeadingHint *hint);
 static void LeadingHintDump(LeadingHint *hint, StringInfo buf);
 static int LeadingHintCmp(const LeadingHint *a, const LeadingHint *b);
 static const char *LeadingHintParse(LeadingHint *hint, HintState *hstate,
 									Query *parse, const char *str);
-static Hint *SetHintCreate(const char *hint_str, const char *keyword);
+static Hint *SetHintCreate(const char *hint_str, const char *keyword,
+						   HintKeyword hint_keyword);
 static void SetHintDelete(SetHint *hint);
 static void SetHintDump(SetHint *hint, StringInfo buf);
 static int SetHintCmp(const SetHint *a, const SetHint *b);
@@ -356,27 +389,27 @@ static List *HintStateStack = NIL;
 static char	   *stmt_name = NULL;
 
 static const HintParser parsers[] = {
-	{HINT_SEQSCAN, ScanMethodHintCreate},
-	{HINT_INDEXSCAN, ScanMethodHintCreate},
-	{HINT_BITMAPSCAN, ScanMethodHintCreate},
-	{HINT_TIDSCAN, ScanMethodHintCreate},
-	{HINT_NOSEQSCAN, ScanMethodHintCreate},
-	{HINT_NOINDEXSCAN, ScanMethodHintCreate},
-	{HINT_NOBITMAPSCAN, ScanMethodHintCreate},
-	{HINT_NOTIDSCAN, ScanMethodHintCreate},
+	{HINT_SEQSCAN, ScanMethodHintCreate, HINT_KEYWORD_SEQSCAN},
+	{HINT_INDEXSCAN, ScanMethodHintCreate, HINT_KEYWORD_INDEXSCAN},
+	{HINT_BITMAPSCAN, ScanMethodHintCreate, HINT_KEYWORD_BITMAPSCAN},
+	{HINT_TIDSCAN, ScanMethodHintCreate, HINT_KEYWORD_TIDSCAN},
+	{HINT_NOSEQSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOSEQSCAN},
+	{HINT_NOINDEXSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXSCAN},
+	{HINT_NOBITMAPSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOBITMAPSCAN},
+	{HINT_NOTIDSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOTIDSCAN},
 #if PG_VERSION_NUM >= 90200
-	{HINT_INDEXONLYSCAN, ScanMethodHintCreate},
-	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate},
+	{HINT_INDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_INDEXONLYSCAN},
+	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
 #endif
-	{HINT_NESTLOOP, JoinMethodHintCreate},
-	{HINT_MERGEJOIN, JoinMethodHintCreate},
-	{HINT_HASHJOIN, JoinMethodHintCreate},
-	{HINT_NONESTLOOP, JoinMethodHintCreate},
-	{HINT_NOMERGEJOIN, JoinMethodHintCreate},
-	{HINT_NOHASHJOIN, JoinMethodHintCreate},
-	{HINT_LEADING, LeadingHintCreate},
-	{HINT_SET, SetHintCreate},
-	{NULL, NULL}
+	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
+	{HINT_MERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_MERGEJOIN},
+	{HINT_HASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_HASHJOIN},
+	{HINT_NONESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NONESTLOOP},
+	{HINT_NOMERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOMERGEJOIN},
+	{HINT_NOHASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_NOHASHJOIN},
+	{HINT_LEADING, LeadingHintCreate, HINT_KEYWORD_LEADING},
+	{HINT_SET, SetHintCreate, HINT_KEYWORD_SET},
+	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
 
 /*
@@ -450,13 +483,15 @@ _PG_fini(void)
  */
 
 static Hint *
-ScanMethodHintCreate(const char *hint_str, const char *keyword)
+ScanMethodHintCreate(const char *hint_str, const char *keyword,
+					 HintKeyword hint_keyword)
 {
 	ScanMethodHint *hint;
 
 	hint = palloc(sizeof(ScanMethodHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
+	hint->base.hint_keyword = hint_keyword;
 	hint->base.type = HINT_TYPE_SCAN_METHOD;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) ScanMethodHintDelete;
@@ -483,13 +518,15 @@ ScanMethodHintDelete(ScanMethodHint *hint)
 }
 
 static Hint *
-JoinMethodHintCreate(const char *hint_str, const char *keyword)
+JoinMethodHintCreate(const char *hint_str, const char *keyword,
+					 HintKeyword hint_keyword)
 {
 	JoinMethodHint *hint;
 
 	hint = palloc(sizeof(JoinMethodHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
+	hint->base.hint_keyword = hint_keyword;
 	hint->base.type = HINT_TYPE_JOIN_METHOD;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) JoinMethodHintDelete;
@@ -523,13 +560,15 @@ JoinMethodHintDelete(JoinMethodHint *hint)
 }
 
 static Hint *
-LeadingHintCreate(const char *hint_str, const char *keyword)
+LeadingHintCreate(const char *hint_str, const char *keyword,
+				  HintKeyword hint_keyword)
 {
 	LeadingHint	   *hint;
 
 	hint = palloc(sizeof(LeadingHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
+	hint->base.hint_keyword = hint_keyword;
 	hint->base.type = HINT_TYPE_LEADING;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction)LeadingHintDelete;
@@ -552,13 +591,15 @@ LeadingHintDelete(LeadingHint *hint)
 }
 
 static Hint *
-SetHintCreate(const char *hint_str, const char *keyword)
+SetHintCreate(const char *hint_str, const char *keyword,
+			  HintKeyword hint_keyword)
 {
 	SetHint	   *hint;
 
 	hint = palloc(sizeof(SetHint));
 	hint->base.hint_str = hint_str;
 	hint->base.keyword = keyword;
+	hint->base.hint_keyword = hint_keyword;
 	hint->base.type = HINT_TYPE_SET;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) SetHintDelete;
@@ -1032,7 +1073,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 			if (strcasecmp(buf.data, keyword) != 0)
 				continue;
 
-			hint = parser->create_func(head, keyword);
+			hint = parser->create_func(head, keyword, parser->hint_keyword);
 
 			/* parser of each hint does parse in a parenthesis. */
 			if ((str = hint->parse_func(hint, hstate, parse, str)) == NULL)
@@ -1210,9 +1251,10 @@ static const char *
 ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 					const char *str)
 {
-	const char *keyword = hint->base.keyword;
-	List	   *name_list = NIL;
-	int			length;
+	const char	   *keyword = hint->base.keyword;
+	HintKeyword		hint_keyword = hint->base.hint_keyword;
+	List		   *name_list = NIL;
+	int				length;
 
 	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
 		return NULL;
@@ -1225,11 +1267,11 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		hint->indexnames = list_delete_first(name_list);
 
 		/* check whether the hint accepts index name(s). */
-		if (strcmp(keyword, HINT_INDEXSCAN) != 0 &&
+		if (hint_keyword != HINT_KEYWORD_INDEXSCAN &&
 #if PG_VERSION_NUM >= 90200
-			strcmp(keyword, HINT_INDEXONLYSCAN) != 0 &&
+			hint_keyword != HINT_KEYWORD_INDEXONLYSCAN &&
 #endif
-			strcmp(keyword, HINT_BITMAPSCAN) != 0 &&
+			hint_keyword != HINT_KEYWORD_BITMAPSCAN &&
 			length != 1)
 		{
 			hint_ereport(str,
@@ -1249,32 +1291,44 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 	}
 
 	/* Set a bit for specified hint. */
-	if (strcmp(keyword, HINT_SEQSCAN) == 0)
-		hint->enforce_mask = ENABLE_SEQSCAN;
-	else if (strcmp(keyword, HINT_INDEXSCAN) == 0)
-		hint->enforce_mask = ENABLE_INDEXSCAN;
-	else if (strcmp(keyword, HINT_BITMAPSCAN) == 0)
-		hint->enforce_mask = ENABLE_BITMAPSCAN;
-	else if (strcmp(keyword, HINT_TIDSCAN) == 0)
-		hint->enforce_mask = ENABLE_TIDSCAN;
-	else if (strcmp(keyword, HINT_NOSEQSCAN) == 0)
-		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_SEQSCAN;
-	else if (strcmp(keyword, HINT_NOINDEXSCAN) == 0)
-		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXSCAN;
-	else if (strcmp(keyword, HINT_NOBITMAPSCAN) == 0)
-		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_BITMAPSCAN;
-	else if (strcmp(keyword, HINT_NOTIDSCAN) == 0)
-		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
-#if PG_VERSION_NUM >= 90200
-	else if (strcmp(keyword, HINT_INDEXONLYSCAN) == 0)
-		hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
-	else if (strcmp(keyword, HINT_NOINDEXONLYSCAN) == 0)
-		hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
-#endif
-	else
+	switch (hint_keyword)
 	{
-		hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
-		return NULL;
+		case HINT_KEYWORD_SEQSCAN:
+			hint->enforce_mask = ENABLE_SEQSCAN;
+			break;
+		case HINT_KEYWORD_INDEXSCAN:
+			hint->enforce_mask = ENABLE_INDEXSCAN;
+			break;
+		case HINT_KEYWORD_BITMAPSCAN:
+			hint->enforce_mask = ENABLE_BITMAPSCAN;
+			break;
+		case HINT_KEYWORD_TIDSCAN:
+			hint->enforce_mask = ENABLE_TIDSCAN;
+			break;
+		case HINT_KEYWORD_NOSEQSCAN:
+			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_SEQSCAN;
+			break;
+		case HINT_KEYWORD_NOINDEXSCAN:
+			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXSCAN;
+			break;
+		case HINT_KEYWORD_NOBITMAPSCAN:
+			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_BITMAPSCAN;
+			break;
+		case HINT_KEYWORD_NOTIDSCAN:
+			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
+			break;
+#if PG_VERSION_NUM >= 90200
+		case HINT_KEYWORD_INDEXONLYSCAN:
+			hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
+			break;
+		case HINT_KEYWORD_NOINDEXONLYSCAN:
+			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
+			break;
+#endif
+		default:
+			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
+			return NULL;
+			break;
 	}
 
 	return str;
@@ -1284,8 +1338,9 @@ static const char *
 JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 					const char *str)
 {
-	const char *keyword = hint->base.keyword;
-	List	   *name_list = NIL;
+	const char	   *keyword = hint->base.keyword;
+	HintKeyword		hint_keyword = hint->base.hint_keyword;
+	List		   *name_list = NIL;
 
 	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
 		return NULL;
@@ -1324,22 +1379,30 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 	/* Sort hints in alphabetical order of relation names. */
 	qsort(hint->relnames, hint->nrels, sizeof(char *), RelnameCmp);
 
-	if (strcmp(keyword, HINT_NESTLOOP) == 0)
-		hint->enforce_mask = ENABLE_NESTLOOP;
-	else if (strcmp(keyword, HINT_MERGEJOIN) == 0)
-		hint->enforce_mask = ENABLE_MERGEJOIN;
-	else if (strcmp(keyword, HINT_HASHJOIN) == 0)
-		hint->enforce_mask = ENABLE_HASHJOIN;
-	else if (strcmp(keyword, HINT_NONESTLOOP) == 0)
-		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
-	else if (strcmp(keyword, HINT_NOMERGEJOIN) == 0)
-		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
-	else if (strcmp(keyword, HINT_NOHASHJOIN) == 0)
-		hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
-	else
+	switch (hint_keyword)
 	{
-		hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
-		return NULL;
+		case HINT_KEYWORD_NESTLOOP:
+			hint->enforce_mask = ENABLE_NESTLOOP;
+			break;
+		case HINT_KEYWORD_MERGEJOIN:
+			hint->enforce_mask = ENABLE_MERGEJOIN;
+			break;
+		case HINT_KEYWORD_HASHJOIN:
+			hint->enforce_mask = ENABLE_HASHJOIN;
+			break;
+		case HINT_KEYWORD_NONESTLOOP:
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
+			break;
+		case HINT_KEYWORD_NOMERGEJOIN:
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
+			break;
+		case HINT_KEYWORD_NOHASHJOIN:
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
+			break;
+		default:
+			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
+			return NULL;
+			break;
 	}
 
 	return str;
@@ -2135,7 +2198,8 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			 * control paths of this query afterward.
 			 */
 			hint = (JoinMethodHint *) JoinMethodHintCreate(lhint->base.hint_str,
-														   HINT_LEADING);
+														   HINT_LEADING,
+														  HINT_KEYWORD_LEADING);
 			hint->base.state = HINT_STATE_USED;
 			hint->nrels = njoinrels;
 			hint->enforce_mask = ENABLE_ALL_JOIN;
