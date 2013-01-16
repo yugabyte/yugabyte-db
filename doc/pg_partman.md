@@ -12,6 +12,8 @@ I'm trying to find a way to also inherit the permissions from the parent table i
     INSERT INTO partman.part_config (parent_table, grants, roles) 
     VALUES ('my_parent_table', 'INSERT,UPDATE,DELETE', 'role1,role2,role3');
 
+If you attempt to insert data into a partition set that contains data for a partition that does not exist, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The check_parent() function provides monitoring for any data getting inserted into parents and the create_prev_* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
+
 If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
 
 The PG Jobmon extension (https://github.com/omniti-labs/pg_jobmon) is optional and allows auditing and monitoring of partition maintenance. If jobmon is installed and configured properly, it will automatically be used by partman with no additional setup needed. By default, any function that fails to run successfully 3 consecutive times will cause jobmon to raise an alert. This is why the default pre-make value is set to 4 so that an alert will be raised in time for intervention with no additional configuration of jobmon needed. You can of course configure jobmon to alert before (or later) than 3 failures if needed. If you're running partman in a production environment it is HIGHLY recommended to have jobmon installed and some sort of 3rd-party monitoring configured with it to alert when partitioning fails (Nagios, Circonus, etc).
@@ -23,7 +25,7 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
 *create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false)*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all indexes & constraints to parent table so they will propagate to children (permissions not yet propagating; working on it!).
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
- * p_parent_table - the existing parent table
+ * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
  * p_control - the column that the partitioning will be based on. Must be a time or integer based column.
  * p_type - one of 4 values to set the partitioning type that will be used
  
@@ -56,32 +58,34 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
  * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
 
 *create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
- * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set. 
+ * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
+ * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
  * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
- * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located.
+ * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch - how many partitions will be made in a single run of the function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 *create_prev_id_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
- * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set. 
+ * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set, or to fix data that accidentally gets inserted into the parent.
+ * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
  * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
- * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located.
+ * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch - how many partitions will be made in a single run of the function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
-*check_parent() RETURNS SETOF (parent table, count)*
+*check_parent() RETURNS SETOF (parent_table, count)*
  * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
  * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
 
 *drop_time_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
  * This function is used to drop child tables from a time-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
- * p_parent_table - the existing parent table of a time-based partition set.
+ * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
 
 *drop_id_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
  * This function is used to drop child tables from an id-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
- * p_parent_table - the existing parent table of a time-based partition set.
+ * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
 
@@ -89,6 +93,7 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
  * This function is used to apply grants that are set in the part_grants table. It is called automatically any time a new partition is made and shouldn't be called directly unless needed.
  * It will apply configured grants to the parent table and all child tables every run.
  * Grants are only applied, never revoked.
+ * p_parent_table - parent table to apply the grants to. MUST be schema qualified, even if in public schema.
 
 
 Tables

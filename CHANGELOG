@@ -1,3 +1,7 @@
+0.3.1
+-- Added check to dynamic id & time trigger functions to see if target table exists. If it doesn't, insert to parent instead of throwing error. Better than losing data! check_parent() function can monitor for this happening and create_prev_* functions can easily fix it. Thought of having it auto-create the needed partition, but if something is going wrong, that could end up creating a lot of unwanted partitions and be harder to clean up. 
+
+
 0.3.0
 -- Added grants configuration table to propagate permissions to newly created child partitions. Will also apply those permissions to the parent table and all existing child tables whenever a new partition is created. Permissions are only granted, never revoked. See docs for more info.
 

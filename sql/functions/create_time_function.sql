@@ -113,8 +113,11 @@ ELSIF v_type = 'time-dynamic' THEN
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
+            v_count                 int;
             v_partition_name        text;
             v_partition_timestamp   timestamp;
+            v_schemaname            text;
+            v_tablename             text;
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             ';
@@ -141,8 +144,14 @@ ELSIF v_type = 'time-dynamic' THEN
 
         v_trig_func := v_trig_func||'
             v_partition_name := '''||p_parent_table||'_p''|| to_char(v_partition_timestamp, '||quote_literal(v_datetime_string)||');
-        
-            EXECUTE ''INSERT INTO ''||v_partition_name||'' VALUES($1.*)'' USING NEW;
+            v_schemaname := split_part(v_partition_name, ''.'', 1); 
+            v_tablename := split_part(v_partition_name, ''.'', 2);
+            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname = v_schemaname AND tablename = v_tablename;
+            IF v_count > 0 THEN 
+                EXECUTE ''INSERT INTO ''||v_partition_name||'' VALUES($1.*)'' USING NEW;
+            ELSE
+                RETURN NEW;
+            END IF;
         END IF;
         
         RETURN NULL; 

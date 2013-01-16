@@ -1,3 +1,6 @@
+/*
+ * Create the trigger function for the parent table of an id-based partition set
+ */
 CREATE FUNCTION create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
@@ -113,20 +116,25 @@ ELSIF v_type = 'id-dynamic' THEN
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
+            v_count                     int;
             v_current_partition_id      bigint;
             v_current_partition_name    text;
             v_last_partition            text := '||quote_literal(v_last_partition)||';
             v_last_partition_id         bigint;
             v_next_partition_id         bigint;
             v_next_partition_name       text;   
+            v_schemaname                text;
+            v_tablename                 text;
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
             v_current_partition_name := '''||p_parent_table||'_p''||v_current_partition_id;
-
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
                 v_last_partition_id = substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint;
                 v_next_partition_id := v_last_partition_id + '||v_part_interval||';
+                IF NEW.'||v_control||' >= v_next_partition_id THEN
+                    RETURN NEW;
+                END IF;
                 IF ((v_next_partition_id - v_current_partition_id) / '||quote_literal(v_part_interval)||') <= '||quote_literal(v_premake)||' THEN 
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
                         ||quote_literal(v_part_interval)||', ARRAY[v_next_partition_id]);
@@ -136,7 +144,14 @@ ELSIF v_type = 'id-dynamic' THEN
                     END IF;
                 END IF;
             END IF;
-            EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
+            v_schemaname := split_part(v_current_partition_name, ''.'', 1); 
+            v_tablename := split_part(v_current_partition_name, ''.'', 2);
+            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname = v_schemaname AND tablename = v_tablename;
+            IF v_count > 0 THEN 
+                EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
+            ELSE
+                RETURN NEW;
+            END IF;
         END IF;
         
         RETURN NULL; 
