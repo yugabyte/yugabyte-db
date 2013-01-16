@@ -1,6 +1,10 @@
 Revision history for pgTAP
 ==========================
 
+0.93.0
+---------------------------
+
+
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------
 * Fixed some misspellings of `SELECT` in documentation examples.
