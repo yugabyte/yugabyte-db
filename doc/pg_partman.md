@@ -22,7 +22,7 @@ Functions
 ---------
 All functions are run with SECURITY DEFINER, so just ensure that the function owner has the needed privileges for table & function creation and removal.
 
-*create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 3, p_debug boolean DEFAULT false)*
+*create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false)*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all indexes & constraints to parent table so they will propagate to children (permissions not yet propagating; working on it!).
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
