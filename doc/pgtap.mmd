@@ -5208,6 +5208,41 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `schema_owner_is ()` ###
+
+    SELECT schema_owner_is ( :schemaname, :user, :description );
+    SELECT schema_owner_is ( :schemaname, :user );
+
+**Parameters**
+
+`:schemaname`
+: Name of a schema.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of the schema. If the `:description` argument is
+omitted, an appropriate description will be created. Examples:
+
+    SELECT schema_owner_is( 'myschema', 'someuser', 'myschema should be owned by someuser' );
+    SELECT schema_owner_is( current_schema(), current_user );
+
+In the event that the test fails because the schema in question does not
+actually exist, you will see an appropriate diagnostic such as:
+
+    # Failed test 16: "Schema foo should be owned by www"
+    #     Schema foo does not exist
+
+If the test fails because the schema is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Schema bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
 ### `relation_owner_is ()` ###
 
     SELECT relation_owner_is ( :schema, :relation, :user, :description );

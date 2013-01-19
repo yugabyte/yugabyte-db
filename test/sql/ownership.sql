@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(228);
+SELECT plan(240);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -60,6 +60,40 @@ SELECT * FROM check_test(
     'mumble',
     '        have: ' || current_user || '
         want: __not__' || current_user
+);
+
+/****************************************************************************/
+SELECT * FROM check_test(
+    schema_owner_is(current_schema(), _get_schema_owner(current_schema()), 'mumble'),
+	true,
+    'schema_owner_is(schema, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    schema_owner_is(current_schema(), _get_schema_owner(current_schema())),
+	true,
+    'schema_owner_is(schema, user)',
+    'Schema ' || quote_ident(current_schema()) || ' should be owned by ' || _get_schema_owner(current_schema()),
+    ''
+);
+
+SELECT * FROM check_test(
+    schema_owner_is('__not__' || current_schema(), _get_schema_owner(current_schema()), 'mumble'),
+	false,
+    'schema_owner_is(non-schema, user)',
+    'mumble',
+    '    Schema __not__' || current_schema() || ' does not exist'
+);
+
+SELECT * FROM check_test(
+    schema_owner_is(current_schema(), '__not__' || _get_schema_owner(current_schema()), 'mumble'),
+	false,
+    'schema_owner_is(schema, non-user)',
+    'mumble',
+    '        have: ' || _get_schema_owner(current_schema()) || '
+        want: __not__' || _get_schema_owner(current_schema())
 );
 
 /****************************************************************************/

@@ -3,7 +3,7 @@ Revision history for pgTAP
 
 0.93.0
 ---------------------------
-
+* Added `schema_owner_is()`. Not sure how I overlooked adding it in v0.92.0.
 
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------
