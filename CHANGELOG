@@ -1,3 +1,9 @@
+0.3.2
+-- Allow multiple grant commands for the same partition set in case different roles need different grants. Removed primary key constraint from part_grants table and updated apply_grants function 
+-- create_parent() function now ensures that the control column has a not null constraint.
+-- Make select-only functions STABLE
+
+
 0.3.1
 -- Added check to dynamic id & time trigger functions to see if target table exists. If it doesn't, insert to parent instead of throwing error. Better than losing data! check_parent() function can monitor for this happening and create_prev_* functions can easily fix it. Thought of having it auto-create the needed partition, but if something is going wrong, that could end up creating a lot of unwanted partitions and be harder to clean up. 
 

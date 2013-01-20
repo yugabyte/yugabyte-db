@@ -1,7 +1,48 @@
+-- Allow multiple grant commands for the same partition set in case different roles need different grants. Removed primary key constraint from part_grants table and updated apply_grants function 
+-- create_parent() function now ensures that the control column has a not null constraint.
+-- Make select-only functions STABLE
+
+ALTER TABLE @extschema@.part_grants DROP CONSTRAINT part_grants_pkey;
+ALTER TABLE @extschema@.part_grants DROP CONSTRAINT part_grants_parent_table_fkey;
+
+ALTER TABLE @extschema@.part_grants ADD CONSTRAINT part_grants_parent_table_fkey FOREIGN KEY (parent_table) REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE @extschema@.part_grants ADD CONSTRAINT part_grants_unique_grant UNIQUE (parent_table, grants, roles);
+
+
+/*
+ * Function to apply grants on parent & child tables
+ */
+CREATE OR REPLACE FUNCTION apply_grants(p_parent_table text) RETURNS void
+    LANGUAGE plpgsql SECURITY DEFINER
+    AS $$
+DECLARE
+
+v_child_table   text;
+v_grants        text;
+v_roles         text;
+v_row           record;
+
+BEGIN
+
+FOR v_row IN 
+    SELECT grants, roles FROM @extschema@.part_grants WHERE parent_table = p_parent_table
+LOOP
+    EXECUTE 'GRANT '||v_row.grants||' ON '||p_parent_table||' TO '||v_row.roles;
+    FOR v_child_table IN 
+        SELECT inhrelid::regclass FROM pg_catalog.pg_inherits WHERE inhparent::regclass = p_parent_table::regclass ORDER BY inhrelid::regclass ASC
+    LOOP
+        EXECUTE 'GRANT '||v_row.grants||' ON '||v_child_table||' TO '||v_row.roles;
+    END LOOP;
+END LOOP;
+
+END
+$$;
+
+
 /*
  * Function to turn a table into the parent of a partition set
  */
-CREATE FUNCTION create_parent(p_parent_table text, p_control text, p_type @extschema@.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false) RETURNS void
+CREATE OR REPLACE FUNCTION create_parent(p_parent_table text, p_control text, p_type @extschema@.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -161,5 +202,43 @@ EXCEPTION
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
         RAISE EXCEPTION '%', SQLERRM;
+END
+$$;
+
+
+/*
+ * Function to monitor for data getting inserted into parent tables managed by extension
+ */
+CREATE OR REPLACE FUNCTION check_parent() RETURNS SETOF @extschema@.check_parent_table
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    AS $$
+DECLARE 
+    
+v_count 	bigint = 0;
+v_sql       text;
+v_tables 	record;
+v_trouble   @extschema@.check_parent_table%rowtype;
+
+BEGIN
+
+FOR v_tables IN 
+    SELECT DISTINCT parent_table FROM @extschema@.part_config
+LOOP
+
+    v_sql := 'SELECT count(1) AS n FROM ONLY '||v_tables.parent_table;
+    EXECUTE v_sql INTO v_count;
+
+    IF v_count > 0 THEN 
+        v_trouble.parent_table := v_tables.parent_table;
+        v_trouble.count := v_count;
+        RETURN NEXT v_trouble;
+    END IF;
+
+	v_count := 0;
+
+END LOOP;
+
+RETURN;
+
 END
 $$;

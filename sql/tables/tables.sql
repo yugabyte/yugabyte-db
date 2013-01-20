@@ -16,7 +16,10 @@ SELECT pg_catalog.pg_extension_config_dump('part_config', '');
 
 
 CREATE TABLE part_grants (
-    parent_table text PRIMARY KEY REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE,
+    parent_table text,
     grants text,
-    roles text
+    roles text,
+    CONSTRAINT part_grants_parent_table_fkey FOREIGN KEY (parent_table) REFERENCES @extschema@.part_config (parent_table) ON DELETE CASCADE ON UPDATE CASCADE,
+    CONSTRAINT part_grants_unique_grant UNIQUE (parent_table, grants, roles)
 );
+

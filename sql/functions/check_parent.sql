@@ -1,5 +1,8 @@
+/*
+ * Function to monitor for data getting inserted into parent tables managed by extension
+ */
 CREATE FUNCTION check_parent() RETURNS SETOF @extschema@.check_parent_table
-    LANGUAGE plpgsql SECURITY DEFINER
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
     AS $$
 DECLARE 
     
