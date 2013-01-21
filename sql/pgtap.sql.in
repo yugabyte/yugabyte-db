@@ -2088,7 +2088,7 @@ BEGIN
         keys = keys || akey::text;
     END LOOP;
     IF array_upper(keys, 0) = 1 THEN
-        have := 'No ' || $6 || ' constriants';
+        have := 'No ' || $6 || ' constraints';
     ELSE
         have := array_to_string(keys, E'\n              ');
     END IF;
@@ -2112,7 +2112,7 @@ BEGIN
         keys = keys || akey::text;
     END LOOP;
     IF array_upper(keys, 0) = 1 THEN
-        have := 'No ' || $5 || ' constriants';
+        have := 'No ' || $5 || ' constraints';
     ELSE
         have := array_to_string(keys, E'\n              ');
     END IF;
