@@ -5,6 +5,8 @@ Revision history for pgTAP
 ---------------------------
 * Added `schema_owner_is()`. Not sure how I overlooked adding it in v0.92.0.
 * Fixed misselling of "constraint" in constraint test diagnostic output.
+* Fixed `fk_ok()` so that the table must be visible in the search path when
+  the schema name is not specified.
 
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------
