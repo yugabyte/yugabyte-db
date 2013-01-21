@@ -2251,8 +2251,9 @@ DECLARE
 BEGIN
     SELECT pk_table_name, pk_columns
       FROM pg_all_foreign_keys
-      WHERE fk_table_name = $1
-        AND fk_columns    = $2
+     WHERE fk_table_name = $1
+       AND fk_columns    = $2
+       AND pg_catalog.pg_table_is_visible(fk_table_oid)
       INTO tab, cols;
 
     RETURN is(

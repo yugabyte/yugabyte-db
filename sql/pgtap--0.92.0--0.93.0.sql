@@ -79,3 +79,30 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql;
+
+-- fk_ok( fk_table, fk_column[], pk_table, pk_column[], description )
+CREATE OR REPLACE FUNCTION fk_ok ( NAME, NAME[], NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    tab  name;
+    cols name[];
+BEGIN
+    SELECT pk_table_name, pk_columns
+      FROM pg_all_foreign_keys
+     WHERE fk_table_name = $1
+       AND fk_columns    = $2
+       AND pg_catalog.pg_table_is_visible(fk_table_oid)
+      INTO tab, cols;
+
+    RETURN is(
+        -- have
+        $1 || '(' || _ident_array_to_string( $2, ', ' )
+        || ') REFERENCES ' || COALESCE( tab || '(' || _ident_array_to_string( cols, ', ' ) || ')', 'NOTHING'),
+        -- want
+        $1 || '(' || _ident_array_to_string( $2, ', ' )
+        || ') REFERENCES ' ||
+        $3 || '(' || _ident_array_to_string( $4, ', ' ) || ')',
+        $5
+    );
+END;
+$$ LANGUAGE plpgsql;
