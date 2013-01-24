@@ -9,6 +9,8 @@ Revision history for pgTAP
   the schema name is not specified.
 * Fixed constraint- and trigger-checking functions so that they only look at
   tables visible in the search path unles the schema is specified.
+* Fixed `col_type_is()` so that it won't report the column as not existing
+  when the column's data type is not in the search path.
 
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------

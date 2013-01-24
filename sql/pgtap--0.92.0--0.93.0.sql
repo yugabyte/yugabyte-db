@@ -129,3 +129,15 @@ RETURNS BOOLEAN AS $$
            AND pg_catalog.pg_table_is_visible(c.oid)
     );
 $$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT display_type(a.atttypid, a.atttypmod)
+      FROM pg_catalog.pg_attribute a
+      JOIN pg_catalog.pg_class c ON  a.attrelid = c.oid
+     WHERE pg_catalog.pg_table_is_visible(c.oid)
+       AND c.relname = $1
+       AND a.attname = $2
+       AND attnum    > 0
+       AND NOT a.attisdropped
+$$ LANGUAGE SQL;
