@@ -106,3 +106,14 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql;
+
+-- _keys( table, constraint_type )
+CREATE OR REPLACE FUNCTION _keys ( NAME, CHAR )
+RETURNS SETOF NAME[] AS $$
+    SELECT _pg_sv_column_array(x.conrelid,x.conkey)
+      FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid
+       AND c.relname = $1
+       AND x.contype = $2
+     WHERE pg_catalog.pg_table_is_visible(c.oid)
+$$ LANGUAGE sql;

@@ -1790,6 +1790,7 @@ RETURNS SETOF NAME[] AS $$
       JOIN pg_catalog.pg_constraint x  ON c.oid = x.conrelid
        AND c.relname = $1
        AND x.contype = $2
+     WHERE pg_catalog.pg_table_is_visible(c.oid)
 $$ LANGUAGE sql;
 
 -- _ckeys( schema, table, constraint_type )
