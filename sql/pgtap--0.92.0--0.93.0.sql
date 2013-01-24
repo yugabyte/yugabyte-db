@@ -117,3 +117,15 @@ RETURNS SETOF NAME[] AS $$
        AND x.contype = $2
      WHERE pg_catalog.pg_table_is_visible(c.oid)
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _trig ( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS(
+        SELECT true
+          FROM pg_catalog.pg_trigger t
+          JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
+         WHERE c.relname = $1
+           AND t.tgname  = $2
+           AND pg_catalog.pg_table_is_visible(c.oid)
+    );
+$$ LANGUAGE SQL;

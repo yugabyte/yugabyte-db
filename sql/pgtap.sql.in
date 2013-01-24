@@ -3073,6 +3073,7 @@ RETURNS BOOLEAN AS $$
           JOIN pg_catalog.pg_class c     ON c.oid = t.tgrelid
          WHERE c.relname = $1
            AND t.tgname  = $2
+           AND pg_catalog.pg_table_is_visible(c.oid)
     );
 $$ LANGUAGE SQL;
 
