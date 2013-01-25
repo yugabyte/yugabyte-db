@@ -1,5 +1,5 @@
 \unset ECHO
-1..252
+1..288
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -252,3 +252,39 @@ ok 249 - tablespace_owner_is(non-tablespace, user) should have the proper diagno
 ok 250 - tablespace_owner_is(tablespace, non-user) should fail
 ok 251 - tablespace_owner_is(tablespace, non-user) should have the proper description
 ok 252 - tablespace_owner_is(tablespace, non-user) should have the proper diagnostics
+ok 253 - index_owner_is(schema, table, index, user, desc) should pass
+ok 254 - index_owner_is(schema, table, index, user, desc) should have the proper description
+ok 255 - index_owner_is(schema, table, index, user, desc) should have the proper diagnostics
+ok 256 - index_owner_is(schema, table, index, user) should pass
+ok 257 - index_owner_is(schema, table, index, user) should have the proper description
+ok 258 - index_owner_is(schema, table, index, user) should have the proper diagnostics
+ok 259 - index_owner_is(schema, table, non-index, user, desc) should fail
+ok 260 - index_owner_is(schema, table, non-index, user, desc) should have the proper description
+ok 261 - index_owner_is(schema, table, non-index, user, desc) should have the proper diagnostics
+ok 262 - index_owner_is(schema, non-table, index, user, desc) should fail
+ok 263 - index_owner_is(schema, non-table, index, user, desc) should have the proper description
+ok 264 - index_owner_is(schema, non-table, index, user, desc) should have the proper diagnostics
+ok 265 - index_owner_is(non-schema, table, index, user, desc) should fail
+ok 266 - index_owner_is(non-schema, table, index, user, desc) should have the proper description
+ok 267 - index_owner_is(non-schema, table, index, user, desc) should have the proper diagnostics
+ok 268 - index_owner_is(schema, table, index, non-user, desc) should fail
+ok 269 - index_owner_is(schema, table, index, non-user, desc) should have the proper description
+ok 270 - index_owner_is(schema, table, index, non-user, desc) should have the proper diagnostics
+ok 271 - index_owner_is(invisible-table, index, user, desc) should fail
+ok 272 - index_owner_is(invisible-table, index, user, desc) should have the proper description
+ok 273 - index_owner_is(invisible-table, index, user, desc) should have the proper diagnostics
+ok 274 - index_owner_is(table, index, user, desc) should pass
+ok 275 - index_owner_is(table, index, user, desc) should have the proper description
+ok 276 - index_owner_is(table, index, user, desc) should have the proper diagnostics
+ok 277 - index_owner_is(table, index, user) should pass
+ok 278 - index_owner_is(table, index, user) should have the proper description
+ok 279 - index_owner_is(table, index, user) should have the proper diagnostics
+ok 280 - index_owner_is(non-table, index, user) should fail
+ok 281 - index_owner_is(non-table, index, user) should have the proper description
+ok 282 - index_owner_is(non-table, index, user) should have the proper diagnostics
+ok 283 - index_owner_is(table, non-index, user) should fail
+ok 284 - index_owner_is(table, non-index, user) should have the proper description
+ok 285 - index_owner_is(table, non-index, user) should have the proper diagnostics
+ok 286 - index_owner_is(table, index, non-user) should fail
+ok 287 - index_owner_is(table, index, non-user) should have the proper description
+ok 288 - index_owner_is(table, index, non-user) should have the proper diagnostics

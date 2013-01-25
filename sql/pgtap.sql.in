@@ -7977,6 +7977,85 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+CREATE OR REPLACE FUNCTION _get_index_owner( NAME, NAME, NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(ci.relowner)
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
+     WHERE n.nspname  = $1
+       AND ct.relname = $2
+       AND ci.relname = $3;
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _get_index_owner( NAME, NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(ci.relowner)
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+     WHERE ct.relname = $1
+       AND ci.relname = $2
+       AND pg_catalog.pg_table_is_visible(ct.oid);
+$$ LANGUAGE sql;
+
+-- index_owner_is ( schema, table, index, user, description )
+CREATE OR REPLACE FUNCTION index_owner_is ( NAME, NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_index_owner($1, $2, $3);
+BEGIN
+    -- Make sure the index exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $5) || E'\n' || diag(
+            E'    Index ' || quote_ident($3) || ' ON '
+            || quote_ident($1) || '.' || quote_ident($2) || ' not found'
+        );
+    END IF;
+
+    RETURN is(owner, $4, $5);
+END;
+$$ LANGUAGE plpgsql;
+
+-- index_owner_is ( schema, table, index, user )
+CREATE OR REPLACE FUNCTION index_owner_is ( NAME, NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT index_owner_is(
+        $1, $2, $3, $4,
+        'Index ' || quote_ident($3) || ' ON '
+        || quote_ident($1) || '.' || quote_ident($2)
+        || ' should be owned by ' || quote_ident($4)
+    );
+$$ LANGUAGE sql;
+
+-- index_owner_is ( table, index, user, description )
+CREATE OR REPLACE FUNCTION index_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_index_owner($1, $2);
+BEGIN
+    -- Make sure the index exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Index ' || quote_ident($2) || ' ON ' || quote_ident($1) || ' not found'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- index_owner_is ( table, index, user )
+CREATE OR REPLACE FUNCTION index_owner_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT index_owner_is(
+        $1, $2, $3,
+        'Index ' || quote_ident($2) || ' ON '
+        || quote_ident($1) || ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION _assets_are ( text, text[], text[], TEXT )
 RETURNS TEXT AS $$
     SELECT _areni(

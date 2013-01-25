@@ -5557,6 +5557,53 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `index_owner_is ()` ###
+
+    SELECT index_owner_is ( :schema, :table, :index, :user, :description );
+    SELECT index_owner_is ( :table, :index, :user, :description );
+    SELECT index_owner_is ( :schema, :table, :index, :user );
+    SELECT index_owner_is ( :table, :index, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:table, :index`.
+
+`:table`
+: Name of a table.
+
+`:table`
+: Name of an index on the table.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of an index. If the `:description` argument is omitted, an
+appropriate description will be created. Examples:
+
+    SELECT index_owner_is(
+        'public', 'mytable', 'idx_name', 'someuser',
+        'Index "idx_name" on mytable should be owned by someuser'
+    );
+    SELECT index_owner_is( 'widgets', 'widgets_pkey', current_user );
+
+In the event that the test fails because the index in question does not
+actually exist, or the table or schema it's on does not exist or is not
+visible, you will see an appropriate diagnostic such as:
+
+    # Failed test 16: "Index idx_foo should be owned by root"
+    #     Index idx_foo on table darfoo not found
+
+If the test fails because the table is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Index idx_foo on table bar should be owned by bob"
+    #         have: postgres
+    #         want: bob
+
 ### `function_owner_is ()` ###
 
     SELECT function_owner_is ( :schema, :function, :args, :user, :description );

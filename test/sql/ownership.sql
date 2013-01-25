@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(252);
+SELECT plan(288);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -13,6 +13,8 @@ CREATE TABLE public.sometab(
     "myInt" NUMERIC(8)
 );
 
+CREATE INDEX idx_hey ON public.sometab(numb);
+
 CREATE VIEW public.someview AS SELECT * FROM public.sometab;
 
 CREATE TYPE public.sometype AS (
@@ -23,6 +25,12 @@ CREATE TYPE public.sometype AS (
 CREATE SEQUENCE public.someseq;
 
 CREATE SCHEMA someschema;
+CREATE TABLE someschema.anothertab(
+    id INT PRIMARY KEY,
+    name    TEXT DEFAULT ''
+);
+
+CREATE INDEX idx_name ON someschema.anothertab(name);
 
 CREATE FUNCTION public.somefunction(int) RETURNS VOID LANGUAGE SQL AS '';
 
@@ -824,6 +832,105 @@ SELECT * FROM check_test(
         want: __not__' || _get_tablespace_owner('pg_default')
 );
 
+/****************************************************************************/
+-- Test index_owner_is().
+SELECT * FROM check_test(
+    index_owner_is('someschema', 'anothertab', 'idx_name', current_user, 'mumble'),
+	true,
+    'index_owner_is(schema, table, index, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_owner_is('someschema', 'anothertab', 'idx_name', current_user),
+	true,
+    'index_owner_is(schema, table, index, user)',
+    'Index idx_name ON someschema.anothertab should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    index_owner_is('someschema', 'anothertab', 'idx_foo', current_user, 'mumble'),
+	false,
+    'index_owner_is(schema, table, non-index, user, desc)',
+    'mumble',
+    '    Index idx_foo ON someschema.anothertab not found'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('someschema', 'nonesuch', 'idx_name', current_user, 'mumble'),
+	false,
+    'index_owner_is(schema, non-table, index, user, desc)',
+    'mumble',
+    '    Index idx_name ON someschema.nonesuch not found'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('nonesuch', 'anothertab', 'idx_name', current_user, 'mumble'),
+	false,
+    'index_owner_is(non-schema, table, index, user, desc)',
+    'mumble',
+    '    Index idx_name ON nonesuch.anothertab not found'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('someschema', 'anothertab', 'idx_name', '__noone', 'mumble'),
+	false,
+    'index_owner_is(schema, table, index, non-user, desc)',
+    'mumble',
+    '        have: ' || current_user || '
+        want: __noone'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('anothertab', 'idx_name', current_user, 'mumble'),
+	false,
+    'index_owner_is(invisible-table, index, user, desc)',
+    'mumble',
+    '    Index idx_name ON anothertab not found'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('sometab', 'idx_hey', current_user, 'mumble'),
+	true,
+    'index_owner_is(table, index, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    index_owner_is('sometab', 'idx_hey', current_user),
+	true,
+    'index_owner_is(table, index, user)',
+    'Index idx_hey ON sometab should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    index_owner_is('notab', 'idx_hey', current_user, 'mumble'),
+	false,
+    'index_owner_is(non-table, index, user)',
+    'mumble',
+    '    Index idx_hey ON notab not found'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('sometab', 'idx_foo', current_user, 'mumble'),
+	false,
+    'index_owner_is(table, non-index, user)',
+    'mumble',
+    '    Index idx_foo ON sometab not found'
+);
+
+SELECT * FROM check_test(
+    index_owner_is('sometab', 'idx_hey', '__no-one', 'mumble'),
+	false,
+    'index_owner_is(table, index, non-user)',
+    'mumble',
+    '        have: ' || current_user || '
+        want: __no-one'
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.
