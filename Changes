@@ -3,7 +3,9 @@ Revision history for pgTAP
 
 0.93.0
 ---------------------------
-* Added `schema_owner_is()`. Not sure how I overlooked adding it in v0.92.0.
+* Added additional ownership-testing functions:
+  + `tablespace_owner_is()`
+  + `schema_owner_is()`
 * Fixed misselling of "constraint" in constraint test diagnostic output.
 * Fixed `fk_ok()` so that the table must be visible in the search path when
   the schema name is not specified.

@@ -5254,6 +5254,41 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `tablespace_owner_is ()` ###
+
+    SELECT tablespace_owner_is ( :tablespacename, :user, :description );
+    SELECT tablespace_owner_is ( :tablespacename, :user );
+
+**Parameters**
+
+`:tablespacename`
+: Name of a tablespace.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of the tablespace. If the `:description` argument is
+omitted, an appropriate description will be created. Examples:
+
+    SELECT tablespace_owner_is( 'myts', 'joe', 'Joe has mytablespace' );
+    SELECT tablespace_owner_is( 'pg_default', current_user );
+
+In the event that the test fails because the tablespace in question does not
+actually exist, you will see an appropriate diagnostic such as:
+
+    # Failed test 16: "Tablespace ssd should be owned by www"
+    #     Tablespace ssd does not exist
+
+If the test fails because the tablespace is not owned by the specified user,
+the diagnostics will look something like:
+
+    # Failed test 17: "Tablespace raid_hds should be owned by root"
+    #         have: postgres
+    #         want: root
+
 ### `relation_owner_is ()` ###
 
     SELECT relation_owner_is ( :schema, :relation, :user, :description );

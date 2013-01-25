@@ -330,3 +330,37 @@ RETURNS TEXT AS $$
         $2
     );
 $$ LANGUAGE sql;
+
+-- _get_tablespace_owner( tablespace )
+CREATE OR REPLACE FUNCTION _get_tablespace_owner( NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(spcowner)
+      FROM pg_catalog.pg_tablespace
+     WHERE spcname = $1;
+$$ LANGUAGE SQL;
+
+-- tablespace_owner_is ( tablespace, user, description )
+CREATE OR REPLACE FUNCTION tablespace_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_tablespace_owner($1);
+BEGIN
+    -- Make sure the tablespace exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Tablespace ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- tablespace_owner_is ( tablespace, user )
+CREATE OR REPLACE FUNCTION tablespace_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT tablespace_owner_is(
+        $1, $2,
+        'Tablespace ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(240);
+SELECT plan(252);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -29,6 +29,7 @@ CREATE FUNCTION public.somefunction(int) RETURNS VOID LANGUAGE SQL AS '';
 RESET client_min_messages;
 
 /****************************************************************************/
+-- Test db_owner_is().
 SELECT * FROM check_test(
     db_owner_is(current_database(), current_user, 'mumble'),
 	true,
@@ -63,6 +64,7 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test schema_owner_is().
 SELECT * FROM check_test(
     schema_owner_is(current_schema(), _get_schema_owner(current_schema()), 'mumble'),
 	true,
@@ -785,6 +787,43 @@ SELECT * FROM check_test(
     '        have: ' || current_user || '
         want: no one'
 );
+
+/****************************************************************************/
+-- Test tablespace_owner_is().
+
+SELECT * FROM check_test(
+    tablespace_owner_is('pg_default', _get_tablespace_owner('pg_default'), 'mumble'),
+	true,
+    'tablespace_owner_is(tablespace, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    tablespace_owner_is('pg_default', _get_tablespace_owner('pg_default')),
+	true,
+    'tablespace_owner_is(tablespace, user)',
+    'Tablespace ' || quote_ident('pg_default') || ' should be owned by ' || _get_tablespace_owner('pg_default'),
+    ''
+);
+
+SELECT * FROM check_test(
+    tablespace_owner_is('__not__' || 'pg_default', _get_tablespace_owner('pg_default'), 'mumble'),
+	false,
+    'tablespace_owner_is(non-tablespace, user)',
+    'mumble',
+    '    Tablespace __not__' || 'pg_default' || ' does not exist'
+);
+
+SELECT * FROM check_test(
+    tablespace_owner_is('pg_default', '__not__' || _get_tablespace_owner('pg_default'), 'mumble'),
+	false,
+    'tablespace_owner_is(tablespace, non-user)',
+    'mumble',
+    '        have: ' || _get_tablespace_owner('pg_default') || '
+        want: __not__' || _get_tablespace_owner('pg_default')
+);
+
 
 /****************************************************************************/
 -- Finish the tests and clean up.

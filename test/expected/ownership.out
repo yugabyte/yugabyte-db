@@ -1,5 +1,5 @@
 \unset ECHO
-1..240
+1..252
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -240,3 +240,15 @@ ok 237 - function_owner_is(sch, function, args[integer], non-user, desc) should 
 ok 238 - function_owner_is(function, args[integer], non-user, desc) should fail
 ok 239 - function_owner_is(function, args[integer], non-user, desc) should have the proper description
 ok 240 - function_owner_is(function, args[integer], non-user, desc) should have the proper diagnostics
+ok 241 - tablespace_owner_is(tablespace, user, desc) should pass
+ok 242 - tablespace_owner_is(tablespace, user, desc) should have the proper description
+ok 243 - tablespace_owner_is(tablespace, user, desc) should have the proper diagnostics
+ok 244 - tablespace_owner_is(tablespace, user) should pass
+ok 245 - tablespace_owner_is(tablespace, user) should have the proper description
+ok 246 - tablespace_owner_is(tablespace, user) should have the proper diagnostics
+ok 247 - tablespace_owner_is(non-tablespace, user) should fail
+ok 248 - tablespace_owner_is(non-tablespace, user) should have the proper description
+ok 249 - tablespace_owner_is(non-tablespace, user) should have the proper diagnostics
+ok 250 - tablespace_owner_is(tablespace, non-user) should fail
+ok 251 - tablespace_owner_is(tablespace, non-user) should have the proper description
+ok 252 - tablespace_owner_is(tablespace, non-user) should have the proper diagnostics
