@@ -3777,11 +3777,16 @@ This function tests that the specified column is of a particular type. If it
 fails, it will emit diagnostics naming the actual type. The first argument is
 the schema name, the second the table name, the third the column name, the
 fourth the type's schema, the fifth the type, and the sixth is the test
-description. Example: If the table schema is omitted, the table and the type
-must be visible in the search path. If the test description is omitted, it
-will be set to "Column `:schema.:table.:column` should be type
-`:schema.:type`". Note that this test will fail if the table or column in
-question does not exist.
+description.
+
+If the table schema is omitted, the table must be visible in the search path.
+If the type schema is omitted, it must be visible in the search path;
+otherwise, the diagnostics will report the schema it's actually in. The schema
+can optinally be included in the `:type` argument, e.g., `'contrib.citext`.
+
+If the test description is omitted, it will be set to "Column
+`:schema.:table.:column` should be type `:schema.:type`". Note that this test
+will fail if the table or column in question does not exist.
 
 The type argument should be formatted as it would be displayed in the view of
 a table using the `\d` command in `psql`. For example, if you have a numeric
@@ -4899,13 +4904,17 @@ omit the test description, it will be set to "Enum `:enum` should have labels
 `:description`
 : A short description of the test.
 
-Tests the data type underlying a domain. The first two are arguments are the
+Tests the data type underlying a domain. The first two   arguments are the
 schema and name of the domain. The second two are the schema and name of the
 type that the domain should extend. The fifth argument is a description. If
-there is no description, a reasonable default description will be created. The
-schema arguments are also optional (though if there is no schema for the
-domain then there cannot be one for the type). For the 3- and 4-argument
-forms with schemas, cast the schemas to `NAME` to avoid ambiguities. Example:
+there is no description, a reasonable default description will be created.
+
+The schema arguments are also optional. However, if there is no `:schema`
+argument, there cannot be a `:type_schema` argument, either, though the
+schema can be included in the `type` argument, e.g., `contrib.citext`.
+
+For the 3- and 4-argument forms with schemas, cast the schemas to `NAME` to
+avoid ambiguities. Example:
 
     SELECT domain_type_is(
         'public'::name, 'us_postal_code',
