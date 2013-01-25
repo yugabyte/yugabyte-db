@@ -364,3 +364,30 @@ RETURNS TEXT AS $$
         'Tablespace ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _have_index( NAME, NAME, NAME)
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+    SELECT TRUE
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+      JOIN pg_catalog.pg_namespace n ON n.oid = ct.relnamespace
+     WHERE n.nspname  = $1
+       AND ct.relname = $2
+       AND ci.relname = $3
+    );
+$$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _have_index( NAME, NAME)
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+    SELECT TRUE
+      FROM pg_catalog.pg_index x
+      JOIN pg_catalog.pg_class ct    ON ct.oid = x.indrelid
+      JOIN pg_catalog.pg_class ci    ON ci.oid = x.indexrelid
+     WHERE ct.relname = $1
+       AND ci.relname = $2
+       AND pg_catalog.pg_table_is_visible(ct.oid)
+    );
+$$ LANGUAGE sql;
