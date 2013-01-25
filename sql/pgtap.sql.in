@@ -1248,7 +1248,11 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _get_col_ns_type ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT quote_ident(tn.nspname) || '.' || pg_catalog.format_type(a.atttypid, a.atttypmod)
+    -- Always include the namespace.
+    SELECT CASE WHEN pg_catalog.pg_type_is_visible(t.oid)
+                THEN quote_ident(tn.nspname) || '.'
+                ELSE ''
+           END || pg_catalog.format_type(a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c      ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a  ON c.oid = a.attrelid
