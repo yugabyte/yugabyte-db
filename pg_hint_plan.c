@@ -1908,7 +1908,10 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 			{
 				use_index = true;
 				if (pg_hint_plan_debug_print)
-					appendStringInfo(&buf, " %s", indexname);
+				{
+					appendStringInfoCharMacro(&buf, ' ');
+					dump_quote_value(&buf, indexname);
+				}
 
 				break;
 			}
