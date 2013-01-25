@@ -1,3 +1,7 @@
+CREATE OR REPLACE FUNCTION pgtap_version()
+RETURNS NUMERIC AS 'SELECT 0.93;'
+LANGUAGE SQL IMMUTABLE;
+
 -- _get_schema_owner( schema )
 CREATE OR REPLACE FUNCTION _get_schema_owner( NAME )
 RETURNS NAME AS $$

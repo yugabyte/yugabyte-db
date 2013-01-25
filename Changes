@@ -16,6 +16,8 @@ Revision history for pgTAP
   function so that type names always include the schema name if the schema is
   not in the search path. You might have to update data type tests to include
   the schema name if the type is not in the search path.
+* Added code to the `ALTER EXTENSION` upgrade scripts to update the value
+  returned by `pgtap_version()`.
 
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------
