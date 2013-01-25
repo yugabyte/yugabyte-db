@@ -10,7 +10,7 @@ Revision history for pgTAP
 * Fixed `fk_ok()` so that the table must be visible in the search path when
   the schema name is not specified.
 * Fixed constraint, trigger, index, and foreign key-checking functions so that
-  they only look at tables visible in the search path unles the schema is
+  they only don't find tables outside the search path unless the schema is
   specified.
 * Fixed `col_type_is()` so that it won't report the column as not existing
   when the column's data type is not in the search path.
