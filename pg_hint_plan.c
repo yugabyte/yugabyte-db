@@ -1863,6 +1863,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 	ListCell	   *cell;
 	ListCell	   *prev;
 	ListCell	   *next;
+	StringInfoData	buf;
 
 	/*
 	 * We delete all the IndexOptInfo list and prevent you from being usable by
@@ -1889,6 +1890,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 	 * other than it.
 	 */
 	prev = NULL;
+	initStringInfo(&buf);
 	for (cell = list_head(rel->indexlist); cell; cell = next)
 	{
 		IndexOptInfo   *info = (IndexOptInfo *) lfirst(cell);
@@ -1903,6 +1905,9 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 			if (RelnameCmp(&indexname, &lfirst(l)) == 0)
 			{
 				use_index = true;
+				appendStringInfoString(&buf, indexname);
+				if (next != NULL)
+					appendStringInfoCharMacro(&buf, ' ');
 				break;
 			}
 		}
@@ -1914,6 +1919,11 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 
 		pfree(indexname);
 	}
+	if (pg_hint_plan_debug_print)
+	{
+		ereport(LOG, (errmsg("\"%s\": %s", hint->relname, buf.data)));
+	}
+	pfree(buf.data);
 }
 
 static void
