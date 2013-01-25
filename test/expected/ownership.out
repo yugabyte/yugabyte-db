@@ -1,5 +1,5 @@
 \unset ECHO
-1..288
+1..300
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -288,3 +288,15 @@ ok 285 - index_owner_is(table, non-index, user) should have the proper diagnosti
 ok 286 - index_owner_is(table, index, non-user) should fail
 ok 287 - index_owner_is(table, index, non-user) should have the proper description
 ok 288 - index_owner_is(table, index, non-user) should have the proper diagnostics
+ok 289 - language_owner_is(language, user, desc) should pass
+ok 290 - language_owner_is(language, user, desc) should have the proper description
+ok 291 - language_owner_is(language, user, desc) should have the proper diagnostics
+ok 292 - language_owner_is(language, user) should pass
+ok 293 - language_owner_is(language, user) should have the proper description
+ok 294 - language_owner_is(language, user) should have the proper diagnostics
+ok 295 - language_owner_is(non-language, user) should fail
+ok 296 - language_owner_is(non-language, user) should have the proper description
+ok 297 - language_owner_is(non-language, user) should have the proper diagnostics
+ok 298 - language_owner_is(language, non-user) should fail
+ok 299 - language_owner_is(language, non-user) should have the proper description
+ok 300 - language_owner_is(language, non-user) should have the proper diagnostics

@@ -470,3 +470,37 @@ RETURNS TEXT AS $$
         || quote_ident($1) || ' should be owned by ' || quote_ident($3)
     );
 $$ LANGUAGE sql;
+
+-- _get_language_owner( language )
+CREATE OR REPLACE FUNCTION _get_language_owner( NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(lanowner)
+      FROM pg_catalog.pg_language
+     WHERE lanname = $1;
+$$ LANGUAGE SQL;
+
+-- language_owner_is ( language, user, description )
+CREATE OR REPLACE FUNCTION language_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_language_owner($1);
+BEGIN
+    -- Make sure the language exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Language ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- language_owner_is ( language, user )
+CREATE OR REPLACE FUNCTION language_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT language_owner_is(
+        $1, $2,
+        'Language ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

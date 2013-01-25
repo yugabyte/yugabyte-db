@@ -5651,6 +5651,41 @@ diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+### `language_owner_is ()` ###
+
+    SELECT language_owner_is ( :languagename, :user, :description );
+    SELECT language_owner_is ( :languagename, :user );
+
+**Parameters**
+
+`:languagename`
+: Name of a language.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a procedural language. If the `:description` argument
+is omitted, an appropriate description will be created. Examples:
+
+    SELECT language_owner_is( 'plpgsql', 'larry', 'Larry should own plpgsql' );
+    SELECT language_owner_is( 'plperl', current_user );
+
+In the event that the test fails because the language in question does not
+actually exist, you will see an appropriate diagnostic such as:
+
+    # Failed test 16: "Language pllolcode should be owned by meow"
+    #     Language pllolcode does not exist
+
+If the test fails because the language is not owned by the specified user,
+the diagnostics will look something like:
+
+    # Failed test 17: "Language plruby should be owned by mats"
+    #         have: postgres
+    #         want: mats
+
 Prvileged Access
 ----------------
 

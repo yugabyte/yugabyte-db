@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(288);
+SELECT plan(300);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -930,6 +930,41 @@ SELECT * FROM check_test(
     'mumble',
     '        have: ' || current_user || '
         want: __no-one'
+);
+
+/****************************************************************************/
+-- Test language_owner_is().
+SELECT * FROM check_test(
+    language_owner_is('plpgsql', _get_language_owner('plpgsql'), 'mumble'),
+	true,
+    'language_owner_is(language, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    language_owner_is('plpgsql', _get_language_owner('plpgsql')),
+	true,
+    'language_owner_is(language, user)',
+    'Language ' || quote_ident('plpgsql') || ' should be owned by ' || _get_language_owner('plpgsql'),
+    ''
+);
+
+SELECT * FROM check_test(
+    language_owner_is('__not__' || 'plpgsql', _get_language_owner('plpgsql'), 'mumble'),
+	false,
+    'language_owner_is(non-language, user)',
+    'mumble',
+    '    Language __not__' || 'plpgsql' || ' does not exist'
+);
+
+SELECT * FROM check_test(
+    language_owner_is('plpgsql', '__not__' || _get_language_owner('plpgsql'), 'mumble'),
+	false,
+    'language_owner_is(language, non-user)',
+    'mumble',
+    '        have: ' || _get_language_owner('plpgsql') || '
+        want: __not__' || _get_language_owner('plpgsql')
 );
 
 /****************************************************************************/
