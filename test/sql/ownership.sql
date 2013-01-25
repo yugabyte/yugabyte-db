@@ -951,11 +951,11 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    language_owner_is('__not__' || 'plpgsql', _get_language_owner('plpgsql'), 'mumble'),
+    language_owner_is('__not__plpgsql', _get_language_owner('plpgsql'), 'mumble'),
 	false,
     'language_owner_is(non-language, user)',
     'mumble',
-    '    Language __not__' || 'plpgsql' || ' does not exist'
+    '    Language __not__plpgsql does not exist'
 );
 
 SELECT * FROM check_test(
