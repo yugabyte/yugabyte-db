@@ -1749,7 +1749,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test domain_type_is() and domain_type_isnt().
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'us_postal_code', 'public', 'text', 'whatever'),
+    domain_type_is( 'public', 'us_postal_code', 'pg_catalog', 'text', 'whatever'),
     true,
     'domain_type_is(schema, domain, schema, type, desc)',
     'whatever',
@@ -1757,24 +1757,24 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'us_postal_code', 'public'::name, 'text'),
+    domain_type_is( 'public', 'us_postal_code', 'pg_catalog'::name, 'text'),
     true,
     'domain_type_is(schema, domain, schema, type)',
-    'Domain public.us_postal_code should extend type public.text',
+    'Domain public.us_postal_code should extend type pg_catalog.text',
     ''
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'us_postal_code', 'public', 'integer', 'whatever'),
+    domain_type_is( 'public', 'us_postal_code', 'pg_catalog', 'integer', 'whatever'),
     false,
     'domain_type_is(schema, domain, schema, type, desc) fail',
     'whatever',
-    '        have: public.text
-        want: public.integer'
+    '        have: pg_catalog.text
+        want: pg_catalog.integer'
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'zip_code', 'public', 'integer', 'whatever'),
+    domain_type_is( 'public', 'zip_code', 'pg_catalog', 'integer', 'whatever'),
     false,
     'domain_type_is(schema, nondomain, schema, type, desc)',
     'whatever',
@@ -1782,7 +1782,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_is( 'public', 'integer', 'public', 'integer', 'whatever'),
+    domain_type_is( 'public', 'integer', 'pg_catalog', 'integer', 'whatever'),
     false,
     'domain_type_is(schema, type, schema, type, desc) fail',
     'whatever',
@@ -1880,24 +1880,24 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'us_postal_code', 'public'::name, 'integer'),
+    domain_type_isnt( 'public', 'us_postal_code', 'pg_catalog'::name, 'integer'),
     true,
     'domain_type_isnt(schema, domain, schema, type)',
-    'Domain public.us_postal_code should not extend type public.integer',
+    'Domain public.us_postal_code should not extend type pg_catalog.integer',
     ''
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'us_postal_code', 'public', 'text', 'whatever'),
+    domain_type_isnt( 'public', 'us_postal_code', 'pg_catalog', 'text', 'whatever'),
     false,
     'domain_type_isnt(schema, domain, schema, type, desc) fail',
     'whatever',
-    '        have: public.text
+    '        have: pg_catalog.text
         want: anything else'
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'zip_code', 'public', 'text', 'whatever'),
+    domain_type_isnt( 'public', 'zip_code', 'pg_catalog', 'text', 'whatever'),
     false,
     'domain_type_isnt(schema, nondomain, schema, type, desc)',
     'whatever',
@@ -1905,7 +1905,7 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    domain_type_isnt( 'public', 'integer', 'public', 'text', 'whatever'),
+    domain_type_isnt( 'public', 'integer', 'pg_catalog', 'text', 'whatever'),
     false,
     'domain_type_isnt(schema, type, schema, type, desc)',
     'whatever',

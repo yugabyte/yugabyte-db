@@ -1221,23 +1221,9 @@ RETURNS TEXT AS $$
     SELECT _col_is_null( $1, $2, 'Column ' || quote_ident($1) || '.' || quote_ident($2) || ' should allow NULL', false );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION display_type ( OID, INTEGER )
-RETURNS TEXT AS $$
-    SELECT COALESCE(substring(
-        pg_catalog.format_type($1, $2),
-        '(("(?!")([^"]|"")+"|[^.]+)([(][^)]+[)])?)$'
-    ), '')
-$$ LANGUAGE SQL;
-
-CREATE OR REPLACE FUNCTION display_type ( NAME, OID, INTEGER )
-RETURNS TEXT AS $$
-    SELECT CASE WHEN $1 IS NULL THEN '' ELSE quote_ident($1) || '.' END
-        || display_type($2, $3)
-$$ LANGUAGE SQL;
-
 CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT display_type(a.atttypid, a.atttypmod)
+    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c     ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a ON c.oid = a.attrelid
@@ -1250,7 +1236,7 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _get_col_type ( NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT display_type(a.atttypid, a.atttypmod)
+    SELECT pg_catalog.format_type(a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_attribute a
       JOIN pg_catalog.pg_class c ON  a.attrelid = c.oid
      WHERE pg_catalog.pg_table_is_visible(c.oid)
@@ -1262,7 +1248,7 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _get_col_ns_type ( NAME, NAME, NAME )
 RETURNS TEXT AS $$
-    SELECT display_type(tn.nspname, a.atttypid, a.atttypmod)
+    SELECT quote_ident(tn.nspname) || '.' || pg_catalog.format_type(a.atttypid, a.atttypmod)
       FROM pg_catalog.pg_namespace n
       JOIN pg_catalog.pg_class c      ON n.oid = c.relnamespace
       JOIN pg_catalog.pg_attribute a  ON c.oid = a.attrelid
@@ -1506,7 +1492,7 @@ BEGIN
 
     RETURN _def_is(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid),
-        display_type(a.atttypid, a.atttypmod),
+        pg_catalog.format_type(a.atttypid, a.atttypmod),
         $4, $5
     )
       FROM pg_catalog.pg_namespace n, pg_catalog.pg_class c, pg_catalog.pg_attribute a,
@@ -1540,7 +1526,7 @@ BEGIN
 
     RETURN _def_is(
         pg_catalog.pg_get_expr(d.adbin, d.adrelid),
-        display_type(a.atttypid, a.atttypmod),
+        pg_catalog.format_type(a.atttypid, a.atttypmod),
         $3, $4
     )
       FROM pg_catalog.pg_class c, pg_catalog.pg_attribute a, pg_catalog.pg_attrdef d
@@ -3714,7 +3700,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION _cmp_types(oid, name)
 RETURNS BOOLEAN AS $$
 DECLARE
-    dtype TEXT := display_type($1, NULL);
+    dtype TEXT := pg_catalog.format_type($1, NULL);
 BEGIN
     RETURN dtype = _quote_ident_like($2, dtype);
 END;
@@ -6963,11 +6949,14 @@ $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION _get_dtype( NAME, TEXT, BOOLEAN )
 RETURNS TEXT AS $$
-    SELECT display_type(CASE WHEN $3 THEN tn.nspname ELSE NULL END, t.oid, t.typtypmod)
+    SELECT CASE WHEN $3 AND pg_catalog.pg_type_is_visible(t.oid)
+                THEN quote_ident(tn.nspname) || '.'
+                ELSE ''
+            END || pg_catalog.format_type(t.oid, t.typtypmod)
       FROM pg_catalog.pg_type d
       JOIN pg_catalog.pg_namespace dn ON d.typnamespace = dn.oid
       JOIN pg_catalog.pg_type t       ON d.typbasetype  = t.oid
-      JOIN pg_catalog.pg_namespace tn ON d.typnamespace = tn.oid
+      JOIN pg_catalog.pg_namespace tn ON t.typnamespace = tn.oid
      WHERE d.typisdefined
        AND dn.nspname = $1
        AND d.typname  = LOWER($2)
@@ -6976,10 +6965,11 @@ $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _get_dtype( NAME )
 RETURNS TEXT AS $$
-    SELECT display_type(t.oid, t.typtypmod)
+    SELECT pg_catalog.format_type(t.oid, t.typtypmod)
       FROM pg_catalog.pg_type d
       JOIN pg_catalog.pg_type t  ON d.typbasetype  = t.oid
      WHERE d.typisdefined
+       AND pg_catalog.pg_type_is_visible(d.oid)
        AND d.typname = LOWER($1)
        AND d.typtype = 'd'
 $$ LANGUAGE sql;
@@ -7276,7 +7266,8 @@ RETURNS TEXT AS $$
     SELECT _areni(
         'casts',
         ARRAY(
-            SELECT display_type(castsource, NULL) || ' AS ' || display_type(casttarget, NULL)
+            SELECT pg_catalog.format_type(castsource, NULL)
+                   || ' AS ' || pg_catalog.format_type(casttarget, NULL)
               FROM pg_catalog.pg_cast c
             EXCEPT
             SELECT $1[i]
@@ -7286,7 +7277,8 @@ RETURNS TEXT AS $$
             SELECT $1[i]
               FROM generate_series(1, array_upper($1, 1)) s(i)
             EXCEPT
-            SELECT display_type(castsource, NULL) || ' AS ' || display_type(casttarget, NULL)
+            SELECT pg_catalog.format_type(castsource, NULL)
+                   || ' AS ' || pg_catalog.format_type(casttarget, NULL)
               FROM pg_catalog.pg_cast c
         ),
         $2

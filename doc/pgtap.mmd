@@ -6611,32 +6611,6 @@ On PostgreSQL 8.4 and higher, it can take any number of arguments. Lower than
         ok(false, 'This should fail)
     ]);
 
-### `display_type()` ###
-
-    SELECT display_type( :schema, :typeoid, typemod );
-    SELECT display_type( :typeoid, :typemod );
-
-**Parameters**
-
-`:schema`
-: Schema in which to find the type.
-
-`:typeoid`
-: OID of the type.
-
-`:typemod`
-: Typemode for the type.
-
-Like `pg_catalog.format_type()`, except that the returned value is not
-prepended with the schema name unless it is passed as the first argument. Some
-examples:
-
-    SELECT display_type('public', 'varchar'::regtype, NULL );
-    SELECT display_type('numeric'::regtype, 196612 );
-
-Used internally by pgTAP to compare type names, but may be more generally
-useful.
-
 ### `display_oper()` ###
 
     SELECT display_oper( :opername, :operoid );
@@ -6652,7 +6626,7 @@ useful.
 Similar to casting an operator OID to regoperator, only the schema is not
 included in the display. For example:
 
-    SELECT display_type(oprname, oid ) FROM pg_operator;
+    SELECT display_oper(oprname, oid ) FROM pg_operator;
 
 Used internally by pgTAP to compare operators, but may be more generally
 useful.

@@ -12,6 +12,10 @@ Revision history for pgTAP
   specified.
 * Fixed `col_type_is()` so that it won't report the column as not existing
   when the column's data type is not in the search path.
+* Removed `format_type()` and switched to the core PostgreSQL type formatting
+  function so that type names always include the schema name if the schema is
+  not in the search path. You might have to update data type tests to include
+  the schema name if the type is not in the search path.
 
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------

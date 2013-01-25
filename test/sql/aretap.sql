@@ -1224,7 +1224,8 @@ SELECT * FROM check_test(
 
 CREATE OR REPLACE FUNCTION ___mycasts(ex text) RETURNS TEXT[] AS $$
     SELECT ARRAY(
-        SELECT display_type(castsource, NULL) || ' AS ' || display_type(casttarget, NULL)
+        SELECT pg_catalog.format_type(castsource, NULL)
+               || ' AS ' || pg_catalog.format_type(casttarget, NULL)
           FROM pg_catalog.pg_cast
          WHERE castsource::regtype::text <> $1
     );
