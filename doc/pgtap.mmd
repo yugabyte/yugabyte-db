@@ -3744,6 +3744,8 @@ This function is the inverse of `col_has_default()`. The test passes if the
 specified column does *not* have a default. It will still fail if the column
 does not exist, and emit useful diagnostics to let you know.
 
+### `col_type_is()` ###
+
     SELECT col_type_is( :schema, :table, :column, :type_schema, :type, :description );
     SELECT col_type_is( :schema, :table, :column, :type_schema, :type );
     SELECT col_type_is( :schema, :table, :column, :type, :description );
