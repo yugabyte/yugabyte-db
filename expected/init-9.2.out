@@ -8,6 +8,8 @@ CREATE TABLE t3 (id int PRIMARY KEY, val int);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t3_pkey" for table "t3"
 CREATE TABLE t4 (id int PRIMARY KEY, val int);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t4_pkey" for table "t4"
+CREATE TABLE t5 (id int PRIMARY KEY, val int);
+NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t5_pkey" for table "t5"
 CREATE TABLE p1 (id int PRIMARY KEY, val int);
 NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_pkey" for table "p1"
 CREATE TABLE p1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p1);
@@ -48,6 +50,7 @@ INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO t3 SELECT i, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO t4 SELECT i, i FROM (SELECT generate_series(1, 10) i) t;
+INSERT INTO t5 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO p1_c1_c1 SELECT i, i % 100 FROM (SELECT generate_series(1, 50) i) t;
 INSERT INTO p1_c1_c2 SELECT i, i % 100 FROM (SELECT generate_series(51, 100) i) t;
 INSERT INTO p1_c2 SELECT i, i % 100 FROM (SELECT generate_series(101, 200) i) t;
@@ -56,10 +59,15 @@ INSERT INTO p1_c3_c2 SELECT i, i % 100 FROM (SELECT generate_series(251, 300) i)
 INSERT INTO p1_c4 SELECT i, i % 100 FROM (SELECT generate_series(301, 400) i) t;
 CREATE INDEX t1_val ON t1 (val);
 CREATE INDEX t2_val ON t2 (val);
+CREATE INDEX t5_id1 ON t5 (id);
+CREATE INDEX t5_id2 ON t5 (id);
+CREATE INDEX t5_id3 ON t5 (id);
+CREATE INDEX t5_val ON t5 (val);
 ANALYZE t1;
 ANALYZE t2;
 ANALYZE t3;
 ANALYZE t4;
+ANALYZE t5;
 ANALYZE p1;
 ANALYZE p1_c1;
 ANALYZE p1_c2;

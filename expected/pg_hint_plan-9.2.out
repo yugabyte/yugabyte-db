@@ -5231,3 +5231,91 @@ Set(seq_page_cost on)
    ->  Index Scan using t2_pkey on t2
 (4 rows)
 
+-- debug log of candidate index to use IndexScan
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+          QUERY PLAN           
+-------------------------------
+ Index Scan using t5_id3 on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+IndexScan(t5 t5_id2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+LOG:  "t5": t5_id2
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t5 t5_id2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN           
+-------------------------------
+ Index Scan using t5_id2 on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+IndexScan(t5 no_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+LOG:  "t5":
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t5 no_exist)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+IndexScan(t5 t5_id1 t5_id2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+LOG:  "t5": t5_id2 t5_id1
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t5 t5_id1 t5_id2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN           
+-------------------------------
+ Index Scan using t5_id2 on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+IndexScan(t5 no_exist t5_id2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+LOG:  "t5": t5_id2
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t5 no_exist t5_id2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN           
+-------------------------------
+ Index Scan using t5_id2 on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+IndexScan(t5 no_exist5 no_exist2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+LOG:  "t5":
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t5 no_exist5 no_exist2)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+

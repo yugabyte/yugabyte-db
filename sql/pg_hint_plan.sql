@@ -592,3 +592,16 @@ SET cursor_tuple_fraction TO 123456789012345678901234567890123456789012345678901
 -- multi error
 /*+ Set(enable_seqscan 100)Set(seq_page_cost on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+
+-- debug log of candidate index to use IndexScan
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+/*+IndexScan(t5 t5_id2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+/*+IndexScan(t5 no_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+/*+IndexScan(t5 t5_id1 t5_id2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+/*+IndexScan(t5 no_exist t5_id2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
+/*+IndexScan(t5 no_exist5 no_exist2)*/
+EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
