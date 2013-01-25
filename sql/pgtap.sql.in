@@ -1929,6 +1929,7 @@ RETURNS BOOLEAN AS $$
         SELECT TRUE
            FROM pg_all_foreign_keys
           WHERE quote_ident(fk_table_name)     = quote_ident($1)
+            AND pg_catalog.pg_table_is_visible(fk_table_oid)
             AND fk_columns = $2
     );
 $$ LANGUAGE SQL;
