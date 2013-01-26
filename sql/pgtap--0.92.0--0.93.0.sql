@@ -519,7 +519,7 @@ RETURNS NAME AS $$
     SELECT pg_catalog.pg_get_userbyid(opcowner)
       FROM pg_catalog.pg_opclass
      WHERE opcname = $1
-       AND pg_opclass_is_visible(oid);
+       AND pg_catalog.pg_opclass_is_visible(oid);
 $$ LANGUAGE SQL;
 
 -- opclass_owner_is( schema, opclass, user, description )
@@ -575,3 +575,49 @@ RETURNS TEXT AS $$
         'Operator class ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _opc_exists( NAME, NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+        SELECT TRUE
+          FROM pg_catalog.pg_opclass oc
+          JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+         WHERE n.nspname  = $1
+           AND oc.opcname = $2
+    );
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _opc_exists( NAME )
+RETURNS BOOLEAN AS $$
+    SELECT EXISTS (
+        SELECT TRUE
+          FROM pg_catalog.pg_opclass oc
+         WHERE oc.opcname = $1
+           AND pg_opclass_is_visible(oid)
+    );
+$$ LANGUAGE SQL;
+
+-- has_opclass( name, description )
+CREATE OR REPLACE FUNCTION has_opclass( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _opc_exists( $1 ), $2)
+$$ LANGUAGE SQL;
+
+-- has_opclass( name )
+CREATE OR REPLACE FUNCTION has_opclass( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( _opc_exists( $1 ), 'Operator class ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_opclass( name, description )
+CREATE OR REPLACE FUNCTION hasnt_opclass( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _opc_exists( $1 ), $2)
+$$ LANGUAGE SQL;
+
+-- hasnt_opclass( name )
+CREATE OR REPLACE FUNCTION hasnt_opclass( NAME )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _opc_exists( $1 ), 'Operator class ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+

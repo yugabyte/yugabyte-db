@@ -10,11 +10,9 @@ Revision history for pgTAP
   + `language_owner_is()`
   + `opclass_owner_is()`
 * Fixed misselling of "constraint" in constraint test diagnostic output.
-* Fixed `fk_ok()` so that the table must be visible in the search path when
-  the schema name is not specified.
-* Fixed constraint, trigger, index, and foreign key-checking functions so that
-  they only don't find tables outside the search path unless the schema is
-  specified.
+* Fixed constraint, trigger, index, opclaass, and foreign key test functions
+  so that they only don't find objects outside the search path unless the
+  schema is specified.
 * Fixed `col_type_is()` so that it won't report the column as not existing
   when the column's data type is not in the search path.
 * Removed `format_type()` and switched to the core PostgreSQL type formatting
