@@ -3292,6 +3292,8 @@ But this will:
 This function is the inverse of `has_cast()`: the test passes if the specified
 cast does *not* exist.
 
+### `has_operator()` ###
+
     SELECT has_operator( :left_type, :schema, :name, :right_type, :return_type, :description );
     SELECT has_operator( :left_type, :schema, :name, :right_type, :return_type );
     SELECT has_operator( :left_type, :name, :right_type, :return_type, :description );
