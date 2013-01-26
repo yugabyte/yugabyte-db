@@ -1,5 +1,5 @@
 \unset ECHO
-1..327
+1..357
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -327,3 +327,33 @@ ok 324 - opclass_owner_is(non-opclass, user, desc) should have the proper diagno
 ok 325 - opclass_owner_is(opclass, non-user, desc) should fail
 ok 326 - opclass_owner_is(opclass, non-user, desc) should have the proper description
 ok 327 - opclass_owner_is(opclass, non-user, desc) should have the proper diagnostics
+ok 328 - type_owner_is(schema, type, user, desc) should pass
+ok 329 - type_owner_is(schema, type, user, desc) should have the proper description
+ok 330 - type_owner_is(schema, type, user, desc) should have the proper diagnostics
+ok 331 - type_owner_is(schema, type, user) should pass
+ok 332 - type_owner_is(schema, type, user) should have the proper description
+ok 333 - type_owner_is(schema, type, user) should have the proper diagnostics
+ok 334 - type_owner_is(non-schema, type, user, desc) should fail
+ok 335 - type_owner_is(non-schema, type, user, desc) should have the proper description
+ok 336 - type_owner_is(non-schema, type, user, desc) should have the proper diagnostics
+ok 337 - type_owner_is(schema, non-type, user, desc) should fail
+ok 338 - type_owner_is(schema, non-type, user, desc) should have the proper description
+ok 339 - type_owner_is(schema, non-type, user, desc) should have the proper diagnostics
+ok 340 - type_owner_is(schema, type, non-user, desc) should fail
+ok 341 - type_owner_is(schema, type, non-user, desc) should have the proper description
+ok 342 - type_owner_is(schema, type, non-user, desc) should have the proper diagnostics
+ok 343 - type_owner_is( invisible-type, user, desc) should fail
+ok 344 - type_owner_is( invisible-type, user, desc) should have the proper description
+ok 345 - type_owner_is( invisible-type, user, desc) should have the proper diagnostics
+ok 346 - type_owner_is(type, user, desc) should pass
+ok 347 - type_owner_is(type, user, desc) should have the proper description
+ok 348 - type_owner_is(type, user, desc) should have the proper diagnostics
+ok 349 - type_owner_is(type, user) should pass
+ok 350 - type_owner_is(type, user) should have the proper description
+ok 351 - type_owner_is(type, user) should have the proper diagnostics
+ok 352 - type_owner_is(non-type, user, desc) should fail
+ok 353 - type_owner_is(non-type, user, desc) should have the proper description
+ok 354 - type_owner_is(non-type, user, desc) should have the proper diagnostics
+ok 355 - type_owner_is(type, non-user, desc) should fail
+ok 356 - type_owner_is(type, non-user, desc) should have the proper description
+ok 357 - type_owner_is(type, non-user, desc) should have the proper diagnostics

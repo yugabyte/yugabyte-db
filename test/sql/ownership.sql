@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(327);
+SELECT plan(357);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -28,6 +28,10 @@ CREATE SCHEMA someschema;
 CREATE TABLE someschema.anothertab(
     id INT PRIMARY KEY,
     name    TEXT DEFAULT ''
+);
+
+CREATE DOMAIN someschema.us_postal_code AS TEXT CHECK(
+    VALUE ~ '^[[:digit:]]{5}$' OR VALUE ~ '^[[:digit:]]{5}-[[:digit:]]{4}$'
 );
 
 CREATE INDEX idx_name ON someschema.anothertab(name);
@@ -1057,6 +1061,90 @@ SELECT * FROM check_test(
     'opclass_owner_is(opclass, non-user, desc)',
     'mumble',
     '        have: ' || _get_opclass_owner('int4_ops') || '
+        want: __no-one'
+);
+
+/****************************************************************************/
+-- Test type_owner_is() with a table.
+SELECT * FROM check_test(
+    type_owner_is('someschema', 'us_postal_code', current_user, 'mumble'),
+	true,
+    'type_owner_is(schema, type, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    type_owner_is('someschema', 'us_postal_code', current_user),
+	true,
+    'type_owner_is(schema, type, user)',
+    'Type someschema.us_postal_code should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    type_owner_is('--nonesuch', 'us_postal_code', current_user, 'mumble'),
+	false,
+    'type_owner_is(non-schema, type, user, desc)',
+    'mumble',
+    '    Type "--nonesuch".us_postal_code not found'
+);
+
+SELECT * FROM check_test(
+    type_owner_is('someschema', 'uk_postal_code', current_user, 'mumble'),
+	false,
+    'type_owner_is(schema, non-type, user, desc)',
+    'mumble',
+    '    Type someschema.uk_postal_code not found'
+);
+
+SELECT * FROM check_test(
+    type_owner_is('someschema', 'us_postal_code', '__no-one', 'mumble'),
+	false,
+    'type_owner_is(schema, type, non-user, desc)',
+    'mumble',
+    '        have: ' || current_user || '
+        want: __no-one'
+);
+
+SELECT * FROM check_test(
+    type_owner_is('us_postal_code', current_user, 'mumble'),
+	false,
+    'type_owner_is( invisible-type, user, desc)',
+    'mumble',
+    '    Type us_postal_code not found'
+);
+
+SELECT * FROM check_test(
+    type_owner_is('sometype', current_user, 'mumble'),
+	true,
+    'type_owner_is(type, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    type_owner_is('sometype', current_user),
+	true,
+    'type_owner_is(type, user)',
+    'Type sometype should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    type_owner_is('__notype', current_user, 'mumble'),
+	false,
+    'type_owner_is(non-type, user, desc)',
+    'mumble',
+    '    Type __notype not found'
+);
+
+SELECT * FROM check_test(
+    type_owner_is('sometype', '__no-one', 'mumble'),
+	false,
+    'type_owner_is(type, non-user, desc)',
+    'mumble',
+    '        have: ' || current_user || '
         want: __no-one'
 );
 

@@ -621,3 +621,71 @@ RETURNS TEXT AS $$
     SELECT ok( NOT _opc_exists( $1 ), 'Operator class ' || quote_ident($1) || ' should exist' );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION _get_type_owner ( NAME, NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(t.typowner)
+      FROM pg_catalog.pg_type t
+      JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
+     WHERE n.nspname = $1
+       AND t.typname = $2
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_type_owner ( NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(typowner)
+      FROM pg_catalog.pg_type
+     WHERE typname = $1
+       AND pg_catalog.pg_type_is_visible(oid)
+$$ LANGUAGE SQL;
+
+-- type_owner_is ( schema, type, user, description )
+CREATE OR REPLACE FUNCTION type_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_type_owner($1, $2);
+BEGIN
+    -- Make sure the type exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Type ' || quote_ident($1) || '.' || quote_ident($2) || ' not found'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- type_owner_is ( schema, type, user )
+CREATE OR REPLACE FUNCTION type_owner_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT type_owner_is(
+        $1, $2, $3,
+        'Type ' || quote_ident($1) || '.' || quote_ident($2) || ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- type_owner_is ( type, user, description )
+CREATE OR REPLACE FUNCTION type_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_type_owner($1);
+BEGIN
+    -- Make sure the type exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Type ' || quote_ident($1) || ' not found'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- type_owner_is ( type, user )
+CREATE OR REPLACE FUNCTION type_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT type_owner_is(
+        $1, $2,
+        'Type ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

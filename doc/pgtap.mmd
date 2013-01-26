@@ -5730,6 +5730,50 @@ user, the diagnostics will look something like:
     #         have: postgres
     #         want: root
 
+## `type_owner_is ()` ###
+
+    SELECT type_owner_is ( :schema, :type, :user, :description );
+    SELECT type_owner_is ( :type, :user, :description );
+    SELECT type_owner_is ( :schema, :type, :user );
+    SELECT type_owner_is ( :type, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:type`.
+
+`:type`
+: Name of a type.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a data type. If the `:description` argument is omitted,
+an appropriate description will be created. Examples:
+
+    SELECT type_owner_is(
+        'pg_catalog', 'int4', 'postgres',
+        'type int4 should be owned by postgres'
+    );
+    SELECT type_owner_is( 'us_postal_code', current_user );
+
+In the event that the test fails because the type in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "type uk_postal_code should be owned by www"
+    #     type uk_postal_code does not exist
+
+If the test fails because the type is not owned by the specified
+user, the diagnostics will look something like:
+
+    # Failed test 17: "type us_postal_code should be owned by root"
+    #         have: postgres
+    #         want: root
+
 Prvileged Access
 ----------------
 

@@ -9,6 +9,7 @@ Revision history for pgTAP
   + `index_owner_is()`
   + `language_owner_is()`
   + `opclass_owner_is()`
+  + `type_owner_is()`
 * Fixed misselling of "constraint" in constraint test diagnostic output.
 * Fixed constraint, trigger, index, opclaass, and foreign key test functions
   so that they only don't find objects outside the search path unless the
