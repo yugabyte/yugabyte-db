@@ -1,5 +1,5 @@
 \unset ECHO
-1..300
+1..327
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -300,3 +300,30 @@ ok 297 - language_owner_is(non-language, user) should have the proper diagnostic
 ok 298 - language_owner_is(language, non-user) should fail
 ok 299 - language_owner_is(language, non-user) should have the proper description
 ok 300 - language_owner_is(language, non-user) should have the proper diagnostics
+ok 301 - opclass_owner_is(schema, opclass, user, desc) should pass
+ok 302 - opclass_owner_is(schema, opclass, user, desc) should have the proper description
+ok 303 - opclass_owner_is(schema, opclass, user, desc) should have the proper diagnostics
+ok 304 - opclass_owner_is(schema, opclass, user) should pass
+ok 305 - opclass_owner_is(schema, opclass, user) should have the proper description
+ok 306 - opclass_owner_is(schema, opclass, user) should have the proper diagnostics
+ok 307 - opclass_owner_is(non-schema, opclass, user, desc) should fail
+ok 308 - opclass_owner_is(non-schema, opclass, user, desc) should have the proper description
+ok 309 - opclass_owner_is(non-schema, opclass, user, desc) should have the proper diagnostics
+ok 310 - opclass_owner_is(schema, not-opclass, user, desc) should fail
+ok 311 - opclass_owner_is(schema, not-opclass, user, desc) should have the proper description
+ok 312 - opclass_owner_is(schema, not-opclass, user, desc) should have the proper diagnostics
+ok 313 - opclass_owner_is(schema, opclass, non-user, desc) should fail
+ok 314 - opclass_owner_is(schema, opclass, non-user, desc) should have the proper description
+ok 315 - opclass_owner_is(schema, opclass, non-user, desc) should have the proper diagnostics
+ok 316 - opclass_owner_is(opclass, user, desc) should pass
+ok 317 - opclass_owner_is(opclass, user, desc) should have the proper description
+ok 318 - opclass_owner_is(opclass, user, desc) should have the proper diagnostics
+ok 319 - opclass_owner_is(opclass, user) should pass
+ok 320 - opclass_owner_is(opclass, user) should have the proper description
+ok 321 - opclass_owner_is(opclass, user) should have the proper diagnostics
+ok 322 - opclass_owner_is(non-opclass, user, desc) should fail
+ok 323 - opclass_owner_is(non-opclass, user, desc) should have the proper description
+ok 324 - opclass_owner_is(non-opclass, user, desc) should have the proper diagnostics
+ok 325 - opclass_owner_is(opclass, non-user, desc) should fail
+ok 326 - opclass_owner_is(opclass, non-user, desc) should have the proper description
+ok 327 - opclass_owner_is(opclass, non-user, desc) should have the proper diagnostics

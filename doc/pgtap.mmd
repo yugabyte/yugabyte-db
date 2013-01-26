@@ -5543,15 +5543,15 @@ omitted, an appropriate description will be created. Examples:
     );
     SELECT foreign_table_owner_is( 'widgets', current_user );
 
-In the event that the test fails because the table in question does not
-actually exist or is not visible, you will see an appropriate diagnostic such
-as:
+In the event that the test fails because the foreign table in question does
+not actually exist or is not visible, you will see an appropriate diagnostic
+such as:
 
     # Failed test 16: "Foreign table foo should be owned by www"
     #     Foreign table foo does not exist
 
-If the test fails because the table is not owned by the specified user, the
-diagnostics will look something like:
+If the test fails because the foreign table is not owned by the specified
+user, the diagnostics will look something like:
 
     # Failed test 17: "Foreign table bar should be owned by root"
     #         have: postgres
@@ -5685,6 +5685,50 @@ the diagnostics will look something like:
     # Failed test 17: "Language plruby should be owned by mats"
     #         have: postgres
     #         want: mats
+
+## `opclass_owner_is ()` ###
+
+    SELECT opclass_owner_is ( :schema, :opclass, :user, :description );
+    SELECT opclass_owner_is ( :opclass, :user, :description );
+    SELECT opclass_owner_is ( :schema, :opclass, :user );
+    SELECT opclass_owner_is ( :opclass, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:opclass`.
+
+`:opclass`
+: Name of an operator class.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of an operator class. If the `:description` argument is
+omitted, an appropriate description will be created. Examples:
+
+    SELECT opclass_owner_is(
+        'pg_catalog', 'int4_ops', 'postgres',
+        'Operator class int4_ops should be owned by postgres'
+    );
+    SELECT opclass_owner_is( 'my_ops', current_user );
+
+In the event that the test fails because the operator class in question does
+not actually exist or is not visible, you will see an appropriate diagnostic
+such as:
+
+    # Failed test 16: "operator class foo should be owned by www"
+    #     operator class foo does not exist
+
+If the test fails because the operator class is not owned by the specified
+user, the diagnostics will look something like:
+
+    # Failed test 17: "operator class bar should be owned by root"
+    #         have: postgres
+    #         want: root
 
 Prvileged Access
 ----------------

@@ -504,3 +504,74 @@ RETURNS TEXT AS $$
         'Language ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
     );
 $$ LANGUAGE sql;
+
+CREATE OR REPLACE FUNCTION _get_opclass_owner ( NAME, NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(opcowner)
+      FROM pg_catalog.pg_opclass oc
+      JOIN pg_catalog.pg_namespace n ON oc.opcnamespace = n.oid
+     WHERE n.nspname = $1
+       AND opcname   = $2;
+$$ LANGUAGE SQL;
+
+CREATE OR REPLACE FUNCTION _get_opclass_owner ( NAME )
+RETURNS NAME AS $$
+    SELECT pg_catalog.pg_get_userbyid(opcowner)
+      FROM pg_catalog.pg_opclass
+     WHERE opcname = $1
+       AND pg_opclass_is_visible(oid);
+$$ LANGUAGE SQL;
+
+-- opclass_owner_is( schema, opclass, user, description )
+CREATE OR REPLACE FUNCTION opclass_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_opclass_owner($1, $2);
+BEGIN
+    -- Make sure the opclass exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Operator class ' || quote_ident($1) || '.' || quote_ident($2)
+            || ' not found'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- opclass_owner_is( schema, opclass, user )
+CREATE OR REPLACE FUNCTION opclass_owner_is( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT opclass_owner_is(
+        $1, $2, $3,
+        'Operator class ' || quote_ident($1) || '.' || quote_ident($2) ||
+        ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- opclass_owner_is( opclass, user, description )
+CREATE OR REPLACE FUNCTION opclass_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_opclass_owner($1);
+BEGIN
+    -- Make sure the opclass exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Operator class ' || quote_ident($1) || ' not found'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- opclass_owner_is( opclass, user )
+CREATE OR REPLACE FUNCTION opclass_owner_is( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT opclass_owner_is(
+        $1, $2,
+        'Operator class ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;

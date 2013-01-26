@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(300);
+SELECT plan(327);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -965,6 +965,99 @@ SELECT * FROM check_test(
     'mumble',
     '        have: ' || _get_language_owner('plpgsql') || '
         want: __not__' || _get_language_owner('plpgsql')
+);
+
+/****************************************************************************/
+-- Test opclass_owner_is().
+SELECT * FROM check_test(
+    opclass_owner_is(
+        'pg_catalog', 'int4_ops',
+        _get_opclass_owner('pg_catalog', 'int4_ops'),
+        'mumble'
+    ),
+	true,
+    'opclass_owner_is(schema, opclass, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is(
+        'pg_catalog', 'int4_ops',
+        _get_opclass_owner('pg_catalog', 'int4_ops')
+    ),
+	true,
+    'opclass_owner_is(schema, opclass, user)',
+    'Operator class pg_catalog.int4_ops should be owned by ' || _get_opclass_owner('pg_catalog', 'int4_ops'),
+    ''
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is(
+        'not_pg_catalog', 'int4_ops',
+        _get_opclass_owner('pg_catalog', 'int4_ops'),
+        'mumble'
+    ),
+	false,
+    'opclass_owner_is(non-schema, opclass, user, desc)',
+    'mumble',
+    '    Operator class not_pg_catalog.int4_ops not found'
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is(
+        'pg_catalog', 'int4_nots',
+        _get_opclass_owner('pg_catalog', 'int4_ops'),
+        'mumble'
+    ),
+	false,
+    'opclass_owner_is(schema, not-opclass, user, desc)',
+    'mumble',
+    '    Operator class pg_catalog.int4_nots not found'
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is(
+        'pg_catalog', 'int4_ops', '__no-one', 'mumble'
+    ),
+	false,
+    'opclass_owner_is(schema, opclass, non-user, desc)',
+    'mumble',
+    '        have: ' || _get_opclass_owner('pg_catalog', 'int4_ops') || '
+        want: __no-one'
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is('int4_ops', _get_opclass_owner('int4_ops'), 'mumble'),
+	true,
+    'opclass_owner_is(opclass, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is('int4_ops', _get_opclass_owner('int4_ops')),
+	true,
+    'opclass_owner_is(opclass, user)',
+    'Operator class int4_ops should be owned by ' || _get_opclass_owner('int4_ops'),
+    ''
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is('int4_nots', _get_opclass_owner('int4_ops'), 'mumble'),
+	false,
+    'opclass_owner_is(non-opclass, user, desc)',
+    'mumble',
+    '    Operator class int4_nots not found'
+);
+
+SELECT * FROM check_test(
+    opclass_owner_is('int4_ops', '__no-one', 'mumble'),
+	false,
+    'opclass_owner_is(opclass, non-user, desc)',
+    'mumble',
+    '        have: ' || _get_opclass_owner('int4_ops') || '
+        want: __no-one'
 );
 
 /****************************************************************************/
