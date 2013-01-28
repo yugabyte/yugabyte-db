@@ -1,7 +1,7 @@
 Revision history for pgTAP
 ==========================
 
-0.93.0
+0.93.0 2013-01-28T20:14:58Z
 ---------------------------
 * Added additional ownership-testing functions:
   + `tablespace_owner_is()`
