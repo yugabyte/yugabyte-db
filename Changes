@@ -12,20 +12,20 @@ Revision history for pgTAP
   + `type_owner_is()`
 * Fixed misselling of "constraint" in constraint test diagnostic output.
 * Fixed constraint, trigger, index, opclaass, and foreign key test functions
-  so that they only don't find objects outside the search path unless the
-  schema is specified.
+  so that they don't find objects outside the search path unless the schema is
+  specified.
 * Fixed `col_type_is()` so that it won't report the column as not existing
   when the column's data type is not in the search path.
 * Removed `format_type()` and switched to the core PostgreSQL type formatting
   function so that type names always include the schema name if the schema is
   not in the search path. You might have to update data type tests to include
   the schema name if the type is not in the search path.
-* Added code to the `ALTER EXTENSION` upgrade scripts to update the value
-  returned by `pgtap_version()`.
+* `ALTER EXTENSION` now properly updates the value returned by
+  `pgtap_version()`.
 * Removed `CREATE EXTENSION` support for `pgtap-core` and `pgtap-control` (by
   deleting `pgtap-core.control` and `pgtap-schema.control`). There were never
-  upgrade scripts for them, and that would be difficult to maintain anyway.
-  They are really designed for copying into another project's distrinution for
+  upgrade scripts for them, and upgrade scripts would be difficult to maintain
+  anyway. These files are really designed for copying into other projects for
   inline testing support.
 
 0.92.0 2013-01-16T00:41:07Z
