@@ -1,7 +1,0 @@
-# pgTAP Schema testing extension
-comment = 'Schema unit testing for PostgreSQL'
-default_version = '0.93.0'
-module_pathname = '$libdir/pgtap'
-requires = 'pgtap-core'
-relocatable = true
-superuser = false

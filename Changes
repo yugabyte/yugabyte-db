@@ -22,6 +22,11 @@ Revision history for pgTAP
   the schema name if the type is not in the search path.
 * Added code to the `ALTER EXTENSION` upgrade scripts to update the value
   returned by `pgtap_version()`.
+* Removed `CREATE EXTENSION` support for `pgtap-core` and `pgtap-control` (by
+  deleting `pgtap-core.control` and `pgtap-schema.control`). There were never
+  upgrade scripts for them, and that would be difficult to maintain anyway.
+  They are really designed for copying into another project's distrinution for
+  inline testing support.
 
 0.92.0 2013-01-16T00:41:07Z
 ---------------------------

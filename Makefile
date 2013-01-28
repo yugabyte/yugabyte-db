@@ -1,5 +1,5 @@
 MAINEXT      = pgtap
-EXTENSION    = $(MAINEXT) pgtap-core pgtap-schema
+EXTENSION    = $(MAINEXT)
 EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
                sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
