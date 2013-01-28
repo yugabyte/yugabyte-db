@@ -1928,9 +1928,12 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 
 	if (pg_hint_plan_debug_print)
 	{
-		relname = get_rel_name(relationObjectId);
+		if (OidIsValid(relationObjectId))
+			relname = get_rel_name(relationObjectId);
+		else
+			relname = hint->relname;
 		ereport(LOG,
-				(errmsg("Candidate Index for \"%s\":%s",
+				(errmsg("candidate index for \"%s\":%s",
 				 relname, buf.data)));
 		pfree(buf.data);
 	}
@@ -1999,7 +2002,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (inhparent)
 		current_hint->parent_hint = hint;
 
-	delete_indexes(hint, rel, relationObjectId);
+	delete_indexes(hint, rel, InvalidOid);
 }
 
 /*
