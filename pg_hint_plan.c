@@ -1863,7 +1863,6 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 	ListCell	   *cell;
 	ListCell	   *prev;
 	ListCell	   *next;
-	char		   *relname = NULL;
 	StringInfoData	buf;
 
 	/*
@@ -1928,6 +1927,8 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 
 	if (pg_hint_plan_debug_print)
 	{
+		char   *relname;
+
 		if (OidIsValid(relationObjectId))
 			relname = get_rel_name(relationObjectId);
 		else
