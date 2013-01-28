@@ -5670,7 +5670,8 @@ diagnostics will look something like:
 : A short description of the test.
 
 Tests the ownership of a procedural language. If the `:description` argument
-is omitted, an appropriate description will be created. Examples:
+is omitted, an appropriate description will be created. Works on PostgreSQL
+8.3 and higher. Examples:
 
     SELECT language_owner_is( 'plpgsql', 'larry', 'Larry should own plpgsql' );
     SELECT language_owner_is( 'plperl', current_user );
@@ -7277,11 +7278,18 @@ No changes. Everything should just work.
 
 8.2 and Down
 ------------
-* A patch is applied that removes the `enum_has_labels()`, the
-  `diag(anyelement)` function and `col_has_default()` cannot be used to test
-  for columns specified with `DEFAULT NULL` (even though that's the implied
-  default default). The `has_enums()` function won't work. Also, a number of
-  assignments casts are added to increase compatibility. The casts are:
+
+* A patch is applied that removes `enum_has_labels()` and
+  `language_owner_is()`, since neither are testable before 8.3.
+
+* the `diag(anyelement)` function and `col_has_default()` cannot be used to
+  test for columns specified with `DEFAULT NULL` (even though that's the
+  implied default default).
+
+* The `has_enums()` function won't work. 
+
+* A number of assignments casts are added to increase compatibility. The casts
+  are:
 
   + `boolean` to `text`
   + `text[]` to `text`

@@ -938,38 +938,81 @@ SELECT * FROM check_test(
 
 /****************************************************************************/
 -- Test language_owner_is().
-SELECT * FROM check_test(
-    language_owner_is('plpgsql', _get_language_owner('plpgsql'), 'mumble'),
-	true,
-    'language_owner_is(language, user, desc)',
-    'mumble',
-    ''
-);
+CREATE FUNCTION test_lang() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 80300 THEN
+        FOR tap IN SELECT * FROM check_test(
+            language_owner_is('plpgsql', _get_language_owner('plpgsql'), 'mumble'),
+	        true,
+            'language_owner_is(language, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-    language_owner_is('plpgsql', _get_language_owner('plpgsql')),
-	true,
-    'language_owner_is(language, user)',
-    'Language ' || quote_ident('plpgsql') || ' should be owned by ' || _get_language_owner('plpgsql'),
-    ''
-);
+        FOR tap IN SELECT * FROM check_test(
+            language_owner_is('plpgsql', _get_language_owner('plpgsql')),
+	        true,
+            'language_owner_is(language, user)',
+            'Language ' || quote_ident('plpgsql') || ' should be owned by ' || _get_language_owner('plpgsql'),
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-    language_owner_is('__not__plpgsql', _get_language_owner('plpgsql'), 'mumble'),
-	false,
-    'language_owner_is(non-language, user)',
-    'mumble',
-    '    Language __not__plpgsql does not exist'
-);
+        FOR tap IN SELECT * FROM check_test(
+            language_owner_is('__not__plpgsql', _get_language_owner('plpgsql'), 'mumble'),
+	        false,
+            'language_owner_is(non-language, user)',
+            'mumble',
+            '    Language __not__plpgsql does not exist'
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
-SELECT * FROM check_test(
-    language_owner_is('plpgsql', '__not__' || _get_language_owner('plpgsql'), 'mumble'),
-	false,
-    'language_owner_is(language, non-user)',
-    'mumble',
-    '        have: ' || _get_language_owner('plpgsql') || '
+        FOR tap IN SELECT * FROM check_test(
+            language_owner_is('plpgsql', '__not__' || _get_language_owner('plpgsql'), 'mumble'),
+	        false,
+            'language_owner_is(language, non-user)',
+            'mumble',
+            '        have: ' || _get_language_owner('plpgsql') || '
         want: __not__' || _get_language_owner('plpgsql')
-);
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    ELSE
+        -- Fake it with pass() and fail().
+        FOR tap IN SELECT * FROM check_test(
+            pass('mumble'),
+	        true,
+            'language_owner_is(language, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('mumble'),
+	        true,
+            'language_owner_is(language, user)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('mumble'),
+	        false,
+            'language_owner_is(non-language, user)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fail('mumble'),
+	        false,
+            'language_owner_is(language, non-user)',
+            'mumble',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+    END IF;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_lang();
 
 /****************************************************************************/
 -- Test opclass_owner_is().
