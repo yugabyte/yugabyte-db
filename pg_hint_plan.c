@@ -1858,11 +1858,12 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 }
 
 static void
-delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
+delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 {
 	ListCell	   *cell;
 	ListCell	   *prev;
 	ListCell	   *next;
+	char		   *relname = NULL;
 	StringInfoData	buf;
 
 	/*
@@ -1927,7 +1928,10 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel)
 
 	if (pg_hint_plan_debug_print)
 	{
-		ereport(LOG, (errmsg("\"%s\":%s", hint->relname, buf.data)));
+		relname = get_rel_name(relationObjectId);
+		ereport(LOG,
+				(errmsg("Candidate Index for \"%s\":%s",
+				 relname, buf.data)));
 		pfree(buf.data);
 	}
 }
@@ -1968,7 +1972,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 				appinfo->child_relid == rel->relid)
 			{
 				if (current_hint->parent_hint)
-					delete_indexes(current_hint->parent_hint, rel);
+					delete_indexes(current_hint->parent_hint, rel,
+								   relationObjectId);
 
 				return;
 			}
@@ -1994,7 +1999,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (inhparent)
 		current_hint->parent_hint = hint;
 
-	delete_indexes(hint, rel);
+	delete_indexes(hint, rel, relationObjectId);
 }
 
 /*
