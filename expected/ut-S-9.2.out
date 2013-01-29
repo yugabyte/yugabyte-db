@@ -668,6 +668,10 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
 )
                     FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -783,6 +787,12 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 )
                     FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t4": t4_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -875,6 +885,8 @@ EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt
 /*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
 */
 EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = sbmt4.c1;
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(bmt1)
@@ -926,6 +938,8 @@ EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT *
 /*+SeqScan(bmt1)IndexScan(bmt2 t2_pkey)BitmapScan(bmt3 t3_pkey)TidScan(bmt4)
 */
 EXPLAIN (COSTS false) SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT * FROM s1.t3 bmt3) sbmt3, (SELECT * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(bmt1)
@@ -1003,6 +1017,10 @@ SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bm
 SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
 )
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1120,6 +1138,12 @@ SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1
 SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
 )
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t4": t4_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1248,6 +1272,10 @@ SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
                                                                         WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
 AND bmt1.c1 = c1.c1
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1382,6 +1410,12 @@ SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
 AND bmt1.c1 = c1.c1
 AND bmt1.c1 = c2.c1
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t4": t4_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1521,6 +1555,10 @@ AND bmt1.c1 <> (
 SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = 1
 )
 ;
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1631,6 +1669,10 @@ AND bmt1.c1 <> (
 SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = b3t2.c1 AND b3t2.ctid = '(1,1)'
 )
 ;
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t2": t2_pkey
+LOG:  candidate index for "bmt2": t2_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1787,6 +1829,14 @@ AND bmt1.c1 <> (
 SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = b3t2.c1 AND b3t2.ctid = '(1,1)' AND b3t1.c1 = b3t3.c1 AND b3t3.ctid = '(1,1)' AND b3t1.c1 = b3t4.c1 AND b3t4.ctid = '(1,1)'
 )
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t4": t4_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t2": t2_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -1967,6 +2017,14 @@ AND bmt1.c1 <> (
 SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
 )
 ;
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "bmt2": t2_pkey
+LOG:  candidate index for "bmt3": t3_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -2072,6 +2130,8 @@ EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 /*+TidScan(t1)SeqScan(t2)IndexScan(t3 t3_pkey)BitmapScan(t4 t4_pkey)
 SeqScan(r1)*/
 EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "t3": t3_pkey
+LOG:  candidate index for "t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(r1)
@@ -2134,6 +2194,8 @@ EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 /*+TidScan(b1t1)SeqScan(b1t2)IndexScan(b1t3 t3_pkey)BitmapScan(b1t4 t4_pkey)
 SeqScan(r1_)*/
 EXPLAIN (COSTS false) UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -2217,6 +2279,8 @@ EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 /*+TidScan(t1)SeqScan(t2)IndexScan(t3 t3_pkey)BitmapScan(t4 t4_pkey)
 SeqScan(r2)*/
 EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "t3": t3_pkey
+LOG:  candidate index for "t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(r2)
@@ -2228,6 +2292,8 @@ not used hint:
 duplication hint:
 error hint:
 
+LOG:  candidate index for "t3": t3_pkey
+LOG:  candidate index for "t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(r2)
@@ -2332,6 +2398,8 @@ EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
 SeqScan(r2_)*/
 EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -2347,6 +2415,8 @@ IndexScan(b2t4 t4_pkey)
 duplication hint:
 error hint:
 
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(b2t1 t1_pkey)
@@ -2475,6 +2545,8 @@ EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 /*+TidScan(t1)SeqScan(t2)IndexScan(t3 t3_pkey)BitmapScan(t4 t4_pkey)
 SeqScan(r3)*/
 EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "t3": t3_pkey
+LOG:  candidate index for "t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(r3)
@@ -2486,6 +2558,8 @@ not used hint:
 duplication hint:
 error hint:
 
+LOG:  candidate index for "t3": t3_pkey
+LOG:  candidate index for "t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(r3)
@@ -2497,6 +2571,8 @@ not used hint:
 duplication hint:
 error hint:
 
+LOG:  candidate index for "t3": t3_pkey
+LOG:  candidate index for "t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(r3)
@@ -2643,6 +2719,8 @@ BitmapScan(b2t1 t1_pkey)TidScan(b2t2)SeqScan(b2t3)IndexScan(b2t4 t4_pkey)
 IndexScan(b3t1 t1_pkey)BitmapScan(b3t2 t2_pkey)TidScan(b3t3)SeqScan(b3t4)
 SeqScan(r3_)*/
 EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "b1t3": t3_pkey
+LOG:  candidate index for "b1t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 TidScan(b1t1)
@@ -2662,6 +2740,8 @@ SeqScan(b3t4)
 duplication hint:
 error hint:
 
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t4": t4_pkey
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(b2t1 t1_pkey)
@@ -2681,6 +2761,8 @@ SeqScan(b3t4)
 duplication hint:
 error hint:
 
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t2": t2_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(b3t1 t1_pkey)
@@ -3375,6 +3457,7 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
 -- No. S-3-3-1
 /*+IndexScan(ti1 ti1_i3)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_i3
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_i3)
@@ -3392,6 +3475,7 @@ error hint:
 -- No. S-3-3-2
 /*+IndexScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_i3 ti1_i2
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_i3 ti1_i2)
@@ -3409,6 +3493,7 @@ error hint:
 -- No. S-3-3-3
 /*+IndexScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_i4 ti1_i3 ti1_i2 ti1_i1
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)
@@ -3426,6 +3511,7 @@ error hint:
 -- No. S-3-3-4
 /*+BitmapScan(ti1 ti1_i3)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_i3
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_i3)
@@ -3445,6 +3531,7 @@ error hint:
 -- No. S-3-3-5
 /*+BitmapScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_i3 ti1_i2
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_i3 ti1_i2)
@@ -3464,6 +3551,7 @@ error hint:
 -- No. S-3-3-6
 /*+BitmapScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_i4 ti1_i3 ti1_i2 ti1_i1
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)
@@ -3483,6 +3571,7 @@ error hint:
 -- No. S-3-3-7
 /*+IndexOnlyScan(ti1 ti1_i3)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+LOG:  candidate index for "ti1": ti1_i3
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_i3)
@@ -3499,6 +3588,7 @@ error hint:
 -- No. S-3-3-8
 /*+IndexOnlyScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+LOG:  candidate index for "ti1": ti1_i3 ti1_i2
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_i3 ti1_i2)
@@ -3515,6 +3605,7 @@ error hint:
 -- No. S-3-3-9
 /*+IndexOnlyScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
+LOG:  candidate index for "ti1": ti1_i4 ti1_i3 ti1_i2 ti1_i1
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_i4 ti1_i3 ti1_i2 ti1_i1)
@@ -3567,6 +3658,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c
 -- No. S-3-4-1
 /*+IndexScan(ti1 ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_btree
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_btree)
@@ -3584,6 +3676,7 @@ error hint:
 -- No. S-3-4-2
 /*+IndexScan(ti1 ti1_hash)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_hash
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_hash)
@@ -3601,6 +3694,7 @@ error hint:
 -- No. S-3-4-3
 /*+IndexScan(ti1 ti1_gist)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_gist
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_gist)
@@ -3618,6 +3712,7 @@ error hint:
 -- No. S-3-4-4
 /*+IndexScan(ti1 ti1_gin)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_gin
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_gin)
@@ -3635,6 +3730,7 @@ error hint:
 -- No. S-3-4-5
 /*+IndexScan(ti1 ti1_expr)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_expr
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_expr)
@@ -3652,6 +3748,7 @@ error hint:
 -- No. S-3-4-6
 /*+IndexScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_pred
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_pred)
@@ -3669,6 +3766,7 @@ error hint:
 -- No. S-3-4-7
 /*+IndexScan(ti1 ti1_uniq)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_uniq
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_uniq)
@@ -3686,6 +3784,7 @@ error hint:
 -- No. S-3-4-8
 /*+IndexScan(ti1 ti1_multi)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_multi
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_multi)
@@ -3703,6 +3802,7 @@ error hint:
 -- No. S-3-4-9
 /*+IndexScan(ti1 ti1_ts)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_ts
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_ts)
@@ -3720,6 +3820,7 @@ error hint:
 -- No. S-3-4-10
 /*+IndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_pkey)
@@ -3737,6 +3838,7 @@ error hint:
 -- No. S-3-4-11
 /*+IndexScan(ti1 ti1_c2_key)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_c2_key
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_c2_key)
@@ -3754,6 +3856,7 @@ error hint:
 -- No. S-3-4-12
 /*+BitmapScan(ti1 ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_btree
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_btree)
@@ -3773,6 +3876,7 @@ error hint:
 -- No. S-3-4-13
 /*+BitmapScan(ti1 ti1_hash)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_hash
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_hash)
@@ -3792,6 +3896,7 @@ error hint:
 -- No. S-3-4-14
 /*+BitmapScan(ti1 ti1_gist)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_gist
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_gist)
@@ -3811,6 +3916,7 @@ error hint:
 -- No. S-3-4-15
 /*+BitmapScan(ti1 ti1_gin)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_gin
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_gin)
@@ -3830,6 +3936,7 @@ error hint:
 -- No. S-3-4-16
 /*+BitmapScan(ti1 ti1_expr)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_expr
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_expr)
@@ -3848,6 +3955,7 @@ error hint:
 -- No. S-3-4-17
 /*+BitmapScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_pred
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_pred)
@@ -3867,6 +3975,7 @@ error hint:
 -- No. S-3-4-18
 /*+BitmapScan(ti1 ti1_uniq)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_uniq
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_uniq)
@@ -3886,6 +3995,7 @@ error hint:
 -- No. S-3-4-19
 /*+BitmapScan(ti1 ti1_multi)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_multi
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_multi)
@@ -3905,6 +4015,7 @@ error hint:
 -- No. S-3-4-20
 /*+BitmapScan(ti1 ti1_ts)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_ts
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_ts)
@@ -3924,6 +4035,7 @@ error hint:
 -- No. S-3-4-10
 /*+BitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_pkey)
@@ -3943,6 +4055,7 @@ error hint:
 -- No. S-3-4-11
 /*+BitmapScan(ti1 ti1_c2_key)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c4) = '1' AND to_tsvector('english', c4) @@ 'a & b' AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_c2_key
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_c2_key)
@@ -3969,6 +4082,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 /*+IndexOnlyScan(ti1 ti1_btree)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+LOG:  candidate index for "ti1": ti1_btree
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_btree)
@@ -3992,6 +4106,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 /*+IndexOnlyScan(ti1 ti1_hash)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+LOG:  candidate index for "ti1": ti1_hash
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_hash)
@@ -4015,6 +4130,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
 
 /*+IndexOnlyScan(ti1 ti1_gist)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 1;
+LOG:  candidate index for "ti1": ti1_gist
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_gist)
@@ -4038,6 +4154,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 /*+IndexOnlyScan(ti1 ti1_gin)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+LOG:  candidate index for "ti1": ti1_gin
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_gin)
@@ -4061,6 +4178,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
 
 /*+IndexOnlyScan(ti1 ti1_expr)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 < 100;
+LOG:  candidate index for "ti1": ti1_expr
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_expr)
@@ -4085,6 +4203,7 @@ EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
 
 /*+IndexOnlyScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS false) SELECT c4 FROM s1.ti1 WHERE lower(c4) >= '1';
+LOG:  candidate index for "ti1": ti1_pred
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pred)
@@ -4108,6 +4227,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 /*+IndexOnlyScan(ti1 ti1_uniq)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+LOG:  candidate index for "ti1": ti1_uniq
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_uniq)
@@ -4131,6 +4251,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 /*+IndexOnlyScan(ti1 ti1_multi)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+LOG:  candidate index for "ti1": ti1_multi
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_multi)
@@ -4156,6 +4277,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE to_tsvector('english', c4) @@ 
 
 /*+IndexOnlyScan(ti1 ti1_ts)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE to_tsvector('english', c4) @@ 'a & b';
+LOG:  candidate index for "ti1": ti1_ts
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_ts)
@@ -4179,6 +4301,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
 /*+IndexOnlyScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+LOG:  candidate index for "ti1": ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pkey)
@@ -4202,6 +4325,7 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
 
 /*+IndexOnlyScan(ti1 ti1_c2_key)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
+LOG:  candidate index for "ti1": ti1_c2_key
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_c2_key)
@@ -4221,6 +4345,7 @@ error hint:
 -- No. S-3-5-1
 /*+IndexScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  candidate index for "ti1": ti1_pred
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_pred)
@@ -4237,6 +4362,7 @@ error hint:
 -- No. S-3-5-2
 /*+BitmapScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  candidate index for "ti1": ti1_pred
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_pred)
@@ -4253,6 +4379,7 @@ error hint:
 -- No. S-3-5-3
 /*+IndexOnlyScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+LOG:  candidate index for "ti1": ti1_pred
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pred)
@@ -4272,6 +4399,7 @@ error hint:
 -- No. S-3-6-1
 /*+IndexScan(ti1 not_exist)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  candidate index for "ti1":
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 not_exist)
@@ -4288,6 +4416,7 @@ error hint:
 -- No. S-3-6-2
 /*+BitmapScan(ti1 not_exist)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+LOG:  candidate index for "ti1":
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 not_exist)
@@ -4304,6 +4433,7 @@ error hint:
 -- No. S-3-6-3
 /*+IndexOnlyScan(ti1 not_exist)*/
 EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+LOG:  candidate index for "ti1":
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 not_exist)
@@ -4430,6 +4560,10 @@ SELECT max(b3t1.c1), (
 SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
                   ) FROM s1.t1 b3t1 WHERE b3t1.c1 = (
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(b2t1 t1_pkey)
@@ -4515,6 +4649,10 @@ SELECT max(b3t1.c1), (
 SELECT max(b2t1.c1) FROM s1.t1 b2t1 JOIN s1.t2 b2t2 ON(b2t1.c1 = b2t2.c1) WHERE b2t1.c1 = 1
                   ) FROM s1.t1 b3t1 JOIN s1.t2 b3t2 ON(b3t1.c1 = b3t2.c1) JOIN cte1 ON(b3t1.c1 = cte1.c1) WHERE b3t1.c1 = (
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 JOIN s1.t2 b4t2 ON(b4t1.c1 = b4t2.c1) WHERE b4t1.c1 = 1);
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b4t2": t2_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t2": t2_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(b1t1)
@@ -4617,6 +4755,10 @@ SELECT max(b3t1.c1), (
 SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
                   ) FROM s1.t1 b3t1 JOIN s1.t2 b3t2 ON(b3t1.c1 = b3t2.c1) JOIN cte1 ON(b3t1.c1 = cte1.c1) WHERE b3t1.c1 = (
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b2t1": t1_pkey
+LOG:  candidate index for "b3t1": t1_pkey
+LOG:  candidate index for "b3t2": t2_pkey
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(b1t1)
@@ -4852,6 +4994,17 @@ error hint:
 -- No. S-3-11-3
 /*+IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  candidate index for "p2":
+LOG:  candidate index for "p2": p2_pkey
+LOG:  candidate index for "p2c1": p2c1_pkey
+LOG:  candidate index for "p2c2":
+LOG:  candidate index for "p2c3":
+LOG:  candidate index for "p2c1c1": p2c1c1_pkey
+LOG:  candidate index for "p2c1c2":
+LOG:  candidate index for "p2c2c1":
+LOG:  candidate index for "p2c2c2":
+LOG:  candidate index for "p2c3c1":
+LOG:  candidate index for "p2c3c2":
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)
@@ -4874,6 +5027,17 @@ error hint:
 -- No. S-3-11-4
 /*+IndexScan(p2 p2c1_pkey)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
+LOG:  candidate index for "p2":
+LOG:  candidate index for "p2":
+LOG:  candidate index for "p2c1": p2c1_pkey
+LOG:  candidate index for "p2c2":
+LOG:  candidate index for "p2c3":
+LOG:  candidate index for "p2c1c1":
+LOG:  candidate index for "p2c1c2":
+LOG:  candidate index for "p2c2c1":
+LOG:  candidate index for "p2c2c2":
+LOG:  candidate index for "p2c3c1":
+LOG:  candidate index for "p2c3c2":
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(p2 p2c1_pkey)
@@ -4923,6 +5087,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 INFO:  hint syntax error at or near "IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)"
 DETAIL:  Conflict scan method hint.
+LOG:  candidate index for "ti1": ti1_btree
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_btree)
@@ -4972,6 +5137,7 @@ INFO:  hint syntax error at or near "BitmapScan(ti1 ti1_hash) IndexScan(ti1 ti1_
 DETAIL:  Conflict scan method hint.
 INFO:  hint syntax error at or near "IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)"
 DETAIL:  Conflict scan method hint.
+LOG:  candidate index for "ti1": ti1_btree
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_btree)
@@ -5067,6 +5233,7 @@ error hint:
 -- No. S-3-13-5
 /*+IndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_pkey)
@@ -5084,6 +5251,7 @@ error hint:
 -- No. S-3-13-6
 /*+IndexScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_btree ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(ti1 ti1_pkey ti1_btree)
@@ -5120,6 +5288,7 @@ error hint:
 -- No. S-3-13-8
 /*+BitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_pkey)
@@ -5139,6 +5308,7 @@ error hint:
 -- No. S-3-13-9
 /*+BitmapScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
+LOG:  candidate index for "ti1": ti1_btree ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(ti1 ti1_pkey ti1_btree)
@@ -5449,6 +5619,7 @@ error hint:
 -- No. S-3-13-26
 /*+IndexOnlyScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+LOG:  candidate index for "ti1": ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pkey)
@@ -5465,6 +5636,7 @@ error hint:
 -- No. S-3-13-27
 /*+IndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
+LOG:  candidate index for "ti1": ti1_btree ti1_pkey
 LOG:  pg_hint_plan:
 used hint:
 IndexOnlyScan(ti1 ti1_pkey ti1_btree)

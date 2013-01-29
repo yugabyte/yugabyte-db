@@ -3533,6 +3533,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
 
 /*+IndexScan(t1 t1_i1)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
+LOG:  candidate index for "t1": t1_i1
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t1 t1_i1)
