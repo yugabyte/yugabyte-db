@@ -1934,7 +1934,8 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 		else
 			relname = hint->relname;
 		ereport(LOG,
-				(errmsg("candidate index for \"%s\":%s",
+				(errmsg("available indexes for %s(\"%s\"):%s",
+				 hint->base.keyword,
 				 relname, buf.data)));
 		pfree(buf.data);
 	}

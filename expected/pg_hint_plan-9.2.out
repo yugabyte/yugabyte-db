@@ -5241,7 +5241,7 @@ EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
 
 /*+IndexScan(t5 t5_id2)*/
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-LOG:  candidate index for "t5": t5_id2
+LOG:  available indexes for IndexScan("t5"): t5_id2
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t5 t5_id2)
@@ -5257,7 +5257,7 @@ error hint:
 
 /*+IndexScan(t5 no_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-LOG:  candidate index for "t5":
+LOG:  available indexes for IndexScan("t5"):
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t5 no_exist)
@@ -5273,7 +5273,7 @@ error hint:
 
 /*+IndexScan(t5 t5_id1 t5_id2)*/
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-LOG:  candidate index for "t5": t5_id2 t5_id1
+LOG:  available indexes for IndexScan("t5"): t5_id2 t5_id1
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t5 t5_id1 t5_id2)
@@ -5289,7 +5289,7 @@ error hint:
 
 /*+IndexScan(t5 no_exist t5_id2)*/
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-LOG:  candidate index for "t5": t5_id2
+LOG:  available indexes for IndexScan("t5"): t5_id2
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t5 no_exist t5_id2)
@@ -5305,7 +5305,7 @@ error hint:
 
 /*+IndexScan(t5 no_exist5 no_exist2)*/
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-LOG:  candidate index for "t5":
+LOG:  available indexes for IndexScan("t5"):
 LOG:  pg_hint_plan:
 used hint:
 IndexScan(t5 no_exist5 no_exist2)
