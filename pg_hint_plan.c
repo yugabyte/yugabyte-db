@@ -1928,16 +1928,23 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 	if (pg_hint_plan_debug_print)
 	{
 		char   *relname;
+		StringInfoData  rel_buf;
 
 		if (OidIsValid(relationObjectId))
 			relname = get_rel_name(relationObjectId);
 		else
 			relname = hint->relname;
+
+		initStringInfo(&rel_buf);
+		dump_quote_value(&rel_buf, relname);
+
 		ereport(LOG,
-				(errmsg("available indexes for %s(\"%s\"):%s",
-				 hint->base.keyword,
-				 relname, buf.data)));
+				(errmsg("available indexes for %s(%s):%s",
+					 hint->base.keyword,
+					 rel_buf.data,
+					 buf.data)));
 		pfree(buf.data);
+		pfree(rel_buf.data);
 	}
 }
 
