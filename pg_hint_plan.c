@@ -1944,7 +1944,6 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 					 rel_buf.data,
 					 buf.data)));
 		pfree(buf.data);
-		pfree(rel_buf.data);
 	}
 }
 
@@ -2010,8 +2009,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	hint->base.state = HINT_STATE_USED;
 	if (inhparent)
 		current_hint->parent_hint = hint;
-
-	delete_indexes(hint, rel, InvalidOid);
+	else
+		delete_indexes(hint, rel, InvalidOid);
 }
 
 /*

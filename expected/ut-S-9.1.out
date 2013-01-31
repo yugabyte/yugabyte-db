@@ -4893,7 +4893,6 @@ error hint:
 -- No. S-3-11-3
 /*+IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
-LOG:  available indexes for IndexScan(p2):
 LOG:  available indexes for IndexScan(p2): p2_pkey
 LOG:  available indexes for IndexScan(p2c1): p2c1_pkey
 LOG:  available indexes for IndexScan(p2c2):
@@ -4926,7 +4925,6 @@ error hint:
 -- No. S-3-11-4
 /*+IndexScan(p2 p2c1_pkey)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
-LOG:  available indexes for IndexScan(p2):
 LOG:  available indexes for IndexScan(p2):
 LOG:  available indexes for IndexScan(p2c1): p2c1_pkey
 LOG:  available indexes for IndexScan(p2c2):
