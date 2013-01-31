@@ -2965,7 +2965,11 @@ SHOW pg_hint_plan.debug_print;
 ----
 -- No. A-9-5-1
 SELECT pg_stat_statements_reset();
-ERROR:  pg_stat_statements must be loaded via shared_preload_libraries
+ pg_stat_statements_reset 
+--------------------------
+ 
+(1 row)
+
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
  c1 | c2 | c3 | c4 
 ----+----+----+----
@@ -3003,7 +3007,14 @@ SELECT s.query, s.calls
   JOIN pg_catalog.pg_database d
     ON (s.dbid = d.oid)
  ORDER BY 1;
-ERROR:  pg_stat_statements must be loaded via shared_preload_libraries
+                               query                               | calls 
+-------------------------------------------------------------------+-------
+ /*+SeqScan(t1)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;             |     1
+ /*+Set(enable_seqscan off)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1; |     1
+ SELECT * FROM s1.t1 WHERE t1.c1 = 1;                              |     1
+ SELECT pg_stat_statements_reset();                                |     1
+(4 rows)
+
 ----
 ---- No. A-10-1 duplicate hint
 ----

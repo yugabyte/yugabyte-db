@@ -1944,6 +1944,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 					 rel_buf.data,
 					 buf.data)));
 		pfree(buf.data);
+		pfree(rel_buf.data);
 	}
 }
 
