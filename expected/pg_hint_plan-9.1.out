@@ -1,0 +1,5219 @@
+SET search_path TO public;
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.val = t1.val)
+   ->  Index Scan using t2_val on t2
+   ->  Materialize
+         ->  Index Scan using t1_val on t1
+(5 rows)
+
+LOAD 'pg_hint_plan';
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
+                QUERY PLAN                 
+-------------------------------------------
+ Merge Join
+   Merge Cond: (t2.val = t1.val)
+   ->  Index Scan using t2_val on t2
+   ->  Materialize
+         ->  Index Scan using t1_val on t1
+(5 rows)
+
+/*+ Test (t1 t2) */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near "Test (t1 t2) "
+DETAIL:  Unrecognized hint keyword "Test".
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+SET pg_hint_plan.enable_hint TO off;
+/*+ Test (t1 t2) */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+SET pg_hint_plan.enable_hint TO on;
+/*Set(enable_indexscan off)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+--+Set(enable_indexscan off)
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+Set(enable_indexscan off) /* nest comment */ */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near "/* nest comment */ */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;"
+DETAIL:  Nested block comments are not supported.
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+Set(enable_indexscan off)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_hashjoin off)
+Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN           
+-------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Sort
+         Sort Key: t1.id
+         ->  Seq Scan on t1
+   ->  Sort
+         Sort Key: t2.id
+         ->  Seq Scan on t2
+(8 rows)
+
+/*+ 	 Set 	 ( 	 enable_indexscan 	 off 	 ) 	 */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+ 	 
+	 	Set 	 
+	 	( 	 
+	 	enable_indexscan 	 
+	 	off 	 
+	 	) 	 
+	 	*/	 	
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+ Set(enable_indexscan off)Set(enable_nestloop off)Set(enable_mergejoin off)	 	
+	 	Set(enable_seqscan off)
+	 	*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(enable_indexscan off)
+Set(enable_mergejoin off)
+Set(enable_nestloop off)
+Set(enable_seqscan off)
+not used hint:
+duplication hint:
+error hint:
+
+                 QUERY PLAN                 
+--------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Hash
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
+
+/*+Set(work_mem "1M")*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  invalid value for parameter "work_mem": "1M"
+HINT:  Valid units for this parameter are "kB", "MB", and "GB".
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Set(work_mem 1M)
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+Set(work_mem "1MB")*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+Set(work_mem 1MB)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+Set(work_mem TO "1MB")*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near ""1MB")"
+DETAIL:  Closing parenthesis is necessary.
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+SeqScan(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  hint syntax error at or near "t2)"
+DETAIL:  Closing parenthesis is necessary.
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+SeqScan(t1)IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                 QUERY PLAN                 
+--------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
+
+/*+BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(6 rows)
+
+/*+BitmapScan(t2)NoSeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Index Scan using t1_pkey on t1
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(6 rows)
+
+/*+NoIndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+NoBitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t4 WHERE t1.val < 10;
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+         QUERY PLAN         
+----------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (val < 10)
+   ->  Materialize
+         ->  Seq Scan on t4
+(5 rows)
+
+/*+TidScan(t4)*/
+EXPLAIN (COSTS false) SELECT * FROM t3, t4 WHERE t3.id = t4.id AND t4.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t4)
+not used hint:
+duplication hint:
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (t3.id = t4.id)
+   ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Tid Scan on t4
+               TID Cond: (ctid = '(1,1)'::tid)
+(7 rows)
+
+/*+NoTidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(5 rows)
+
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+(4 rows)
+
+/*+NoMergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+NoMergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+MergeJoin(t1 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t3)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Merge Join
+   Merge Cond: (t1.val = t3.val)
+   ->  Index Scan using t1_val on t1
+   ->  Sort
+         Sort Key: t3.val
+         ->  Seq Scan on t3
+(6 rows)
+
+/*+NestLoop(t1 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t3)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Nested Loop
+   ->  Seq Scan on t3
+   ->  Index Scan using t1_val on t1
+         Index Cond: (val = t3.val)
+(4 rows)
+
+/*+NoHashJoin(t1 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t3 WHERE t1.val = t3.val;
+LOG:  pg_hint_plan:
+used hint:
+NoHashJoin(t1 t3)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Nested Loop
+   ->  Seq Scan on t3
+   ->  Index Scan using t1_val on t1
+         Index Cond: (val = t3.val)
+(4 rows)
+
+/*+MergeJoin(t4 t1 t2 t3)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+(12 rows)
+
+/*+HashJoin(t3 t4 t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Hash Join
+   Hash Cond: (t3.id = t1.id)
+   ->  Seq Scan on t3
+   ->  Hash
+         ->  Merge Join
+               Merge Cond: (t1.id = t4.id)
+               ->  Merge Join
+                     Merge Cond: (t1.id = t2.id)
+                     ->  Index Scan using t1_pkey on t1
+                     ->  Index Scan using t2_pkey on t2
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+(13 rows)
+
+/*+NestLoop(t2 t3 t4 t1) IndexScan(t3)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t3)
+NestLoop(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Merge Join
+         Merge Cond: (t1.id = t4.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Sort
+               Sort Key: t4.id
+               ->  Seq Scan on t4
+   ->  Index Scan using t3_pkey on t3
+         Index Cond: (id = t1.id)
+(12 rows)
+
+/*+NoNestLoop(t4 t1 t3 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+NoNestLoop(t1 t2 t3 t4)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+(12 rows)
+
+/*+Leading( */
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+INFO:  hint syntax error at or near ""
+DETAIL:  Relation name is necessary.
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+(12 rows)
+
+/*+Leading( )*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+INFO:  hint syntax error at or near "Leading( )"
+DETAIL:  Leading hint requires at least two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Leading()
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+(12 rows)
+
+/*+Leading( t3 )*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+INFO:  hint syntax error at or near "Leading( t3 )"
+DETAIL:  Leading hint requires at least two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Leading(t3)
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+(12 rows)
+
+/*+Leading( t3 t4 )*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Nested Loop
+         ->  Merge Join
+               Merge Cond: (t3.id = t4.id)
+               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+         ->  Index Scan using t2_pkey on t2
+               Index Cond: (id = t3.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+(12 rows)
+
+/*+Leading(t3 t4 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Merge Join
+         Merge Cond: (t3.id = t1.id)
+         ->  Merge Join
+               Merge Cond: (t3.id = t4.id)
+               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+         ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(12 rows)
+
+/*+Leading(t3 t4 t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Merge Join
+         Merge Cond: (t3.id = t1.id)
+         ->  Merge Join
+               Merge Cond: (t3.id = t4.id)
+               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+         ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(12 rows)
+
+/*+Leading(t3 t4 t1 t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(t3 t4 t1 t2 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Merge Join
+         Merge Cond: (t3.id = t1.id)
+         ->  Merge Join
+               Merge Cond: (t3.id = t4.id)
+               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+         ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+(12 rows)
+
+/*+Leading(t3 t4 t4)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
+INFO:  hint syntax error at or near "Leading(t3 t4 t4)"
+DETAIL:  Relation name "t4" is duplicated.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Leading(t3 t4 t4)
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t4.id)
+   ->  Merge Join
+         Merge Cond: (t1.id = t3.id)
+         ->  Merge Join
+               Merge Cond: (t1.id = t2.id)
+               ->  Index Scan using t1_pkey on t1
+               ->  Index Scan using t2_pkey on t2
+         ->  Index Scan using t3_pkey on t3
+   ->  Sort
+         Sort Key: t4.id
+         ->  Seq Scan on t4
+(12 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = "*VALUES*".column1)
+(4 rows)
+
+/*+HashJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+HashJoin(t1 t2)
+duplication hint:
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Nested Loop
+   ->  Values Scan on "*VALUES*"
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = "*VALUES*".column1)
+(4 rows)
+
+/*+HashJoin(t1 *VALUES*)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(*VALUES* t1)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                 
+-------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = "*VALUES*".column1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Values Scan on "*VALUES*"
+(5 rows)
+
+/*+HashJoin(t1 *VALUES*) IndexScan(t1) IndexScan(*VALUES*)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, (VALUES(1,1),(2,2),(3,3)) AS t2(id,val) WHERE t1.id = t2.id;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+HashJoin(*VALUES* t1)
+not used hint:
+IndexScan(*VALUES*)
+duplication hint:
+error hint:
+
+                QUERY PLAN                 
+-------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = "*VALUES*".column1)
+   ->  Index Scan using t1_pkey on t1
+   ->  Hash
+         ->  Values Scan on "*VALUES*"
+(5 rows)
+
+-- single table scan hint test
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=1.89..10.16 rows=1 width=4)
+   Index Cond: (id = $3)
+   InitPlan 2 (returns $1)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 1 (returns $0)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+   InitPlan 4 (returns $3)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 3 (returns $2)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+(14 rows)
+
+/*+BitmapScan(v_1)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(v_1)
+not used hint:
+duplication hint:
+error hint:
+
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=29.34..37.61 rows=1 width=4)
+   Index Cond: (id = $2)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+   InitPlan 3 (returns $2)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 2 (returns $1)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+(14 rows)
+
+/*+BitmapScan(v_2)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(v_2)
+not used hint:
+duplication hint:
+error hint:
+
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=29.34..37.61 rows=1 width=4)
+   Index Cond: (id = $2)
+   InitPlan 2 (returns $1)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 1 (returns $0)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+   InitPlan 3 (returns $2)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+(14 rows)
+
+/*+BitmapScan(t1)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=6.15..10.17 rows=1 width=4)
+   Recheck Cond: (id = $3)
+   InitPlan 2 (returns $1)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 1 (returns $0)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+   InitPlan 4 (returns $3)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 3 (returns $2)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+         Index Cond: (id = $3)
+(16 rows)
+
+/*+BitmapScan(v_1)BitmapScan(v_2)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(v_1)
+BitmapScan(v_2)
+not used hint:
+duplication hint:
+error hint:
+
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Index Scan using t1_pkey on t1  (cost=56.78..65.05 rows=1 width=4)
+   Index Cond: (id = $1)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+   InitPlan 2 (returns $1)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+(14 rows)
+
+/*+BitmapScan(v_1)BitmapScan(t1)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+BitmapScan(v_1)
+not used hint:
+duplication hint:
+error hint:
+
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=33.60..37.61 rows=1 width=4)
+   Recheck Cond: (id = $2)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+   InitPlan 3 (returns $2)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 2 (returns $1)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+         Index Cond: (id = $2)
+(16 rows)
+
+/*+BitmapScan(v_2)BitmapScan(t1)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+BitmapScan(v_2)
+not used hint:
+duplication hint:
+error hint:
+
+                                             QUERY PLAN                                              
+-----------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=33.60..37.61 rows=1 width=4)
+   Recheck Cond: (id = $2)
+   InitPlan 2 (returns $1)
+     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+           InitPlan 1 (returns $0)
+             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
+                   ->  Index Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.43 rows=9 width=4)
+                         Index Cond: ((id IS NOT NULL) AND (id < 10))
+   InitPlan 3 (returns $2)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+         Index Cond: (id = $2)
+(16 rows)
+
+/*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
+EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+BitmapScan(v_1)
+BitmapScan(v_2)
+not used hint:
+duplication hint:
+error hint:
+
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Bitmap Heap Scan on t1  (cost=61.04..65.05 rows=1 width=4)
+   Recheck Cond: (id = $1)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_1  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+   InitPlan 2 (returns $1)
+     ->  Aggregate  (cost=28.38..28.39 rows=1 width=4)
+           ->  Bitmap Heap Scan on t1 v_2  (cost=4.32..28.36 rows=9 width=4)
+                 Recheck Cond: (id < 10)
+                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.32 rows=9 width=0)
+                       Index Cond: (id < 10)
+   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.26 rows=1 width=0)
+         Index Cond: (id = $1)
+(16 rows)
+
+-- full scan hint pattern test
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on t1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (id < 10)
+(3 rows)
+
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Seq Scan on t1
+   Filter: ((id < 10) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+/*+IndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN            
+---------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (id < 10)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Bitmap Heap Scan on t1
+   Recheck Cond: (id < 10)
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on t1_pkey
+         Index Cond: (id < 10)
+(5 rows)
+
+/*+TidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on t1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (id < 10)
+(3 rows)
+
+/*+NoSeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on t1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (id < 10)
+(3 rows)
+
+/*+NoIndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on t1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (id < 10)
+(3 rows)
+
+/*+NoBitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Tid Scan on t1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: (id < 10)
+(3 rows)
+
+/*+NoTidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE id < 10 AND ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN            
+---------------------------------
+ Index Scan using t1_pkey on t1
+   Index Cond: (id < 10)
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+SeqScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+SeqScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Index Scan using t2_pkey on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Index Scan using t1_pkey on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+IndexScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+IndexScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+BitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+BitmapScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Index Scan using t2_pkey on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Index Scan using t2_pkey on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+BitmapScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: (id = t2.id)
+(8 rows)
+
+/*+TidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+TidScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+TidScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+NoSeqScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoSeqScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoSeqScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+NoIndexScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoIndexScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoIndexScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+NoBitmapScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoBitmapScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoBitmapScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t2_pkey on t2
+         Index Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) SeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+SeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) IndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+IndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Index Scan using t2_pkey on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                
+------------------------------------------
+ Nested Loop
+   ->  Seq Scan on t1
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id = t1.id)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id = t1.id)
+(8 rows)
+
+/*+NoTidScan(t1) TidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+TidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) NoSeqScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+NoSeqScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) NoIndexScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+NoIndexScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) NoBitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+NoBitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+/*+NoTidScan(t1) NoTidScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+NoTidScan(t1)
+NoTidScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Nested Loop
+   ->  Seq Scan on t2
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id = t2.id)
+         Filter: (ctid = '(1,1)'::tid)
+(6 rows)
+
+-- additional test
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
+               QUERY PLAN                
+-----------------------------------------
+ Nested Loop
+   Join Filter: (t1.id = t2.id)
+   ->  Tid Scan on t1
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: (id < 10)
+   ->  Tid Scan on t2
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: (id < 10)
+(8 rows)
+
+/*+BitmapScan(t1) BitmapScan(t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)' AND t1.id < 10 AND t2.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t1)
+BitmapScan(t2)
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                       
+--------------------------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on t2
+         Recheck Cond: (id < 10)
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t2_pkey
+               Index Cond: (id < 10)
+   ->  Bitmap Heap Scan on t1
+         Recheck Cond: ((id < 10) AND (id = t2.id))
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on t1_pkey
+               Index Cond: ((id < 10) AND (id = t2.id))
+(11 rows)
+
+-- outer join test
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+          QUERY PLAN          
+------------------------------
+ Hash Full Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+MergeJoin(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Full Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1 FULL OUTER JOIN  t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN          
+------------------------------
+ Hash Full Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+-- inherite table test
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Tid Scan on p1_c4 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(25 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(12 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c4 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(20 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c2_pkey on p1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_pkey on p1_c3 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c4_pkey on p1_c4 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_c1_pkey on p1_c3_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c3_c2_pkey on p1_c3_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+(29 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c3 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c3_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c4 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c4_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c3_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c3_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c3_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c3_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+(47 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                     
+---------------------------------------------------
+ Result
+   ->  Append
+         ->  Tid Scan on p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c4 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(29 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(10 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_pkey on p1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c1_pkey on p1_c1_c1 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+         ->  Index Scan using p1_c1_c2_pkey on p1_c1_c2 p1
+               Index Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+(14 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                         QUERY PLAN                          
+-------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c1 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c1_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+         ->  Bitmap Heap Scan on p1_c1_c2 p1
+               Recheck Cond: ((id >= 50) AND (id <= 51))
+               Filter: (ctid = '(1,1)'::tid)
+               ->  Bitmap Index Scan on p1_c1_c2_pkey
+                     Index Cond: ((id >= 50) AND (id <= 51))
+(22 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                     
+---------------------------------------------------
+ Result
+   ->  Append
+         ->  Tid Scan on p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+(14 rows)
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (public.p1.id = t1.id)
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Tid Scan on p1_c4 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+   ->  Materialize
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: (id < 10)
+(29 rows)
+
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c4 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c3_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(30 rows)
+
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (public.p1.id = t1.id)
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Tid Scan on p1_c4 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c1_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c1 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+         ->  Tid Scan on p1_c3_c2 p1
+               TID Cond: (ctid = '(1,1)'::tid)
+               Filter: ((id >= 50) AND (id <= 51))
+   ->  Hash
+         ->  Index Scan using t1_pkey on t1
+               Index Cond: (id < 10)
+(29 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Nested Loop
+   Join Filter: (public.p1.id = t1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+   ->  Materialize
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+(16 rows)
+
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (public.p1.id = t1.id)
+   ->  Sort
+         Sort Key: public.p1.id
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(17 rows)
+
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                    QUERY PLAN                                     
+-----------------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = public.p1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+   ->  Hash
+         ->  Append
+               ->  Seq Scan on p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Tid Scan on p1_c1_c1 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Tid Scan on p1_c1_c2 p1
+                     TID Cond: (ctid = '(1,1)'::tid)
+                     Filter: ((id >= 50) AND (id <= 51))
+(16 rows)
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                 
+-------------------------------------------
+ Index Scan using p1_pkey on p1
+   Index Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Bitmap Heap Scan on p1
+   Recheck Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on p1_pkey
+         Index Cond: ((id >= 50) AND (id <= 51))
+(5 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Tid Scan on p1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((id >= 50) AND (id <= 51))
+(3 rows)
+
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (p1.id = t1.id)
+   ->  Sort
+         Sort Key: p1.id
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(8 rows)
+
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = p1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+   ->  Hash
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(7 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                           QUERY PLAN                            
+-----------------------------------------------------------------
+ Seq Scan on p1
+   Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(2 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                QUERY PLAN                 
+-------------------------------------------
+ Index Scan using p1_pkey on p1
+   Index Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+(3 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                    
+-------------------------------------------------
+ Bitmap Heap Scan on p1
+   Recheck Cond: ((id >= 50) AND (id <= 51))
+   Filter: (ctid = '(1,1)'::tid)
+   ->  Bitmap Index Scan on p1_pkey
+         Index Cond: ((id >= 50) AND (id <= 51))
+(5 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+              QUERY PLAN               
+---------------------------------------
+ Tid Scan on p1
+   TID Cond: (ctid = '(1,1)'::tid)
+   Filter: ((id >= 50) AND (id <= 51))
+(3 rows)
+
+/*+NestLoop(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+/*+MergeJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: (p1.id = t1.id)
+   ->  Sort
+         Sort Key: p1.id
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+(8 rows)
+
+/*+HashJoin(p1 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(p1 t1)
+not used hint:
+duplication hint:
+error hint:
+
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = p1.id)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: (id < 10)
+   ->  Hash
+         ->  Seq Scan on p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(7 rows)
+
+SET constraint_exclusion TO off;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+SET constraint_exclusion TO on;
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+SET constraint_exclusion TO off;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on p1
+         Recheck Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on p1_pkey
+               Index Cond: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(8 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Tid Scan on p1
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+SET constraint_exclusion TO on;
+/*+SeqScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Nested Loop
+   ->  Seq Scan on p1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(5 rows)
+
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+/*+BitmapScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN                       
+-------------------------------------------------------
+ Nested Loop
+   ->  Bitmap Heap Scan on p1
+         Recheck Cond: ((id >= 50) AND (id <= 51))
+         Filter: (ctid = '(1,1)'::tid)
+         ->  Bitmap Index Scan on p1_pkey
+               Index Cond: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(8 rows)
+
+/*+TidScan(p1)*/
+EXPLAIN (COSTS false) SELECT * FROM ONLY p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(p1)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                    
+--------------------------------------------------
+ Nested Loop
+   ->  Tid Scan on p1
+         TID Cond: (ctid = '(1,1)'::tid)
+         Filter: ((id >= 50) AND (id <= 51))
+   ->  Index Scan using t1_pkey on t1
+         Index Cond: ((id < 10) AND (id = p1.id))
+(6 rows)
+
+-- quote test
+/*+SeqScan("""t1 )	")IndexScan("t	2 """)HashJoin("""t1 )	"T3"t	2 """)Leading("""t1 )	"T3"t	2 """)Set(application_name"a	a	a""	a	A")*/
+EXPLAIN (COSTS false) SELECT * FROM t1 """t1 )	", t2 "t	2 """, t3 "T3" WHERE """t1 )	".id = "t	2 """.id AND """t1 )	".id = "T3".id;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan("""t1 )	")
+IndexScan("t	2 """)
+HashJoin("""t1 )	" T3 "t	2 """)
+Leading("""t1 )	" T3 "t	2 """)
+Set(application_name "a	a	a""	a	A")
+not used hint:
+duplication hint:
+error hint:
+
+                       QUERY PLAN                        
+---------------------------------------------------------
+ Hash Join
+   Hash Cond: ("t        2 """.id = """t1 )      ".id)
+   ->  Index Scan using t2_pkey on t2 "t 2 """
+   ->  Hash
+         ->  Hash Join
+               Hash Cond: ("""t1 )       ".id = "T3".id)
+               ->  Seq Scan on t1 """t1 )        "
+               ->  Hash
+                     ->  Seq Scan on t3 "T3"
+(9 rows)
+
+-- duplicate hint test
+/*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
+INFO:  hint syntax error at or near "SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict scan method hint.
+INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict join method hint.
+INFO:  hint syntax error at or near "NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict join method hint.
+INFO:  hint syntax error at or near "Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict leading hint.
+INFO:  hint syntax error at or near "Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+DETAIL:  Conflict set hint.
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+TidScan(t2)
+MergeJoin(t1 t2)
+Leading(t2 t1)
+Set(enable_mergejoin on)
+Set(enable_seqscan on)
+not used hint:
+duplication hint:
+SeqScan(t1)
+IndexScan(t1)
+BitmapScan(t1)
+SeqScan(t2)
+IndexScan(t2)
+BitmapScan(t2)
+HashJoin(t1 t2)
+NestLoop(t1 t2)
+Leading(t1 t2)
+Set(enable_seqscan off)
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Sort
+         Sort Key: t1.id
+         ->  Tid Scan on t1
+               TID Cond: (ctid = '(1,1)'::tid)
+   ->  Sort
+         Sort Key: t2.id
+         ->  Tid Scan on t2
+               TID Cond: (ctid = '(1,1)'::tid)
+(10 rows)
+
+-- sub query Leading hint test
+SET from_collapse_limit TO 100;
+SET geqo_threshold TO 100;
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_5.id = t3_5.id)
+                 ->  Merge Join
+                       Merge Cond: (t1_5.id = t2_5.id)
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                 ->  Sort
+                       Sort Key: t3_5.id
+                       ->  Seq Scan on t3 t3_5
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_2.id = t3_2.id)
+                 ->  Merge Join
+                       Merge Cond: (t1_2.id = t2_2.id)
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                 ->  Sort
+                       Sort Key: t3_2.id
+                       ->  Seq Scan on t3 t3_2
+   InitPlan 3 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_4.id = t3_4.id)
+                 ->  Merge Join
+                       Merge Cond: (t1_4.id = t2_4.id)
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                 ->  Sort
+                       Sort Key: t3_4.id
+                       ->  Seq Scan on t3 t3_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Nested Loop
+                                 ->  Index Scan using t1_pkey on t1 t1_1
+                                       Index Cond: (id = $2)
+                                 ->  Seq Scan on t3 t3_1
+                                       Filter: (id = $2)
+                           ->  Index Scan using t2_pkey on t2 t2_1
+                                 Index Cond: (id = $2)
+                     ->  Index Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $2)
+               ->  Index Scan using t2_pkey on t2 t2_3
+                     Index Cond: (id = $2)
+         ->  Seq Scan on t3 t3_3
+               Filter: (id = $2)
+   ->  CTE Scan on c1_1
+         Filter: (id = $2)
+(53 rows)
+
+/*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1_1 t3_1)
+NestLoop(t1_2 t2_2)
+MergeJoin(t1_3 t3_3)
+NestLoop(t1_4 t2_4)
+NestLoop(t1_5 t2_5)
+not used hint:
+duplication hint:
+error hint:
+
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_5.id = t3_5.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t2_5.id)
+                 ->  Sort
+                       Sort Key: t3_5.id
+                       ->  Seq Scan on t3 t3_5
+   InitPlan 2 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_2.id = t3_2.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t2_2.id)
+                 ->  Sort
+                       Sort Key: t3_2.id
+                       ->  Seq Scan on t3 t3_2
+   InitPlan 3 (returns $3)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_4.id = t3_4.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t2_4.id)
+                 ->  Sort
+                       Sort Key: t3_4.id
+                       ->  Seq Scan on t3 t3_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Nested Loop
+                                 ->  Index Scan using t2_pkey on t2 t2_1
+                                       Index Cond: (id = $3)
+                                 ->  Seq Scan on t3 t3_1
+                                       Filter: (id = $3)
+                           ->  Index Scan using t1_pkey on t1 t1_1
+                                 Index Cond: (id = $3)
+                     ->  Index Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $3)
+               ->  Index Scan using t2_pkey on t2 t2_3
+                     Index Cond: (id = $3)
+         ->  Seq Scan on t3 t3_3
+               Filter: (id = $3)
+   ->  CTE Scan on c1_1
+         Filter: (id = $3)
+(53 rows)
+
+/*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1_1 t3_1)
+NestLoop(t1_2 t2_2)
+MergeJoin(t1_3 t3_3)
+NestLoop(t1_4 t2_4)
+NestLoop(t1_5 t2_5)
+not used hint:
+Leading(a t1_1 t1_2 t1_4 t1_5)
+duplication hint:
+error hint:
+
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_5.id = t3_5.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t2_5.id)
+                 ->  Sort
+                       Sort Key: t3_5.id
+                       ->  Seq Scan on t3 t3_5
+   InitPlan 2 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_2.id = t3_2.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t2_2.id)
+                 ->  Sort
+                       Sort Key: t3_2.id
+                       ->  Seq Scan on t3 t3_2
+   InitPlan 3 (returns $3)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_4.id = t3_4.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t2_4.id)
+                 ->  Sort
+                       Sort Key: t3_4.id
+                       ->  Seq Scan on t3 t3_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Nested Loop
+                                 ->  Index Scan using t2_pkey on t2 t2_1
+                                       Index Cond: (id = $3)
+                                 ->  Seq Scan on t3 t3_1
+                                       Filter: (id = $3)
+                           ->  Index Scan using t1_pkey on t1 t1_1
+                                 Index Cond: (id = $3)
+                     ->  Index Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $3)
+               ->  Index Scan using t2_pkey on t2 t2_3
+                     Index Cond: (id = $3)
+         ->  Seq Scan on t3 t3_3
+               Filter: (id = $3)
+   ->  CTE Scan on c1_1
+         Filter: (id = $3)
+(53 rows)
+
+/*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+LOG:  pg_hint_plan:
+used hint:
+Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)
+not used hint:
+HashJoin(t1_1 t3_1)
+NestLoop(t1_2 t2_2)
+MergeJoin(t1_3 t3_3)
+NestLoop(t1_4 t2_4)
+NestLoop(t1_5 t2_5)
+duplication hint:
+error hint:
+
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t2_5.id = t1_5.id)
+                 ->  Merge Join
+                       Merge Cond: (t2_5.id = t3_5.id)
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Sort
+                             Sort Key: t3_5.id
+                             ->  Seq Scan on t3 t3_5
+                 ->  Index Scan using t1_pkey on t1 t1_5
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t2_2.id = t1_2.id)
+                 ->  Merge Join
+                       Merge Cond: (t2_2.id = t3_2.id)
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Sort
+                             Sort Key: t3_2.id
+                             ->  Seq Scan on t3 t3_2
+                 ->  Index Scan using t1_pkey on t1 t1_2
+   InitPlan 3 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t2_4.id = t1_4.id)
+                 ->  Merge Join
+                       Merge Cond: (t2_4.id = t3_4.id)
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Sort
+                             Sort Key: t3_4.id
+                             ->  Seq Scan on t3 t3_4
+                 ->  Index Scan using t1_pkey on t1 t1_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Nested Loop
+                                 ->  Seq Scan on t3 t3_3
+                                       Filter: (id = $2)
+                                 ->  CTE Scan on c1_1
+                                       Filter: (id = $2)
+                           ->  Index Scan using t2_pkey on t2 t2_3
+                                 Index Cond: (id = $2)
+                     ->  Index Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $2)
+               ->  Seq Scan on t3 t3_1
+                     Filter: (id = $2)
+         ->  Index Scan using t2_pkey on t2 t2_1
+               Index Cond: (id = $2)
+   ->  Index Scan using t1_pkey on t1 t1_1
+         Index Cond: (id = $2)
+(53 rows)
+
+SET from_collapse_limit TO 1;
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_5.id = t3_5.id)
+                 ->  Merge Join
+                       Merge Cond: (t1_5.id = t2_5.id)
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                 ->  Sort
+                       Sort Key: t3_5.id
+                       ->  Seq Scan on t3 t3_5
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_2.id = t3_2.id)
+                 ->  Merge Join
+                       Merge Cond: (t1_2.id = t2_2.id)
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                 ->  Sort
+                       Sort Key: t3_2.id
+                       ->  Seq Scan on t3 t3_2
+   InitPlan 3 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_4.id = t3_4.id)
+                 ->  Merge Join
+                       Merge Cond: (t1_4.id = t2_4.id)
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                 ->  Sort
+                       Sort Key: t3_4.id
+                       ->  Seq Scan on t3 t3_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Index Scan using t1_pkey on t1 t1_1
+                           Index Cond: (id = $2)
+                     ->  Seq Scan on t3 t3_1
+                           Filter: (id = $2)
+               ->  Index Scan using t2_pkey on t2 t2_1
+                     Index Cond: (id = $2)
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Index Scan using t1_pkey on t1 t1_3
+                           Index Cond: (id = $2)
+                     ->  Seq Scan on t3 t3_3
+                           Filter: (id = $2)
+               ->  Index Scan using t2_pkey on t2 t2_3
+                     Index Cond: (id = $2)
+   ->  CTE Scan on c1_1
+         Filter: (id = $2)
+(53 rows)
+
+/*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)*/
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1_1 t3_1)
+NestLoop(t1_2 t2_2)
+MergeJoin(t1_3 t3_3)
+NestLoop(t1_4 t2_4)
+NestLoop(t1_5 t2_5)
+not used hint:
+duplication hint:
+error hint:
+
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_5.id = t3_5.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t2_5.id)
+                 ->  Sort
+                       Sort Key: t3_5.id
+                       ->  Seq Scan on t3 t3_5
+   InitPlan 2 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_2.id = t3_2.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t2_2.id)
+                 ->  Sort
+                       Sort Key: t3_2.id
+                       ->  Seq Scan on t3 t3_2
+   InitPlan 3 (returns $3)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_4.id = t3_4.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t2_4.id)
+                 ->  Sort
+                       Sort Key: t3_4.id
+                       ->  Seq Scan on t3 t3_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Index Scan using t2_pkey on t2 t2_1
+                           Index Cond: (id = $3)
+                     ->  Seq Scan on t3 t3_1
+                           Filter: (id = $3)
+               ->  Index Scan using t1_pkey on t1 t1_1
+                     Index Cond: (id = $3)
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Index Scan using t2_pkey on t2 t2_3
+                           Index Cond: (id = $3)
+                     ->  Seq Scan on t3 t3_3
+                           Filter: (id = $3)
+               ->  Index Scan using t1_pkey on t1 t1_3
+                     Index Cond: (id = $3)
+   ->  CTE Scan on c1_1
+         Filter: (id = $3)
+(53 rows)
+
+/*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t1_1 t1_2 t1_4 t1_5)*/
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+LOG:  pg_hint_plan:
+used hint:
+HashJoin(t1_1 t3_1)
+NestLoop(t1_2 t2_2)
+MergeJoin(t1_3 t3_3)
+NestLoop(t1_4 t2_4)
+NestLoop(t1_5 t2_5)
+not used hint:
+Leading(a t1_1 t1_2 t1_4 t1_5)
+duplication hint:
+error hint:
+
+                          QUERY PLAN                           
+---------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_5.id = t3_5.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Index Scan using t1_pkey on t1 t1_5
+                             Index Cond: (id = t2_5.id)
+                 ->  Sort
+                       Sort Key: t3_5.id
+                       ->  Seq Scan on t3 t3_5
+   InitPlan 2 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_2.id = t3_2.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Index Scan using t1_pkey on t1 t1_2
+                             Index Cond: (id = t2_2.id)
+                 ->  Sort
+                       Sort Key: t3_2.id
+                       ->  Seq Scan on t3 t3_2
+   InitPlan 3 (returns $3)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t1_4.id = t3_4.id)
+                 ->  Nested Loop
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Index Scan using t1_pkey on t1 t1_4
+                             Index Cond: (id = t2_4.id)
+                 ->  Sort
+                       Sort Key: t3_4.id
+                       ->  Seq Scan on t3 t3_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Index Scan using t2_pkey on t2 t2_1
+                           Index Cond: (id = $3)
+                     ->  Seq Scan on t3 t3_1
+                           Filter: (id = $3)
+               ->  Index Scan using t1_pkey on t1 t1_1
+                     Index Cond: (id = $3)
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Index Scan using t2_pkey on t2 t2_3
+                           Index Cond: (id = $3)
+                     ->  Seq Scan on t3 t3_3
+                           Filter: (id = $3)
+               ->  Index Scan using t1_pkey on t1 t1_3
+                     Index Cond: (id = $3)
+   ->  CTE Scan on c1_1
+         Filter: (id = $3)
+(53 rows)
+
+/*+HashJoin(t1_1 t3_1)MergeJoin(t1_3 t3_3)NestLoop(t1_2 t2_2)NestLoop(t1_4 t2_4)NestLoop(t1_5 t2_5)Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)*/
+EXPLAIN (COSTS false)
+WITH c1_1(id) AS (
+SELECT max(t1_5.id) FROM t1 t1_5, t2 t2_5, t3 t3_5 WHERE t1_5.id = t2_5.id AND t2_5.id = t3_5.id
+)
+SELECT t1_1.id, (
+SELECT max(t1_2.id) FROM t1 t1_2, t2 t2_2, t3 t3_2 WHERE t1_2.id = t2_2.id AND t2_2.id = t3_2.id
+) FROM t1 t1_1, t2 t2_1, t3 t3_1, (
+SELECT t1_3.id FROM t1 t1_3, t2 t2_3, t3 t3_3 WHERE t1_3.id = t2_3.id AND t2_3.id = t3_3.id
+) v1_1(id), c1_1 WHERE t1_1.id = t2_1.id AND t2_1.id = t3_1.id AND t2_1.id = v1_1.id AND v1_1.id = c1_1.id AND t1_1.id = (
+SELECT max(t1_4.id) FROM t1 t1_4, t2 t2_4, t3 t3_4 WHERE t1_4.id = t2_4.id AND t2_4.id = t3_4.id 
+);
+LOG:  pg_hint_plan:
+used hint:
+Leading(a t3_2 t3_5 t2_2 c1_1 t3_4 t3_3 t2_3 t2_4 t1_3 t2_5 t1_2 t3_1 t1_4 t2_1 t1_5 t1_1)
+not used hint:
+HashJoin(t1_1 t3_1)
+NestLoop(t1_2 t2_2)
+MergeJoin(t1_3 t3_3)
+NestLoop(t1_4 t2_4)
+NestLoop(t1_5 t2_5)
+duplication hint:
+error hint:
+
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Nested Loop
+   CTE c1_1
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t2_5.id = t1_5.id)
+                 ->  Merge Join
+                       Merge Cond: (t2_5.id = t3_5.id)
+                       ->  Index Scan using t2_pkey on t2 t2_5
+                       ->  Sort
+                             Sort Key: t3_5.id
+                             ->  Seq Scan on t3 t3_5
+                 ->  Index Scan using t1_pkey on t1 t1_5
+   InitPlan 2 (returns $1)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t2_2.id = t1_2.id)
+                 ->  Merge Join
+                       Merge Cond: (t2_2.id = t3_2.id)
+                       ->  Index Scan using t2_pkey on t2 t2_2
+                       ->  Sort
+                             Sort Key: t3_2.id
+                             ->  Seq Scan on t3 t3_2
+                 ->  Index Scan using t1_pkey on t1 t1_2
+   InitPlan 3 (returns $2)
+     ->  Aggregate
+           ->  Merge Join
+                 Merge Cond: (t2_4.id = t1_4.id)
+                 ->  Merge Join
+                       Merge Cond: (t2_4.id = t3_4.id)
+                       ->  Index Scan using t2_pkey on t2 t2_4
+                       ->  Sort
+                             Sort Key: t3_4.id
+                             ->  Seq Scan on t3 t3_4
+                 ->  Index Scan using t1_pkey on t1 t1_4
+   ->  Nested Loop
+         ->  Nested Loop
+               ->  Nested Loop
+                     ->  Nested Loop
+                           ->  Nested Loop
+                                 ->  Index Scan using t2_pkey on t2 t2_3
+                                       Index Cond: (id = $2)
+                                 ->  Seq Scan on t3 t3_3
+                                       Filter: (id = $2)
+                           ->  Index Scan using t1_pkey on t1 t1_3
+                                 Index Cond: (id = $2)
+                     ->  CTE Scan on c1_1
+                           Filter: (id = $2)
+               ->  Seq Scan on t3 t3_1
+                     Filter: (id = $2)
+         ->  Index Scan using t2_pkey on t2 t2_1
+               Index Cond: (id = $2)
+   ->  Index Scan using t1_pkey on t1 t1_1
+         Index Cond: (id = $2)
+(53 rows)
+
+-- ambigous error
+EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (public.t1.id = t2.id)
+   ->  Merge Join
+         Merge Cond: (public.t1.id = s0.t1.id)
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(7 rows)
+
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
+INFO:  hint syntax error at or near "NestLoop(t1 t2)"
+DETAIL:  Relation name "t1" is ambiguous.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+NestLoop(t1 t2)
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (public.t1.id = t2.id)
+   ->  Merge Join
+         Merge Cond: (public.t1.id = s0.t1.id)
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(7 rows)
+
+/*+Leading(t1 t2 t1)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
+INFO:  hint syntax error at or near "Leading(t1 t2 t1)"
+DETAIL:  Relation name "t1" is ambiguous.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Leading(t1 t2 t1)
+duplication hint:
+error hint:
+
+                  QUERY PLAN                   
+-----------------------------------------------
+ Merge Join
+   Merge Cond: (public.t1.id = t2.id)
+   ->  Merge Join
+         Merge Cond: (public.t1.id = s0.t1.id)
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(7 rows)
+
+-- identifier length test
+EXPLAIN (COSTS false) SELECT * FROM t1 "123456789012345678901234567890123456789012345678901234567890123" JOIN t2 ON ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id) JOIN t3 ON (t2.id = t3.id);
+                                                  QUERY PLAN                                                  
+--------------------------------------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
+   ->  Merge Join
+         Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id)
+         ->  Index Scan using t1_pkey on t1 "123456789012345678901234567890123456789012345678901234567890123"
+         ->  Index Scan using t2_pkey on t2
+   ->  Sort
+         Sort Key: t3.id
+         ->  Seq Scan on t3
+(9 rows)
+
+/*+
+Leading(123456789012345678901234567890123456789012345678901234567890123 t2 t3)
+SeqScan(123456789012345678901234567890123456789012345678901234567890123)
+MergeJoin(123456789012345678901234567890123456789012345678901234567890123 t2)
+Set(123456789012345678901234567890123456789012345678901234567890123 1)
+*/
+EXPLAIN (COSTS false) SELECT * FROM t1 "123456789012345678901234567890123456789012345678901234567890123" JOIN t2 ON ("123456789012345678901234567890123456789012345678901234567890123".id = t2.id) JOIN t3 ON (t2.id = t3.id);
+INFO:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(123456789012345678901234567890123456789012345678901234567890123)
+MergeJoin(123456789012345678901234567890123456789012345678901234567890123 t2)
+Leading(123456789012345678901234567890123456789012345678901234567890123 t2 t3)
+not used hint:
+duplication hint:
+error hint:
+Set(123456789012345678901234567890123456789012345678901234567890123 1)
+
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
+   ->  Merge Join
+         Merge Cond: (t2.id = "123456789012345678901234567890123456789012345678901234567890123".id)
+         ->  Index Scan using t2_pkey on t2
+         ->  Sort
+               Sort Key: "123456789012345678901234567890123456789012345678901234567890123".id
+               ->  Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
+   ->  Sort
+         Sort Key: t3.id
+         ->  Seq Scan on t3
+(11 rows)
+
+/*+
+Leading(1234567890123456789012345678901234567890123456789012345678901234 t2 t3)
+SeqScan(1234567890123456789012345678901234567890123456789012345678901234)
+MergeJoin(1234567890123456789012345678901234567890123456789012345678901234 t2)
+Set(1234567890123456789012345678901234567890123456789012345678901234 1)
+Set(cursor_tuple_fraction 0.1234567890123456789012345678901234567890123456789012345678901234)
+*/
+EXPLAIN (COSTS false) SELECT * FROM t1 "1234567890123456789012345678901234567890123456789012345678901234" JOIN t2 ON ("1234567890123456789012345678901234567890123456789012345678901234".id = t2.id) JOIN t3 ON (t2.id = t3.id);
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+INFO:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(123456789012345678901234567890123456789012345678901234567890123)
+MergeJoin(123456789012345678901234567890123456789012345678901234567890123 t2)
+Leading(123456789012345678901234567890123456789012345678901234567890123 t2 t3)
+Set(cursor_tuple_fraction 0.1234567890123456789012345678901234567890123456789012345678901234)
+not used hint:
+duplication hint:
+error hint:
+Set(123456789012345678901234567890123456789012345678901234567890123 1)
+
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
+ Merge Join
+   Merge Cond: ("123456789012345678901234567890123456789012345678901234567890123".id = t3.id)
+   ->  Merge Join
+         Merge Cond: (t2.id = "123456789012345678901234567890123456789012345678901234567890123".id)
+         ->  Index Scan using t2_pkey on t2
+         ->  Sort
+               Sort Key: "123456789012345678901234567890123456789012345678901234567890123".id
+               ->  Seq Scan on t1 "123456789012345678901234567890123456789012345678901234567890123"
+   ->  Sort
+         Sort Key: t3.id
+         ->  Seq Scan on t3
+(11 rows)
+
+SET "123456789012345678901234567890123456789012345678901234567890123" TO 1;
+ERROR:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
+SET "1234567890123456789012345678901234567890123456789012345678901234" TO 1;
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+ERROR:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
+SET cursor_tuple_fraction TO 1234567890123456789012345678901234567890123456789012345678901234;
+ERROR:  1.23457e+63 is outside the valid range for parameter "cursor_tuple_fraction" (0 .. 1)
+-- multi error
+/*+ Set(enable_seqscan 100)Set(seq_page_cost on)*/
+EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+INFO:  parameter "enable_seqscan" requires a Boolean value
+INFO:  parameter "seq_page_cost" requires a numeric value
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Set(enable_seqscan 100)
+Set(seq_page_cost on)
+
+              QUERY PLAN              
+--------------------------------------
+ Merge Join
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Index Scan using t2_pkey on t2
+(4 rows)
+
