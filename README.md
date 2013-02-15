@@ -17,6 +17,8 @@ Log into PostgreSQL and run the following commands. Schema can be whatever you w
     CREATE SCHEMA partman;
     CREATE EXTENSION pg_partman SCHEMA partman;
 
+Functions must either be run as a superuser or you can set the ownership of the extension functions to a superuser role and they will also work (SECURITY DEFINER is set).
+
 UPGRADE
 -------
 

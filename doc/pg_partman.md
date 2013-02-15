@@ -3,14 +3,9 @@ PostgreSQL Partition Manager Extension (pg_partman)
 
 About
 -----
-pg_partman is an extension to help make managing time or serial id based table partitioning easier.
+pg_partman is an extension to help make managing time or serial id based table partitioning easier. 
 
-For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc) & constraints. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables gives a more central place to manage things that's a little more natural than a configuration table or using setup functions.
-
-I'm trying to find a way to also inherit the permissions from the parent table in a similar way as above, but until I do that, the following method has been implemented. The "part_grants" table stores csv lists of the grants and roles that should be applied to the parent and all child tables. These grants will be applied to any new partitions as well as re-applying them to the parent and all other child tables whenever a new partition is made. Multiple entries can be made so that different roles can have different grants. Grants are only applied, never revoked. Here's an example of what to insert there:
-
-    INSERT INTO partman.part_config (parent_table, grants, roles) VALUES ('my_parent_table', 'INSERT,UPDATE,DELETE', 'role1,role2,role3');
-    INSERT INTO partman.part_config (parent_table, grants, roles) VALUES ('my_parent_table', 'SElECT', 'role4');
+For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc), constraints, privileges & ownership. For managing privileges, note that whenever a new partition is created, all child tables have their privileges reset to what the parent has at that time. All current grants are applied and any that the child had that don't match the parent anymore are revoked (with CASCADE option to ensure it doesn't fail the revoke). The defaults, indexes & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. And while you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
 
 If you attempt to insert data into a partition set that contains data for a partition that does not exist, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The check_parent() function provides monitoring for any data getting inserted into parents and the create_prev_* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
 
@@ -20,17 +15,17 @@ The PG Jobmon extension (https://github.com/omniti-labs/pg_jobmon) is optional a
 
 Functions
 ---------
-All functions are run with SECURITY DEFINER, so just ensure that the function owner has the needed privileges for table & function creation and removal.
+A superuser must be used to run these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner. 
 
 *create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false)*
- * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all indexes & constraints to parent table so they will propagate to children (permissions not yet propagating; working on it!).
+ * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children (permissions not yet propagating; working on it!).
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
  * p_control - the column that the partitioning will be based on. Must be a time or integer based column.
  * p_type - one of 4 values to set the partitioning type that will be used
  
  > **time-static** - Trigger function inserts only into specifically named partitions (handles data for current partition, 2 partitions ahead and 1 behind).  Cannot handle inserts to parent table outside the hard-coded time window. Function is kept up to date by run_maintenance() function. Ideal for high TPS tables that get inserts of new data only.  
- > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. Be aware that if the appropriate partition doesn't yet exist for the data inserted, the insert will fail.  
+ > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. Be aware that if the appropriate partition doesn't yet exist for the data inserted, data gets inserted to the parent.  
  > **id-static** - Same functionality as time-static but for a numeric range instead of time. When the id value has reached 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to create new partitions.  
  > **id-dynamic** - Same functionality and limitations as time-dynamic but for a numeric range instead of time. Uses same 50% rule as id-static to create future partitions. Does NOT require run_maintenance() function to create new partitions.  
 
@@ -90,10 +85,11 @@ All functions are run with SECURITY DEFINER, so just ensure that the function ow
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
 
 *apply_grants(p_parent_table text)*
- * This function is used to apply grants that are set in the part_grants table. It is called automatically any time a new partition is made and shouldn't be called directly unless needed.
- * It will apply configured grants to the parent table and all child tables every run.
- * Grants are only applied, never revoked.
- * p_parent_table - parent table to apply the grants to. MUST be schema qualified, even if in public schema.
+ * This function is used to apply ownership & grants on all child tables based on what the parent table has set. It is called automatically any time a new partition is made.
+ * This function can be called separately if you need to apply privilege changes before the next partition in the set is made.
+ * Privileges that the parent table has will be granted to all child tables and privilges that the parent does not have will be revoked (with CASCADE).
+ * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
+ * p_parent_table - parent table of the partition set. Must match a parent table name already configured in pg_partman.
 
 
 Tables
@@ -104,7 +100,7 @@ Tables
     The rest are managed by the extension itself and should not be changed unless absolutely necessary.
 
     parent_table            - Parent table of the partition set
-    type                    - Type of partitioning. An enum of the types listed above in create_parent() function section.
+    type                    - Type of partitioning. Must be one of the 4 types mentioned above.
     part_interval           - Text type value that determines the interval for each partition. 
                               Must be a value that can either be cast to the interval or bigint data types.
     control                 - Column used as the control for partition constraints. Must be a time or integer based column.
@@ -118,10 +114,3 @@ Tables
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
     datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
     last_partition          - Tracks the last successfully created partition and used to determine the next one.
-
-*part_grants*
-    Stores grants and the roles to apply them to for partition table sets
-
-    parent_table        - Parent table of the partition set
-    grants              - A comma separated list of the grants to apply to all tables in a partition set (Ex. INSERT,UPDATE,DELETE)
-    roles               - A comma separated list of the roles to apply these grants to (Ex. role1,role2,role3)

@@ -14,7 +14,7 @@ v_next_year                 text;
 v_part_interval             interval;
 v_quarter                   text;
 v_tablename                 text;
-v_type                      @extschema@.partition_type;
+v_type                      text;
 v_year                      text;
 
 BEGIN

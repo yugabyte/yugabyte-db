@@ -1,3 +1,10 @@
+0.4.0
+-- No separate configuration required for setting privileges on child tables anymore. Grants config table has been dropped. Please apply the grants you need to the parent table and they will be set for all children using that. Note that unlike before, privilges that don't exist on the parent will now be revoked from all child tables.
+-- create_parent() now enforces that a given parent table be schema qualified. Ensures that a custom search_path doesn't affect the wrong table by accident.
+-- Removed enum custom type and replace with check function.
+-- Applying of grants is now logged in pg_jobmon so if there's any issues with that step, it's clear where it failed.
+
+
 0.3.2
 -- Allow multiple grant commands for the same partition set in case different roles need different grants. Removed primary key constraint from part_grants table and updated apply_grants function 
 -- create_parent() function now ensures that the control column has a not null constraint.

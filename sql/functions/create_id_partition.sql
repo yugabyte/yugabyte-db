@@ -53,8 +53,15 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
 END LOOP;
 
--- Apply grants if configured
+IF v_jobmon_schema IS NOT NULL THEN
+    v_job_id := add_job('PARTMAN APPLYING GRANTS: '||p_parent_table);
+    v_step_id := add_step(v_job_id, 'Looping through all child tables applying privileges of the parent');
+END IF;
 PERFORM @extschema@.apply_grants(p_parent_table);
+IF v_jobmon_schema IS NOT NULL THEN
+    PERFORM update_step(v_step_id, 'OK', 'Done');
+    PERFORM close_job(v_job_id);
+END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';

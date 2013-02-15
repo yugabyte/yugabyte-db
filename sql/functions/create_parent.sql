@@ -1,7 +1,7 @@
 /*
  * Function to turn a table into the parent of a partition set
  */
-CREATE FUNCTION create_parent(p_parent_table text, p_control text, p_type @extschema@.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false) RETURNS void
+CREATE FUNCTION create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -23,6 +23,10 @@ v_tablename             text;
 v_time_interval         interval;
 
 BEGIN
+
+IF position('.' in p_parent_table) = 0  THEN
+    RAISE EXCEPTION 'Parent table must be schema qualified';
+END IF;
 
 SELECT tablename INTO v_tablename FROM pg_tables WHERE schemaname || '.' || tablename = p_parent_table;
     IF v_tablename IS NULL THEN
@@ -85,11 +89,12 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
         v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP + (v_time_interval*i))::timestamp);
     END LOOP;
 
+    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, datetime_string) VALUES
+        (p_parent_table, p_type, v_time_interval, p_control, p_premake, v_datetime_string);
     EXECUTE 'SELECT @extschema@.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','
         ||quote_literal(v_time_interval)||','||quote_literal(v_datetime_string)||','||quote_literal(v_partition_time)||')' INTO v_last_partition_name;
-
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, datetime_string, last_partition) VALUES
-        (p_parent_table, p_type, v_time_interval, p_control, p_premake, v_datetime_string, v_last_partition_name);
+    -- Doing separate update because create function needs parent table in config table for apply_grants()
+    UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time partitions premade: '||p_premake);
@@ -104,11 +109,12 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         v_partition_id = array_append(v_partition_id, (v_id_interval*i)+v_starting_partition_id);
     END LOOP;
 
+    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake) VALUES
+        (p_parent_table, p_type, v_id_interval, p_control, p_premake);
     EXECUTE 'SELECT @extschema@.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','
         ||v_id_interval||','||quote_literal(v_partition_id)||')' INTO v_last_partition_name;
-
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, last_partition) VALUES
-        (p_parent_table, p_type, v_id_interval, p_control, p_premake, v_last_partition_name);
+    -- Doing separate update because create function needs parent table in config table for apply_grants()
+    UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID partitions premade: '||p_premake);

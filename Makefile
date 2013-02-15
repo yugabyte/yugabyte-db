@@ -10,7 +10,7 @@ PG91 = $(shell $(PG_CONFIG) --version | egrep " 8\.| 9\.0" > /dev/null && echo n
 ifeq ($(PG91),yes)
 all: sql/$(EXTENSION)--$(EXTVERSION).sql
 
-sql/$(EXTENSION)--$(EXTVERSION).sql: sql/types/*.sql sql/tables/*.sql sql/functions/*.sql
+sql/$(EXTENSION)--$(EXTVERSION).sql: sql/types/*.sql sql/constraints/*.sql sql/tables/*.sql sql/functions/*.sql
 	cat $^ > $@
 
 DATA = $(wildcard sql/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql
