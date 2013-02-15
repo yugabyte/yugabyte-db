@@ -17,6 +17,9 @@ BEGIN
 END
 $$;
 
+DROP FUNCTION @extschema@.create_parent(text, text, @extschema@.partition_type, text, int, boolean);
+DROP TABLE @extschema@.part_grants;
+
 ALTER TABLE @extschema@.part_config ADD COLUMN new_type text;
 UPDATE @extschema@.part_config SET new_type = type;
 ALTER TABLE @extschema@.part_config ALTER new_type SET NOT NULL;
@@ -25,8 +28,6 @@ DROP TYPE @extschema@.partition_type;
 ALTER TABLE @extschema@.part_config RENAME new_type TO type;
 ALTER TABLE @extschema@.part_config ADD CONSTRAINT part_config_type_check CHECK (@extschema@.check_partition_type(type));
 
-DROP TABLE @extschema@.part_grants;
-DROP FUNCTION @extschema@.create_parent(text, text, @extschema@.partition_type, text, int, boolean);
 
 /*
  * Function to apply ownership & privileges on child tables using parent table as reference
