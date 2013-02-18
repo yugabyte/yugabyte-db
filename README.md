@@ -29,7 +29,7 @@ Make sure all the upgrade scripts for the version you have installed up to the m
 EXAMPLE
 -------
 
-First create a parent table with an appropriate column type for the partitioning you will do. Here's one with a columns that can be used for either
+First create a parent table with an appropriate column type for the partitioning type you will do. Apply all defaults, indexes, constraints, privileges & ownership to the parent table and they will be inherited to newly created child tables automatically (not already existing partitions). Here's one with columns that can be used for either
 
     CREATE schema test;
     CREATE TABLE test.part_test (col1 serial, col2 text, col3 timestamptz DEFAULT now());
@@ -38,7 +38,7 @@ If you're looking to do time-based partitioning, and will only be inserting new 
 
     SELECT part.create_parent('test.part_test', 'col3', 'time-static', 'daily');
 
-This will turn your table into a parent table and premake 4 future partitions. To make new partitions for time-based partitioning, run the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
+This will turn your table into a parent table and premake 4 future partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
 
 This should be enough to get you started. Please see the pg_partman.md file in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
 
