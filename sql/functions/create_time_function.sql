@@ -6,10 +6,6 @@ CREATE FUNCTION create_time_function(p_parent_table text) RETURNS void
     AS $$
 DECLARE
 
-v_1st_partition_name            text;
-v_1st_partition_timestamp       timestamp;
-v_2nd_partition_name            text;
-v_2nd_partition_timestamp       timestamp;
 v_control                       text;
 v_current_partition_name        text;
 v_current_partition_timestamp   timestamp;
@@ -18,13 +14,15 @@ v_final_partition_timestamp     timestamp;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_old_search_path               text;
+v_next_partition_name           text;
+v_next_partition_timestamp      timestamp;
 v_part_interval                 interval;
+v_premake                       int;
 v_prev_partition_name           text;
 v_prev_partition_timestamp      timestamp;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_type                          text;
-
 
 BEGIN
 
@@ -42,11 +40,17 @@ END IF;
 SELECT type
     , part_interval::interval
     , control
+    , premake
     , datetime_string
+INTO v_type
+    , v_part_interval
+    , v_control
+    , v_premake
+    , v_datetime_string
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (type = 'time-static' OR type = 'time-dynamic')
-INTO v_type, v_part_interval, v_control, v_datetime_string;
+AND (type = 'time-static' OR type = 'time-dynamic');
+
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
@@ -74,27 +78,30 @@ IF v_type = 'time-static' THEN
             v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
     END CASE;
     
-    v_prev_partition_timestamp := v_current_partition_timestamp - v_part_interval::interval;    
-    v_1st_partition_timestamp := v_current_partition_timestamp + v_part_interval::interval;
-    v_2nd_partition_timestamp := v_1st_partition_timestamp + v_part_interval::interval;
-    v_final_partition_timestamp := v_2nd_partition_timestamp + v_part_interval::interval;
-
-    v_prev_partition_name := p_parent_table || '_p' || to_char(v_prev_partition_timestamp, v_datetime_string);
     v_current_partition_name := p_parent_table || '_p' || to_char(v_current_partition_timestamp, v_datetime_string);
-    v_1st_partition_name := p_parent_table || '_p' || to_char(v_1st_partition_timestamp, v_datetime_string);
-    v_2nd_partition_name := p_parent_table || '_p' || to_char(v_2nd_partition_timestamp, v_datetime_string);
+    v_next_partition_timestamp := v_current_partition_timestamp + v_part_interval::interval;
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
-            IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_1st_partition_timestamp)|| ' THEN 
-                INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); 
-            ELSIF NEW.'||v_control||' >= '||quote_literal(v_1st_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_2nd_partition_timestamp)|| ' THEN 
-                INSERT INTO '||v_1st_partition_name||' VALUES (NEW.*); 
-            ELSIF NEW.'||v_control||' >= '||quote_literal(v_2nd_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_final_partition_timestamp)|| ' THEN 
-                INSERT INTO '||v_2nd_partition_name||' VALUES (NEW.*); 
-            ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_current_partition_timestamp)|| ' THEN 
+            IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_next_partition_timestamp)|| ' THEN 
+                INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); ';
+    FOR i IN 1..v_premake LOOP
+        v_prev_partition_timestamp := v_current_partition_timestamp - (v_part_interval::interval * i);
+        v_next_partition_timestamp := v_current_partition_timestamp + (v_part_interval::interval * i);
+        v_final_partition_timestamp := v_next_partition_timestamp + (v_part_interval::interval);
+        v_prev_partition_name := p_parent_table || '_p' || to_char(v_prev_partition_timestamp, v_datetime_string);
+        v_next_partition_name := p_parent_table || '_p' || to_char(v_next_partition_timestamp, v_datetime_string);
+
+        v_trig_func := v_trig_func ||'
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||
+                    quote_literal(v_prev_partition_timestamp + v_part_interval::interval)|| ' THEN 
                 INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); 
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_next_partition_timestamp)||' AND NEW.'||v_control||' < '||
+                    quote_literal(v_final_partition_timestamp)|| ' THEN 
+                INSERT INTO '||v_next_partition_name||' VALUES (NEW.*); ';
+    END LOOP;
+    v_trig_func := v_trig_func ||' 
             ELSE 
                 RETURN NEW; 
             END IF; 
@@ -102,11 +109,11 @@ IF v_type = 'time-static' THEN
         RETURN NULL; 
         END $t$;';
 
---    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'OK', 'Added function for current time interval: '||v_current_partition_timestamp||' to '||(v_1st_partition_timestamp-'1sec'::interval));
+        PERFORM update_step(v_step_id, 'OK', 'Added function for current time interval: '||
+            v_current_partition_timestamp||' to '||(v_final_partition_timestamp-'1sec'::interval));
     END IF;
 
 ELSIF v_type = 'time-dynamic' THEN
@@ -157,7 +164,6 @@ ELSIF v_type = 'time-dynamic' THEN
         RETURN NULL; 
         END $t$;';
 
-    --RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
     IF v_jobmon_schema IS NOT NULL THEN

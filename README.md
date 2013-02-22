@@ -5,9 +5,10 @@ pg_partman is an extension to create and manage both time-based and serial-based
 
 INSTALLATION
 ------------
-Recommended: pg_jobmon (>=1.0.0). PG Job Monitor will automatically be used if it is installed.
+Recommended: pg_jobmon (>=1.0.0). PG Job Monitor will automatically be used if it is installed.  
+https://github.com/omniti-labs/pg_jobmon
 
-In directory where you downloaded mimeo to run
+In directory where you downloaded pg_partman to run
 
     make
     make install
@@ -38,7 +39,7 @@ If you're looking to do time-based partitioning, and will only be inserting new 
 
     SELECT part.create_parent('test.part_test', 'col3', 'time-static', 'daily');
 
-This will turn your table into a parent table and premake 4 future partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
+This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
 
 This should be enough to get you started. Please see the pg_partman.md file in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
 

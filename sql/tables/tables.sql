@@ -10,7 +10,8 @@ CREATE TABLE part_config (
     datetime_string text,
     last_partition text,
     CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table),
-    CONSTRAINT part_config_type_check CHECK (@extschema@.check_partition_type(type))
+    CONSTRAINT part_config_type_check CHECK (@extschema@.check_partition_type(type)),
+    CONSTRAINT positive_premake_check CHECK (premake > 0)
 );
 CREATE INDEX part_config_type_idx ON @extschema@.part_config (type);
 SELECT pg_catalog.pg_extension_config_dump('part_config', '');

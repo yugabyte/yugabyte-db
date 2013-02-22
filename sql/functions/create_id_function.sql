@@ -6,10 +6,6 @@ CREATE FUNCTION create_id_function(p_parent_table text, p_current_id bigint) RET
     AS $$
 DECLARE
 
-v_1st_partition_name            text;
-v_1st_partition_id              bigint;
-v_2nd_partition_name            text;
-v_2nd_partition_id              bigint;
 v_control                       text;
 v_current_partition_name        text;
 v_current_partition_id          bigint;
@@ -18,15 +14,16 @@ v_final_partition_id            bigint;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_last_partition                text;
+v_next_partition_id             bigint;
+v_next_partition_name           text;
 v_old_search_path               text;
 v_part_interval                 bigint;
 v_premake                       int;
-v_prev_partition_name           text;
 v_prev_partition_id             bigint;
+v_prev_partition_name           text;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_type                          text;
-
 
 BEGIN
 
@@ -46,25 +43,23 @@ SELECT type
     , control
     , premake
     , last_partition
+INTO v_type
+    , v_part_interval
+    , v_control
+    , v_premake
+    , v_last_partition
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (type = 'id-static' OR type = 'id-dynamic')
-INTO v_type, v_part_interval, v_control, v_premake, v_last_partition;
+AND (type = 'id-static' OR type = 'id-dynamic');
+
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
 IF v_type = 'id-static' THEN
     v_current_partition_id := p_current_id - (p_current_id % v_part_interval);
-    v_prev_partition_id := v_current_partition_id - v_part_interval;    
-    v_1st_partition_id := v_current_partition_id + v_part_interval;
-    v_2nd_partition_id := v_1st_partition_id + v_part_interval;
-    v_final_partition_id := v_2nd_partition_id + v_part_interval;
-
-    v_prev_partition_name := p_parent_table || '_p' || v_prev_partition_id::text;
+    v_next_partition_id := v_current_partition_id + v_part_interval;
     v_current_partition_name := p_parent_table || '_p' || v_current_partition_id::text;
-    v_1st_partition_name := p_parent_table || '_p' || v_1st_partition_id::text;
-    v_2nd_partition_name := p_parent_table || '_p' || v_2nd_partition_id::text;
 
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
@@ -74,21 +69,28 @@ IF v_type = 'id-static' THEN
             v_next_partition_name   text;         
         BEGIN
         IF TG_OP = ''INSERT'' THEN 
-            IF NEW.'||v_control||' >= '||v_current_partition_id||' AND NEW.'||v_control||' < '||v_1st_partition_id|| ' THEN 
-                INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); 
-            ELSIF NEW.'||v_control||' >= '||v_1st_partition_id||' AND NEW.'||v_control||' < '||v_2nd_partition_id|| ' THEN 
-                INSERT INTO '||v_1st_partition_name||' VALUES (NEW.*); 
-            ELSIF NEW.'||v_control||' >= '||v_2nd_partition_id||' AND NEW.'||v_control||' < '||quote_literal(v_final_partition_id)|| ' THEN 
-                INSERT INTO '||v_2nd_partition_name||' VALUES (NEW.*);
-            ';
-            -- If the first partition's function, don't have rule for previous partition
-            IF v_prev_partition_id >= 0 THEN
-            v_trig_func := v_trig_func ||'ELSIF NEW.'||v_control||' >= '||v_prev_partition_id||' AND NEW.'||v_control||' < '||v_current_partition_id|| ' THEN 
-                INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*);
-            ';
-            END IF;
+            IF NEW.'||v_control||' >= '||v_current_partition_id||' AND NEW.'||v_control||' < '||v_next_partition_id|| ' THEN 
+                INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); ';
 
-            v_trig_func := v_trig_func ||'ELSE
+        FOR i IN 1..v_premake LOOP
+            v_prev_partition_id := v_current_partition_id - (v_part_interval * i);
+            v_next_partition_id := v_current_partition_id + (v_part_interval * i);
+            v_final_partition_id := v_next_partition_id + v_part_interval;
+            v_prev_partition_name := p_parent_table || '_p' || v_prev_partition_id::text;
+            v_next_partition_name := p_parent_table || '_p' || v_next_partition_id::text;
+            -- Only make previous partitions if they're starting above zero
+            IF v_prev_partition_id >= 0 THEN
+                v_trig_func := v_trig_func ||'
+            ELSIF NEW.'||v_control||' >= '||v_prev_partition_id||' AND NEW.'||v_control||' < '||v_prev_partition_id + v_part_interval|| ' THEN 
+                INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); ';
+            END IF;
+            v_trig_func := v_trig_func ||'
+            ELSIF NEW.'||v_control||' >= '||v_next_partition_id||' AND NEW.'||v_control||' < '||v_final_partition_id|| ' THEN 
+                INSERT INTO '||v_next_partition_name||' VALUES (NEW.*); ';
+        END LOOP;
+
+        v_trig_func := v_trig_func ||'
+            ELSE
                 RETURN NEW;
             END IF;
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
@@ -105,11 +107,10 @@ IF v_type = 'id-static' THEN
         RETURN NULL; 
         END $t$;';
 
-    --RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'OK', 'Added function for current id interval: '||v_current_partition_id||' to '||v_1st_partition_id-1);
+        PERFORM update_step(v_step_id, 'OK', 'Added function for current id interval: '||v_current_partition_id||' to '||v_final_partition_id-1);
     END IF;
 
 ELSIF v_type = 'id-dynamic' THEN
@@ -157,7 +158,6 @@ ELSIF v_type = 'id-dynamic' THEN
         RETURN NULL; 
         END $t$;';
 
---    RAISE NOTICE 'v_trig_func: %',v_trig_func;
     EXECUTE v_trig_func;
 
     IF v_jobmon_schema IS NOT NULL THEN

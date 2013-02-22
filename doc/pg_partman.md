@@ -17,17 +17,17 @@ Functions
 ---------
 A superuser must be used to run these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner. 
 
-*create_parent(p_parent_table text, p_control text, p_type part.partition_type, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false)*
+*create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false)*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
  * p_control - the column that the partitioning will be based on. Must be a time or integer based column.
  * p_type - one of 4 values to set the partitioning type that will be used
  
- > **time-static** - Trigger function inserts only into specifically named partitions (handles data for current partition, 2 partitions ahead and 1 behind).  Cannot handle inserts to parent table outside the hard-coded time window. Function is kept up to date by run_maintenance() function. Ideal for high TPS tables that get inserts of new data only.  
+ > **time-static** - Trigger function inserts only into specifically named partitions. The the number of partitions managed behind and ahead of the current one is determined by the **premake** config value (default of 4 means data for 4 previous and 4 future partitions are handled automatically). *Beware setting the premake value too high as that will lessen the efficiency of this partitioning method.* Inserts to parent table outside the hard-coded time window will go to the parent. Trigger function is kept up to date by run_maintenance() function. Ideal for high TPS tables that get inserts of new data only.  
  > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. Be aware that if the appropriate partition doesn't yet exist for the data inserted, data gets inserted to the parent.  
- > **id-static** - Same functionality as time-static but for a numeric range instead of time. When the id value has reached 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to create new partitions.  
- > **id-dynamic** - Same functionality and limitations as time-dynamic but for a numeric range instead of time. Uses same 50% rule as id-static to create future partitions. Does NOT require run_maintenance() function to create new partitions.  
+ > **id-static** - Same functionality and use of the premake value as time-static but for a numeric range instead of time. When the id value has reached 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.
+ > **id-dynamic** - Same functionality and limitations as time-dynamic but for a numeric range instead of time. Uses same 50% rule as id-static to create future partitions. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.
 
  * p_interval - the time or numeric range interval for each partition. Supported values are:
 
@@ -39,9 +39,9 @@ A superuser must be used to run these functions in order to set privileges & own
  > **hourly** - One partition per hour  
  > **half-hour** - One partition per 30 minute interval on the half-hour (1200, 1230)  
  > **quarter-hour** - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)  
- > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. This is the actual integer value, not text values like time-based partitioning.  
+ > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. This is the actual integer value, not text values like time-based partitioning. Must be greater than zero.
 
- * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. 
+ * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle.
  * p_debug - turns on additional debugging information (not yet working).
 
 *run_maintenance()*
@@ -85,17 +85,17 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
 
 *reapply_privileges(p_parent_table text)*
- * This function is used to reapply ownership & grants on all child tables based on what the parent table has set.
+ * This function is used to reapply ownership & grants on all child tables based on what the parent table has set. 
  * Privileges that the parent table has will be granted to all child tables and privilges that the parent does not have will be revoked (with CASCADE).
  * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
  * Be aware that for large partition sets, this can be a very long running operation and is why it was made into a separate function to run independently. Only privileges that are different between the parent & child are applied, but it still has to do system catalog lookups and comparisons for every single child partition and all individual privileges on each.
- * p_parent_table - parent table of the partition set. Must match a parent table name already configured in pg_partman.
+ * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
 
 Tables
 ------
 *part_config*  
     Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are
-    **retention**, **retention_keep_table**, & **retention_keep_index** to set the partition set's retention policy or **premake** to change the default.   
+    **retention**, **retention_keep_table**, & **retention_keep_index** to configure the partition set's retention policy or **premake** to change the default.   
     The rest are managed by the extension itself and should not be changed unless absolutely necessary.
 
     parent_table            - Parent table of the partition set
@@ -104,6 +104,7 @@ Tables
                               Must be a value that can either be cast to the interval or bigint data types.
     control                 - Column used as the control for partition constraints. Must be a time or integer based column.
     premake                 - How many partitions to keep pre-made ahead of the current partition. Default is 4.
+                              Also manages number of partitions handled by static partitioning method. See create_parent() function for more info.
     retention               - Text type value that determines how old the data in a child partition can be before it is dropped. 
                               Must be a value that can either be cast to the interval or bigint data types. 
                               Leave this column NULL (the default) to always keep all child partitions. See **About** section for more info.

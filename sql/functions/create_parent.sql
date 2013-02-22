@@ -79,6 +79,9 @@ CASE
     ELSE
         IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
             v_id_interval := p_interval::bigint;
+            IF v_id_interval <= 0 THEN
+                RAISE EXCEPTION 'Interval for serial partitioning must be greater than zero';
+            END IF;
         ELSE
             RAISE EXCEPTION 'Invalid interval for time based partitioning: %', p_interval;
         END IF;
@@ -86,6 +89,9 @@ END CASE;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' THEN
     FOR i IN 0..p_premake LOOP
+        IF i > 0 THEN -- also create previous partitions equal to premake, but avoid duplicating current
+            v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP - (v_time_interval*i))::timestamp);
+        END IF;
         v_partition_time := array_append(v_partition_time, quote_literal(CURRENT_TIMESTAMP + (v_time_interval*i))::timestamp);
     END LOOP;
 
@@ -106,7 +112,11 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
     EXECUTE 'SELECT COALESCE(max('||p_control||')::bigint, 0) FROM '||p_parent_table||' LIMIT 1' INTO v_max;
     v_starting_partition_id := v_max - (v_max % v_id_interval);
     FOR i IN 0..p_premake LOOP
-        v_partition_id = array_append(v_partition_id, (v_id_interval*i)+v_starting_partition_id);
+        -- Only make previous partitions if ID value is less than the starting value and positive
+        IF (v_starting_partition_id - (v_id_interval*i)) > 0 AND (v_starting_partition_id - (v_id_interval*i)) < v_starting_partition_id THEN
+            v_partition_id = array_append(v_partition_id, (v_starting_partition_id - v_id_interval*i));
+        END IF; 
+        v_partition_id = array_append(v_partition_id, (v_id_interval*i) + v_starting_partition_id);
     END LOOP;
 
     INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake) VALUES
@@ -150,7 +160,6 @@ IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
-
 
 EXCEPTION
     WHEN OTHERS THEN

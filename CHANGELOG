@@ -1,3 +1,11 @@
+0.4.2
+-- The static partitioning trigger function can now handle partitions based on the configured premake value. For example, the default premake value is 4 so it can now handle data for the current partition, 4 previous partitions and 4 future partitions. Changing the premake value will cause the trigger function to be changed appropriately the next time a partition is automatically created. Except for initial setup, at no time does the automated partitioning system create old partitions (see the create_prev_* functions if you need to do this). If you change the premake value and there is no previous partition for it to put data in, it will go to the parent table.
+-- create_parent() now accounts for the new static partitioning rules. For time-static, it will create the current partition as well as previous and future partitions equal to the configured premake number (default premake being 4, you will end up with 9 partitions). For id-static, it will only create previous partitions if the resulting rules handle id values greater than zero. So if you're starting from zero you will only have future partitions created, and no previous.
+-- Constraint now ensures that premake value is greater than zero.
+-- create_parent() now ensures interval value for serial partitioning is greater than zero.
+-- Much more extensive pgTAP tests.
+
+
 0.4.1
 -- Changed the privilege management system to apply the current parent's privileges only to new child tables at the time they're created. No longer re-applies privileges to existing child tables. When partition sets grew large, this was causing serious performance problems and was too expensive an operation to run every time a child was created.
 -- Dropped apply_grants() function. New child table privileges are now managed by the partition creation functions themselves.
