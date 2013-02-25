@@ -97,6 +97,7 @@ static unsigned char unescape_single_char(unsigned char c);
 %option 8bit
 %option never-interactive
 %option nodefault
+%option noinput
 %option nounput
 %option noyywrap
 %option prefix="orafce_sql_yy"
