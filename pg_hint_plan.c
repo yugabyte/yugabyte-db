@@ -2395,8 +2395,8 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 		hint->inner_nrels = bms_num_members(inner_relids);
 		hint->inner_joinrelids = bms_copy(inner_relids);
 
-		hstate->join_hint_level[*njoinrels] =
-			lappend(hstate->join_hint_level[*njoinrels], hint);
+		hstate->join_hint_level[hint->nrels] =
+			lappend(hstate->join_hint_level[hint->nrels], hint);
 	}
 	else
 	{
