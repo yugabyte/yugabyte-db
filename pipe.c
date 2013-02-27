@@ -137,7 +137,6 @@ message_buffer *input_buffer = NULL;
 pipe* pipes = NULL;
 LWLockId shmem_lock = NOT_INITIALIZED;
 unsigned int sid;                                 /* session id */
-Oid uid;
 
 extern alert_event *events;
 extern alert_lock  *locks;
@@ -218,7 +217,6 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 	if (pipes == NULL)
 	{
 		sh_mem = ShmemInitStruct("dbms_pipe", size, &found);
-		uid = GetUserId();
 		if (sh_mem == NULL)
 			ereport(ERROR,
 					(errcode(ERRCODE_OUT_OF_MEMORY),
@@ -296,7 +294,7 @@ find_pipe(text* pipe_name, bool* created, bool only_check)
 		{
 			/* check owner if non public pipe */
 
-			if (pipes[i].creator != NULL && pipes[i].uid != uid)
+			if (pipes[i].creator != NULL && pipes[i].uid != GetUserId())
 			{
 				LWLockRelease(shmem_lock);
 				ereport(ERROR,
