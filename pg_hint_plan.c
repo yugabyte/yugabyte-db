@@ -141,7 +141,7 @@ typedef Hint *(*HintCreateFunction) (const char *hint_str,
 									 const char *keyword,
 									 HintKeyword hint_keyword);
 typedef void (*HintDeleteFunction) (Hint *hint);
-typedef void (*HintDumpFunction) (Hint *hint, StringInfo buf);
+typedef void (*HintDescFunction) (Hint *hint, StringInfo buf);
 typedef int (*HintCmpFunction) (const Hint *a, const Hint *b);
 typedef const char *(*HintParseFunction) (Hint *hint, HintState *hstate,
 										  Query *parse, const char *str);
@@ -185,7 +185,7 @@ struct Hint
 	HintType			type;
 	HintStatus			state;
 	HintDeleteFunction	delete_func;
-	HintDumpFunction	dump_func;
+	HintDescFunction	desc_func;
 	HintCmpFunction		cmp_func;
 	HintParseFunction	parse_func;
 };
@@ -302,33 +302,33 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
 static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword,
 								  HintKeyword hint_keyword);
 static void ScanMethodHintDelete(ScanMethodHint *hint);
-static void ScanMethodHintDump(ScanMethodHint *hint, StringInfo buf);
+static void ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf);
 static int ScanMethodHintCmp(const ScanMethodHint *a, const ScanMethodHint *b);
 static const char *ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
 static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword,
 								  HintKeyword hint_keyword);
 static void JoinMethodHintDelete(JoinMethodHint *hint);
-static void JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf);
+static void JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf);
 static int JoinMethodHintCmp(const JoinMethodHint *a, const JoinMethodHint *b);
 static const char *JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
 static Hint *LeadingHintCreate(const char *hint_str, const char *keyword,
 							   HintKeyword hint_keyword);
 static void LeadingHintDelete(LeadingHint *hint);
-static void LeadingHintDump(LeadingHint *hint, StringInfo buf);
+static void LeadingHintDesc(LeadingHint *hint, StringInfo buf);
 static int LeadingHintCmp(const LeadingHint *a, const LeadingHint *b);
 static const char *LeadingHintParse(LeadingHint *hint, HintState *hstate,
 									Query *parse, const char *str);
 static Hint *SetHintCreate(const char *hint_str, const char *keyword,
 						   HintKeyword hint_keyword);
 static void SetHintDelete(SetHint *hint);
-static void SetHintDump(SetHint *hint, StringInfo buf);
+static void SetHintDesc(SetHint *hint, StringInfo buf);
 static int SetHintCmp(const SetHint *a, const SetHint *b);
 static const char *SetHintParse(SetHint *hint, HintState *hstate, Query *parse,
 								const char *str);
 
-static void dump_quote_value(StringInfo buf, const char *value);
+static void quote_value(StringInfo buf, const char *value);
 
 static const char *parse_quote_value_term_char(const char *str, char **word,
 											   bool truncate, char term_char);
@@ -509,7 +509,7 @@ ScanMethodHintCreate(const char *hint_str, const char *keyword,
 	hint->base.type = HINT_TYPE_SCAN_METHOD;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) ScanMethodHintDelete;
-	hint->base.dump_func = (HintDumpFunction) ScanMethodHintDump;
+	hint->base.desc_func = (HintDescFunction) ScanMethodHintDesc;
 	hint->base.cmp_func = (HintCmpFunction) ScanMethodHintCmp;
 	hint->base.parse_func = (HintParseFunction) ScanMethodHintParse;
 	hint->relname = NULL;
@@ -544,7 +544,7 @@ JoinMethodHintCreate(const char *hint_str, const char *keyword,
 	hint->base.type = HINT_TYPE_JOIN_METHOD;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) JoinMethodHintDelete;
-	hint->base.dump_func = (HintDumpFunction) JoinMethodHintDump;
+	hint->base.desc_func = (HintDescFunction) JoinMethodHintDesc;
 	hint->base.cmp_func = (HintCmpFunction) JoinMethodHintCmp;
 	hint->base.parse_func = (HintParseFunction) JoinMethodHintParse;
 	hint->nrels = 0;
@@ -590,7 +590,7 @@ LeadingHintCreate(const char *hint_str, const char *keyword,
 	hint->base.type = HINT_TYPE_LEADING;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction)LeadingHintDelete;
-	hint->base.dump_func = (HintDumpFunction) LeadingHintDump;
+	hint->base.desc_func = (HintDescFunction) LeadingHintDesc;
 	hint->base.cmp_func = (HintCmpFunction) LeadingHintCmp;
 	hint->base.parse_func = (HintParseFunction) LeadingHintParse;
 	hint->relations = NIL;
@@ -623,7 +623,7 @@ SetHintCreate(const char *hint_str, const char *keyword,
 	hint->base.type = HINT_TYPE_SET;
 	hint->base.state = HINT_STATE_NOTUSED;
 	hint->base.delete_func = (HintDeleteFunction) SetHintDelete;
-	hint->base.dump_func = (HintDumpFunction) SetHintDump;
+	hint->base.desc_func = (HintDescFunction) SetHintDesc;
 	hint->base.cmp_func = (HintCmpFunction) SetHintCmp;
 	hint->base.parse_func = (HintParseFunction) SetHintParse;
 	hint->name = NULL;
@@ -691,14 +691,10 @@ HintStateDelete(HintState *hstate)
 }
 
 /*
- * dump functions
- */
-
-/*
- * Quote value as needed and dump it to buf.
+ * Copy given value into buf, with quoting with '"' if necessary.
  */
 static void
-dump_quote_value(StringInfo buf, const char *value)
+quote_value(StringInfo buf, const char *value)
 {
 	bool		need_quote = false;
 	const char *str;
@@ -726,36 +722,36 @@ dump_quote_value(StringInfo buf, const char *value)
 }
 
 static void
-ScanMethodHintDump(ScanMethodHint *hint, StringInfo buf)
+ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf)
 {
 	ListCell   *l;
 
 	appendStringInfo(buf, "%s(", hint->base.keyword);
 	if (hint->relname != NULL)
 	{
-		dump_quote_value(buf, hint->relname);
+		quote_value(buf, hint->relname);
 		foreach(l, hint->indexnames)
 		{
 			appendStringInfoCharMacro(buf, ' ');
-			dump_quote_value(buf, (char *) lfirst(l));
+			quote_value(buf, (char *) lfirst(l));
 		}
 	}
 	appendStringInfoString(buf, ")\n");
 }
 
 static void
-JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf)
+JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf)
 {
 	int	i;
 
 	appendStringInfo(buf, "%s(", hint->base.keyword);
 	if (hint->relnames != NULL)
 	{
-		dump_quote_value(buf, hint->relnames[0]);
+		quote_value(buf, hint->relnames[0]);
 		for (i = 1; i < hint->nrels; i++)
 		{
 			appendStringInfoCharMacro(buf, ' ');
-			dump_quote_value(buf, hint->relnames[i]);
+			quote_value(buf, hint->relnames[i]);
 		}
 	}
 	appendStringInfoString(buf, ")\n");
@@ -763,7 +759,7 @@ JoinMethodHintDump(JoinMethodHint *hint, StringInfo buf)
 }
 
 static void
-OuterInnerDump(OuterInnerRels *outer_inner, StringInfo buf)
+OuterInnerDesc(OuterInnerRels *outer_inner, StringInfo buf)
 {
 	if (outer_inner->relation == NULL)
 	{
@@ -780,17 +776,17 @@ OuterInnerDump(OuterInnerRels *outer_inner, StringInfo buf)
 			else
 				appendStringInfoCharMacro(buf, ' ');
 
-			OuterInnerDump(lfirst(l), buf);
+			OuterInnerDesc(lfirst(l), buf);
 		}
 
 		appendStringInfoCharMacro(buf, ')');
 	}
 	else
-		dump_quote_value(buf, outer_inner->relation);
+		quote_value(buf, outer_inner->relation);
 }
 
 static void
-LeadingHintDump(LeadingHint *hint, StringInfo buf)
+LeadingHintDesc(LeadingHint *hint, StringInfo buf)
 {
 	bool		is_first;
 	ListCell   *l;
@@ -806,17 +802,17 @@ LeadingHintDump(LeadingHint *hint, StringInfo buf)
 			else
 				appendStringInfoCharMacro(buf, ' ');
 
-			dump_quote_value(buf, (char *) lfirst(l));
+			quote_value(buf, (char *) lfirst(l));
 		}
 	}
 	else
-		OuterInnerDump(hint->outer_inner, buf);
+		OuterInnerDesc(hint->outer_inner, buf);
 
 	appendStringInfoString(buf, ")\n");
 }
 
 static void
-SetHintDump(SetHint *hint, StringInfo buf)
+SetHintDesc(SetHint *hint, StringInfo buf)
 {
 	bool		is_first = true;
 	ListCell   *l;
@@ -829,14 +825,18 @@ SetHintDump(SetHint *hint, StringInfo buf)
 		else
 			appendStringInfoCharMacro(buf, ' ');
 
-		dump_quote_value(buf, (char *) lfirst(l));
+		quote_value(buf, (char *) lfirst(l));
 	}
 	appendStringInfo(buf, ")\n");
 }
 
+/*
+ * Append string which repserents all hints in a given state to buf, with
+ * preceding title with them.
+ */
 static void
-all_hint_dump(HintState *hstate, StringInfo buf, const char *title,
-			  HintStatus state)
+desc_hint_in_state(HintState *hstate, StringInfo buf, const char *title,
+					HintStatus state)
 {
 	int	i;
 
@@ -846,10 +846,13 @@ all_hint_dump(HintState *hstate, StringInfo buf, const char *title,
 		if (hstate->all_hints[i]->state != state)
 			continue;
 
-		hstate->all_hints[i]->dump_func(hstate->all_hints[i], buf);
+		hstate->all_hints[i]->desc_func(hstate->all_hints[i], buf);
 	}
 }
 
+/*
+ * Dump contents of given hstate to server log with log level LOG.
+ */
 static void
 HintStateDump(HintState *hstate)
 {
@@ -864,10 +867,10 @@ HintStateDump(HintState *hstate)
 	initStringInfo(&buf);
 
 	appendStringInfoString(&buf, "pg_hint_plan:\n");
-	all_hint_dump(hstate, &buf, "used hint", HINT_STATE_USED);
-	all_hint_dump(hstate, &buf, "not used hint", HINT_STATE_NOTUSED);
-	all_hint_dump(hstate, &buf, "duplication hint", HINT_STATE_DUPLICATION);
-	all_hint_dump(hstate, &buf, "error hint", HINT_STATE_ERROR);
+	desc_hint_in_state(hstate, &buf, "used hint", HINT_STATE_USED);
+	desc_hint_in_state(hstate, &buf, "not used hint", HINT_STATE_NOTUSED);
+	desc_hint_in_state(hstate, &buf, "duplication hint", HINT_STATE_DUPLICATION);
+	desc_hint_in_state(hstate, &buf, "error hint", HINT_STATE_ERROR);
 
 	elog(LOG, "%s", buf.data);
 
@@ -2114,7 +2117,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 				if (pg_hint_plan_debug_print)
 				{
 					appendStringInfoCharMacro(&buf, ' ');
-					dump_quote_value(&buf, indexname);
+					quote_value(&buf, indexname);
 				}
 
 				break;
@@ -2140,7 +2143,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 			relname = hint->relname;
 
 		initStringInfo(&rel_buf);
-		dump_quote_value(&rel_buf, relname);
+		quote_value(&rel_buf, relname);
 
 		ereport(LOG,
 				(errmsg("available indexes for %s(%s):%s",
