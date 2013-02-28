@@ -328,8 +328,8 @@ static int SetHintCmp(const SetHint *a, const SetHint *b);
 static const char *SetHintParse(SetHint *hint, HintState *hstate, Query *parse,
 								const char *str);
 
-static void dump_quote_value_quote_char(StringInfo buf, const char *value,
-										char quote_char);
+static void dump_quote_value(StringInfo buf, const char *value);
+
 static const char *parse_quote_value_term_char(const char *str, char **word,
 											   bool truncate, char term_char);
 
@@ -700,22 +700,12 @@ HintStateDelete(HintState *hstate)
 static void
 dump_quote_value(StringInfo buf, const char *value)
 {
-	dump_quote_value_quote_char(buf, value, '"');
-}
-
-/*
- * We specified a character to quote for by addition in quote_char.
- * If there is not a character to quote, we specified '"'.
- */
-static void
-dump_quote_value_quote_char(StringInfo buf, const char *value, char quote_char)
-{
 	bool		need_quote = false;
 	const char *str;
 
 	for (str = value; *str != '\0'; str++)
 	{
-		if (isspace(*str) || *str == ')' || *str == '"' || *str == quote_char)
+		if (isspace(*str) || *str == '(' || *str == ')' || *str == '"')
 		{
 			need_quote = true;
 			appendStringInfoCharMacro(buf, '"');
@@ -796,7 +786,7 @@ OuterInnerDump(OuterInnerRels *outer_inner, StringInfo buf)
 		appendStringInfoCharMacro(buf, ')');
 	}
 	else
-		dump_quote_value_quote_char(buf, outer_inner->relation, '(');
+		dump_quote_value(buf, outer_inner->relation);
 }
 
 static void
