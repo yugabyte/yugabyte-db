@@ -5,7 +5,7 @@ EXTENSION = orafce
 
 DATA_built = orafunc.sql
 DATA = uninstall_orafunc.sql orafce--3.0.sql orafce--unpackaged--3.0.sql
-DOCS = README.orafunc COPYRIGHT.orafunc INSTALL.orafunc
+DOCS = README.asciidoc COPYRIGHT.orafunc INSTALL.orafunc
 REGRESS = orafunc dbms_output files
 REGRESS_OPTS = --load-language=plpgsql
 
