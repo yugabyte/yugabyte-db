@@ -330,7 +330,7 @@ static const char *SetHintParse(SetHint *hint, HintState *hstate, Query *parse,
 
 static void quote_value(StringInfo buf, const char *value);
 
-static const char *parse_quote_value_term_char(const char *str, char **word,
+static const char *parse_quoted_value_term_char(const char *str, char **word,
 											   bool truncate, char term_char);
 
 RelOptInfo *pg_hint_plan_standard_join_search(PlannerInfo *root,
@@ -1001,9 +1001,9 @@ skip_parenthesis(const char *str, char parenthesis)
  * Parsed token is truncated within NAMEDATALEN-1 bytes, when truncate is true.
  */
 static const char *
-parse_quote_value(const char *str, char **word, bool truncate)
+parse_quoted_value(const char *str, char **word, bool truncate)
 {
-	return parse_quote_value_term_char(str, word, truncate, '\0');
+	return parse_quoted_value_term_char(str, word, truncate, '\0');
 }
 
 /*
@@ -1011,7 +1011,7 @@ parse_quote_value(const char *str, char **word, bool truncate)
  * When we do not have a special character, We specified '\0'.
  */
 static const char *
-parse_quote_value_term_char(const char *str, char **word, bool truncate,
+parse_quoted_value_term_char(const char *str, char **word, bool truncate,
 							char term_char)
 {
 	StringInfoData	buf;
@@ -1115,7 +1115,7 @@ parse_parentheses_Leading_in(const char *str, OuterInnerRels **outer_inner)
 													NIL);
 			str = parse_parentheses_Leading_in(str, &outer_inner_rels);
 		}
-		else if ((str = parse_quote_value_term_char(str, &name, truncate, '(')) == NULL)
+		else if ((str = parse_quoted_value_term_char(str, &name, truncate, '(')) == NULL)
 		{
 			list_free((*outer_inner)->outer_inner_pair);
 			return NULL;
@@ -1157,7 +1157,7 @@ parse_parentheses_Leading(const char *str, List **name_list,
 		/* Store words in parentheses into name_list. */
 		while(*str != ')' && *str != '\0')
 		{
-			if ((str = parse_quote_value(str, &name, truncate)) == NULL)
+			if ((str = parse_quoted_value(str, &name, truncate)) == NULL)
 			{
 				list_free(*name_list);
 				return NULL;
@@ -1187,7 +1187,7 @@ parse_parentheses(const char *str, List **name_list, HintType type)
 	/* Store words in parentheses into name_list. */
 	while(*str != ')' && *str != '\0')
 	{
-		if ((str = parse_quote_value(str, &name, truncate)) == NULL)
+		if ((str = parse_quoted_value(str, &name, truncate)) == NULL)
 		{
 			list_free(*name_list);
 			return NULL;
