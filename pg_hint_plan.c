@@ -261,7 +261,7 @@ struct HintState
 	List		  **join_hint_level;
 
 	/* for Leading hint */
-	LeadingHint	  **leading_hint;		/* parsed last specified Leading hint */
+	LeadingHint	  **leading_hint;		/* parsed Leading hint */
 
 	/* for Set hints */
 	SetHint		  **set_hints;			/* parsed Set hints */
@@ -606,7 +606,8 @@ LeadingHintDelete(LeadingHint *hint)
 		return;
 
 	list_free_deep(hint->relations);
-	free(hint->outer_inner);
+	if (hint->outer_inner)
+		pfree(hint->outer_inner);
 	pfree(hint);
 }
 
@@ -788,13 +789,14 @@ OuterInnerDesc(OuterInnerRels *outer_inner, StringInfo buf)
 static void
 LeadingHintDesc(LeadingHint *hint, StringInfo buf)
 {
-	bool		is_first;
-	ListCell   *l;
-
 	appendStringInfo(buf, "%s(", HINT_LEADING);
-	is_first = true;
 	if (hint->outer_inner == NULL)
 	{
+		ListCell   *l;
+		bool		is_first;
+
+		is_first = true;
+
 		foreach(l, hint->relations)
 		{
 			if (is_first)
@@ -1073,8 +1075,10 @@ parse_quoted_value(const char *str, char **word, bool truncate)
 }
 
 static OuterInnerRels *
-OuterInnerRelsCreate(OuterInnerRels *outer_inner, char *name, List *outer_inner_list)
+OuterInnerRelsCreate(char *name, List *outer_inner_list)
 {
+	OuterInnerRels *outer_inner;
+
 	outer_inner = palloc(sizeof(OuterInnerRels));
 	outer_inner->relation = name;
 	outer_inner->outer_inner_pair = outer_inner_list;
@@ -1085,11 +1089,10 @@ OuterInnerRelsCreate(OuterInnerRels *outer_inner, char *name, List *outer_inner_
 static const char *
 parse_parentheses_Leading_in(const char *str, OuterInnerRels **outer_inner)
 {
-	char   *name;
-	bool	truncate = true;
-
+	char		   *name;
 	OuterInnerRels *outer_inner_rels;
-	outer_inner_rels = NULL;
+
+	*outer_inner = OuterInnerRelsCreate(NULL, NIL);
 
 	skip_space(str);
 
@@ -1099,18 +1102,19 @@ parse_parentheses_Leading_in(const char *str, OuterInnerRels **outer_inner)
 		if (*str == '(')
 		{
 			str++;
-			outer_inner_rels = OuterInnerRelsCreate(outer_inner_rels,
-													NULL,
-													NIL);
+
 			str = parse_parentheses_Leading_in(str, &outer_inner_rels);
 		}
-		else if ((str = parse_quoted_value(str, &name, truncate)) == NULL)
-		{
-			list_free((*outer_inner)->outer_inner_pair);
-			return NULL;
-		}
 		else
-			outer_inner_rels = OuterInnerRelsCreate(outer_inner_rels, name, NIL);
+		{
+			if ((str = parse_quoted_value(str, &name, true)) == NULL)
+			{
+				list_free((*outer_inner)->outer_inner_pair);
+				return NULL;
+			}
+			else
+				outer_inner_rels = OuterInnerRelsCreate(name, NIL);
+		}
 
 		(*outer_inner)->outer_inner_pair = lappend(
 											(*outer_inner)->outer_inner_pair,
@@ -1118,7 +1122,8 @@ parse_parentheses_Leading_in(const char *str, OuterInnerRels **outer_inner)
 		skip_space(str);
 	}
 
-	str++;
+	if ((str = skip_parenthesis(str, ')')) == NULL)
+		return NULL;
 
 	return str;
 }
@@ -1138,7 +1143,6 @@ parse_parentheses_Leading(const char *str, List **name_list,
 	{
 		str++;
 
-		*outer_inner = OuterInnerRelsCreate(*outer_inner, NULL, NIL);
 		str = parse_parentheses_Leading_in(str, outer_inner);
 	}
 	else
@@ -1363,14 +1367,10 @@ parse_head_comment(Query *parse)
 		Hint   *next_hint = hstate->all_hints[i + 1];
 
 		/*
-		 *  TODO : Leadingヒントの重複チェックは、transform_join_hints関数の実行
-		 *  　　   中に実施する。
-		*/
-		if (i >= hstate->num_hints[HINT_TYPE_SCAN_METHOD] +
-			    hstate->num_hints[HINT_TYPE_JOIN_METHOD] &&
-			i < hstate->num_hints[HINT_TYPE_SCAN_METHOD] +
-				hstate->num_hints[HINT_TYPE_JOIN_METHOD] +
-				hstate->num_hints[HINT_TYPE_LEADING])
+		 * Leading hint is marked as 'duplicated' in transform_join_hints.
+		 */
+		if (cur_hint->type == HINT_TYPE_LEADING &&
+			next_hint->type == HINT_TYPE_LEADING)
 			continue;
 
 		/*
@@ -1390,15 +1390,12 @@ parse_head_comment(Query *parse)
 	 * array which consists of all hints.
 	 */
 	hstate->scan_hints = (ScanMethodHint **) hstate->all_hints;
-	hstate->join_hints = (JoinMethodHint **) hstate->all_hints +
-		hstate->num_hints[HINT_TYPE_SCAN_METHOD];
-	hstate->leading_hint = (LeadingHint **) hstate->all_hints +
-		hstate->num_hints[HINT_TYPE_SCAN_METHOD] +
-		hstate->num_hints[HINT_TYPE_JOIN_METHOD];
-	hstate->set_hints = (SetHint **) hstate->all_hints +
-		hstate->num_hints[HINT_TYPE_SCAN_METHOD] +
-		hstate->num_hints[HINT_TYPE_JOIN_METHOD] +
-		hstate->num_hints[HINT_TYPE_LEADING];
+	hstate->join_hints = (JoinMethodHint **) (hstate->scan_hints +
+		hstate->num_hints[HINT_TYPE_SCAN_METHOD]);
+	hstate->leading_hint = (LeadingHint **) (hstate->join_hints +
+		hstate->num_hints[HINT_TYPE_JOIN_METHOD]);
+	hstate->set_hints = (SetHint **) (hstate->leading_hint +
+		hstate->num_hints[HINT_TYPE_LEADING]);
 
 	return hstate;
 }
@@ -1593,6 +1590,27 @@ OuterInnerPairCheck(OuterInnerRels *outer_inner)
 	return true;
 }
 
+static List *
+OuterInnerList(OuterInnerRels *outer_inner)
+{
+	List		   *outer_inner_list = NIL;
+	ListCell	   *l;
+	OuterInnerRels *outer_inner_rels;
+
+	foreach(l, outer_inner->outer_inner_pair)
+	{
+		outer_inner_rels = (OuterInnerRels *)(lfirst(l));
+
+		if (outer_inner_rels->relation != NULL)
+			outer_inner_list = lappend(outer_inner_list,
+									   outer_inner_rels->relation);
+		else
+			outer_inner_list = list_concat(outer_inner_list,
+										   OuterInnerList(outer_inner_rels));
+	}
+	return outer_inner_list;
+}
+
 static const char *
 LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 				 const char *str)
@@ -1600,15 +1618,18 @@ LeadingHintParse(LeadingHint *hint, HintState *hstate, Query *parse,
 	List		   *name_list = NIL;
 	OuterInnerRels *outer_inner = NULL;
 
-	if ((str =
-		 parse_parentheses_Leading(str, &name_list, &outer_inner)) == NULL)
+	if ((str = parse_parentheses_Leading(str, &name_list, &outer_inner)) ==
+		NULL)
 		return NULL;
+
+	if (outer_inner != NULL)
+		name_list = OuterInnerList(outer_inner);
 
 	hint->relations = name_list;
 	hint->outer_inner = outer_inner;
 
 	/* A Leading hint requires at least two relations */
-	if (list_length(hint->relations) < 2 && hint->outer_inner == NULL)
+	if ( hint->outer_inner == NULL && list_length(hint->relations) < 2)
 	{
 		hint_ereport(hint->base.hint_str,
 					 ("%s hint requires at least two relations.",
@@ -2290,27 +2311,6 @@ find_join_hint(Relids joinrelids)
 	return NULL;
 }
 
-static List *
-OuterInnerList(OuterInnerRels *outer_inner)
-{
-	List		   *outer_inner_list = NIL;
-	ListCell	   *l;
-	OuterInnerRels *outer_inner_rels;
-
-	foreach(l, outer_inner->outer_inner_pair)
-	{
-		outer_inner_rels = (OuterInnerRels *)(lfirst(l));
-
-		if (outer_inner_rels->relation != NULL)
-			outer_inner_list = lappend(outer_inner_list,
-									   outer_inner_rels->relation);
-		else
-			outer_inner_list = list_concat(outer_inner_list,
-										   OuterInnerList(outer_inner_rels));
-	}
-	return outer_inner_list;
-}
-
 static Relids
 OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 	PlannerInfo *root, List *initial_rels, HintState *hstate, int *njoinrels,
@@ -2397,10 +2397,9 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
  *   - add join method hints which are necessary to enforce join order
  *     specified by Leading hint
  */
-static void
+static bool
 transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
-		List *initial_rels, JoinMethodHint **join_method_hints,
-		LeadingHint *lhint)
+		List *initial_rels, JoinMethodHint **join_method_hints)
 {
 	int				i;
 	int				relid;
@@ -2408,7 +2407,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 	int				njoinrels;
 	ListCell	   *l;
 	char		   *relname;
-	bool			exist_effective_leading;
+	LeadingHint	   *lhint = NULL;
 
 	/*
 	 * Create bitmap of relids from alias names for each join method hint.
@@ -2458,30 +2457,24 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 	/* Do nothing if no Leading hint was supplied. */
 	if (hstate->num_hints[HINT_TYPE_LEADING] == 0)
-		return;
+		return false;
 
 	/*
 	 * Decide to use Leading hint。
  	 */
-	exist_effective_leading = false;
-	for (i = hstate->num_hints[HINT_TYPE_LEADING] - 1; i >= 0; i--) {
+	for (i = 0; i < hstate->num_hints[HINT_TYPE_LEADING]; i++)
+	{
 		LeadingHint *leading_hint = (LeadingHint *)hstate->leading_hint[i];
 
-		List *relname_list;
 		Relids	relids;
 
 		if (leading_hint->base.state == HINT_STATE_ERROR)
 			continue;
 
-		if (leading_hint->outer_inner != NULL)
-			relname_list = OuterInnerList(leading_hint->outer_inner);
-		else
-			relname_list = leading_hint->relations;
-
 		relid = 0;
 		relids = 0;
 
-		foreach(l, relname_list)
+		foreach(l, leading_hint->relations)
 		{
 			relname = (char *)lfirst(l);;
 
@@ -2507,21 +2500,19 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		if (relid <= 0 || leading_hint->base.state == HINT_STATE_ERROR)
 			continue;
 
-		if (exist_effective_leading)
+		if (lhint != NULL)
 		{
-			hint_ereport(leading_hint->base.hint_str,
-				 ("Conflict %s hint.", HintTypeName[leading_hint->base.type]));
-			leading_hint->base.state = HINT_STATE_DUPLICATION;
+			hint_ereport(lhint->base.hint_str,
+				 ("Conflict %s hint.", HintTypeName[lhint->base.type]));
+			lhint->base.state = HINT_STATE_DUPLICATION;
 		}
-		else
-		{
-			leading_hint->base.state = HINT_STATE_USED;
-			exist_effective_leading = true;
-			lhint = leading_hint;
-		}
+		leading_hint->base.state = HINT_STATE_USED;
+		lhint = leading_hint;
 	}
-	if (exist_effective_leading == false)
-		return;
+
+	/* check to exist Leading hint marked with 'used'. */
+	if (lhint == NULL)
+		return false;
 
 	/*
 	 * We need join method hints which fit specified join order in every join
@@ -2589,7 +2580,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		bms_free(joinrelids);
 
 		if (njoinrels < 2)
-			return;
+			return false;
 
 		/*
 		 * Delete all join hints which have different combination from Leading
@@ -2612,11 +2603,16 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
                                          &njoinrels,
 										  nbaserel);
 
+		njoinrels = bms_num_members(joinrelids);
+
+		if (njoinrels < 2)
+			return false;
+
 		/*
 		 * Delete all join hints which have different combination from Leading
 		 * hint.
 		 */
-		for (i = 2;i <= nbaserel; i++)
+		for (i = 2;i <= njoinrels; i++)
 		{
 			if (hstate->join_hint_level[i] != NIL)
 			{
@@ -2644,14 +2640,15 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 			}
 		}
 
-	bms_free(joinrelids);
-
-	if (njoinrels < 2)
-		return;
+		bms_free(joinrelids);
 	}
 
 	if (hint_state_enabled(lhint))
+	{
 		set_join_config_options(DISABLE_ALL_JOIN, current_hint->context);
+		return true;
+	}
+	return false;
 }
 
 /*
@@ -2868,10 +2865,10 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 						 List *initial_rels)
 {
 	JoinMethodHint	  **join_method_hints;
-	LeadingHint		   *leading_hint = NULL;
 	int					nbaserel;
 	RelOptInfo		   *rel;
 	int					i;
+	bool				leading_hint_enable;
 
 	/*
 	 * Use standard planner (or geqo planner) if pg_hint_plan is disabled or no
@@ -2901,8 +2898,8 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	current_hint->join_hint_level = palloc0(sizeof(List *) * (nbaserel + 1));
 	join_method_hints = palloc0(sizeof(JoinMethodHint *) * (nbaserel + 1));
 
-	transform_join_hints(current_hint, root, nbaserel, initial_rels,
-						 join_method_hints, leading_hint);
+	leading_hint_enable = transform_join_hints(current_hint, root, nbaserel,
+											   initial_rels, join_method_hints);
 
 	rel = pg_hint_plan_standard_join_search(root, levels_needed, initial_rels);
 
@@ -2918,9 +2915,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	pfree(current_hint->join_hint_level);
 	pfree(join_method_hints);
 
-	if (current_hint->num_hints[HINT_TYPE_LEADING] > 0 &&
-		leading_hint != NULL &&
-		hint_state_enabled(leading_hint))
+	if (leading_hint_enable)
 		set_join_config_options(current_hint->init_join_mask,
 								current_hint->context);
 
