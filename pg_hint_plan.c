@@ -330,8 +330,8 @@ static const char *SetHintParse(SetHint *hint, HintState *hstate, Query *parse,
 
 static void quote_value(StringInfo buf, const char *value);
 
-static const char *parse_quoted_value_term_char(const char *str, char **word,
-											   bool truncate, char term_char);
+static const char *parse_quoted_value(const char *str, char **word,
+									  bool truncate);
 
 RelOptInfo *pg_hint_plan_standard_join_search(PlannerInfo *root,
 											  int levels_needed,
@@ -1003,17 +1003,6 @@ skip_parenthesis(const char *str, char parenthesis)
 static const char *
 parse_quoted_value(const char *str, char **word, bool truncate)
 {
-	return parse_quoted_value_term_char(str, word, truncate, '\0');
-}
-
-/*
- * In term_char, We specified the special character which a terminal of a word.
- * When we do not have a special character, We specified '\0'.
- */
-static const char *
-parse_quoted_value_term_char(const char *str, char **word, bool truncate,
-							char term_char)
-{
 	StringInfoData	buf;
 	bool			in_quote;
 
@@ -1058,8 +1047,8 @@ parse_quoted_value_term_char(const char *str, char **word, bool truncate,
 					break;
 			}
 		}
-		else if (isspace(*str) || *str == ')' || *str == '"' || *str == '\0' ||
-				 *str == term_char)
+		else if (isspace(*str) || *str == '(' || *str == ')' || *str == '"' ||
+				 *str == '\0')
 			break;
 
 		appendStringInfoCharMacro(&buf, *str++);
@@ -1115,7 +1104,7 @@ parse_parentheses_Leading_in(const char *str, OuterInnerRels **outer_inner)
 													NIL);
 			str = parse_parentheses_Leading_in(str, &outer_inner_rels);
 		}
-		else if ((str = parse_quoted_value_term_char(str, &name, truncate, '(')) == NULL)
+		else if ((str = parse_quoted_value(str, &name, truncate)) == NULL)
 		{
 			list_free((*outer_inner)->outer_inner_pair);
 			return NULL;
