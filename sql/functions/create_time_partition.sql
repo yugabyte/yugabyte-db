@@ -20,6 +20,7 @@ v_quarter                       text;
 v_revoke                        text[];
 v_step_id                       bigint;
 v_tablename                     text;
+v_trunc_value                   text;
 v_time                          timestamp;
 v_year                          text;
 
@@ -39,17 +40,21 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     IF p_interval = '1 year' OR p_interval = '1 month' OR p_interval = '1 day' OR p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
         v_partition_name := v_partition_name || to_char(v_time, 'YYYY');
-        
+        v_trunc_value := 'year';
+
         IF p_interval = '1 month' OR p_interval = '1 day' OR p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
             v_partition_name := v_partition_name || '_' || to_char(v_time, 'MM');
+            v_trunc_value := 'month';
 
             IF p_interval = '1 day' OR p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
                 v_partition_name := v_partition_name || '_' || to_char(v_time, 'DD');
+                    v_trunc_value := 'day';
 
                 IF p_interval = '1 hour' OR p_interval = '30 mins' OR p_interval = '15 mins' THEN
                     v_partition_name := v_partition_name || '_' || to_char(v_time, 'HH24');
                     IF p_interval <> '30 mins' AND p_interval <> '15 mins' THEN
                         v_partition_name := v_partition_name || '00';
+                        v_trunc_value := 'hour';
                     ELSIF p_interval = '15 mins' THEN
                         IF date_part('minute', v_time) < 15 THEN
                             v_partition_name := v_partition_name || '00';
@@ -60,40 +65,46 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                         ELSE
                             v_partition_name := v_partition_name || '45';
                         END IF;
+                        v_trunc_value := 'minute';
                     ELSIF p_interval = '30 mins' THEN
                         IF date_part('minute', v_time) < 30 THEN
                             v_partition_name := v_partition_name || '00';
                         ELSE
                             v_partition_name := v_partition_name || '30';
                         END IF;
+                        v_trunc_value := 'minute';
                     END IF;
                 END IF; -- end hour IF      
             END IF; -- end day IF
         END IF; -- end month IF
     ELSIF p_interval = '1 week' THEN
         v_partition_name := v_partition_name || to_char(v_time, 'IYYY') || 'w' || to_char(v_time, 'IW');
+        v_trunc_value := 'week';
     END IF; -- end year/week IF
 
-    -- pull out datetime portion of last partition's tablename
-    v_partition_timestamp_start := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string);
-    v_partition_timestamp_end := to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string) + p_interval;
+    -- pull out datetime portion of last partition's tablename if it matched one of the above partitioning intervals
+    IF v_trunc_value IS NOT NULL THEN
+        v_partition_timestamp_start := date_trunc(v_trunc_value, to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string));
+        v_partition_timestamp_end := date_trunc(v_trunc_value, to_timestamp(substring(v_partition_name from char_length(p_parent_table||'_p')+1), p_datetime_string) + p_interval);
+    END IF;
 
     -- "Q" is ignored in to_timestamp, so handle special case
     IF p_interval = '3 months' THEN
         v_year := to_char(v_time, 'YYYY');
         v_quarter := to_char(v_time, 'Q');
         v_partition_name := v_partition_name || v_year || 'q' || v_quarter;
+        v_trunc_value := 'quarter';
         CASE 
             WHEN v_quarter = '1' THEN
-                v_partition_timestamp_start := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
+                v_partition_timestamp_start := date_trunc(v_trunc_value, to_timestamp(v_year || '-01-01', 'YYYY-MM-DD'));
             WHEN v_quarter = '2' THEN
-                v_partition_timestamp_start := to_timestamp(v_year || '-04-01', 'YYYY-MM-DD');
+                v_partition_timestamp_start := date_trunc(v_trunc_value, to_timestamp(v_year || '-04-01', 'YYYY-MM-DD'));
             WHEN v_quarter = '3' THEN
-                v_partition_timestamp_start := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
+                v_partition_timestamp_start := date_trunc(v_trunc_value, to_timestamp(v_year || '-07-01', 'YYYY-MM-DD'));
             WHEN v_quarter = '4' THEN
-                v_partition_timestamp_start := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
+                v_partition_timestamp_start := date_trunc(v_trunc_value, to_timestamp(v_year || '-10-01', 'YYYY-MM-DD'));
         END CASE;
-        v_partition_timestamp_end := v_partition_timestamp_start + p_interval;
+        v_partition_timestamp_end := date_trunc(v_trunc_value, (v_partition_timestamp_start + p_interval));
     END IF;
 
     SELECT schemaname ||'.'|| tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
@@ -164,7 +175,7 @@ EXCEPTION
             ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;
-            PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;

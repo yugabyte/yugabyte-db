@@ -8,18 +8,18 @@ DECLARE
 
 v_control                       text;
 v_current_partition_name        text;
-v_current_partition_timestamp   timestamp;
+v_current_partition_timestamp   timestamptz;
 v_datetime_string               text;
-v_final_partition_timestamp     timestamp;
+v_final_partition_timestamp     timestamptz;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_old_search_path               text;
 v_next_partition_name           text;
-v_next_partition_timestamp      timestamp;
+v_next_partition_timestamp      timestamptz;
 v_part_interval                 interval;
 v_premake                       int;
 v_prev_partition_name           text;
-v_prev_partition_timestamp      timestamp;
+v_prev_partition_timestamp      timestamptz;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_type                          text;
@@ -122,7 +122,7 @@ ELSIF v_type = 'time-dynamic' THEN
         DECLARE
             v_count                 int;
             v_partition_name        text;
-            v_partition_timestamp   timestamp;
+            v_partition_timestamp   timestamptz;
             v_schemaname            text;
             v_tablename             text;
         BEGIN 
@@ -189,7 +189,7 @@ EXCEPTION
             ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;
-            PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;

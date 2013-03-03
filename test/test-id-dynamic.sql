@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(73);
+SELECT plan(101);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -40,7 +40,7 @@ SELECT table_privs_are('partman_test', 'id_dynamic_table_p20', 'partman_revoke',
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p30', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_p30');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p40', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_p40');
 
-SELECT create_prev_id_partition('partman_test.id_dynamic_table');
+SELECT partition_data_id('partman_test.id_dynamic_table');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_dynamic_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p0', ARRAY[9], 'Check count from id_dynamic_table_p0');
@@ -69,6 +69,7 @@ ALTER TABLE partman_test.id_dynamic_table OWNER TO partman_owner;
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(26,38));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_dynamic_table', 'Check that parent table has had no data inserted to it');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table', ARRAY[38], 'Check count from id_dynamic_table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p20', ARRAY[10], 'Check count from id_dynamic_table_p20');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p30', ARRAY[9], 'Check count from id_dynamic_table_p30');
 
@@ -86,9 +87,10 @@ SELECT table_privs_are('partman_test', 'id_dynamic_table_p50', 'partman_basic', 
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p50', 'partman_revoke', ARRAY['SELECT'], 'Check partman_revoke privileges of id_dynamic_table_p50');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p60');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p70');
--- Currently unable to test that all privileges have been revoked. Sent in request to pgtap developer.
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p60', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p60');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p70', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p70');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p60');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p70', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p70');
 
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(200,210));
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_dynamic_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
@@ -102,6 +104,14 @@ SELECT table_privs_are('partman_test', 'id_dynamic_table_p40', 'partman_basic', 
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p50', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p50');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p60');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p70');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p0', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p0');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p10', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p10');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p20', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p20');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p30', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p30');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p40', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p40');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p50', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p50');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p60');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p70', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p70');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p0', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p0');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p10', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p10');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p20', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p20');
@@ -110,6 +120,26 @@ SELECT table_owner_is ('partman_test', 'id_dynamic_table_p40', 'partman_owner', 
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p50', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p50');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p60', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p60');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p70', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p70');
+
+SELECT undo_partition_id('partman_test.id_dynamic_table', 10);
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_dynamic_table', ARRAY[49], 'Check count from parent table after undo');
+SELECT has_table('partman_test', 'id_dynamic_table_p0', 'Check id_dynamic_table_p0 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p0', 'Check child table had its data removed id_dynamic_table_p0');
+SELECT has_table('partman_test', 'id_dynamic_table_p10', 'Check id_dynamic_table_p10 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p10', 'Check child table had its data removed id_dynamic_table_p10');
+SELECT has_table('partman_test', 'id_dynamic_table_p20', 'Check id_dynamic_table_p20 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p20', 'Check child table had its data removed id_dynamic_table_p20');
+SELECT has_table('partman_test', 'id_dynamic_table_p30', 'Check id_dynamic_table_p30 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p30', 'Check child table had its data removed id_dynamic_table_p30');
+SELECT has_table('partman_test', 'id_dynamic_table_p40', 'Check id_dynamic_table_p40 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p40', 'Check child table had its data removed id_dynamic_table_p40');
+SELECT has_table('partman_test', 'id_dynamic_table_p50', 'Check id_dynamic_table_p50 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p50', 'Check child table had its data removed id_dynamic_table_p50');
+SELECT has_table('partman_test', 'id_dynamic_table_p60', 'Check id_dynamic_table_p60 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p60', 'Check child table had its data removed id_dynamic_table_p60');
+SELECT has_table('partman_test', 'id_dynamic_table_p70', 'Check id_dynamic_table_p70 still exists');
+SELECT is_empty('SELECT * FROM partman_test.id_dynamic_table_p70', 'Check child table had its data removed id_dynamic_table_p70');
+
 
 SELECT * FROM finish();
 ROLLBACK;

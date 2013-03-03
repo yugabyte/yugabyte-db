@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(54);
+SELECT plan(76);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_owner;
@@ -46,7 +46,7 @@ SELECT table_privs_are('partman_test', 'id_static_table_p80', 'partman_basic', A
 SELECT table_privs_are('partman_test', 'id_static_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_static_table_p70');
 SELECT table_privs_are('partman_test', 'id_static_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_static_table_p60');
 
-SELECT create_prev_id_partition('partman_test.id_static_table');
+SELECT partition_data_id('partman_test.id_static_table');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_static_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p100', ARRAY[10], 'Check count from id_static_table_p100');
@@ -77,6 +77,30 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p120',
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p130', ARRAY[10], 'Check count from id_static_table_p130');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p140', ARRAY[6], 'Check count from id_static_table_p140');
 SELECT is_empty('SELECT * FROM partman_test.id_static_table_p150', 'Check that next is empty');
+
+SELECT undo_partition('partman_test.id_static_table', 20);
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_static_table', ARRAY[86], 'Check count from parent table after undo');
+SELECT has_table('partman_test', 'id_static_table_p60', 'Check id_static_table_p60 still exists');
+SELECT has_table('partman_test', 'id_static_table_p70', 'Check id_static_table_p70 still exists');
+SELECT has_table('partman_test', 'id_static_table_p80', 'Check id_static_table_p80 still exists');
+SELECT has_table('partman_test', 'id_static_table_p90', 'Check id_static_table_p90 still exists');
+SELECT has_table('partman_test', 'id_static_table_p100', 'Check id_static_table_p100 still exists');
+SELECT has_table('partman_test', 'id_static_table_p110', 'Check id_static_table_p110 still exists');
+SELECT has_table('partman_test', 'id_static_table_p120', 'Check id_static_table_p120 still exists');
+SELECT has_table('partman_test', 'id_static_table_p130', 'Check id_static_table_p130 still exists');
+SELECT has_table('partman_test', 'id_static_table_p140', 'Check id_static_table_p140 still exists');
+SELECT has_table('partman_test', 'id_static_table_p150', 'Check id_static_table_p140 still exists');
+SELECT has_table('partman_test', 'id_static_table_p160', 'Check id_static_table_p140 still exists');
+SELECT has_table('partman_test', 'id_static_table_p170', 'Check id_static_table_p140 still exists');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p60', ARRAY[10], 'Check count from id_static_table_p60');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p70', ARRAY[10], 'Check count from id_static_table_p70');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p80', ARRAY[10], 'Check count from id_static_table_p80');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p90', ARRAY[10], 'Check count from id_static_table_p90');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p100', ARRAY[10], 'Check count from id_static_table_p100');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p110', ARRAY[10], 'Check count from id_static_table_p110');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p120', ARRAY[10], 'Check count from id_static_table_p120');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p130', ARRAY[10], 'Check count from id_static_table_p130');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p140', ARRAY[6], 'Check count from id_static_table_p140');
 
 SELECT * FROM finish();
 ROLLBACK;

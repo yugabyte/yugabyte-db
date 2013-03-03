@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(106);
+SELECT plan(127);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -18,27 +18,27 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.time_static_table TO partman_basic;
 GRANT ALL ON partman_test.time_static_table TO partman_revoke;
 
 SELECT create_parent('partman_test.time_static_table', 'col3', 'time-static', 'daily');
-SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check time_static_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
+SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
 
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
@@ -91,7 +91,7 @@ SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
 
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_revoke', 
     ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 
-    'Check partman_revoke privileges of time_static_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+    'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
     ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 
     'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
@@ -117,7 +117,7 @@ SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
     ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 
     'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
 
-SELECT create_prev_time_partition('partman_test.time_static_table');
+SELECT partition_data_time('partman_test.time_static_table');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_static_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
@@ -128,7 +128,7 @@ INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(21,25), CURRENT_TIMESTAMP + '2 days'::interval);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(26,30), CURRENT_TIMESTAMP + '3 days'::interval);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(31,37), CURRENT_TIMESTAMP + '4 days'::interval);
-INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(40,49), CURRENT_TIMESTAMP - '1 days'::interval);
+INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(40,49), CURRENT_TIMESTAMP - '1 day'::interval);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(50,70), CURRENT_TIMESTAMP - '2 days'::interval);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(71,85), CURRENT_TIMESTAMP - '3 days'::interval);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(86,100), CURRENT_TIMESTAMP - '4 days'::interval);
@@ -156,9 +156,9 @@ SELECT run_maintenance();
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(101,122), CURRENT_TIMESTAMP + '5 days'::interval);
 
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
 
@@ -205,13 +205,14 @@ SELECT run_maintenance();
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(123,150), CURRENT_TIMESTAMP + '6 days'::interval);
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_static_table', 'Check that parent table has had no data inserted to it');
+SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table', ARRAY[148], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
     ARRAY[28], 'Check count from time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
 
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD')||' exists');
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'7 days'::interval, 'YYYY_MM_DD')||' exists');
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
@@ -242,10 +243,12 @@ SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
     'Check partman_basic privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
     ARRAY['SELECT'], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
--- Currently unable to test that all privileges have been revoked. Sent in request to pgtap developer.
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
 
@@ -286,6 +289,22 @@ SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
+
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'));
+SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'));
+
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'));
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 'partman_owner', 
@@ -308,6 +327,32 @@ SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'));
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
+
+SELECT undo_partition_time('partman_test.time_static_table', 20, p_keep_table := false);
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table', ARRAY[159], 'Check count from parent table after undo');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 day'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 day'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 days'::interval, 'YYYY_MM_DD')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'), 
+    'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD')||' does not exist');
+
 
 SELECT * FROM finish();
 ROLLBACK;

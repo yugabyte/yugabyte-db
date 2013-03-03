@@ -1,6 +1,6 @@
 /*
- * Function to manage pre-creation of the next partitions in a time-based partition set
- * Also manages dropping old partitions if the retention option is set
+ * Function to manage pre-creation of the next partitions in a time-based partition set.
+ * Also manages dropping old partitions if the retention option is set.
  */
 CREATE FUNCTION run_maintenance() RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
@@ -49,8 +49,11 @@ SELECT parent_table
     , premake
     , datetime_string
     , last_partition
+    , undo_in_progress
 FROM @extschema@.part_config WHERE type = 'time-static' OR type = 'time-dynamic'
 LOOP
+
+    CONTINUE WHEN v_row.undo_in_progress;
     
     CASE
         WHEN v_row.part_interval = '15 mins' THEN
@@ -92,26 +95,29 @@ LOOP
     END IF;
 
     -- Check and see how many premade partitions there are. If it's less than premake in config table, make another
-    v_premade_count = EXTRACT('epoch' FROM (v_last_partition_timestamp - v_current_partition_timestamp)::interval) / EXTRACT('epoch' FROM v_row.part_interval::interval);
+    v_premade_count = EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval);
 
-    IF v_premade_count < v_row.premake THEN
+    -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed.
+    WHILE v_premade_count < v_row.premake LOOP
         EXECUTE 'SELECT @extschema@.create_next_time_partition('||quote_literal(v_row.parent_table)||')';
         v_create_count := v_create_count + 1;
         IF v_row.type = 'time-static' THEN
             EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
         END IF;
-    END IF;
+        v_last_partition_timestamp := v_last_partition_timestamp + v_row.part_interval;
+        v_premade_count = EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval);
+    END LOOP;
 
 END LOOP; -- end of creation loop
 
 -- Manage dropping old partitions if retention option is set
 FOR v_row IN 
-    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND (type = 'time-static' OR type = 'time-dynamic')
+    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND (type = 'time-static' OR type = 'time-dynamic')
 LOOP
     v_drop_count := v_drop_count + @extschema@.drop_time_partition(v_row.parent_table);   
 END LOOP; 
 FOR v_row IN 
-    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND (type = 'id-static' OR type = 'id-dynamic')
+    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND (type = 'id-static' OR type = 'id-dynamic')
 LOOP
     v_drop_count := v_drop_count + @extschema@.drop_id_partition(v_row.parent_table);
 END LOOP; 

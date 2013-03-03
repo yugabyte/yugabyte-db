@@ -3,11 +3,11 @@ PostgreSQL Partition Manager Extension (pg_partman)
 
 About
 -----
-pg_partman is an extension to help make managing time or serial id based table partitioning easier. 
+pg_partman is an extension to help make managing time or serial id based table partitioning easier. Currenly the trigger functions only handle inserts to the parent table. Updates that would move a value from one partition to another are not yet supported.
 
 For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc), constraints, privileges & ownership. For managing privileges, whenever a new partition is created it will obtain its privilege & ownership information from what the parent has at that time. Previous partition privileges are not changed. If previous partitions require that their privileges be updated, a separate function is available. This is kept as a separate process due to being an expensive operation when the partition set grows larger. The defaults, indexes & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. And while you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
 
-If you attempt to insert data into a partition set that contains data for a partition that does not exist, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The check_parent() function provides monitoring for any data getting inserted into parents and the create_prev_* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
+If you attempt to insert data into a partition set that contains data for a partition that does not exist, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The check_parent() function provides monitoring for any data getting inserted into parents and the partition_data_* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
 
 If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
 
@@ -25,8 +25,8 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_type - one of 4 values to set the partitioning type that will be used
  
  > **time-static** - Trigger function inserts only into specifically named partitions. The the number of partitions managed behind and ahead of the current one is determined by the **premake** config value (default of 4 means data for 4 previous and 4 future partitions are handled automatically). *Beware setting the premake value too high as that will lessen the efficiency of this partitioning method.* Inserts to parent table outside the hard-coded time window will go to the parent. Trigger function is kept up to date by run_maintenance() function. Ideal for high TPS tables that get inserts of new data only.  
- > **time-dynamic** - Trigger function can insert into any child partition based on the value of the control column. More flexible but not as efficient as time-static. Be aware that if the appropriate partition doesn't yet exist for the data inserted, data gets inserted to the parent.  
- > **id-static** - Same functionality and use of the premake value as time-static but for a numeric range instead of time. When the id value has reached 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.
+ > **time-dynamic** - Trigger function can insert into any existing child partition based on the value of the control column at the time of insertion. More flexible but not as efficient as time-static. 
+ > **id-static** - Same functionality and use of the premake value as time-static but for a numeric range instead of time. When the id value reaches 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.
  > **id-dynamic** - Same functionality and limitations as time-dynamic but for a numeric range instead of time. Uses same 50% rule as id-static to create future partitions. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.
 
  * p_interval - the time or numeric range interval for each partition. Supported values are:
@@ -41,31 +41,31 @@ A superuser must be used to run these functions in order to set privileges & own
  > **quarter-hour** - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)  
  > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. This is the actual integer value, not text values like time-based partitioning. Must be greater than zero.
 
- * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle.
+ * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle (behind & ahead). Note that weekly partitioning may occasionally cause an extra partition to be premade due to differing month lengths and daylight savings (on non-UTC systems). This won't hurt anything and will self-correct. If partitioning ever falls behind the premake value, normal running of run_maintenance() and data insertion to id-based tables should automatically catch things up.
  * p_debug - turns on additional debugging information (not yet working).
 
 *run_maintenance()*
- * Run this function as a scheduled job (cronjob, etc) to automatically keep time-based partitioning working.
- * Run this function as a scheduled job to automatically drop child tables and/or indexes if the retention options are configured.
+ * Run this function as a scheduled job (cronjob, etc) to automatically keep time-based partitioning working and/or use the partition retention system.
  * Every run checks all tables listed in the **part_config** table with the types **time-static** and **time-dynamic** to pre-make child tables (not needed for id-based partitioning).
  * Every run checks all tables of all types listed in the **part_config** table with a value in the **retention** column and drops tables as needed (see **About** and config table below).
- * Will automatically pre-create the new partition, keeping ahead by the number set as the **premake**. 
  * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
 
-*create_prev_time_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
+*partition_data_time(p_parent_table text, p_batch_interval interval DEFAULT NULL, p_batch_count int DEFAULT 1) RETURNS bigint*
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
- * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
- * p_batch - how many partitions will be made in a single run of the function. Default value is 1.
+ * p_batch_interval - optional argument, a time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
+ * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
-*create_prev_id_partition(p_parent_table text, p_batch int DEFAULT 1) RETURNS bigint*
+*partition_data_id(p_parent_table text, p_batch_interval int DEFAULT NULL, p_batch_count int DEFAULT 1) RETURNS bigint*
  * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
- * If you are partitioning a large amount of previous data, it's recommended to run this function with an external script with small batch amounts. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. 
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
- * p_batch - how many partitions will be made in a single run of the function. Default value is 1.
+ * p_batch_interval - optional argument, an integer amount representing an interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
+ * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 *check_parent() RETURNS SETOF (parent_table, count)*
@@ -73,13 +73,13 @@ A superuser must be used to run these functions in order to set privileges & own
  * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
 
 *drop_time_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
- * This function is used to drop child tables from a time-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
+ * This function is used to drop child tables from a time-based partition set. By default, the table is just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
 
 *drop_id_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
- * This function is used to drop child tables from an id-based partition set. The table is by default just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
+ * This function is used to drop child tables from an id-based partition set. By default, the table just uninherited and not actually dropped. It is recommended to use the **run_maintenance()** function to manage dropping old child tables and not call it directly unless needed.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
@@ -90,6 +90,45 @@ A superuser must be used to run these functions in order to set privileges & own
  * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
  * Be aware that for large partition sets, this can be a very long running operation and is why it was made into a separate function to run independently. Only privileges that are different between the parent & child are applied, but it still has to do system catalog lookups and comparisons for every single child partition and all individual privileges on each.
  * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
+
+*undo_partition_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_keep_table boolean DEFAULT true) RETURNS bigint*
+ * Undo a time-based partition set created by pg_partman. This function MOVES the data from existing child partitions to the parent table.
+ * When this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
+ * When this function is run, the **undo_in_progress** column in the configuration table is set. This causes all partition creation and retention management by the run_maintenance() function to stop.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables as empty, independent tables.
+ * Without setting either batch argument manually, each run of the function will move all the data from a single partition into the parent.
+ * Once all child tables have been uninherited/dropped, the configuration data is removed from pg_partman automatically.
+ * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
+ * p_batch_count - an optional argument, this sets how many times to move the amount of data equal to the p_batch_interval argument (or default partition interval if not set) in a single run of the function. Defaults to 1.
+ * p_batch_interval - an optional argument, a time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
+ * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited after all of it's data has been moved. Note that it takes at least two batches to actually ininherit/drop a table from the set.
+ * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
+
+*undo_partition_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval bigint DEFAULT NULL, p_keep_table boolean DEFAULT true) RETURNS bigint*
+ * Undo an id-based partition set created by pg_partman. This function MOVES the data from existing child partitions to the parent table.
+ * When this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
+ * When this function is run, the **undo_in_progress** column in the configuration table is set. This causes all partition creation and retention management by the run_maintenance() function to stop.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables as empty, independent tables.
+ * Without setting either batch argument manually, each run of the function will move all the data from a single partition into the parent.
+ * Once all child tables have been uninherited/dropped, the configuration data is removed from pg_partman automatically.
+ * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
+ * p_batch_count - an optional argument, this sets how many times to move the amount of data equal to the p_batch_interval argument (or default partition interval if not set) in a single run of the function. Defaults to 1.
+ * p_batch_interval - an optional argument, an integer amount representing an interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
+ * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited after all of it's data has been moved. Note that it takes at least two batches to actually ininherit/drop a table from the set (second batch sees it has no more data and drops it).
+ * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
+
+*undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true) RETURNS bigint*
+ * Undo the parent/child table inheritance of any partition set, not just ones managed by pg_partman. This function COPIES the data from existing child partitions to the parent table.
+ * If you need to keep the data in your child tables after it is put into the parent, use this function. 
+ * Unlike the other undo functions, data cannot be copied in batches smaller than the partition interval. Every run of the function copies an entire partition to the parent.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables exactly as they were but no longer inherited from the parent.
+ * p_parent_table - parent table of the partition set. Must be schema qualified but does NOT have to be managed by pg_partman.
+ * p_batch_count - an optional argument, this sets how many partitions to copy data from in a single run. Defaults to 1.
+ * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited. 
+ * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
 
 Tables
 ------
@@ -114,3 +153,5 @@ Tables
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
     datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
     last_partition          - Tracks the last successfully created partition and used to determine the next one.
+    undo_in_progress        - Set by the undo_partition functions whenever they are run. If true, This causes all partition creation 
+                              and retention management by the run_maintenance() function to stop. Default is false.

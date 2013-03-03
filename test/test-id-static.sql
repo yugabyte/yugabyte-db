@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(82);
+SELECT plan(104);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -40,7 +40,7 @@ SELECT table_privs_are('partman_test', 'id_static_table_p20', 'partman_revoke', 
 SELECT table_privs_are('partman_test', 'id_static_table_p30', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_static_table_p30');
 SELECT table_privs_are('partman_test', 'id_static_table_p40', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_static_table_p40');
 
-SELECT create_prev_id_partition('partman_test.id_static_table');
+SELECT partition_data_id('partman_test.id_static_table');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_static_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p0', ARRAY[9], 'Check count from id_static_table_p0');
@@ -92,7 +92,9 @@ SELECT table_privs_are('partman_test', 'id_static_table_p60', 'partman_basic', A
 SELECT table_privs_are('partman_test', 'id_static_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_static_table_p70');
 SELECT table_privs_are('partman_test', 'id_static_table_p80', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_static_table_p80');
 SELECT table_privs_are('partman_test', 'id_static_table_p50', 'partman_revoke', ARRAY['SELECT'], 'Check partman_revoke privileges of id_static_table_p50');
--- Currently unable to test that all privileges have been revoked. Sent in request to pgtap developer.
+SELECT table_privs_are('partman_test', 'id_static_table_p60', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p60');
+SELECT table_privs_are('partman_test', 'id_static_table_p70', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p70');
+SELECT table_privs_are('partman_test', 'id_static_table_p80', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p80');
 SELECT table_owner_is ('partman_test', 'id_static_table_p60', 'partman_owner', 'Check that ownership change worked for id_static_table_p60');
 SELECT table_owner_is ('partman_test', 'id_static_table_p70', 'partman_owner', 'Check that ownership change worked for id_static_table_p70');
 SELECT table_owner_is ('partman_test', 'id_static_table_p80', 'partman_owner', 'Check that ownership change worked for id_static_table_p80');
@@ -110,6 +112,15 @@ SELECT table_privs_are('partman_test', 'id_static_table_p50', 'partman_basic', A
 SELECT table_privs_are('partman_test', 'id_static_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_static_table_p60');
 SELECT table_privs_are('partman_test', 'id_static_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_static_table_p70');
 SELECT table_privs_are('partman_test', 'id_static_table_p80', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_static_table_p80');
+SELECT table_privs_are('partman_test', 'id_static_table_p0', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p0');
+SELECT table_privs_are('partman_test', 'id_static_table_p10', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p10');
+SELECT table_privs_are('partman_test', 'id_static_table_p20', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p20');
+SELECT table_privs_are('partman_test', 'id_static_table_p30', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p30');
+SELECT table_privs_are('partman_test', 'id_static_table_p40', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p40');
+SELECT table_privs_are('partman_test', 'id_static_table_p50', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p50');
+SELECT table_privs_are('partman_test', 'id_static_table_p60', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p60');
+SELECT table_privs_are('partman_test', 'id_static_table_p70', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p70');
+SELECT table_privs_are('partman_test', 'id_static_table_p80', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_static_table_p80');
 SELECT table_owner_is ('partman_test', 'id_static_table_p0', 'partman_owner', 'Check that ownership change worked for id_static_table_p0');
 SELECT table_owner_is ('partman_test', 'id_static_table_p10', 'partman_owner', 'Check that ownership change worked for id_static_table_p10');
 SELECT table_owner_is ('partman_test', 'id_static_table_p20', 'partman_owner', 'Check that ownership change worked for id_static_table_p20');
@@ -119,6 +130,18 @@ SELECT table_owner_is ('partman_test', 'id_static_table_p50', 'partman_owner', '
 SELECT table_owner_is ('partman_test', 'id_static_table_p60', 'partman_owner', 'Check that ownership change worked for id_static_table_p60');
 SELECT table_owner_is ('partman_test', 'id_static_table_p70', 'partman_owner', 'Check that ownership change worked for id_static_table_p70');
 SELECT table_owner_is ('partman_test', 'id_static_table_p80', 'partman_owner', 'Check that ownership change worked for id_static_table_p80');
+
+SELECT undo_partition_id('partman_test.id_static_table', 10, p_keep_table := false);
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_static_table', ARRAY[66], 'Check count from parent table after undo');
+SELECT hasnt_table('partman_test', 'id_static_table_p0', 'Check id_static_table_p0 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p10', 'Check id_static_table_p10 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p20', 'Check id_static_table_p20 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p30', 'Check id_static_table_p30 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p40', 'Check id_static_table_p40 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p50', 'Check id_static_table_p50 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p60', 'Check id_static_table_p60 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p70', 'Check id_static_table_p70 doesn''t exists anymore');
+SELECT hasnt_table('partman_test', 'id_static_table_p80', 'Check id_static_table_p80 doesn''t exists anymore');
 
 SELECT * FROM finish();
 ROLLBACK;

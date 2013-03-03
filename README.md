@@ -23,7 +23,7 @@ Functions must either be run as a superuser or you can set the ownership of the 
 UPGRADE
 -------
 
-Make sure all the upgrade scripts for the version you have installed up to the most recent version are in the $BASEDIR/share/extension folder. 
+Make sure all the upgrade scripts for the version you have installed up to the most recent version are in the $/share/extension folder. 
 
     ALTER EXTENSION pg_partman UPDATE TO '<latest version>';
 
@@ -44,7 +44,7 @@ This will turn your table into a parent table and premake 4 future partitions an
 This should be enough to get you started. Please see the pg_partman.md file in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
 
 LICENSE AND COPYRIGHT
--------------------
+---------------------
 
 PG Partition Manager (pg_partman) is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
 

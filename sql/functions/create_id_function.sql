@@ -96,12 +96,13 @@ IF v_type = 'id-static' THEN
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
                 v_next_partition_id := (substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint) + '||v_part_interval||';
-                IF ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' THEN 
+                WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
                         ||v_part_interval||', ARRAY[v_next_partition_id]);
                     UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                     PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
-                END IF;
+                    v_next_partition_id := v_next_partition_id + '||v_part_interval||';
+                END LOOP;
             END IF;
         END IF; 
         RETURN NULL; 
@@ -114,7 +115,7 @@ IF v_type = 'id-static' THEN
     END IF;
 
 ELSIF v_type = 'id-dynamic' THEN
-
+    -- The return inside the partition creation check is there to keep really high ID values from creating new partitions.
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
             v_count                     int;
@@ -124,8 +125,6 @@ ELSIF v_type = 'id-dynamic' THEN
             v_last_partition_id         bigint;
             v_next_partition_id         bigint;
             v_next_partition_name       text;   
-            v_schemaname                text;
-            v_tablename                 text;
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
@@ -136,18 +135,17 @@ ELSIF v_type = 'id-dynamic' THEN
                 IF NEW.'||v_control||' >= v_next_partition_id THEN
                     RETURN NEW;
                 END IF;
-                IF ((v_next_partition_id - v_current_partition_id) / '||quote_literal(v_part_interval)||') <= '||quote_literal(v_premake)||' THEN 
+                WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
                         ||quote_literal(v_part_interval)||', ARRAY[v_next_partition_id]);
                     IF v_next_partition_name IS NOT NULL THEN
                         UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                         PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
                     END IF;
-                END IF;
+                    v_next_partition_id := v_next_partition_id + '||v_part_interval||';
+                END LOOP;
             END IF;
-            v_schemaname := split_part(v_current_partition_name, ''.'', 1); 
-            v_tablename := split_part(v_current_partition_name, ''.'', 2);
-            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname = v_schemaname AND tablename = v_tablename;
+            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname ||''.''|| tablename = v_current_partition_name;
             IF v_count > 0 THEN 
                 EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
             ELSE
@@ -183,7 +181,7 @@ EXCEPTION
             ELSIF v_step_id IS NULL THEN
                 v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
             END IF;
-            PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
