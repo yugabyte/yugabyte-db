@@ -19,7 +19,7 @@
         }
     },
     "provides": {
-        "pg_partmaint": {
+        "pg_partman": {
             "file": "sql/pg_partman--1.0.0.sql",
             "docfile": "doc/pg_partman.md",
             "version": "1.0.0",
