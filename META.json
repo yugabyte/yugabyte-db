@@ -7,7 +7,7 @@
     ],
     "license": "postgresql",
     "generated_by": "Keith Fiske",
-    "release_status": "testing",
+    "release_status": "stable",
     "prereqs": {
         "runtime": {
             "requires": {
