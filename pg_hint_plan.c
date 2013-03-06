@@ -261,7 +261,7 @@ struct HintState
 	List		  **join_hint_level;
 
 	/* for Leading hint */
-	LeadingHint	  **leading_hint;		/* parsed Leading hint */
+	LeadingHint	  **leading_hint;		/* parsed Leading hints */
 
 	/* for Set hints */
 	SetHint		  **set_hints;			/* parsed Set hints */
@@ -1089,41 +1089,46 @@ OuterInnerRelsCreate(char *name, List *outer_inner_list)
 static const char *
 parse_parentheses_Leading_in(const char *str, OuterInnerRels **outer_inner)
 {
-	char		   *name;
-	OuterInnerRels *outer_inner_rels;
+	List   *outer_inner_pair = NIL;
 
-	*outer_inner = OuterInnerRelsCreate(NULL, NIL);
+	if ((str = skip_parenthesis(str, '(')) == NULL)
+		return NULL;
 
 	skip_space(str);
 
 	/* Store words in parentheses into outer_inner_list. */
 	while(*str != ')' && *str != '\0')
 	{
+		OuterInnerRels *outer_inner_rels;
+
 		if (*str == '(')
 		{
-			str++;
-
 			str = parse_parentheses_Leading_in(str, &outer_inner_rels);
+			if (str == NULL)
+				break;
 		}
 		else
 		{
+			char   *name;
+
 			if ((str = parse_quoted_value(str, &name, true)) == NULL)
-			{
-				list_free((*outer_inner)->outer_inner_pair);
-				return NULL;
-			}
+				break;
 			else
 				outer_inner_rels = OuterInnerRelsCreate(name, NIL);
 		}
 
-		(*outer_inner)->outer_inner_pair = lappend(
-											(*outer_inner)->outer_inner_pair,
-											 outer_inner_rels);
+		outer_inner_pair = lappend(outer_inner_pair, outer_inner_rels);
 		skip_space(str);
 	}
 
-	if ((str = skip_parenthesis(str, ')')) == NULL)
+	if (str == NULL ||
+		(str = skip_parenthesis(str, ')')) == NULL)
+	{
+		list_free(outer_inner_pair);
 		return NULL;
+	}
+
+	*outer_inner = OuterInnerRelsCreate(NULL, outer_inner_pair);
 
 	return str;
 }
@@ -1141,9 +1146,8 @@ parse_parentheses_Leading(const char *str, List **name_list,
 	skip_space(str);
 	if (*str =='(')
 	{
-		str++;
-
-		str = parse_parentheses_Leading_in(str, outer_inner);
+		if ((str = parse_parentheses_Leading_in(str, outer_inner)) == NULL)
+			return NULL;
 	}
 	else
 	{
@@ -2313,8 +2317,7 @@ find_join_hint(Relids joinrelids)
 
 static Relids
 OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
-	PlannerInfo *root, List *initial_rels, HintState *hstate, int *njoinrels,
-	int nbaserel)
+	PlannerInfo *root, List *initial_rels, HintState *hstate, int nbaserel)
 {
 	OuterInnerRels *outer_rels;
 	OuterInnerRels *inner_rels;
@@ -2325,7 +2328,6 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 
 	if (outer_inner->relation != NULL)
 	{
-		(*njoinrels)++;
 		return bms_make_singleton(
 					find_relid_aliasname(root, outer_inner->relation,
 										 initial_rels,
@@ -2340,19 +2342,17 @@ OuterInnerJoinCreate(OuterInnerRels *outer_inner, LeadingHint *leading_hint,
 										root,
 										initial_rels,
 										hstate,
-										njoinrels,
 										nbaserel);
 	inner_relids = OuterInnerJoinCreate(inner_rels,
 										leading_hint,
 										root,
 										initial_rels,
 										hstate,
-										njoinrels,
 										nbaserel);
 
 	join_relids = bms_add_members(outer_relids, inner_relids);
 
-	if (bms_num_members(join_relids) > nbaserel || *njoinrels > nbaserel)
+	if (bms_num_members(join_relids) > nbaserel)
 		return join_relids;
 
 	/*
@@ -2464,15 +2464,14 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
  	 */
 	for (i = 0; i < hstate->num_hints[HINT_TYPE_LEADING]; i++)
 	{
-		LeadingHint *leading_hint = (LeadingHint *)hstate->leading_hint[i];
-
-		Relids	relids;
+		LeadingHint	   *leading_hint = (LeadingHint *)hstate->leading_hint[i];
+		Relids			relids;
 
 		if (leading_hint->base.state == HINT_STATE_ERROR)
 			continue;
 
 		relid = 0;
-		relids = 0;
+		relids = NULL;
 
 		foreach(l, leading_hint->relations)
 		{
@@ -2600,13 +2599,10 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
                                           root,
                                           initial_rels,
 										  hstate,
-                                         &njoinrels,
 										  nbaserel);
 
 		njoinrels = bms_num_members(joinrelids);
-
-		if (njoinrels < 2)
-			return false;
+		Assert(njoinrels >= 2);
 
 		/*
 		 * Delete all join hints which have different combination from Leading
