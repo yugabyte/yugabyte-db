@@ -9,6 +9,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "catalog/pg_index.h"
 #include "commands/prepare.h"
 #include "mb/pg_wchar.h"
 #include "miscadmin.h"
@@ -27,6 +28,7 @@
 #include "tcop/utility.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/rel.h"
 #if PG_VERSION_NUM >= 90200
 #include "catalog/pg_class.h"
 #endif
@@ -253,7 +255,10 @@ struct HintState
 	ScanMethodHint **scan_hints;		/* parsed scan hints */
 	int				init_scan_mask;		/* initial value scan parameter */
 	Index			parent_relid;		/* inherit parent table relid */
+	Oid				parent_rel_oid;     /* inherit parent table relid */
 	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
+	List		   *parent_ind_atts;    /* attnums of inherit parent table's
+										 * index */
 
 	/* for join method hints */
 	JoinMethodHint **join_hints;		/* parsed join hints */
@@ -663,7 +668,9 @@ HintStateCreate(void)
 	hstate->scan_hints = NULL;
 	hstate->init_scan_mask = 0;
 	hstate->parent_relid = 0;
+	hstate->parent_rel_oid = InvalidOid;
 	hstate->parent_hint = NULL;
+	hstate->parent_ind_atts = NIL;
 	hstate->join_hints = NULL;
 	hstate->init_join_mask = 0;
 	hstate->join_hint_level = NULL;
@@ -689,6 +696,8 @@ HintStateDelete(HintState *hstate)
 		hstate->all_hints[i]->delete_func(hstate->all_hints[i]);
 	if (hstate->all_hints)
 		pfree(hstate->all_hints);
+	if (hstate->parent_ind_atts)
+		list_free(hstate->parent_ind_atts);
 }
 
 /*
@@ -2138,6 +2147,46 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 			}
 		}
 
+		if (OidIsValid(relationObjectId) && !use_index)
+		{
+			int         i;
+			char       *child_attname = NULL;
+			char       *parent_attname = NULL;
+
+			foreach(l, current_hint->parent_ind_atts)
+			{
+				List *attnums = (List *)lfirst(l);
+
+				if ((list_length(attnums)) != info->ncolumns)
+					continue;
+
+				for (i = 0; i < info->ncolumns; i++)
+				{
+					child_attname = get_attname(relationObjectId,
+												info->indexkeys[i]);
+					parent_attname = get_attname(current_hint->parent_rel_oid,
+												 list_nth_int(attnums, i));
+					if (strcmp(parent_attname, child_attname) != 0)
+					{
+						use_index = false;
+						break;
+					}
+
+					use_index = true;
+				}
+
+				if (use_index)
+				{
+					if (pg_hint_plan_debug_print)
+					{
+						appendStringInfoCharMacro(&buf, ' ');
+						quote_value(&buf, indexname);
+					}
+
+					break;
+				}
+			}
+		}
 		if (!use_index)
 			rel->indexlist = list_delete_cell(rel->indexlist, cell, prev);
 		else
@@ -2186,6 +2235,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	{
 		/* store does relids of parent table. */
 		current_hint->parent_relid = rel->relid;
+		current_hint->parent_rel_oid = relationObjectId;
 	}
 	else if (current_hint->parent_relid != 0)
 	{
@@ -2214,6 +2264,7 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		/* This rel is not inherit table. */
 		current_hint->parent_relid = 0;
+		current_hint->parent_rel_oid = InvalidOid;
 		current_hint->parent_hint = NULL;
 	}
 
@@ -2229,8 +2280,54 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	}
 	set_scan_config_options(hint->enforce_mask, current_hint->context);
 	hint->base.state = HINT_STATE_USED;
+
 	if (inhparent)
+	{
+		Relation    relation;
+		List       *indexoidlist;
+		ListCell   *l;
+
 		current_hint->parent_hint = hint;
+
+		relation = heap_open(relationObjectId, NoLock);
+		indexoidlist = RelationGetIndexList(relation);
+
+		foreach(l, indexoidlist)
+		{
+			int         i;
+			Oid         indexoid = lfirst_oid(l);
+			char       *indexname = get_rel_name(indexoid);
+			bool        use_index = false;
+			Relation    indexRelation;
+			Form_pg_index index;
+			ListCell   *lc;
+			List       *attnums = NIL;
+
+			foreach(lc, hint->indexnames)
+			{
+				if (RelnameCmp(&indexname, &lfirst(lc)) == 0)
+				{
+					use_index = true;
+					break;
+				}
+			}
+			if (!use_index)
+				continue;
+
+			indexRelation = index_open(indexoid, RowExclusiveLock);
+
+			index = indexRelation->rd_index;
+
+			for (i = 0; i < index->indnatts; i++)
+				 attnums = lappend_int(attnums, index->indkey.values[i]);
+
+			current_hint->parent_ind_atts =
+				lappend(current_hint->parent_ind_atts, attnums);
+
+			index_close(indexRelation, NoLock);
+		}
+		heap_close(relation, NoLock);
+	}
 	else
 		delete_indexes(hint, rel, InvalidOid);
 }
