@@ -1,3 +1,11 @@
+1.1.0
+-- New python scripts in extras folder to allow partition creation and undoing using smaller commit batches, as is suggested in the documentation for the partition_data_* and undo_partition_* functions. This helps avoid transaction locks when there is a large amount of data to move around. There are also options to commit more slowly and ease the load on very busy systems.
+-- Changed the ordering of batch arguments in partition_data_id() & partition_data_time(). This makes their order the same as the undo functions and is a more sensical order (I think anyway).
+-- Made partition functions quieter. No more notices and just returns number of rows moved.
+-- Changed the undo partition functions to remove partitions in the order they were originally created. They were doing it alphabetically before, which could cause an odd order for serial based partitioning (p100 would be before p2). Creation order may not remove them in ascending order of the data at first, which would be ideal, but it makes more sense than alphabetically.
+-- Bug fix: undo_partition() could return 0 prematurely if some of the partitions were empty. Will now automatically uninherit/drop any empty partitions and continue on if there are still child tables, not counting them against p_batch_count if given.
+
+
 1.0.0
 -- New functions to undo partitioning. These all either move or copy data from the child tables and put it into the parent. All have an option to allow you either uninherit the child tables (default) or drop them when all their data has been put into the parent.
     --  undo_partition_time() & undo_partition_id are functions that move the data from the child partitions to the parent tables. Data is deleted from the child table and inserted to the parent. These functions allow smaller interval batches to be given as a parameter and are better able to handle larger partitioning sets. 

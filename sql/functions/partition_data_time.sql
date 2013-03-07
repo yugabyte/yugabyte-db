@@ -1,7 +1,7 @@
 /*
  * Populate the child table(s) of a time-based partition set with old data from the original parent
  */
-CREATE FUNCTION partition_data_time(p_parent_table text, p_batch_interval interval DEFAULT NULL, p_batch_count int DEFAULT 1) RETURNS bigint
+CREATE FUNCTION partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -62,24 +62,24 @@ FOR i IN 1..p_batch_count LOOP
     END CASE;
 
     v_partition_timestamp := ARRAY[v_min_partition_timestamp];
-    RAISE NOTICE 'v_partition_timestamp: %',v_partition_timestamp;
+--    RAISE NOTICE 'v_partition_timestamp: %',v_partition_timestamp;
     IF (v_min_control + p_batch_interval) >= (v_min_partition_timestamp + v_part_interval) THEN
         v_max_partition_timestamp := v_min_partition_timestamp + v_part_interval;
     ELSE
         v_max_partition_timestamp := v_min_control + p_batch_interval;
     END IF;
-    RAISE NOTICE 'v_max_partition_timestamp: %',v_max_partition_timestamp;
+--    RAISE NOTICE 'v_max_partition_timestamp: %',v_max_partition_timestamp;
 
     v_sql := 'SELECT @extschema@.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
     ||quote_literal(v_part_interval)||','||quote_literal(v_datetime_string)||','||quote_literal(v_partition_timestamp)||')';
-    RAISE NOTICE 'v_sql: %', v_sql;
+--    RAISE NOTICE 'v_sql: %', v_sql;
     EXECUTE v_sql INTO v_last_partition_name;
 
     v_sql := 'WITH partition_data AS (
             DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||quote_literal(v_min_control)||
                 ' AND '||v_control||' < '||quote_literal(v_max_partition_timestamp)||' RETURNING *)
             INSERT INTO '||v_last_partition_name||' SELECT * FROM partition_data';
-    RAISE NOTICE 'v_sql: %', v_sql;
+--    RAISE NOTICE 'v_sql: %', v_sql;
     EXECUTE v_sql;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;

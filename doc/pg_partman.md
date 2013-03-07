@@ -40,6 +40,7 @@ A superuser must be used to run these functions in order to set privileges & own
  > **half-hour** - One partition per 30 minute interval on the half-hour (1200, 1230)  
  > **quarter-hour** - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)  
  > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. This is the actual integer value, not text values like time-based partitioning. Must be greater than zero.
+ > *Author's Note: If people want decade, century or millenium let me know. They are not trivial to add but I will upon request.*
 
  * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle (behind & ahead). Note that weekly partitioning may occasionally cause an extra partition to be premade due to differing month lengths and daylight savings (on non-UTC systems). This won't hurt anything and will self-correct. If partitioning ever falls behind the premake value, normal running of run_maintenance() and data insertion to id-based tables should automatically catch things up.
  * p_debug - turns on additional debugging information (not yet working).
@@ -53,7 +54,7 @@ A superuser must be used to run these functions in order to set privileges & own
 *partition_data_time(p_parent_table text, p_batch_interval interval DEFAULT NULL, p_batch_count int DEFAULT 1) RETURNS bigint*
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
- * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Extras** section for an included python script that will do this for you.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch_interval - optional argument, a time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
@@ -62,7 +63,7 @@ A superuser must be used to run these functions in order to set privileges & own
 *partition_data_id(p_parent_table text, p_batch_interval int DEFAULT NULL, p_batch_count int DEFAULT 1) RETURNS bigint*
  * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
- * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. 
+ * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Extras** section for an included python script that will do this for you.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch_interval - optional argument, an integer amount representing an interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
@@ -95,7 +96,7 @@ A superuser must be used to run these functions in order to set privileges & own
  * Undo a time-based partition set created by pg_partman. This function MOVES the data from existing child partitions to the parent table.
  * When this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
  * When this function is run, the **undo_in_progress** column in the configuration table is set. This causes all partition creation and retention management by the run_maintenance() function to stop.
- * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Extras** section for an included python script that will do this for you.
  * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables as empty, independent tables.
  * Without setting either batch argument manually, each run of the function will move all the data from a single partition into the parent.
  * Once all child tables have been uninherited/dropped, the configuration data is removed from pg_partman automatically.
@@ -109,7 +110,7 @@ A superuser must be used to run these functions in order to set privileges & own
  * Undo an id-based partition set created by pg_partman. This function MOVES the data from existing child partitions to the parent table.
  * When this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
  * When this function is run, the **undo_in_progress** column in the configuration table is set. This causes all partition creation and retention management by the run_maintenance() function to stop.
- * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Extras** section for an included python script that will do this for you.
  * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables as empty, independent tables.
  * Without setting either batch argument manually, each run of the function will move all the data from a single partition into the parent.
  * Once all child tables have been uninherited/dropped, the configuration data is removed from pg_partman automatically.
@@ -123,7 +124,7 @@ A superuser must be used to run these functions in order to set privileges & own
  * Undo the parent/child table inheritance of any partition set, not just ones managed by pg_partman. This function COPIES the data from existing child partitions to the parent table.
  * If you need to keep the data in your child tables after it is put into the parent, use this function. 
  * Unlike the other undo functions, data cannot be copied in batches smaller than the partition interval. Every run of the function copies an entire partition to the parent.
- * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback.
+ * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Extras** section for an included python script that will do this for you.
  * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables exactly as they were but no longer inherited from the parent.
  * p_parent_table - parent table of the partition set. Must be schema qualified but does NOT have to be managed by pg_partman.
  * p_batch_count - an optional argument, this sets how many partitions to copy data from in a single run. Defaults to 1.
@@ -155,3 +156,37 @@ Tables
     last_partition          - Tracks the last successfully created partition and used to determine the next one.
     undo_in_progress        - Set by the undo_partition functions whenever they are run. If true, This causes all partition creation 
                               and retention management by the run_maintenance() function to stop. Default is false.
+
+Extras
+------
+*partition_data.py*
+ * A python script to make partitioning in committed batches easier.
+ * Calls either partition_data_time() or partition_data_id depending on the value given for --type.
+ * A commit is done at the end of each --interval and/or fully created partition.
+ * Returns the total number of rows moved to partitions. Automatically stops when parent is empty.
+ * --parent (-p):          Parent table an already created partition set. Required.
+ * --type (-t):            Type of partitioning. Valid values are "time" and "id". Required.
+ * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.
+ * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval argument. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
+ * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and make at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function). If not set, all data in the parent table will be partitioned in a single run of the script.
+ * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
+ * --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
+ * --quiet (-q):           Switch setting to stop all output during and after partitioning.
+ * Please see --help option for some examples.
+
+*undo_partition.py*
+ * A python script to make undoing partitions in committed batches easier. 
+ * Can also work on any parent/child partition set not managed by pg_partman if --type option is not set.
+ * This script calls either undo_partition(), undo_partition_time() or undo_partition_id depending on the value given for --type.
+ * A commit is done at the end of each --interval and/or emptied partition.
+ * Returns the total number of rows put into the to parent. Automatically stops when last child table is empty.
+ * --parent (-p):          Parent table of the partition set. Required.
+ * --type (-t):            Type of partitioning. Valid values are "time" and "id". Not setting this argument will use undo_partition() and work on any parent/child table set.
+ * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.
+ * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
+ * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and undo at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to undo function). If not set, all data will be moved to the parent table in a single run of the script.
+ * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
+ * --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
+ * --droptable (-d):       Switch setting for whether to drop child tables when they are empty. Leave off option to just uninherit.
+ * --quiet (-q):           Switch setting to stop all output during and after partitioning undo.
+ * Please see --help option for some examples.

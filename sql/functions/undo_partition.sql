@@ -8,6 +8,8 @@ CREATE FUNCTION undo_partition(p_parent_table text, p_batch_count int DEFAULT 1,
 DECLARE
 
 v_adv_lock              boolean;
+v_batch_loop_count      bigint := 0;
+v_child_count           bigint;
 v_child_table           text;
 v_copy_sql              text;
 v_job_id                bigint;
@@ -50,13 +52,31 @@ IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');
 END IF;
 
-FOR i IN 1..p_batch_count LOOP 
+WHILE v_batch_loop_count < p_batch_count LOOP 
     SELECT inhrelid::regclass INTO v_child_table 
     FROM pg_catalog.pg_inherits 
     WHERE inhparent::regclass = p_parent_table::regclass 
-    ORDER BY inhrelid::regclass::text ASC;
+    ORDER BY inhrelid ASC;
 
     EXIT WHEN v_child_table IS NULL;
+
+    EXECUTE 'SELECT count(*) FROM '||v_child_table INTO v_child_count;
+    IF v_child_count = 0 THEN
+        -- No rows left in this child table. Remove from partition set.
+        EXECUTE 'ALTER TABLE '||v_child_table||' NO INHERIT ' || p_parent_table;
+        IF p_keep_table = false THEN
+            EXECUTE 'DROP TABLE '||v_child_table;
+            IF v_jobmon_schema IS NOT NULL THEN
+                PERFORM update_step(v_step_id, 'OK', 'Child table DROPPED. Moved '||coalesce(v_rowcount, 0)||' rows to parent');
+            END IF;
+        ELSE
+            IF v_jobmon_schema IS NOT NULL THEN
+                PERFORM update_step(v_step_id, 'OK', 'Child table UNINHERITED, not DROPPED. Copied '||coalesce(v_rowcount, 0)||' rows to parent');
+            END IF;
+        END IF;
+        v_undo_count := v_undo_count + 1;
+        CONTINUE;
+    END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Removing child partition: '||v_child_table);
@@ -78,6 +98,7 @@ FOR i IN 1..p_batch_count LOOP
             PERFORM update_step(v_step_id, 'OK', 'Child table UNINHERITED, not DROPPED. Copied '||v_rowcount||' rows to parent');
         END IF;
     END IF;
+    v_batch_loop_count := v_batch_loop_count + 1;
     v_undo_count := v_undo_count + 1;         
 END LOOP;
 

@@ -76,7 +76,7 @@ WHILE v_batch_loop_count < p_batch_count LOOP
     SELECT inhrelid::regclass INTO v_child_table 
     FROM pg_catalog.pg_inherits 
     WHERE inhparent::regclass = p_parent_table::regclass 
-    ORDER BY inhrelid::regclass::text ASC;
+    ORDER BY inhrelid ASC;
 
     EXIT WHEN v_child_table IS NULL;
 
