@@ -715,3 +715,64 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
 /*+Leading((((t5 t4)t3)(t2 t1)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
+
+-- regular expression
+-- ordinary table
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexScanRegexp(t5 t5_[^i].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexScanRegexp(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexScanRegexp(t5 t5[^_].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexScan(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexOnlyScanRegexp(t5 t5_[^i].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexOnlyScanRegexp(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexOnlyScanRegexp(t5 t5[^_].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ BitmapScanRegexp(t5 t5_[^i].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ BitmapScanRegexp(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ BitmapScanRegexp(t5 t5[^_].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+/*+ BitmapScan(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+
+-- Inheritance
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ IndexOnlyScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+/*+ BitmapScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;

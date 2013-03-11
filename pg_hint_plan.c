@@ -9,6 +9,7 @@
  *-------------------------------------------------------------------------
  */
 #include "postgres.h"
+#include "catalog/pg_collation.h"
 #include "catalog/pg_index.h"
 #include "commands/prepare.h"
 #include "mb/pg_wchar.h"
@@ -26,6 +27,7 @@
 #include "optimizer/restrictinfo.h"
 #include "parser/scansup.h"
 #include "tcop/utility.h"
+#include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
@@ -50,7 +52,9 @@ PG_MODULE_MAGIC;
 /* hint keywords */
 #define HINT_SEQSCAN			"SeqScan"
 #define HINT_INDEXSCAN			"IndexScan"
+#define HINT_INDEXSCANREGEXP	"IndexScanRegexp"
 #define HINT_BITMAPSCAN			"BitmapScan"
+#define HINT_BITMAPSCANREGEXP	"BitmapScanRegexp"
 #define HINT_TIDSCAN			"TidScan"
 #define HINT_NOSEQSCAN			"NoSeqScan"
 #define HINT_NOINDEXSCAN		"NoIndexScan"
@@ -58,6 +62,7 @@ PG_MODULE_MAGIC;
 #define HINT_NOTIDSCAN			"NoTidScan"
 #if PG_VERSION_NUM >= 90200
 #define HINT_INDEXONLYSCAN		"IndexOnlyScan"
+#define HINT_INDEXONLYSCANREGEXP	"IndexOnlyScanRegexp"
 #define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
 #endif
 #define HINT_NESTLOOP			"NestLoop"
@@ -115,7 +120,9 @@ typedef enum HintKeyword
 {
 	HINT_KEYWORD_SEQSCAN,
 	HINT_KEYWORD_INDEXSCAN,
+	HINT_KEYWORD_INDEXSCANREGEXP,
 	HINT_KEYWORD_BITMAPSCAN,
+	HINT_KEYWORD_BITMAPSCANREGEXP,
 	HINT_KEYWORD_TIDSCAN,
 	HINT_KEYWORD_NOSEQSCAN,
 	HINT_KEYWORD_NOINDEXSCAN,
@@ -123,6 +130,7 @@ typedef enum HintKeyword
 	HINT_KEYWORD_NOTIDSCAN,
 #if PG_VERSION_NUM >= 90200
 	HINT_KEYWORD_INDEXONLYSCAN,
+	HINT_KEYWORD_INDEXONLYSCANREGEXP,
 	HINT_KEYWORD_NOINDEXONLYSCAN,
 #endif
 	HINT_KEYWORD_NESTLOOP,
@@ -198,6 +206,7 @@ typedef struct ScanMethodHint
 	Hint			base;
 	char		   *relname;
 	List		   *indexnames;
+	bool			regexp;
 	unsigned char	enforce_mask;
 } ScanMethodHint;
 
@@ -410,7 +419,10 @@ static char	   *stmt_name = NULL;
 static const HintParser parsers[] = {
 	{HINT_SEQSCAN, ScanMethodHintCreate, HINT_KEYWORD_SEQSCAN},
 	{HINT_INDEXSCAN, ScanMethodHintCreate, HINT_KEYWORD_INDEXSCAN},
+	{HINT_INDEXSCANREGEXP, ScanMethodHintCreate, HINT_KEYWORD_INDEXSCANREGEXP},
 	{HINT_BITMAPSCAN, ScanMethodHintCreate, HINT_KEYWORD_BITMAPSCAN},
+	{HINT_BITMAPSCANREGEXP, ScanMethodHintCreate,
+	 HINT_KEYWORD_BITMAPSCANREGEXP},
 	{HINT_TIDSCAN, ScanMethodHintCreate, HINT_KEYWORD_TIDSCAN},
 	{HINT_NOSEQSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOSEQSCAN},
 	{HINT_NOINDEXSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXSCAN},
@@ -418,6 +430,8 @@ static const HintParser parsers[] = {
 	{HINT_NOTIDSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOTIDSCAN},
 #if PG_VERSION_NUM >= 90200
 	{HINT_INDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_INDEXONLYSCAN},
+	{HINT_INDEXONLYSCANREGEXP, ScanMethodHintCreate,
+	 HINT_KEYWORD_INDEXONLYSCANREGEXP},
 	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
 #endif
 	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
@@ -519,6 +533,7 @@ ScanMethodHintCreate(const char *hint_str, const char *keyword,
 	hint->base.parse_func = (HintParseFunction) ScanMethodHintParse;
 	hint->relname = NULL;
 	hint->indexnames = NIL;
+	hint->regexp = false;
 	hint->enforce_mask = 0;
 
 	return (Hint *) hint;
@@ -1180,7 +1195,7 @@ parse_parentheses_Leading(const char *str, List **name_list,
 }
 
 static const char *
-parse_parentheses(const char *str, List **name_list, HintType type)
+parse_parentheses(const char *str, List **name_list, HintKeyword keyword)
 {
 	char   *name;
 	bool	truncate = true;
@@ -1202,7 +1217,12 @@ parse_parentheses(const char *str, List **name_list, HintType type)
 		*name_list = lappend(*name_list, name);
 		skip_space(str);
 
-		if (type == HINT_TYPE_SET)
+		if (keyword == HINT_KEYWORD_INDEXSCANREGEXP ||
+#if PG_VERSION_NUM >= 90200
+			keyword == HINT_KEYWORD_INDEXONLYSCANREGEXP ||
+#endif
+			keyword == HINT_KEYWORD_BITMAPSCANREGEXP ||
+			keyword == HINT_KEYWORD_SET)
 		{
 			truncate = false;
 		}
@@ -1425,7 +1445,7 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 	List		   *name_list = NIL;
 	int				length;
 
-	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
+	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
 		return NULL;
 
 	/* Parse relation name and index name(s) if given hint accepts. */
@@ -1436,12 +1456,15 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		hint->indexnames = list_delete_first(name_list);
 
 		/* check whether the hint accepts index name(s). */
-		if (hint_keyword != HINT_KEYWORD_INDEXSCAN &&
+		if (length != 1 &&
+			hint_keyword != HINT_KEYWORD_INDEXSCAN &&
+			hint_keyword != HINT_KEYWORD_INDEXSCANREGEXP &&
 #if PG_VERSION_NUM >= 90200
 			hint_keyword != HINT_KEYWORD_INDEXONLYSCAN &&
+			hint_keyword != HINT_KEYWORD_INDEXONLYSCANREGEXP &&
 #endif
 			hint_keyword != HINT_KEYWORD_BITMAPSCAN &&
-			length != 1)
+			hint_keyword != HINT_KEYWORD_BITMAPSCANREGEXP)
 		{
 			hint_ereport(str,
 						 ("%s hint accepts only one relation.",
@@ -1468,8 +1491,16 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		case HINT_KEYWORD_INDEXSCAN:
 			hint->enforce_mask = ENABLE_INDEXSCAN;
 			break;
+		case HINT_KEYWORD_INDEXSCANREGEXP:
+			hint->enforce_mask = ENABLE_INDEXSCAN;
+			hint->regexp = true;
+			break;
 		case HINT_KEYWORD_BITMAPSCAN:
 			hint->enforce_mask = ENABLE_BITMAPSCAN;
+			break;
+		case HINT_KEYWORD_BITMAPSCANREGEXP:
+			hint->enforce_mask = ENABLE_BITMAPSCAN;
+			hint->regexp = true;
 			break;
 		case HINT_KEYWORD_TIDSCAN:
 			hint->enforce_mask = ENABLE_TIDSCAN;
@@ -1489,6 +1520,10 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 #if PG_VERSION_NUM >= 90200
 		case HINT_KEYWORD_INDEXONLYSCAN:
 			hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
+			break;
+		case HINT_KEYWORD_INDEXONLYSCANREGEXP:
+			hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
+			hint->regexp = true;
 			break;
 		case HINT_KEYWORD_NOINDEXONLYSCAN:
 			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
@@ -1511,7 +1546,7 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 	HintKeyword		hint_keyword = hint->base.hint_keyword;
 	List		   *name_list = NIL;
 
-	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
+	if ((str = parse_parentheses(str, &name_list, hint_keyword)) == NULL)
 		return NULL;
 
 	hint->nrels = list_length(name_list);
@@ -1666,7 +1701,8 @@ SetHintParse(SetHint *hint, HintState *hstate, Query *parse, const char *str)
 {
 	List   *name_list = NIL;
 
-	if ((str = parse_parentheses(str, &name_list, hint->base.type)) == NULL)
+	if ((str = parse_parentheses(str, &name_list, hint->base.hint_keyword))
+		== NULL)
 		return NULL;
 
 	hint->words = name_list;
@@ -2087,6 +2123,33 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 	return NULL;
 }
 
+/*
+ * regexeq
+ *
+ * Returns TRUE on match, FALSE on no match.
+ *
+ *   s1 --- the data to match against
+ *   s2 --- the pattern
+ *
+ * Because we copy s1 to NameData, make the size of s1 less than NAMEDATALEN.
+ */
+static bool
+regexpeq(const char *s1, const char *s2)
+{
+	NameData	name;
+	text	   *regexp;
+	Datum		result;
+
+	strcpy(name.data, s1);
+	regexp = cstring_to_text(s2);
+
+	result = DirectFunctionCall2Coll(nameregexeq,
+									 DEFAULT_COLLATION_OID,
+									 NameGetDatum(&name),
+									 PointerGetDatum(regexp));
+	return DatumGetBool(result);
+}
+
 static void
 delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 {
@@ -2134,7 +2197,15 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 
 		foreach(l, hint->indexnames)
 		{
-			if (RelnameCmp(&indexname, &lfirst(l)) == 0)
+			char   *hintname = (char *) lfirst(l);
+			bool	result;
+
+			if (hint->regexp)
+				result = regexpeq(indexname, hintname);
+			else
+				result = RelnameCmp(&indexname, &hintname) == 0;
+
+			if (result)
 			{
 				use_index = true;
 				if (pg_hint_plan_debug_print)

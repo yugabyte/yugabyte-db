@@ -3011,22 +3011,17 @@ EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid =
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
          ->  Seq Scan on p1_c3 p1
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Tid Scan on p1_c4 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c3_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c3_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-(25 rows)
+         ->  Seq Scan on p1_c4 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(20 rows)
 
 SET constraint_exclusion TO on;
 EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
@@ -3038,13 +3033,11 @@ EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid =
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
          ->  Seq Scan on p1_c1 p1
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Tid Scan on p1_c1_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-(12 rows)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(10 rows)
 
 SET constraint_exclusion TO off;
 /*+SeqScan(p1)*/
@@ -3354,24 +3347,19 @@ EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c3 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c4 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(30 rows)
+(25 rows)
 
 SET constraint_exclusion TO on;
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3386,15 +3374,13 @@ EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(17 rows)
+(15 rows)
 
 SET constraint_exclusion TO off;
 /*+SeqScan(p1)*/
@@ -3421,24 +3407,19 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c3 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c4 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(30 rows)
+(25 rows)
 
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3464,24 +3445,19 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c3 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c4 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(30 rows)
+(25 rows)
 
 /*+BitmapScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3507,24 +3483,19 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c3 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c4 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(30 rows)
+(25 rows)
 
 /*+TidScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3550,24 +3521,19 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c3 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c4 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(30 rows)
+(25 rows)
 
 /*+NestLoop(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3591,25 +3557,20 @@ error hint:
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
          ->  Seq Scan on p1_c3 p1
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Tid Scan on p1_c4 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c3_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c3_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
+         ->  Seq Scan on p1_c4 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Materialize
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id < 10)
-(29 rows)
+(24 rows)
 
 /*+MergeJoin(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3635,24 +3596,19 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c3 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c4 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c3_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c4 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c3_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(30 rows)
+(25 rows)
 
 /*+HashJoin(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3676,25 +3632,20 @@ error hint:
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
          ->  Seq Scan on p1_c3 p1
                Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-         ->  Tid Scan on p1_c4 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c1_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c3_c1 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
-         ->  Tid Scan on p1_c3_c2 p1
-               TID Cond: (ctid = '(1,1)'::tid)
-               Filter: ((id >= 50) AND (id <= 51))
+         ->  Seq Scan on p1_c4 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Hash
          ->  Index Scan using t1_pkey on t1
                Index Cond: (id < 10)
-(29 rows)
+(24 rows)
 
 SET constraint_exclusion TO on;
 /*+SeqScan(p1)*/
@@ -3717,15 +3668,13 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(17 rows)
+(15 rows)
 
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3747,15 +3696,13 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(17 rows)
+(15 rows)
 
 /*+BitmapScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3777,15 +3724,13 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(17 rows)
+(15 rows)
 
 /*+TidScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3807,15 +3752,13 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(17 rows)
+(15 rows)
 
 /*+NestLoop(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3838,13 +3781,11 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-(16 rows)
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(14 rows)
 
 /*+MergeJoin(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3866,15 +3807,13 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Index Scan using t1_pkey on t1
          Index Cond: (id < 10)
-(17 rows)
+(15 rows)
 
 /*+HashJoin(p1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM p1, t1 WHERE p1.id >= 50 AND p1.id <= 51 AND p1.ctid = '(1,1)' AND p1.id = t1.id AND t1.id < 10;
@@ -3897,13 +3836,11 @@ error hint:
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
                ->  Seq Scan on p1_c1 p1
                      Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-               ->  Tid Scan on p1_c1_c1 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-               ->  Tid Scan on p1_c1_c2 p1
-                     TID Cond: (ctid = '(1,1)'::tid)
-                     Filter: ((id >= 50) AND (id <= 51))
-(16 rows)
+               ->  Seq Scan on p1_c1_c1 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+               ->  Seq Scan on p1_c1_c2 p1
+                     Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(14 rows)
 
 SET constraint_exclusion TO off;
 EXPLAIN (COSTS false) SELECT * FROM ONLY p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
@@ -5403,9 +5340,9 @@ Set(seq_page_cost on)
 
 -- debug log of candidate index to use IndexScan
 EXPLAIN (COSTS false) SELECT * FROM t5 WHERE t5.id = 1;
-          QUERY PLAN           
--------------------------------
- Index Scan using t5_id3 on t5
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
    Index Cond: (id = 1)
 (2 rows)
 
@@ -6230,8 +6167,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                                QUERY PLAN                                
---------------------------------------------------------------------------
+                                                            QUERY PLAN                                                            
+----------------------------------------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1
@@ -6247,7 +6184,7 @@ error hint:
                                  ->  Merge Join
                                        Merge Cond: (t4.id = t5.id)
                                        ->  Index Scan using t4_pkey on t4
-                                       ->  Index Scan using t5_id3 on t5
+                                       ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
 (16 rows)
 
 /*+Leading((t5(t4(t3(t2 t1)))))*/
@@ -6292,8 +6229,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                       QUERY PLAN                       
---------------------------------------------------------
+                                          QUERY PLAN                                          
+----------------------------------------------------------------------------------------------
  Nested Loop
    ->  Merge Join
          Merge Cond: (t1.id = t4.id)
@@ -6307,7 +6244,7 @@ error hint:
          ->  Sort
                Sort Key: t4.id
                ->  Seq Scan on t4
-   ->  Index Scan using t5_id3 on t5
+   ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
          Index Cond: (id = t1.id)
 (15 rows)
 
@@ -6320,8 +6257,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
  Nested Loop
    Join Filter: (t2.id = t1.id)
    ->  Nested Loop
@@ -6330,7 +6267,7 @@ error hint:
                Merge Cond: (t4.id = t3.id)
                ->  Merge Join
                      Merge Cond: (t5.id = t4.id)
-                     ->  Index Scan using t5_id3 on t5
+                     ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
                      ->  Sort
                            Sort Key: t4.id
                            ->  Seq Scan on t4
@@ -6350,8 +6287,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN                          
---------------------------------------------------------------
+                                                      QUERY PLAN                                                      
+----------------------------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t1.id = t3.id)
    ->  Merge Join
@@ -6366,7 +6303,7 @@ error hint:
                      ->  Merge Join
                            Merge Cond: (t4.id = t5.id)
                            ->  Index Scan using t4_pkey on t4
-                           ->  Index Scan using t5_id3 on t5
+                           ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
 (15 rows)
 
 /*+Leading(((t5 t4)(t3(t2 t1))))*/
@@ -6378,13 +6315,13 @@ not used hint:
 duplication hint:
 error hint:
 
-                          QUERY PLAN                          
---------------------------------------------------------------
+                                             QUERY PLAN                                             
+----------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t4.id = t1.id)
    ->  Merge Join
          Merge Cond: (t5.id = t4.id)
-         ->  Index Scan using t5_id3 on t5
+         ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
          ->  Sort
                Sort Key: t4.id
                ->  Seq Scan on t4
@@ -6408,8 +6345,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t1.id = t4.id)
    ->  Merge Join
@@ -6423,7 +6360,7 @@ error hint:
          ->  Merge Join
                Merge Cond: (t4.id = t5.id)
                ->  Index Scan using t4_pkey on t4
-               ->  Index Scan using t5_id3 on t5
+               ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
 (14 rows)
 
 /*+Leading((((t5 t4)t3)(t2 t1)))*/
@@ -6435,15 +6372,15 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                                                QUERY PLAN                                                
+----------------------------------------------------------------------------------------------------------
  Merge Join
    Merge Cond: (t3.id = t1.id)
    ->  Merge Join
          Merge Cond: (t4.id = t3.id)
          ->  Merge Join
                Merge Cond: (t5.id = t4.id)
-               ->  Index Scan using t5_id3 on t5
+               ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
                ->  Sort
                      Sort Key: t4.id
                      ->  Seq Scan on t4
@@ -6454,4 +6391,805 @@ error hint:
                ->  Index Scan using t2_pkey on t2
                ->  Index Scan using t1_pkey on t1
 (16 rows)
+
+-- regular expression
+-- ordinary table
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Index Only Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+ IndexScanRegexp(t5 t5_[^i].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexScanRegexp(t5): t5_val t5_pkey
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(t5 t5_[^i].*)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using t5_pkey on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+ IndexScanRegexp(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexScanRegexp(t5): t5_id3 t5_id2 t5_id1
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(t5 t5_id[0-9].*)
+not used hint:
+duplication hint:
+error hint:
+
+          QUERY PLAN           
+-------------------------------
+ Index Scan using t5_id3 on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+ IndexScanRegexp(t5 t5[^_].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexScanRegexp(t5):
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(t5 t5[^_].*)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexScanRegexp(t5):
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ IndexScan(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexScan(t5):
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t5 t5_id[0-9].*)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ IndexOnlyScanRegexp(t5 t5_[^i].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(t5): t5_val t5_pkey
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(t5 t5_[^i].*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Index Only Scan using t5_pkey on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+ IndexOnlyScanRegexp(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(t5): t5_id3 t5_id2 t5_id1
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(t5 t5_id[0-9].*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Index Only Scan using t5_id3 on t5
+   Index Cond: (id = 1)
+(2 rows)
+
+/*+ IndexOnlyScanRegexp(t5 t5[^_].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(t5):
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(t5 t5[^_].*)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(t5):
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ IndexOnlyScan(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for IndexOnlyScan(t5):
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScan(t5 t5_id[0-9].*)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ BitmapScanRegexp(t5 t5_[^i].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for BitmapScanRegexp(t5): t5_val t5_pkey
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(t5 t5_[^i].*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Bitmap Heap Scan on t5
+   Recheck Cond: (id = 1)
+   ->  Bitmap Index Scan on t5_pkey
+         Index Cond: (id = 1)
+(4 rows)
+
+/*+ BitmapScanRegexp(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for BitmapScanRegexp(t5): t5_id3 t5_id2 t5_id1
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(t5 t5_id[0-9].*)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Bitmap Heap Scan on t5
+   Recheck Cond: (id = 1)
+   ->  Bitmap Index Scan on t5_id3
+         Index Cond: (id = 1)
+(4 rows)
+
+/*+ BitmapScanRegexp(t5 t5[^_].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for BitmapScanRegexp(t5):
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(t5 t5[^_].*)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for BitmapScanRegexp(t5):
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(t5 ^.*t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+/*+ BitmapScan(t5 t5_id[0-9].*)*/
+EXPLAIN (COSTS false) SELECT id FROM t5 WHERE id = 1;
+LOG:  available indexes for BitmapScan(t5):
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(t5 t5_id[0-9].*)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on t5
+   Filter: (id = 1)
+(2 rows)
+
+-- Inheritance
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ IndexScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexScanRegexp(p1): p1_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c1): p1_c1_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c2): p1_c2_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c3): p1_c3_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c4): p1_c4_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c1_c1): p1_c1_c1_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c1_c2): p1_c1_c2_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c3_c1): p1_c3_c1_pkey
+LOG:  available indexes for IndexScanRegexp(p1_c3_c2): p1_c3_c2_pkey
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(p1 p1_.*[^0-9]$)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ IndexScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexScanRegexp(p1): p1_val2
+LOG:  available indexes for IndexScanRegexp(p1_c1): p1_c1_val2
+LOG:  available indexes for IndexScanRegexp(p1_c2): p1_c2_val2
+LOG:  available indexes for IndexScanRegexp(p1_c3): p1_c3_val2
+LOG:  available indexes for IndexScanRegexp(p1_c4): p1_c4_val2
+LOG:  available indexes for IndexScanRegexp(p1_c1_c1): p1_c1_c1_val2
+LOG:  available indexes for IndexScanRegexp(p1_c1_c2): p1_c1_c2_val2
+LOG:  available indexes for IndexScanRegexp(p1_c3_c1): p1_c3_c1_val2
+LOG:  available indexes for IndexScanRegexp(p1_c3_c2): p1_c3_c2_val2
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(p1 p1_.*val2.*)
+not used hint:
+duplication hint:
+error hint:
+
+                        QUERY PLAN                         
+-----------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_val2 on p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c1_val2 on p1_c1 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c2_val2 on p1_c2 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c3_val2 on p1_c3 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c4_val2 on p1_c4 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c1_c1_val2 on p1_c1_c1 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c1_c2_val2 on p1_c1_c2 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c3_c1_val2 on p1_c3_c1 p1
+               Index Cond: (val = 1)
+         ->  Index Scan using p1_c3_c2_val2 on p1_c3_c2 p1
+               Index Cond: (val = 1)
+(20 rows)
+
+/*+ IndexScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexScanRegexp(p1):
+LOG:  available indexes for IndexScanRegexp(p1_c1):
+LOG:  available indexes for IndexScanRegexp(p1_c2):
+LOG:  available indexes for IndexScanRegexp(p1_c3):
+LOG:  available indexes for IndexScanRegexp(p1_c4):
+LOG:  available indexes for IndexScanRegexp(p1_c1_c1):
+LOG:  available indexes for IndexScanRegexp(p1_c1_c2):
+LOG:  available indexes for IndexScanRegexp(p1_c3_c1):
+LOG:  available indexes for IndexScanRegexp(p1_c3_c2):
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(p1 p1[^_].*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ IndexScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexScan(p1):
+LOG:  available indexes for IndexScan(p1_c1):
+LOG:  available indexes for IndexScan(p1_c2):
+LOG:  available indexes for IndexScan(p1_c3):
+LOG:  available indexes for IndexScan(p1_c4):
+LOG:  available indexes for IndexScan(p1_c1_c1):
+LOG:  available indexes for IndexScan(p1_c1_c2):
+LOG:  available indexes for IndexScan(p1_c3_c1):
+LOG:  available indexes for IndexScan(p1_c3_c2):
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1 p1_.*val2.*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ IndexOnlyScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(p1): p1_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1): p1_c1_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c2): p1_c2_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3): p1_c3_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c4): p1_c4_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1_c1): p1_c1_c1_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1_c2): p1_c1_c2_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c1): p1_c3_c1_pkey
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c2): p1_c3_c2_pkey
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(p1 p1_.*[^0-9]$)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ IndexOnlyScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(p1): p1_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1): p1_c1_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c2): p1_c2_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3): p1_c3_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c4): p1_c4_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1_c1): p1_c1_c1_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1_c2): p1_c1_c2_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c1): p1_c3_c1_val2
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c2): p1_c3_c2_val2
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(p1 p1_.*val2.*)
+not used hint:
+duplication hint:
+error hint:
+
+                           QUERY PLAN                           
+----------------------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Only Scan using p1_val2 on p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c1_val2 on p1_c1 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c2_val2 on p1_c2 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c3_val2 on p1_c3 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c4_val2 on p1_c4 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c1_c1_val2 on p1_c1_c1 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c1_c2_val2 on p1_c1_c2 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c3_c1_val2 on p1_c3_c1 p1
+               Index Cond: (val = 1)
+         ->  Index Only Scan using p1_c3_c2_val2 on p1_c3_c2 p1
+               Index Cond: (val = 1)
+(20 rows)
+
+/*+ IndexOnlyScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexOnlyScanRegexp(p1):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c2):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c4):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1_c1):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c1_c2):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c1):
+LOG:  available indexes for IndexOnlyScanRegexp(p1_c3_c2):
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScanRegexp(p1 p1[^_].*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ IndexOnlyScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for IndexOnlyScan(p1):
+LOG:  available indexes for IndexOnlyScan(p1_c1):
+LOG:  available indexes for IndexOnlyScan(p1_c2):
+LOG:  available indexes for IndexOnlyScan(p1_c3):
+LOG:  available indexes for IndexOnlyScan(p1_c4):
+LOG:  available indexes for IndexOnlyScan(p1_c1_c1):
+LOG:  available indexes for IndexOnlyScan(p1_c1_c2):
+LOG:  available indexes for IndexOnlyScan(p1_c3_c1):
+LOG:  available indexes for IndexOnlyScan(p1_c3_c2):
+LOG:  pg_hint_plan:
+used hint:
+IndexOnlyScan(p1 p1_.*val2.*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ BitmapScanRegexp(p1 p1_.*[^0-9]$)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for BitmapScanRegexp(p1): p1_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c1): p1_c1_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c2): p1_c2_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c3): p1_c3_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c4): p1_c4_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c1_c1): p1_c1_c1_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c1_c2): p1_c1_c2_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c3_c1): p1_c3_c1_pkey
+LOG:  available indexes for BitmapScanRegexp(p1_c3_c2): p1_c3_c2_pkey
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(p1 p1_.*[^0-9]$)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ BitmapScanRegexp(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for BitmapScanRegexp(p1): p1_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c1): p1_c1_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c2): p1_c2_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c3): p1_c3_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c4): p1_c4_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c1_c1): p1_c1_c1_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c1_c2): p1_c1_c2_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c3_c1): p1_c3_c1_val2
+LOG:  available indexes for BitmapScanRegexp(p1_c3_c2): p1_c3_c2_val2
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(p1 p1_.*val2.*)
+not used hint:
+duplication hint:
+error hint:
+
+                      QUERY PLAN                      
+------------------------------------------------------
+ Result
+   ->  Append
+         ->  Bitmap Heap Scan on p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c1 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c1_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c2 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c2_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c3 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c3_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c4 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c4_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c1_c1 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c1_c1_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c1_c2 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c1_c2_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c3_c1 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c3_c1_val2
+                     Index Cond: (val = 1)
+         ->  Bitmap Heap Scan on p1_c3_c2 p1
+               Recheck Cond: (val = 1)
+               ->  Bitmap Index Scan on p1_c3_c2_val2
+                     Index Cond: (val = 1)
+(38 rows)
+
+/*+ BitmapScanRegexp(p1 p1[^_].*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for BitmapScanRegexp(p1):
+LOG:  available indexes for BitmapScanRegexp(p1_c1):
+LOG:  available indexes for BitmapScanRegexp(p1_c2):
+LOG:  available indexes for BitmapScanRegexp(p1_c3):
+LOG:  available indexes for BitmapScanRegexp(p1_c4):
+LOG:  available indexes for BitmapScanRegexp(p1_c1_c1):
+LOG:  available indexes for BitmapScanRegexp(p1_c1_c2):
+LOG:  available indexes for BitmapScanRegexp(p1_c3_c1):
+LOG:  available indexes for BitmapScanRegexp(p1_c3_c2):
+LOG:  pg_hint_plan:
+used hint:
+BitmapScanRegexp(p1 p1[^_].*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
+
+/*+ BitmapScan(p1 p1_.*val2.*)*/
+EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+LOG:  available indexes for BitmapScan(p1):
+LOG:  available indexes for BitmapScan(p1_c1):
+LOG:  available indexes for BitmapScan(p1_c2):
+LOG:  available indexes for BitmapScan(p1_c3):
+LOG:  available indexes for BitmapScan(p1_c4):
+LOG:  available indexes for BitmapScan(p1_c1_c1):
+LOG:  available indexes for BitmapScan(p1_c1_c2):
+LOG:  available indexes for BitmapScan(p1_c3_c1):
+LOG:  available indexes for BitmapScan(p1_c3_c2):
+LOG:  pg_hint_plan:
+used hint:
+BitmapScan(p1 p1_.*val2.*)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN              
+-------------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c4 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c1_c2 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c1 p1
+               Filter: (val = 1)
+         ->  Seq Scan on p1_c3_c2 p1
+               Filter: (val = 1)
+(20 rows)
 
