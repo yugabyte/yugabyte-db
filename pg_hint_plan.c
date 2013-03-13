@@ -2237,6 +2237,10 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 												info->indexkeys[i]);
 					parent_attname = get_attname(current_hint->parent_rel_oid,
 												 list_nth_int(attnums, i));
+					/* if one's column is expression, they are different */
+					if (!parent_attname || !child_attname)
+						continue;
+
 					if (strcmp(parent_attname, child_attname) != 0)
 					{
 						use_index = false;
