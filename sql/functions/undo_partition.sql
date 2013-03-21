@@ -53,10 +53,12 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 WHILE v_batch_loop_count < p_batch_count LOOP 
-    SELECT inhrelid::regclass INTO v_child_table 
-    FROM pg_catalog.pg_inherits 
-    WHERE inhparent::regclass = p_parent_table::regclass 
-    ORDER BY inhrelid ASC;
+    SELECT n.nspname||'.'||c.relname INTO v_child_table
+    FROM pg_inherits i 
+    JOIN pg_class c ON i.inhrelid = c.oid 
+    JOIN pg_namespace n ON c.relnamespace = n.oid 
+    WHERE i.inhparent::regclass = p_parent_table::regclass 
+    ORDER BY i.inhrelid ASC;
 
     EXIT WHEN v_child_table IS NULL;
 

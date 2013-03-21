@@ -30,7 +30,7 @@ Make sure all the upgrade scripts for the version you have installed up to the m
 EXAMPLE
 -------
 
-First create a parent table with an appropriate column type for the partitioning type you will do. Apply all defaults, indexes, constraints, privileges & ownership to the parent table and they will be inherited to newly created child tables automatically (not already existing partitions). Here's one with columns that can be used for either
+First create a parent table with an appropriate column type for the partitioning type you will do. Apply all defaults, indexes, constraints, privileges & ownership to the parent table and they will be inherited to newly created child tables automatically (not already existing partitions, see docs for how to fix that). Here's one with columns that can be used for either
 
     CREATE schema test;
     CREATE TABLE test.part_test (col1 serial, col2 text, col3 timestamptz DEFAULT now());

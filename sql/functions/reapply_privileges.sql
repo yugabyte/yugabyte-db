@@ -45,9 +45,11 @@ END IF;
 SELECT tableowner INTO v_parent_owner FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 FOR v_child_table IN 
-    SELECT inhrelid::regclass FROM pg_catalog.pg_inherits WHERE inhparent::regclass = p_parent_table::regclass ORDER BY inhrelid::regclass ASC
+    SELECT n.nspname||'.'||c.relname FROM pg_inherits i join pg_class c ON i.inhrelid = c.oid join pg_namespace n ON c.relnamespace = n.oid WHERE i.inhparent::regclass = p_parent_table::regclass ORDER BY i.inhrelid ASC
 LOOP
-    PERFORM update_step(v_step_id, 'PENDING', 'Currently on child partition in ascending order: '||v_child_table);
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'PENDING', 'Currently on child partition in ascending order: '||v_child_table);
+    END IF;
     v_grantees := NULL;
     FOR v_parent_grant IN 
         SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types, grantee

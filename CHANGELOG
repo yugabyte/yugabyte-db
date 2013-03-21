@@ -1,3 +1,10 @@
+1.2.0
+-- Bug fix: Make child table lookups more intelligent to be able to deal with schemas being in the current search_path. Functions this affects are: drop_time_partition(), drop_id_partition(), reapply_privileges(), undo_partition(), undo_partition_id(), undo_partition_time(). Before table names may not have matched properly when looping through all tables to drop or reset privileges. Thanks to https://github.com/terrorobe for reporting this issue.
+-- Bug fix: reapply_privileges() had unconditional calls to pg_jobmon functions and would fail if it wasn't installed.
+-- Added new parameter to drop partition functions to manually set an interval you'd like to drop. Makes it easier to cleanup a bunch of old partitions you don't need anymore without having to go through the whole retention policy setup if that's not needed.
+-- Renamed drop_time_partition() to drop_partition_time() and drop_id_partition() to drop_partition_id() to be more consistent with the other function names. Please check function ownership & privileges before and after update to ensure they are reset properly.
+
+
 1.1.0
 -- New python scripts in extras folder to allow partition creation and undoing using smaller commit batches, as is suggested in the documentation for the partition_data_* and undo_partition_* functions. This helps avoid transaction locks when there is a large amount of data to move around. There are also options to commit more slowly and ease the load on very busy systems.
 -- Changed the ordering of batch arguments in partition_data_id() & partition_data_time(). This makes their order the same as the undo functions and is a more sensical order (I think anyway).

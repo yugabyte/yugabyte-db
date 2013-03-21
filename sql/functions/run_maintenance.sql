@@ -114,12 +114,12 @@ END LOOP; -- end of creation loop
 FOR v_row IN 
     SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND (type = 'time-static' OR type = 'time-dynamic')
 LOOP
-    v_drop_count := v_drop_count + @extschema@.drop_time_partition(v_row.parent_table);   
+    v_drop_count := v_drop_count + @extschema@.drop_partition_time(v_row.parent_table);   
 END LOOP; 
 FOR v_row IN 
     SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND (type = 'id-static' OR type = 'id-dynamic')
 LOOP
-    v_drop_count := v_drop_count + @extschema@.drop_id_partition(v_row.parent_table);
+    v_drop_count := v_drop_count + @extschema@.drop_partition_id(v_row.parent_table);
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN

@@ -1,7 +1,7 @@
 /*
  * Function to drop child tables from a time-based partition set. Options to drop indexes or actually drop the table from the database.
  */
-CREATE FUNCTION drop_id_partition(p_parent_table text, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL) RETURNS int
+CREATE FUNCTION drop_partition_id(p_parent_table text, p_retention bigint DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL) RETURNS int
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -24,9 +24,9 @@ v_step_id                   bigint;
 
 BEGIN
 
-v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman drop_id_partition'));
+v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman drop_partition_id'));
 IF v_adv_lock = 'false' THEN
-    RAISE NOTICE 'drop_id_partition already running.';
+    RAISE NOTICE 'drop_partition_id already running.';
     RETURN 0;
 END IF;
 
@@ -36,28 +36,50 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
 END IF;
 
-SELECT  
-    part_interval::bigint
-    , control
-    , retention::bigint
-    , retention_keep_table
-    , retention_keep_index
-INTO
-    v_part_interval
-    , v_control
-    , v_retention
-    , v_retention_keep_table
-    , v_retention_keep_index
-FROM @extschema@.part_config 
-WHERE parent_table = p_parent_table 
-AND (type = 'id-static' OR type = 'id-dynamic') 
-AND retention IS NOT NULL;
 
-IF v_part_interval IS NULL THEN
-    RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
+-- Allow override of configuration options
+IF p_retention IS NULL THEN
+    SELECT  
+        part_interval::bigint
+        , control
+        , retention::bigint
+        , retention_keep_table
+        , retention_keep_index
+    INTO
+        v_part_interval
+        , v_control
+        , v_retention
+        , v_retention_keep_table
+        , v_retention_keep_index
+    FROM @extschema@.part_config 
+    WHERE parent_table = p_parent_table 
+    AND (type = 'id-static' OR type = 'id-dynamic') 
+    AND retention IS NOT NULL;
+
+    IF v_part_interval IS NULL THEN
+        RAISE EXCEPTION 'Configuration for given parent table with a retention period not found: %', p_parent_table;
+    END IF;
+ELSE
+     SELECT  
+        part_interval::bigint
+        , control
+        , retention_keep_table
+        , retention_keep_index
+    INTO
+        v_part_interval
+        , v_control
+        , v_retention_keep_table
+        , v_retention_keep_index
+    FROM @extschema@.part_config 
+    WHERE parent_table = p_parent_table 
+    AND (type = 'id-static' OR type = 'id-dynamic'); 
+    v_retention := p_retention;
+
+    IF v_part_interval IS NULL THEN
+        RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
+    END IF;
 END IF;
 
--- Allow override of keeping tables or indexes from input parameters
 IF p_keep_table IS NOT NULL THEN
     v_retention_keep_table = p_keep_table;
 END IF;
@@ -73,7 +95,7 @@ EXECUTE 'SELECT max('||v_control||') FROM '||p_parent_table INTO v_max;
 
 -- Loop through child tables of the given parent
 FOR v_child_table IN 
-    SELECT inhrelid::regclass FROM pg_catalog.pg_inherits WHERE inhparent::regclass = p_parent_table::regclass ORDER BY inhrelid::regclass ASC
+    SELECT n.nspname||'.'||c.relname FROM pg_inherits i join pg_class c ON i.inhrelid = c.oid join pg_namespace n ON c.relnamespace = n.oid WHERE i.inhparent::regclass = p_parent_table::regclass ORDER BY i.inhrelid ASC
 LOOP
     v_partition_id := substring(v_child_table from char_length(p_parent_table||'_p')+1)::bigint;
 
@@ -127,13 +149,13 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
-PERFORM pg_advisory_unlock(hashtext('pg_partman drop_id_partition'));
+PERFORM pg_advisory_unlock(hashtext('pg_partman drop_partition_id'));
 
 RETURN v_drop_count;
 
 EXCEPTION
     WHEN QUERY_CANCELED THEN
-        PERFORM pg_advisory_unlock(hashtext('pg_partman drop_id_partition'));
+        PERFORM pg_advisory_unlock(hashtext('pg_partman drop_partition_id'));
         RAISE EXCEPTION '%', SQLERRM;
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
@@ -149,7 +171,7 @@ EXCEPTION
             PERFORM fail_job(v_job_id);
             EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
         END IF;
-        PERFORM pg_advisory_unlock(hashtext('pg_partman drop_id_partition'));
+        PERFORM pg_advisory_unlock(hashtext('pg_partman drop_partition_id'));
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
