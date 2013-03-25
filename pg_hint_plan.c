@@ -31,6 +31,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 #if PG_VERSION_NUM >= 90200
 #include "catalog/pg_class.h"
 #endif
@@ -210,6 +211,18 @@ typedef struct ScanMethodHint
 	unsigned char	enforce_mask;
 } ScanMethodHint;
 
+typedef struct ParentIndexInfo
+{
+	bool		indisunique;
+	Oid			method;
+	List	   *column_names;
+	char	   *expression_str;
+	Oid		   *indcollation;
+	Oid		   *opclass;
+	int16	   *indoption;
+	char	   *indpred_str;
+} ParentIndexInfo;
+
 /* join method hints */
 typedef struct JoinMethodHint
 {
@@ -266,7 +279,7 @@ struct HintState
 	Index			parent_relid;		/* inherit parent table relid */
 	Oid				parent_rel_oid;     /* inherit parent table relid */
 	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
-	List		   *parent_ind_atts;    /* attnums of inherit parent table's
+	List		   *parent_index_infos; /* infomation of inherit parent table's
 										 * index */
 
 	/* for join method hints */
@@ -685,7 +698,7 @@ HintStateCreate(void)
 	hstate->parent_relid = 0;
 	hstate->parent_rel_oid = InvalidOid;
 	hstate->parent_hint = NULL;
-	hstate->parent_ind_atts = NIL;
+	hstate->parent_index_infos = NIL;
 	hstate->join_hints = NULL;
 	hstate->init_join_mask = 0;
 	hstate->join_hint_level = NULL;
@@ -711,8 +724,8 @@ HintStateDelete(HintState *hstate)
 		hstate->all_hints[i]->delete_func(hstate->all_hints[i]);
 	if (hstate->all_hints)
 		pfree(hstate->all_hints);
-	if (hstate->parent_ind_atts)
-		list_free(hstate->parent_ind_atts);
+	if (hstate->parent_index_infos)
+		list_free(hstate->parent_index_infos);
 }
 
 /*
@@ -2218,50 +2231,165 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 			}
 		}
 
+		/*
+		 * to make the index a candidate when definition of this index is
+		 * matched with the index's definition of current_hint.
+		 */
 		if (OidIsValid(relationObjectId) && !use_index)
 		{
-			int         i;
-			char       *child_attname = NULL;
-			char       *parent_attname = NULL;
-
-			foreach(l, current_hint->parent_ind_atts)
+			foreach(l, current_hint->parent_index_infos)
 			{
-				List *attnums = (List *)lfirst(l);
+				int					i;
+				HeapTuple			ht_idx;
+				ParentIndexInfo	   *p_info = (ParentIndexInfo *)lfirst(l);
 
-				if ((list_length(attnums)) != info->ncolumns)
+				/* check to match the parameter of unique */
+				if (p_info->indisunique != info->unique)
 					continue;
 
+				/* check to match the parameter of index's method */
+				if (p_info->method != info->relam)
+					continue;
+
+				/* to check to match the indexkey's configuration */
+				if ((list_length(p_info->column_names)) !=
+					 info->ncolumns)
+					continue;
+
+				/* check to match the indexkey's configuration */
 				for (i = 0; i < info->ncolumns; i++)
 				{
-					child_attname = get_attname(relationObjectId,
-												info->indexkeys[i]);
-					parent_attname = get_attname(current_hint->parent_rel_oid,
-												 list_nth_int(attnums, i));
-					/* if one's column is expression, they are different */
-					if (!parent_attname || !child_attname)
+					char       *c_attname = NULL;
+					char       *p_attname = NULL;
+
+					p_attname =
+						list_nth(p_info->column_names, i);
+
+					/* both are expressions */
+					if (info->indexkeys[i] == 0 && !p_attname)
 						continue;
 
-					if (strcmp(parent_attname, child_attname) != 0)
-					{
-						use_index = false;
+					/* one's column is expression, the other is not */
+					if (info->indexkeys[i] == 0 || !p_attname)
 						break;
-					}
 
-					use_index = true;
+					c_attname = get_attname(relationObjectId,
+												info->indexkeys[i]);
+
+					if (strcmp(p_attname, c_attname) != 0)
+						break;
+
+					if (p_info->indcollation[i] != info->indexcollations[i])
+						break;
+
+					if (p_info->opclass[i] != info->opcintype[i])
+						break;
+
+					if (((p_info->indoption[i] & INDOPTION_DESC) != 0) !=
+						info->reverse_sort[i])
+						break;
+
+					if (((p_info->indoption[i] & INDOPTION_NULLS_FIRST) != 0) !=
+						info->nulls_first[i])
+						break;
+
 				}
 
-				if (use_index)
+				if (i != info->ncolumns)
+					continue;
+
+				if ((p_info->expression_str && (info->indexprs != NIL)) ||
+					(p_info->indpred_str && (info->indpred != NIL)))
 				{
-					if (pg_hint_plan_debug_print)
+					/*
+					 * Fetch the pg_index tuple by the Oid of the index
+					 */
+					ht_idx = SearchSysCache1(INDEXRELID,
+											 ObjectIdGetDatum(info->indexoid));
+
+					/* check to match the expression's parameter of index */
+					if (p_info->expression_str &&
+						!heap_attisnull(ht_idx, Anum_pg_index_indexprs))
 					{
-						appendStringInfoCharMacro(&buf, ' ');
-						quote_value(&buf, indexname);
+						Datum       exprsDatum;
+						bool        isnull;
+						Datum       result;
+
+						/*
+						 * to change the expression's parameter of child's
+						 * index to strings
+						 */
+						exprsDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
+													 Anum_pg_index_indexprs,
+													 &isnull);
+
+						result = DirectFunctionCall2(pg_get_expr,
+													 exprsDatum,
+													 ObjectIdGetDatum(
+														 relationObjectId));
+
+						if (strcmp(p_info->expression_str,
+								   text_to_cstring(DatumGetTextP(result))) != 0)
+						{
+							/* Clean up */
+							ReleaseSysCache(ht_idx);
+
+							continue;
+						}
 					}
 
-					break;
+					/* Check to match the predicate's paraameter of index */
+					if (p_info->indpred_str &&
+						!heap_attisnull(ht_idx, Anum_pg_index_indpred))
+					{
+						Datum       predDatum;
+						bool        isnull;
+						Datum       result;
+
+						/*
+						 * to change the predicate's parabeter of child's
+						 * index to strings
+						 */
+						predDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
+													 Anum_pg_index_indpred,
+													 &isnull);
+
+						result = DirectFunctionCall2(pg_get_expr,
+													 predDatum,
+													 ObjectIdGetDatum(
+														 relationObjectId));
+
+						if (strcmp(p_info->indpred_str,
+								   text_to_cstring(DatumGetTextP(result))) != 0)
+						{
+							/* Clean up */
+							ReleaseSysCache(ht_idx);
+
+							continue;
+						}
+					}
+
+					/* Clean up */
+					ReleaseSysCache(ht_idx);
 				}
+				else if (p_info->expression_str || (info->indexprs != NIL))
+					continue;
+				else if	(p_info->indpred_str || (info->indpred != NIL))
+					continue;
+
+				use_index = true;
+
+				/* to log the candidate of index */
+				if (pg_hint_plan_debug_print)
+				{
+					appendStringInfoCharMacro(&buf, ' ');
+					quote_value(&buf, indexname);
+				}
+
+				break;
 			}
 		}
+
 		if (!use_index)
 			rel->indexlist = list_delete_cell(rel->indexlist, cell, prev);
 		else
@@ -2291,6 +2419,85 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 		pfree(buf.data);
 		pfree(rel_buf.data);
 	}
+}
+
+/* 
+ * Return information of index definition.
+ */
+static ParentIndexInfo *
+get_parent_index_info(Oid indexoid, Oid relid)
+{
+	ParentIndexInfo	*p_info = palloc(sizeof(ParentIndexInfo));
+	Relation	    indexRelation;
+	Form_pg_index	index;
+	char		   *attname;
+	int				i;
+
+	indexRelation = index_open(indexoid, RowExclusiveLock);
+
+	index = indexRelation->rd_index;
+
+	p_info->indisunique = index->indisunique;
+	p_info->method = indexRelation->rd_rel->relam;
+
+	p_info->column_names = NIL;
+	p_info->indcollation = (Oid *) palloc(sizeof(Oid) * index->indnatts);
+	p_info->opclass = (Oid *) palloc(sizeof(Oid) * index->indnatts);
+	p_info->indoption = (int16 *) palloc(sizeof(Oid) * index->indnatts);
+
+	for (i = 0; i < index->indnatts; i++)
+	{
+		attname = get_attname(relid, index->indkey.values[i]);
+		p_info->column_names = lappend(p_info->column_names, attname);
+
+		p_info->indcollation[i] = indexRelation->rd_indcollation[i];
+		p_info->opclass[i] = indexRelation->rd_opcintype[i];
+		p_info->indoption[i] = indexRelation->rd_indoption[i];
+	}
+
+	/*
+	 * to check to match the expression's paraameter of index with child indexes
+ 	 */
+	p_info->expression_str = NULL;
+	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indexprs))
+	{
+		Datum       exprsDatum;
+		bool		isnull;
+		Datum		result;
+
+		exprsDatum = SysCacheGetAttr(INDEXRELID, indexRelation->rd_indextuple,
+									 Anum_pg_index_indexprs, &isnull);
+
+		result = DirectFunctionCall2(pg_get_expr,
+									 exprsDatum,
+									 ObjectIdGetDatum(relid));
+
+		p_info->expression_str = text_to_cstring(DatumGetTextP(result));
+	}
+
+	/*
+	 * to check to match the predicate's paraameter of index with child indexes
+ 	 */
+	p_info->indpred_str = NULL;
+	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indpred))
+	{
+		Datum       predDatum;
+		bool		isnull;
+		Datum		result;
+
+		predDatum = SysCacheGetAttr(INDEXRELID, indexRelation->rd_indextuple,
+									 Anum_pg_index_indpred, &isnull);
+
+		result = DirectFunctionCall2(pg_get_expr,
+									 predDatum,
+									 ObjectIdGetDatum(relid));
+
+		p_info->indpred_str = text_to_cstring(DatumGetTextP(result));
+	}
+
+	index_close(indexRelation, NoLock);
+
+	return p_info;
 }
 
 static void
@@ -2369,14 +2576,11 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		foreach(l, indexoidlist)
 		{
-			int         i;
 			Oid         indexoid = lfirst_oid(l);
 			char       *indexname = get_rel_name(indexoid);
 			bool        use_index = false;
-			Relation    indexRelation;
-			Form_pg_index index;
 			ListCell   *lc;
-			List       *attnums = NIL;
+			ParentIndexInfo *parent_index_info;
 
 			foreach(lc, hint->indexnames)
 			{
@@ -2389,17 +2593,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 			if (!use_index)
 				continue;
 
-			indexRelation = index_open(indexoid, RowExclusiveLock);
-
-			index = indexRelation->rd_index;
-
-			for (i = 0; i < index->indnatts; i++)
-				 attnums = lappend_int(attnums, index->indkey.values[i]);
-
-			current_hint->parent_ind_atts =
-				lappend(current_hint->parent_ind_atts, attnums);
-
-			index_close(indexRelation, NoLock);
+			parent_index_info = get_parent_index_info(indexoid,
+													  relationObjectId);
+			current_hint->parent_index_infos =
+				lappend(current_hint->parent_index_infos, parent_index_info);
 		}
 		heap_close(relation, NoLock);
 	}
