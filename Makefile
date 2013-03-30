@@ -9,14 +9,15 @@ EXTRA_CLEAN  = sql/pgtap.sql sql/uninstall_pgtap.sql sql/pgtap-core.sql sql/pgta
 DOCS         = doc/pgtap.mmd
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
 REGRESS_OPTS = --inputdir=test --load-language=plpgsql
+ifndef PG_CONFIG
 PG_CONFIG    = pg_config
+endif
 
 ifdef NO_PGXS
 top_builddir = ../..
 PG_CONFIG := $(top_builddir)/src/bin/pg_config/pg_config
 else
 # Run pg_config to get the PGXS Makefiles
-PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 endif
 
@@ -145,4 +146,3 @@ html:
 	MultiMarkdown.pl doc/pgtap.mmd > doc/pgtap.html
 	./tocgen doc/pgtap.html 2> doc/toc.html
 	perl -MPod::Simple::XHTML -E "my \$$p = Pod::Simple::XHTML->new; \$$p->html_header_tags('<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">'); \$$p->strip_verbatim_indent(sub { (my \$$i = \$$_[0]->[0]) =~ s/\\S.*//; \$$i }); \$$p->parse_from_file('`perldoc -l pg_prove`')" > doc/pg_prove.html
-
