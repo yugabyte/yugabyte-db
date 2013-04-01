@@ -42,7 +42,7 @@ PostgreSQL 9.2以降で動作します。</td></tr>
   <td>指定したテーブルについて、Bitmap Scanを選択します。インデックスも指定した場合は、指定したインデックスの中でコストが最小となるインデックスを選択します。ただし、インデックスが存在しない場合や指定したインデックスがWHERE句やJOIN条件などに関連しない場合はSeq Scanを選択します。<br>
 継承関係の親テーブルとそのテーブルのインデックスを指定した場合は、子テーブルに対してそのインデックスと同様の定義のインデックスを選択します。</td></tr>
 <tr><td nowrap>IndexScanRegexp(テーブル[ POSIX正規表現...])</br>IndexOnlyScanRegexp(テーブル[ POSIX正規表現...])</br>BitmapScanRegexp(テーブル[ POSIX正規表現...])</td>
-  <td>テーブルのみを指定した場合のスキャン方式の選択基準は、Regexpの付かないスキャン方式のヒントと同じです。POSIX正規表現も指定した場合は、指定したPOSIX正規表現パターンに一致するインデックスの中でコストが最小となるスキャン方式を選択します。指定したテーブルが継承テーブルの場合は、子テーブルについても同じ基準で、使用するインデックスとスキャン方式を選択します。IndexOnlyScanRegexpヒントはPostgreSQL 9.2以降で動作します。</td></tr>
+  <td>テーブルのみを指定した場合のスキャン方式の選択基準は、Regexpの付かないスキャン方式のヒントと同じです。<a href="http://www.postgresql.jp/document/current/html/functions-matching.html#FUNCTIONS-POSIX-REGEXP">POSIX正規表現</a>も指定した場合は、指定したPOSIX正規表現パターンに一致するインデックスの中でコストが最小となるスキャン方式を選択します。指定したテーブルが継承テーブルの場合は、子テーブルについても同じ基準で、使用するインデックスとスキャン方式を選択します。IndexOnlyScanRegexpヒントはPostgreSQL 9.2以降で動作します。</td></tr>
 <tr><td nowrap>NoSeqScan(テーブル)</td>
   <td>指定したテーブルについて、Seq Scan以外でコストが最小となるスキャン方式を選択します。ただし、他のスキャン方式を選択できない場合は、Seq Scanを選択します。</td></tr>
 <tr><td nowrap>NoTidScan(テーブル)</td>
@@ -90,7 +90,7 @@ PostgreSQL 9.2以降で動作します。</td></tr>
   <a href="hint_list-ja.html">Appendix A. ヒント一覧</a>
 </div>
 
-<p class="footer">Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 
 <!--
 <script type="text/javascript">

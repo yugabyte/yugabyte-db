@@ -84,7 +84,7 @@ postgres=# </pre>
 <p>先に結合して欲しいオブジェクトから順にオブジェクト名または別名を指定してください。同じ問合せブロックのオブジェクトに対して複数の結合順序のヒントを指定した場合は、最後に指定したヒントが適用されます。 </p>
 <h4>GUCパラメータ</h4>
 <p>そのクエリの実行計画を作成している間だけGUCパラメータを変更できるヒントのグループで、「Set」のみが含まれます。</p>
-<p>設定したいGUCパラメータとそのパラメータの値を指定してください。<a href="http://www.postgresql.org/docs/9.1/static/sql-set.html">SET</a>コマンドで指定できるGUCパラメータならば全て指定できますが、効果があるのは<a href="http://www.postgresql.org/docs/9.1/static/runtime-config-query.html">問い合わせ計画</a>のGUCパラメータのみです。同じGUCパラメータに対して複数のGUCパラメータのヒントを指定した場合は、最後に指定したヒントが適用されます。</p>
+<p>設定したいGUCパラメータとそのパラメータの値を指定してください。<a href="http://www.postgresql.jp/document/current/html/sql-set.html">SET</a>コマンドで指定できるGUCパラメータならば全て指定できますが、効果があるのは<a href="http://www.postgresql.jp/document/current/html/runtime-config-query.html">問い合わせ計画</a>のGUCパラメータのみです。同じGUCパラメータに対して複数のGUCパラメータのヒントを指定した場合は、最後に指定したヒントが適用されます。</p>
 <p>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作は、<a href="#restrictions">使用上の注意と制約</a>を参照してください。</p>
 
 <h3 id="hint-GUC">pg_hint_planのGUCパラメータ</h3>
@@ -98,13 +98,13 @@ postgres=# </pre>
 <tr><td>pg_hint_plan.enable_hint</td>
   <td>pg_hint_planの機能を有効または無効にします。</td><td>on</td></tr>
 <tr><td>pg_hint_plan.debug_print</td>
-  <td>pg_hint_planのデバッグ出力を有効にします。メッセージはLOGメッセージレベルで出力されますので、デフォルトではサーバログに出力され、クライアントには渡されません。</td><td>off</td></tr>
+  <td>指定したヒントが実行計画生成にどのように影響したかを出力します。メッセージはLOGメッセージレベルで出力されますので、デフォルトではサーバログに出力され、クライアントには渡されません。</td><td>off</td></tr>
 <tr><td>pg_hint_plan.parse_messages</td>
   <td>指定したヒントを解釈できなかった場合に、どのメッセージ階層でログを出力するかを指定します。有効な値は、debug5、debug4、debug3、debug2、debug1、log、info、notice、warning、またはerrorです。fatalとpanicは指定できません。</td><td>info</td></tr>
 </tbody>
 </table>
 <p>
-PostgreSQL 9.1の環境でこれらのパラメータをpostgresql.confファイルで設定するには、<a href="http://www.postgresql.org/docs/9.1/static/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>にpg_hint_planを加える必要があります。
+PostgreSQL 9.1の環境でこれらのパラメータをpostgresql.confファイルで設定するには、<a href="http://www.postgresql.jp/document/current/html/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>にpg_hint_planを加える必要があります。
 典型的な使用例は以下のようになります。
 </p>
 <pre>
@@ -298,6 +298,34 @@ postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t3</span> JOIN view
 <dd>ルールによるクエリ書き換え後によってクエリが複数になる場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。</dd>
 <dt>マルチステートメントでのヒントの適用範囲</dt>
 <dd>クエリがマルチステートメントで実行される場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。2つ目以降のクエリに指定したヒントは無視します。psqlコマンドで-cオプションで複数のクエリを指定した場合などにマルチステートメントで実行されます。</dd>
+<dt>副問い合わせ結果をヒントに指定する方法</dt>
+<dd>以下の副問い合わせの結果をヒントに指定する場合は、ヒントのオブジェクト名に「ANY_subquery」を指定してください。
+<ul>
+<li>IN (SELECT ... { LIMIT | OFFSET 等} ... )</li>
+<li>ANY (SELECT ... { LIMIT | OFFSET 等} ...)</li>
+<li>SOME (SELECT ... { LIMIT | OFFSET 等} ...)</li>
+</ul>
+PostgreSQLは、実行計画を生成するときに副問い合わせを上位の問合せに併合することがあります。しかし、上記のような副問い合わせの場合には併合せず、これらの副問い合わせの結果に内部的に「ANY_subquery」という固定名をつけます。以下の例では、その固定名を指定したヒントの効果でHash Joinが選択されています。
+<pre>
+postgres=# /*+HashJoin(a1 ANY_subquery)*/
+postgres=# EXPLAIN SELECT *
+postgres=#    FROM pgbench_accounts a1
+postgres=#   WHERE aid IN (SELECT bid FROM pgbench_accounts a2 LIMIT 10);
+                                         QUERY PLAN
+
+---------------------------------------------------------------------------------------------
+ Hash Semi Join  (cost=0.49..2903.00 rows=1 width=97)
+   Hash Cond: (a1.aid = a2.bid)
+   ->  Seq Scan on pgbench_accounts a1  (cost=0.00..2640.00 rows=100000 width=97)
+   ->  Hash  (cost=0.36..0.36 rows=10 width=4)
+         ->  Limit  (cost=0.00..0.26 rows=10 width=4)
+               ->  Seq Scan on pgbench_accounts a2  (cost=0.00..2640.00 rows=100000 width=4)
+(6 rows)
+
+postgres=#
+</pre>
+一つのクエリで上記のような副問い合わせを複数使用している場合は、「ANY_subquery」と指定しても対象を特定できないため、ヒントはエラーとなり無視されます。</br>
+</dd>
 <dt>IndexOnlyScanヒントの指定(PostgreSQL 9.2以降)</dt>
 <dd>IndexOnlyScanヒントを指定しても、ヒント対象となるテーブルに複数のインデックスが存在するときは、Index Scanが選択される場合があります。この場合は、IndexOnlyScanヒントに、テーブルだけでなくそのテーブルでIndex Only Scanを選択できるインデックスも指定してください。そのインデックスを使ったIndex Only Scanが選択されます。</dd>
 <dt>NoIndexScanヒントの注意点(PostgreSQL 9.2以降)</dt>
@@ -383,16 +411,16 @@ postgres=#</pre>
 
 <h2 id="seealso">関連項目</h2>
 <h3 id="postgresql_document">PostgreSQLドキュメント</h3>
-<a href="http://www.postgresql.org/docs/9.1/static/sql-explain.html">EXPLAIN</a>
-<a href="http://www.postgresql.org/docs/9.1/static/sql-set.html">SET</a>
-<a href="http://www.postgresql.org/docs/9.1/static/runtime-config.html">サーバの設定</a>
+<a href="http://www.postgresql.jp/document/current/html/sql-explain.html">EXPLAIN</a>
+<a href="http://www.postgresql.jp/document/current/html/sql-set.html">SET</a>
+<a href="http://www.postgresql.jp/document/current/html/runtime-config.html">サーバの設定</a>
 <hr>
 
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
 </div>
 
-<p class="footer">Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 
 <!--
 <script type="text/javascript">

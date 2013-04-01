@@ -4,7 +4,7 @@
  *		  do instructions or hints to the planner using C-style block comments
  *		  of the SQL.
  *
- * Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  *
  *-------------------------------------------------------------------------
  */
