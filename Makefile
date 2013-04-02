@@ -1,7 +1,7 @@
 MAINEXT      = pgtap
 EXTENSION    = $(MAINEXT)
 EXTVERSION   = $(shell grep default_version $(MAINEXT).control | \
-	       sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
+			   sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 NUMVERSION   = $(shell echo $(EXTVERSION) | sed -e 's/\([[:digit:]]*[.][[:digit:]]*\).*/\1/')
 DATA         = $(filter-out $(wildcard sql/*--*.sql),$(wildcard sql/*.sql))
 TESTS        = $(wildcard test/sql/*.sql)
@@ -51,9 +51,9 @@ HAVE_HARNESS := $(shell $(PERL) -le 'eval { require TAP::Parser::SourceHandler::
 endif
 
 ifndef HAVE_HARNESS
-    $(warning To use pg_prove, TAP::Parser::SourceHandler::pgTAP Perl module)
-    $(warning must be installed from CPAN. To do so, simply run:)
-    $(warning     cpan TAP::Parser::SourceHandler::pgTAP)
+	$(warning To use pg_prove, TAP::Parser::SourceHandler::pgTAP Perl module)
+	$(warning must be installed from CPAN. To do so, simply run:)
+	$(warning     cpan TAP::Parser::SourceHandler::pgTAP)
 endif
 
 # Enum tests not supported by 8.2 and earlier.
