@@ -3,7 +3,8 @@ Revision history for pgTAP
 
 0.94.0
 ---------------------------
-
+* Fixed the Makefile to allow `PG_CONFIG=/path/to/pg_config` to actually work.
+  Patch from Aaron W. Swenson.
 
 0.93.0 2013-01-28T20:14:58Z
 ---------------------------
