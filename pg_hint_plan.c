@@ -1327,6 +1327,7 @@ static HintState *
 parse_head_comment(Query *parse)
 {
 	const char *p;
+	const char *hint_head;
 	char	   *head;
 	char	   *tail;
 	int			len;
@@ -1348,11 +1349,27 @@ parse_head_comment(Query *parse)
 		return NULL;
 
 	/* extract query head comment. */
-	len = strlen(HINT_START);
-	skip_space(p);
-	if (strncmp(p, HINT_START, len))
+	hint_head = strstr(p, HINT_START);
+	if (hint_head == NULL)
 		return NULL;
+	for (;p < hint_head; p++)
+	{
+		/*
+		 * ロケールに依存した動作を避けるために
+		 * isalpha() を使わず、ASCII 文字の範囲のみ
+		 * 許容文字とした。
+		 */
+		if (!(*p >= '0' && *p <= '9') &&
+			!(*p >= 'A' && *p <= 'Z') &&
+			!(*p >= 'a' && *p <= 'z') &&
+			!isspace(*p) &&
+			*p != '_' &&
+			*p != ',' &&
+			*p != '(' && *p != ')')
+			return NULL;
+	}
 
+	len = strlen(HINT_START);
 	head = (char *) p;
 	p += len;
 	skip_space(p);
