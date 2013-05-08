@@ -1355,9 +1355,16 @@ parse_head_comment(Query *parse)
 	for (;p < hint_head; p++)
 	{
 		/*
-		 * ロケールに依存した動作を避けるために
-		 * isalpha() を使わず、ASCII 文字の範囲のみ
-		 * 許容文字とした。
+		 * Allow these characters precedes hint comment:
+		 *   - digits
+		 *   - alphabets which are in ASCII range
+		 *   - space, tabs and new-lines
+		 *   - underscores, for identifier
+		 *   - commas, for SELECT clause, EXPLAIN and PREPARE
+		 *   - parentheses, for EXPLAIN and PREPARE
+		 *
+		 * Note that we don't use isalpha() nor isalnum() in ctype.h here to
+		 * avoid behavior which depends on locale setting.
 		 */
 		if (!(*p >= '0' && *p <= '9') &&
 			!(*p >= 'A' && *p <= 'Z') &&
