@@ -35,34 +35,40 @@
 
 <h2 id="synopsis">概要</h2>
 <p>PostgreSQLはコストベースオプティマイザを採用しており、SQL文と統計情報を元に可能なアクセスパスのコストを見積もり、最もコストの低い実行計画を選択します。オプティマイザは可能な限りよい実行計画を作成使用としますが、カラム間の相関関係などは考慮しないため、複雑なクエリでは常に最適なプランが選択されるとは限りません。</p>
-<p>pg_hint_planを用いると、ヒントを記述したブロックコメントをSQL文の前に加えることで、SQL文やGUCパラメータを変更することなく実行計画を制御することができます。</p>
+<p>pg_hint_planを用いると、ヒントを記述したブロックコメントをSQL文に加えることで、SQL文やGUCパラメータを変更することなく実行計画を制御することができます。</p>
 
 <h2 id="description">機能説明</h2>
 <p>pg_hint_planの機能について説明します。</p>
 
 <h3 id="hint-rule">ヒントの記述方法</h3>
-<p>ヒントはクエリ文字列の先頭のブロックコメント内に記述してください。ブロックコメントをヒントとして認識させるには、ブロックコメントの開始直後にプラス（+）を指定する必要があります。ヒントの対象は、カッコ内にオブジェクト名または別名(別名)で指定してください。オブジェクト名は、スペース、タブ、または改行のいずれかで区切って指定してください。</p>
+<p>ヒントは、実行計画を制御したいクエリの先頭または途中のSQLブロックコメントの中に記述します。ヒント用コメントと通常のコメントを区別するために、ヒント用のブロックコメントは「<span class="strong">/*+</span>」で始めてください。ヒントの対象は、カッコ内にオブジェクト名または別名(別名)で指定してください。オブジェクト名は、スペース、タブ、または改行のいずれかで区切って指定してください。</p>
 
 <p>以下の例では、HashJoinとSeqScanヒントにより、pgbench_accountsテーブルに対するSeq Scanの結果をHash Joinする実行計画が選択されています。</p>
 <pre>
-postgres=# /*+
+postgres=# EXPLAIN (VERBOSE, COSTS)
+postgres-# /*+
 postgres*#    <span class="strong">HashJoin(a b)</span>
 postgres*#    <span class="strong">SeqScan(a)</span>
 postgres*#  */
-postgres-# EXPLAIN SELECT *
-postgres-#    FROM pgbench_branches b
-postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-# SELECT *
+postgres-#    FROM pgbench_accounts a
+postgres-#    JOIN pgbench_branches b ON a.bid = b.bid
 postgres-#   ORDER BY a.aid;
-                                      QUERY PLAN
----------------------------------------------------------------------------------------
- Sort  (cost=31465.84..31715.84 rows=100000 width=197)
+                                          QUERY PLAN
+----------------------------------------------------------------------------------------------
+ Sort  (cost=54026.84..54276.84 rows=100000 width=461)
+   Output: a.aid, a.bid, a.abalance, a.filler, b.bid, b.bbalance, b.filler, a.aid
    Sort Key: a.aid
-   ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=197)
+   ->  <span class="strong">Hash Join</span>  (cost=1.02..4016.02 rows=100000 width=461)
+         Output: a.aid, a.bid, a.abalance, a.filler, b.bid, b.bbalance, b.filler, a.aid
          Hash Cond: (a.bid = b.bid)
-         ->  <span class="strong">Seq Scan on pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
-         ->  Hash  (cost=1.01..1.01 rows=1 width=100)
-               ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=100)
-(7 rows)
+         ->  <span class="strong">Seq Scan on public.pgbench_accounts a</span>  (cost=0.00..2640.00 rows=100000 width=97)
+               Output: a.aid, a.bid, a.abalance, a.filler
+         ->  Hash  (cost=1.01..1.01 rows=1 width=364)
+               Output: b.bid, b.bbalance, b.filler
+               ->  Seq Scan on public.pgbench_branches b  (cost=0.00..1.01 rows=1 width=364)
+                     Output: b.bid, b.bbalance, b.filler
+(12 rows)
 
 postgres=# </pre>
 
@@ -194,7 +200,36 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 <h3>ヒントの指定方法</h3>
 <dl>
 <dt>ヒントの記述位置</dt>
-<dd>クエリの前に複数のブロックコメントを記述する場合は、最初のブロックコメントにのみヒントを記述してください。二番目以降のブロックコメントは、ヒントと見なされず無視されます。以下の例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
+<dd>ヒントはクエリの先頭または途中に記述できます。ただし、ヒントをクエリの途中に記述する場合、ヒント用のブロックコメントより前に以下の文字<span class="strong">以外</span>が含まれると、「/*+」で始まるコメントでもヒントとして扱われず無視されます。
+<ul>
+<li>空白文字（半角スペース、水平/垂直タブ、改行、フォームフィード、復帰）</li>
+<li>アルファベット（大文字/小文字）</li>
+<li>数字</li>
+<li>アンダースコア</li>
+<li>カンマ</li>
+<li>開き括弧（(）、閉じ括弧（)）</li>
+</ul>
+指定したヒントが使用される記述例
+<pre>
+postgres=# WITH accounts_limit AS (
+postgres(#    SELECT aid, bid FROM pgbench_accounts a LIMIT 10
+postgres(#    )
+postgres-# /*+
+postgres*#    <span class="strong">SeqScan(a)</span>
+postgres*#  */
+postgres-# SELECT * FROM accounts_limit;
+...
+</pre>
+指定したヒントが無視される記述例（ヒント用のブロックコメントより前に、二重引用符（"）が含まれている。）
+<pre>
+postgres=# SELECT bid AS "BID" 
+postgres-# /*+
+postgres*#    <span class="strong">SeqScan(b)</span>
+postgres*#  */
+postgres-#    FROM pgbench_branches b;
+...
+</pre>
+一つのクエリに複数のブロックコメントを記述する場合は、最初のブロックコメントにのみヒントを記述してください。二番目以降のブロックコメントは、ヒントと見なされず無視されます。以下の例では、HashJoin(a b)とSeqScan(a)がヒントと見なされ、IndexScan(a)とMergeJoin(a b)は無視されています。</p>
 <pre>
 postgres=# /*+
 postgres*#    <span class="strong">HashJoin(a b)</span>
@@ -295,9 +330,9 @@ postgres=# EXPLAIN SELECT * FROM table1 <span class="strong">t3</span> JOIN view
 <dt>ビューやルールを使うクエリのヒント</dt>
 <dd>ルールを定義したテーブルやビューを複数用いるときに、各ビュー内のテーブルの別名やルール書き換え後のクエリのテーブルの別名が重複した場合は、ヒントの対象を区別できません。区別する場合は、各ビュー内のテーブルの別名やルール書き換え後のクエリのテーブルの別名を重複させないでください。</dd>
 <dt>ルールを使うクエリでのヒントの適用範囲</dt>
-<dd>ルールによるクエリ書き換え後によってクエリが複数になる場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。</dd>
+<dd>ルールによるクエリ書き換えによってクエリが複数になる場合は、書き換え前のクエリで指定したヒントが全てのクエリで使用されます。ルール内のクエリにヒントを記述しても、そのヒントは適用されません。</dd>
 <dt>マルチステートメントでのヒントの適用範囲</dt>
-<dd>クエリがマルチステートメントで実行される場合は、先頭のブロックコメントで指定したヒントを全てのクエリで使用します。2つ目以降のクエリに指定したヒントは無視します。psqlコマンドで-cオプションで複数のクエリを指定した場合などにマルチステートメントで実行されます。</dd>
+<dd>クエリがマルチステートメントで実行される場合は、1つ目のクエリで指定したヒントを全てのクエリで使用します。2つ目以降のクエリに指定したヒントは無視します。psqlコマンドで-cオプションで複数のクエリを指定した場合などにマルチステートメントで実行されます。</dd>
 <dt>副問い合わせ結果をヒントに指定する方法</dt>
 <dd>以下の副問い合わせの結果をヒントに指定する場合は、ヒントのオブジェクト名に「ANY_subquery」を指定してください。
 <ul>
@@ -367,11 +402,9 @@ postgres=#
 </ul>
 </dd>
 <dt>PL/pgSQLにおける制限</dt>
-<dd>PL/pgSQLでユーザ定義関数を実装する際に、関数定義内の各クエリの先頭にヒントを指定したとしても、そのヒントは無視します。ユーザ定義関数を実行するSELECTコマンドに指定したヒントを使用します。ただし、PL/pgSQLでは、関数定義内で指定したクエリがそのまま実行されるとは限らないため、ヒントを指定した場合の挙動は保証できません。</dd>
+<dd>PL/pgSQLでユーザ定義関数を実装する際に、関数定義内の各クエリにヒントを指定したとしても、そのヒントは無視されます。ユーザ定義関数を実行するSELECTコマンドに指定したヒントを使用します。ただし、PL/pgSQLでは、関数定義内で指定したクエリがそのまま実行されるとは限らないため、ヒントを指定した場合の挙動は保証できません。</dd>
 <dt>ECPGにおける制限</dt>
-<dd>pg_hint_planでは、ECPGで実装したアプリケーションから発行するクエリは、基本的に実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ただし、C言語文字列に格納したクエリをEXECUTEコマンドで実行する動的SQLの場合は、クエリ文字列の先頭にヒントを指定することで実行計画を制御できます。</dd>
-<dt>psqlのフェッチ件数指定</dt>
-<dd>psqlコマンドのFETCH_COUNT変数に0より大きな整数値を指定すると、pg_hint_planでは実行計画を制御できなくなります。FETCH_COUNT変数に0より大きな整数値を指定すると、ユーザが指定したクエリの先頭に「DECLARE _psql_cursor NO SCROLL CURSOR FOR」が自動的に追加されてクエリが発行されることにより、ヒントがクエリの先頭ではなくなってしまうためです。</dd>
+<dd>pg_hint_planでは、ECPGで実装したアプリケーションから発行するクエリは、基本的に実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ただし、C言語文字列に格納したクエリをEXECUTEコマンドで実行する動的SQLの場合は、クエリ文字列にヒントを指定することで実行計画を制御できます。</dd>
 <dt>ヒントによるフィンガープリントの変化</dt>
 <dd>pg_hint_planはSQLコメントでヒントを指定するため、SQL文フィンガープリントベースのクエリキャッシュなどでは、ヒントが異なれば別のSQL文として扱われます。pg_stat_statementも9.1では別クエリとして集計しますが、9.2ではクエリ集約機能によりコメントが除去されるので、ヒントのみが異なるクエリは同じクエリとして扱われます。</dd>
 <pre>
