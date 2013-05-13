@@ -3,97 +3,97 @@
 CREATE FUNCTION pg_catalog.trunc(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_trunc'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(date,text) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION pg_catalog.round(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_round'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(date, text) IS 'round dates according to the specified format';
 
 CREATE FUNCTION pg_catalog.next_day(value date, weekday text)
 RETURNS date
 AS 'MODULE_PATHNAME'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.next_day (date, text) IS 'returns the first weekday that is greather than a date value';
 
 CREATE FUNCTION pg_catalog.next_day(value date, weekday integer)
 RETURNS date
 AS 'MODULE_PATHNAME', 'next_day_by_index'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.next_day (date, integer) IS 'returns the first weekday that is greather than a date value';
 
 CREATE FUNCTION pg_catalog.last_day(value date)
 RETURNS date
 AS 'MODULE_PATHNAME'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.last_day(date) IS 'returns last day of the month based on a date value';
 
 CREATE FUNCTION pg_catalog.months_between(date1 date, date2 date)
 RETURNS numeric
 AS 'MODULE_PATHNAME'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.months_between(date, date) IS 'returns the number of months between date1 and date2';
 
 CREATE FUNCTION pg_catalog.add_months(day date, value int)
 RETURNS date
 AS 'MODULE_PATHNAME'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.add_months(date, int) IS 'returns date plus n months';
 
 CREATE FUNCTION pg_catalog.trunc(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME', 'ora_timestamptz_trunc'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone, text) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION pg_catalog.round(value timestamp with time zone, fmt text)
 RETURNS timestamp with time zone
 AS 'MODULE_PATHNAME','ora_timestamptz_round'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone, text) IS 'round dates according to the specified format';
 
 CREATE FUNCTION pg_catalog.round(value timestamp with time zone)
 RETURNS timestamp with time zone
 AS $$ SELECT pg_catalog.round($1, 'DDD'); $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(timestamp with time zone) IS 'will round dates according to the specified format';
 
 CREATE FUNCTION pg_catalog.round(value date)
 RETURNS date
 AS $$ SELECT $1; $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.round(value date)IS 'will round dates according to the specified format';
 
 CREATE FUNCTION pg_catalog.trunc(value timestamp with time zone)
 RETURNS timestamp with time zone
 AS $$ SELECT pg_catalog.trunc($1, 'DDD'); $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(timestamp with time zone) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION pg_catalog.trunc(value date)
 RETURNS date
 AS $$ SELECT $1; $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.trunc(date) IS 'truncate date according to the specified format';
 
 CREATE FUNCTION pg_catalog.nlssort(text, text)
 RETURNS bytea
 AS 'MODULE_PATHNAME', 'ora_nlssort'
-LANGUAGE 'C' IMMUTABLE;
+LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION pg_catalog.nlssort(text, text) IS '';
 
 CREATE FUNCTION pg_catalog.nlssort(text)
 RETURNS bytea
 AS $$ SELECT pg_catalog.nlssort($1, null); $$
-LANGUAGE 'SQL' IMMUTABLE STRICT;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.nlssort(text)IS '';
 
 CREATE FUNCTION pg_catalog.set_nls_sort(text)
 RETURNS void
 AS 'MODULE_PATHNAME', 'ora_set_nls_sort'
-LANGUAGE 'C' IMMUTABLE STRICT;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.set_nls_sort(text) IS '';
 
 CREATE FUNCTION pg_catalog.instr(str text, patt text, start int, nth int)
