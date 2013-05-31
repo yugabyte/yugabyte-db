@@ -1358,8 +1358,10 @@ parse_head_comment(Query *parse)
 		entry = FetchPreparedStatement(stmt_name, true);
 		p = entry->plansource->query_string;
 	}
-	else
+	else if (hint_query_string)
 		p = hint_query_string;
+	else
+		p = debug_query_string;
 
 	if (p == NULL)
 		return NULL;
@@ -2054,8 +2056,6 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/* Create hint struct from parse tree. */
-	if (!hint_query_string)
-		hint_query_string = debug_query_string;
 	hstate = parse_head_comment(parse);
 
 	/*
