@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(305);
+SELECT plan(308);
 --SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
@@ -220,7 +220,7 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test function_privilege_is().
+-- Test function_privs_are().
 CREATE OR REPLACE FUNCTION public.foo(int, text) RETURNS VOID LANGUAGE SQL AS '';
 
 SELECT * FROM check_test(
@@ -420,6 +420,23 @@ SELECT * FROM check_test(
     'whatever',
     '    Extra privileges:
         EXECUTE'
+);
+
+-- Try a really long function signature.
+CREATE OR REPLACE FUNCTION public.function_with_a_moderate_signature(
+    anyelement, date, text[], boolean
+) RETURNS VOID LANGUAGE SQL AS '';
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'public', 'function_with_a_moderate_signature',
+        ARRAY['anyelement','date','text[]','boolean'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'long function signature',
+    'whatever',
+    ''
 );
 
 /****************************************************************************/

@@ -25,17 +25,17 @@
      "pgtap": {
        "abstract": "Unit testing for PostgreSQL",
        "file": "sql/pgtap.sql",
-       "version": "0.93.0"
+       "version": "0.94.0"
      },
      "pgtap-core": {
        "abstract": "Unit testing for PostgreSQL",
        "file": "sql/pgtap-core.sql",
-       "version": "0.93.0"
+       "version": "0.94.0"
      },
      "pgtap-schema": {
        "abstract": "Schema unit testing for PostgreSQL",
        "file": "sql/pgtap-schema.sql",
-       "version": "0.93.0"
+       "version": "0.94.0"
      }
    },
    "resources": {

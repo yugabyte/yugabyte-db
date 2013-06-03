@@ -7,6 +7,8 @@ Revision history for pgTAP
   Patch from Aaron W. Swenson.
 * Eliminated superfluous tabs in the `Makefile` that could cause it to fail in
   some situations. Patch from Eric Neault.
+* Fixed `function_privs_are() to work with functions with long names and/or
+  signatures. Thanks to Jörg Beyer for the detailed report.
 
 0.93.0 2013-01-28T20:14:58Z
 ---------------------------

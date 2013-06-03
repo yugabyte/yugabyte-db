@@ -8435,7 +8435,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
-CREATE OR REPLACE FUNCTION _get_func_privs(NAME, TEXT)
+CREATE OR REPLACE FUNCTION _get_func_privs(TEXT, TEXT)
 RETURNS TEXT[] AS $$
 BEGIN
     IF pg_catalog.has_function_privilege($1, $2, 'EXECUTE') THEN
@@ -8451,7 +8451,7 @@ EXCEPTION
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION _fprivs_are ( NAME, NAME, NAME[], TEXT )
+CREATE OR REPLACE FUNCTION _fprivs_are ( TEXT, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
     grants TEXT[] := _get_func_privs($2, $1);
