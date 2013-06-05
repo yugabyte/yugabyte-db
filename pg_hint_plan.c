@@ -36,6 +36,9 @@
 #include "catalog/pg_class.h"
 #endif
 
+#include "executor/spi.h"
+#include "catalog/pg_type.h"
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -457,6 +460,16 @@ static const HintParser parsers[] = {
 	{HINT_SET, SetHintCreate, HINT_KEYWORD_SET},
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
+
+/* search hint. */
+static const char *search_query =
+	"SELECT hints "
+	"  FROM hint_plan.hints "
+	" WHERE norm_query_string = $1 "
+	"   AND ( application_name = $2 "
+	"    OR application_name = '' ) "
+	" ORDER BY application_name DESC";
+static SPIPlanPtr	search_plan = NULL;
 
 /*
  * Module load callbacks
@@ -1320,6 +1333,59 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 	pfree(buf.data);
 }
 
+/* search hint. */
+static bool
+search_hints(SPIPlanPtr *plan,
+			 const char *query,
+			 const char *query_string,
+			 const char *app_name)
+{
+	int		ret;
+	char	buf[8192];
+	Oid		argtypes[2] = { TEXTOID, TEXTOID };
+	Datum	values[2];
+	bool	nulls[2] = { false, false };
+	text   *str;
+	text   *app;
+
+	ret = SPI_connect();
+	if (ret != SPI_OK_CONNECT)
+		elog(ERROR, "pg_hint_plan: SPI_connect => %d", ret);
+
+	if (*plan == NULL)
+	{
+		SPIPlanPtr	p;
+		p = SPI_prepare(query, 2, argtypes);
+		if (p == NULL)
+			elog(ERROR, "pg_hint_plan: SPI_prepare => %d", SPI_result);
+		*plan = SPI_saveplan(p);
+		SPI_freeplan(p);
+	}
+
+	str = cstring_to_text(query_string);
+	app = cstring_to_text(app_name);
+	values[0] = PointerGetDatum(str);
+	values[1] = PointerGetDatum(app);
+
+	pg_hint_plan_enable_hint = false;
+	ret = SPI_execute_plan(*plan, values, nulls, true, 1);
+	pg_hint_plan_enable_hint = true;
+	if (ret != SPI_OK_SELECT)
+		elog(ERROR, "pg_hint_plan: SPI_execute_plan => %d", ret);
+
+	if (SPI_processed > 0)
+	{
+		sprintf(buf, "%s", SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
+		elog(LOG, "pg_hint_plan: SPI_execute_plan vals => %s", buf);
+	}
+	else
+		elog(LOG, "pg_hint_plan: SPI_execute_plan rows => 0");
+	
+	SPI_finish();
+
+	return SPI_processed > 0;
+}
+
 /*
  * Do basic parsing of the query head comment.
  */
@@ -2036,6 +2102,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		else
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
+
+	/* search hint. */
+	search_hints(&search_plan, search_query, debug_query_string, "app1");
 
 	/* Create hint struct from parse tree. */
 	hstate = parse_head_comment(parse);
