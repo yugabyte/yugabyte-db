@@ -469,7 +469,6 @@ static const char *search_query =
 	"   AND ( application_name = $2 "
 	"    OR application_name = '' ) "
 	" ORDER BY application_name DESC";
-static SPIPlanPtr	search_plan = NULL;
 
 /*
  * Module load callbacks
@@ -1333,13 +1332,15 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 	pfree(buf.data);
 }
 
+
 /* search hint. */
 static bool
-search_hints(SPIPlanPtr *plan,
+search_hints(
 			 const char *query,
 			 const char *query_string,
 			 const char *app_name)
 {
+	static SPIPlanPtr plan = NULL;
 	int		ret;
 	char	buf[8192];
 	Oid		argtypes[2] = { TEXTOID, TEXTOID };
@@ -1352,13 +1353,13 @@ search_hints(SPIPlanPtr *plan,
 	if (ret != SPI_OK_CONNECT)
 		elog(ERROR, "pg_hint_plan: SPI_connect => %d", ret);
 
-	if (*plan == NULL)
+	if (plan == NULL)
 	{
 		SPIPlanPtr	p;
 		p = SPI_prepare(query, 2, argtypes);
 		if (p == NULL)
 			elog(ERROR, "pg_hint_plan: SPI_prepare => %d", SPI_result);
-		*plan = SPI_saveplan(p);
+		plan = SPI_saveplan(p);
 		SPI_freeplan(p);
 	}
 
@@ -1368,7 +1369,7 @@ search_hints(SPIPlanPtr *plan,
 	values[1] = PointerGetDatum(app);
 
 	pg_hint_plan_enable_hint = false;
-	ret = SPI_execute_plan(*plan, values, nulls, true, 1);
+	ret = SPI_execute_plan(plan, values, nulls, true, 1);
 	pg_hint_plan_enable_hint = true;
 	if (ret != SPI_OK_SELECT)
 		elog(ERROR, "pg_hint_plan: SPI_execute_plan => %d", ret);
@@ -2103,8 +2104,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 			return standard_planner(parse, cursorOptions, boundParams);
 	}
 
-	/* search hint. */
-	search_hints(&search_plan, search_query, debug_query_string, "app1");
+	/*
+	 *search hint.
+	 * TODO: replace "app1" with current application_name setting of the
+	 * session.
+	 * XXX: use something instead of debug_query_string?
+	 */
+	search_hints(search_query, debug_query_string, "app1");
 
 	/* Create hint struct from parse tree. */
 	hstate = parse_head_comment(parse);
