@@ -461,15 +461,6 @@ static const HintParser parsers[] = {
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
 
-/* search hint. */
-static const char *search_query =
-	"SELECT hints "
-	"  FROM hint_plan.hints "
-	" WHERE norm_query_string = $1 "
-	"   AND ( application_name = $2 "
-	"    OR application_name = '' ) "
-	" ORDER BY application_name DESC";
-
 /*
  * Module load callbacks
  */
@@ -1335,17 +1326,23 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 
 /* search hint. */
 static const char *
-search_hints(const char *query,
-			 const char *query_string,
-			 const char *app_name)
+search_hints(const char *client_query,
+			 const char *client_application)
 {
+	const char *search_query =
+		"SELECT hints "
+		"  FROM hint_plan.hints "
+		" WHERE norm_query_string = $1 "
+		"   AND ( application_name = $2 "
+		"    OR application_name = '' ) "
+		" ORDER BY application_name DESC";
 	static SPIPlanPtr plan = NULL;
 	int		ret;
 	char   *hints = NULL;
 	Oid		argtypes[2] = { TEXTOID, TEXTOID };
 	Datum	values[2];
 	bool	nulls[2] = { false, false };
-	text   *str;
+	text   *qry;
 	text   *app;
 
 	ret = SPI_connect();
@@ -1355,16 +1352,16 @@ search_hints(const char *query,
 	if (plan == NULL)
 	{
 		SPIPlanPtr	p;
-		p = SPI_prepare(query, 2, argtypes);
+		p = SPI_prepare(search_query, 2, argtypes);
 		if (p == NULL)
 			elog(ERROR, "pg_hint_plan: SPI_prepare => %d", SPI_result);
 		plan = SPI_saveplan(p);
 		SPI_freeplan(p);
 	}
 
-	str = cstring_to_text(query_string);
-	app = cstring_to_text(app_name);
-	values[0] = PointerGetDatum(str);
+	qry = cstring_to_text(client_query);
+	app = cstring_to_text(client_application);
+	values[0] = PointerGetDatum(qry);
 	values[1] = PointerGetDatum(app);
 
 	pg_hint_plan_enable_hint = false;
@@ -2107,7 +2104,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * session.
 	 * XXX: use something instead of debug_query_string?
 	 */
-	hints = search_hints(search_query, debug_query_string, application_name);
+	hints = search_hints(debug_query_string, application_name);
 	elog(LOG,
 		 "pg_hint_plan: search_hints [%s][%s]=>[%s]",
 		 debug_query_string, application_name,
