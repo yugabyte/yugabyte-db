@@ -1334,15 +1334,14 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 
 
 /* search hint. */
-static bool
-search_hints(
-			 const char *query,
+static const char *
+search_hints(const char *query,
 			 const char *query_string,
 			 const char *app_name)
 {
 	static SPIPlanPtr plan = NULL;
 	int		ret;
-	char	buf[8192];
+	char   *hints = NULL;
 	Oid		argtypes[2] = { TEXTOID, TEXTOID };
 	Datum	values[2];
 	bool	nulls[2] = { false, false };
@@ -1376,15 +1375,12 @@ search_hints(
 
 	if (SPI_processed > 0)
 	{
-		sprintf(buf, "%s", SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1));
-		elog(LOG, "pg_hint_plan: SPI_execute_plan vals => %s", buf);
+		hints = pstrdup(SPI_getvalue(SPI_tuptable->vals[0],
+									   SPI_tuptable->tupdesc, 1));
 	}
-	else
-		elog(LOG, "pg_hint_plan: SPI_execute_plan rows => 0");
-	
 	SPI_finish();
 
-	return SPI_processed > 0;
+	return hints;
 }
 
 /*
@@ -2086,6 +2082,7 @@ pop_hint(void)
 static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
+	const char	   *hints;
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
@@ -2110,7 +2107,11 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * session.
 	 * XXX: use something instead of debug_query_string?
 	 */
-	search_hints(search_query, debug_query_string, "app1");
+	hints = search_hints(search_query, debug_query_string, application_name);
+	elog(LOG,
+		 "pg_hint_plan: search_hints [%s][%s]=>[%s]",
+		 debug_query_string, application_name,
+		 hints ? hints : "(none)");
 
 	/* Create hint struct from parse tree. */
 	hstate = parse_head_comment(parse);
