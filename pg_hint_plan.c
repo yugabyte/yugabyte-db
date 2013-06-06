@@ -1323,16 +1323,17 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 /*
  * Do basic parsing of the query head comment.
  */
-static HintState *
-parse_head_comment(Query *parse)
+/*
+ * クエリに記述されたヒントを見つける。
+ */
+static const char *
+find_hints_comment()
 {
 	const char *p;
 	const char *hint_head;
 	char	   *head;
 	char	   *tail;
 	int			len;
-	int			i;
-	HintState   *hstate;
 
 	/* get client-supplied query string. */
 	if (stmt_name)
@@ -1402,8 +1403,26 @@ parse_head_comment(Query *parse)
 	head[len] = '\0';
 	p = head;
 
+	return p;
+}
+
+/*
+ * 取得したヒントをパースする。
+ */
+static HintState *
+get_hintstate(Query *parse,
+			  const char *hints)
+{
+	const char *p;
+	int			i;
+	HintState   *hstate;
+
+	if (hints == NULL)
+		return NULL;
+
+	p = hints;
 	hstate = HintStateCreate();
-	hstate->hint_str = head;
+	hstate->hint_str = (char *) hints;
 
 	/* parse each hint. */
 	parse_hints(hstate, parse, p);
@@ -2019,6 +2038,7 @@ pop_hint(void)
 static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
+	const char	   *hints;
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
@@ -2038,7 +2058,15 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	}
 
 	/* Create hint struct from parse tree. */
-	hstate = parse_head_comment(parse);
+	/*
+	 * 	ヒント用テーブル方式を実装する前段階として、
+	 * 	parse_head_comment()をクエリに記述されたヒントを見つける処理と
+	 * 	ヒントをパースする処理に分割した。
+	 */
+	hints = find_hints_comment();
+	elog(LOG, "pg_hint_plan: [%s] => [%s]", debug_query_string
+										  , hints ? hints : "(none)");
+	hstate = get_hintstate(parse, hints);
 
 	/*
 	 * Use standard planner if the statement has not valid hint.  Other hook
