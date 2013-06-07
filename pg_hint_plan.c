@@ -1381,20 +1381,13 @@ search_hints(const char *client_query,
 }
 
 /*
- * Do basic parsing of the query head comment.
+ * Get client-supplied query string.
  */
-static HintState *
-parse_head_comment(Query *parse)
+static const char *
+get_query_string(void)
 {
 	const char *p;
-	const char *hint_head;
-	char	   *head;
-	char	   *tail;
-	int			len;
-	int			i;
-	HintState   *hstate;
 
-	/* get client-supplied query string. */
 	if (stmt_name)
 	{
 		PreparedStatement  *entry;
@@ -1404,6 +1397,20 @@ parse_head_comment(Query *parse)
 	}
 	else
 		p = debug_query_string;
+
+	return p;
+}
+
+/*
+ * Get hints from the head block comment in client-supplied query string.
+ */
+static const char *
+get_hints_from_comment(const char *p)
+{
+	const char *hint_head;
+	char	   *head;
+	char	   *tail;
+	int			len;
 
 	if (p == NULL)
 		return NULL;
@@ -1462,8 +1469,25 @@ parse_head_comment(Query *parse)
 	head[len] = '\0';
 	p = head;
 
+	return p;
+}
+
+/*
+ * Parse hints that got, create hint struct from parse tree and parse hints.
+ */
+static HintState *
+create_hintstate(Query *parse, const char *hints)
+{
+	const char *p;
+	int			i;
+	HintState   *hstate;
+
+	if (hints == NULL)
+		return NULL;
+
+	p = hints;
 	hstate = HintStateCreate();
-	hstate->hint_str = head;
+	hstate->hint_str = (char *) hints;
 
 	/* parse each hint. */
 	parse_hints(hstate, parse, p);
@@ -2080,6 +2104,7 @@ static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	const char	   *hints;
+	const char	   *query;
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
@@ -2089,14 +2114,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * try to change plan with current_hint if any, so set it to NULL.
 	 */
 	if (!pg_hint_plan_enable_hint)
-	{
-		current_hint = NULL;
-
-		if (prev_planner)
-			return (*prev_planner) (parse, cursorOptions, boundParams);
-		else
-			return standard_planner(parse, cursorOptions, boundParams);
-	}
+		goto standard_planner_proc;
 
 	/*
 	 *search hint.
@@ -2110,8 +2128,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		 debug_query_string, application_name,
 		 hints ? hints : "(none)");
 
-	/* Create hint struct from parse tree. */
-	hstate = parse_head_comment(parse);
+	/* Create hint struct from client-supplied query string. */
+	query = get_query_string();
+	hints = get_hints_from_comment(query);
+	hstate = create_hintstate(parse, hints);
 
 	/*
 	 * Use standard planner if the statement has not valid hint.  Other hook
@@ -2119,14 +2139,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * NULL.
 	 */
 	if (!hstate)
-	{
-		current_hint = NULL;
-
-		if (prev_planner)
-			return (*prev_planner) (parse, cursorOptions, boundParams);
-		else
-			return standard_planner(parse, cursorOptions, boundParams);
-	}
+		goto standard_planner_proc;
 
 	/*
 	 * Push new hint struct to the hint stack to disable previous hint context.
@@ -2192,6 +2205,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	pop_hint();
 
 	return result;
+
+standard_planner_proc:
+	current_hint = NULL;
+	if (prev_planner)
+		return (*prev_planner) (parse, cursorOptions, boundParams);
+	else
+		return standard_planner(parse, cursorOptions, boundParams);
 }
 
 /*
