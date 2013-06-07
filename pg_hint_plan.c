@@ -1321,14 +1321,13 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 }
 
 /*
- * クエリ文字列を取得する。
+ * Get client-supplied query string.
  */
 static const char *
 get_query_string(void)
 {
 	const char *p;
 
-	/* get client-supplied query string. */
 	if (stmt_name)
 	{
 		PreparedStatement  *entry;
@@ -1343,7 +1342,7 @@ get_query_string(void)
 }
 
 /*
- * クエリに記述されたヒント用ブロックコメントからヒントを取得する。
+ * Get hints from the head block comment in client-supplied query string.
  */
 static const char *
 get_hints_from_comment(const char *p)
@@ -1414,10 +1413,10 @@ get_hints_from_comment(const char *p)
 }
 
 /*
- * 取得したヒントをパースする。
+ * Parse hints that got, create hint struct from parse tree and parse hints.
  */
 static HintState *
-convert_hints(Query *parse, const char *hints)
+create_hintstate(Query *parse, const char *hints)
 {
 	const char *p;
 	int			i;
@@ -2045,6 +2044,7 @@ static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	const char	   *hints;
+	const char	   *query;
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
@@ -2054,25 +2054,14 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * try to change plan with current_hint if any, so set it to NULL.
 	 */
 	if (!pg_hint_plan_enable_hint)
-	{
-		current_hint = NULL;
+		goto standard_planner_proc;
 
-		if (prev_planner)
-			return (*prev_planner) (parse, cursorOptions, boundParams);
-		else
-			return standard_planner(parse, cursorOptions, boundParams);
-	}
-
-	/* Create hint struct from parse tree. */
 	/*
-	 * 	ヒント用テーブル方式を実装する前段階として、
-	 * 	parse_head_comment()をクエリに記述されたヒントを見つける処理と
-	 * 	ヒントをパースする処理に分割した。
+	 * 	Create hint struct from client-supplied query string.
 	 */
-	hints = get_hints_from_comment(get_query_string());
-	elog(LOG, "pg_hint_plan: [%s] => [%s]",
-		 debug_query_string, hints ? hints : "(none)");
-	hstate = convert_hints(parse, hints);
+	query = get_query_string();
+	hints = get_hints_from_comment(query);
+	hstate = create_hintstate(parse, hints);
 
 	/*
 	 * Use standard planner if the statement has not valid hint.  Other hook
@@ -2080,14 +2069,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * NULL.
 	 */
 	if (!hstate)
-	{
-		current_hint = NULL;
-
-		if (prev_planner)
-			return (*prev_planner) (parse, cursorOptions, boundParams);
-		else
-			return standard_planner(parse, cursorOptions, boundParams);
-	}
+		goto standard_planner_proc;
 
 	/*
 	 * Push new hint struct to the hint stack to disable previous hint context.
@@ -2153,6 +2135,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	pop_hint();
 
 	return result;
+
+	standard_planner_proc:
+		current_hint = NULL;
+		if (prev_planner)
+			return (*prev_planner) (parse, cursorOptions, boundParams);
+		else
+			return standard_planner(parse, cursorOptions, boundParams);
 }
 
 /*
