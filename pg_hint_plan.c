@@ -2056,9 +2056,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (!pg_hint_plan_enable_hint)
 		goto standard_planner_proc;
 
-	/*
-	 * 	Create hint struct from client-supplied query string.
-	 */
+	/* Create hint struct from client-supplied query string. */
 	query = get_query_string();
 	hints = get_hints_from_comment(query);
 	hstate = create_hintstate(parse, hints);
@@ -2136,12 +2134,12 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 
 	return result;
 
-	standard_planner_proc:
-		current_hint = NULL;
-		if (prev_planner)
-			return (*prev_planner) (parse, cursorOptions, boundParams);
-		else
-			return standard_planner(parse, cursorOptions, boundParams);
+standard_planner_proc:
+	current_hint = NULL;
+	if (prev_planner)
+		return (*prev_planner) (parse, cursorOptions, boundParams);
+	else
+		return standard_planner(parse, cursorOptions, boundParams);
 }
 
 /*
