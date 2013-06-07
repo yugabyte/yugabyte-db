@@ -1321,19 +1321,12 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 }
 
 /*
- * Do basic parsing of the query head comment.
- */
-/*
- * クエリに記述されたヒントを見つける。
+ * クエリ文字列を取得する。
  */
 static const char *
-find_hints_comment()
+get_query_string(void)
 {
 	const char *p;
-	const char *hint_head;
-	char	   *head;
-	char	   *tail;
-	int			len;
 
 	/* get client-supplied query string. */
 	if (stmt_name)
@@ -1345,6 +1338,20 @@ find_hints_comment()
 	}
 	else
 		p = debug_query_string;
+
+	return p;
+}
+
+/*
+ * クエリに記述されたヒント用ブロックコメントからヒントを取得する。
+ */
+static const char *
+get_hints_from_comment(const char *p)
+{
+	const char *hint_head;
+	char	   *head;
+	char	   *tail;
+	int			len;
 
 	if (p == NULL)
 		return NULL;
@@ -1410,8 +1417,7 @@ find_hints_comment()
  * 取得したヒントをパースする。
  */
 static HintState *
-get_hintstate(Query *parse,
-			  const char *hints)
+convert_hints(Query *parse, const char *hints)
 {
 	const char *p;
 	int			i;
@@ -2063,10 +2069,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * 	parse_head_comment()をクエリに記述されたヒントを見つける処理と
 	 * 	ヒントをパースする処理に分割した。
 	 */
-	hints = find_hints_comment();
-	elog(LOG, "pg_hint_plan: [%s] => [%s]", debug_query_string
-										  , hints ? hints : "(none)");
-	hstate = get_hintstate(parse, hints);
+	hints = get_hints_from_comment(get_query_string());
+	elog(LOG, "pg_hint_plan: [%s] => [%s]",
+		 debug_query_string, hints ? hints : "(none)");
+	hstate = convert_hints(parse, hints);
 
 	/*
 	 * Use standard planner if the statement has not valid hint.  Other hook
