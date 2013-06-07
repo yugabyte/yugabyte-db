@@ -311,6 +311,8 @@ typedef struct HintParser
 void		_PG_init(void);
 void		_PG_fini(void);
 
+void		set_plpgsql_plugin(void);
+
 static void push_hint(HintState *hstate);
 static void pop_hint(void);
 
@@ -468,7 +470,8 @@ static const HintParser parsers[] = {
 };
 
 const char *hint_query_string = NULL;
-PLpgSQL_plugin  plugin_funcs = { };
+PLpgSQL_plugin  **plugin_funcs = NULL;
+
 /*
  * Module load callbacks
  */
@@ -521,9 +524,9 @@ _PG_init(void)
 	join_search_hook = pg_hint_plan_join_search;
 
 	/* PL/pgSQL plugin hook */
-	PLpgSQL_plugin	**var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
-	*var_ptr = &plugin_funcs;
-	(&plugin_funcs)->func_setup = (void *)pg_hint_plan_plpgsql_func_setup;
+	set_plpgsql_plugin();
+	plugin_funcs =
+		(PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 }
 
 /*
@@ -538,6 +541,21 @@ _PG_fini(void)
 	planner_hook = prev_planner;
 	get_relation_info_hook = prev_get_relation_info;
 	join_search_hook = prev_join_search;
+}
+
+void
+set_plpgsql_plugin(void)
+{
+	plugin_funcs = palloc(sizeof(void *));
+	*plugin_funcs = palloc(sizeof(PLpgSQL_plugin));
+
+	(*plugin_funcs)->func_setup = (void *)pg_hint_plan_plpgsql_func_setup;
+	(*plugin_funcs)->func_beg = NULL;
+	(*plugin_funcs)->func_end = NULL;
+	(*plugin_funcs)->stmt_beg = NULL;
+	(*plugin_funcs)->stmt_end = NULL;
+	(*plugin_funcs)->error_callback = NULL;
+	(*plugin_funcs)->assign_expr = NULL;
 }
 
 /*
@@ -3373,8 +3391,8 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void
 pg_hint_plan_plpgsql_func_setup(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	(&plugin_funcs)->stmt_beg = pg_hint_plan_plpgsql_stmt_beg;
-	(&plugin_funcs)->stmt_end = pg_hint_plan_plpgsql_stmt_end;
+	(*plugin_funcs)->stmt_beg = pg_hint_plan_plpgsql_stmt_beg;
+	(*plugin_funcs)->stmt_end = pg_hint_plan_plpgsql_stmt_end;
 }
 
 static void
