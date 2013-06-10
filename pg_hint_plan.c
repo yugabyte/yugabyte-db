@@ -1326,8 +1326,7 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 
 /* search hint. */
 static const char *
-search_hints(const char *client_query,
-			 const char *client_application)
+get_hints_from_table(const char *client_query, const char *client_application)
 {
 	const char *search_query =
 		"SELECT hints "
@@ -1372,9 +1371,19 @@ search_hints(const char *client_query,
 
 	if (SPI_processed > 0)
 	{
+		int		 len;
+		char	*buf;
+
 		hints = pstrdup(SPI_getvalue(SPI_tuptable->vals[0],
 									   SPI_tuptable->tupdesc, 1));
+
+		len = strlen(hints);
+		buf = palloc(len + 1);
+		memcpy(buf, hints, len);
+		buf[len] = '\0';
+		hints = buf;
 	}
+
 	SPI_finish();
 
 	return hints;
@@ -2116,21 +2125,22 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (!pg_hint_plan_enable_hint)
 		goto standard_planner_proc;
 
+	/* Create hint struct from client-supplied query string. */
+	query = get_query_string();
+
 	/*
-	 *search hint.
+	 * get_hints_from_table
 	 * TODO: replace "app1" with current application_name setting of the
 	 * session.
 	 * XXX: use something instead of debug_query_string?
 	 */
-	hints = search_hints(debug_query_string, application_name);
+	hints = get_hints_from_table(query, application_name);
 	elog(LOG,
-		 "pg_hint_plan: search_hints [%s][%s]=>[%s]",
-		 debug_query_string, application_name,
+		 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
+		 query, application_name,
 		 hints ? hints : "(none)");
-
-	/* Create hint struct from client-supplied query string. */
-	query = get_query_string();
-	hints = get_hints_from_comment(query);
+	if (hints == NULL)
+		hints = get_hints_from_comment(query);
 	hstate = create_hintstate(parse, hints);
 
 	/*
