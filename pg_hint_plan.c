@@ -1376,9 +1376,8 @@ get_hints_from_table(const char *client_query, const char *client_application)
 
 		hints = pstrdup(SPI_getvalue(SPI_tuptable->vals[0],
 									   SPI_tuptable->tupdesc, 1));
-
 		len = strlen(hints);
-		buf = palloc(len + 1);
+		buf = SPI_palloc(len + 1);
 		memcpy(buf, hints, len);
 		buf[len] = '\0';
 		hints = buf;
@@ -2135,7 +2134,7 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * XXX: use something instead of debug_query_string?
 	 */
 	hints = get_hints_from_table(query, application_name);
-	elog(LOG,
+	elog(DEBUG1,
 		 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
 		 query, application_name,
 		 hints ? hints : "(none)");
