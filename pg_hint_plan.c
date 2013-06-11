@@ -1324,7 +1324,9 @@ parse_hints(HintState *hstate, Query *parse, const char *str)
 }
 
 
-/* search hint. */
+/* 
+ * Get hints from table by client-supplied query string and application name.
+ */
 static const char *
 get_hints_from_table(const char *client_query, const char *client_application)
 {
@@ -1371,11 +1373,9 @@ get_hints_from_table(const char *client_query, const char *client_application)
 
 	if (SPI_processed > 0)
 	{
-		int		 len;
 		char	*buf;
 
 		hints = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1);
-		len = strlen(hints);
 		/*
 		 * SPI_connectで新しく作成されたメモリコンテキスト内で、pallocを
 		 * 使用してメモリを確保してもSPI_finishで解放されてしまう。
@@ -1383,9 +1383,8 @@ get_hints_from_table(const char *client_query, const char *client_application)
 		 * キスト内にメモリを確保し、そこにヒント用テーブルから取得した
 		 * ヒントを保存している。
 		 */
-		buf = SPI_palloc(len + 1);
-		memcpy(buf, hints, len);
-		buf[len] = '\0';
+		buf = SPI_palloc(strlen(hints) + 1);
+		strcpy(buf, hints);
 		hints = buf;
 	}
 
