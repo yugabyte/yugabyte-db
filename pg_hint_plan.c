@@ -1374,9 +1374,15 @@ get_hints_from_table(const char *client_query, const char *client_application)
 		int		 len;
 		char	*buf;
 
-		hints = pstrdup(SPI_getvalue(SPI_tuptable->vals[0],
-									   SPI_tuptable->tupdesc, 1));
+		hints = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1);
 		len = strlen(hints);
+		/*
+		 * SPI_connectで新しく作成されたメモリコンテキスト内で、pallocを
+		 * 使用してメモリを確保してもSPI_finishで解放されてしまう。
+		 * それを防ぐために、SPI_pallocを使って上位エクゼキュータコンテ
+		 * キスト内にメモリを確保し、そこにヒント用テーブルから取得した
+		 * ヒントを保存している。
+		 */
 		buf = SPI_palloc(len + 1);
 		memcpy(buf, hints, len);
 		buf[len] = '\0';
