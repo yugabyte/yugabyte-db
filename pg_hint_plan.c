@@ -40,6 +40,9 @@
 #include "catalog/pg_type.h"
 #include "plpgsql.h"
 
+/* partially copied from pg_stat_statements */
+#include "normalize_query.h"
+
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
 #endif
@@ -2135,6 +2138,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
 	const char	   *hints;
 	const char	   *query;
+	char		   *norm_query;
+	pgssJumbleState	jstate;
+	int				query_len;
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
@@ -2150,15 +2156,30 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	query = get_query_string();
 
 	/*
-	 * get_hints_from_table
-	 * TODO: replace "app1" with current application_name setting of the
-	 * session.
-	 * XXX: use something instead of debug_query_string?
+	 * Search hint information which is stored for the query and the
+	 * application.  Query string is normalized before using in condition
+	 * in order to allow fuzzy matching.
+	 *
+	 * XXX: normalizing code is copied from pg_stat_statements.c, so be careful
+	 * when supporting PostgreSQL's version up.
 	 */
-	hints = get_hints_from_table(query, application_name);
+	jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
+	jstate.jumble_len = 0;
+	jstate.clocations_buf_size = 32;
+	jstate.clocations = (pgssLocationLen *)
+		palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
+	jstate.clocations_count = 0;
+	JumbleQuery(&jstate, parse);
+	query_len = strlen(query);
+	norm_query = generate_normalized_query(&jstate,
+										   query,
+										   &query_len,
+										   GetDatabaseEncoding());
+	norm_query[query_len] = '\0';
+	hints = get_hints_from_table(norm_query, application_name);
 	elog(DEBUG1,
 		 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
-		 query, application_name,
+		 norm_query, application_name,
 		 hints ? hints : "(none)");
 	if (hints == NULL)
 		hints = get_hints_from_comment(query);
@@ -3509,3 +3530,5 @@ pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 #define make_join_rel pg_hint_plan_make_join_rel
 #define add_paths_to_joinrel add_paths_to_joinrel_wrapper
 #include "make_join_rel.c"
+
+#include "pg_stat_statements.c"
