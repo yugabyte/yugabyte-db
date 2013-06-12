@@ -38,6 +38,7 @@
 
 #include "executor/spi.h"
 #include "catalog/pg_type.h"
+#include "plpgsql.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -387,6 +388,13 @@ static void set_dummy_rel_pathlist(RelOptInfo *rel);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
+static void pg_hint_plan_plpgsql_func_setup(PLpgSQL_execstate *estate,
+										  PLpgSQL_stmt *stmt);
+static void pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate,
+										  PLpgSQL_stmt *stmt);
+static void pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate,
+										  PLpgSQL_stmt *stmt);
+
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
 static bool	pg_hint_plan_debug_print = false;
@@ -461,6 +469,8 @@ static const HintParser parsers[] = {
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
 
+const char *hint_query_string = NULL;
+PLpgSQL_plugin  plugin_funcs = { };
 /*
  * Module load callbacks
  */
@@ -511,6 +521,11 @@ _PG_init(void)
 	get_relation_info_hook = pg_hint_plan_get_relation_info;
 	prev_join_search = join_search_hook;
 	join_search_hook = pg_hint_plan_join_search;
+
+	/* PL/pgSQL plugin hook */
+	PLpgSQL_plugin	**var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
+	*var_ptr = &plugin_funcs;
+	(&plugin_funcs)->func_setup = (void *)pg_hint_plan_plpgsql_func_setup;
 }
 
 /*
@@ -1408,6 +1423,8 @@ get_query_string(void)
 		entry = FetchPreparedStatement(stmt_name, true);
 		p = entry->plansource->query_string;
 	}
+	else if (hint_query_string)
+		p = hint_query_string;
 	else
 		p = debug_query_string;
 
@@ -3457,6 +3474,30 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 		else
 			elog(ERROR, "unexpected rtekind: %d", (int) rel->rtekind);
 	}
+}
+
+static void
+pg_hint_plan_plpgsql_func_setup(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	(&plugin_funcs)->stmt_beg = pg_hint_plan_plpgsql_stmt_beg;
+	(&plugin_funcs)->stmt_end = pg_hint_plan_plpgsql_stmt_end;
+}
+
+static void
+pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	if ((enum PLpgSQL_stmt_types) stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
+	{
+		PLpgSQL_expr *expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
+		hint_query_string = expr->query;
+	}
+}
+
+static void
+pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
+{
+	if ((enum PLpgSQL_stmt_types) stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
+		hint_query_string = NULL;
 }
 
 #define standard_join_search pg_hint_plan_standard_join_search
