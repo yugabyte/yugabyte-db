@@ -1413,11 +1413,10 @@ get_hints_from_table(const char *client_query, const char *client_application)
 
 		hints = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1);
 		/*
-		 * SPI_connectで新しく作成されたメモリコンテキスト内で、pallocを
-		 * 使用してメモリを確保してもSPI_finishで解放されてしまう。
-		 * それを防ぐために、SPI_pallocを使って上位エクゼキュータコンテ
-		 * キスト内にメモリを確保し、そこにヒント用テーブルから取得した
-		 * ヒントを保存している。
+		 * Here we use SPI_palloc to ensure that hints string is valid even
+		 * after SPI_finish call.  We can't use simple palloc because it
+		 * allocates memory in SPI's context and that context is deleted in
+		 * SPI_finish.
 		 */
 		buf = SPI_palloc(strlen(hints) + 1);
 		strcpy(buf, hints);
@@ -3521,6 +3520,14 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	}
 }
 
+/*
+ * stmt_beg callback is called when each query in PL/pgSQL function is about
+ * to be executed.  At that timing, we save query string in the global variable
+ * plpgsql_query_string to use it in planner hook.  It's safe to use one global
+ * variable for the purpose, because its content is only necessary until
+ * planner hook is called for the query, so recursive PL/pgSQL function calls
+ * don't harm this mechanismk.
+ */
 static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
@@ -3531,6 +3538,11 @@ pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 	}
 }
 
+/*
+ * stmt_end callback is called then each query in PL/pgSQL function has
+ * finished.  At that timing, we clear plpgsql_query_string to tell planner
+ * hook that next call is not for a query written in PL/pgSQL block.
+ */
 static void
 pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
