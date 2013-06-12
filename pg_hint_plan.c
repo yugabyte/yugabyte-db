@@ -2170,12 +2170,18 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
 	jstate.clocations_count = 0;
 	JumbleQuery(&jstate, parse);
-	query_len = strlen(query);
+	/*
+	 * generate_normalized_query() copies exact given query_len bytes, so we
+	 * add 1 byte for null-termination here.  As comments on
+	 * generate_normalized_query says, generate_normalized_query doesn't take
+	 * care of null-terminate, but additional 1 byte ensures that '\0' byte in
+	 * the source buffer to be copied into norm_query.
+	 */
+	query_len = strlen(query) + 1;
 	norm_query = generate_normalized_query(&jstate,
 										   query,
 										   &query_len,
 										   GetDatabaseEncoding());
-	norm_query[query_len] = '\0';
 	hints = get_hints_from_table(norm_query, application_name);
 	elog(DEBUG1,
 		 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
