@@ -391,8 +391,6 @@ static void set_dummy_rel_pathlist(RelOptInfo *rel);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
-static void pg_hint_plan_plpgsql_func_setup(PLpgSQL_execstate *estate,
-										  PLpgSQL_stmt *stmt);
 static void pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate,
 										  PLpgSQL_stmt *stmt);
 static void pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate,
@@ -472,14 +470,29 @@ static const HintParser parsers[] = {
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
 
-const char *hint_query_string = NULL;
-PLpgSQL_plugin  plugin_funcs = { };
+/*
+ * PL/pgSQL plugin for retrieving string representation of each query during
+ * function execution.
+ */
+const char *plpgsql_query_string = NULL;
+PLpgSQL_plugin  plugin_funcs = {
+	NULL,
+	NULL,
+	NULL,
+	pg_hint_plan_plpgsql_stmt_beg,
+	pg_hint_plan_plpgsql_stmt_end,
+	NULL,
+	NULL,
+};
+
 /*
  * Module load callbacks
  */
 void
 _PG_init(void)
 {
+	PLpgSQL_plugin	**var_ptr;
+
 	/* Define custom GUC variables. */
 	DefineCustomBoolVariable("pg_hint_plan.enable_hint",
 			 "Force planner to use plans specified in the hint comment preceding to the query.",
@@ -525,10 +538,9 @@ _PG_init(void)
 	prev_join_search = join_search_hook;
 	join_search_hook = pg_hint_plan_join_search;
 
-	/* PL/pgSQL plugin hook */
-	PLpgSQL_plugin	**var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
+	/* setup PL/pgSQL plugin hook */
+	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
 	*var_ptr = &plugin_funcs;
-	(&plugin_funcs)->func_setup = (void *)pg_hint_plan_plpgsql_func_setup;
 }
 
 /*
@@ -538,11 +550,17 @@ _PG_init(void)
 void
 _PG_fini(void)
 {
+	PLpgSQL_plugin	**var_ptr;
+
 	/* Uninstall hooks. */
 	ProcessUtility_hook = prev_ProcessUtility;
 	planner_hook = prev_planner;
 	get_relation_info_hook = prev_get_relation_info;
 	join_search_hook = prev_join_search;
+
+	/* uninstall PL/pgSQL plugin hook */
+	var_ptr = (PLpgSQL_plugin **) find_rendezvous_variable("PLpgSQL_plugin");
+	*var_ptr = NULL;
 }
 
 /*
@@ -1426,8 +1444,8 @@ get_query_string(void)
 		entry = FetchPreparedStatement(stmt_name, true);
 		p = entry->plansource->query_string;
 	}
-	else if (hint_query_string)
-		p = hint_query_string;
+	else if (plpgsql_query_string)
+		p = plpgsql_query_string;
 	else
 		p = debug_query_string;
 
@@ -3504,19 +3522,12 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 }
 
 static void
-pg_hint_plan_plpgsql_func_setup(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
-{
-	(&plugin_funcs)->stmt_beg = pg_hint_plan_plpgsql_stmt_beg;
-	(&plugin_funcs)->stmt_end = pg_hint_plan_plpgsql_stmt_end;
-}
-
-static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	if ((enum PLpgSQL_stmt_types) stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
 	{
 		PLpgSQL_expr *expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
-		hint_query_string = expr->query;
+		plpgsql_query_string = expr->query;
 	}
 }
 
@@ -3524,7 +3535,7 @@ static void
 pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
 	if ((enum PLpgSQL_stmt_types) stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
-		hint_query_string = NULL;
+		plpgsql_query_string = NULL;
 }
 
 #define standard_join_search pg_hint_plan_standard_join_search
