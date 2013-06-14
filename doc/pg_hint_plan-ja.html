@@ -10,7 +10,7 @@
 </head>
 
 <body>
-<h1 id="pg_hint_plan">pg_hint_plan 1.0.0</h1>
+<h1 id="pg_hint_plan">pg_hint_plan 1.1.0</h1>
 <div class="navigation">
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
 </div>
@@ -31,18 +31,27 @@
 </div>
 
 <h2 id="name">名前</h2>
-<p>pg_hint_plan -- 特殊なコメント中にヒント情報を記述することで、SQL文やGUCパラメータを変えずに実行計画を制御します。</p>
+<p>pg_hint_plan -- クエリに対してヒントを指定することで、SQL文やGUCパラメータを変えずに実行計画を制御します。</p>
 
 <h2 id="synopsis">概要</h2>
-<p>PostgreSQLはコストベースオプティマイザを採用しており、SQL文と統計情報を元に可能なアクセスパスのコストを見積もり、最もコストの低い実行計画を選択します。オプティマイザは可能な限りよい実行計画を作成使用としますが、カラム間の相関関係などは考慮しないため、複雑なクエリでは常に最適なプランが選択されるとは限りません。</p>
-<p>pg_hint_planを用いると、ヒントを記述したブロックコメントをSQL文に加えることで、SQL文やGUCパラメータを変更することなく実行計画を制御することができます。</p>
+<p>PostgreSQLはコストベースオプティマイザを採用しており、SQL文と統計情報を元に可能なアクセスパスのコストを見積もり、最もコストの低い実行計画を選択します。オプティマイザは可能な限りよい実行計画を作成しようとしますが、カラム間の相関関係などは考慮しないため、複雑なクエリでは常に最適なプランが選択されるとは限りません。</p>
+<p>pg_hint_planを用いると、ヒントでスキャン方式や結合方式を指定することで、SQL文やGUCパラメータを変更することなく実行計画を制御することができます。</p>
 
 <h2 id="description">機能説明</h2>
 <p>pg_hint_planの機能について説明します。</p>
 
-<h3 id="hint-rule">ヒントの記述方法</h3>
-<p>ヒントは、実行計画を制御したいクエリの先頭または途中のSQLブロックコメントの中に記述します。ヒント用コメントと通常のコメントを区別するために、ヒント用のブロックコメントは「<span class="strong">/*+</span>」で始めてください。ヒントの対象は、カッコ内にオブジェクト名または別名(別名)で指定してください。オブジェクト名は、スペース、タブ、または改行のいずれかで区切って指定してください。</p>
+<h3 id="hint-rule">ヒントの指定方法</h3>
+<p>ヒントは二つの方法で指定することができます。</p>
+<ul>
+<li>コメントでの指定</li>
+<p>特殊なSQLブロックコメント内にヒントを記述します。</p>
+<li>テーブルでの指定</li>
+<p>ヒント用のテーブルにヒントを登録します。</p>
+</ul>
 
+<h4 id="hint-comment">コメントでの指定</h4>
+<p>指定したいヒントを、実行計画を制御したいクエリの先頭または途中のSQLブロックコメントの中に記述します。</p>
+<p>ヒント用コメントと通常のコメントを区別するために、ヒント用のブロックコメントは「<span class="bold">/*+</span>」で始めてください。ヒントの対象は、カッコ内にオブジェクト名または別名で指定してください。オブジェクト名は、スペース、タブ、または改行のいずれかで区切って指定してください。</p>
 <p>以下の例では、HashJoinとSeqScanヒントにより、pgbench_accountsテーブルに対するSeq Scanの結果をHash Joinする実行計画が選択されています。</p>
 <pre>
 postgres=# EXPLAIN (VERBOSE, COSTS)
@@ -70,7 +79,96 @@ postgres-#   ORDER BY a.aid;
                      Output: b.bid, b.bbalance, b.filler
 (12 rows)
 
-postgres=# </pre>
+postgres=# 
+</pre>
+
+<h4 id="hint-table">テーブルでの指定</h4>
+<p>指定したいヒントを、実行計画を制御したいクエリと併せてヒント用のテーブルに登録します。</p>
+<p>ヒントは、「<span class="bold">hint_plan.hints</span>」テーブルに登録してください。</p>
+<p>以下の例は、テーブルに登録したヒントと、該当するクエリの実行結果を示しています。</p>
+<pre>
+postgres=# select * from hint_plan.hints ;
+                    norm_query_string                    | application_name |   hints
+---------------------------------------------------------+------------------+------------
+ EXPLAIN SELECT * FROM pgbench_accounts a WHERE aid = ?; | psql             | SeqScan(a)
+...
+
+postgres=# EXPLAIN SELECT * FROM pgbench_accounts a WHERE aid = 1;
+                              QUERY PLAN
+----------------------------------------------------------------------
+ <span class="strong">Seq Scan on pgbench_accounts a</span>  (cost=0.00..2890.00 rows=1 width=97)
+   Filter: (aid = 1)
+(2 rows)
+</pre>
+<p>hint_plan.hintsテーブルには、以下の情報を登録します。</p>
+<table>
+<thead>
+<tr>
+<tr><th>列名</th><th>説明</th></tr>
+</tr></thead>
+<tbody>
+<tr><td>norm_query_string</td>
+  <td>実行計画を制御したいクエリを指定します。対象のクエリに定数があるときは、上記の例のように「?」に置き換えてください。</td></tr>
+<tr><td>application_name</td>
+  <td>ヒント適用対象のアプリケーション名を指定します。上記の例では「psql」から実行されたクエリのみがヒント適用対象となっていますが、全てのアプリケーションにヒントを適用させたいときは、空文字列を登録してください。アプリケーション名は、セッションの「application_name」GUCパラメータで判断します。</td></tr>
+<tr><td>hints</td>
+  <td>ヒントを指定します。ヒント以外のもの（SQLコメントなど）を含めないでください。</td></tr>
+</tbody>
+</table>
+<p>「コメントでの指定」の例と同じヒントを指定するには、以下のヒント情報を登録します。</p>
+<pre>
+postgres=# select * from hint_plan.hints;
+             norm_query_string              | application_name |          hints
+--------------------------------------------+------------------+-------------------------
+ EXPLAIN (VERBOSE, COSTS)                  +| psql             | HashJoin(a b)SeqScan(a)
+ SELECT *                                  +|                  |
+   FROM pgbench_accounts a                 +|                  |
+   JOIN pgbench_branches b ON a.bid = b.bid+|                  |
+  ORDER BY a.aid;                           |                  |
+</pre>
+
+<div class="tips">
+<h2>指定方法の優先度</h2>
+<p>ヒントをコメントとテーブルの両方で指定した場合、テーブルで指定したヒントが適用され、コメントで指定したヒントは無視されます。</p>
+<p>以下の例では、コメントでヒントを指定して実行計画を制御しているクエリに対して、テーブルに空文字列のヒントを登録しています。こうすることで、コメントで指定したヒントを取り消すことができます。</p>
+<pre class="tips">
+postgres=# select * from hint_plan.hints;
+             norm_query_string              | application_name | hints
+--------------------------------------------+------------------+-------
+ EXPLAIN (VERBOSE, COSTS)                  +| psql             |
+ /*+                                       +|                  |
+   HashJoin(a b)                           +|                  |
+   SeqScan(a)                              +|                  |
+  */                                       +|                  |
+ SELECT *                                  +|                  |
+   FROM pgbench_accounts a                 +|                  |
+   JOIN pgbench_branches b ON a.bid = b.bid+|                  |
+  ORDER BY a.aid;                           |                  |
+...
+
+postgres=# EXPLAIN (VERBOSE, COSTS)
+postgres-# /*+
+postgres*#   HashJoin(a b)
+postgres*#   SeqScan(a)
+postgres*#  */
+postgres-# SELECT *
+postgres-#   FROM pgbench_accounts a
+postgres-#   JOIN pgbench_branches b ON a.bid = b.bid
+postgres-#  ORDER BY a.aid;
+                                                      QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------
+ <span class="strong">Nested Loop</span>  (cost=0.00..5750.47 rows=100000 width=461)
+   Output: a.aid, a.bid, a.abalance, a.filler, b.bid, b.bbalance, b.filler, a.aid
+   Join Filter: (a.bid = b.bid)
+   ->  <span class="strong">Index Scan using pgbench_accounts_pkey on public.pgbench_accounts a</span>  (cost=0.00..4249.45 rows=100000 width=97)
+         Output: a.aid, a.bid, a.abalance, a.filler
+   ->  Materialize  (cost=0.00..1.01 rows=1 width=364)
+         Output: b.bid, b.bbalance, b.filler
+         ->  Seq Scan on public.pgbench_branches b  (cost=0.00..1.01 rows=1 width=364)
+               Output: b.bid, b.bbalance, b.filler
+(9 rows)
+</pre>
+</div>
 
 <h3 id="hint-group">ヒントのグループ</h3>
 <p>pg_hint_planで使えるヒントは、スキャン方式と結合方式、結合順序、GUCパラメータの4グループに分けられます。各グループの具体的なヒントは、<a href="hint_list-ja.html">ヒント一覧</a>を参照してください。</p>
@@ -138,6 +236,13 @@ $ su
 # make install
 </pre>
 
+<h3 id="create-extension">データベースへの登録</h3>
+<p>pg_hint_planはPostgreSQLの拡張(EXTENSION)を使用しているので、pg_hint_planを利用するデータベースにスーパーユーザもしくはそのデータベースの所有者で接続してCREATE EXTENSIONコマンドを実行してください。</p>
+<p>以下にデータベースへの登録の例を示します。 <i>dbname</i>は対象となるデータベース名を意味します。</p>
+<pre>
+$ psql -d <i>dbname</i> -c "CREATE EXTENSION pg_hint_plan"
+</pre>
+
 <h3 id="hint-load">pg_hint_planのロード</h3>
 <p>特定のセッションでのみpg_hint_planを使う場合は、以下の例のようにpg_hint_planの共有ライブラリをLOADコマンドでロードしてください。一般ユーザで利用する場合は$libdir/pluginsにもインストールする必要があるので注意して下さい。
 <pre>
@@ -145,15 +250,31 @@ postgres=# LOAD 'pg_hint_plan';
 LOAD
 postgres=# </pre></p>
 <p>全てのセッションでpg_hint_planを有効にするには、shared_preload_libraries GUCパラメータに'pg_hint_plan'を追加してからサーバを再起動して下さい。</p>
+<p>注意: pg_hint_planを<a href="#create-extension">データベースに登録</a>せずに、ロード後にSQL文を実行すると以下に示す例のようなエラーとなります。 pg_hint_planを使うときは、データベースへの登録を忘れないように注意してください。</p>
+<pre>
+postgres=# EXPLAIN SELECT * FROM pgbench_accounts a WHERE aid = 1;
+ERROR:  schema "hint_plan" does not exist
+LINE 1: SELECT hints   FROM hint_plan.hints  WHERE norm_query_string...
+                            ^
+QUERY:  SELECT hints   FROM hint_plan.hints  WHERE norm_query_string = $1    AND ( application_name = $2     OR application_name = '' )  ORDER BY application_name DESC
+postgres=#
+</pre>
 
 <h2 id="uninstall">アンインストール</h2>
-<p>pg_hint_planをアンインストールするには、pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。make uninstallはPostgreSQLをインストールしたOSユーザで実行してください。</p>
-<p>以下にアンインストールの例を示します。</p>
+<p>pg_hint_planをアンインストールするときは、以下の手順を実行してください。 <i>dbname</i>は対象となるデータベース名を意味します。</p>
+<ol>
+<li>pg_hint_planのソースを展開したディレクトリでmake uninstallを実行してください。make uninstallはPostgreSQLをインストールしたOSユーザで実行してください。</li>
 <pre>
 $ cd pg_hint_plan-1.0.0
 $ su
 # make uninstall
 </pre>
+<li>pg_hint_planを登録したデータベースにスーパーユーザもしくはそのデータベースの所有者で接続して、DROP EXTENSIONコマンドおよびDROP SCHEMAコマンドを実行してください。</li>
+<pre>
+$ psql -d <i>dbname</i> -c "DROP EXTENSION pg_hint_plan"
+$ psql -d <i>dbname</i> -c "DROP SCHEMA hint_plan"
+</pre>
+</ol>
 
 <h2 id="examples">使用例</h2>
 <h3>スキャン方式</h3>
@@ -199,7 +320,7 @@ postgres-# SELECT * FROM table1 t1 WHERE key = 'value';
 <p>pg_hint_planを使用する際には、以下の注意と制約があります。</p>
 <h3>ヒントの指定方法</h3>
 <dl>
-<dt>ヒントの記述位置</dt>
+<dt>コメント指定でのヒント記述位置</dt>
 <dd>ヒントはクエリの先頭または途中に記述できます。ただし、ヒントをクエリの途中に記述する場合、ヒント用のブロックコメントより前に以下の文字<span class="strong">以外</span>が含まれると、「/*+」で始まるコメントでもヒントとして扱われず無視されます。
 <ul>
 <li>空白文字（半角スペース、水平/垂直タブ、改行、フォームフィード、復帰）</li>
@@ -253,6 +374,24 @@ postgres-#   ORDER BY a.aid;
 
 postgres=# </pre>
 </dd>
+<dt>PL/pgSQL中の個別のクエリに対するヒント</dt>
+<dd>ヒントは、PL/pgSQLブロック中の各クエリにも指定できます。ただし、コメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。
+<p>以下の例では、一つ目のクエリにNoIndexScanを、二つ目のクエリにSeqScanをそれぞれ指定しています。</p>
+<pre>
+postgres=# CREATE FUNCTION hints_func(integer) RETURNS integer AS $$
+postgres$# DECLARE
+postgres$#     id  integer;
+postgres$#     cnt integer;
+postgres$# BEGIN
+postgres$#     SELECT /*+<span class="strong">NoIndexScan(a)</span>*/ aid
+postgres$#         INTO id FROM pgbench_accounts a WHERE aid = $1;
+postgres$#     SELECT /*+<span class="strong">SeqScan(a)</span>*/ count(*)
+postgres$#         INTO cnt FROM pgbench_accounts a;
+postgres$#     RETURN id + cnt;
+postgres$# END;
+postgres$# $$ LANGUAGE plpgsql;
+</pre>
+</dd>
 <dt>オブジェクト名の引用符付け</dt>
 <dd>ヒントに記述するオブジェクト名や別名が括弧（(、)のいずれか）、二重引用符（"）、空白（スペース、タブ、改行のいずれか）を含む場合は、通常のSQL文で使う場合と同じように二重引用符(")で囲んでください。二重引用符を含むオブジェクト名は、二重引用符で括ったうえで二重引用符を二重引用符でエスケープしてください(例: 「quoted"table"name」→「"quoted""table""name"」)。</dd>
 <dt>同一名称テーブルの区別</dt>
@@ -291,8 +430,28 @@ postgres=#</pre>
 </p>
 </dd>
 <dt>FROM句にVALUESコマンドを指定した場合の制限</dt>
-<dd>FROM句にVALUESコマンドを指定した場合は、ヒントのオブジェクト名に「*VALUES*」を指定してください。これは、VALUESの結果に別名を指定しても、PostgreSQL本体側で「*VALUES*」に名称が置き換えられるためです。このため、複数のVALUESを使用する場合は、ヒントの対象を特定できないため、実行計画を制御できません。</dd>
+<dd>FROM句にVALUESコマンドを指定した場合は、ヒントのオブジェクト名に「*VALUES*」を指定してください。これは、VALUESの結果に別名を指定しても、PostgreSQL本体側で「*VALUES*」に名称が置き換えられるためです。このため、複数のVALUESを使用する場合は、ヒントの対象を特定できないため、実行計画を制御できません。
+<pre>
+postgres=# /*+ <span class="strong">MergeJoin(a *VALUES*)</span> */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_accounts a
+postgres-#    JOIN (VALUES (1,1),(2,2)) <span class="strong">v</span> (vid, vbalance) ON a.aid = v.vid
+postgres-#   ORDER BY a.aid;
+                                                  QUERY PLAN
+---------------------------------------------------------------------------------------------------------------
+ <span class="strong">Merge Join</span>  (cost=0.04..4497.33 rows=2 width=105)
+   Merge Cond: (a.aid = "*VALUES*".column1)
+   ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
+   ->  Sort  (cost=0.04..0.04 rows=2 width=8)
+         Sort Key: "*VALUES*".column1
+         ->  Values Scan on <span class="strong">"*VALUES*"</span>  (cost=0.00..0.03 rows=2 width=8)
+(6 行)
+
+postgres=#
+</pre>
+</dd>
 </dl>
+
 <h3>ヒントの適用対象の指定</h3>
 <dl>
 <dt>クエリに明記されていないテーブルへのヒント適用</dt>
@@ -401,29 +560,10 @@ postgres=#
 <li>検索条件にctidを指定しない場合はTid Scanは候補パスとして扱われません。</li>
 </ul>
 </dd>
-<dt>PL/pgSQLにおける制限</dt>
-<dd>PL/pgSQLでユーザ定義関数を実装する際に、関数定義内の各クエリにヒントを指定したとしても、そのヒントは無視されます。ユーザ定義関数を実行するSELECTコマンドに指定したヒントを使用します。ただし、PL/pgSQLでは、関数定義内で指定したクエリがそのまま実行されるとは限らないため、ヒントを指定した場合の挙動は保証できません。</dd>
 <dt>ECPGにおける制限</dt>
 <dd>pg_hint_planでは、ECPGで実装したアプリケーションから発行するクエリは、基本的に実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ただし、C言語文字列に格納したクエリをEXECUTEコマンドで実行する動的SQLの場合は、クエリ文字列にヒントを指定することで実行計画を制御できます。</dd>
 <dt>ヒントによるフィンガープリントの変化</dt>
-<dd>pg_hint_planはSQLコメントでヒントを指定するため、SQL文フィンガープリントベースのクエリキャッシュなどでは、ヒントが異なれば別のSQL文として扱われます。pg_stat_statementも9.1では別クエリとして集計しますが、9.2ではクエリ集約機能によりコメントが除去されるので、ヒントのみが異なるクエリは同じクエリとして扱われます。</dd>
-<pre>
-postgres=# /*+ <span class="strong">MergeJoin(a *VALUES*)</span> */
-postgres-# EXPLAIN SELECT *
-postgres-#    FROM pgbench_accounts a
-postgres-#    JOIN (VALUES (1,1),(2,2)) <span class="strong">v</span> (vid, vbalance) ON a.aid = v.vid
-postgres-#   ORDER BY a.aid;
-                                                  QUERY PLAN
----------------------------------------------------------------------------------------------------------------
- <span class="strong">Merge Join</span>  (cost=0.04..4497.33 rows=2 width=105)
-   Merge Cond: (a.aid = "*VALUES*".column1)
-   ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.00..4247.26 rows=100000 width=97)
-   ->  Sort  (cost=0.04..0.04 rows=2 width=8)
-         Sort Key: "*VALUES*".column1
-         ->  Values Scan on <span class="strong">"*VALUES*"</span>  (cost=0.00..0.03 rows=2 width=8)
-(6 行)
-
-postgres=#</pre>
+<dd>SQLコメントでヒントを指定した場合、SQL文フィンガープリントベースのクエリキャッシュなどでは、ヒントが異なれば別のSQL文として扱われます。pg_stat_statementも9.1では別クエリとして集計しますが、9.2ではクエリ集約機能によりコメントが除去されるので、ヒントのみが異なるクエリは同じクエリとして扱われます。</dd>
 <dt>Setヒントの制限</dt>
 <dd>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作を、以下に示します。
 <ul>
