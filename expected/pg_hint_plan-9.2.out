@@ -903,27 +903,27 @@ error hint:
 (5 rows)
 
 -- single table scan hint test
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Index Only Scan using t1_pkey on t1  (cost=1.90..10.18 rows=1 width=4)
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Index Only Scan using t1_pkey on t1
    Index Cond: (id = $3)
    InitPlan 2 (returns $1)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 1 (returns $0)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 4 (returns $3)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 3 (returns $2)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
 (14 rows)
 
 /*+BitmapScan(v_1)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(v_1)
@@ -931,26 +931,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Index Only Scan using t1_pkey on t1  (cost=29.35..37.63 rows=1 width=4)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Index Only Scan using t1_pkey on t1
    Index Cond: (id = $2)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
    InitPlan 3 (returns $2)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 2 (returns $1)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
 (14 rows)
 
 /*+BitmapScan(v_2)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(v_2)
@@ -958,26 +958,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Index Only Scan using t1_pkey on t1  (cost=29.35..37.63 rows=1 width=4)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Index Only Scan using t1_pkey on t1
    Index Cond: (id = $2)
    InitPlan 2 (returns $1)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 1 (returns $0)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 3 (returns $2)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
 (14 rows)
 
 /*+BitmapScan(t1)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(t1)
@@ -985,28 +985,28 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=6.17..10.18 rows=1 width=4)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Bitmap Heap Scan on t1
    Recheck Cond: (id = $3)
    InitPlan 2 (returns $1)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 1 (returns $0)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 4 (returns $3)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 3 (returns $2)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $3)
 (16 rows)
 
 /*+BitmapScan(v_1)BitmapScan(v_2)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(v_1)
@@ -1015,26 +1015,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Index Only Scan using t1_pkey on t1  (cost=56.80..65.08 rows=1 width=4)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Index Only Scan using t1_pkey on t1
    Index Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
    InitPlan 2 (returns $1)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
 (14 rows)
 
 /*+BitmapScan(v_1)BitmapScan(t1)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(t1)
@@ -1043,28 +1043,28 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=33.62..37.63 rows=1 width=4)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Bitmap Heap Scan on t1
    Recheck Cond: (id = $2)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
    InitPlan 3 (returns $2)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 2 (returns $1)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_2  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_2
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $2)
 (16 rows)
 
 /*+BitmapScan(v_2)BitmapScan(t1)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(t1)
@@ -1073,28 +1073,28 @@ not used hint:
 duplication hint:
 error hint:
 
-                                                QUERY PLAN                                                
-----------------------------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=33.62..37.63 rows=1 width=4)
+                               QUERY PLAN                               
+------------------------------------------------------------------------
+ Bitmap Heap Scan on t1
    Recheck Cond: (id = $2)
    InitPlan 2 (returns $1)
-     ->  Result  (cost=0.94..0.95 rows=1 width=0)
+     ->  Result
            InitPlan 1 (returns $0)
-             ->  Limit  (cost=0.00..0.94 rows=1 width=4)
-                   ->  Index Only Scan Backward using t1_pkey on t1 v_1  (cost=0.00..8.44 rows=9 width=4)
+             ->  Limit
+                   ->  Index Only Scan Backward using t1_pkey on t1 v_1
                          Index Cond: ((id IS NOT NULL) AND (id < 10))
    InitPlan 3 (returns $2)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $2)
 (16 rows)
 
 /*+BitmapScan(v_1)BitmapScan(v_2)BitmapScan(t1)*/
-EXPLAIN SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
+EXPLAIN (COSTS false) SELECT (SELECT max(id) FROM t1 v_1 WHERE id < 10), id FROM v1 WHERE v1.id = (SELECT max(id) FROM t1 v_2 WHERE id < 10);
 LOG:  pg_hint_plan:
 used hint:
 BitmapScan(t1)
@@ -1104,23 +1104,23 @@ not used hint:
 duplication hint:
 error hint:
 
-                                     QUERY PLAN                                     
-------------------------------------------------------------------------------------
- Bitmap Heap Scan on t1  (cost=61.07..65.09 rows=1 width=4)
+                    QUERY PLAN                    
+--------------------------------------------------
+ Bitmap Heap Scan on t1
    Recheck Cond: (id = $1)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_1  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_1
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
    InitPlan 2 (returns $1)
-     ->  Aggregate  (cost=28.39..28.40 rows=1 width=4)
-           ->  Bitmap Heap Scan on t1 v_2  (cost=4.33..28.37 rows=9 width=4)
+     ->  Aggregate
+           ->  Bitmap Heap Scan on t1 v_2
                  Recheck Cond: (id < 10)
-                 ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.33 rows=9 width=0)
+                 ->  Bitmap Index Scan on t1_pkey
                        Index Cond: (id < 10)
-   ->  Bitmap Index Scan on t1_pkey  (cost=0.00..4.27 rows=1 width=0)
+   ->  Bitmap Index Scan on t1_pkey
          Index Cond: (id = $1)
 (16 rows)
 
