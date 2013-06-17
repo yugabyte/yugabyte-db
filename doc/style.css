@@ -88,3 +88,23 @@ span.strong {
 	font-weight: bold;
 	text-decoration: underline;
 }
+
+div.tips{
+  border: solid black 1px;
+  background: #DCDCDC;
+  line-height: 1.1em; padding: 0.5em;
+  font-family: 'メイリオ';
+}
+
+pre.tips {
+	font-family: courier,sans-serif;
+	background-color: #E3E3E3;
+	border: 1px dashed #7E7ECB;
+	color: black;
+	line-height: 1.1em; padding: 0.5em;
+	overflow: auto;
+}
+
+span.bold {
+	font-weight: bold;
+}
