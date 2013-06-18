@@ -128,10 +128,10 @@ postgres=# select * from hint_plan.hints;
 </pre>
 
 <div class="tips">
-<h2>指定方法の優先度</h2>
+<span class="strong">指定方法の優先度</span>
 <p>ヒントをコメントとテーブルの両方で指定した場合、テーブルで指定したヒントが適用され、コメントで指定したヒントは無視されます。</p>
 <p>以下の例では、コメントでヒントを指定して実行計画を制御しているクエリに対して、テーブルに空文字列のヒントを登録しています。こうすることで、コメントで指定したヒントを取り消すことができます。</p>
-<pre class="tips">
+<pre>
 postgres=# select * from hint_plan.hints;
              norm_query_string              | application_name | hints
 --------------------------------------------+------------------+-------
@@ -189,7 +189,14 @@ postgres-#  ORDER BY a.aid;
 <h4>GUCパラメータ</h4>
 <p>そのクエリの実行計画を作成している間だけGUCパラメータを変更できるヒントのグループで、「Set」のみが含まれます。</p>
 <p>設定したいGUCパラメータとそのパラメータの値を指定してください。<a href="http://www.postgresql.jp/document/current/html/sql-set.html">SET</a>コマンドで指定できるGUCパラメータならば全て指定できますが、効果があるのは<a href="http://www.postgresql.jp/document/current/html/runtime-config-query.html">問い合わせ計画</a>のGUCパラメータのみです。同じGUCパラメータに対して複数のGUCパラメータのヒントを指定した場合は、最後に指定したヒントが適用されます。</p>
-<p>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作は、<a href="#restrictions">使用上の注意と制約</a>を参照してください。</p>
+<div class="tips">
+<span class="strong">Setヒントの制限</span>
+<p>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作を、以下に示します。<p>
+<ul>
+<li>pg_hint_plan.enable_hintおよびpg_hint_plan.debug_printを指定した場合は、無視されます。</li>
+<li>pg_hint_plan.parse_messagesを指定した場合は、構文エラーと一部のSetヒントのエラーについてはクエリ開始時の設定レベルで出力され、それ以外のメッセージについてはSetヒントで指定したレベルで出力されます。</li>
+</ul>
+</div>
 
 <h3 id="hint-GUC">pg_hint_planのGUCパラメータ</h3>
 <p>pg_hint_planの動作を制御するGUCパラメータを以下に記述します。</p>
@@ -208,7 +215,7 @@ postgres-#  ORDER BY a.aid;
 </tbody>
 </table>
 <p>
-PostgreSQL 9.1の環境でこれらのパラメータをpostgresql.confファイルで設定するには、<a href="http://www.postgresql.jp/document/current/html/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>にpg_hint_planを加える必要があります。
+PostgreSQL 9.1の環境でこれらのパラメータをpostgresql.confファイルで設定するには、<a href="http://www.postgresql.jp/document/9.1/html/runtime-config-custom.html#GUC-CUSTOM-VARIABLE-CLASSES">custom_variable_classes</a>にpg_hint_planを加える必要があります。
 典型的な使用例は以下のようになります。
 </p>
 <pre>
@@ -564,13 +571,6 @@ postgres=#
 <dd>pg_hint_planでは、ECPGで実装したアプリケーションから発行するクエリは、基本的に実行計画を制御できません。これは、CプリプロセッサがCコードに変換するタイミングで、全てのブロックコメントを取り除いてしまうためです。ただし、C言語文字列に格納したクエリをEXECUTEコマンドで実行する動的SQLの場合は、クエリ文字列にヒントを指定することで実行計画を制御できます。</dd>
 <dt>ヒントによるフィンガープリントの変化</dt>
 <dd>SQLコメントでヒントを指定した場合、SQL文フィンガープリントベースのクエリキャッシュなどでは、ヒントが異なれば別のSQL文として扱われます。pg_stat_statementも9.1では別クエリとして集計しますが、9.2ではクエリ集約機能によりコメントが除去されるので、ヒントのみが異なるクエリは同じクエリとして扱われます。</dd>
-<dt>Setヒントの制限</dt>
-<dd>Setヒントに<a href="#hint-GUC">pg_hint_planのGUCパラメータ</a>を指定することはできますが、期待通りの動作をしないため、指定しないことをおすすめします。指定した場合の実際の動作を、以下に示します。
-<ul>
-<li>pg_hint_plan.enable_hintおよびpg_hint_plan.debug_printを指定した場合は、無視されます。</li>
-<li>pg_hint_plan.parse_messagesを指定した場合は、構文エラーと一部のSetヒントのエラーについてはクエリ開始時の設定レベルで出力され、それ以外のメッセージについてはSetヒントで指定したレベルで出力されます。</li>
-</ul>
-</dd>
 
 </dl>
 
