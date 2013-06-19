@@ -38,7 +38,11 @@
 
 #include "executor/spi.h"
 #include "catalog/pg_type.h"
+#if PG_VERSION_NUM >= 90200
 #include "plpgsql.h"
+#else
+#include "plpgsql-9.1.h"
+#endif
 
 /* partially copied from pg_stat_statements */
 #include "normalize_query.h"
