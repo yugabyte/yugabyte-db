@@ -1,5 +1,6 @@
 SET search_path TO public;
 
+CREATE EXTENSION pg_hint_plan;
 CREATE SCHEMA s0;
 
 CREATE TABLE t1 (id int PRIMARY KEY, val int);
