@@ -499,6 +499,9 @@ PLpgSQL_plugin  plugin_funcs = {
 	NULL,
 };
 
+/* Current nesting depth of SPI calls, used to prevent recursive calls */
+static int	nested_level = 0;
+
 /*
  * Module load callbacks
  */
@@ -1388,7 +1391,6 @@ get_hints_from_table(const char *client_query, const char *client_application)
 		"    OR application_name = '' ) "
 		" ORDER BY application_name DESC";
 	static SPIPlanPtr plan = NULL;
-	int		ret;
 	char   *hints = NULL;
 	Oid		argtypes[2] = { TEXTOID, TEXTOID };
 	Datum	values[2];
@@ -1396,48 +1398,54 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	text   *qry;
 	text   *app;
 
-	ret = SPI_connect();
-	if (ret != SPI_OK_CONNECT)
-		elog(ERROR, "pg_hint_plan: SPI_connect => %d", ret);
-
-	if (plan == NULL)
+	PG_TRY();
 	{
-		SPIPlanPtr	p;
-		p = SPI_prepare(search_query, 2, argtypes);
-		if (p == NULL)
-			elog(ERROR, "pg_hint_plan: SPI_prepare => %d", SPI_result);
-		plan = SPI_saveplan(p);
-		SPI_freeplan(p);
+		++nested_level;
+	
+		SPI_connect();
+	
+		if (plan == NULL)
+		{
+			SPIPlanPtr	p;
+			p = SPI_prepare(search_query, 2, argtypes);
+			plan = SPI_saveplan(p);
+			SPI_freeplan(p);
+		}
+	
+		qry = cstring_to_text(client_query);
+		app = cstring_to_text(client_application);
+		values[0] = PointerGetDatum(qry);
+		values[1] = PointerGetDatum(app);
+	
+		SPI_execute_plan(plan, values, nulls, true, 1);
+	
+		if (SPI_processed > 0)
+		{
+			char	*buf;
+	
+			hints = SPI_getvalue(SPI_tuptable->vals[0],
+								 SPI_tuptable->tupdesc, 1);
+			/*
+			 * Here we use SPI_palloc to ensure that hints string is valid even
+			 * after SPI_finish call.  We can't use simple palloc because it
+			 * allocates memory in SPI's context and that context is deleted in
+			 * SPI_finish.
+			 */
+			buf = SPI_palloc(strlen(hints) + 1);
+			strcpy(buf, hints);
+			hints = buf;
+		}
+	
+		SPI_finish();
+	
+		--nested_level;
 	}
-
-	qry = cstring_to_text(client_query);
-	app = cstring_to_text(client_application);
-	values[0] = PointerGetDatum(qry);
-	values[1] = PointerGetDatum(app);
-
-	pg_hint_plan_enable_hint = false;
-	ret = SPI_execute_plan(plan, values, nulls, true, 1);
-	pg_hint_plan_enable_hint = true;
-	if (ret != SPI_OK_SELECT)
-		elog(ERROR, "pg_hint_plan: SPI_execute_plan => %d", ret);
-
-	if (SPI_processed > 0)
+	PG_CATCH();
 	{
-		char	*buf;
-
-		hints = SPI_getvalue(SPI_tuptable->vals[0], SPI_tuptable->tupdesc, 1);
-		/*
-		 * Here we use SPI_palloc to ensure that hints string is valid even
-		 * after SPI_finish call.  We can't use simple palloc because it
-		 * allocates memory in SPI's context and that context is deleted in
-		 * SPI_finish.
-		 */
-		buf = SPI_palloc(strlen(hints) + 1);
-		strcpy(buf, hints);
-		hints = buf;
+		--nested_level;
+		PG_RE_THROW();
 	}
-
-	SPI_finish();
+	PG_END_TRY();
 
 	return hints;
 }
@@ -2035,7 +2043,11 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 {
 	Node				   *node;
 
-	if (!pg_hint_plan_enable_hint)
+	/* 
+	 * Use standard planner if pg_hint_plan is disabled or current nesting 
+	 * depth is nesting depth of SPI calls. 
+	 */
+	if (!pg_hint_plan_enable_hint || nested_level > 0)
 	{
 		if (prev_ProcessUtility)
 			(*prev_ProcessUtility) (parsetree, queryString, params,
@@ -2177,10 +2189,11 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	HintState	   *hstate;
 
 	/*
-	 * Use standard planner if pg_hint_plan is disabled.  Other hook functions
-	 * try to change plan with current_hint if any, so set it to NULL.
+	 * Use standard planner if pg_hint_plan is disabled or current nesting 
+	 * depth is nesting depth of SPI calls. Other hook functions try to change
+	 * plan with current_hint if any, so set it to NULL.
 	 */
-	if (!pg_hint_plan_enable_hint)
+	if (!pg_hint_plan_enable_hint || nested_level > 0)
 		goto standard_planner_proc;
 
 	/* Create hint struct from client-supplied query string. */
@@ -2715,8 +2728,11 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	if (prev_get_relation_info)
 		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
 
-	/* Do nothing if we don't have valid hint in this context. */
-	if (!current_hint)
+	/* 
+	 * Do nothing if we don't have valid hint in this context or current 
+	 * nesting depth is nesting depth of SPI calls.
+	 */
+	if (!current_hint || nested_level > 0)
 		return;
 
 	if (inhparent)
@@ -3443,9 +3459,10 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 
 	/*
 	 * Use standard planner (or geqo planner) if pg_hint_plan is disabled or no
-	 * valid hint is supplied.
+	 * valid hint is supplied or current nesting depth is nesting depth of SPI
+	 * calls.
 	 */
-	if (!current_hint)
+	if (!current_hint || nested_level > 0)
 	{
 		if (prev_join_search)
 			return (*prev_join_search) (root, levels_needed, initial_rels);
