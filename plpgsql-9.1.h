@@ -1,7 +1,10 @@
 /*-------------------------------------------------------------------------
  *
- * plpgsql.h		- Definitions for the PL/pgSQL
+ * plpgsql-9.1.h		- Definitions for the PL/pgSQL
  *			  procedural language
+ *
+ * このヘッダファイルは、PL/pgSQLの外部モジュールをPG9.1で使用するために
+ * PG本体からコピーした。
  *
  * Portions Copyright (c) 1996-2011, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
