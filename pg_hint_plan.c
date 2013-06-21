@@ -300,7 +300,7 @@ struct HintState
 	Index			parent_relid;		/* inherit parent table relid */
 	Oid				parent_rel_oid;     /* inherit parent table relid */
 	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
-	List		   *parent_index_infos; /* infomation of inherit parent table's
+	List		   *parent_index_infos; /* information of inherit parent table's
 										 * index */
 
 	/* for join method hints */
@@ -414,6 +414,8 @@ static void pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate,
 static bool	pg_hint_plan_enable_hint = true;
 static bool	pg_hint_plan_debug_print = false;
 static int	pg_hint_plan_parse_messages = INFO;
+/* Default is off, to keep backward compatibility. */
+static bool	pg_hint_plan_lookup_hint_in_table = false;
 
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
@@ -539,6 +541,17 @@ _PG_init(void)
 							 &pg_hint_plan_parse_messages,
 							 INFO,
 							 parse_messages_level_options,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.lookup_hint_in_table",
+					 "Force planner to not get hint by using table lookups.",
+							 NULL,
+							 &pg_hint_plan_lookup_hint_in_table,
+							 false,
 							 PGC_USERSET,
 							 0,
 							 NULL,
@@ -926,7 +939,7 @@ SetHintDesc(SetHint *hint, StringInfo buf)
 }
 
 /*
- * Append string which repserents all hints in a given state to buf, with
+ * Append string which represents all hints in a given state to buf, with
  * preceding title with them.
  */
 static void
@@ -1584,7 +1597,7 @@ create_hintstate(Query *parse, const char *hints)
 
 	/*
 	 * If an object (or a set of objects) has multiple hints of same hint-type,
-	 * only the last hint is valid and others are igonred in planning.
+	 * only the last hint is valid and others are ignored in planning.
 	 * Hints except the last are marked as 'duplicated' to remember the order.
 	 */
 	for (i = 0; i < hstate->nall_hints - 1; i++)
@@ -2179,7 +2192,7 @@ pop_hint(void)
 static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
-	const char	   *hints;
+	const char	   *hints = NULL;
 	const char	   *query;
 	char		   *norm_query;
 	pgssJumbleState	jstate;
@@ -2200,37 +2213,49 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	query = get_query_string();
 
 	/*
-	 * Search hint information which is stored for the query and the
-	 * application.  Query string is normalized before using in condition
-	 * in order to allow fuzzy matching.
+	 * Create hintstate from hint specified for the query, if any.
 	 *
-	 * XXX: normalizing code is copied from pg_stat_statements.c, so be careful
-	 * when supporting PostgreSQL's version up.
+	 * First we lookup hint in pg_hint.hints table by normalized query string,
+	 * unless pg_hint_plan.lookup_hint_in_table is OFF.
+	 * This parameter provides option to avoid overhead of table lookup during
+	 * planning.
+	 *
+	 * If no hint was found, then we try to get hint from special query comment.
 	 */
-	jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
-	jstate.jumble_len = 0;
-	jstate.clocations_buf_size = 32;
-	jstate.clocations = (pgssLocationLen *)
-		palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
-	jstate.clocations_count = 0;
-	JumbleQuery(&jstate, parse);
-	/*
-	 * generate_normalized_query() copies exact given query_len bytes, so we
-	 * add 1 byte for null-termination here.  As comments on
-	 * generate_normalized_query says, generate_normalized_query doesn't take
-	 * care of null-terminate, but additional 1 byte ensures that '\0' byte in
-	 * the source buffer to be copied into norm_query.
-	 */
-	query_len = strlen(query) + 1;
-	norm_query = generate_normalized_query(&jstate,
-										   query,
-										   &query_len,
-										   GetDatabaseEncoding());
-	hints = get_hints_from_table(norm_query, application_name);
-	elog(DEBUG1,
-		 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
-		 norm_query, application_name,
-		 hints ? hints : "(none)");
+	if (pg_hint_plan_lookup_hint_in_table)
+	{
+		/*
+		 * Search hint information which is stored for the query and the
+		 * application.  Query string is normalized before using in condition
+		 * in order to allow fuzzy matching.
+		 *
+		 * XXX: normalizing code is copied from pg_stat_statements.c, so be
+		 * careful when supporting PostgreSQL's version up.
+		 */
+		jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
+		jstate.jumble_len = 0;
+		jstate.clocations_buf_size = 32;
+		jstate.clocations = (pgssLocationLen *)
+			palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
+		jstate.clocations_count = 0;
+		JumbleQuery(&jstate, parse);
+		/*
+		 * generate_normalized_query() copies exact given query_len bytes, so we
+		 * add 1 byte for null-termination here.  As comments on
+		 * generate_normalized_query says, generate_normalized_query doesn't
+		 * take care of null-terminate, but additional 1 byte ensures that '\0'
+		 * byte in the source buffer to be copied into norm_query.
+		 */
+		query_len = strlen(query) + 1;
+		norm_query = generate_normalized_query(&jstate,
+											   query,
+											   &query_len,
+											   GetDatabaseEncoding());
+		hints = get_hints_from_table(norm_query, application_name);
+		elog(DEBUG1,
+			 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
+			 norm_query, application_name, hints ? hints : "(none)");
+	}
 	if (hints == NULL)
 		hints = get_hints_from_comment(query);
 	hstate = create_hintstate(parse, hints);
@@ -2557,7 +2582,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 						}
 					}
 
-					/* Check to match the predicate's paraameter of index */
+					/* Check to match the predicate's parameter of index */
 					if (p_info->indpred_str &&
 						!heap_attisnull(ht_idx, Anum_pg_index_indpred))
 					{
@@ -2566,7 +2591,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 						Datum       result;
 
 						/*
-						 * to change the predicate's parabeter of child's
+						 * to change the predicate's parameter of child's
 						 * index to strings
 						 */
 						predDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
@@ -2675,7 +2700,7 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	}
 
 	/*
-	 * to check to match the expression's paraameter of index with child indexes
+	 * to check to match the expression's parameter of index with child indexes
  	 */
 	p_info->expression_str = NULL;
 	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indexprs))
@@ -2695,7 +2720,7 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	}
 
 	/*
-	 * to check to match the predicate's paraameter of index with child indexes
+	 * to check to match the predicate's parameter of index with child indexes
  	 */
 	p_info->indpred_str = NULL;
 	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indpred))
@@ -3557,7 +3582,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
  * plpgsql_query_string to use it in planner hook.  It's safe to use one global
  * variable for the purpose, because its content is only necessary until
  * planner hook is called for the query, so recursive PL/pgSQL function calls
- * don't harm this mechanismk.
+ * don't harm this mechanism.
  */
 static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
