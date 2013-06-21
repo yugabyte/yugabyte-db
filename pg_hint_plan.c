@@ -300,7 +300,7 @@ struct HintState
 	Index			parent_relid;		/* inherit parent table relid */
 	Oid				parent_rel_oid;     /* inherit parent table relid */
 	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
-	List		   *parent_index_infos; /* infomation of inherit parent table's
+	List		   *parent_index_infos; /* information of inherit parent table's
 										 * index */
 
 	/* for join method hints */
@@ -414,6 +414,7 @@ static void pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate,
 static bool	pg_hint_plan_enable_hint = true;
 static bool	pg_hint_plan_debug_print = false;
 static int	pg_hint_plan_parse_messages = INFO;
+/* Default is off, to keep backward compatibility. */
 static bool	pg_hint_plan_lookup_hint_in_table = false;
 
 static const struct config_enum_entry parse_messages_level_options[] = {
@@ -938,7 +939,7 @@ SetHintDesc(SetHint *hint, StringInfo buf)
 }
 
 /*
- * Append string which repserents all hints in a given state to buf, with
+ * Append string which represents all hints in a given state to buf, with
  * preceding title with them.
  */
 static void
@@ -1596,7 +1597,7 @@ create_hintstate(Query *parse, const char *hints)
 
 	/*
 	 * If an object (or a set of objects) has multiple hints of same hint-type,
-	 * only the last hint is valid and others are igonred in planning.
+	 * only the last hint is valid and others are ignored in planning.
 	 * Hints except the last are marked as 'duplicated' to remember the order.
 	 */
 	for (i = 0; i < hstate->nall_hints - 1; i++)
@@ -2212,9 +2213,14 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	query = get_query_string();
 
 	/*
-	 * Table lookups for getting hint, influence greatly on the performance
-	 * of the plan create. So, we set GUC parameter to be able to control
-	 * table lookups. By default, it is set not to do table lookups.
+	 * Create hintstate from hint specified for the query, if any.
+	 *
+	 * First we lookup hint in pg_hint.hints table by normalized query string,
+	 * unless pg_hint_plan.lookup_hint_in_table is OFF.
+	 * This parameter provides option to avoid overhead of table lookup during
+	 * planning.
+	 *
+	 * If no hint was found, then we try to get hint from special query comment.
 	 */
 	if (pg_hint_plan_lookup_hint_in_table)
 	{
@@ -2576,7 +2582,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 						}
 					}
 
-					/* Check to match the predicate's paraameter of index */
+					/* Check to match the predicate's parameter of index */
 					if (p_info->indpred_str &&
 						!heap_attisnull(ht_idx, Anum_pg_index_indpred))
 					{
@@ -2585,7 +2591,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 						Datum       result;
 
 						/*
-						 * to change the predicate's parabeter of child's
+						 * to change the predicate's parameter of child's
 						 * index to strings
 						 */
 						predDatum = SysCacheGetAttr(INDEXRELID, ht_idx,
@@ -2694,7 +2700,7 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	}
 
 	/*
-	 * to check to match the expression's paraameter of index with child indexes
+	 * to check to match the expression's parameter of index with child indexes
  	 */
 	p_info->expression_str = NULL;
 	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indexprs))
@@ -2714,7 +2720,7 @@ get_parent_index_info(Oid indexoid, Oid relid)
 	}
 
 	/*
-	 * to check to match the predicate's paraameter of index with child indexes
+	 * to check to match the predicate's parameter of index with child indexes
  	 */
 	p_info->indpred_str = NULL;
 	if(!heap_attisnull(indexRelation->rd_indextuple, Anum_pg_index_indpred))
@@ -3576,7 +3582,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
  * plpgsql_query_string to use it in planner hook.  It's safe to use one global
  * variable for the purpose, because its content is only necessary until
  * planner hook is called for the query, so recursive PL/pgSQL function calls
- * don't harm this mechanismk.
+ * don't harm this mechanism.
  */
 static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
