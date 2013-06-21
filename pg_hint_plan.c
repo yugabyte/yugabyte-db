@@ -2191,7 +2191,7 @@ pop_hint(void)
 static PlannedStmt *
 pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 {
-	const char	   *hints;
+	const char	   *hints = NULL;
 	const char	   *query;
 	char		   *norm_query;
 	pgssJumbleState	jstate;
@@ -2212,47 +2212,45 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	query = get_query_string();
 
 	/*
-	 * Search hint information which is stored for the query and the
-	 * application.  Query string is normalized before using in condition
-	 * in order to allow fuzzy matching.
-	 *
-	 * XXX: normalizing code is copied from pg_stat_statements.c, so be careful
-	 * when supporting PostgreSQL's version up.
-	 */
-	jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
-	jstate.jumble_len = 0;
-	jstate.clocations_buf_size = 32;
-	jstate.clocations = (pgssLocationLen *)
-		palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
-	jstate.clocations_count = 0;
-	JumbleQuery(&jstate, parse);
-	/*
-	 * generate_normalized_query() copies exact given query_len bytes, so we
-	 * add 1 byte for null-termination here.  As comments on
-	 * generate_normalized_query says, generate_normalized_query doesn't take
-	 * care of null-terminate, but additional 1 byte ensures that '\0' byte in
-	 * the source buffer to be copied into norm_query.
-	 */
-	query_len = strlen(query) + 1;
-	norm_query = generate_normalized_query(&jstate,
-										   query,
-										   &query_len,
-										   GetDatabaseEncoding());
-	/* 
 	 * ヒント用テーブルの検索は、プラン作成の性能に与える影響が大きい。
 	 * そのため、GUCパラメータでテーブル検索を制御できるようにした。
-	 * デフォルトでは、テーブル検索をしない設定です。
+	 * デフォルトでは、テーブル検索をしない設定である。
 	 */
 	if (pg_hint_plan_lookup_hint_in_table)
 	{
+		/*
+		 * Search hint information which is stored for the query and the
+		 * application.  Query string is normalized before using in condition
+		 * in order to allow fuzzy matching.
+		 *
+		 * XXX: normalizing code is copied from pg_stat_statements.c, so be
+		 * careful when supporting PostgreSQL's version up.
+		 */
+		jstate.jumble = (unsigned char *) palloc(JUMBLE_SIZE);
+		jstate.jumble_len = 0;
+		jstate.clocations_buf_size = 32;
+		jstate.clocations = (pgssLocationLen *)
+			palloc(jstate.clocations_buf_size * sizeof(pgssLocationLen));
+		jstate.clocations_count = 0;
+		JumbleQuery(&jstate, parse);
+		/*
+		 * generate_normalized_query() copies exact given query_len bytes, so we
+		 * add 1 byte for null-termination here.  As comments on
+		 * generate_normalized_query says, generate_normalized_query doesn't
+		 * take care of null-terminate, but additional 1 byte ensures that '\0'
+		 * byte in the source buffer to be copied into norm_query.
+		 */
+		query_len = strlen(query) + 1;
+		norm_query = generate_normalized_query(&jstate,
+											   query,
+											   &query_len,
+											   GetDatabaseEncoding());
 		hints = get_hints_from_table(norm_query, application_name);
 		elog(DEBUG1,
 			 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
 			 norm_query, application_name, hints ? hints : "(none)");
-		if (hints == NULL)
-			hints = get_hints_from_comment(query);
 	}
-	else
+	if (hints == NULL)
 		hints = get_hints_from_comment(query);
 	hstate = create_hintstate(parse, hints);
 
