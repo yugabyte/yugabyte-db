@@ -25,6 +25,8 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
+EXPLAIN (COSTS false) /*+Set(enable_indexscan off)*/
+ SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 /*+ Set(enable_indexscan off) Set(enable_hashjoin off) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
@@ -819,3 +821,25 @@ EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 /*+ BitmapScan(p1 p1_.*val2.*)*/
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
+
+-- search from hint table
+INSERT INTO hint_plan.hints VALUES ('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;', '', 'SeqScan(t1)');
+SET pg_hint_plan.lookup_hint_in_table = on;
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
+SET pg_hint_plan.lookup_hint_in_table = off;
+EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
+TRUNCATE hint_plan.hints;
+VACUUM ANALYZE;
+
+-- plpgsql test
+EXPLAIN SELECT id FROM t1 WHERE t1.id = 1;
+SET client_min_messages = LOG;
+DO LANGUAGE plpgsql $$
+DECLARE
+    id integer;
+BEGIN
+	SELECT /*+SeqScan(t1)*/ t1.id INTO id FROM t1 WHERE t1.id = 1;
+	RETURN;
+END;
+$$;
+RESET client_min_messages;
