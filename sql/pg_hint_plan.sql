@@ -829,11 +829,10 @@ EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 SET pg_hint_plan.lookup_hint_in_table = off;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 TRUNCATE hint_plan.hints;
-VACUUM ANALYZE;
+VACUUM ANALYZE hint_plan.hints;
 
 -- plpgsql test
-EXPLAIN SELECT id FROM t1 WHERE t1.id = 1;
-SET client_min_messages = LOG;
+EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 1;
 DO LANGUAGE plpgsql $$
 DECLARE
     id integer;
@@ -842,4 +841,3 @@ BEGIN
 	RETURN;
 END;
 $$;
-RESET client_min_messages;
