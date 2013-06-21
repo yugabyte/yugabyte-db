@@ -2212,9 +2212,9 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	query = get_query_string();
 
 	/*
-	 * ヒント用テーブルの検索は、プラン作成の性能に与える影響が大きい。
-	 * そのため、GUCパラメータでテーブル検索を制御できるようにした。
-	 * デフォルトでは、テーブル検索をしない設定である。
+	 * Table lookups for getting hint, influence greatly on the performance
+	 * of the plan create. So, we set GUC parameter to be able to control
+	 * table lookups. By default, it is set not to do table lookups.
 	 */
 	if (pg_hint_plan_lookup_hint_in_table)
 	{
