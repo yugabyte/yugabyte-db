@@ -414,6 +414,7 @@ static void pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate,
 static bool	pg_hint_plan_enable_hint = true;
 static bool	pg_hint_plan_debug_print = false;
 static int	pg_hint_plan_parse_messages = INFO;
+static bool	pg_hint_plan_lookup_hint_in_table = false;
 
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
@@ -539,6 +540,17 @@ _PG_init(void)
 							 &pg_hint_plan_parse_messages,
 							 INFO,
 							 parse_messages_level_options,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomBoolVariable("pg_hint_plan.lookup_hint_in_table",
+					 "Force planner to not get hint by using table lookups.",
+							 NULL,
+							 &pg_hint_plan_lookup_hint_in_table,
+							 false,
 							 PGC_USERSET,
 							 0,
 							 NULL,
@@ -2226,12 +2238,21 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 										   query,
 										   &query_len,
 										   GetDatabaseEncoding());
-	hints = get_hints_from_table(norm_query, application_name);
-	elog(DEBUG1,
-		 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
-		 norm_query, application_name,
-		 hints ? hints : "(none)");
-	if (hints == NULL)
+	/* 
+	 * ヒント用テーブルの検索は、プラン作成の性能に与える影響が大きい。
+	 * そのため、GUCパラメータでテーブル検索を制御できるようにした。
+	 * デフォルトでは、テーブル検索をしない設定です。
+	 */
+	if (pg_hint_plan_lookup_hint_in_table)
+	{
+		hints = get_hints_from_table(norm_query, application_name);
+		elog(DEBUG1,
+			 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
+			 norm_query, application_name, hints ? hints : "(none)");
+		if (hints == NULL)
+			hints = get_hints_from_comment(query);
+	}
+	else
 		hints = get_hints_from_comment(query);
 	hstate = create_hintstate(parse, hints);
 
