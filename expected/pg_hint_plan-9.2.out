@@ -7967,7 +7967,7 @@ error hint:
 
 -- search from hint table
 INSERT INTO hint_plan.hints VALUES ('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;', '', 'SeqScan(t1)');
-SET pg_hint_plan.lookup_hint_in_table = on;
+SET pg_hint_plan.enable_hint_table = on;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 LOG:  pg_hint_plan:
 used hint:
@@ -7982,7 +7982,7 @@ error hint:
    Filter: (id = 1)
 (2 rows)
 
-SET pg_hint_plan.lookup_hint_in_table = off;
+SET pg_hint_plan.enable_hint_table = off;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
            QUERY PLAN           
 --------------------------------

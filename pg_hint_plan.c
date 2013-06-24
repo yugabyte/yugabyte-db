@@ -415,7 +415,7 @@ static bool	pg_hint_plan_enable_hint = true;
 static bool	pg_hint_plan_debug_print = false;
 static int	pg_hint_plan_parse_messages = INFO;
 /* Default is off, to keep backward compatibility. */
-static bool	pg_hint_plan_lookup_hint_in_table = false;
+static bool	pg_hint_plan_enable_hint_table = false;
 
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
@@ -547,10 +547,10 @@ _PG_init(void)
 							 NULL,
 							 NULL);
 
-	DefineCustomBoolVariable("pg_hint_plan.lookup_hint_in_table",
+	DefineCustomBoolVariable("pg_hint_plan.enable_hint_table",
 					 "Force planner to not get hint by using table lookups.",
 							 NULL,
-							 &pg_hint_plan_lookup_hint_in_table,
+							 &pg_hint_plan_enable_hint_table,
 							 false,
 							 PGC_USERSET,
 							 0,
@@ -2216,13 +2216,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * Create hintstate from hint specified for the query, if any.
 	 *
 	 * First we lookup hint in pg_hint.hints table by normalized query string,
-	 * unless pg_hint_plan.lookup_hint_in_table is OFF.
+	 * unless pg_hint_plan.enable_hint_table is OFF.
 	 * This parameter provides option to avoid overhead of table lookup during
 	 * planning.
 	 *
 	 * If no hint was found, then we try to get hint from special query comment.
 	 */
-	if (pg_hint_plan_lookup_hint_in_table)
+	if (pg_hint_plan_enable_hint_table)
 	{
 		/*
 		 * Search hint information which is stored for the query and the

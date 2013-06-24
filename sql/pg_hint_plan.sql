@@ -824,9 +824,9 @@ EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 
 -- search from hint table
 INSERT INTO hint_plan.hints VALUES ('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;', '', 'SeqScan(t1)');
-SET pg_hint_plan.lookup_hint_in_table = on;
+SET pg_hint_plan.enable_hint_table = on;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
-SET pg_hint_plan.lookup_hint_in_table = off;
+SET pg_hint_plan.enable_hint_table = off;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 TRUNCATE hint_plan.hints;
 VACUUM ANALYZE hint_plan.hints;
