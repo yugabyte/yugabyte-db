@@ -6,8 +6,9 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(120);
+SELECT plan(121);
 CREATE SCHEMA partman_test;
+CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
@@ -315,8 +316,19 @@ SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 weeks'::interval, 'IYYY"w"IW'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 weeks'::interval, 'IYYY"w"IW'));
 
+SELECT drop_partition_time('partman_test.time_static_table', '3 weeks', p_keep_table := false);
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 weeks'::interval, 'IYYY"w"IW'), 
+    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'4 weeks'::interval, 'IYYY"w"IW')||' does not exist');
+
+UPDATE part_config SET retention = '2 weeks'::interval WHERE parent_table = 'partman_test.time_static_table';
+SELECT drop_partition_time('partman_test.time_static_table', p_retention_schema := 'partman_retention_test');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW'), 
+    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW')||' does not exist');
+SELECT has_table('partman_retention_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW'), 
+    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW')||' got moved to new schema');
+
 SELECT undo_partition_time('partman_test.time_static_table', 20, p_keep_table := false);
-SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table', ARRAY[159], 'Check count from parent table after undo');
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table', ARRAY[129], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP, 'IYYY"w"IW')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW'), 
@@ -331,14 +343,10 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMEST
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'5 weeks'::interval, 'IYYY"w"IW')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'6 weeks'::interval, 'IYYY"w"IW')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 week'::interval, 'IYYY"w"IW'), 
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 week'::interval, 'IYYY"w"IW'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'1 week'::interval, 'IYYY"w"IW')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 weeks'::interval, 'IYYY"w"IW'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'2 weeks'::interval, 'IYYY"w"IW')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 weeks'::interval, 'IYYY"w"IW')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 weeks'::interval, 'IYYY"w"IW'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'4 weeks'::interval, 'IYYY"w"IW')||' does not exist');
 
 SELECT * FROM finish();
 ROLLBACK;

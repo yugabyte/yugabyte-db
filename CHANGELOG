@@ -1,3 +1,14 @@
+1.3.0
+-- New configuration option for retention system that allows child tables that are eligible for removal to instead be moved to another schema. Set the "retention_schema" option in the configuration table to move the table to the designated schema instead of dropping it. This overrides the retention_keep_table & retention_keep_index options.
+-- New python script, dump_partition.py, that will dump any tables found in a given schema using pg_dump, create a SHA-512 hash of the dumped file and then drop the table from the database.
+-- The combination of the retention_schema option and the dump_partition.py script give a way to reliably dump out tables for archiving when they are no longer needed in the database. Idea for this feature adapted from conversation at PGDay NYC 2013 (lost the card of the individual I was talking with :( ).
+-- New function show_partitions() that gives a list of child tables in a partition set. Adapted from fork by https://github.com/ebaptistella
+-- Previously the functions that created the new partitions were using only the "INCLUDING DEFAULTS INCLUDING INDEXES" options when using the CREATE TABLE ... (LIKE ...) syntax. This caused some contraints on the parent to be missed in child tables. Changed to include all available options as of PostgreSQL 9.1: INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS. Change will apply to all newly created child tables in all partition sets managed by pg_partman. You'll have to go back and manually fix any already existing child tables that may be missing constraints. Issue reported by Nick Ebbitt.
+-- Added TAP tests for drop partition functions. 
+-- Fixed some tap tests to more accurately test for table (non)existance
+-- Clarified the drop_partition_id() function's retention parameter meaning.
+
+
 1.2.0
 -- Bug fix: Make child table lookups more intelligent to be able to deal with schemas being in the current search_path. Functions this affects are: drop_time_partition(), drop_id_partition(), reapply_privileges(), undo_partition(), undo_partition_id(), undo_partition_time(). Before table names may not have matched properly when looping through all tables to drop or reset privileges. Thanks to https://github.com/terrorobe for reporting this issue.
 -- Bug fix: reapply_privileges() had unconditional calls to pg_jobmon functions and would fail if it wasn't installed.

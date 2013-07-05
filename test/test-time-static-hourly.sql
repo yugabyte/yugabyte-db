@@ -6,8 +6,9 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(127);
+SELECT plan(128);
 CREATE SCHEMA partman_test;
+CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
@@ -328,8 +329,20 @@ SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(date_trunc
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'4 hours'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'4 hours'::interval, 'YYYY_MM_DD_HH24MI'));
 
+SELECT drop_partition_time('partman_test.time_static_table', '3 hours', p_keep_table := false);
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'4 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'4 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
+
+UPDATE part_config SET retention = '2 hours'::interval WHERE parent_table = 'partman_test.time_static_table';
+SELECT drop_partition_time('partman_test.time_static_table', p_retention_schema := 'partman_retention_test');
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'3 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'3 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
+SELECT has_table('partman_retention_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'3 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'3 hours'::interval, 'YYYY_MM_DD_HH24MI')||' got moved to new schema');
+
+
 SELECT undo_partition_time('partman_test.time_static_table', 20, p_keep_table := false);
-SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table', ARRAY[159], 'Check count from parent table after undo');
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table', ARRAY[129], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI'), 
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
@@ -344,15 +357,9 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('ho
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'5 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'6 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'6 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'1 hour'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'1 hour'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'2 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'2 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'3 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
-    'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'3 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'4 hours'::interval, 'YYYY_MM_DD_HH24MI'), 
-    'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)-'4 hours'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
-
-
 SELECT * FROM finish();
 ROLLBACK;

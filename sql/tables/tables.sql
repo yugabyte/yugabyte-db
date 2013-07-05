@@ -5,6 +5,7 @@ CREATE TABLE part_config (
     control text NOT NULL,
     premake int NOT NULL DEFAULT 4,
     retention text,
+    retention_schema text,
     retention_keep_table boolean NOT NULL DEFAULT true,
     retention_keep_index boolean NOT NULL DEFAULT true,
     datetime_string text,

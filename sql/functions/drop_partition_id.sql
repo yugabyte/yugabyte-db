@@ -1,7 +1,8 @@
 /*
- * Function to drop child tables from a time-based partition set. Options to drop indexes or actually drop the table from the database.
+ * Function to drop child tables from a time-based partition set. 
+ * Options to move table to different schema, drop only indexes or actually drop the table from the database.
  */
-CREATE FUNCTION drop_partition_id(p_parent_table text, p_retention bigint DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL) RETURNS int
+CREATE FUNCTION drop_partition_id(p_parent_table text, p_retention bigint DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -20,6 +21,7 @@ v_partition_id              bigint;
 v_retention                 bigint;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
+v_retention_schema          text;
 v_step_id                   bigint;
 
 BEGIN
@@ -45,12 +47,14 @@ IF p_retention IS NULL THEN
         , retention::bigint
         , retention_keep_table
         , retention_keep_index
+        , retention_schema
     INTO
         v_part_interval
         , v_control
         , v_retention
         , v_retention_keep_table
         , v_retention_keep_index
+        , v_retention_schema
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
     AND (type = 'id-static' OR type = 'id-dynamic') 
@@ -65,11 +69,13 @@ ELSE
         , control
         , retention_keep_table
         , retention_keep_index
+        , retention_schema
     INTO
         v_part_interval
         , v_control
         , v_retention_keep_table
         , v_retention_keep_index
+        , v_retention_schema
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
     AND (type = 'id-static' OR type = 'id-dynamic'); 
@@ -85,6 +91,9 @@ IF p_keep_table IS NOT NULL THEN
 END IF;
 IF p_keep_index IS NOT NULL THEN
     v_retention_keep_index = p_keep_index;
+END IF;
+IF p_retention_schema IS NOT NULL THEN
+    v_retention_schema = p_retention_schema;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -108,35 +117,48 @@ LOOP
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'OK', 'Done');
         END IF;
-        IF v_retention_keep_table = false THEN
-            IF v_jobmon_schema IS NOT NULL THEN
-                v_step_id := add_step(v_job_id, 'Drop table '||v_child_table);
-            END IF;
-            EXECUTE 'DROP TABLE '||v_child_table;
-            IF v_jobmon_schema IS NOT NULL THEN
-                PERFORM update_step(v_step_id, 'OK', 'Done');
-            END IF;
-        ELSIF v_retention_keep_index = false THEN
-            FOR v_index IN 
-                SELECT i.indexrelid::regclass AS name
-                , c.conname
-                FROM pg_catalog.pg_index i
-                LEFT JOIN pg_catalog.pg_constraint c ON i.indexrelid = c.conindid 
-                WHERE i.indrelid = v_child_table::regclass
-            LOOP
+        IF v_retention_schema IS NULL THEN
+            IF v_retention_keep_table = false THEN
                 IF v_jobmon_schema IS NOT NULL THEN
-                    v_step_id := add_step(v_job_id, 'Drop index '||v_index.name||' from '||v_child_table);
+                    v_step_id := add_step(v_job_id, 'Drop table '||v_child_table);
                 END IF;
-                IF v_index.conname IS NOT NULL THEN
-                    EXECUTE 'ALTER TABLE '||v_child_table||' DROP CONSTRAINT '||v_index.conname;
-                ELSE
-                    EXECUTE 'DROP INDEX '||v_index.name;
-                END IF;
+                EXECUTE 'DROP TABLE '||v_child_table;
                 IF v_jobmon_schema IS NOT NULL THEN
                     PERFORM update_step(v_step_id, 'OK', 'Done');
                 END IF;
-            END LOOP;
-        END IF;
+            ELSIF v_retention_keep_index = false THEN
+                FOR v_index IN 
+                    SELECT i.indexrelid::regclass AS name
+                    , c.conname
+                    FROM pg_catalog.pg_index i
+                    LEFT JOIN pg_catalog.pg_constraint c ON i.indexrelid = c.conindid 
+                    WHERE i.indrelid = v_child_table::regclass
+                LOOP
+                    IF v_jobmon_schema IS NOT NULL THEN
+                        v_step_id := add_step(v_job_id, 'Drop index '||v_index.name||' from '||v_child_table);
+                    END IF;
+                    IF v_index.conname IS NOT NULL THEN
+                        EXECUTE 'ALTER TABLE '||v_child_table||' DROP CONSTRAINT '||v_index.conname;
+                    ELSE
+                        EXECUTE 'DROP INDEX '||v_index.name;
+                    END IF;
+                    IF v_jobmon_schema IS NOT NULL THEN
+                        PERFORM update_step(v_step_id, 'OK', 'Done');
+                    END IF;
+                END LOOP;
+            END IF;
+        ELSE -- Move to new schema
+            IF v_jobmon_schema IS NOT NULL THEN
+                v_step_id := add_step(v_job_id, 'Moving table '||v_child_table||' to schema '||v_retention_schema);
+            END IF;
+
+            EXECUTE 'ALTER TABLE '||v_child_table||' SET SCHEMA '||v_retention_schema; 
+            
+            IF v_jobmon_schema IS NOT NULL THEN
+                PERFORM update_step(v_step_id, 'OK', 'Done');
+            END IF;
+        END IF; -- End retention schema if
+        
         v_drop_count := v_drop_count + 1;
     END IF; -- End retention check IF
 

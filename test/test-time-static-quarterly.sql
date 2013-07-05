@@ -328,6 +328,7 @@ SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
 
+-- Currently unable to do drop_partition test reliably for monthly due to differing month lengths (sometimes drops 2 partitions instead of 1)
 SELECT undo_partition_time('partman_test.time_static_table', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table', ARRAY[159], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 
@@ -344,7 +345,7 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMEST
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'), 
+SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q')||' does not exist');

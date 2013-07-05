@@ -6,8 +6,9 @@
 BEGIN;
 SELECT set_config('search_path','partman, tap',false);
 
-SELECT plan(104);
+SELECT plan(105);
 CREATE SCHEMA partman_test;
+CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
@@ -101,6 +102,8 @@ SELECT table_owner_is ('partman_test', 'id_static_table_p80', 'partman_owner', '
 
 INSERT INTO partman_test.id_static_table (col1) VALUES (generate_series(200,210));
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_static_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
+-- Remove rows in parent so drop function test can work properly
+DELETE FROM ONLY partman_test.id_static_table;
 
 SELECT reapply_privileges('partman_test.id_static_table');
 SELECT table_privs_are('partman_test', 'id_static_table_p0', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_static_table_p0');
@@ -131,10 +134,16 @@ SELECT table_owner_is ('partman_test', 'id_static_table_p60', 'partman_owner', '
 SELECT table_owner_is ('partman_test', 'id_static_table_p70', 'partman_owner', 'Check that ownership change worked for id_static_table_p70');
 SELECT table_owner_is ('partman_test', 'id_static_table_p80', 'partman_owner', 'Check that ownership change worked for id_static_table_p80');
 
-SELECT undo_partition_id('partman_test.id_static_table', 10, p_keep_table := false);
-SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_static_table', ARRAY[66], 'Check count from parent table after undo');
+SELECT drop_partition_id('partman_test.id_static_table', '45', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_static_table_p0', 'Check id_static_table_p0 doesn''t exists anymore');
+
+UPDATE part_config SET retention = '35' WHERE parent_table = 'partman_test.id_static_table';
+SELECT drop_partition_id('partman_test.id_static_table', p_retention_schema := 'partman_retention_test');
 SELECT hasnt_table('partman_test', 'id_static_table_p10', 'Check id_static_table_p10 doesn''t exists anymore');
+SELECT has_table('partman_retention_test', 'id_static_table_p10', 'Check id_static_table_p10 got moved to new schema');
+
+SELECT undo_partition_id('partman_test.id_static_table', 10, p_keep_table := false);
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_static_table', ARRAY[36], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'id_static_table_p20', 'Check id_static_table_p20 doesn''t exists anymore');
 SELECT hasnt_table('partman_test', 'id_static_table_p30', 'Check id_static_table_p30 doesn''t exists anymore');
 SELECT hasnt_table('partman_test', 'id_static_table_p40', 'Check id_static_table_p40 doesn''t exists anymore');

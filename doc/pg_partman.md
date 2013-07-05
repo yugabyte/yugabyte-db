@@ -119,26 +119,30 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited. 
  * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
 
-*drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
+drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
  * This function is used to drop child tables from a time-based partition set. By default, the table is just uninherited and not actually dropped. For automatically dropping old tables, it is recommended to use the **run_maintenance()** function with retention configured instead of calling this directly.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_retention - optional parameter to give a retention time interval and immediately drop tables containing only data older than the given interval. If you have a retention value set in the config table already, the function will use that, otherwise this will override it. If not, this parameter is required. See the **About** section above for more information on retention settings.
- * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
- * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
+ * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if retention_schema is set.
+ * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE or if retention_schema is set.
+ * p_retention_schema - optional parameter to tell partman to move a table to another schema instead of dropping it. Set this to the schema you want the table moved to. This function will just use the value configured in **part_config** if not explicitly set. If this option is set, the retention_keep_* parameters are ignored.
+ * Returns the number of partitions affected.
 
-*drop_partition_id(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL)*
+*drop_partition_id(p_parent_table text, p_retention bigint DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int*
  * This function is used to drop child tables from an id-based partition set. By default, the table just uninherited and not actually dropped. For automatically dropping old tables, it is recommended to use the **run_maintenance()** function with retention configured instead of calling this directly.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
- * p_retention - optional parameter to give a retention integer interval and immediately drop tables containing only data older than the given interval. If you have a retention value set in the config table already, the function will use that, otherwise this will override it. If not, this parameter is required. See the **About** section above for more information on retention settings.
- * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set.
- * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE.
+ * p_retention - optional parameter to give a retention integer interval and immediately drop tables containing only data less than the current maximum id value minus the given retention value. If you have a retention value set in the config table already, the function will use that, otherwise this will override it. If not, this parameter is required. See the **About** section above for more information on retention settings.
+ * p_keep_table - optional parameter to tell partman whether to keep or drop the table in addition to uninheriting it. TRUE means the table will not actually be dropped; FALSE means the table will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if retention_schema is set.
+ * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE or if retention_schema is set.
+ * p_retention_schema - optional parameter to tell partman to move a table to another schema instead of dropping it. Set this to the schema you want the table moved to. This function will just use the value configured in **part_config** if not explicitly set. If this option is set, the retention_keep_* parameters are ignored.
+ * Returns the number of partitions affected.
 
 
 Tables
 ------
 *part_config*  
     Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are
-    **retention**, **retention_keep_table**, & **retention_keep_index** to configure the partition set's retention policy or **premake** to change the default.   
+    **retention**, **retention_schema**, **retention_keep_table**, & **retention_keep_index** to configure the partition set's retention policy or **premake** to change the default.   
     The rest are managed by the extension itself and should not be changed unless absolutely necessary.
 
     parent_table            - Parent table of the partition set
@@ -151,13 +155,14 @@ Tables
     retention               - Text type value that determines how old the data in a child partition can be before it is dropped. 
                               Must be a value that can either be cast to the interval or bigint data types. 
                               Leave this column NULL (the default) to always keep all child partitions. See **About** section for more info.
+    retention_schema        - Schema to move tables to as part of the retentions system instead of dropping them. Overrides retention_keep_* options.
     retention_keep_table    - Boolean value to determine whether dropped child tables are kept or actually dropped. 
                               Default is TRUE to keep the table and only uninherit it. Set to FALSE to have the child tables removed from the database completely.
     retention_keep_index    - Boolean value to determine whether indexes are dropped for child tables that are uninherited. 
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
     datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
     last_partition          - Tracks the last successfully created partition and used to determine the next one.
-    undo_in_progress        - Set by the undo_partition functions whenever they are run. If true, This causes all partition creation 
+    undo_in_progress        - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation 
                               and retention management by the run_maintenance() function to stop. Default is false.
 
 Extras
@@ -193,3 +198,24 @@ Extras
  * --droptable (-d):       Switch setting for whether to drop child tables when they are empty. Leave off option to just uninherit.
  * --quiet (-q):           Switch setting to stop all output during and after partitioning undo.
  * Please see --help option for some examples.
+
+*dump_partition.py*
+ * A python script to dump out tables contained in the given schema. Uses pg_dump, creates a SHA-512, and then drops the table.
+ * When combined with the retention_schema configuration option, provides a way to reliably dump out tables that would normally just be dropped by the retention system.
+ * Tables are not dropped if pg_dump does not return successfully.
+ * The connection options for psyocpg and pg_dump were separated out due to distinct differences in their requirements depending on your database connection configuration. 
+ * All dump_* option defaults are the same as they would be for pg_dump if they are not given.
+ * Will work on any given schema, not just the one used to manage pg_partman retention.
+ * --schema (-n):          The schema that contains the tables that will be dumped. (Required).
+ * --connection (-c):      Connection string for use by psycopg. Must be able to select pg_catalog.pg_tables in the relevant database and drop all tables in the given schema. Defaults to "host=localhost". Note this is distinct from the parameters sent to pg_dump.
+ * --output (-o):          Path to dump file output location. Default is where the script is run from.
+ * --dump_database (-d):   Used for pg_dump, same as its final database name parameter.
+ * --dump_host (-h):       Used for pg_dump, same as its --host option.
+ * --dump_username (-U):   Used for pg_dump, same as its --username option.
+ * --dump_port (-p):       Used for pg_dump, same as its --port option.
+ * --pg_dump_path:         Path to pg_dump binary location. Must set if not in current PATH.
+ * --Fp:                   Dump using pg_dump plain text format. Default is binary custom (-Fc).
+ * --nohashfile:           Do NOT create a separate file with the SHA-512 hash of the dump. If dump files are very large, hash generation can possibly take a long time.
+ * --nodrop:               Do NOT drop the tables from the given schema after dumping/hashing.
+ * --verbose (-v):         Provide more verbose output.
+
