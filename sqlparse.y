@@ -1,6 +1,5 @@
 %{
 
-#define YYPARSE_PARAM result  /* need this to pass a pointer (void *) to yyparse */
 #define YYDEBUG 1
 
 #define YYLLOC_DEFAULT(Current, Rhs, N) \
@@ -45,7 +44,7 @@ extern int yylex(void);      /* defined as fdate_yylex in fdatescan.l */
 static char *scanbuf;
 static int	scanbuflen;
 
-void orafce_sql_yyerror(const char *message);
+void orafce_sql_yyerror(List **result, const char *message);
 
 
 #define YYLTYPE		int
@@ -55,6 +54,7 @@ void orafce_sql_yyerror(const char *message);
 %}
 %name-prefix="orafce_sql_yy" 
 %locations
+%parse-param {List **result}
 
 %union
 {
