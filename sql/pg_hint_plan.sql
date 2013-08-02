@@ -841,3 +841,4 @@ BEGIN
 	RETURN;
 END;
 $$;
+DROP EXTENSION pg_hint_plan;

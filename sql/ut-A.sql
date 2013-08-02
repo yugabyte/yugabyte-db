@@ -10,10 +10,15 @@ SET search_path TO public;
 ----
 
 -- No.A-1-1-3
+CREATE EXTENSION pg_hint_plan;
 
 -- No.A-1-2-3
+DROP EXTENSION pg_hint_plan;
 
 -- No.A-1-1-4
+CREATE EXTENSION pg_hint_plan SCHEMA other_name;
+
+CREATE EXTENSION pg_hint_plan;
 
 ----
 ---- No. A-5-1 comment pattarn
