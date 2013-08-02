@@ -5,7 +5,18 @@ SET client_min_messages TO LOG;
 SET search_path TO public;
 
 ----
----- No. A-5-1 hint format
+---- No.A-1-1 install
+---- No.A-2-1 uninstall
+----
+
+-- No.A-1-1-3
+
+-- No.A-1-2-3
+
+-- No.A-1-1-4
+
+----
+---- No. A-5-1 comment pattarn
 ----
 
 -- No. A-5-1-1
@@ -61,87 +72,99 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT /*+SeqScan(t1)*/ * FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
----- No. A-5-4 hint delimiter
+---- No. A-6-1 hint's table definition
+----
+
+----
+---- No. A-6-2 search condition
+----
+
+----
+---- No. A-6-3 number of constant
+----
+
+----
+---- No. A-7-2 hint delimiter
 ----
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
--- No. A-5-4-1
--- No. A-5-4-2
--- No. A-5-4-3
--- No. A-5-4-4
--- No. A-5-4-5
--- No. A-5-4-6
--- No. A-5-4-7
+-- No. A-7-2-1
+-- No. A-7-2-2
+-- No. A-7-2-3
+-- No. A-7-2-4
+-- No. A-7-2-5
+-- No. A-7-2-6
+-- No. A-7-2-7
 /*+Set(enable_indexscan"off")Set(enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-8
+-- No. A-7-2-8
 /*+ Set(enable_indexscan"off")Set(enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-9
+-- No. A-7-2-9
 /*+Set(enable_indexscan"off")Set(enable_bitmapscan"off") */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-10
+-- No. A-7-2-10
 /*+ Set (enable_indexscan"off") Set (enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-11
+-- No. A-7-2-11
 /*+Set ( enable_indexscan"off")Set ( enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-12
+-- No. A-7-2-12
 /*+Set(enable_indexscan"off" ) Set(enable_bitmapscan"off" ) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-13
+-- No. A-7-2-13
 /*+Set( enable_indexscan "off" )Set( enable_bitmapscan "off" )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-14
+-- No. A-7-2-14
 /*+ Set ( enable_indexscan "off" ) Set ( enable_bitmapscan "off" ) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-15
+-- No. A-7-2-15
 /*+	Set(enable_indexscan"off")Set(enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-16
+-- No. A-7-2-16
 /*+Set(enable_indexscan"off")Set(enable_bitmapscan"off")	*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-17
+-- No. A-7-2-17
 /*+	Set	(enable_indexscan"off")	Set	(enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-18
+-- No. A-7-2-18
 /*+Set	(	enable_indexscan"off")Set	(	enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-19
+-- No. A-7-2-19
 /*+Set(enable_indexscan"off"	)	Set(enable_bitmapscan"off"	)	*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-20
+-- No. A-7-2-20
 /*+Set(	enable_indexscan	"off"	)Set(	enable_bitmapscan	"off"	)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-21
+-- No. A-7-2-21
 /*+	Set	(	enable_indexscan	"off"	)	Set	(	enable_bitmapscan	"off"	)	*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-22
+-- No. A-7-2-22
 /*+
 Set(enable_indexscan"off")Set(enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-23
+-- No. A-7-2-23
 /*+Set(enable_indexscan"off")Set(enable_bitmapscan"off")
 */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-24
+-- No. A-7-2-24
 /*+
 Set
 (enable_indexscan"off")
@@ -149,7 +172,7 @@ Set
 (enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-25
+-- No. A-7-2-25
 /*+Set
 (
 enable_indexscan"off")Set
@@ -157,7 +180,7 @@ enable_indexscan"off")Set
 enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-26
+-- No. A-7-2-26
 /*+Set(enable_indexscan"off"
 )
 Set(enable_bitmapscan"off"
@@ -165,7 +188,7 @@ Set(enable_bitmapscan"off"
 */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-27
+-- No. A-7-2-27
 /*+Set(
 enable_indexscan
 "off"
@@ -175,7 +198,7 @@ enable_bitmapscan
 )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-28
+-- No. A-7-2-28
 /*+
 Set
 (
@@ -190,17 +213,17 @@ enable_bitmapscan
 */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-29
+-- No. A-7-2-29
 /*+ 	
 	 Set(enable_indexscan"off")Set(enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-30
+-- No. A-7-2-30
 /*+Set(enable_indexscan"off")Set(enable_bitmapscan"off") 	
 	 */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-31
+-- No. A-7-2-31
 /*+ 	
 	 Set 	
 	 (enable_indexscan"off") 	
@@ -208,7 +231,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 	 (enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-32
+-- No. A-7-2-32
 /*+Set 	
 	 ( 	
 	 enable_indexscan"off")Set 	
@@ -216,7 +239,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 	 enable_bitmapscan"off")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-33
+-- No. A-7-2-33
 /*+Set(enable_indexscan"off" 	
 	 ) 	
 	 Set(enable_bitmapscan"off" 	
@@ -224,7 +247,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 	 */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-34
+-- No. A-7-2-34
 /*+Set( 	
 	 enable_indexscan 	
 	 "off" 	
@@ -234,7 +257,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 	 )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-4-35
+-- No. A-7-2-35
 /*+ 	
 	 Set 	
 	 ( 	
@@ -250,12 +273,12 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
----- No. A-5-5 hint object pattern
----- No. A-7-2 message object pattern
+---- No. A-7-3 hint object pattern
+---- No. A-9-2 message object pattern
 ----
 
--- No. A-5-5-1
--- No. A-7-2-1
+-- No. A-7-3-1
+-- No. A-9-2-1
 /*+SeqScan(t)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 t WHERE t.c1 = 1;
 /*+SeqScan(ttt)*/
@@ -265,8 +288,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 t WHERE t.c1 = 1;
 /*+SeqScan("ttt")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 ttt WHERE ttt.c1 = 1;
 
--- No. A-5-5-2
--- No. A-7-2-2
+-- No. A-7-3-2
+-- No. A-9-2-2
 /*+SeqScan(T)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "T" WHERE "T".c1 = 1;
 /*+SeqScan(TTT)*/
@@ -276,8 +299,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "T" WHERE "T".c1 = 1;
 /*+SeqScan("TTT")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "TTT" WHERE "TTT".c1 = 1;
 
--- No. A-5-5-3
--- No. A-7-2-3
+-- No. A-7-3-3
+-- No. A-9-2-3
 /*+SeqScan(()*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
 /*+SeqScan(((()*/
@@ -287,8 +310,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
 /*+SeqScan("(((")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(((" WHERE "(((".c1 = 1;
 
--- No. A-5-5-4
--- No. A-7-2-4
+-- No. A-7-3-4
+-- No. A-9-2-4
 /*+SeqScan())*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 ")" WHERE ")".c1 = 1;
 /*+SeqScan(")")*/
@@ -296,8 +319,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 ")" WHERE ")".c1 = 1;
 /*+SeqScan(")))")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 ")))" WHERE ")))".c1 = 1;
 
--- No. A-5-5-5
--- No. A-7-2-5
+-- No. A-7-3-5
+-- No. A-9-2-5
 /*+SeqScan(")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 """" WHERE """".c1 = 1;
 /*+SeqScan("""")*/
@@ -305,8 +328,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 """" WHERE """".c1 = 1;
 /*+SeqScan("""""""")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 """""""" WHERE """""""".c1 = 1;
 
--- No. A-5-5-6
--- No. A-7-2-6
+-- No. A-7-3-6
+-- No. A-9-2-6
 /*+SeqScan( )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 " " WHERE " ".c1 = 1;
 /*+SeqScan(" ")*/
@@ -314,8 +337,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 " " WHERE " ".c1 = 1;
 /*+SeqScan("   ")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "   " WHERE "   ".c1 = 1;
 
--- No. A-5-5-7
--- No. A-7-2-7
+-- No. A-7-3-7
+-- No. A-9-2-7
 /*+SeqScan(	)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "	" WHERE "	".c1 = 1;
 /*+SeqScan("	")*/
@@ -323,8 +346,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "	" WHERE "	".c1 = 1;
 /*+SeqScan("			")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "			" WHERE "			".c1 = 1;
 
--- No. A-5-5-8
--- No. A-7-2-8
+-- No. A-7-3-8
+-- No. A-9-2-8
 /*+SeqScan(
 )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "
@@ -347,8 +370,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "
 
 ".c1 = 1;
 
--- No. A-5-5-9
--- No. A-7-2-9
+-- No. A-7-3-9
+-- No. A-9-2-9
 /*+SeqScan(Set)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "Set" WHERE "Set".c1 = 1;
 /*+SeqScan("Set")*/
@@ -356,8 +379,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "Set" WHERE "Set".c1 = 1;
 /*+SeqScan("Set SeqScan Leading")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "Set SeqScan Leading" WHERE "Set SeqScan Leading".c1 = 1;
 
--- No. A-5-5-10
--- No. A-7-2-10
+-- No. A-7-3-10
+-- No. A-9-2-10
 /*+SeqScan(あ)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 あ WHERE あ.c1 = 1;
 /*+SeqScan(あいう)*/
@@ -367,15 +390,15 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 あ WHERE あ.c1 = 1;
 /*+SeqScan("あいう")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 あいう WHERE あいう.c1 = 1;
 
--- No. A-5-5-11
--- No. A-7-2-11
+-- No. A-7-3-11
+-- No. A-9-2-11
 /*+SeqScan(/**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**/" WHERE "/**/".c1 = 1;
 /*+SeqScan(/**//**//**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**//**//**/" WHERE "/**//**//**/".c1 = 1;
 
--- No. A-5-5-12
--- No. A-7-2-12
+-- No. A-7-3-12
+-- No. A-9-2-12
 /*+SeqScan("tT()"" 	
 Set/**/あ")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "tT()"" 	
@@ -390,42 +413,42 @@ Setあ" WHERE "tT()""
 Setあ".c1 = 1;
 
 ----
----- No. A-5-6 hint parse error
+---- No. A-7-4 hint parse error
 ----
 
--- No. A-5-6-1
+-- No. A-7-4-1
 /*+Set(enable_indexscan off)Set enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-6-2
+-- No. A-7-4-2
 /*+Set(enable_indexscan off)Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-6-3
+-- No. A-7-4-3
 /*+Set(enable_indexscan off)Set(enable_tidscan "off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-6-4
+-- No. A-7-4-4
 /*+Set(enable_indexscan off)SeqScan("")Set(enable_bitmapscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-6-5
+-- No. A-7-4-5
 /*+Set(enable_indexscan off)NoSet(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-6-6
+-- No. A-7-4-6
 /*+Set(enable_indexscan off)"Set"(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-5-6-7
+-- No. A-7-4-7
 /*+Set(enable_indexscan off)Set(enable_tidscan /* value */off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
----- No. A-6-1 original GUC parameter
+---- No. A-8-1 original GUC parameter
 ----
 
--- No. A-6-1-1
+-- No. A-8-1-1
 SET ROLE super_user;
 SET pg_hint_plan.debug_print TO off;
 SHOW pg_hint_plan.enable_hint;
@@ -444,7 +467,7 @@ SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
 SHOW pg_hint_plan.parse_messages;
 
--- No. A-6-1-2
+-- No. A-8-1-2
 SET ROLE normal_user;
 SHOW pg_hint_plan.enable_hint;
 SHOW pg_hint_plan.debug_print;
@@ -465,176 +488,180 @@ SHOW pg_hint_plan.parse_messages;
 RESET ROLE;
 
 ----
----- No. A-6-2 original GUC parameter pg_hint_plan.enable_hint
+---- No. A-8-2 original GUC parameter pg_hint_plan.enable_hint
 ----
 
--- No. A-6-2-1
+-- No. A-8-2-1
 SET pg_hint_plan.enable_hint TO on;
 SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-6-2-2
+-- No. A-8-2-2
 SET pg_hint_plan.enable_hint TO off;
 SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-6-2-3
+-- No. A-8-2-3
 SET pg_hint_plan.enable_hint TO DEFAULT;
 SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-6-2-4
+-- No. A-8-2-4
 SET pg_hint_plan.enable_hint TO enable;
 SHOW pg_hint_plan.enable_hint;
 
 ----
----- No. A-6-3 original GUC parameter pg_hint_plan.debug_print
+---- No. A-8-3 original GUC parameter pg_hint_plan.debug_print
 ----
 
--- No. A-6-3-1
+-- No. A-8-3-1
 SET pg_hint_plan.debug_print TO on;
 SHOW pg_hint_plan.debug_print;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-6-3-2
+-- No. A-8-3-2
 SET pg_hint_plan.debug_print TO off;
 SHOW pg_hint_plan.debug_print;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-6-3-3
+-- No. A-8-3-3
 SET pg_hint_plan.debug_print TO DEFAULT;
 SHOW pg_hint_plan.debug_print;
 /*+Set(enable_indexscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-6-3-4
+-- No. A-8-3-4
 SET pg_hint_plan.debug_print TO enable;
 SHOW pg_hint_plan.debug_print;
 
 ----
----- No. A-6-4 original GUC parameter pg_hint_plan.parse_messages
+---- No. A-8-4 original GUC parameter pg_hint_plan.parse_messages
 ----
 
 SET client_min_messages TO debug5;
 
--- No. A-6-4-1
+-- No. A-8-4-1
 SET pg_hint_plan.parse_messages TO debug5;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO debug4;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-2
+-- No. A-8-4-2
 SET pg_hint_plan.parse_messages TO debug4;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO debug3;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-3
+-- No. A-8-4-3
 SET pg_hint_plan.parse_messages TO debug3;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO debug2;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-4
+-- No. A-8-4-4
 SET pg_hint_plan.parse_messages TO debug2;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO debug1;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-5
+-- No. A-8-4-5
 SET pg_hint_plan.parse_messages TO debug1;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO log;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-6
+-- No. A-8-4-6
 SET pg_hint_plan.parse_messages TO log;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO info;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-7
+-- No. A-8-4-7
 SET pg_hint_plan.parse_messages TO info;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO notice;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-8
+-- No. A-8-4-8
 SET pg_hint_plan.parse_messages TO notice;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO warning;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-9
+-- No. A-8-4-9
 SET pg_hint_plan.parse_messages TO warning;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO error;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-10
+-- No. A-8-4-10
 SET pg_hint_plan.parse_messages TO error;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 SET client_min_messages TO fatal;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-11
+-- No. A-8-4-11
 RESET client_min_messages;
 SET pg_hint_plan.parse_messages TO DEFAULT;
 SHOW pg_hint_plan.parse_messages;
 /*+Set*/SELECT 1;
 
--- No. A-6-4-12
+-- No. A-8-4-12
 SET pg_hint_plan.parse_messages TO fatal;
 SHOW pg_hint_plan.parse_messages;
 
--- No. A-6-4-13
+-- No. A-8-4-13
 SET pg_hint_plan.parse_messages TO panic;
 SHOW pg_hint_plan.parse_messages;
 
--- No. A-6-4-14
+-- No. A-8-4-14
 SET pg_hint_plan.parse_messages TO on;
 SHOW pg_hint_plan.parse_messages;
 
 ----
----- No. A-7-1 parse error message output
+---- No. A-8-5 original GUC parameter pg_hint_plan.enable_hint_table
 ----
 
--- No. A-7-1-1
+----
+---- No. A-9-1 parse error message output
+----
+
+-- No. A-9-1-1
 /*+"Set"(enable_indexscan on)*/SELECT 1;
 /*+Set()(enable_indexscan on)*/SELECT 1;
 /*+Set(enable_indexscan on*/SELECT 1;
 
 ----
----- No. A-7-3 hint state output
+---- No. A-9-3 hint state output
 ----
 
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 
--- No. A-7-3-1
+-- No. A-9-3-1
 /*+SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-7-3-2
+-- No. A-9-3-2
 /*+SeqScan(no_table)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
--- No. A-7-3-3
+-- No. A-9-3-3
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
 /*+TidScan(t1)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
@@ -643,12 +670,12 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
 /*+TidScan(t1)BitmapScan(t1)IndexScan(t1)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
 
--- No. A-7-3-4
+-- No. A-9-3-4
 /*+Set(enable_indexscan enable)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
----- No. A-8-1 hint state output
+---- No. A-10-1 hint state output
 ----
 
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -664,8 +691,8 @@ EXPLAIN (COSTS false) EXECUTE p1 (1000);
 EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
--- No. A-8-1-1
--- No. A-8-1-2
+-- No. A-10-1-1
+-- No. A-10-1-2
 /*+SeqScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+BitmapScan(t1)*/
@@ -694,8 +721,8 @@ UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
--- No. A-8-1-3
--- No. A-8-1-4
+-- No. A-10-1-3
+-- No. A-10-1-4
 /*+SeqScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) EXECUTE p1;
@@ -715,8 +742,8 @@ UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
--- No. A-8-1-5
--- No. A-8-1-6
+-- No. A-10-1-5
+-- No. A-10-1-6
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+BitmapScan(t1)*/
 EXPLAIN (COSTS false) EXECUTE p1;
@@ -738,8 +765,8 @@ UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 EXPLAIN (COSTS false) EXECUTE p1 (1000);
 DEALLOCATE p1;
 
--- No. A-8-1-9
--- No. A-8-1-10
+-- No. A-10-1-9
+-- No. A-10-1-10
 /*+SeqScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+BitmapScan(t1)*/
@@ -768,8 +795,8 @@ UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
--- No. A-8-1-11
--- No. A-8-1-12
+-- No. A-10-1-11
+-- No. A-10-1-12
 /*+SeqScan(t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
@@ -789,8 +816,8 @@ UPDATE pg_catalog.pg_class SET relpages = relpages WHERE relname = 't1';
 EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
--- No. A-8-1-13
--- No. A-8-1-14
+-- No. A-10-1-13
+-- No. A-10-1-14
 PREPARE p1 AS SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+BitmapScan(t1)*/
 EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1;
@@ -818,18 +845,18 @@ EXPLAIN (COSTS false) CREATE TABLE test AS EXECUTE p1 (1000);
 DEALLOCATE p1;
 
 ----
----- No. A-8-4 EXECUTE statement name error
+---- No. A-10-4 EXECUTE statement name error
 ----
 
--- No. A-8-4-1
+-- No. A-10-4-1
 EXECUTE p1;
 SHOW pg_hint_plan.debug_print;
 
 ----
----- No. A-9-5 EXECUTE statement name error
+---- No. A-11-5 EXECUTE statement name error
 ----
 
--- No. A-9-5-1
+-- No. A-11-5-1
 SELECT pg_stat_statements_reset();
 SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 /*+Set(enable_seqscan off)*/ SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -839,142 +866,6 @@ SELECT s.query, s.calls
   JOIN pg_catalog.pg_database d
     ON (s.dbid = d.oid)
  ORDER BY 1;
-
-----
----- No. A-10-1 duplicate hint
-----
-
--- No. A-10-1-1
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
-/*+
-Set(enable_tidscan aaa)
-Set(enable_tidscan on)
-Set(enable_tidscan off)
-SeqScan(t4)
-IndexScan(t4)
-BitmapScan(t4)
-TidScan(t4)
-NestLoop(t4 t3)
-MergeJoin(t4 t3)
-HashJoin(t4 t3)
-Leading(t2 t1 t4 t3)
-Leading(t1 t4 t3 t2)
-Leading(t4 t3 t2 t1)
-*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
-
--- No. A-10-1-2
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
-/*+
-SeqScan(t4)
-Set(enable_tidscan aaa)
-IndexScan(t4)
-NestLoop(t4 t3)
-Leading(t2 t1 t4 t3)
-Set(enable_tidscan on)
-BitmapScan(t4)
-MergeJoin(t4 t3)
-Leading(t1 t4 t3 t2)
-Set(enable_tidscan off)
-TidScan(t4)
-HashJoin(t4 t3)
-Leading(t4 t3 t2 t1)
-*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.ctid = '(1,1)' AND t1.c1 = t2.c1 AND t2.ctid = '(1,1)' AND t1.c1 = t3.c1 AND t3.ctid = '(1,1)' AND t1.c1 = t4.c1 AND t4.ctid = '(1,1)';
-
-----
----- No. A-10-2 restrict query type
-----
-
--- No. A-10-2-1
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
-/*+NestLoop(t1 t2)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
-
--- No. A-10-2-2
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
-/*+IndexScan(t1 t1_i1)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c3 = 1;
-
--- No. A-10-2-3
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-/*+TidScan(t1)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-
-----
----- No. A-10-3 VIEW, RULE multi specified
-----
-
--- No. A-10-3-1
-EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
-/*+Leading(v1t1 v1t1)HashJoin(v1t1 v1t1)BitmapScan(v1t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
-
--- No. A-10-3-2
-EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
-/*+Leading(v1t1 v1t1_)NestLoop(v1t1 v1t1_)SeqScan(v1t1)BitmapScan(v1t1_)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
-
--- No. A-10-3-3
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-/*+Leading(r4t1 r4t1)HashJoin(r4t1 r4t1)BitmapScan(r4t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-
--- No. A-10-3-4
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
-/*+Leading(r4t1 r5t1)NestLoop(r4t1 r5t1)SeqScan(r4t1)BitmapScan(r5t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
-
-----
----- No. A-11-1 psql command
-----
-
-SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
-/*+SeqScan(t1)*/
-SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
--- No. A-11-1-4
-\set FETCH_COUNT 0
-/*+SeqScan(t1)*/
-SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
--- No. A-11-1-5
-\set FETCH_COUNT 1
-/*+SeqScan(t1)*/
-SELECT count(*) FROM s1.t1 WHERE t1.c1 = 1;
-\unset FETCH_COUNT
-
-----
----- No. A-11-4 PL/pgSQL function
-----
-
--- No. A-11-4-1
-CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
-DECLARE
-    r text;
-BEGIN
-    FOR r IN EXPLAIN SELECT c4 FROM s1.t1 WHERE t1.c1 = 1
-    LOOP
-        RETURN NEXT r; -- return current row of SELECT
-    END LOOP;
-    RETURN;
-END
-$$;
-SELECT f1();
-/*+SeqScan(t1)*/
-SELECT f1();
-
--- No. A-11-4-2
-/*+SeqScan(t1)*/CREATE OR REPLACE FUNCTION f1() RETURNS SETOF text LANGUAGE plpgsql AS $$
-DECLARE
-    r text;
-BEGIN
-    /*+SeqScan(t1)*/FOR r IN EXPLAIN /*+SeqScan(t1)*/SELECT c4 FROM s1.t1 WHERE t1.c1 = 1
-    LOOP
-        /*+SeqScan(t1)*/RETURN NEXT r; -- return current row of SELECT
-    END LOOP;
-    /*+SeqScan(t1)*/RETURN;
-END
-$$;
-SELECT f1();
 
 ----
 ---- No. A-12-1 reset of global variable of core at the error
