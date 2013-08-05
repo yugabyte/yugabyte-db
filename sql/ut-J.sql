@@ -173,7 +173,9 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
                     FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.ctid = '(1,1)' AND bmt1.c1 = bmt2.c1 AND bmt2.ctid = '(1,1)' AND bmt1.c1 = bmt3.c1 AND bmt3.ctid = '(1,1)' AND bmt1.c1 = bmt4.c1 AND bmt4.ctid = '(1,1)'
 ;
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
 MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
 MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
@@ -199,7 +201,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
                     FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.ctid = '(1,1)' AND bmt1.c1 = bmt2.c1 AND bmt2.ctid = '(1,1)' AND bmt1.c1 = bmt3.c1 AND bmt3.ctid = '(1,1)' AND bmt1.c1 = bmt4.c1 AND bmt4.ctid = '(1,1)'
 ;
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
 MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
 MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
@@ -242,7 +247,9 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 )
 ;
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
 MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
 MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
@@ -268,7 +275,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 )
 ;
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
 MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
 MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
@@ -300,7 +310,9 @@ AND bmt1.c1 = c1.c1
 AND bmt1.c1 = c2.c1
 ;
 /*+
-Leading(c2 c1 bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 MergeJoin(c2 c1)HashJoin(c2 c1 bmt1)NestLoop(c2 c1 bmt1 bmt2)MergeJoin(c2 c1 bmt1 bmt2 bmt3)HashJoin(c2 c1 bmt1 bmt2 bmt3 bmt4)
 MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
 MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
@@ -338,7 +350,10 @@ AND bmt1.c1 = c2.c1
 AND bmt1.c1 = c3.c1
 ;
 /*+
-Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 MergeJoin(c3 c2)HashJoin(c3 c2 c1)NestLoop(c3 c2 c1 bmt1)MergeJoin(c3 c2 c1 bmt1 bmt2)HashJoin(c3 c2 c1 bmt1 bmt2 bmt3)NestLoop(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
 MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
 MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
@@ -381,7 +396,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = 1
 )
 ;
 /*+
-Leading(c1 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt1)
 HashJoin(bmt1 c1)
 HashJoin(b1t1 c1)
 HashJoin(b2t1 c1)
@@ -416,7 +431,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.ctid = '(1,1)' AND b3
 )
 ;
 /*+
-Leading(c1 bmt2 b1t2 b2t2 b3t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt2 bmt1)
+Leading(b1t2 b1t1)
+Leading(b2t2 b2t1)
+Leading(b3t2 b3t1)
 MergeJoin(c1 bmt2)
 HashJoin(c1 bmt1 bmt2)
 MergeJoin(b1t1 b1t2)
@@ -451,7 +469,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 )
 ;
 /*+
-Leading(c1 bmt4 b1t4 b2t4 b3t4 bmt3 b1t3 b2t3 b3t3 bmt2 b1t2 b2t2 b3t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1) 
+Leading(b2t4 b2t3 b2t2 b2t1)
+Leading(b3t4 b3t3 b3t2 b3t1)
 MergeJoin(c1 bmt4)
 HashJoin(c1 bmt4 bmt3)
 NestLoop(c1 bmt4 bmt3 bmt2)
@@ -493,7 +514,8 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
 )
 ;
 /*+
-Leading(c1 bmt4 b1t4 bmt3 b1t3 bmt2 b1t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
 MergeJoin(c1 bmt4)
 HashJoin(c1 bmt4 bmt3)
 NestLoop(c1 bmt4 bmt3 bmt2)
@@ -550,10 +572,9 @@ MergeJoin(t4 t3)
 */
 EXPLAIN (COSTS false) UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
-/*+Leading(
-b1t1 b1t2 b1t3 b1t4 
-b2t1 b2t2 b2t3 b2t4 r2_
-)
+/*+
+Leading(b1t1 b1t2 b1t3 b1t4 r2_)
+Leading(b2t1 b2t2 b2t3 b2t4 r2_)
 MergeJoin(b1t1 b1t2)
 HashJoin(b1t1 b1t2 b1t3)
 NestLoop(b1t1 b1t2 b1t3 b1t4)
@@ -576,11 +597,10 @@ MergeJoin(t4 t3)
 */
 EXPLAIN (COSTS false) UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
-/*+Leading(
-b1t1 b1t2 b1t3 b1t4 
-b2t1 b2t2 b2t3 b2t4
-b3t1 b3t2 b3t3 b3t4 r3_
-)
+/*+
+Leading(b1t1 b1t2 b1t3 b1t4 r3_)
+Leading(b2t1 b2t2 b2t3 b2t4 r3_)
+Leading(b3t1 b3t2 b3t3 b3t4 r3_)
 MergeJoin(b1t1 b1t2)
 HashJoin(b1t1 b1t2 b1t3)
 NestLoop(b1t1 b1t2 b1t3 b1t4)
