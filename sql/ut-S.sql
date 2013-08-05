@@ -453,6 +453,26 @@ IndexScan(b3t1 t1_pkey)BitmapScan(b3t2 t2_pkey)TidScan(b3t3)SeqScan(b3t4)
 SeqScan(r3_)*/
 EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 
+-- No. S-2-3-4
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+/*+BitmapScan(v1t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+
+-- No. S-2-3-5
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+/*+SeqScan(v1t1)BitmapScan(v1t1_)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+
+-- No. S-2-3-6
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+/*+BitmapScan(r4t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+
+-- No. S-2-3-7
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+/*+SeqScan(r4t1)BitmapScan(r5t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+
 ----
 ---- No. S-2-4 VALUES clause
 ----
@@ -791,21 +811,22 @@ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 /*+IndexOnlyScan(ti1 ti1_pred)*/
 EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
 
-----
----- No. S-3-6 not exist index
-----
-
--- No. S-3-6-1
+-- No. S-3-5-4
 /*+IndexScan(ti1 not_exist)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 
--- No. S-3-6-2
+-- No. S-3-5-5
 /*+BitmapScan(ti1 not_exist)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
 
--- No. S-3-6-3
+-- No. S-3-5-6
 /*+IndexOnlyScan(ti1 not_exist)*/
 EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+
+-- No. S-3-5-7
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+/*+TidScan(t1)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
 ---- No. S-3-7 query structure
