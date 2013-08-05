@@ -155,7 +155,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t4) st4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = st4.c1;
 
 ----
----- No. L-2-1 complexity query block
+---- No. L-2-1 some complexity query blocks
 ----
 
 -- No. L-2-1-1
@@ -457,7 +457,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
 ;
 
 ----
----- No. L-2-3 RULE definition table
+---- No. L-2-3 RULE or VIEW
 ----
 
 -- No. L-2-3-1
@@ -654,3 +654,13 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
 
+----
+---- No. L-3-6 specified Inner/Outer side
+----
+
+-- No. L-3-6-1
+-- No. L-3-6-2
+-- No. L-3-6-3
+-- No. L-3-6-4
+-- No. L-3-6-5
+-- No. L-3-6-6
