@@ -71,7 +71,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-2-2
-EXPLAIN (COSTS false) SELECT c1 /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) SELECT c1, c2 AS c_2 /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-2-3
 EXPLAIN (COSTS false) SELECT c1 AS "c1"/*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
