@@ -707,6 +707,32 @@ SHOW pg_hint_plan.parse_messages;
 ---- No. A-8-5 original GUC parameter pg_hint_plan.enable_hint_table
 ----
 
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
+	'',
+	'SeqScan(t1)');
+
+-- No. A-8-5-1
+SET pg_hint_plan.enable_hint_table TO on;
+SHOW pg_hint_plan.enable_hint_table;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
+-- No. A-8-5-2
+SET pg_hint_plan.enable_hint_table TO off;
+SHOW pg_hint_plan.enable_hint_table;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
+-- No. A-8-5-3
+SET pg_hint_plan.enable_hint_table TO DEFAULT;
+SHOW pg_hint_plan.enable_hint_table;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
+-- No. A-8-5-4
+SET pg_hint_plan.enable_hint_table TO enable;
+SHOW pg_hint_plan.enable_hint_table;
+
+TRUNCATE hint_plan.hints;
+
 ----
 ---- No. A-9-1 parse error message output
 ----
