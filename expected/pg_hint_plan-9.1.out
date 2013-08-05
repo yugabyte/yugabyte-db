@@ -7929,3 +7929,4 @@ error hint:
 
 CONTEXT:  SQL statement "SELECT /*+SeqScan(t1)*/ t1.id         FROM t1 WHERE t1.id = 1"
 PL/pgSQL function "inline_code_block" line 5 at SQL statement
+DROP EXTENSION pg_hint_plan;
