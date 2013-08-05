@@ -160,7 +160,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
 
 ----
----- No. J-2-1 complexity query block
+---- No. J-2-1 some complexity query blocks
 ----
 
 -- No. J-2-1-1
@@ -516,7 +516,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
 ;
 
 ----
----- No. J-2-3 RULE definition table
+---- No. J-2-3 RULE or VIEW
 ----
 
 -- No. J-2-3-1
@@ -595,6 +595,15 @@ NestLoop(b3t1 b3t2 b3t3 b3t4)
 MergeJoin(b3t1 b3t2 b3t3 b3t4 r3_)
 */
 EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
+
+-- No. J-2-3-4
+
+-- No. J-2-3-5
+
+-- No. J-2-3-6
+
+-- No. J-2-3-7
+
 
 ----
 ---- No. J-2-4 VALUES clause
@@ -756,3 +765,8 @@ SELECT * FROM s1.t1, s1.t2 WHERE false;
 -- No. J-3-4-10
 /*+NestLoop(t1 t2 t3)*/
 SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE false;
+
+----
+---- No. J-3-5 not used hint
+----
+-- No. J-3-5-1
