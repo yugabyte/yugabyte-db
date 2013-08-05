@@ -65,16 +65,19 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 ----
 
 -- No. A-5-2-1
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
 /*+SeqScan(t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-2-2
-/* normal comment */
-/*+SeqScan(t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) SELECT c1 /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-2-3
-EXPLAIN (COSTS false) SELECT /*+SeqScan(t1)*/ * FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) SELECT c1 AS "c1"/*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
+
+-- No. A-5-2-4
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+EXPLAIN (COSTS false) SELECT * /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
 ---- No. A-6-1 hint's table definition
