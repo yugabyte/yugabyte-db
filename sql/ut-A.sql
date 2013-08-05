@@ -1,5 +1,6 @@
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.enable_hint TO on;
+SET pg_hint_plan.enable_hint_table TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
@@ -76,20 +77,81 @@ EXPLAIN (COSTS false) SELECT c1 /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT c1 AS "c1"/*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-2-4
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT * /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
 ---- No. A-6-1 hint's table definition
 ----
+-- No. A-6-1-1
+\d hint_plan.hints
 
 ----
 ---- No. A-6-2 search condition
 ----
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+-- No. A-6-2-1
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
+	'',
+	'SeqScan(t1)');
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
+-- No. A-6-2-2
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
+	'psql',
+	'BitmapScan(t1)');
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+TRUNCATE hint_plan.hints;
+
+-- No. A-6-2-3
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
+	'dummy_application_name',
+	'SeqScan(t1)'
+);
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+TRUNCATE hint_plan.hints;
+
+-- No. A-6-2-4
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1;',
+	'',
+	'SeqScan(t1)'
+);
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+TRUNCATE hint_plan.hints;
 
 ----
 ---- No. A-6-3 number of constant
 ----
+
+-- No. A-6-3-1
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT c1 FROM s1.t1;',
+	'',
+	'SeqScan(t1)'
+);
+EXPLAIN (COSTS false) SELECT c1 FROM s1.t1;
+TRUNCATE hint_plan.hints;
+
+-- No. A-6-3-2
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
+	'',
+	'SeqScan(t1)'
+);
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+TRUNCATE hint_plan.hints;
+
+-- No. A-6-3-3
+INSERT INTO hint_plan.hints VALUES (
+	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ? OR t1.c1 = ?;',
+	'',
+	'SeqScan(t1)'
+);
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 OR t1.c1 = 0;
+TRUNCATE hint_plan.hints;
 
 ----
 ---- No. A-7-2 hint delimiter
