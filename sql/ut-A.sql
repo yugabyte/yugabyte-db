@@ -22,7 +22,7 @@ CREATE EXTENSION pg_hint_plan SCHEMA other_name;
 CREATE EXTENSION pg_hint_plan;
 
 ----
----- No. A-5-1 comment pattarn
+---- No. A-5-1 comment pattern
 ----
 
 -- No. A-5-1-1
