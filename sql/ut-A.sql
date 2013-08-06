@@ -375,12 +375,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 "TTT" WHERE "TTT".c1 = 1;
 -- No. A-9-2-3
 /*+SeqScan(()*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
-/*+SeqScan(((()*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(((" WHERE "(((".c1 = 1;
 /*+SeqScan("(")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
-/*+SeqScan("(((")*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(((" WHERE "(((".c1 = 1;
 
 -- No. A-7-3-4
 -- No. A-9-2-4
