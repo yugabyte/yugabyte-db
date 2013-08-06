@@ -1,6 +1,5 @@
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.enable_hint TO on;
-SET pg_hint_plan.enable_hint_table TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
 SET search_path TO public;
@@ -82,6 +81,8 @@ EXPLAIN (COSTS false) SELECT * /*+SeqScan(t1)*/ FROM s1.t1 WHERE t1.c1 = 1;
 ----
 ---- No. A-6-1 hint's table definition
 ----
+
+SET pg_hint_plan.enable_hint_table TO on;
 -- No. A-6-1-1
 \d hint_plan.hints
 
@@ -152,6 +153,7 @@ INSERT INTO hint_plan.hints VALUES (
 );
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 OR t1.c1 = 0;
 TRUNCATE hint_plan.hints;
+SET pg_hint_plan.enable_hint_table TO off;
 
 ----
 ---- No. A-7-2 hint delimiter
