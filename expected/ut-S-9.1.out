@@ -4466,6 +4466,27 @@ DETAIL:  Unrecognized hint keyword "IndexOnlyScan".
 (2 rows)
 
 -- No. S-3-5-7
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+          QUERY PLAN          
+------------------------------
+ Index Scan using t1_i1 on t1
+   Index Cond: (c1 = 1)
+(2 rows)
+
+/*+TidScan(t1)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+LOG:  pg_hint_plan:
+used hint:
+TidScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Seq Scan on t1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
+   Filter: (c1 = 1)
+(2 rows)
 
 ----
 ---- No. S-3-6 query structure
