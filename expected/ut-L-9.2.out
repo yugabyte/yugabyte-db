@@ -1201,7 +1201,7 @@ error hint:
 (14 rows)
 
 ----
----- No. L-2-1 complexity query block
+---- No. L-2-1 some complexity query blocks
 ----
 -- No. L-2-1-1
 EXPLAIN (COSTS false)
@@ -2773,7 +2773,7 @@ error hint:
 (46 rows)
 
 ----
----- No. L-2-3 RULE definition table
+---- No. L-2-3 RULE or VIEW
 ----
 -- No. L-2-3-1
 EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
@@ -3402,6 +3402,14 @@ error hint:
                TID Cond: (ctid = '(1,1)'::tid)
                Filter: (c1 = 1)
 (59 rows)
+
+-- No. L-2-3-4
+
+-- No. L-2-3-5
+
+-- No. L-2-3-6
+
+-- No. L-2-3-7
 
 ----
 ---- No. L-2-4 VALUES clause
@@ -4152,4 +4160,19 @@ error hint:
                      Sort Key: t2.c1
                      ->  Seq Scan on t2
 (10 rows)
+
+----
+---- No. L-3-6 specified Inner/Outer side
+----
+-- No. L-3-6-1
+
+-- No. L-3-6-2
+
+-- No. L-3-6-3
+
+-- No. L-3-6-4
+
+-- No. L-3-6-5
+
+-- No. L-3-6-6
 
