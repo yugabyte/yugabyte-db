@@ -198,28 +198,26 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(t5 t2 t3 t1)
 not used hint:
+Leading(t5 t2 t3 t1)
 duplication hint:
 error hint:
 
                    QUERY PLAN                   
 ------------------------------------------------
- Nested Loop
-   Join Filter: (t1.c1 = t4.c1)
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
-         Merge Cond: (t1.c1 = t2.c1)
-         ->  Index Scan using t1_i1 on t1
-         ->  Sort
-               Sort Key: t2.c1
-               ->  Hash Join
-                     Hash Cond: (t3.c1 = t2.c1)
-                     ->  Seq Scan on t3
-                     ->  Hash
-                           ->  Seq Scan on t2
-   ->  Index Scan using t4_i1 on t4
-         Index Cond: (c1 = t3.c1)
-(14 rows)
+         Merge Cond: (t1.c1 = t4.c1)
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t3.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(12 rows)
 
 ----
 ---- No. L-1-4 conflict table name
@@ -277,9 +275,9 @@ DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
-Leading(t1 t2 t3 t1)
 duplication hint:
 error hint:
+Leading(t1 t2 t3 t1)
 
                    QUERY PLAN                   
 ------------------------------------------------
@@ -301,28 +299,26 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2.t1.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(s1.t1 t2 t3 s2.t1)
 not used hint:
+Leading(s1.t1 t2 t3 s2.t1)
 duplication hint:
 error hint:
 
                    QUERY PLAN                   
 ------------------------------------------------
- Nested Loop
-   Join Filter: (s1.t1.c1 = s2.t1.c1)
-   ->  Nested Loop
-         Join Filter: (t2.c1 = s1.t1.c1)
+ Merge Join
+   Merge Cond: (s1.t1.c1 = s2.t1.c1)
+   ->  Merge Join
+         Merge Cond: (s1.t1.c1 = t2.c1)
          ->  Merge Join
-               Merge Cond: (t3.c1 = t2.c1)
+               Merge Cond: (s1.t1.c1 = t3.c1)
+               ->  Index Scan using t1_i1 on t1
                ->  Index Scan using t3_i1 on t3
-               ->  Sort
-                     Sort Key: t2.c1
-                     ->  Seq Scan on t2
-         ->  Index Scan using t1_i1 on t1
-               Index Cond: (c1 = t3.c1)
-   ->  Index Scan using t1_pkey on t1
-         Index Cond: (c1 = t3.c1)
-(14 rows)
+         ->  Index Scan using t2_i1 on t2
+   ->  Sort
+         Sort Key: s2.t1.c1
+         ->  Seq Scan on t1
+(12 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 s2t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2t1.c1;
                    QUERY PLAN                   
@@ -441,11 +437,12 @@ error hint:
                                  ->  Seq Scan on t2
 (30 rows)
 
-/*+Leading(st1 st2 st3 st4 t4 t2 t3 t1)*/
+/*+Leading(st1 st2 st3 st4)Leading(t4 t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT *, (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2, s1.t3 st3, s1.t4 st4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1) FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(st1 st2 st3 st4 t4 t2 t3 t1)
+Leading(st1 st2 st3 st4)
+Leading(t4 t2 t3 t1)
 not used hint:
 duplication hint:
 error hint:
@@ -516,30 +513,30 @@ error hint:
 -- No. L-1-5-2
 /*+Leading(t4 t2 t3 t1 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+INFO:  hint syntax error at or near "Leading(t4 t2 t3 t1 t4)"
+DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
-Leading(t4 t2 t3 t1 t4)
 not used hint:
 duplication hint:
 error hint:
+Leading(t4 t2 t3 t1 t4)
 
-                      QUERY PLAN                      
-------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_i1 on t1
+   ->  Merge Join
+         Merge Cond: (t1.c1 = t4.c1)
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t3.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
-         ->  Hash Join
-               Hash Cond: (t3.c1 = t2.c1)
-               ->  Seq Scan on t3
-               ->  Hash
-                     ->  Hash Join
-                           Hash Cond: (t4.c1 = t2.c1)
-                           ->  Seq Scan on t4
-                           ->  Hash
-                                 ->  Seq Scan on t2
-(14 rows)
+         ->  Seq Scan on t2
+(12 rows)
 
 /*+Leading(t4 t2 t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
@@ -571,30 +568,30 @@ Leading(t4 t2 t3 t4)
 -- No. L-1-5-3
 /*+Leading(t4 t2 t3 t1 t4 t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+INFO:  hint syntax error at or near "Leading(t4 t2 t3 t1 t4 t2 t3 t1)"
+DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
-Leading(t4 t2 t3 t1 t4 t2 t3 t1)
 not used hint:
 duplication hint:
 error hint:
+Leading(t4 t2 t3 t1 t4 t2 t3 t1)
 
-                      QUERY PLAN                      
-------------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
-   ->  Index Scan using t1_i1 on t1
+   ->  Merge Join
+         Merge Cond: (t1.c1 = t4.c1)
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t3.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Scan using t4_i1 on t4
    ->  Sort
          Sort Key: t2.c1
-         ->  Hash Join
-               Hash Cond: (t3.c1 = t2.c1)
-               ->  Seq Scan on t3
-               ->  Hash
-                     ->  Hash Join
-                           Hash Cond: (t4.c1 = t2.c1)
-                           ->  Seq Scan on t4
-                           ->  Hash
-                                 ->  Seq Scan on t2
-(14 rows)
+         ->  Seq Scan on t2
+(12 rows)
 
 /*+Leading(t4 t2 t2 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
@@ -932,26 +929,27 @@ EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), 
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(t4 t3 t2 t1)
 not used hint:
+Leading(t4 t3 t2 t1)
 duplication hint:
 error hint:
 
-                 QUERY PLAN                  
----------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Nested Loop
-   Join Filter: (t2.c1 = "*VALUES*".column1)
-   ->  Values Scan on "*VALUES*"
-   ->  Hash Join
-         Hash Cond: (t3.c1 = t2.c1)
+   Join Filter: ("*VALUES*".column1 = t4.c1)
+   ->  Nested Loop
+         Join Filter: ("*VALUES*".column1 = t3.c1)
          ->  Hash Join
-               Hash Cond: (t3.c1 = t4.c1)
-               ->  Seq Scan on t3
-               ->  Hash
-                     ->  Seq Scan on t4
-         ->  Hash
+               Hash Cond: (t2.c1 = "*VALUES*".column1)
                ->  Seq Scan on t2
-(12 rows)
+               ->  Hash
+                     ->  Values Scan on "*VALUES*"
+         ->  Index Scan using t3_i1 on t3
+               Index Cond: (c1 = t2.c1)
+   ->  Index Scan using t4_i1 on t4
+         Index Cond: (c1 = t3.c1)
+(13 rows)
 
 -- No. L-1-6-9
 EXPLAIN (COSTS false) WITH c1(c1) AS (SELECT st1.c1 FROM s1.t1 st1, s1.t1 st2, s1.t1 st3, s1.t1 st4 WHERE st1.c1 = st2.c1 AND st1.c1 = st3.c1 AND st1.c1 = st4.c1) SELECT * FROM c1 ct1, c1 ct2, c1 ct3, c1 ct4 WHERE ct1.c1 = ct2.c1 AND ct1.c1 = ct3.c1 AND ct1.c1 = ct4.c1;
@@ -992,11 +990,12 @@ EXPLAIN (COSTS false) WITH c1(c1) AS (SELECT st1.c1 FROM s1.t1 st1, s1.t1 st2, s
                      ->  CTE Scan on c1 ct4
 (33 rows)
 
-/*+Leading(ct4 ct3 ct2 ct1 st4 st3 st2 st1)*/
+/*+Leading(ct4 ct3 ct2 ct1)Leading(st4 st3 st2 st1)*/
 EXPLAIN (COSTS false) WITH c1(c1) AS (SELECT st1.c1 FROM s1.t1 st1, s1.t1 st2, s1.t1 st3, s1.t1 st4 WHERE st1.c1 = st2.c1 AND st1.c1 = st3.c1 AND st1.c1 = st4.c1) SELECT * FROM c1 ct1, c1 ct2, c1 ct3, c1 ct4 WHERE ct1.c1 = ct2.c1 AND ct1.c1 = ct3.c1 AND ct1.c1 = ct4.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(ct4 ct3 ct2 ct1 st4 st3 st2 st1)
+Leading(ct4 ct3 ct2 ct1)
+Leading(st4 st3 st2 st1)
 not used hint:
 duplication hint:
 error hint:
@@ -1150,28 +1149,26 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t4) st4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = st4.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(st4 t2 t3 t1)
 not used hint:
+Leading(st4 t2 t3 t1)
 duplication hint:
 error hint:
 
                    QUERY PLAN                   
 ------------------------------------------------
- Nested Loop
-   Join Filter: (t1.c1 = t4.c1)
+ Merge Join
+   Merge Cond: (t1.c1 = t2.c1)
    ->  Merge Join
-         Merge Cond: (t1.c1 = t2.c1)
-         ->  Index Scan using t1_i1 on t1
-         ->  Sort
-               Sort Key: t2.c1
-               ->  Hash Join
-                     Hash Cond: (t3.c1 = t2.c1)
-                     ->  Seq Scan on t3
-                     ->  Hash
-                           ->  Seq Scan on t2
-   ->  Index Only Scan using t4_i1 on t4
-         Index Cond: (c1 = t3.c1)
-(14 rows)
+         Merge Cond: (t1.c1 = t4.c1)
+         ->  Merge Join
+               Merge Cond: (t1.c1 = t3.c1)
+               ->  Index Scan using t1_i1 on t1
+               ->  Index Scan using t3_i1 on t3
+         ->  Index Only Scan using t4_i1 on t4
+   ->  Sort
+         Sort Key: t2.c1
+         ->  Seq Scan on t2
+(12 rows)
 
 /*+Leading(t4 t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, (SELECT t4.c1 FROM s1.t4) st4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = st4.c1;
@@ -1264,7 +1261,9 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 (47 rows)
 
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 */
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1), (
@@ -1276,7 +1275,9 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 not used hint:
 duplication hint:
 error hint:
@@ -1411,7 +1412,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 (63 rows)
 
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 */
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1), (
@@ -1425,7 +1429,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 not used hint:
 duplication hint:
 error hint:
@@ -1661,7 +1668,9 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 (48 rows)
 
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 */
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.ctid = '(1,1)' AND bmt1.c1 = bmt2.c1 AND bmt2.ctid = '(1,1)' AND bmt1.c1 = bmt3.c1 AND bmt3.ctid = '(1,1)' AND bmt1.c1 = bmt4.c1 AND bmt4.ctid = '(1,1)'
@@ -1673,7 +1682,9 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 not used hint:
 duplication hint:
 error hint:
@@ -1810,7 +1821,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 (64 rows)
 
 /*+
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 */
 EXPLAIN (COSTS false)
 SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.ctid = '(1,1)' AND bmt1.c1 = bmt2.c1 AND bmt2.ctid = '(1,1)' AND bmt1.c1 = bmt3.c1 AND bmt3.ctid = '(1,1)' AND bmt1.c1 = bmt4.c1 AND bmt4.ctid = '(1,1)'
@@ -1824,7 +1838,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 not used hint:
 duplication hint:
 error hint:
@@ -1969,7 +1986,9 @@ AND bmt1.c1 = c2.c1
 (53 rows)
 
 /*+
-Leading(c2 c1 bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -1986,7 +2005,9 @@ AND bmt1.c1 = c2.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(c2 c1 bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2)
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
 not used hint:
 duplication hint:
 error hint:
@@ -2143,7 +2164,10 @@ AND bmt1.c1 = c3.c1
 (72 rows)
 
 /*+
-Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -2164,7 +2188,10 @@ AND bmt1.c1 = c3.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4 b1t2 b1t3 b1t4 b1t1 b2t3 b2t4 b2t1 b2t2 b3t4 b3t1 b3t2 b3t3)
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
 not used hint:
 duplication hint:
 error hint:
@@ -2293,7 +2320,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = 1
 (27 rows)
 
 /*+
-Leading(c1 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt1)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -2309,7 +2336,7 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)' AND b3t1.c1 = 1
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(c1 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt1)
 not used hint:
 duplication hint:
 error hint:
@@ -2399,7 +2426,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.ctid = '(1,1)' AND b3
 (35 rows)
 
 /*+
-Leading(c1 bmt2 b1t2 b2t2 b3t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt2 bmt1)
+Leading(b1t2 b1t1)
+Leading(b2t2 b2t1)
+Leading(b3t2 b3t1)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -2416,7 +2446,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.ctid = '(1,1)' AND b3
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(c1 bmt2 b1t2 b2t2 b3t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt2 bmt1)
+Leading(b1t2 b1t1)
+Leading(b2t2 b2t1)
+Leading(b3t2 b3t1)
 not used hint:
 duplication hint:
 error hint:
@@ -2545,7 +2578,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 (67 rows)
 
 /*+
-Leading(c1 bmt4 b1t4 b2t4 b3t4 bmt3 b1t3 b2t3 b3t3 bmt2 b1t2 b2t2 b3t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
+Leading(b2t4 b2t3 b2t2 b2t1)
+Leading(b3t4 b3t3 b3t2 b3t1)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -2561,7 +2597,10 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(c1 bmt4 b1t4 b2t4 b3t4 bmt3 b1t3 b2t3 b3t3 bmt2 b1t2 b2t2 b3t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
+Leading(b2t4 b2t3 b2t2 b2t1)
+Leading(b3t4 b3t3 b3t2 b3t1)
 not used hint:
 duplication hint:
 error hint:
@@ -2701,7 +2740,8 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
 (46 rows)
 
 /*+
-Leading(c1 bmt4 b1t4 bmt3 b1t3 bmt2 b1t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
 */
 EXPLAIN (COSTS false)
 WITH c1 (c1) AS (
@@ -2717,7 +2757,8 @@ SELECT max(b3t1.c1) FROM s1.t1 b3t1 WHERE b3t1.ctid = '(1,1)'
 ;
 LOG:  pg_hint_plan:
 used hint:
-Leading(c1 bmt4 b1t4 bmt3 b1t3 bmt2 b1t2 bmt1 b1t1 b2t1 b3t1)
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
 not used hint:
 duplication hint:
 error hint:
@@ -3036,22 +3077,24 @@ EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
                TID Cond: (ctid = '(1,1)'::tid)
 (39 rows)
 
-/*+Leading(
-b1t1 b1t2 b1t3 b1t4 
-b2t1 b2t2 b2t3 b2t4 r2_
-) */
+/*+
+Leading(b1t1 b1t2 b1t3 b1t4 r2_)
+Leading(b2t1 b2t2 b2t3 b2t4 r2_)
+*/
 EXPLAIN (COSTS false) UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 LOG:  pg_hint_plan:
 used hint:
-Leading(b1t1 b1t2 b1t3 b1t4 b2t1 b2t2 b2t3 b2t4 r2_)
+Leading(b1t1 b1t2 b1t3 b1t4 r2_)
 not used hint:
+Leading(b2t1 b2t2 b2t3 b2t4 r2_)
 duplication hint:
 error hint:
 
 LOG:  pg_hint_plan:
 used hint:
-Leading(b1t1 b1t2 b1t3 b1t4 b2t1 b2t2 b2t3 b2t4 r2_)
+Leading(b2t1 b2t2 b2t3 b2t4 r2_)
 not used hint:
+Leading(b1t1 b1t2 b1t3 b1t4 r2_)
 duplication hint:
 error hint:
 
@@ -3313,30 +3356,36 @@ EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
                TID Cond: (ctid = '(1,1)'::tid)
 (59 rows)
 
-/*+Leading(
-b1t1 b1t2 b1t3 b1t4
-b2t1 b2t2 b2t3 b2t4
-b3t1 b3t2 b3t3 b3t4 r3_
-) */
+/*+
+Leading(b1t1 b1t2 b1t3 b1t4 r3_)
+Leading(b2t1 b2t2 b2t3 b2t4 r3_)
+Leading(b3t1 b3t2 b3t3 b3t4 r3_)
+*/
 EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 LOG:  pg_hint_plan:
 used hint:
-Leading(b1t1 b1t2 b1t3 b1t4 b2t1 b2t2 b2t3 b2t4 b3t1 b3t2 b3t3 b3t4 r3_)
+Leading(b1t1 b1t2 b1t3 b1t4 r3_)
 not used hint:
+Leading(b2t1 b2t2 b2t3 b2t4 r3_)
+Leading(b3t1 b3t2 b3t3 b3t4 r3_)
 duplication hint:
 error hint:
 
 LOG:  pg_hint_plan:
 used hint:
-Leading(b1t1 b1t2 b1t3 b1t4 b2t1 b2t2 b2t3 b2t4 b3t1 b3t2 b3t3 b3t4 r3_)
+Leading(b2t1 b2t2 b2t3 b2t4 r3_)
 not used hint:
+Leading(b1t1 b1t2 b1t3 b1t4 r3_)
+Leading(b3t1 b3t2 b3t3 b3t4 r3_)
 duplication hint:
 error hint:
 
 LOG:  pg_hint_plan:
 used hint:
-Leading(b1t1 b1t2 b1t3 b1t4 b2t1 b2t2 b2t3 b2t4 b3t1 b3t2 b3t3 b3t4 r3_)
+Leading(b3t1 b3t2 b3t3 b3t4 r3_)
 not used hint:
+Leading(b1t1 b1t2 b1t3 b1t4 r3_)
+Leading(b2t1 b2t2 b2t3 b2t4 r3_)
 duplication hint:
 error hint:
 
@@ -3544,23 +3593,22 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(t3 t1 t2)
 not used hint:
+Leading(t3 t1 t2)
 duplication hint:
 error hint:
 
-                 QUERY PLAN                  
----------------------------------------------
+                   QUERY PLAN                    
+-------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
-   ->  Values Scan on "*VALUES*"
-   ->  Merge Join
-         Merge Cond: (t1.c1 = t2.c1)
-         ->  Index Scan using t1_i1 on t1
-         ->  Sort
-               Sort Key: t2.c1
-               ->  Seq Scan on t2
-(9 rows)
+   ->  Hash Join
+         Hash Cond: (t2.c1 = "*VALUES*".column1)
+         ->  Seq Scan on t2
+         ->  Hash
+               ->  Values Scan on "*VALUES*"
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(8 rows)
 
 /*+ Leading(*VALUES* t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
@@ -3603,26 +3651,25 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 LOG:  pg_hint_plan:
 used hint:
-Leading(t4 t3 t2 t1)
 not used hint:
+Leading(t4 t3 t2 t1)
 duplication hint:
 error hint:
 
-                    QUERY PLAN                     
----------------------------------------------------
+                      QUERY PLAN                       
+-------------------------------------------------------
  Nested Loop
    Join Filter: (t1.c1 = "*VALUES*".column1)
    ->  Nested Loop
-         Join Filter: (t1.c1 = "*VALUES*".column1)
-         ->  Merge Join
-               Merge Cond: (t1.c1 = t2.c1)
-               ->  Index Scan using t1_i1 on t1
-               ->  Sort
-                     Sort Key: t2.c1
-                     ->  Seq Scan on t2
-         ->  Values Scan on "*VALUES*"
+         ->  Hash Join
+               Hash Cond: (t2.c1 = "*VALUES*".column1)
+               ->  Seq Scan on t2
+               ->  Hash
+                     ->  Values Scan on "*VALUES*"
+         ->  Index Scan using t1_i1 on t1
+               Index Cond: (c1 = t2.c1)
    ->  Values Scan on "*VALUES*"
-(12 rows)
+(11 rows)
 
 /*+ Leading(*VALUES* t3 t2 t1) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
@@ -3631,9 +3678,9 @@ DETAIL:  Relation name "*VALUES*" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
-Leading(*VALUES* t3 t2 t1)
 duplication hint:
 error hint:
+Leading(*VALUES* t3 t2 t1)
 
                       QUERY PLAN                       
 -------------------------------------------------------
