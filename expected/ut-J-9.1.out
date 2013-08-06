@@ -857,7 +857,7 @@ error hint:
 (5 rows)
 
 ----
----- No. J-2-1 complexity query block
+---- No. J-2-1 some complexity query blocks
 ----
 -- No. J-2-1-1
 EXPLAIN (COSTS false)
@@ -2768,7 +2768,7 @@ error hint:
 (60 rows)
 
 ----
----- No. J-2-3 RULE definition table
+---- No. J-2-3 RULE or VIEW
 ----
 -- No. J-2-3-1
 EXPLAIN (COSTS false) UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
@@ -3583,6 +3583,14 @@ error hint:
                TID Cond: (ctid = '(1,1)'::tid)
                Filter: (c1 = 1)
 (74 rows)
+
+-- No. J-2-3-4
+
+-- No. J-2-3-5
+
+-- No. J-2-3-6
+
+-- No. J-2-3-7
 
 ----
 ---- No. J-2-4 VALUES clause
@@ -4465,3 +4473,7 @@ error hint:
 ----+----+----+----+----+----+----+----+----+----+----+----
 (0 rows)
 
+----
+---- No. J-3-5 not used hint
+----
+-- No. J-3-5-1
