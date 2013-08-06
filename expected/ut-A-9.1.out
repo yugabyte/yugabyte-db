@@ -7,13 +7,14 @@ SET search_path TO public;
 ---- No.A-1-1 install
 ---- No.A-2-1 uninstall
 ----
-
 -- No.A-1-1-3
-
+CREATE EXTENSION pg_hint_plan;
 -- No.A-1-2-3
-
+DROP EXTENSION pg_hint_plan;
 -- No.A-1-1-4
-
+CREATE EXTENSION pg_hint_plan SCHEMA other_name;
+ERROR:  extension "pg_hint_plan" must be installed in schema "hint_plan"
+CREATE EXTENSION pg_hint_plan;
 ----
 ---- No. A-5-1 comment pattern
 ----
