@@ -5033,38 +5033,69 @@ error hint:
 (8 rows)
 
 -- No. S-3-10-3
-/*+IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
-LOG:  available indexes for IndexScan(p2): p2_pkey
-LOG:  available indexes for IndexScan(p2c1): p2c1_pkey
-LOG:  available indexes for IndexScan(p2c2):
-LOG:  available indexes for IndexScan(p2c3):
-LOG:  available indexes for IndexScan(p2c1c1): p2c1c1_pkey
-LOG:  available indexes for IndexScan(p2c1c2):
-LOG:  available indexes for IndexScan(p2c2c1):
-LOG:  available indexes for IndexScan(p2c2c2):
-LOG:  available indexes for IndexScan(p2c3c1):
-LOG:  available indexes for IndexScan(p2c3c2):
+EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+                            QUERY PLAN                             
+-------------------------------------------------------------------
+ Result  (cost=0.00..2.75 rows=4 width=10)
+   ->  Append  (cost=0.00..2.75 rows=4 width=10)
+         ->  Seq Scan on p1  (cost=0.00..0.00 rows=1 width=32)
+               Filter: ((c1 < 10) AND ((c2 * 2) < 100))
+         ->  Seq Scan on p1c1 p1  (cost=0.00..2.75 rows=3 width=2)
+               Filter: ((c1 < 10) AND ((c2 * 2) < 100))
+(6 rows)
+
+/*+IndexScan(p1 p1_parent)*/
+EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+LOG:  available indexes for IndexScan(p1): p1_parent
+LOG:  available indexes for IndexScan(p1c1): p1c1_c4_expr_idx
+LOG:  available indexes for IndexScan(p1c2): p1c2_c4_expr_idx
+LOG:  available indexes for IndexScan(p1c3): p1c3_c4_expr_idx
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(p2 p2_pkey p2c1_pkey p2c1c1_pkey)
+IndexScan(p1 p1_parent)
 not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
- Result
-   ->  Append
-         ->  Index Scan using p2_pkey on p2
-               Index Cond: (c1 = 1)
-         ->  Index Scan using p2c1_pkey on p2c1 p2
-               Index Cond: (c1 = 1)
-         ->  Index Scan using p2c1c1_pkey on p2c1c1 p2
-               Index Cond: (c1 = 1)
-(8 rows)
+                                         QUERY PLAN                                          
+---------------------------------------------------------------------------------------------
+ Result  (cost=0.00..20.73 rows=4 width=10)
+   ->  Append  (cost=0.00..20.73 rows=4 width=10)
+         ->  Index Scan using p1_parent on p1  (cost=0.00..8.27 rows=1 width=32)
+               Filter: ((c2 * 2) < 100)
+         ->  Index Scan using p1c1_c4_expr_idx on p1c1 p1  (cost=0.00..12.45 rows=3 width=2)
+               Filter: ((c2 * 2) < 100)
+(6 rows)
 
 -- No. S-3-10-4
+/*+IndexScan(p1 p1_i2)*/
+EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
+LOG:  available indexes for IndexScan(p1): p1_i2
+LOG:  available indexes for IndexScan(p1c1):
+LOG:  available indexes for IndexScan(p1c2):
+LOG:  available indexes for IndexScan(p1c3):
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(p1 p1_i2)
+not used hint:
+duplication hint:
+error hint:
+
+                                      QUERY PLAN                                       
+---------------------------------------------------------------------------------------
+ Result  (cost=0.00..30000000015.02 rows=4 width=4)
+   ->  Append  (cost=0.00..30000000015.02 rows=4 width=4)
+         ->  Index Scan using p1_i2 on p1  (cost=0.00..8.27 rows=1 width=4)
+               Index Cond: (c2 = 1)
+         ->  Seq Scan on p1c1 p1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+               Filter: (c2 = 1)
+         ->  Seq Scan on p1c2 p1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+               Filter: (c2 = 1)
+         ->  Seq Scan on p1c3 p1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+               Filter: (c2 = 1)
+(10 rows)
+
+-- No. S-3-10-5
 /*+IndexScan(p2 p2c1_pkey)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
 LOG:  available indexes for IndexScan(p2):
@@ -5095,8 +5126,6 @@ error hint:
          ->  Seq Scan on p2c1c1 p2  (cost=10000000000.00..10000000001.62 rows=1 width=14)
                Filter: (c1 = 1)
 (8 rows)
-
--- No. S-3-10-5
 
 ----
 ---- No. S-3-11 specified same table
