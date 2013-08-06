@@ -4587,3 +4587,31 @@ error hint:
 ---- No. J-3-5 not used hint
 ----
 -- No. J-3-5-1
+EXPLAIN (COSTS false) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
+          QUERY PLAN          
+------------------------------
+ Hash Full Join
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
+
+/*+NestLoop(t1 t2)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1 FULL OUTER JOIN s1.t2 ON (t1.c1 = t2.c1);
+LOG:  pg_hint_plan:
+used hint:
+NestLoop(t1 t2)
+not used hint:
+duplication hint:
+error hint:
+
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Full Join  (cost=10000000003.25..10000000024.00 rows=1000 width=29)
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on t1  (cost=0.00..16.00 rows=1000 width=15)
+   ->  Hash  (cost=2.00..2.00 rows=100 width=14)
+         ->  Seq Scan on t2  (cost=0.00..2.00 rows=100 width=14)
+(5 rows)
+
