@@ -1029,39 +1029,19 @@ error hint:
 -- No. A-9-2-3
 /*+SeqScan(()*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
-LOG:  pg_hint_plan:
-used hint:
-SeqScan(()
-not used hint:
-duplication hint:
-error hint:
-
-     QUERY PLAN     
---------------------
- Seq Scan on t1 "("
-   Filter: (c1 = 1)
-(2 rows)
-
-/*+SeqScan(((()*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(((" WHERE "(((".c1 = 1;
-LOG:  pg_hint_plan:
-used hint:
-SeqScan(((()
-not used hint:
-duplication hint:
-error hint:
-
-      QUERY PLAN      
-----------------------
- Seq Scan on t1 "((("
-   Filter: (c1 = 1)
+INFO:  hint syntax error at or near "()"
+DETAIL:  Zero-length delimited string.
+            QUERY PLAN            
+----------------------------------
+ Index Scan using t1_i1 on t1 "("
+   Index Cond: (c1 = 1)
 (2 rows)
 
 /*+SeqScan("(")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(()
+SeqScan("(")
 not used hint:
 duplication hint:
 error hint:
@@ -1069,21 +1049,6 @@ error hint:
      QUERY PLAN     
 --------------------
  Seq Scan on t1 "("
-   Filter: (c1 = 1)
-(2 rows)
-
-/*+SeqScan("(((")*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(((" WHERE "(((".c1 = 1;
-LOG:  pg_hint_plan:
-used hint:
-SeqScan(((()
-not used hint:
-duplication hint:
-error hint:
-
-      QUERY PLAN      
-----------------------
- Seq Scan on t1 "((("
    Filter: (c1 = 1)
 (2 rows)
 
@@ -1550,22 +1515,22 @@ error hint:
 -- No. A-7-4-2
 /*+Set(enable_indexscan off)Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near "Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)"
-DETAIL:  Set hint requires name and value of GUC parameter.
+INFO:  hint syntax error at or near "(enable_bitmapscan off)SeqScan(t1)"
+DETAIL:  Zero-length delimited string.
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t1)
 Set(enable_indexscan off)
 not used hint:
 duplication hint:
 error hint:
-Set(enable_tidscan off Set(enable_bitmapscan off)
 
-     QUERY PLAN     
---------------------
- Seq Scan on t1
-   Filter: (c1 = 1)
-(2 rows)
+            QUERY PLAN            
+----------------------------------
+ Bitmap Heap Scan on t1
+   Recheck Cond: (c1 = 1)
+   ->  Bitmap Index Scan on t1_i1
+         Index Cond: (c1 = 1)
+(4 rows)
 
 -- No. A-7-4-3
 /*+Set(enable_indexscan off)Set(enable_tidscan "off)Set(enable_bitmapscan off)SeqScan(t1)*/
