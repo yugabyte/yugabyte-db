@@ -3398,12 +3398,124 @@ error hint:
 (59 rows)
 
 -- No. L-2-3-4
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (v1t1.c1 = v1t1.c1)
+   ->  Seq Scan on t1 v1t1
+   ->  Hash
+         ->  Seq Scan on t1 v1t1
+(5 rows)
+
+/*+Leading(v1t1 v1t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+INFO:  hint syntax error at or near "Leading(v1t1 v1t1)"
+DETAIL:  Relation name "v1t1" is ambiguous.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Leading(v1t1 v1t1)
+
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (v1t1.c1 = v1t1.c1)
+   ->  Seq Scan on t1 v1t1
+   ->  Hash
+         ->  Seq Scan on t1 v1t1
+(5 rows)
 
 -- No. L-2-3-5
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+            QUERY PLAN             
+-----------------------------------
+ Hash Join
+   Hash Cond: (v1t1.c1 = v1t1_.c1)
+   ->  Seq Scan on t1 v1t1
+   ->  Hash
+         ->  Seq Scan on t1 v1t1_
+(5 rows)
+
+/*+Leading(v1t1 v1t1_)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(v1t1 v1t1_)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN             
+-----------------------------------
+ Hash Join
+   Hash Cond: (v1t1.c1 = v1t1_.c1)
+   ->  Seq Scan on t1 v1t1
+   ->  Hash
+         ->  Seq Scan on t1 v1t1_
+(5 rows)
 
 -- No. L-2-3-6
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (r4t1.c1 = r4t1.c1)
+   ->  Seq Scan on t1 r4t1
+   ->  Hash
+         ->  Seq Scan on t1 r4t1
+(5 rows)
+
+/*+Leading(r4t1 r4t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "Leading(r4t1 r4t1)"
+DETAIL:  Relation name "r4t1" is ambiguous.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Leading(r4t1 r4t1)
+
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (r4t1.c1 = r4t1.c1)
+   ->  Seq Scan on t1 r4t1
+   ->  Hash
+         ->  Seq Scan on t1 r4t1
+(5 rows)
 
 -- No. L-2-3-7
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (r4t1.c1 = r5t1.c1)
+   ->  Seq Scan on t1 r4t1
+   ->  Hash
+         ->  Seq Scan on t1 r5t1
+(5 rows)
+
+/*+Leading(r4t1 r5t1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(r4t1 r5t1)
+not used hint:
+duplication hint:
+error hint:
+
+            QUERY PLAN            
+----------------------------------
+ Hash Join
+   Hash Cond: (r4t1.c1 = r5t1.c1)
+   ->  Seq Scan on t1 r4t1
+   ->  Hash
+         ->  Seq Scan on t1 r5t1
+(5 rows)
 
 ----
 ---- No. L-2-4 VALUES clause
