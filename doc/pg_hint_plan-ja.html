@@ -109,6 +109,8 @@ postgres=#
 <tr><th>列名</th><th>説明</th></tr>
 </tr></thead>
 <tbody>
+<tr><td>id</td>
+  <td>識別番号です。連番型ですので、新しいヒントを登録するときにはこの列を指定せずに登録してください。クエリやアプリケーション名やヒントを更新するときに使用してください。</td></tr>
 <tr><td>norm_query_string</td>
   <td>実行計画を制御したいクエリを指定します。対象のクエリに定数があるときは、下記の例のように「?」に置き換えます。キーワード間の空白の数が、登録するクエリと実行するクエリで異なると別のSQL文として扱われます。</td></tr>
 <tr><td>application_name</td>
@@ -120,15 +122,16 @@ postgres=#
 <p>以下の例では、テーブルに登録した「コメントでの指定」の例と同じヒントと、登録したクエリの実行結果を示しています。</p>
 <pre>
 postgres=# SELECT * FROM hint_plan.hints;
-     norm_query_string     | application_name |                      hints
----------------------------+------------------+--------------------------------------------------
- EXPLAIN (VERBOSE, COSTS) +| psql             | SeqScan(a)HashJoin(a b)Set(random_page_cost 2.0)
- SELECT *                 +|                  |
-   FROM pgbench_accounts a+|                  |
-   JOIN pgbench_branches b+|                  |
-     ON a.bid = b.bid     +|                  |
-  ORDER BY a.aid          +|                  |
-  LIMIT ?;                 |                  |
+ id |     norm_query_string      | application_name |                      hints
+----+----------------------------+------------------+--------------------------------------------------
+  1 | EXPLAIN (VERBOSE, COSTS)  +| psql             | SeqScan(a)HashJoin(a b)Set(random_page_cost 2.0)
+    |  SELECT *                 +|                  |
+    |    FROM pgbench_accounts a+|                  |
+    |    JOIN pgbench_branches b+|                  |
+    |      ON a.bid = b.bid     +|                  |
+    |   ORDER BY a.aid          +|                  |
+    |   LIMIT ?;                +|                  |
+    |                            |                  |
 ...
 
 postgres=# SET pg_hint_plan.enable_hint_table TO on;
@@ -166,17 +169,17 @@ postgres=#
 <p>以下の例では、コメントでヒントを指定して実行計画を制御しているクエリに対して、テーブルに空文字列のヒントを登録しています。テーブルで指定したヒントが優先されるので、コメントで指定したヒントを取り消すことができます。</p>
 <pre>
 postgres=# select * from hint_plan.hints;
-             norm_query_string              | application_name | hints
---------------------------------------------+------------------+-------
- EXPLAIN (VERBOSE, COSTS)                  +| psql             |
- /*+                                       +|                  |
-     HashJoin(a b)                         +|                  |
-     SeqScan(a)                            +|                  |
-  */                                       +|                  |
- SELECT *                                  +|                  |
-   FROM pgbench_accounts a                 +|                  |
-   JOIN pgbench_branches b ON a.bid = b.bid+|                  |
-  ORDER BY a.aid;                           |                  |
+ id |             norm_query_string              | application_name | hints
+----+--------------------------------------------+------------------+-------
+  1 | EXPLAIN (VERBOSE, COSTS)                  +| psql             |
+    | /*+                                       +|                  |
+    |     HashJoin(a b)                         +|                  |
+    |     SeqScan(a)                            +|                  |
+    |  */                                       +|                  |
+    | SELECT *                                  +|                  |
+    |   FROM pgbench_accounts a                 +|                  |
+    |   JOIN pgbench_branches b ON a.bid = b.bid+|                  |
+    |  ORDER BY a.aid;                           |                  |
 ...
 
 postgres=# EXPLAIN (VERBOSE, COSTS)
