@@ -91,14 +91,16 @@ SET pg_hint_plan.enable_hint_table TO on;
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 -- No. A-6-2-1
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
 	'',
 	'SeqScan(t1)');
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-6-2-2
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
 	'psql',
 	'BitmapScan(t1)');
@@ -106,7 +108,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-2-3
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
 	'dummy_application_name',
 	'SeqScan(t1)'
@@ -115,7 +118,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-2-4
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1;',
 	'',
 	'SeqScan(t1)'
@@ -128,7 +132,8 @@ TRUNCATE hint_plan.hints;
 ----
 
 -- No. A-6-3-1
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT c1 FROM s1.t1;',
 	'',
 	'SeqScan(t1)'
@@ -137,7 +142,8 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.t1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-3-2
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
 	'',
 	'SeqScan(t1)'
@@ -146,7 +152,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 TRUNCATE hint_plan.hints;
 
 -- No. A-6-3-3
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ? OR t1.c1 = ?;',
 	'',
 	'SeqScan(t1)'
@@ -705,7 +712,8 @@ SHOW pg_hint_plan.parse_messages;
 ---- No. A-8-5 original GUC parameter pg_hint_plan.enable_hint_table
 ----
 
-INSERT INTO hint_plan.hints VALUES (
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints)
+	VALUES (
 	'EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = ?;',
 	'',
 	'SeqScan(t1)');

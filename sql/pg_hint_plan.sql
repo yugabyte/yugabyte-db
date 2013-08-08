@@ -823,7 +823,7 @@ EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 EXPLAIN (COSTS false) SELECT val FROM p1 WHERE val = 1;
 
 -- search from hint table
-INSERT INTO hint_plan.hints VALUES ('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;', '', 'SeqScan(t1)');
+INSERT INTO hint_plan.hints (norm_query_string, application_name, hints) VALUES ('EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;', '', 'SeqScan(t1)');
 SET pg_hint_plan.enable_hint_table = on;
 EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 SET pg_hint_plan.enable_hint_table = off;
