@@ -4,8 +4,9 @@
 \echo Use "CREATE EXTENSION pg_hint_plan" to load this file. \quit
 
 CREATE TABLE hint_plan.hints (
+	id					serial	NOT NULL,
 	norm_query_string	text	NOT NULL,
 	application_name	text	NOT NULL,
 	hints				text	NOT NULL,
-	PRIMARY KEY (norm_query_string, application_name)
+	PRIMARY KEY (id)
 );
