@@ -5736,3 +5736,224 @@ DETAIL:  Unrecognized hint keyword "NoIndexOnlyScan".
    Index Cond: (c1 = 1)
 (2 rows)
 
+----
+---- No. S-3-13 message output
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i2 on ti1
+   Index Cond: (c2 = 1)
+(2 rows)
+
+-- No. S-3-13-1
+/*+IndexScanRegexp(ti1 ti1_.*_key)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScanRegexp(ti1): ti1_c2_key
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(ti1 ti1_.*_key)
+not used hint:
+duplication hint:
+error hint:
+
+             QUERY PLAN             
+------------------------------------
+ Index Scan using ti1_c2_key on ti1
+   Index Cond: (c2 = 1)
+(2 rows)
+
+-- No. S-3-13-2
+/*+IndexScanRegexp(ti1 ti1_i.)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScanRegexp(ti1): ti1_i4 ti1_i3 ti1_i2 ti1_i1
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(ti1 ti1_i.)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i2 on ti1
+   Index Cond: (c2 = 1)
+(2 rows)
+
+-- No. S-3-13-3
+/*+IndexScanRegexp(ti1 no.*_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScanRegexp(ti1):
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(ti1 no.*_exist)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on ti1
+   Filter: (c2 = 1)
+(2 rows)
+
+-- No. S-3-13-4
+/*+IndexScanRegexp(p1 .*pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+LOG:  available indexes for IndexScanRegexp(p1): p1_pkey
+LOG:  available indexes for IndexScanRegexp(p1c1): p1c1_pkey
+LOG:  available indexes for IndexScanRegexp(p1c2): p1c2_pkey
+LOG:  available indexes for IndexScanRegexp(p1c3): p1c3_pkey
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(p1 .*pkey)
+not used hint:
+duplication hint:
+error hint:
+
+                    QUERY PLAN                     
+---------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_pkey on p1
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p1c1_pkey on p1c1 p1
+               Index Cond: (c1 = 1)
+(6 rows)
+
+-- No. S-3-13-5
+/*+IndexScanRegexp(p1 p1.*i)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+LOG:  available indexes for IndexScanRegexp(p1): p1_i2 p1_i
+LOG:  available indexes for IndexScanRegexp(p1c1): p1c1_i p1c1_c4_expr_idx
+LOG:  available indexes for IndexScanRegexp(p1c2): p1c2_i p1c2_c4_expr_idx
+LOG:  available indexes for IndexScanRegexp(p1c3): p1c3_i p1c3_c4_expr_idx
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(p1 p1.*i)
+not used hint:
+duplication hint:
+error hint:
+
+                   QUERY PLAN                   
+------------------------------------------------
+ Result
+   ->  Append
+         ->  Index Scan using p1_i on p1
+               Index Cond: (c1 = 1)
+         ->  Index Scan using p1c1_i on p1c1 p1
+               Index Cond: (c1 = 1)
+(6 rows)
+
+-- No. S-3-13-6
+/*+IndexScanRegexp(p1 no.*_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+LOG:  available indexes for IndexScanRegexp(p1):
+LOG:  available indexes for IndexScanRegexp(p1c1):
+LOG:  available indexes for IndexScanRegexp(p1c2):
+LOG:  available indexes for IndexScanRegexp(p1c3):
+LOG:  pg_hint_plan:
+used hint:
+IndexScanRegexp(p1 no.*_exist)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN            
+---------------------------------
+ Result
+   ->  Append
+         ->  Seq Scan on p1
+               Filter: (c1 = 1)
+         ->  Seq Scan on p1c1 p1
+               Filter: (c1 = 1)
+(6 rows)
+
+----
+---- No. S-3-14 message output
+----
+-- No. S-3-14-1
+/*+IndexScan(ti1 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScan(ti1): ti1_i1
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_i1)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i1 on ti1
+   Index Cond: (c2 = 1)
+(2 rows)
+
+-- No. S-3-14-2
+/*+IndexScan(ti1 not_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScan(ti1):
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 not_exist)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on ti1
+   Filter: (c2 = 1)
+(2 rows)
+
+-- No. S-3-14-3
+/*+IndexScan(ti1 ti1_i1 ti1_i2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScan(ti1): ti1_i2 ti1_i1
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_i1 ti1_i2)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i2 on ti1
+   Index Cond: (c2 = 1)
+(2 rows)
+
+-- No. S-3-14-4
+/*+IndexScan(ti1 ti1_i1 not_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScan(ti1): ti1_i1
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 ti1_i1 not_exist)
+not used hint:
+duplication hint:
+error hint:
+
+           QUERY PLAN           
+--------------------------------
+ Index Scan using ti1_i1 on ti1
+   Index Cond: (c2 = 1)
+(2 rows)
+
+-- No. S-3-14-5
+/*+IndexScan(ti1 not_exist1 not_exist2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+LOG:  available indexes for IndexScan(ti1):
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(ti1 not_exist1 not_exist2)
+not used hint:
+duplication hint:
+error hint:
+
+     QUERY PLAN     
+--------------------
+ Seq Scan on ti1
+   Filter: (c2 = 1)
+(2 rows)
+

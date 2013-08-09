@@ -1104,3 +1104,53 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 -- No. S-3-12-30
 /*+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
+
+
+----
+---- No. S-3-13 message output
+----
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+
+-- No. S-3-13-1
+/*+IndexScanRegexp(ti1 ti1_.*_key)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+
+-- No. S-3-13-2
+/*+IndexScanRegexp(ti1 ti1_i.)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+
+-- No. S-3-13-3
+/*+IndexScanRegexp(ti1 no.*_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+
+-- No. S-3-13-4
+/*+IndexScanRegexp(p1 .*pkey)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+
+-- No. S-3-13-5
+/*+IndexScanRegexp(p1 p1.*i)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+
+-- No. S-3-13-6
+/*+IndexScanRegexp(p1 no.*_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+
+----
+---- No. S-3-14 message output
+----
+
+-- No. S-3-14-1
+/*+IndexScan(ti1 ti1_i1)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+-- No. S-3-14-2
+/*+IndexScan(ti1 not_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+-- No. S-3-14-3
+/*+IndexScan(ti1 ti1_i1 ti1_i2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+-- No. S-3-14-4
+/*+IndexScan(ti1 ti1_i1 not_exist)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+-- No. S-3-14-5
+/*+IndexScan(ti1 not_exist1 not_exist2)*/
+EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
