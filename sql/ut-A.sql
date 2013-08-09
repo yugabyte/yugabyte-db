@@ -33,7 +33,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-1-3
---+SeqScan(t1)
+/*SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-1-4
@@ -41,23 +41,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-5-1-5
--- +SeqScan(t1)
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-
--- No. A-5-1-6
---SeqScan(t1)
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-
--- No. A-5-1-7
-/*+SeqScan(t1) /* nest comment */ */
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-
--- No. A-5-1-8
-/* +SeqScan(t1) /* nest comment */ */
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-
--- No. A-5-1-9
-/*SeqScan(t1) /* nest comment */ */
+/* /*+SeqScan(t1)*/  */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 ----
