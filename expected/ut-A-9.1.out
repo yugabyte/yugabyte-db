@@ -142,6 +142,7 @@ SET pg_hint_plan.enable_hint_table TO on;
  hints             | text    | not null
 Indexes:
     "hints_pkey" PRIMARY KEY, btree (id)
+    "hints_norm_and_app" UNIQUE, btree (norm_query_string, application_name)
 
 ----
 ---- No. A-6-2 search condition
