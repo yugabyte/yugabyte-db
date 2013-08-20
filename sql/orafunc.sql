@@ -1,6 +1,5 @@
 \set ECHO none
 SET client_min_messages = warning;
-\i orafunc.sql
 SET DATESTYLE TO ISO;
 SET client_encoding = utf8;
 \set ECHO all
@@ -19,6 +18,14 @@ SELECT add_months ('2008-01-31', 12);
 SELECT add_months ('2008-01-31', -12);
 SELECT add_months ('2008-01-31', 95903);
 SELECT add_months ('2008-01-31', -80640);
+SELECT add_months ('03-21-2008',3);
+SELECT add_months ('21-MAR-2008',3);
+SELECT add_months ('21-MAR-08',3);
+SELECT add_months ('2008-MAR-21',3);
+SELECT add_months ('March 21,2008',3);
+SELECT add_months('03/21/2008',3);
+SELECT add_months('20080321',3);
+SELECT add_months('080321',3);
 
 SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
@@ -100,6 +107,7 @@ select dbms_pipe.send_message('test_int');
 select dbms_pipe.receive_message('test_int');
 select dbms_pipe.next_item_type();
 select dbms_pipe.unpack_message_number();
+select dbms_pipe.purge('bob');
 
 select name, items, "limit", private, owner from dbms_pipe.db_pipes where name = 'bob';
 
@@ -132,6 +140,15 @@ select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'Q')  =  to_date ('01-JUL-03', '
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'MONTH') =  to_date ('01-AUG-03', 'DD-MON-YY');                                                                       
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DDD')  =  to_date ('22-AUG-03', 'DD-MON-YY');
 select trunc(to_date('22-AUG-03', 'DD-MON-YY'), 'DAY')  =  to_date ('17-AUG-03', 'DD-MON-YY');
+
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','YEAR') = '2004-01-01 00:00:00-08';
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','Q') = '2004-10-01 00:00:00-07';
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','MONTH') = '2004-10-01 00:00:00-07';
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','DDD') = '2004-10-19 00:00:00-07';
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','DAY') = '2004-10-17 00:00:00-07';
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','HH') = '2004-10-19 01:00:00-07';
+select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','MI') = '2004-10-19 01:23:00-07';
+
 select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');                                                                 
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
@@ -162,6 +179,8 @@ select oracle.substr('TechOnTheNet', 1, 4) =  'Tech';
 select oracle.substr('TechOnTheNet', -3, 3) =  'Net';
 select oracle.substr('TechOnTheNet', -6, 3) =  'The';
 select oracle.substr('TechOnTheNet', -8, 2) =  'On';
+select oracle.substr('TechOnTheNet', -8, 0) =  '';
+select oracle.substr('TechOnTheNet', -8, -1) =  '';
 select concat('Tech on', ' the Net') =  'Tech on the Net';
 select concat('a', 'b') =  'ab';
 select concat('a', NULL) = 'a';
@@ -194,6 +213,182 @@ select decode('1'::text, '1', 100, '2', 200);
 select decode(2, 1, 'ABC', 2, 'DEF');
 select decode('2009-02-05'::date, '2009-02-05', 'ok');
 select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
+
+-- For type 'bpchar'
+select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15));
+select decode('c'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15));
+select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'default value'::bpchar(15));
+select decode('c', 'a'::bpchar(2),'postgres'::bpchar(15),'default value'::bpchar(15));
+
+select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15));
+select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15));
+select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
+select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
+
+select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15));
+select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15));
+select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15),'default value'::bpchar(15));
+select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15),'default value'::bpchar(15));
+
+select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), NULL,'database'::bpchar(15));
+select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), 'b'::bpchar(2),'database'::bpchar(15));
+select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), NULL,'database'::bpchar(15),'default value'::bpchar(15));
+select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), 'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
+
+-- For type 'bigint'
+select decode(2147483651::bigint, 2147483650::bigint,2147483650::bigint);
+select decode(2147483653::bigint, 2147483651::bigint,2147483650::bigint);
+select decode(2147483653::bigint, 2147483651::bigint,2147483650::bigint,9999999999::bigint);
+select decode(2147483653::bigint, 2147483651::bigint,2147483650::bigint,9999999999::bigint);
+
+select decode(2147483651::bigint, 2147483651::bigint,2147483650::bigint,2147483652::bigint,2147483651::bigint);
+select decode(2147483654::bigint, 2147483651::bigint,2147483650::bigint,2147483652::bigint,2147483651::bigint);
+select decode(2147483651::bigint, 2147483651::bigint,2147483650::bigint,2147483652::bigint,2147483651::bigint,9999999999::bigint);
+select decode(2147483654::bigint, 2147483651::bigint,2147483650::bigint,2147483652::bigint,2147483651::bigint,9999999999::bigint);
+
+select decode(2147483651::bigint, 2147483651::bigint,2147483650::bigint, 2147483652::bigint,2147483651::bigint, 2147483653::bigint, 2147483652::bigint);
+select decode(2147483654::bigint, 2147483651::bigint,2147483650::bigint, 2147483652::bigint,2147483651::bigint, 2147483653::bigint, 2147483652::bigint);
+select decode(2147483651::bigint, 2147483651::bigint,2147483650::bigint, 2147483652::bigint,2147483651::bigint, 2147483653::bigint, 2147483652::bigint,9999999999::bigint);
+select decode(2147483654::bigint, 2147483651::bigint,2147483650::bigint, 2147483652::bigint,2147483651::bigint, 2147483653::bigint, 2147483652::bigint,9999999999::bigint);
+
+select decode(NULL, 2147483651::bigint, 2147483650::bigint, NULL,2147483651::bigint);
+select decode(NULL, 2147483651::bigint, 2147483650::bigint, 2147483652::bigint,2147483651::bigint);
+select decode(NULL, 2147483651::bigint, 2147483650::bigint, NULL,2147483651::bigint,9999999999::bigint);
+select decode(NULL, 2147483651::bigint, 2147483650::bigint, 2147483652::bigint,2147483651::bigint,9999999999::bigint);
+
+-- For type 'numeric'
+select decode(12.001::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4));
+select decode(12.003::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4));
+select decode(12.001::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),999999.9999::numeric(10,4));
+select decode(12.003::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),999999.9999::numeric(10,4));
+
+select decode(12.001::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4));
+select decode(12.004::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4));
+select decode(12.001::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4),999999.9999::numeric(10,4));
+select decode(12.004::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4),999999.9999::numeric(10,4));
+
+select decode(12.001::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4), 12.003::numeric(5,3), 214748.3652::numeric(10,4));
+select decode(12.004::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4), 12.003::numeric(5,3), 214748.3652::numeric(10,4));
+select decode(12.001::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4), 12.003::numeric(5,3), 214748.3652::numeric(10,4),999999.9999::numeric(10,4));
+select decode(12.004::numeric(5,3), 12.001::numeric(5,3),214748.3650::numeric(10,4),12.002::numeric(5,3),214748.3651::numeric(10,4), 12.003::numeric(5,3), 214748.3652::numeric(10,4),999999.9999::numeric(10,4));
+
+select decode(NULL, 12.001::numeric(5,3), 214748.3650::numeric(10,4), NULL,214748.3651::numeric(10,4));
+select decode(NULL, 12.001::numeric(5,3), 214748.3650::numeric(10,4), 12.002::numeric(5,3),214748.3651::numeric(10,4));
+select decode(NULL, 12.001::numeric(5,3), 214748.3650::numeric(10,4), NULL,214748.3651::numeric(10,4),999999.9999::numeric(10,4));
+select decode(NULL, 12.001::numeric(5,3), 214748.3650::numeric(10,4), 12.002::numeric(5,3),214748.3651::numeric(10,4),999999.9999::numeric(10,4));
+
+--For type 'date'
+select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date);
+select decode('2020-01-03'::date, '2020-01-01'::date,'2012-12-20'::date);
+select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2012-12-21'::date);
+select decode('2020-01-03'::date, '2020-01-01'::date,'2012-12-20'::date,'2012-12-21'::date);
+
+select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date);
+select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date);
+select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date,'2012-12-31'::date);
+select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date,'2012-12-31'::date);
+
+select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date);
+select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date);
+select decode('2020-01-01'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date,'2013-01-01'::date);
+select decode('2020-01-04'::date, '2020-01-01'::date,'2012-12-20'::date,'2020-01-02'::date,'2012-12-21'::date, '2020-01-03'::date, '2012-12-31'::date,'2013-01-01'::date);
+
+select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, NULL,'2012-12-21'::date);
+select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, '2020-01-02'::date,'2012-12-21'::date);
+select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, NULL,'2012-12-21'::date,'2012-12-31'::date);
+select decode(NULL, '2020-01-01'::date, '2012-12-20'::date, '2020-01-02'::date,'2012-12-21'::date,'2012-12-31'::date);
+
+-- For type 'time'
+select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time);
+select decode('01:00:03'::time, '01:00:01'::time,'09:00:00'::time);
+select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time,'00:00:00'::time);
+select decode('01:00:03'::time, '01:00:01'::time,'09:00:00'::time,'00:00:00'::time);
+
+select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time);
+select decode('01:00:04'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time);
+select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time,'00:00:00'::time);
+select decode('01:00:04'::time, '01:00:01'::time,'09:00:00'::time,'01:00:01'::time,'12:00:00'::time,'00:00:00'::time);
+
+select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time, '01:00:03'::time, '15:00:00'::time);
+select decode('01:00:04'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time, '01:00:03'::time, '15:00:00'::time);
+select decode('01:00:01'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time, '01:00:03'::time, '15:00:00'::time,'00:00:00'::time);
+select decode('01:00:04'::time, '01:00:01'::time,'09:00:00'::time,'01:00:02'::time,'12:00:00'::time, '01:00:03'::time, '15:00:00'::time,'00:00:00'::time);
+
+select decode(NULL, '01:00:01'::time, '09:00:00'::time, NULL,'12:00:00'::time);
+select decode(NULL, '01:00:01'::time, '09:00:00'::time, '01:00:02'::time,'12:00:00'::time);
+select decode(NULL, '01:00:01'::time, '09:00:00'::time, NULL,'12:00:00'::time,'00:00:00'::time);
+select decode(NULL, '01:00:01'::time, '09:00:00'::time, '01:00:02'::time,'12:00:00'::time,'00:00:00'::time);
+
+-- For type 'timestamp'
+select decode('2020-01-01 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp);
+select decode('2020-01-03 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp);
+select decode('2020-01-01 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+select decode('2020-01-03 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+
+select decode('2020-01-01 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp);
+select decode('2020-01-04 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp);
+select decode('2020-01-01 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+select decode('2020-01-04 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+
+select decode('2020-01-01 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp, '2020-01-03 01:00:01'::timestamp, '2012-12-20 15:00:00'::timestamp);
+select decode('2020-01-04 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp, '2020-01-03 01:00:01'::timestamp, '2012-12-20 15:00:00'::timestamp);
+select decode('2020-01-01 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp, '2020-01-03 01:00:01'::timestamp, '2012-12-20 15:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+select decode('2020-01-04 01:00:01'::timestamp, '2020-01-01 01:00:01'::timestamp,'2012-12-20 09:00:00'::timestamp,'2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp, '2020-01-03 01:00:01'::timestamp, '2012-12-20 15:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+
+select decode(NULL, '2020-01-01 01:00:01'::timestamp, '2012-12-20 09:00:00'::timestamp, NULL,'2012-12-20 12:00:00'::timestamp);
+select decode(NULL, '2020-01-01 01:00:01'::timestamp, '2012-12-20 09:00:00'::timestamp, '2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp);
+select decode(NULL, '2020-01-01 01:00:01'::timestamp, '2012-12-20 09:00:00'::timestamp, NULL,'2012-12-20 12:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+select decode(NULL, '2020-01-01 01:00:01'::timestamp, '2012-12-20 09:00:00'::timestamp, '2020-01-02 01:00:01'::timestamp,'2012-12-20 12:00:00'::timestamp,'2012-12-20 00:00:00'::timestamp);
+
+-- For type 'timestamptz'
+select decode('2020-01-01 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz);
+select decode('2020-01-03 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz);
+select decode('2020-01-01 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+select decode('2020-01-03 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+
+select decode('2020-01-01 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz);
+select decode('2020-01-04 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz);
+select decode('2020-01-01 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+select decode('2020-01-04 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+
+select decode('2020-01-01 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz, '2020-01-03 01:00:01-08'::timestamptz, '2012-12-20 15:00:00-08'::timestamptz);
+select decode('2020-01-04 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz, '2020-01-03 01:00:01-08'::timestamptz, '2012-12-20 15:00:00-08'::timestamptz);
+select decode('2020-01-01 01:00:01-08'::timestamptz, '2020-01-01 01:00:01-08'::timestamptz,'2012-12-20 09:00:00-08'::timestamptz,'2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz, '2020-01-03 01:00:01-08'::timestamptz, '2012-12-20 15:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+select decode(4, 1,'2012-12-20 09:00:00-08'::timestamptz,2,'2012-12-20 12:00:00-08'::timestamptz, 3, '2012-12-20 15:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+
+select decode(NULL, '2020-01-01 01:00:01-08'::timestamptz, '2012-12-20 09:00:00-08'::timestamptz, NULL,'2012-12-20 12:00:00-08'::timestamptz);
+select decode(NULL, '2020-01-01 01:00:01-08'::timestamptz, '2012-12-20 09:00:00-08'::timestamptz, '2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz);
+select decode(NULL, '2020-01-01 01:00:01-08'::timestamptz, '2012-12-20 09:00:00-08'::timestamptz, NULL,'2012-12-20 12:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+select decode(NULL, '2020-01-01 01:00:01-08'::timestamptz, '2012-12-20 09:00:00-08'::timestamptz, '2020-01-02 01:00:01-08'::timestamptz,'2012-12-20 12:00:00-08'::timestamptz,'2012-12-20 00:00:00-08'::timestamptz);
+
+
+--Test case to check if decode accepts other expressions as a key
+
+CREATE OR REPLACE FUNCTION five() RETURNS integer AS $$
+BEGIN
+	RETURN 5;
+END; 
+$$ LANGUAGE plpgsql;
+
+select decode(five(), 1, 'one', 2, 'two', 5, 'five');
+
+DROP FUNCTION five();
+
+-- Test case to check duplicate keys in search list
+select decode(1, 1, 'one', 2, 'two', 1, 'one-again') = 'one';
+
+/* Test case to check explicit type casting of keys in search list in 
+ * case of ambiguous key (1st argument) provided.
+ */
+
+-- 1) succeed and return 'result-1'
+select decode('2012-01-01', '2012-01-01'::date,'result-1','2012-01-02', 'result-2');
+select decode('2012-01-01', '2012-01-01', 'result-1', '2012-02-01'::date, 'result-2');
+
+-- 2) fails and throws error: 'ERROR:  could not determine polymorphic type 
+-- because input has type "unknown"'
+select decode('2012-01-01', '2012-01-01', 23, '2012-01-02', 24);
+
 select PLVstr.rvrs ('Jumping Jack Flash') ='hsalF kcaJ gnipmuJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 9) = 'hsalF kcaJ';
 select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';
@@ -270,8 +465,164 @@ SELECT dump(10.23::float8) ~ E'^Typ=701 Len=8: \\d+(,\\d+){7}$' AS t;
 SELECT dump(10.23::numeric) ~ E'^Typ=1700 Len=(\\d+): \\d+(,\\d+)*$' AS t;
 SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
+SELECT dump('2009-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 
 select listagg(i::text) from generate_series(1,3) g(i);
 select listagg(i::text, ',') from generate_series(1,3) g(i);
 select coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);
 select coalesce(listagg(i::text), '<NULL>') from generate_series(1,0) g(i);
+
+-- Tests for package DBMS_RANDOM
+SELECT dbms_random.initialize(8);
+SELECT dbms_random.normal();
+SELECT dbms_random.normal();
+SELECT dbms_random.seed(8);
+SELECT dbms_random.random();
+SELECT dbms_random.seed('test');
+SELECT dbms_random.string('U',5);
+SELECT dbms_random.string('P',2);
+SELECT dbms_random.string('x',4);
+SELECT dbms_random.string('a',2);
+SELECT dbms_random.string('l',3);
+SELECT dbms_random.seed(5);
+SELECT dbms_random.value();
+SELECT dbms_random.value(10,15);
+SELECT dbms_random.terminate();
+
+-- Tests for to_multi_byte
+SELECT to_multi_byte('123$test');
+-- Check internal representation difference
+SELECT octet_length('abc');
+SELECT octet_length(to_multi_byte('abc'));
+
+-- Tests for the aggregate median( real | double )
+CREATE FUNCTION checkMedianRealOdd()  RETURNS real AS $$
+DECLARE
+ med real;
+
+BEGIN
+	CREATE TABLE median_test (salary real);
+        INSERT INTO median_test VALUES (4500);
+        INSERT INTO median_test VALUES (NULL);
+        INSERT INTO median_test VALUES (2100);
+        INSERT INTO median_test VALUES (3600);
+        INSERT INTO median_test VALUES (4000);
+        SELECT into med median(salary) from median_test;
+        DROP TABLE median_test;
+        return med;
+        
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION checkMedianRealEven() RETURNS real AS $$
+DECLARE
+ med real;
+
+BEGIN
+        CREATE TABLE median_test (salary real);
+        INSERT INTO median_test VALUES (4500);
+        INSERT INTO median_test VALUES (1500);
+        INSERT INTO median_test VALUES (2100);
+        INSERT INTO median_test VALUES (3600);
+        INSERT INTO median_test VALUES (1000);
+        INSERT INTO median_test VALUES (4000);
+        select into med median(salary) from median_test;
+        DROP TABLE median_test;
+        return med;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION checkMedianDoubleOdd() RETURNS double precision AS $$
+DECLARE 
+  med double precision;
+BEGIN
+        CREATE TABLE median_test (salary double precision);
+        INSERT INTO median_test VALUES (4500);
+        INSERT INTO median_test VALUES (1500);
+        INSERT INTO median_test VALUES (2100);
+        INSERT INTO median_test VALUES (3600);
+        INSERT INTO median_test VALUES (4000);
+        select into med median(salary) from median_test;
+        DROP TABLE median_test;
+        return med;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE FUNCTION checkMedianDoubleEven() RETURNS double precision AS $$
+DECLARE
+ med double precision;
+
+BEGIN
+        CREATE TABLE median_test (salary double precision);
+        INSERT INTO median_test VALUES (4500);
+        INSERT INTO median_test VALUES (1500);
+        INSERT INTO median_test VALUES (2100);
+        INSERT INTO median_test VALUES (3600);
+        INSERT INTO median_test VALUES (4000);
+        INSERT INTO median_test VALUES (1000);
+        select into med median(salary) from median_test;
+        DROP TABLE median_test;
+        return med;
+END;
+$$ LANGUAGE plpgsql;
+
+SELECT checkMedianRealOdd();
+SELECT checkMedianRealEven();
+SELECT checkMedianDoubleOdd();
+SELECT checkMedianDoubleEven();
+
+DROP FUNCTION checkMedianRealOdd();
+DROP FUNCTION checkMedianRealEven();
+DROP FUNCTION checkMedianDoubleOdd();
+DROP FUNCTION checkMedianDoubleEven();
+
+-- Tests for round(TIMESTAMP WITH TIME ZONE)
+select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';
+select round(TIMESTAMP WITH TIME ZONE'05/08/1990 05:35:25','Q') = '1990-04-01 00:00:00';
+select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','MONTH') = '1990-12-01 00:00:00';
+select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','DDD') = '1990-12-08 00:00:00';
+select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','DAY') = '1990-12-09 00:00:00';
+select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','hh') = '1990-12-08 06:00:00';
+select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','mi') = '1990-12-08 05:35:00';
+
+-- Tests for to_date
+SET DATESTYLE TO SQL, MDY;
+SELECT to_date('2009-01-02');
+select to_date('January 8,1999');
+SET DATESTYLE TO POSTGRES, MDY;
+select to_date('1999-01-08');
+select to_date('1/12/1999');
+SET DATESTYLE TO SQL, DMY;
+select to_date('01/02/03');
+select to_date('1999-Jan-08');
+select to_date('Jan-08-1999');
+select to_date('08-Jan-1999');
+SET DATESTYLE TO ISO, YMD;
+select to_date('99-Jan-08');
+SET DATESTYLE TO ISO, DMY;
+select to_date('08-Jan-99');
+select to_date('Jan-08-99');
+select to_date('19990108');
+select to_date('990108');
+select to_date('J2451187');
+
+-- Tests for nlssort
+DROP DATABASE IF EXISTS db_sort;
+CREATE DATABASE db_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C';
+\c db_sort
+CREATE EXTENSION orafce;
+CREATE TABLE test_sort (name TEXT);
+INSERT INTO test_sort VALUES ('red'), ('brown'), ('yellow'), ('Purple');
+SELECT * FROM test_sort ORDER BY NLSSORT(name, 'en_US.utf8');
+SELECT * FROM test_sort ORDER BY NLSSORT(name, '');
+SELECT set_nls_sort('invalid');
+SELECT * FROM test_sort ORDER BY NLSSORT(name);
+SELECT set_nls_sort('');
+SELECT * FROM test_sort ORDER BY NLSSORT(name);
+SELECT set_nls_sort('en_US.utf8');
+SELECT * FROM test_sort ORDER BY NLSSORT(name);
+INSERT INTO test_sort VALUES(NULL);
+SELECT * FROM test_sort ORDER BY NLSSORT(name);
+\c contrib_regression
+DROP DATABASE db_sort;
+

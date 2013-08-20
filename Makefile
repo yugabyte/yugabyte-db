@@ -6,8 +6,8 @@ EXTENSION = orafce
 DATA_built = orafunc.sql
 DATA = uninstall_orafunc.sql orafce--3.0.5.sql orafce--unpackaged--3.0.5.sql
 DOCS = README.asciidoc COPYRIGHT.orafunc INSTALL.orafunc
-REGRESS = orafunc dbms_output files
-REGRESS_OPTS = --load-language=plpgsql
+REGRESS = orafunc dbms_output files dbms_utility
+REGRESS_OPTS = --load-language=plpgsql --load-extension=orafce --schedule=parallel_schedule
 
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in
 

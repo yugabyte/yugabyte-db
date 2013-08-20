@@ -1,0 +1,83 @@
+\set ECHO none
+NOTICE:  role "pipe_test_owner" does not exist, skipping
+ pack_message 
+--------------
+ 
+(1 row)
+
+ send_message 
+--------------
+            0
+(1 row)
+
+NOTICE:  table "temp" does not exist, skipping
+ createimplicitpipe 
+--------------------
+ 
+(1 row)
+
+ bulksend 
+----------
+ 
+(1 row)
+
+ notify 
+--------
+ 
+(1 row)
+
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+ notify 
+--------
+ 
+(1 row)
+
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+ notify 
+--------
+ 
+(1 row)
+
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+ notify 
+--------
+ 
+(1 row)
+
+ createexplicitpipe 
+--------------------
+ 
+(1 row)
+
+ checksend1 
+------------
+ 
+(1 row)
+
+ checksend2 
+------------
+ 
+(1 row)
+
+ notifydroptemp 
+----------------
+ 
+(1 row)
+
+ checkuniquesessionnamea 
+-------------------------
+ 
+(1 row)
+
