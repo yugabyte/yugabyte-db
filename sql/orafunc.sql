@@ -1,6 +1,5 @@
 \set ECHO none
 SET client_min_messages = warning;
-\i orafunc.sql
 SET DATESTYLE TO ISO;
 SET client_encoding = utf8;
 \set ECHO all
