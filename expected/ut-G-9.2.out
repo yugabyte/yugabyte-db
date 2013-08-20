@@ -677,6 +677,29 @@ error hint:
 
 RESET client_min_messages;
 ----
+---- No. G-2-1 GUC parameter
+----
+-- No. G-2-1-3
+/*+Set(1234567890123456789012345678901234567890123456789012345678901234 1)*/
+SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+NOTICE:  identifier "1234567890123456789012345678901234567890123456789012345678901234" will be truncated to "123456789012345678901234567890123456789012345678901234567890123"
+INFO:  unrecognized configuration parameter "123456789012345678901234567890123456789012345678901234567890123"
+ c1 | c2 | c3 | c4 
+----+----+----+----
+  1 |  1 |  1 | 1
+(1 row)
+
+-- No. G-2-1-4
+/*+Set(constraint_exclusion 1234567890123456789012345678901234567890123456789012345678901234)*/
+SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+INFO:  invalid value for parameter "constraint_exclusion": "1234567890123456789012345678901234567890123456789012345678901234"
+HINT:  Available values: partition, on, off.
+ c1 | c2 | c3 | c4 
+----+----+----+----
+  1 |  1 |  1 | 1
+(1 row)
+
+----
 ---- No. G-2-2 category of GUC parameter and role
 ----
 -- No. G-2-2-1

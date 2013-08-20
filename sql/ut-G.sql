@@ -47,6 +47,18 @@ EXPLAIN (COSTS false) UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1 AND ctid = '(1,1)';
 RESET client_min_messages;
 
 ----
+---- No. G-2-1 GUC parameter
+----
+
+-- No. G-2-1-3
+/*+Set(1234567890123456789012345678901234567890123456789012345678901234 1)*/
+SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
+-- No. G-2-1-4
+/*+Set(constraint_exclusion 1234567890123456789012345678901234567890123456789012345678901234)*/
+SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+
+----
 ---- No. G-2-2 category of GUC parameter and role
 ----
 
