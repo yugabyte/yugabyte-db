@@ -13,56 +13,42 @@ SET SESSION AUTHORIZATION pipe_test_owner;
 CREATE OR REPLACE FUNCTION receiveFrom(pipename text) RETURNS void AS $$
 DECLARE
         typ INTEGER;
-        result TEXT;
 BEGIN
          WHILE true LOOP
                 PERFORM dbms_pipe.receive_message(pipename,2);
                 SELECT dbms_pipe.next_item_type() INTO typ;
-		IF typ = 0 THEN
-			EXIT;
-		END IF;
-                SELECT
-                        CASE WHEN typ=9 THEN dbms_pipe.unpack_message_number()::text
-                             WHEN typ=11 THEN dbms_pipe.unpack_message_text()::text
-                             WHEN typ=12 THEN dbms_pipe.unpack_message_date()::text
-                             WHEN typ=13 THEN dbms_pipe.unpack_message_timestamp()::text
-                             WHEN typ=23 THEN encode(dbms_pipe.unpack_message_bytea(),'escape')::text
-                             WHEN typ=24 THEN dbms_pipe.unpack_message_record()::text
-                             ELSE NULL
-			END
-                        INTO result;
-                RAISE NOTICE 'RECEIVE %: %', typ,result;
+                IF typ = 0 THEN EXIT;
+                ELSIF typ=9 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_number();
+                ELSIF typ=11 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_text();
+                ELSIF typ=12 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_date();
+                ELSIF typ=13 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_timestamp();
+                ELSIF typ=23 THEN RAISE NOTICE 'RECEIVE %: %', typ, encode(dbms_pipe.unpack_message_bytea(),'escape');
+                ELSIF typ=24 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_record();
+                END IF;                 
         END LOOP;
-	PERFORM dbms_pipe.purge(pipename);	
+        PERFORM dbms_pipe.purge(pipename);      
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION bulkReceive() RETURNS void AS $$
 DECLARE
         typ INTEGER;
-        result TEXT;
 BEGIN
-        IF dbms_pipe.receive_message('named_pipe_2',2) = 1 THEN
+	IF dbms_pipe.receive_message('named_pipe_2',2) = 1 THEN
         	RAISE NOTICE 'Timeout';
         	PERFORM pg_sleep(2);
 		PERFORM dbms_pipe.receive_message('named_pipe_2',2);
         END IF;
         WHILE true LOOP
                 SELECT dbms_pipe.next_item_type() INTO typ;
-                IF typ = 0 THEN
-                        EXIT;
-                END IF;
-                SELECT
-                        CASE WHEN typ=9 THEN dbms_pipe.unpack_message_number()::text
-                             WHEN typ=11 THEN dbms_pipe.unpack_message_text()::text
-                             WHEN typ=12 THEN dbms_pipe.unpack_message_date()::text
-                             WHEN typ=13 THEN dbms_pipe.unpack_message_timestamp()::text
-                             WHEN typ=23 THEN encode(dbms_pipe.unpack_message_bytea(),'escape')::text
-                             WHEN typ=24 THEN dbms_pipe.unpack_message_record()::text
-                             ELSE NULL
-                        END
-                        INTO result;
-                RAISE NOTICE 'RECEIVE %: %', typ,result;
+                IF typ = 0 THEN EXIT;
+                ELSIF typ=9 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_number();
+                ELSIF typ=11 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_text();
+                ELSIF typ=12 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_date();
+                ELSIF typ=13 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_timestamp();
+                ELSIF typ=23 THEN RAISE NOTICE 'RECEIVE %: %', typ, encode(dbms_pipe.unpack_message_bytea()::bytea,'escape');
+                ELSIF typ=24 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_record();
+                END IF;                 
         END LOOP;
         PERFORM dbms_pipe.purge('named_pipe_2');
 END;

@@ -20,8 +20,19 @@ REGRESS += aggregates nlssort dbms_random
 endif
 
 REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
+REGRESSION_EXPECTED = expected/orafunc.out expected/dbms_pipe_session_B.out
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in
+ifeq ($(shell echo $$(($(INTVERSION) <= 802))),1)
+$(REGRESSION_EXPECTED): %.out: %1.out
+	cp $< $@
+else
+$(REGRESSION_EXPECTED): %.out: %2.out
+	cp $< $@
+endif
+
+installcheck: $(REGRESSION_EXPECTED)
+
+EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in expected/orafunc.out expected/dbms_pipe_session_B.out
 
 ifndef USE_PGXS
 top_builddir = ../..
