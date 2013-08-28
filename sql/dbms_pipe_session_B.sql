@@ -1,5 +1,5 @@
 \set ECHO none
-
+\set VERBOSITY terse
 --Wait for 'pipe_test_owner' created notification to be sent by session A
 SELECT dbms_pipe.receive_message('pipe_test_owner_created_notifier');
 
@@ -26,7 +26,7 @@ BEGIN
                              WHEN typ=11 THEN dbms_pipe.unpack_message_text()::text
                              WHEN typ=12 THEN dbms_pipe.unpack_message_date()::text
                              WHEN typ=13 THEN dbms_pipe.unpack_message_timestamp()::text
-                             WHEN typ=23 THEN dbms_pipe.unpack_message_bytea()::text
+                             WHEN typ=23 THEN encode(dbms_pipe.unpack_message_bytea(),'escape')::text
                              WHEN typ=24 THEN dbms_pipe.unpack_message_record()::text
                              ELSE NULL
 			END
@@ -57,7 +57,7 @@ BEGIN
                              WHEN typ=11 THEN dbms_pipe.unpack_message_text()::text
                              WHEN typ=12 THEN dbms_pipe.unpack_message_date()::text
                              WHEN typ=13 THEN dbms_pipe.unpack_message_timestamp()::text
-                             WHEN typ=23 THEN dbms_pipe.unpack_message_bytea()::text
+                             WHEN typ=23 THEN encode(dbms_pipe.unpack_message_bytea(),'escape')::text
                              WHEN typ=24 THEN dbms_pipe.unpack_message_record()::text
                              ELSE NULL
                         END

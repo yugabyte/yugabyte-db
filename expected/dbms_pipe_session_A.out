@@ -1,5 +1,4 @@
 \set ECHO none
-NOTICE:  role "pipe_test_owner" does not exist, skipping
  pack_message 
 --------------
  
@@ -10,7 +9,6 @@ NOTICE:  role "pipe_test_owner" does not exist, skipping
             0
 (1 row)
 
-NOTICE:  table "temp" does not exist, skipping
  createimplicitpipe 
 --------------------
  

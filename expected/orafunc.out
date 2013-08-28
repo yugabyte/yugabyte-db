@@ -1127,100 +1127,100 @@ select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
 (1 row)
 
 -- For type 'bpchar'
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15));
-     decode      
------------------
- postgres       
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar);
+  decode  
+----------
+ postgres
 (1 row)
 
-select decode('c'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15));
+select decode('c'::bpchar, 'a'::bpchar,'postgres'::bpchar);
  decode 
 --------
  
 (1 row)
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- postgres       
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'default value'::bpchar);
+  decode  
+----------
+ postgres
 (1 row)
 
-select decode('c', 'a'::bpchar(2),'postgres'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- default value  
+select decode('c', 'a'::bpchar,'postgres'::bpchar,'default value'::bpchar);
+    decode     
+---------------
+ default value
 (1 row)
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15));
-     decode      
------------------
- postgres       
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar);
+  decode  
+----------
+ postgres
 (1 row)
 
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15));
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar);
  decode 
 --------
  
 (1 row)
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- postgres       
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar,'default value'::bpchar);
+  decode  
+----------
+ postgres
 (1 row)
 
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- default value  
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar,'default value'::bpchar);
+    decode     
+---------------
+ default value
 (1 row)
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15));
-     decode      
------------------
- postgres       
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar);
+  decode  
+----------
+ postgres
 (1 row)
 
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15));
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar);
  decode 
 --------
  
 (1 row)
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- postgres       
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar,'default value'::bpchar);
+  decode  
+----------
+ postgres
 (1 row)
 
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- default value  
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar,'default value'::bpchar);
+    decode     
+---------------
+ default value
 (1 row)
 
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), NULL,'database'::bpchar(15));
-     decode      
------------------
- database       
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, NULL,'database'::bpchar);
+  decode  
+----------
+ database
 (1 row)
 
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), 'b'::bpchar(2),'database'::bpchar(15));
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, 'b'::bpchar,'database'::bpchar);
  decode 
 --------
  
 (1 row)
 
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), NULL,'database'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- database       
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, NULL,'database'::bpchar,'default value'::bpchar);
+  decode  
+----------
+ database
 (1 row)
 
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), 'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
-     decode      
------------------
- default value  
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, 'b'::bpchar,'database'::bpchar,'default value'::bpchar);
+    decode     
+---------------
+ default value
 (1 row)
 
 -- For type 'bigint'
@@ -2211,121 +2211,6 @@ SELECT dump('2009-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
  t
 (1 row)
 
-select listagg(i::text) from generate_series(1,3) g(i);
- listagg 
----------
- 123
-(1 row)
-
-select listagg(i::text, ',') from generate_series(1,3) g(i);
- listagg 
----------
- 1,2,3
-(1 row)
-
-select coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);
- coalesce 
-----------
- 
-(1 row)
-
-select coalesce(listagg(i::text), '<NULL>') from generate_series(1,0) g(i);
- coalesce 
-----------
- <NULL>
-(1 row)
-
--- Tests for package DBMS_RANDOM
-SELECT dbms_random.initialize(8);
- initialize 
-------------
- 
-(1 row)
-
-SELECT dbms_random.normal();
-       normal       
---------------------
- -0.377877688597918
-(1 row)
-
-SELECT dbms_random.normal();
-      normal       
--------------------
- 0.804998041043833
-(1 row)
-
-SELECT dbms_random.seed(8);
- seed 
-------
- 
-(1 row)
-
-SELECT dbms_random.random();
-   random   
-------------
- -632387854
-(1 row)
-
-SELECT dbms_random.seed('test');
- seed 
-------
- 
-(1 row)
-
-SELECT dbms_random.string('U',5);
- string 
---------
- XEJGE
-(1 row)
-
-SELECT dbms_random.string('P',2);
- string 
---------
- T9
-(1 row)
-
-SELECT dbms_random.string('x',4);
- string 
---------
- FVGL
-(1 row)
-
-SELECT dbms_random.string('a',2);
- string 
---------
- AZ
-(1 row)
-
-SELECT dbms_random.string('l',3);
- string 
---------
- hmo
-(1 row)
-
-SELECT dbms_random.seed(5);
- seed 
-------
- 
-(1 row)
-
-SELECT dbms_random.value();
-       value       
--------------------
- 0.274745596107095
-(1 row)
-
-SELECT dbms_random.value(10,15);
-      value       
-------------------
- 10.2323388238437
-(1 row)
-
-SELECT dbms_random.terminate();
- terminate 
------------
- 
-(1 row)
-
 -- Tests for to_multi_byte
 SELECT to_multi_byte('123$test');
   to_multi_byte   
@@ -2346,101 +2231,6 @@ SELECT octet_length(to_multi_byte('abc'));
             9
 (1 row)
 
--- Tests for the aggregate median( real | double )
-CREATE FUNCTION checkMedianRealOdd()  RETURNS real AS $$
-DECLARE
- med real;
-
-BEGIN
-	CREATE TABLE median_test (salary real);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (NULL);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (4000);
-        SELECT into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-        
-END;
-$$ LANGUAGE plpgsql;
-CREATE FUNCTION checkMedianRealEven() RETURNS real AS $$
-DECLARE
- med real;
-
-BEGIN
-        CREATE TABLE median_test (salary real);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (1500);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (1000);
-        INSERT INTO median_test VALUES (4000);
-        select into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-END;
-$$ LANGUAGE plpgsql;
-CREATE FUNCTION checkMedianDoubleOdd() RETURNS double precision AS $$
-DECLARE 
-  med double precision;
-BEGIN
-        CREATE TABLE median_test (salary double precision);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (1500);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (4000);
-        select into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-END;
-$$ LANGUAGE plpgsql;
-CREATE FUNCTION checkMedianDoubleEven() RETURNS double precision AS $$
-DECLARE
- med double precision;
-
-BEGIN
-        CREATE TABLE median_test (salary double precision);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (1500);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (4000);
-        INSERT INTO median_test VALUES (1000);
-        select into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-END;
-$$ LANGUAGE plpgsql;
-SELECT checkMedianRealOdd();
- checkmedianrealodd 
---------------------
-               3800
-(1 row)
-
-SELECT checkMedianRealEven();
- checkmedianrealeven 
----------------------
-                2850
-(1 row)
-
-SELECT checkMedianDoubleOdd();
- checkmediandoubleodd 
-----------------------
-                 3600
-(1 row)
-
-SELECT checkMedianDoubleEven();
- checkmediandoubleeven 
------------------------
-                  2850
-(1 row)
-
-DROP FUNCTION checkMedianRealOdd();
-DROP FUNCTION checkMedianRealEven();
-DROP FUNCTION checkMedianDoubleOdd();
-DROP FUNCTION checkMedianDoubleEven();
 -- Tests for round(TIMESTAMP WITH TIME ZONE)
 select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';
  ?column? 
@@ -2574,80 +2364,3 @@ select to_date('J2451187');
  1999-01-08
 (1 row)
 
--- Tests for nlssort
-DROP DATABASE IF EXISTS db_sort;
-CREATE DATABASE db_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C';
-\c db_sort
-CREATE EXTENSION orafce;
-CREATE TABLE test_sort (name TEXT);
-INSERT INTO test_sort VALUES ('red'), ('brown'), ('yellow'), ('Purple');
-SELECT * FROM test_sort ORDER BY NLSSORT(name, 'en_US.utf8');
-  name  
---------
- brown
- Purple
- red
- yellow
-(4 rows)
-
-SELECT * FROM test_sort ORDER BY NLSSORT(name, '');
-  name  
---------
- Purple
- brown
- red
- yellow
-(4 rows)
-
-SELECT set_nls_sort('invalid');
- set_nls_sort 
---------------
- 
-(1 row)
-
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-ERROR:  failed to set the requested LC_COLLATE value [invalid]
-CONTEXT:  SQL function "nlssort" statement 1
-SELECT set_nls_sort('');
- set_nls_sort 
---------------
- 
-(1 row)
-
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-  name  
---------
- Purple
- brown
- red
- yellow
-(4 rows)
-
-SELECT set_nls_sort('en_US.utf8');
- set_nls_sort 
---------------
- 
-(1 row)
-
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-  name  
---------
- brown
- Purple
- red
- yellow
-(4 rows)
-
-INSERT INTO test_sort VALUES(NULL);
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-  name  
---------
- brown
- Purple
- red
- yellow
- 
-(5 rows)
-
-\c contrib_regression
-DROP DATABASE db_sort;

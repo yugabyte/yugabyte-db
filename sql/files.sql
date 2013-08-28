@@ -1,5 +1,5 @@
-\set ECHO none 
 SET client_min_messages = NOTICE;
+\set VERBOSITY terse
 \set ECHO all
 CREATE OR REPLACE FUNCTION gen_file(dir text) RETURNS void AS $$
 DECLARE
@@ -80,9 +80,9 @@ BEGIN
   END;
 $$ LANGUAGE plpgsql;
 
-SELECT EXISTS(SELECT * FROM pg_catalog.pg_class where relname='utl_file_dir');
+SELECT EXISTS(SELECT * FROM pg_catalog.pg_class where relname='utl_file_dir') AS exists;
 
-SELECT EXISTS(SELECT * FROM pg_catalog.pg_type where typname='file_type');
+SELECT EXISTS(SELECT * FROM pg_catalog.pg_type where typname='file_type') AS exists;
 
 -- Trying to access a file in path not registered
 SELECT utl_file.fopen(utl_file.tmpdir(),'sample.txt','r');

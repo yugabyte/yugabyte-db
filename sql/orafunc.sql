@@ -215,25 +215,25 @@ select decode('2009-02-05'::date, '2009-02-05', 'ok');
 select decode('2009-02-05 01:02:03'::timestamp, '2009-02-05 01:02:03', 'ok');
 
 -- For type 'bpchar'
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15));
-select decode('c'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15));
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'default value'::bpchar(15));
-select decode('c', 'a'::bpchar(2),'postgres'::bpchar(15),'default value'::bpchar(15));
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar);
+select decode('c'::bpchar, 'a'::bpchar,'postgres'::bpchar);
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'default value'::bpchar);
+select decode('c', 'a'::bpchar,'postgres'::bpchar,'default value'::bpchar);
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15));
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15));
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar);
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar);
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar,'default value'::bpchar);
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar,'default value'::bpchar);
 
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15));
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15));
-select decode('a'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15),'default value'::bpchar(15));
-select decode('d'::bpchar(2), 'a'::bpchar(2),'postgres'::bpchar(15),'b'::bpchar(2),'database'::bpchar(15), 'c'::bpchar(2), 'system'::bpchar(15),'default value'::bpchar(15));
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar);
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar);
+select decode('a'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar,'default value'::bpchar);
+select decode('d'::bpchar, 'a'::bpchar,'postgres'::bpchar,'b'::bpchar,'database'::bpchar, 'c'::bpchar, 'system'::bpchar,'default value'::bpchar);
 
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), NULL,'database'::bpchar(15));
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), 'b'::bpchar(2),'database'::bpchar(15));
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), NULL,'database'::bpchar(15),'default value'::bpchar(15));
-select decode(NULL, 'a'::bpchar(2), 'postgres'::bpchar(15), 'b'::bpchar(2),'database'::bpchar(15),'default value'::bpchar(15));
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, NULL,'database'::bpchar);
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, 'b'::bpchar,'database'::bpchar);
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, NULL,'database'::bpchar,'default value'::bpchar);
+select decode(NULL, 'a'::bpchar, 'postgres'::bpchar, 'b'::bpchar,'database'::bpchar,'default value'::bpchar);
 
 -- For type 'bigint'
 select decode(2147483651::bigint, 2147483650::bigint,2147483650::bigint);
@@ -467,114 +467,11 @@ SELECT dump('2008-10-10'::date) ~ E'^Typ=1082 Len=4: \\d+(,\\d+){3}$' AS t;
 SELECT dump('2008-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 SELECT dump('2009-10-10'::timestamp) ~ E'^Typ=1114 Len=8: \\d+(,\\d+){7}$' AS t;
 
-select listagg(i::text) from generate_series(1,3) g(i);
-select listagg(i::text, ',') from generate_series(1,3) g(i);
-select coalesce(listagg(i::text), '<NULL>') from (SELECT ''::text) g(i);
-select coalesce(listagg(i::text), '<NULL>') from generate_series(1,0) g(i);
-
--- Tests for package DBMS_RANDOM
-SELECT dbms_random.initialize(8);
-SELECT dbms_random.normal();
-SELECT dbms_random.normal();
-SELECT dbms_random.seed(8);
-SELECT dbms_random.random();
-SELECT dbms_random.seed('test');
-SELECT dbms_random.string('U',5);
-SELECT dbms_random.string('P',2);
-SELECT dbms_random.string('x',4);
-SELECT dbms_random.string('a',2);
-SELECT dbms_random.string('l',3);
-SELECT dbms_random.seed(5);
-SELECT dbms_random.value();
-SELECT dbms_random.value(10,15);
-SELECT dbms_random.terminate();
-
 -- Tests for to_multi_byte
 SELECT to_multi_byte('123$test');
 -- Check internal representation difference
 SELECT octet_length('abc');
 SELECT octet_length(to_multi_byte('abc'));
-
--- Tests for the aggregate median( real | double )
-CREATE FUNCTION checkMedianRealOdd()  RETURNS real AS $$
-DECLARE
- med real;
-
-BEGIN
-	CREATE TABLE median_test (salary real);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (NULL);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (4000);
-        SELECT into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-        
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE FUNCTION checkMedianRealEven() RETURNS real AS $$
-DECLARE
- med real;
-
-BEGIN
-        CREATE TABLE median_test (salary real);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (1500);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (1000);
-        INSERT INTO median_test VALUES (4000);
-        select into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE FUNCTION checkMedianDoubleOdd() RETURNS double precision AS $$
-DECLARE 
-  med double precision;
-BEGIN
-        CREATE TABLE median_test (salary double precision);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (1500);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (4000);
-        select into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE FUNCTION checkMedianDoubleEven() RETURNS double precision AS $$
-DECLARE
- med double precision;
-
-BEGIN
-        CREATE TABLE median_test (salary double precision);
-        INSERT INTO median_test VALUES (4500);
-        INSERT INTO median_test VALUES (1500);
-        INSERT INTO median_test VALUES (2100);
-        INSERT INTO median_test VALUES (3600);
-        INSERT INTO median_test VALUES (4000);
-        INSERT INTO median_test VALUES (1000);
-        select into med median(salary) from median_test;
-        DROP TABLE median_test;
-        return med;
-END;
-$$ LANGUAGE plpgsql;
-
-SELECT checkMedianRealOdd();
-SELECT checkMedianRealEven();
-SELECT checkMedianDoubleOdd();
-SELECT checkMedianDoubleEven();
-
-DROP FUNCTION checkMedianRealOdd();
-DROP FUNCTION checkMedianRealEven();
-DROP FUNCTION checkMedianDoubleOdd();
-DROP FUNCTION checkMedianDoubleEven();
 
 -- Tests for round(TIMESTAMP WITH TIME ZONE)
 select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';
@@ -605,24 +502,3 @@ select to_date('Jan-08-99');
 select to_date('19990108');
 select to_date('990108');
 select to_date('J2451187');
-
--- Tests for nlssort
-DROP DATABASE IF EXISTS db_sort;
-CREATE DATABASE db_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C';
-\c db_sort
-CREATE EXTENSION orafce;
-CREATE TABLE test_sort (name TEXT);
-INSERT INTO test_sort VALUES ('red'), ('brown'), ('yellow'), ('Purple');
-SELECT * FROM test_sort ORDER BY NLSSORT(name, 'en_US.utf8');
-SELECT * FROM test_sort ORDER BY NLSSORT(name, '');
-SELECT set_nls_sort('invalid');
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-SELECT set_nls_sort('');
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-SELECT set_nls_sort('en_US.utf8');
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-INSERT INTO test_sort VALUES(NULL);
-SELECT * FROM test_sort ORDER BY NLSSORT(name);
-\c contrib_regression
-DROP DATABASE db_sort;
-
