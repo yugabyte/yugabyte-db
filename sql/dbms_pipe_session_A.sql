@@ -1,17 +1,18 @@
 \set ECHO none
+SET client_min_messages = warning;
+DROP TABLE IF EXISTS TEMP;
+CREATE TABLE TEMP(id integer,name text);
+INSERT INTO TEMP VALUES (1,'bob'),(2,'rob'),(3,'john');
 
 DROP USER IF EXISTS pipe_test_owner;
 CREATE USER pipe_test_owner WITH CREATEUSER;
+SET client_min_messages = notice;
 
 -- Notify session B of 'pipe_test_owner' having been created.
 SELECT dbms_pipe.pack_message(1);
 SELECT dbms_pipe.send_message('pipe_test_owner_created_notifier');
 -- Create a new connection under the userid of pipe_test_owner
 SET SESSION AUTHORIZATION pipe_test_owner;
-
-DROP TABLE IF EXISTS TEMP;
-CREATE TABLE TEMP(id integer,name text);
-INSERT INTO TEMP VALUES (1,'bob'),(2,'rob'),(3,'john');
 
 /* create an implicit pipe and sends message using 
  * send_message(text,integer,integer)
@@ -44,7 +45,7 @@ BEGIN
         PERFORM send('named_pipe');
         PERFORM dbms_pipe.pack_message(99999999999::bigint);
         PERFORM send('named_pipe');
-        PERFORM dbms_pipe.pack_message('\x123456'::bytea);
+        PERFORM dbms_pipe.pack_message(E'\\201'::bytea);
         PERFORM send('named_pipe');
         SELECT * INTO row FROM TEMP WHERE id=2;
 	PERFORM dbms_pipe.pack_message(row);
@@ -62,7 +63,7 @@ BEGIN
         PERFORM dbms_pipe.pack_message(12345.6789::numeric);
         PERFORM dbms_pipe.pack_message(12345::integer);
         PERFORM dbms_pipe.pack_message(99999999999::bigint);
-        PERFORM dbms_pipe.pack_message('\x123456'::bytea);
+        PERFORM dbms_pipe.pack_message(E'\\201'::bytea);
         SELECT * INTO row FROM TEMP WHERE id=2;
         PERFORM dbms_pipe.pack_message(row);
         PERFORM send('named_pipe_2');
@@ -112,7 +113,7 @@ BEGIN
         PERFORM send(pipename);
         PERFORM dbms_pipe.pack_message(99999999999::bigint);
         PERFORM send(pipename);
-        PERFORM dbms_pipe.pack_message('\x123456'::bytea);
+        PERFORM dbms_pipe.pack_message(E'\\201'::bytea);
         PERFORM send(pipename);
         SELECT * INTO row FROM TEMP WHERE id=2;
         PERFORM dbms_pipe.pack_message(row);

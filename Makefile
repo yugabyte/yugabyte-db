@@ -6,10 +6,33 @@ EXTENSION = orafce
 DATA_built = orafunc.sql
 DATA = uninstall_orafunc.sql orafce--3.0.5.sql orafce--unpackaged--3.0.5.sql
 DOCS = README.asciidoc COPYRIGHT.orafunc INSTALL.orafunc
-REGRESS = orafunc dbms_output files dbms_utility
-REGRESS_OPTS = --load-language=plpgsql --load-extension=orafce --schedule=parallel_schedule
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in
+PG_CONFIG ?= pg_config
+
+# version as a number, e.g. 9.1.4 -> 901
+VERSION := $(shell $(PG_CONFIG) --version | awk '{print $$2}')
+INTVERSION := $(shell echo $$(($$(echo $(VERSION) | sed 's/\([[:digit:]]\{1,\}\)\.\([[:digit:]]\{1,\}\).*/\1*100+\2/' ))))
+
+REGRESS = orafunc dbms_output dbms_utility files
+
+ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
+REGRESS += aggregates nlssort dbms_random
+endif
+
+REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
+REGRESSION_EXPECTED = expected/orafunc.out expected/dbms_pipe_session_B.out
+
+ifeq ($(shell echo $$(($(INTVERSION) <= 802))),1)
+$(REGRESSION_EXPECTED): %.out: %1.out
+	cp $< $@
+else
+$(REGRESSION_EXPECTED): %.out: %2.out
+	cp $< $@
+endif
+
+installcheck: $(REGRESSION_EXPECTED)
+
+EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in expected/orafunc.out expected/dbms_pipe_session_B.out
 
 ifndef USE_PGXS
 top_builddir = ../..

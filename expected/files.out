@@ -1,4 +1,6 @@
-\set ECHO none 
+SET client_min_messages = NOTICE;
+\set VERBOSITY terse
+\set ECHO all
 CREATE OR REPLACE FUNCTION gen_file(dir text) RETURNS void AS $$
 DECLARE
   f utl_file.file_type;
@@ -75,13 +77,13 @@ BEGIN
       RAISE NOTICE 'is_open = %', utl_file.is_open(f);
   END;
 $$ LANGUAGE plpgsql;
-SELECT EXISTS(SELECT * FROM pg_catalog.pg_class where relname='utl_file_dir');
+SELECT EXISTS(SELECT * FROM pg_catalog.pg_class where relname='utl_file_dir') AS exists;
  exists 
 --------
  t
 (1 row)
 
-SELECT EXISTS(SELECT * FROM pg_catalog.pg_type where typname='file_type');
+SELECT EXISTS(SELECT * FROM pg_catalog.pg_type where typname='file_type') AS exists;
  exists 
 --------
  t
@@ -90,13 +92,10 @@ SELECT EXISTS(SELECT * FROM pg_catalog.pg_type where typname='file_type');
 -- Trying to access a file in path not registered
 SELECT utl_file.fopen(utl_file.tmpdir(),'sample.txt','r');
 ERROR:  UTL_FILE_INVALID_PATH
-DETAIL:  you cannot access locality
-HINT:  locality is not found in utl_file_dir table
 -- Trying to access file in a non-existent directory
 INSERT INTO utl_file.utl_file_dir(dir) VALUES('test_tmp_dir');
 SELECT utl_file.fopen('test_tmp_dir','file.txt.','w');
 ERROR:  UTL_FILE_INVALID_PATH
-DETAIL:  No such file or directory
 DELETE FROM utl_file.utl_file_dir WHERE dir LIKE 'test_tmp_dir';
 -- Add tmpdir() to utl_file_dir table
 INSERT INTO utl_file.utl_file_dir(dir) VALUES(utl_file.tmpdir());
@@ -109,7 +108,6 @@ SELECT * from utl_file.utl_file_dir;
 -- Trying to access non-existent file
 SELECT utl_file.fopen(utl_file.tmpdir(),'non_existent_file.txt','r');
 ERROR:  UTL_FILE_INVALID_PATH
-DETAIL:  No such file or directory
 --Other test cases
 SELECT gen_file(utl_file.tmpdir());
  gen_file 

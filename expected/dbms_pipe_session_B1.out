@@ -1,0 +1,185 @@
+\set ECHO none
+ receive_message 
+-----------------
+               0
+(1 row)
+
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: Å
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: Å
+NOTICE:  RECEIVE 24: (2,rob)
+ bulkreceive 
+-------------
+ 
+(1 row)
+
+ receive_message 
+-----------------
+               0
+(1 row)
+
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: Å
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+NOTICE:  role "pipe_test_other" does not exist, skipping
+ receive_message 
+-----------------
+               0
+(1 row)
+
+ERROR:  insufficient privilege
+ receive_message 
+-----------------
+               0
+(1 row)
+
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: Å
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+ receive_message 
+-----------------
+               0
+(1 row)
+
+NOTICE:  RECEIVE 11: Message From Session A
+NOTICE:  RECEIVE 12: 01-01-2013
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
+NOTICE:  RECEIVE 9: 12345.6789
+NOTICE:  RECEIVE 9: 12345
+NOTICE:  RECEIVE 9: 99999999999
+NOTICE:  RECEIVE 23: Å
+NOTICE:  RECEIVE 24: (2,rob)
+ receivefrom 
+-------------
+ 
+(1 row)
+
+NOTICE:  RECEIVE checking one-argument send_message()
+ checkreceive1 
+---------------
+ 
+(1 row)
+
+NOTICE:  RECEIVE checking two-argument send_message()
+ checkreceive1 
+---------------
+ 
+(1 row)
+
+      name      | items | limit | private |      owner      
+----------------+-------+-------+---------+-----------------
+ private_pipe_1 |     0 |    10 | t       | pipe_test_owner
+ private_pipe_2 |     9 |    10 | t       | pipe_test_owner
+(2 rows)
+
+      name      | items | limit | private |      owner      
+----------------+-------+-------+---------+-----------------
+ pipe_name_3    |     1 |       | f       | 
+ private_pipe_1 |     0 |    10 | t       | pipe_test_owner
+ private_pipe_2 |     9 |    10 | t       | pipe_test_owner
+ public_pipe_3  |     0 |    10 | f       | 
+ public_pipe_4  |     0 |    10 | f       | 
+(5 rows)
+
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+ remove_pipe 
+-------------
+ 
+(1 row)
+
+ purge 
+-------
+ 
+(1 row)
+
+ purge 
+-------
+ 
+(1 row)
+
+ droptemptable 
+---------------
+ 
+(1 row)
+
+ purge 
+-------
+ 
+(1 row)
+
+ checkuniquesessionnameb 
+-------------------------
+ f
+(1 row)
+
+ purge 
+-------
+ 
+(1 row)
+
+ receive_message 
+-----------------
+               1
+(1 row)
+
+ purge 
+-------
+ 
+(1 row)
+

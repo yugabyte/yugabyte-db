@@ -11,7 +11,7 @@ NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
 NOTICE:  RECEIVE 9: 12345.6789
 NOTICE:  RECEIVE 9: 12345
 NOTICE:  RECEIVE 9: 99999999999
-NOTICE:  RECEIVE 23: \x123456
+NOTICE:  RECEIVE 23: \201
 NOTICE:  RECEIVE 24: (2,rob)
  receivefrom 
 -------------
@@ -25,7 +25,7 @@ NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
 NOTICE:  RECEIVE 9: 12345.6789
 NOTICE:  RECEIVE 9: 12345
 NOTICE:  RECEIVE 9: 99999999999
-NOTICE:  RECEIVE 23: \x123456
+NOTICE:  RECEIVE 23: \201
 NOTICE:  RECEIVE 24: (2,rob)
  bulkreceive 
 -------------
@@ -44,7 +44,7 @@ NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
 NOTICE:  RECEIVE 9: 12345.6789
 NOTICE:  RECEIVE 9: 12345
 NOTICE:  RECEIVE 9: 99999999999
-NOTICE:  RECEIVE 23: \x123456
+NOTICE:  RECEIVE 23: \201
 NOTICE:  RECEIVE 24: (2,rob)
  receivefrom 
 -------------
@@ -58,9 +58,6 @@ NOTICE:  role "pipe_test_other" does not exist, skipping
 (1 row)
 
 ERROR:  insufficient privilege
-DETAIL:  Insufficient privilege to access pipe
-CONTEXT:  SQL statement "SELECT dbms_pipe.receive_message(pipename,2)"
-PL/pgSQL function receivefrom(text) line 7 at PERFORM
  receive_message 
 -----------------
                0
@@ -73,7 +70,7 @@ NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
 NOTICE:  RECEIVE 9: 12345.6789
 NOTICE:  RECEIVE 9: 12345
 NOTICE:  RECEIVE 9: 99999999999
-NOTICE:  RECEIVE 23: \x123456
+NOTICE:  RECEIVE 23: \201
 NOTICE:  RECEIVE 24: (2,rob)
  receivefrom 
 -------------
@@ -92,7 +89,7 @@ NOTICE:  RECEIVE 13: Tue Jan 01 09:00:00 2013 PST
 NOTICE:  RECEIVE 9: 12345.6789
 NOTICE:  RECEIVE 9: 12345
 NOTICE:  RECEIVE 9: 99999999999
-NOTICE:  RECEIVE 23: \x123456
+NOTICE:  RECEIVE 23: \201
 NOTICE:  RECEIVE 24: (2,rob)
  receivefrom 
 -------------

@@ -1,22 +1,16 @@
 \set ECHO none
-              checkhexcallstack               
-----------------------------------------------
- ----- PL/pgSQL Call Stack -----             +
-   object     line  object                   +
-   handle   number  name                     +
-        0           function anonymous object+
-         5  function checkhexcallstack()
+checkhexcallstack
+----- PL/pgSQL Call Stack -----
+  object     line  object
+  handle   number  name
+       0           function anonymous object
+       0          function checkhexcallstack
 (1 row)
-
-              checkintcallstack               
-----------------------------------------------
-        0           function anonymous object+
-         5  function checkintcallstack()
+checkintcallstack
+       0           function anonymous object
+       0          function checkintcallstack
 (1 row)
-
-   checkintunpaddedcallstack    
---------------------------------
- 0,,anonymous object           +
- ,5,checkintunpaddedcallstack()
+checkintunpaddedcallstack
+0,,anonymous object
+0,,checkintunpaddedcallstack
 (1 row)
-
