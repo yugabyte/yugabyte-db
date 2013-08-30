@@ -14,3 +14,6 @@ CREATE UNIQUE INDEX hints_norm_and_app ON hint_plan.hints (
  	norm_query_string,
 	application_name
 );
+
+GRANT SELECT ON hint_plan.hints TO PUBLIC;
+GRANT USAGE ON SCHEMA hint_plan TO PUBLIC;
