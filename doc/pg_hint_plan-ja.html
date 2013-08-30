@@ -425,7 +425,7 @@ postgres-#   ORDER BY a.aid;
 postgres=# </pre>
 </dd>
 <dt>PL/pgSQL中の個別のクエリに対するヒント</dt>
-<dd>ヒントは、PL/pgSQLブロック中の各クエリにも指定できます。ただし、コメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。
+<dd>ヒントは、PL/pgSQLブロック中のPERFORM文を除いた各クエリにも指定できます。ただし、コメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。
 <p>以下の例では、一つ目のクエリにNoIndexScanを、二つ目のクエリにSeqScanをそれぞれ指定しています。</p>
 <pre>
 postgres=# CREATE FUNCTION hints_func(integer) RETURNS integer AS $$
