@@ -121,7 +121,6 @@ postgres=#
 </table>
 <p>ヒントの登録情報を変更する場合は、変更したい登録情報のidを指定して登録情報を更新してください。</br>
 ヒントの登録を解除する場合は、解除したい登録情報のidを指定してテーブルから削除してください。</p>
-<p>なお、ヒントの登録、変更、解除はスーパーユーザにしかできません。</p>
 <p>以下の例では、ヒントの登録、ヒント登録情報の変更、ヒントの解除の順に、クエリの実行結果を示しています。
 </p>
 <pre>
@@ -140,6 +139,18 @@ postgres=# DELETE FROM hint_plan.hints
 postgres-#  WHERE id = 1;
 DELETE 1
 postgres=#
+</pre>
+<p>なお、ヒントの登録や変更や解除はスーパーユーザでのみ可能です。一般ユーザでヒントの登録や変更や解除を実施したい場合は、スーパーユーザから一般ユーザにhint_plan.hintsテーブルの各権限を付与してください。</p>
+<p>以下の例では、hint_plan.hintsテーブルに対してINSERT権限を持たない一般ユーザがヒントの登録を実施しようとしたときの結果を示しています。</p>
+<pre>
+postgres=> INSERT INTO hint_plan.hints(norm_query_string, application_name, hints)
+postgres->     VALUES (
+postgres(>         'EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = ?;',
+postgres(>         '',
+postgres(>         'SeqScan(t1)'
+postgres(>     );
+ERROR:  permission denied for relation hints
+postgres=>
 </pre>
 <p>以下の例では、テーブルに登録した「コメントでの指定」の例と同じヒントと、登録したクエリの実行結果を示しています。</p>
 <pre>
