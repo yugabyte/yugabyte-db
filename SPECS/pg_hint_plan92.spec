@@ -63,8 +63,8 @@ rm -rf %{buildroot}
 
 # History of pg_hint_plan.
 %changelog
+* Mon Sep 02 2013 Takashi Suzuki
+- Initial cut for 1.1.0
 * Mon Sep 24 2012 Shigeru Hanada <shigeru.hanada@gmail.com>
 - Initial cut for 1.0.0
-* Mon Sep 2 2013
-- Initial cut for 1.1.0
 
