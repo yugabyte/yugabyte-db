@@ -1,5 +1,5 @@
 # SPEC file for pg_hint_plan
-# Copyright(C) 2012 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright(C) 2013 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 %define _pgdir   /usr/pgsql-9.1
 %define _bindir  %{_pgdir}/bin
@@ -9,7 +9,7 @@
 ## Set general information for pg_hint_plan.
 Summary:    Optimizer hint for PostgreSQL 9.1
 Name:       pg_hint_plan91
-Version:    1.0.0
+Version:    1.1.0
 Release:    1%{?dist}
 License:    BSD
 Group:      Applications/Databases
@@ -47,6 +47,9 @@ make %{?_smp_mflags}
 rm -rf %{buildroot}
 install -d %{buildroot}%{_libdir}
 install pg_hint_plan.so %{buildroot}%{_libdir}/pg_hint_plan.so
+install -d %{buildroot}%{_datadir}/extension
+install -m 644 pg_hint_plan--1.0.sql %{buildroot}%{_datadir}/extension/pg_hint_plan--1.0.sql
+install -m 644 pg_hint_plan.control %{buildroot}%{_datadir}/extension/pg_hint_plan.control
 
 %clean
 rm -rf %{buildroot}
@@ -54,9 +57,13 @@ rm -rf %{buildroot}
 %files
 %defattr(0755,root,root)
 %{_libdir}/pg_hint_plan.so
+%defattr(0644,root,root)
+%{_datadir}/extension/pg_hint_plan--1.0.sql
+%{_datadir}/extension/pg_hint_plan.control
 
 # History of pg_hint_plan.
 %changelog
 * Mon Sep 24 2012 Shigeru Hanada <shigeru.hanada@gmail.com>
 - Initial cut for 1.0.0
-
+* Mon Sep 2 2013
+- Initial cut for 1.1.0
