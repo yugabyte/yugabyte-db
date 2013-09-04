@@ -4,7 +4,6 @@ before_install:
   - wget https://gist.github.com/petere/6023944/raw/pg-travis-test.sh
   - sudo sh ./apt.postgresql.org.sh
 env:
-  - PGVERSION=8.1
   - PGVERSION=8.2
   - PGVERSION=8.3
   - PGVERSION=8.4
