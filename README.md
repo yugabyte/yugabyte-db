@@ -9,6 +9,8 @@ used in the xUnit testing style. For detailed documentation, see the
 documentation in `doc/pgtap.mmd` or
 [online](http://pgtap.org/documentation.html "Complete pgTAP Documentation").
 
+[![Build Status](https://travis-ci.org/theory/pgtap.png)](https://travis-ci.org/theory/sqitch)
+
 To build it, just do this:
 
     make
