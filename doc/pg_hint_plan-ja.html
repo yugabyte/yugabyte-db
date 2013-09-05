@@ -439,8 +439,8 @@ postgres=# </pre>
 <dt>PL/pgSQL中の個別のクエリに対するヒント</dt>
 <dd>ヒントは、PL/pgSQLブロック中の各クエリにも指定できます。ただし、以下のような制約があります。
 <ul>
-<li>ブロック中でヒントを指定可能なSQL文は、SELECT/INSERT/UPDATE/DELETEのみです。PERFORMを含む他のSQLにヒントを適用したい場合は、PL/pgSQL関数を実行するクエリにヒントを指定してください。</li>
-<li>コメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。</li>
+<li>指定したヒントが適用されるSQLは、SELECT/INSERT/UPDATE/DELETEのみです。PERFORMを含む他のSQLにヒントを指定しても適用されません。</li>
+<li>ヒントをコメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。</li>
 </ul>
 <p>以下の例では、一つ目のクエリにNoIndexScanを、二つ目のクエリにSeqScanをそれぞれ指定しています。</p>
 <pre>
