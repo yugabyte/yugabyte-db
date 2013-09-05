@@ -3587,10 +3587,15 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	if ((enum PLpgSQL_stmt_types) stmt->cmd_type == PLPGSQL_STMT_EXECSQL)
+	PLpgSQL_expr *expr;
+	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
 	{
-		PLpgSQL_expr *expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
-		plpgsql_query_string = expr->query;
+		case PLPGSQL_STMT_EXECSQL:
+			expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
+			plpgsql_query_string = expr->query;
+			break;
+		default:
+			break;
 	}
 }
 
