@@ -4,7 +4,7 @@ OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plv
 EXTENSION = orafce
 
 DATA_built = orafunc.sql
-DATA = uninstall_orafunc.sql orafce--3.0.5.sql orafce--unpackaged--3.0.5.sql
+DATA = uninstall_orafunc.sql orafce--3.0.6.sql orafce--unpackaged--3.0.6.sql
 DOCS = README.asciidoc COPYRIGHT.orafunc INSTALL.orafunc
 REGRESS = orafunc dbms_output files dbms_utility
 REGRESS_OPTS = --load-language=plpgsql --load-extension=orafce --schedule=parallel_schedule
