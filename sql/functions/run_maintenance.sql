@@ -16,10 +16,11 @@ v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_last_partition_timestamp      timestamp;
 v_old_search_path               text;
-v_premade_count                 real;
+v_premade_count                 int;
 v_quarter                       text;
 v_step_id                       bigint;
 v_row                           record;
+v_time_position                 int;
 v_year                          text;
 
 BEGIN
@@ -76,12 +77,14 @@ LOOP
             v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
     END CASE;
 
+    -- Get position of last occurance of '_p' in child partition name
+    v_time_position := (length(v_row.last_partition) - position('p_' in reverse(v_row.last_partition))) + 2;
     IF v_row.part_interval != '3 months' THEN
-        v_last_partition_timestamp := to_timestamp(substring(v_row.last_partition from char_length(v_row.parent_table||'_p')+1), v_row.datetime_string);
+       v_last_partition_timestamp := to_timestamp(substring(v_row.last_partition from v_time_position), v_row.datetime_string);
     ELSE
         -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
-        v_year := split_part(substring(v_row.last_partition from char_length(v_row.parent_table||'_p')+1), 'q', 1);
-        v_quarter := split_part(substring(v_row.last_partition from char_length(v_row.parent_table||'_p')+1), 'q', 2);
+        v_year := split_part(substring(v_row.last_partition from v_time_position), 'q', 1);
+        v_quarter := split_part(substring(v_row.last_partition from v_time_position), 'q', 2);
         CASE
             WHEN v_quarter = '1' THEN
                 v_last_partition_timestamp := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
@@ -94,9 +97,8 @@ LOOP
         END CASE;
     END IF;
 
-    -- Check and see how many premade partitions there are. If it's less than premake in config table, make another
-    v_premade_count = EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval);
-
+    -- Check and see how many premade partitions there are.
+    v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
     -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed.
     WHILE v_premade_count < v_row.premake LOOP
         EXECUTE 'SELECT @extschema@.create_next_time_partition('||quote_literal(v_row.parent_table)||')';
@@ -105,7 +107,7 @@ LOOP
             EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
         END IF;
         v_last_partition_timestamp := v_last_partition_timestamp + v_row.part_interval;
-        v_premade_count = EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval);
+        v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
     END LOOP;
 
 END LOOP; -- end of creation loop

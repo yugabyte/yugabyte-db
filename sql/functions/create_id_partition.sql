@@ -13,6 +13,8 @@ v_jobmon_schema     text;
 v_old_search_path   text;
 v_parent_grant      record;
 v_parent_owner      text;
+v_parent_schema     text;
+v_parent_tablename  text;
 v_partition_name    text;
 v_revoke            text[];
 v_step_id           bigint;
@@ -27,14 +29,13 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
 END IF;
 
-SELECT tableowner INTO v_parent_owner FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT tableowner, schemaname, tablename INTO v_parent_owner, v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 FOREACH v_id IN ARRAY p_partition_ids LOOP
+    v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_id::text, TRUE);
 
-    v_partition_name := p_parent_table||'_p'||v_id;
-        
-    SELECT schemaname ||'.'|| tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
-
+    -- If child table already exists, skip creation
+    SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_tablename IS NOT NULL THEN
         CONTINUE;
     END IF;
@@ -44,11 +45,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_id||' to '||(v_id + p_interval)-1);
     END IF;
 
-    IF position('.' in p_parent_table) > 0 THEN 
-        v_tablename := substring(v_partition_name from position('.' in v_partition_name)+1);
-    END IF;
-
     EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
+    SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
         CHECK ('||p_control||'>='||quote_literal(v_id)||' AND '||p_control||'<'||quote_literal(v_id + p_interval)||')';
     EXECUTE 'ALTER TABLE '||v_partition_name||' INHERIT '||p_parent_table;

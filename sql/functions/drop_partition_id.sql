@@ -11,6 +11,7 @@ v_adv_lock                  boolean;
 v_child_table               text;
 v_control                   text;
 v_drop_count                int := 0;
+v_id_position               int;
 v_index                     record;
 v_job_id                    bigint;
 v_jobmon_schema             text;
@@ -106,7 +107,8 @@ EXECUTE 'SELECT max('||v_control||') FROM '||p_parent_table INTO v_max;
 FOR v_child_table IN 
     SELECT n.nspname||'.'||c.relname FROM pg_inherits i join pg_class c ON i.inhrelid = c.oid join pg_namespace n ON c.relnamespace = n.oid WHERE i.inhparent::regclass = p_parent_table::regclass ORDER BY i.inhrelid ASC
 LOOP
-    v_partition_id := substring(v_child_table from char_length(p_parent_table||'_p')+1)::bigint;
+    v_id_position := (length(v_child_table) - position('p_' in reverse(v_child_table))) + 2;
+    v_partition_id := substring(v_child_table from v_id_position)::bigint;
 
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention <= (v_max - (v_partition_id + v_part_interval)) THEN

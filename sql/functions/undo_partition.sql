@@ -12,14 +12,17 @@ v_batch_loop_count      bigint := 0;
 v_child_count           bigint;
 v_child_table           text;
 v_copy_sql              text;
+v_function_name         text;
 v_job_id                bigint;
 v_jobmon_schema         text;
 v_old_search_path       text;
+v_parent_schema         text;
+v_parent_tablename      text;
 v_part_interval         interval;
 v_rowcount              bigint;
 v_step_id               bigint;
-v_tablename             text;
 v_total                 bigint := 0;
+v_trig_name             text;
 v_undo_count            int := 0;
 
 BEGIN
@@ -44,9 +47,11 @@ END IF;
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables and stop new id partitions from being made.
-v_tablename := substring(p_parent_table from position('.' in p_parent_table)+1);
-EXECUTE 'DROP TRIGGER IF EXISTS '||v_tablename||'_part_trig ON '||p_parent_table;
-EXECUTE 'DROP FUNCTION IF EXISTS '||p_parent_table||'_part_trig_func()';
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
+v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
+EXECUTE 'DROP TRIGGER IF EXISTS '||v_trig_name||' ON '||p_parent_table;
+EXECUTE 'DROP FUNCTION IF EXISTS '||v_function_name||'()';
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');

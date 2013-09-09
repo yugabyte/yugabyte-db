@@ -5,7 +5,7 @@ pg_partman is an extension to create and manage both time-based and serial-based
 
 INSTALLATION
 ------------
-Recommended: pg_jobmon (>=1.0.0). PG Job Monitor will automatically be used if it is installed.  
+Recommended: pg_jobmon (>=v1.1.2). PG Job Monitor will automatically be used if it is installed.  
 https://github.com/omniti-labs/pg_jobmon
 
 In directory where you downloaded pg_partman to run

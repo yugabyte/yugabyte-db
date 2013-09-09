@@ -5,11 +5,13 @@ About
 -----
 pg_partman is an extension to help make managing time or serial id based table partitioning easier. Currenly the trigger functions only handle inserts to the parent table. Updates that would move a value from one partition to another are not yet supported.
 
-For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc), constraints, privileges & ownership. For managing privileges, whenever a new partition is created it will obtain its privilege & ownership information from what the parent has at that time. Previous partition privileges are not changed. If previous partitions require that their privileges be updated, a separate function is available. This is kept as a separate process due to being an expensive operation when the partition set grows larger. The defaults, indexes & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. And while you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
+For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc), constraints, privileges & ownership. For managing privileges, whenever a new partition is created it will obtain its privilege & ownership information from what the parent has at that time. Previous partition privileges are not changed. If previous partitions require that their privileges be updated, a separate function is available. This is kept as a separate process due to being an expensive operation when the partition set grows larger. The defaults, indexes & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
 
 If you attempt to insert data into a partition set that contains data for a partition that does not exist, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The check_parent() function provides monitoring for any data getting inserted into parents and the partition_data_* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
 
-If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing only data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
+If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. There is also a method available to dump the tables out if they don't need to be in the database anymore but still need to be kept. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing only data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
+
+PostgreSQL has an object naming length limit of 63 characters. If you try and create an object with a longer name, it truncates off any characters at the end to fit that limit. This can cause obvious issues with partition names that rely on having a specifically named suffix. PG Partman automatically handles this for all child tables, trigger functions and triggers. It will truncate off the exiting parent table name to fit the required suffix. Be aware that if you have tables with very long, similar names, you may run into naming conflicts if they are part of separate partition sets. With serial based partitioning, be aware that over time the table name will be truncated more an more to fit a longer partition suffix. So while the extention will try and handle this edge case for you, it is recommended to keep table names that will be partitioned as short as possible.
 
 The PG Jobmon extension (https://github.com/omniti-labs/pg_jobmon) is optional and allows auditing and monitoring of partition maintenance. If jobmon is installed and configured properly, it will automatically be used by partman with no additional setup needed. By default, any function that fails to run successfully 3 consecutive times will cause jobmon to raise an alert. This is why the default pre-make value is set to 4 so that an alert will be raised in time for intervention with no additional configuration of jobmon needed. You can of course configure jobmon to alert before (or later) than 3 failures if needed. If you're running partman in a production environment it is HIGHLY recommended to have jobmon installed and some sort of 3rd-party monitoring configured with it to alert when partitioning fails (Nagios, Circonus, etc).
 
@@ -69,17 +71,6 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
-*check_parent() RETURNS SETOF (parent_table, count)*
- * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
- * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
-
-*reapply_privileges(p_parent_table text)*
- * This function is used to reapply ownership & grants on all child tables based on what the parent table has set. 
- * Privileges that the parent table has will be granted to all child tables and privilges that the parent does not have will be revoked (with CASCADE).
- * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
- * Be aware that for large partition sets, this can be a very long running operation and is why it was made into a separate function to run independently. Only privileges that are different between the parent & child are applied, but it still has to do system catalog lookups and comparisons for every single child partition and all individual privileges on each.
- * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
-
 *undo_partition_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_keep_table boolean DEFAULT true) RETURNS bigint*
  * Undo a time-based partition set created by pg_partman. This function MOVES the data from existing child partitions to the parent table.
  * When this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
@@ -119,7 +110,25 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited. 
  * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
 
-drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
+*check_parent()*
+ * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
+ * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
+
+*reapply_privileges(p_parent_table text)*
+ * This function is used to reapply ownership & grants on all child tables based on what the parent table has set. 
+ * Privileges that the parent table has will be granted to all child tables and privilges that the parent does not have will be revoked (with CASCADE).
+ * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
+ * Be aware that for large partition sets, this can be a very long running operation and is why it was made into a separate function to run independently. Only privileges that are different between the parent & child are applied, but it still has to do system catalog lookups and comparisons for every single child partition and all individual privileges on each.
+ * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
+
+*check_unique_column(p_parent_table text, p_column text)* 
+ * Partitioning using inheritance has the shortcoming of not allowing a unique constraint to apply to all tables in the entire partition set without causing large performance issues once the partition set begins to grow very large. This is the first draft of a function to provide a way to monitor if this occurs.
+ * Note that on very large partition sets this can be an expensive query to run, especially if you have no index on it (which you should if it was supposed to be unique anyway).
+ * p_parent_table - the existing parent table of any partition set.
+ * p_column - the column in the partition set to check for uniqueness across all child tables.
+ * If there is a column value that violates the unique constraint, this function will return that column value along with a count of how many of that value there are. 
+
+*drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
  * This function is used to drop child tables from a time-based partition set. By default, the table is just uninherited and not actually dropped. For automatically dropping old tables, it is recommended to use the **run_maintenance()** function with retention configured instead of calling this directly.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_retention - optional parameter to give a retention time interval and immediately drop tables containing only data older than the given interval. If you have a retention value set in the config table already, the function will use that, otherwise this will override it. If not, this parameter is required. See the **About** section above for more information on retention settings.
@@ -136,7 +145,6 @@ drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_ke
  * p_keep_index - optional parameter to tell partman whether to keep or drop the indexes of the child table when it is uninherited. TRUE means the indexes will be kept; FALSE means all indexes will be dropped. This function will just use the value configured in **part_config** if not explicitly set. This option is ignored if p_keep_table is set to FALSE or if retention_schema is set.
  * p_retention_schema - optional parameter to tell partman to move a table to another schema instead of dropping it. Set this to the schema you want the table moved to. This function will just use the value configured in **part_config** if not explicitly set. If this option is set, the retention_keep_* parameters are ignored.
  * Returns the number of partitions affected.
-
 
 Tables
 ------
@@ -219,3 +227,19 @@ Extras
  * --nodrop:               Do NOT drop the tables from the given schema after dumping/hashing.
  * --verbose (-v):         Provide more verbose output.
 
+*reapply_indexes.py*
+ * A python script for reapplying indexes on child tables in a partition set after they are changed on the parent table. 
+ * All indexes on all child tables (not including primary key unless specified) will be dropped and recreated for the given set.
+ * Commits are done after each index is dropped/created to help prevent long running transactions & locks.
+ * WARNING: The default, postgres generated index name is used for all children when recreating indexes. 
+   * This may cause index naming conflicts if you have multiple, expression indexes that use the same column(s). 
+   * Also, if your child table names are close to the object length limit (63 chars), you may run into naming conflicts when the index name truncates the original table name to add _idx or _pkey.
+   * Please **DO NOT** use this tool to reindex your partition set if either of these cases apply! Use the --dryrun option first to check.
+ * --parent (-p):          Parent table of an already created partition set. Required.
+ * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file to keep credentials secure.
+ * --concurrent:           Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.
+ * --primary:              By default the primary key is not recreated. Set this option if that is needed. Note this will cause an exclusive lock on the child table.
+ * --jobs (-j):            Use the python multiprocessing library to recreate indexes in parallel. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.
+ * --wait (-w):            Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
+ * --dryrun:               Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
+ * --quiet:                Turn off all output.

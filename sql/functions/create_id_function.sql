@@ -7,16 +7,20 @@ CREATE FUNCTION create_id_function(p_parent_table text, p_current_id bigint) RET
 DECLARE
 
 v_control                       text;
+v_count                         int;
 v_current_partition_name        text;
 v_current_partition_id          bigint;
 v_datetime_string               text;
 v_final_partition_id            bigint;
+v_function_name                 text;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_last_partition                text;
 v_next_partition_id             bigint;
 v_next_partition_name           text;
 v_old_search_path               text;
+v_parent_schema                 text;
+v_parent_tablename              text;
 v_part_interval                 bigint;
 v_premake                       int;
 v_prev_partition_id             bigint;
@@ -56,15 +60,19 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
+
 IF v_type = 'id-static' THEN
     v_current_partition_id := p_current_id - (p_current_id % v_part_interval);
     v_next_partition_id := v_current_partition_id + v_part_interval;
-    v_current_partition_name := p_parent_table || '_p' || v_current_partition_id::text;
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_current_partition_id::text, TRUE);
 
-    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||v_function_name||'() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
             v_current_partition_id  bigint;
             v_last_partition        text := '||quote_literal(v_last_partition)||';
+            v_id_position           int;
             v_next_partition_id     bigint;
             v_next_partition_name   text;         
         BEGIN
@@ -76,17 +84,27 @@ IF v_type = 'id-static' THEN
             v_prev_partition_id := v_current_partition_id - (v_part_interval * i);
             v_next_partition_id := v_current_partition_id + (v_part_interval * i);
             v_final_partition_id := v_next_partition_id + v_part_interval;
-            v_prev_partition_name := p_parent_table || '_p' || v_prev_partition_id::text;
-            v_next_partition_name := p_parent_table || '_p' || v_next_partition_id::text;
-            -- Only make previous partitions if they're starting above zero
-            IF v_prev_partition_id >= 0 THEN
-                v_trig_func := v_trig_func ||'
+            v_prev_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_prev_partition_id::text, TRUE);
+            v_next_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_next_partition_id::text, TRUE);
+            
+            -- Check that child table exist before making a rule to insert to them.
+            -- Handles edge case of changing premake immediately after running create_parent(). 
+            SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_prev_partition_name;
+            IF v_count > 0 THEN
+                -- Only handle previous partitions if they're starting above zero
+                IF v_prev_partition_id >= 0 THEN
+                    v_trig_func := v_trig_func ||'
             ELSIF NEW.'||v_control||' >= '||v_prev_partition_id||' AND NEW.'||v_control||' < '||v_prev_partition_id + v_part_interval|| ' THEN 
                 INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); ';
+                END IF;
             END IF;
-            v_trig_func := v_trig_func ||'
+            
+            SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_next_partition_name;
+            IF v_count > 0 THEN
+                v_trig_func := v_trig_func ||'
             ELSIF NEW.'||v_control||' >= '||v_next_partition_id||' AND NEW.'||v_control||' < '||v_final_partition_id|| ' THEN 
                 INSERT INTO '||v_next_partition_name||' VALUES (NEW.*); ';
+            END IF;
         END LOOP;
 
         v_trig_func := v_trig_func ||'
@@ -95,7 +113,8 @@ IF v_type = 'id-static' THEN
             END IF;
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
-                v_next_partition_id := (substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint) + '||v_part_interval||';
+                v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
+                v_next_partition_id := (substring(v_last_partition from v_id_position)::bigint) + '||v_part_interval||';
                 WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
                         ||v_part_interval||', ARRAY[v_next_partition_id]);
@@ -116,11 +135,12 @@ IF v_type = 'id-static' THEN
 
 ELSIF v_type = 'id-dynamic' THEN
     -- The return inside the partition creation check is there to keep really high ID values from creating new partitions.
-    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||v_function_name||'() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
             v_count                     int;
             v_current_partition_id      bigint;
             v_current_partition_name    text;
+            v_id_position               int;
             v_last_partition            text := '||quote_literal(v_last_partition)||';
             v_last_partition_id         bigint;
             v_next_partition_id         bigint;
@@ -128,9 +148,10 @@ ELSIF v_type = 'id-dynamic' THEN
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
-            v_current_partition_name := '''||p_parent_table||'_p''||v_current_partition_id;
+            v_current_partition_name := @extschema@.check_name_length('''||v_parent_tablename||''', '''||v_parent_schema||''', v_current_partition_id::text, TRUE);
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
-                v_last_partition_id = substring(v_last_partition from char_length('||quote_literal(p_parent_table||'_p')||')+1)::bigint;
+                v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
+                v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
                 v_next_partition_id := v_last_partition_id + '||v_part_interval||';
                 IF NEW.'||v_control||' >= v_next_partition_id THEN
                     RETURN NEW;
@@ -188,3 +209,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+

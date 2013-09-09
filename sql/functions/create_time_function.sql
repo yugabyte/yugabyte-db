@@ -7,15 +7,20 @@ CREATE FUNCTION create_time_function(p_parent_table text) RETURNS void
 DECLARE
 
 v_control                       text;
+v_count                         int;
 v_current_partition_name        text;
 v_current_partition_timestamp   timestamptz;
 v_datetime_string               text;
 v_final_partition_timestamp     timestamptz;
+v_function_name                 text;
 v_job_id                        bigint;
 v_jobmon_schema                 text;
 v_old_search_path               text;
+v_new_length                    int;
 v_next_partition_name           text;
 v_next_partition_timestamp      timestamptz;
+v_parent_schema                 text;
+v_parent_tablename              text;
 v_part_interval                 interval;
 v_premake                       int;
 v_prev_partition_name           text;
@@ -55,8 +60,11 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
-IF v_type = 'time-static' THEN
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
+v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
+
+IF v_type = 'time-static' THEN
     CASE
         WHEN v_part_interval = '15 mins' THEN
             v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
@@ -77,11 +85,11 @@ IF v_type = 'time-static' THEN
         WHEN v_part_interval = '1 year' THEN
             v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
     END CASE;
-    
-    v_current_partition_name := p_parent_table || '_p' || to_char(v_current_partition_timestamp, v_datetime_string);
+
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, to_char(v_current_partition_timestamp, v_datetime_string), TRUE); 
     v_next_partition_timestamp := v_current_partition_timestamp + v_part_interval::interval;
 
-    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||v_function_name||'() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_next_partition_timestamp)|| ' THEN 
@@ -90,16 +98,26 @@ IF v_type = 'time-static' THEN
         v_prev_partition_timestamp := v_current_partition_timestamp - (v_part_interval::interval * i);
         v_next_partition_timestamp := v_current_partition_timestamp + (v_part_interval::interval * i);
         v_final_partition_timestamp := v_next_partition_timestamp + (v_part_interval::interval);
-        v_prev_partition_name := p_parent_table || '_p' || to_char(v_prev_partition_timestamp, v_datetime_string);
-        v_next_partition_name := p_parent_table || '_p' || to_char(v_next_partition_timestamp, v_datetime_string);
+        v_prev_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, to_char(v_prev_partition_timestamp, v_datetime_string), TRUE);
+        v_next_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, to_char(v_next_partition_timestamp, v_datetime_string), TRUE);
 
-        v_trig_func := v_trig_func ||'
-            ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||
-                    quote_literal(v_prev_partition_timestamp + v_part_interval::interval)|| ' THEN 
-                INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*); 
-            ELSIF NEW.'||v_control||' >= '||quote_literal(v_next_partition_timestamp)||' AND NEW.'||v_control||' < '||
+        -- Check that child table exist before making a rule to insert to them.
+        -- Handles edge case of changing premake immediately after running create_parent(). 
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_prev_partition_name;
+        IF v_count > 0 THEN
+            v_trig_func := v_trig_func ||'
+                ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||
+                        quote_literal(v_prev_partition_timestamp + v_part_interval::interval)|| ' THEN 
+                    INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*);';
+        END IF;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_next_partition_name;
+        IF v_count > 0 THEN
+            v_trig_func := v_trig_func ||' 
+                ELSIF NEW.'||v_control||' >= '||quote_literal(v_next_partition_timestamp)||' AND NEW.'||v_control||' < '||
                     quote_literal(v_final_partition_timestamp)|| ' THEN 
-                INSERT INTO '||v_next_partition_name||' VALUES (NEW.*); ';
+                INSERT INTO '||v_next_partition_name||' VALUES (NEW.*);';
+        END IF;
+
     END LOOP;
     v_trig_func := v_trig_func ||' 
             ELSE 
@@ -118,13 +136,11 @@ IF v_type = 'time-static' THEN
 
 ELSIF v_type = 'time-dynamic' THEN
 
-    v_trig_func := 'CREATE OR REPLACE FUNCTION '||p_parent_table||'_part_trig_func() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||v_function_name||'() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         DECLARE
             v_count                 int;
             v_partition_name        text;
             v_partition_timestamp   timestamptz;
-            v_schemaname            text;
-            v_tablename             text;
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
             ';
@@ -148,12 +164,9 @@ ELSIF v_type = 'time-dynamic' THEN
             WHEN v_part_interval = '1 year' THEN
                 v_trig_func := v_trig_func||'v_partition_timestamp := date_trunc(''year'', NEW.'||v_control||');';
         END CASE;
-
         v_trig_func := v_trig_func||'
-            v_partition_name := '''||p_parent_table||'_p''|| to_char(v_partition_timestamp, '||quote_literal(v_datetime_string)||');
-            v_schemaname := split_part(v_partition_name, ''.'', 1); 
-            v_tablename := split_part(v_partition_name, ''.'', 2);
-            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname = v_schemaname AND tablename = v_tablename;
+            v_partition_name := @extschema@.check_name_length('''||v_parent_tablename||''', '''||v_parent_schema||''', to_char(v_partition_timestamp, '||quote_literal(v_datetime_string)||'), TRUE);
+            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname ||''.''|| tablename = v_partition_name;
             IF v_count > 0 THEN 
                 EXECUTE ''INSERT INTO ''||v_partition_name||'' VALUES($1.*)'' USING NEW;
             ELSE

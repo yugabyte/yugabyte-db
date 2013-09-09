@@ -1,3 +1,12 @@
+1.4.0
+-- Updated creation of child partition, function & trigger names to take into account the max object length an object can have to guarentee the partition suffix. Involved extensive rewrite of many core functions.
+-- WARNING: If your table names were already long enough to be causing name truncation (over 63 characters), you may get duplicate child tables, functions & triggers created. Please check your object name lengths on your partition sets before installing this update to see if you may be affected by this edge case and its subsequent fix. 
+-- New python script (reapply-indexes.py) to re-apply indexes to child tables when they have changed on the parent. See docs for more info.
+-- New function to check the uniqueness of a column in a partition set (check_unique_column()). Helps to overcome the inability of a unique constraint to be applied efficiently across all partitions in a set. Does not prevent a unique violation, but provides a method to monitor for it happening.
+-- More pgTAP tests to ensure name trunucation process is working. 
+-- Changed pgTAP tests to assume pgTAP is installed in public schema to try and avoid issues when it isn't.
+
+
 1.3.0
 -- New configuration option for retention system that allows child tables that are eligible for removal to instead be moved to another schema. Set the "retention_schema" option in the configuration table to move the table to the designated schema instead of dropping it. This overrides the retention_keep_table & retention_keep_index options.
 -- New python script, dump_partition.py, that will dump any tables found in a given schema using pg_dump, create a SHA-512 hash of the dumped file and then drop the table from the database.
