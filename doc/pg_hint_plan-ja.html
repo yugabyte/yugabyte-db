@@ -439,8 +439,16 @@ postgres=# </pre>
 <dt>PL/pgSQL中の個別のクエリに対するヒント</dt>
 <dd>ヒントは、PL/pgSQLブロック中の各クエリにも指定できます。ただし、以下のような制約があります。
 <ul>
-<li>指定したヒントが適用されるSQLは、SELECT/INSERT/UPDATE/DELETEのみです。PERFORMを含む他のSQLにヒントを指定しても適用されません。</li>
-<li>ヒントをコメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。</li>
+<li>指定したヒントが適用されるSQLは以下の通りです。他のSQLにヒントを指定しても適用されません。
+<ul>
+<li>1行の結果を返す問い合わせ文(SELECT/INSERT/UPDATE/DELETE)</li>
+<li>複数行の結果を返す問い合わせ文(RETURN QUERY)</li>
+<li>動的文(EXECUTE)</li>
+<li>カーソルを開く文(OPEN)</li>
+<li>問い合わせの結果を用いる繰り返し文(FOR)</li>
+</ul>
+</li>
+<li>ヒントをコメントで指定する場合は、SELECTなどのSQLキーワードより後に指定してください。ただし、動的文にヒントをコメントで指定しても、そのヒントは適用されません。</li>
 </ul>
 <p>以下の例では、一つ目のクエリにNoIndexScanを、二つ目のクエリにSeqScanをそれぞれ指定しています。</p>
 <pre>
