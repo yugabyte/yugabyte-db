@@ -3587,16 +3587,45 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	PLpgSQL_expr *expr;
+	PLpgSQL_expr *expr = NULL;
+
 	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
 	{
+		case PLPGSQL_STMT_FORS:
+			expr = ((PLpgSQL_stmt_fors *) stmt)->query;
+			break;
+		case PLPGSQL_STMT_FORC:
+			expr = ((PLpgSQL_stmt_forc *) stmt)->argquery;
+			break;
+		case PLPGSQL_STMT_RETURN_QUERY:
+			if (((PLpgSQL_stmt_return_query *) stmt)->query != NULL)
+				expr = ((PLpgSQL_stmt_return_query *) stmt)->query;
+			else
+				expr = ((PLpgSQL_stmt_return_query *) stmt)->dynquery;
+			break;
 		case PLPGSQL_STMT_EXECSQL:
 			expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
-			plpgsql_query_string = expr->query;
+			break;
+		case PLPGSQL_STMT_DYNEXECUTE:
+			expr = ((PLpgSQL_stmt_dynexecute *) stmt)->query;
+			break;
+		case PLPGSQL_STMT_DYNFORS:
+			expr = ((PLpgSQL_stmt_dynfors *) stmt)->query;
+			break;
+		case PLPGSQL_STMT_OPEN:
+			if (((PLpgSQL_stmt_open *) stmt)->query != NULL)
+				expr = ((PLpgSQL_stmt_open *) stmt)->query;
+			else if (((PLpgSQL_stmt_open *) stmt)->dynquery != NULL)
+				expr = ((PLpgSQL_stmt_open *) stmt)->dynquery;
+			else
+				expr = ((PLpgSQL_var *) (estate->datums[((PLpgSQL_stmt_open *)stmt)->curvar]))->cursor_explicit_expr;
 			break;
 		default:
 			break;
 	}
+
+	if (expr)
+		plpgsql_query_string = expr->query;
 }
 
 /*
