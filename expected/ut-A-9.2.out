@@ -4166,11 +4166,10 @@ BEGIN
         RETURN 0;
     END IF;
 
-    EXECUTE '/*+ IndexScan(t_1) */'
-            ' SELECT nested_planner($1) FROM s1.t1 t_1'
-            ' JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)'
-            ' ORDER BY t_1.c1 LIMIT 1'
-        INTO new_cnt USING cnt - 1;
+	SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1) INTO new_cnt
+	  FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1;
 
     RETURN new_cnt;
 END;
@@ -4233,8 +4232,21 @@ error hint:
 EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
               QUERY PLAN               
 ---------------------------------------
  Index Only Scan using t1_i1 on t1 t_1
@@ -4244,17 +4256,21 @@ PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
 EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4271,29 +4287,117 @@ error hint:
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 NOTICE:  nested_planner(5)
 NOTICE:  nested_planner(4)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(3)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(2)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
               QUERY PLAN               
 ---------------------------------------
  Index Only Scan using t1_i1 on t1 t_1
@@ -4302,78 +4406,129 @@ PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
 /*+SeqScan(t_2)*/
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 NOTICE:  nested_planner(5)
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(4)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(3)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(2)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-SeqScan(t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4397,17 +4552,21 @@ EXPLAIN (COSTS false)
   ORDER BY t_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-HashJoin(t_1 t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t_1 t_2)
@@ -4434,17 +4593,21 @@ EXPLAIN (COSTS false)
   ORDER BY st_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
+IndexScan(t_1)
 not used hint:
-HashJoin(st_1 st_2)
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(st_1 st_2)
@@ -4471,17 +4634,21 @@ EXPLAIN (COSTS false)
   ORDER BY st_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-HashJoin(t_1 t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4507,17 +4674,21 @@ EXPLAIN (COSTS false)
   ORDER BY t_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
+IndexScan(t_1)
 not used hint:
-HashJoin(st_1 st_2)
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4542,21 +4713,21 @@ EXPLAIN (COSTS false)
   ORDER BY t_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
-DETAIL:  Relation name "t_1" is duplicated.
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
-HashJoin(t_1 t_1)
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -4580,10 +4751,9 @@ BEGIN
         RETURN 0;
     END IF;
 
-    EXECUTE '/*+ IndexScan(t_1) */'
-            ' SELECT nested_planner_one_t($1) FROM s1.t1 t_1'
-            ' ORDER BY t_1.c1 LIMIT 1'
-        INTO new_cnt USING cnt - 1;
+	SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1) INTO new_cnt
+	  FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1;
 
     RETURN new_cnt;
 END;
@@ -4594,8 +4764,30 @@ EXPLAIN (COSTS false)
   ORDER BY t_1.c1;
 NOTICE:  nested_planner_one_t(2)
 NOTICE:  nested_planner_one_t(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner_one_t($1) FROM s1.t1 t_1 ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner_one_t(integer) line 11 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1)                 FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner_one_t(integer) line 11 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+IndexScan(t_1)
+duplication hint:
+error hint:
+
+CONTEXT:  PL/pgSQL function nested_planner_one_t(integer) line 8 at RETURN
+SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1)                 FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner_one_t(integer) line 11 at SQL statement
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1)                 FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner_one_t(integer) line 11 at SQL statement
                  QUERY PLAN                  
 ---------------------------------------------
  Merge Join
@@ -4613,17 +4805,19 @@ EXPLAIN (COSTS false)
   ORDER BY t_1.c1;
 NOTICE:  nested_planner_one_t(2)
 NOTICE:  nested_planner_one_t(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner_one_t($1) FROM s1.t1 t_1 ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner_one_t(integer) line 11 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1)                 FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner_one_t(integer) line 11 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
+IndexScan(t_1)
 not used hint:
-HashJoin(t_1 t_1)
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner_one_t($1) FROM s1.t1 t_1 ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner_one_t(integer) line 11 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1)                 FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner_one_t(integer) line 11 at SQL statement
 INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
 DETAIL:  Relation name "t_1" is duplicated.
 LOG:  pg_hint_plan:
@@ -4652,21 +4846,21 @@ EXPLAIN (COSTS false)
   ORDER BY t_1.c1;
 NOTICE:  nested_planner(2)
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
-INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
-DETAIL:  Relation name "t_1" is duplicated.
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
+IndexScan(t_1)
 not used hint:
 duplication hint:
 error hint:
-HashJoin(t_1 t_1)
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
 DETAIL:  Relation name "t_1" is duplicated.
 LOG:  pg_hint_plan:
@@ -4695,23 +4889,22 @@ EXPLAIN (COSTS false)
 INFO:  hint syntax error at or near "MergeJoin(t_1 t_2)HashJoin(t_1 t_2)"
 DETAIL:  Conflict join method hint.
 NOTICE:  nested_planner(2)
-INFO:  hint syntax error at or near "MergeJoin(t_1 t_2)HashJoin(t_1 t_2)"
-DETAIL:  Conflict join method hint.
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
 NOTICE:  nested_planner(1)
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
-HashJoin(t_1 t_2)
+IndexScan(t_1)
 not used hint:
 duplication hint:
-MergeJoin(t_1 t_2)
 error hint:
 
-CONTEXT:  SQL statement "/*+ IndexScan(t_1) */ SELECT nested_planner($1) FROM s1.t1 t_1 JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1) ORDER BY t_1.c1 LIMIT 1"
-PL/pgSQL function nested_planner(integer) line 12 at EXECUTE statement
+CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1"
+PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(t_1 t_2)

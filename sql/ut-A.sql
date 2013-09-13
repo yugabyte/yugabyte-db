@@ -1074,11 +1074,10 @@ BEGIN
         RETURN 0;
     END IF;
 
-    EXECUTE '/*+ IndexScan(t_1) */'
-            ' SELECT nested_planner($1) FROM s1.t1 t_1'
-            ' JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)'
-            ' ORDER BY t_1.c1 LIMIT 1'
-        INTO new_cnt USING cnt - 1;
+	SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1) INTO new_cnt
+	  FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1;
 
     RETURN new_cnt;
 END;
@@ -1161,10 +1160,9 @@ BEGIN
         RETURN 0;
     END IF;
 
-    EXECUTE '/*+ IndexScan(t_1) */'
-            ' SELECT nested_planner_one_t($1) FROM s1.t1 t_1'
-            ' ORDER BY t_1.c1 LIMIT 1'
-        INTO new_cnt USING cnt - 1;
+	SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1) INTO new_cnt
+	  FROM s1.t1 t_1
+	 ORDER BY t_1.c1 LIMIT 1;
 
     RETURN new_cnt;
 END;
