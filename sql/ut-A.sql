@@ -1114,82 +1114,76 @@ EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 ----
 ---- No. A-13-4 output of debugging log on hint status
 ----
+CREATE OR REPLACE FUNCTION recall_planner() RETURNS int AS $$
+	SELECT /*+ IndexScan(t_1) */t_1.c1
+	  FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1;
+$$ LANGUAGE SQL IMMUTABLE;
 
 --No.13-4-1
 /*+HashJoin(t_1 t_2)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 t_1
+ SELECT recall_planner() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
 
 --No.13-4-2
 /*+HashJoin(st_1 st_2)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 st_1
+ SELECT recall_planner() FROM s1.t1 st_1
    JOIN s1.t2 st_2 ON (st_1.c1 = st_2.c1)
   ORDER BY st_1.c1;
 
 --No.13-4-3
 /*+HashJoin(t_1 t_2)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 st_1
+ SELECT recall_planner() FROM s1.t1 st_1
    JOIN s1.t2 st_2 ON (st_1.c1 = st_2.c1)
   ORDER BY st_1.c1;
 
 --No.13-4-4
 /*+HashJoin(st_1 st_2)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 t_1
+ SELECT recall_planner() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
 
 --No.13-4-5
 /*+HashJoin(t_1 t_1)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 t_1
+ SELECT recall_planner() FROM s1.t1 t_1
   ORDER BY t_1.c1;
 
 --No.13-4-6
-CREATE OR REPLACE FUNCTION nested_planner_one_t(cnt int) RETURNS int AS $$
-DECLARE
-    new_cnt int;
-BEGIN
-    RAISE NOTICE 'nested_planner_one_t(%)', cnt;
-
-    IF cnt <= 1 THEN
-        RETURN 0;
-    END IF;
-
-	SELECT /*+ IndexScan(t_1) */ nested_planner_one_t(cnt - 1) INTO new_cnt
+CREATE OR REPLACE FUNCTION recall_planner_one_t() RETURNS int AS $$
+	SELECT /*+ IndexScan(t_1) */t_1.c1
 	  FROM s1.t1 t_1
 	 ORDER BY t_1.c1 LIMIT 1;
-
-    RETURN new_cnt;
-END;
-$$ LANGUAGE plpgsql IMMUTABLE;
+$$ LANGUAGE SQL IMMUTABLE;
 
 EXPLAIN (COSTS false)
- SELECT nested_planner_one_t(2) FROM s1.t1 t_1
+ SELECT recall_planner_one_t() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
 /*+HashJoin(t_1 t_1)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner_one_t(2) FROM s1.t1 t_1
+ SELECT recall_planner_one_t() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
 
-DROP FUNCTION nested_planner_one_t(int);
+DROP FUNCTION recall_planner_one_t(int);
 
 --No.13-4-7
 /*+HashJoin(t_1 t_1)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 t_1
+ SELECT recall_planner() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
 
 --No.13-4-8
 /*+MergeJoin(t_1 t_2)HashJoin(t_1 t_2)*/
 EXPLAIN (COSTS false)
- SELECT nested_planner(2) FROM s1.t1 t_1
+ SELECT recall_planner() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
