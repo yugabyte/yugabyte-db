@@ -3595,7 +3595,7 @@ pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 			expr = ((PLpgSQL_stmt_fors *) stmt)->query;
 			break;
 		case PLPGSQL_STMT_FORC:
-			expr = ((PLpgSQL_stmt_forc *) stmt)->argquery;
+				expr = ((PLpgSQL_var *) (estate->datums[((PLpgSQL_stmt_forc *)stmt)->curvar]))->cursor_explicit_expr;
 			break;
 		case PLPGSQL_STMT_RETURN_QUERY:
 			if (((PLpgSQL_stmt_return_query *) stmt)->query != NULL)
