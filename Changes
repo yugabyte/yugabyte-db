@@ -9,6 +9,11 @@ Revision history for pgTAP
   some situations. Patch from Eric Neault.
 * Fixed `function_privs_are() to work with functions with long names and/or
   signatures. Thanks to Jörg Beyer for the detailed report.
+* Added missing functions mentioned in the docs (Issue #54):
+    + `has_table(:schema, :table)`
+    + `hasnt_table(:schema, :table)`
+    + `has_foreign_table(:schema, :table)`
+    + `hasnt_foreign_table(:schema, :table)`
 
 0.93.0 2013-01-28T20:14:58Z
 ---------------------------

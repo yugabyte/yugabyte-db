@@ -31,3 +31,40 @@ BEGIN
     RETURN _assets_are('privileges', grants, $3, $4);
 END;
 $$ LANGUAGE plpgsql;
+
+-- has_table( schema, table )
+CREATE OR REPLACE FUNCTION has_table ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _rexists( 'r', $1, $2 ),
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_table( schema, table )
+CREATE OR REPLACE FUNCTION hasnt_table ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _rexists( 'r', $1, $2 ),
+        'Table ' || quote_ident($1) || '.' || quote_ident($2) || ' should not exist'
+    );
+$$ LANGUAGE SQL;
+
+-- has_foreign_table( schema, table )
+CREATE OR REPLACE FUNCTION has_foreign_table ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _rexists( 'f', $1, $2 ),
+        'Foreign table ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
+    );
+$$ LANGUAGE SQL;
+
+-- hasnt_foreign_table( schema, table )
+CREATE OR REPLACE FUNCTION hasnt_foreign_table ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        NOT _rexists( 'f', $1, $2 ),
+        'Foreign table ' || quote_ident($1) || '.' || quote_ident($2) || ' not should exist'
+    );
+$$ LANGUAGE SQL;
+

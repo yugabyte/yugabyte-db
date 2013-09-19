@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(786);
+SELECT plan(798);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -175,9 +175,17 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    has_table( '__SDFSDFD__', 'lol' ),
+    has_table( '__SDFSDFD__', 'lol'::name ),
     false,
     'has_table(non-existent schema, tab)',
+    'Table "__SDFSDFD__".lol should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_table( '__SDFSDFD__', 'lol' ),
+    false,
+    'has_table(non-existent table, desc)',
     'lol',
     ''
 );
@@ -234,9 +242,17 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
-    hasnt_table( '__SDFSDFD__', 'lol' ),
+    hasnt_table( '__SDFSDFD__', 'lol'::name ),
     true,
     'hasnt_table(non-existent schema, tab)',
+    'Table "__SDFSDFD__".lol should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_table( '__SDFSDFD__', 'lol' ),
+    true,
+    'hasnt_table(non-existent table, desc)',
     'lol',
     ''
 );
@@ -2018,9 +2034,19 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            has_foreign_table( '__SDFSDFD__', 'lol' ),
+            has_foreign_table( '__SDFSDFD__', 'lol'::name ),
             false,
             'has_foreign_table(non-existent schema, tab)',
+            'Foreign table "__SDFSDFD__".lol should exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_foreign_table( '__SDFSDFD__', 'lol' ),
+            false,
+            'has_foreign_table(non-existent table, desc)',
             'lol',
             ''
         ) AS b LOOP
@@ -2089,9 +2115,19 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            hasnt_foreign_table( '__SDFSDFD__', 'lol' ),
+            hasnt_foreign_table( '__SDFSDFD__', 'lol'::name ),
             true,
             'hasnt_foreign_table(non-existent schema, tab)',
+            'Foreign table "__SDFSDFD__".lol should not exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_foreign_table( '__SDFSDFD__', 'lol' ),
+            true,
+            'hasnt_foreign_table(non-existent table, desc)',
             'lol',
             ''
         ) AS b LOOP
@@ -2140,9 +2176,19 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            has_table( '__SDFSDFD__', 'lol' ),
+            has_table( '__SDFSDFD__', 'lol'::name ),
             false,
             'has_foreign_table(non-existent schema, tab)',
+            'Table "__SDFSDFD__".lol should exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_table( '__SDFSDFD__', 'lol' ),
+            false,
+            'has_foreign_table(non-existent table, desc)',
             'lol',
             ''
         ) AS b LOOP
@@ -2211,9 +2257,19 @@ BEGIN
         END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
-            hasnt_table( '__SDFSDFD__', 'lol' ),
+            hasnt_table( '__SDFSDFD__', 'lol'::name ),
             true,
             'hasnt_foreign_table(non-existent schema, tab)',
+            'Table "__SDFSDFD__".lol should not exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_table( '__SDFSDFD__', 'lol' ),
+            true,
+            'hasnt_foreign_table(non-existent table, desc)',
             'lol',
             ''
         ) AS b LOOP

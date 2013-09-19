@@ -2531,6 +2531,7 @@ specified relation does *not* exist.
 ### `has_table()` ###
 
     SELECT has_table( :schema, :table, :description );
+    SELECT has_table( :schema, :table );
     SELECT has_table( :table, :description );
     SELECT has_table( :table );
 
@@ -2550,7 +2551,7 @@ argument is a schema name, the second is a table name, and the third is the
 test description. If you omit the schema, the table must be visible in the
 search path. Example:
 
-    SELECT has_table('myschema', 'sometable');
+    SELECT has_table('myschema'::name, 'sometable'::name);
 
 If you omit the test description, it will be set to "Table `:table` should
 exist".
@@ -2561,6 +2562,7 @@ Note that this function will not recognize foreign tables; use
 ### `hasnt_table()` ###
 
     SELECT hasnt_table( :schema, :table, :description );
+    SELECT hasnt_table( :schema, :table );
     SELECT hasnt_table( :table, :description );
     SELECT hasnt_table( :table );
 
@@ -2675,6 +2677,7 @@ specified sequence does *not* exist.
 ### `has_foreign_table()` ###
 
     SELECT has_foreign_table( :schema, :table, :description );
+    SELECT has_foreign_table( :schema, :table );
     SELECT has_foreign_table( :table, :description );
     SELECT has_foreign_table( :table );
 
@@ -2694,7 +2697,7 @@ first argument is a schema name, the second is a foreign table name, and the
 third is the test description. If you omit the schema, the foreign table must
 be visible in the search path. Example:
 
-    SELECT has_foreign_table('myschema', 'some_foreign_table');
+    SELECT has_foreign_table('myschema'::name, 'some_foreign_table'::name);
 
 If you omit the test description, it will be set to "Foreign table `:table`
 should exist".
@@ -2702,6 +2705,7 @@ should exist".
 ### `hasnt_foreign_table()` ###
 
     SELECT hasnt_foreign_table( :schema, :table, :description );
+    SELECT hasnt_foreign_table( :schema, :table );
     SELECT hasnt_foreign_table( :table, :description );
     SELECT hasnt_foreign_table( :table );
 
