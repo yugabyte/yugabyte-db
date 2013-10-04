@@ -12,13 +12,13 @@ SELECT * FROM check_test( is(1.1, 1.10), true, 'is(1.1, 1.10)', '', '' );
 SELECT * FROM check_test( is(true, true), true, 'is(true, true)', '', '' );
 SELECT * FROM check_test( is(false, false), true, 'is(false, false)', '', '' );
 SELECT * FROM check_test( is(1, 1, 'foo'), true, 'is(1, 1, desc)', 'foo', '' );
-SELECT * FROM check_test( is( 1, 2 ), false, 'is(1, 2)', '', '       have: 1
+SELECT * FROM check_test( is( 1, 2 ), false, 'is(1, 2)', '', '        have: 1
         want: 2');
 
 /****************************************************************************/
 -- Test isnt().
 SELECT * FROM check_test( isnt(1, 2), true, 'isnt(1, 2)', '', '' );
-SELECT * FROM check_test( isnt( 1, 1 ), false, 'isnt(1, 1)', '', '       have: 1
+SELECT * FROM check_test( isnt( 1, 1 ), false, 'isnt(1, 1)', '', '        have: 1
         want: anything else' );
 
 /****************************************************************************/
@@ -43,7 +43,7 @@ SELECT * FROM check_test(
     false,
     'is(NULL, foo)',
     '',
-    '       have: NULL
+    '        have: NULL
         want: foo'
 );
 
@@ -52,7 +52,7 @@ SELECT * FROM check_test(
     false,
     'is(foo, NULL)',
     '',
-    '       have: foo
+    '        have: foo
         want: NULL'
 );
 
@@ -87,7 +87,7 @@ BEGIN
             false,
             'is(mumble, row) fail',
             '',
-            '       have: (1,hey)
+            '        have: (1,hey)
         want: (1,HEY)'
         ) AS b FROM mumble LOOP
             RETURN NEXT tap.b;
@@ -98,7 +98,7 @@ BEGIN
             false,
             'is(mumble, row) fail with NULL',
             '',
-            '       have: (1,hey)
+            '        have: (1,hey)
         want: (1,)'
         ) AS b FROM mumble LOOP
             RETURN NEXT tap.b;
@@ -109,7 +109,7 @@ BEGIN
             false,
             'is(mumble, NULL)',
             '',
-            '       have: (1,hey)
+            '        have: (1,hey)
         want: NULL'
         ) AS b FROM mumble LOOP
             RETURN NEXT tap.b;
@@ -123,7 +123,7 @@ BEGIN
             false,
             'is(mumble, row) fail',
             '',
-            '       have: (1,hey)
+            '        have: (1,hey)
         want: (1,HEY)'
         ) AS b FROM mumble LOOP
             RETURN NEXT tap.b;
@@ -134,7 +134,7 @@ BEGIN
             false,
             'is(mumble, row) fail with NULL',
             '',
-            '       have: (1,hey)
+            '        have: (1,hey)
         want: (1,)'
         ) AS b FROM mumble LOOP
             RETURN NEXT tap.b;

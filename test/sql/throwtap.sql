@@ -122,7 +122,7 @@ SELECT * FROM check_test(
     false,
     'lives_ok failure diagnostics',
     '',
-    '       died: P0001: todo_end() called without todo_start()'
+    '        died: P0001: todo_end() called without todo_start()'
 );
 
 /****************************************************************************/

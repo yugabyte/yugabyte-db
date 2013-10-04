@@ -292,7 +292,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(select, prepared) fail missing',
     '',
-    '   Missing records:
+    '    Missing records:
         (44,Anna)'
 );
 
@@ -304,7 +304,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(select, prepared) fail missings',
     '',
-    E'   Missing records:
+    E'    Missing records:
         [(](44,Anna|86,Angelina)[)]
         [(](44,Anna|86,Angelina)[)]',
     true
@@ -316,7 +316,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(values, values) fail mismatch',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -327,7 +327,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(values, values) fail column count',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -381,7 +381,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(select, prepared) fail missing',
     '',
-    '   Missing records:
+    '    Missing records:
         (44,Anna)'
 );
 
@@ -393,7 +393,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(select, prepared) fail missings',
     '',
-    E'   Missing records:
+    E'    Missing records:
         [(](44,Anna|86,Angelina)[)]
         [(](44,Anna|86,Angelina)[)]',
     true
@@ -405,7 +405,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(values, values) fail mismatch',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -416,7 +416,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(values, values) fail column count',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -430,7 +430,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(values, values) fail missing dupe',
     '',
-    '   Extra records:
+    '    Extra records:
         (1,Anna)'
 );
 
@@ -451,7 +451,7 @@ SELECT * FROM check_test(
     false,
     'set_ne fail with column mismatch',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -462,7 +462,7 @@ SELECT * FROM check_test(
     false,
     'set_ne fail with different col counts',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -495,7 +495,7 @@ SELECT * FROM check_test(
     false,
     'bag_ne fail with column mismatch',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -518,7 +518,7 @@ SELECT * FROM check_test(
     false,
     'bag_ne fail with column mismatch',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -529,7 +529,7 @@ SELECT * FROM check_test(
     false,
     'bag_ne fail with different col counts',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -612,7 +612,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(nulls, nulls) fail',
     '',
-    '   Results differ beginning at row 2:
+    '    Results differ beginning at row 2:
         have: (,)
         want: NULL'
 );
@@ -626,7 +626,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(select, prepared) fail missing last row',
     '',
-    '   Results differ beginning at row 7:
+    '    Results differ beginning at row 7:
         have: NULL
         want: (183,Antonio)'
 );
@@ -640,7 +640,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(prepared, select) fail missing first row',
     '',
-    '   Results differ beginning at row 7:
+    '    Results differ beginning at row 7:
         have: (183,Antonio)
         want: NULL'
 );
@@ -654,7 +654,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(values dupe, values)',
     '',
-    '   Results differ beginning at row 3:
+    '    Results differ beginning at row 3:
         have: (1,Anna)
         want: NULL'
 );
@@ -668,7 +668,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(values null, values)',
     '',
-    '   Results differ beginning at row 1:
+    '    Results differ beginning at row 1:
         have: (1,)
         want: (1,Anna)'
 );
@@ -679,7 +679,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) mismatch',
     '',
-    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Number of columns or their types differ between the queries:' END || '
+    CASE WHEN pg_version_num() < 80400 THEN '    Results differ beginning at row 1:' ELSE '    Number of columns or their types differ between the queries:' END || '
         have: (1,foo)
         want: (foo,1)'
 );
@@ -704,7 +704,7 @@ BEGIN
             false,
             'results_eq(values, values) subtle mismatch',
             '',
-            '   Number of columns or their types differ between the queries' ) AS a(b) LOOP
+            '    Number of columns or their types differ between the queries' ) AS a(b) LOOP
             RETURN NEXT tap.b;
         END LOOP;
     END IF;
@@ -719,7 +719,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(values, values) fail column count',
     '',
-    CASE WHEN pg_version_num() < 80400 THEN '   Results differ beginning at row 1:' ELSE '   Number of columns or their types differ between the queries:' END || '
+    CASE WHEN pg_version_num() < 80400 THEN '    Results differ beginning at row 1:' ELSE '    Number of columns or their types differ between the queries:' END || '
         have: (1)
         want: (foo,1)'
 );
@@ -804,7 +804,7 @@ SELECT * FROM check_test(
     false,
     'set_has( missing1, expect )',
     '',
-    '   Missing records:
+    '    Missing records:
         (44,Anna)'
 );
 
@@ -816,7 +816,7 @@ SELECT * FROM check_test(
     false,
     'set_has(missing2, expect )',
     '',
-    E'   Missing records:
+    E'    Missing records:
         [(](44,Anna|86,Angelina)[)]
         [(](44,Anna|86,Angelina)[)]',
     true
@@ -828,7 +828,7 @@ SELECT * FROM check_test(
     false,
     'set_has((int,text), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -839,7 +839,7 @@ SELECT * FROM check_test(
     false,
     'set_has((int), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -876,7 +876,7 @@ SELECT * FROM check_test(
     false,
     'bag_has( prepared, dupes )',
     '',
-    '   Missing records:
+    '    Missing records:
         (44,Anna)'
 );
 
@@ -896,7 +896,7 @@ SELECT * FROM check_test(
     false,
     'bag_has( missing1, expect )',
     '',
-    '   Missing records:
+    '    Missing records:
         (44,Anna)'
 );
 
@@ -908,7 +908,7 @@ SELECT * FROM check_test(
     false,
     'bag_has(missing2, expect )',
     '',
-    E'   Missing records:
+    E'    Missing records:
         [(](44,Anna|86,Angelina)[)]
         [(](44,Anna|86,Angelina)[)]',
     true
@@ -920,7 +920,7 @@ SELECT * FROM check_test(
     false,
     'bag_has((int,text), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -931,7 +931,7 @@ SELECT * FROM check_test(
     false,
     'bag_has((int), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -979,7 +979,7 @@ SELECT * FROM check_test(
     false,
     'set_hasnt( prepared, value )',
     '',
-    '   Extra records:
+    '    Extra records:
         (44,Anna)'
 );
 
@@ -988,7 +988,7 @@ SELECT * FROM check_test(
     false,
     'set_hasnt( prepared, values )',
     '',
-    E'   Extra records:
+    E'    Extra records:
         [(](44,Anna|86,Angelina)[)]
         [(](44,Anna|86,Angelina)[)]',
     true
@@ -1000,7 +1000,7 @@ SELECT * FROM check_test(
     false,
     'set_hasnt((int,text), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -1011,7 +1011,7 @@ SELECT * FROM check_test(
     false,
     'set_hasnt((int), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -1048,7 +1048,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt( prepared, value )',
     '',
-    '   Extra records:
+    '    Extra records:
         (44,Anna)'
 );
 
@@ -1057,7 +1057,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt( prepared, values )',
     '',
-    E'   Extra records:
+    E'    Extra records:
         [(](44,Anna|86,Angelina)[)]
         [(](44,Anna|86,Angelina)[)]',
     true
@@ -1069,7 +1069,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt((int,text), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer,text)
         want: (text,integer)'
 );
@@ -1080,7 +1080,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt((int), (text,int))',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (integer)
         want: (text,integer)'
 );
@@ -1094,7 +1094,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt( dupes, dupes )',
     '',
-    '   Extra records:
+    '    Extra records:
         (44,Anna)
         (44,Anna)'
 );
@@ -1108,7 +1108,7 @@ SELECT * FROM check_test(
     false,
     'bag_hasnt( value, dupes )',
     '',
-    '   Extra records:
+    '    Extra records:
         (44,Anna)'
 );
 
@@ -1159,7 +1159,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(prepared, array) extra record',
     '',
-    '   Extra records:
+    '    Extra records:
         (Anthony)'
 );
 
@@ -1172,7 +1172,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(prepared, array) missing record',
     '',
-    '   Missing records:
+    '    Missing records:
         (Alan)'
 );
 
@@ -1185,7 +1185,7 @@ SELECT * FROM check_test(
     false,
     'set_eq(sql, array) incompatible types',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (text)
         want: (integer)'
 );
@@ -1223,7 +1223,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(prepared, dupe array) fail',
     '',
-    '   Missing records:
+    '    Missing records:
         (Anna)'
 );
 
@@ -1236,7 +1236,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(prepared, array) extra record',
     '',
-    '   Extra records:
+    '    Extra records:
         (Anthony)'
 );
 
@@ -1249,7 +1249,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(prepared, array) missing record',
     '',
-    '   Missing records:
+    '    Missing records:
         (Alan)'
 );
 
@@ -1262,7 +1262,7 @@ SELECT * FROM check_test(
     false,
     'bag_eq(prepared, array) incompatible types',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (text)
         want: (integer)'
 );
@@ -1324,7 +1324,7 @@ SELECT * FROM check_test(
     false,
     'set_ne(sql, array) incompatible types',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (text)
         want: (integer)'
 );
@@ -1386,7 +1386,7 @@ SELECT * FROM check_test(
     false,
     'bag_ne(prepared, array) incompatible types',
     '',
-    '   Columns differ between queries:
+    '    Columns differ between queries:
         have: (text)
         want: (integer)'
 );
@@ -1428,7 +1428,7 @@ SELECT * FROM check_test(
     false,
     'results_eq(prepared, array) extra record',
     '',
-    '   Results differ beginning at row 7:
+    '    Results differ beginning at row 7:
         have: (Antonio)
         want: NULL'
 );
@@ -1550,7 +1550,7 @@ BEGIN
             false,
             'results_ne(values, values) mismatch',
             '',
-            '   Columns differ between queries:
+            '    Columns differ between queries:
         have: (1,foo)
         want: (foo,1)'
         ) AS a(b) LOOP
@@ -1566,7 +1566,7 @@ BEGIN
             false,
             'results_ne(values, values) subtle mismatch',
             '',
-            '   Columns differ between queries:
+            '    Columns differ between queries:
         have: (1,foo)
         want: (1,foo)' ) AS a(b) LOOP
             RETURN NEXT tap.b;
@@ -1578,7 +1578,7 @@ BEGIN
             false,
             'results_ne(values, values) fail column count',
             '',
-            '   Columns differ between queries:
+            '    Columns differ between queries:
         have: (1)
         want: (foo,1)'
         )  AS a(b) LOOP

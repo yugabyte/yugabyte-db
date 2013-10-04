@@ -89,3 +89,102 @@ RETURNS TEXT AS $$
     SELECT ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE(' ' || $1, '') );
 $$ LANGUAGE sql;
 
+-- check_test( test_output, pass, name, description, diag, match_diag )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
+RETURNS SETOF TEXT AS $$
+DECLARE
+    tnumb   INTEGER;
+    aok     BOOLEAN;
+    adescr  TEXT;
+    res     BOOLEAN;
+    descr   TEXT;
+    adiag   TEXT;
+    have    ALIAS FOR $1;
+    eok     ALIAS FOR $2;
+    name    ALIAS FOR $3;
+    edescr  ALIAS FOR $4;
+    ediag   ALIAS FOR $5;
+    matchit ALIAS FOR $6;
+BEGIN
+    -- What test was it that just ran?
+    tnumb := currval('__tresults___numb_seq');
+
+    -- Fetch the results.
+    EXECUTE 'SELECT aok, descr FROM __tresults__ WHERE numb = ' || tnumb
+       INTO aok, adescr;
+
+    -- Now delete those results.
+    EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
+    EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb;
+
+    -- Set up the description.
+    descr := coalesce( name || ' ', 'Test ' ) || 'should ';
+
+    -- So, did the test pass?
+    RETURN NEXT is(
+        aok,
+        eok,
+        descr || CASE eok WHEN true then 'pass' ELSE 'fail' END
+    );
+
+    -- Was the description as expected?
+    IF edescr IS NOT NULL THEN
+        RETURN NEXT is(
+            adescr,
+            edescr,
+            descr || 'have the proper description'
+        );
+    END IF;
+
+    -- Were the diagnostics as expected?
+    IF ediag IS NOT NULL THEN
+        -- Remove ok and the test number.
+        adiag := substring(
+            have
+            FROM CASE WHEN aok THEN 4 ELSE 9 END + char_length(tnumb::text)
+        );
+
+        -- Remove the description, if there is one.
+        IF adescr <> '' THEN
+            adiag := substring(
+                adiag FROM 1 + char_length( ' - ' || substr(diag( adescr ), 3) )
+            );
+        END IF;
+
+        IF NOT aok THEN
+            -- Remove failure message from ok().
+            adiag := substring(adiag FROM 1 + char_length(diag(
+                'Failed test ' || tnumb ||
+                CASE adescr WHEN '' THEN '' ELSE COALESCE(': "' || adescr || '"', '') END
+            )));
+        END IF;
+
+        IF ediag <> '' THEN
+           -- Remove the space before the diagnostics.
+           adiag := substring(adiag FROM 2);
+        END IF;
+
+        -- Remove the #s.
+        adiag := replace( substring(adiag from 3), E'\n# ', E'\n' );
+
+        -- Now compare the diagnostics.
+        IF matchit THEN
+            RETURN NEXT matches(
+                adiag,
+                ediag,
+                descr || 'have the proper diagnostics'
+            );
+        ELSE
+            RETURN NEXT is(
+                adiag,
+                ediag,
+                descr || 'have the proper diagnostics'
+            );
+        END IF;
+    END IF;
+
+    -- And we're done
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+

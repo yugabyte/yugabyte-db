@@ -5705,16 +5705,22 @@ BEGIN
 
         -- Remove the description, if there is one.
         IF adescr <> '' THEN
-            adiag := substring( adiag FROM 3 + char_length( diag( adescr ) ) );
+            adiag := substring(
+                adiag FROM 1 + char_length( ' - ' || substr(diag( adescr ), 3) )
+            );
         END IF;
 
-        -- Remove failure message from ok().
         IF NOT aok THEN
-           adiag := substring(
-               adiag
-               FROM 14 + char_length(tnumb::text)
-                       + CASE adescr WHEN '' THEN 3 ELSE 3 + char_length( diag( adescr ) ) END
-           );
+            -- Remove failure message from ok().
+            adiag := substring(adiag FROM 1 + char_length(diag(
+                'Failed test ' || tnumb ||
+                CASE adescr WHEN '' THEN '' ELSE COALESCE(': "' || adescr || '"', '') END
+            )));
+        END IF;
+
+        IF ediag <> '' THEN
+           -- Remove the space before the diagnostics.
+           adiag := substring(adiag FROM 2);
         END IF;
 
         -- Remove the #s.

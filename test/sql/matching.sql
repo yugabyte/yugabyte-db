@@ -15,7 +15,7 @@ SELECT * FROM check_test(
     false,
     'matches() fail',
     '',
-    '                 ''foo''
+    '                  ''foo''
    doesn''t match: ''^a'''
 );
 
@@ -30,7 +30,7 @@ SELECT * FROM check_test(
     false,
     'doesnt_match() fail',
     '',
-    '                 ''foo''
+    '                  ''foo''
          matches: ''o'''
 );
 
@@ -46,7 +46,7 @@ SELECT * FROM check_test(
     false,
     'alike() fail',
     '',
-    '                 ''foo''
+    '                  ''foo''
    doesn''t match: ''a%'''
 );
 
@@ -61,7 +61,7 @@ SELECT * FROM check_test(
     false,
     'unalike() fail',
     '',
-    '                 ''foo''
+    '                  ''foo''
          matches: ''f%'''
 );
 
