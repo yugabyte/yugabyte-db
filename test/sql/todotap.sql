@@ -50,16 +50,16 @@ SELECT * FROM check_test(
     skip('Just because'),
     true,
     'simple skip',
-    'SKIP: Just because',
-    ''
+    '',
+    ' SKIP Just because'
 );
 
 SELECT * FROM check_test(
     skip('Just because', 1),
     true,
     'skip with num',
-    'SKIP: Just because',
-    ''
+    '',
+    ' SKIP Just because'
 );
 
 \echo ok 15 - Skip multiple
@@ -67,9 +67,9 @@ SELECT * FROM check_test(
 \echo ok 17 - Skip multiple
 SELECT is(
    skip( 'Whatever', 3 ),
-   'ok 15 - SKIP: Whatever
-ok 16 - SKIP: Whatever
-ok 17 - SKIP: Whatever',
+   'ok 15 # SKIP Whatever
+ok 16 # SKIP Whatever
+ok 17 # SKIP Whatever',
    'We should get the proper output for multiple skips'
 );
 
@@ -78,8 +78,8 @@ SELECT * FROM check_test(
     skip(1, 'Just because'),
     true,
     'inverted skip',
-    'SKIP: Just because',
-    ''
+    '',
+    ' SKIP Just because'
 );
 
 -- Test num only.
@@ -87,8 +87,8 @@ SELECT * FROM check_test(
     skip(1),
     true,
     'num only',
-    'SKIP: ',
-    ''
+    '',
+    ' SKIP'
 );
 
 /****************************************************************************/

@@ -68,3 +68,24 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+CREATE OR REPLACE FUNCTION skip ( why text, how_many int )
+RETURNS TEXT AS $$
+DECLARE
+    output TEXT[];
+BEGIN
+    output := '{}';
+    FOR i IN 1..how_many LOOP
+        output = array_append(
+            output,
+            ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE( ' ' || why, '') )
+        );
+    END LOOP;
+    RETURN array_to_string(output, E'\n');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION skip ( text )
+RETURNS TEXT AS $$
+    SELECT ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE(' ' || $1, '') );
+$$ LANGUAGE sql;
+

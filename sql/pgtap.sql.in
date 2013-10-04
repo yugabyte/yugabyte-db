@@ -642,7 +642,10 @@ DECLARE
 BEGIN
     output := '{}';
     FOR i IN 1..how_many LOOP
-        output = array_append(output, ok( TRUE, 'SKIP: ' || COALESCE( why, '') ) );
+        output = array_append(
+            output,
+            ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE( ' ' || why, '') )
+        );
     END LOOP;
     RETURN array_to_string(output, E'\n');
 END;
@@ -650,7 +653,7 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION skip ( text )
 RETURNS TEXT AS $$
-    SELECT ok( TRUE, 'SKIP: ' || $1 );
+    SELECT ok( TRUE ) || ' ' || diag( 'SKIP' || COALESCE(' ' || $1, '') );
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION skip( int, text )
