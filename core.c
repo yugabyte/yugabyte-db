@@ -284,7 +284,8 @@ generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 			{
 				cheapest_startup = cheapest_total =
 					childrel->cheapest_total_path;
-				Assert(cheapest_total != NULL);
+				/* Assert we do have an unparameterized path for this child */
+				Assert(cheapest_total->param_info == NULL);
 			}
 
 			/*
@@ -626,11 +627,14 @@ join_search_one_level(PlannerInfo *root, int level)
 		 * to accept failure at level 4 and go on to discover a workable
 		 * bushy plan at level 5.
 		 *
-		 * However, if there are no special joins then join_is_legal() should
-		 * never fail, and so the following sanity check is useful.
+		 * However, if there are no special joins and no lateral references
+		 * then join_is_legal() should never fail, and so the following sanity
+		 * check is useful.
 		 *----------
 		 */
-		if (joinrels[level] == NIL && root->join_info_list == NIL)
+		if (joinrels[level] == NIL &&
+			root->join_info_list == NIL &&
+			root->lateral_info_list == NIL)
 			elog(ERROR, "failed to build any %d-way joins", level);
 	}
 }
@@ -730,6 +734,8 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	bool		reversed;
 	bool		unique_ified;
 	bool		is_valid_inner;
+	bool		lateral_fwd;
+	bool		lateral_rev;
 	ListCell   *l;
 
 	/*
@@ -909,6 +915,47 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 		(match_sjinfo == NULL || unique_ified))
 		return false;			/* invalid join path */
 
+	/*
+	 * We also have to check for constraints imposed by LATERAL references.
+	 * The proposed rels could each contain lateral references to the other,
+	 * in which case the join is impossible.  If there are lateral references
+	 * in just one direction, then the join has to be done with a nestloop
+	 * with the lateral referencer on the inside.  If the join matches an SJ
+	 * that cannot be implemented by such a nestloop, the join is impossible.
+	 */
+	lateral_fwd = lateral_rev = false;
+	foreach(l, root->lateral_info_list)
+	{
+		LateralJoinInfo *ljinfo = (LateralJoinInfo *) lfirst(l);
+
+		if (bms_is_subset(ljinfo->lateral_rhs, rel2->relids) &&
+			bms_overlap(ljinfo->lateral_lhs, rel1->relids))
+		{
+			/* has to be implemented as nestloop with rel1 on left */
+			if (lateral_rev)
+				return false;	/* have lateral refs in both directions */
+			lateral_fwd = true;
+			if (!bms_is_subset(ljinfo->lateral_lhs, rel1->relids))
+				return false;	/* rel1 can't compute the required parameter */
+			if (match_sjinfo &&
+				(reversed || match_sjinfo->jointype == JOIN_FULL))
+				return false;	/* not implementable as nestloop */
+		}
+		if (bms_is_subset(ljinfo->lateral_rhs, rel1->relids) &&
+			bms_overlap(ljinfo->lateral_lhs, rel2->relids))
+		{
+			/* has to be implemented as nestloop with rel2 on left */
+			if (lateral_fwd)
+				return false;	/* have lateral refs in both directions */
+			lateral_rev = true;
+			if (!bms_is_subset(ljinfo->lateral_lhs, rel2->relids))
+				return false;	/* rel2 can't compute the required parameter */
+			if (match_sjinfo &&
+				(!reversed || match_sjinfo->jointype == JOIN_FULL))
+				return false;	/* not implementable as nestloop */
+		}
+	}
+
 	/* Otherwise, it's a valid join */
 	*sjinfo_p = match_sjinfo;
 	*reversed_p = reversed;
@@ -917,8 +964,9 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 
 /*
  * has_join_restriction
- *		Detect whether the specified relation has join-order restrictions
- *		due to being inside an outer join or an IN (sub-SELECT).
+ *		Detect whether the specified relation has join-order restrictions,
+ *		due to being inside an outer join or an IN (sub-SELECT),
+ *		or participating in any LATERAL references.
  *
  * Essentially, this tests whether have_join_order_restriction() could
  * succeed with this rel and some other one.  It's OK if we sometimes
@@ -929,6 +977,15 @@ static bool
 has_join_restriction(PlannerInfo *root, RelOptInfo *rel)
 {
 	ListCell   *l;
+
+	foreach(l, root->lateral_info_list)
+	{
+		LateralJoinInfo *ljinfo = (LateralJoinInfo *) lfirst(l);
+
+		if (bms_is_subset(ljinfo->lateral_rhs, rel->relids) ||
+			bms_overlap(ljinfo->lateral_lhs, rel->relids))
+			return true;
+	}
 
 	foreach(l, root->join_info_list)
 	{

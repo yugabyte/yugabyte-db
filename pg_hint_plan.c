@@ -37,7 +37,6 @@
 
 #include "executor/spi.h"
 #include "catalog/pg_type.h"
-
 /*
  * We have our own header file "plpgsql-9.1", which is necessary to support
  * hints for queries in PL/pgSQL blocks, in pg_hint_plan source package,
@@ -52,6 +51,9 @@
 
 /* partially copied from pg_stat_statements */
 #include "normalize_query.h"
+
+/* PostgreSQL 9.3 */
+#include "htup_details.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
@@ -315,10 +317,10 @@ static void push_hint(HintState *hstate);
 static void pop_hint(void);
 
 static void pg_hint_plan_ProcessUtility(Node *parsetree,
-										const char *queryString,
-										ParamListInfo params, bool isTopLevel,
-										DestReceiver *dest,
-										char *completionTag);
+							const char *queryString,
+							ProcessUtilityContext context,
+							ParamListInfo params,
+							DestReceiver *dest, char *completionTag);
 static PlannedStmt *pg_hint_plan_planner(Query *parse, int cursorOptions,
 										 ParamListInfo boundParams);
 static void pg_hint_plan_get_relation_info(PlannerInfo *root,
@@ -2010,7 +2012,8 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 
 static void
 pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
-							ParamListInfo params, bool isTopLevel,
+							ProcessUtilityContext context,
+							ParamListInfo params,
 							DestReceiver *dest, char *completionTag)
 {
 	Node				   *node;
@@ -2022,12 +2025,13 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	if (!pg_hint_plan_enable_hint || nested_level > 0)
 	{
 		if (prev_ProcessUtility)
-			(*prev_ProcessUtility) (parsetree, queryString, params,
-									isTopLevel, dest, completionTag);
+			(*prev_ProcessUtility) (parsetree, queryString,
+									context, params,
+									dest, completionTag);
 		else
-			standard_ProcessUtility(parsetree, queryString, params,
-									isTopLevel, dest, completionTag);
-
+			standard_ProcessUtility(parsetree, queryString,
+									context, params,
+									dest, completionTag);
 		return;
 	}
 
@@ -2088,11 +2092,13 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 		PG_TRY();
 		{
 			if (prev_ProcessUtility)
-				(*prev_ProcessUtility) (parsetree, queryString, params,
-										isTopLevel, dest, completionTag);
+				(*prev_ProcessUtility) (parsetree, queryString,
+										context, params,
+										dest, completionTag);
 			else
-				standard_ProcessUtility(parsetree, queryString, params,
-										isTopLevel, dest, completionTag);
+				standard_ProcessUtility(parsetree, queryString,
+										context, params,
+										dest, completionTag);
 		}
 		PG_CATCH();
 		{
@@ -2107,11 +2113,13 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	}
 
 	if (prev_ProcessUtility)
-		(*prev_ProcessUtility) (parsetree, queryString, params,
-								isTopLevel, dest, completionTag);
-	else
-		standard_ProcessUtility(parsetree, queryString, params,
-								isTopLevel, dest, completionTag);
+			(*prev_ProcessUtility) (parsetree, queryString,
+									context, params,
+									dest, completionTag);
+		else
+			standard_ProcessUtility(parsetree, queryString,
+									context, params,
+									dest, completionTag);
 }
 
 /*
@@ -3231,7 +3239,17 @@ static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Consider sequential scan */
-	add_path(rel, create_seqscan_path(root, rel, NULL));
+	Relids		required_outer;
+
+	/*
+	 * We don't support pushing join clauses into the quals of a seqscan, but
+	 * it could still have required parameterization due to LATERAL refs in
+	 * its tlist.
+	 */
+	required_outer = rel->lateral_relids;
+
+	/* Consider sequential scan */
+	add_path(rel, create_seqscan_path(root, rel, required_outer));
 
 	/* Consider index scans */
 	create_index_paths(root, rel);
