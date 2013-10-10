@@ -32,12 +32,12 @@
 #include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
-#if PG_VERSION_NUM >= 90200
+
 #include "catalog/pg_class.h"
-#endif
 
 #include "executor/spi.h"
 #include "catalog/pg_type.h"
+
 /*
  * We have our own header file "plpgsql-9.1", which is necessary to support
  * hints for queries in PL/pgSQL blocks, in pg_hint_plan source package,
@@ -48,21 +48,13 @@
  * On the other hand, 9.2 installation provides that header file for external
  * modules, so we include the header in ordinary place.
  */
-#if PG_VERSION_NUM >= 90200
 #include "plpgsql.h"
-#else
-#include "plpgsql-9.1.h"
-#endif
 
 /* partially copied from pg_stat_statements */
 #include "normalize_query.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
-#endif
-
-#if PG_VERSION_NUM < 90100
-#error unsupported PostgreSQL version
 #endif
 
 #define BLOCK_COMMENT_START		"/*"
@@ -82,11 +74,9 @@ PG_MODULE_MAGIC;
 #define HINT_NOINDEXSCAN		"NoIndexScan"
 #define HINT_NOBITMAPSCAN		"NoBitmapScan"
 #define HINT_NOTIDSCAN			"NoTidScan"
-#if PG_VERSION_NUM >= 90200
 #define HINT_INDEXONLYSCAN		"IndexOnlyScan"
 #define HINT_INDEXONLYSCANREGEXP	"IndexOnlyScanRegexp"
 #define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
-#endif
 #define HINT_NESTLOOP			"NestLoop"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
@@ -113,9 +103,7 @@ enum
 	ENABLE_INDEXSCAN = 0x02,
 	ENABLE_BITMAPSCAN = 0x04,
 	ENABLE_TIDSCAN = 0x08,
-#if PG_VERSION_NUM >= 90200
 	ENABLE_INDEXONLYSCAN = 0x10
-#endif
 } SCAN_TYPE_BITS;
 
 enum
@@ -125,14 +113,9 @@ enum
 	ENABLE_HASHJOIN = 0x04
 } JOIN_TYPE_BITS;
 
-#if PG_VERSION_NUM >= 90200
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
 						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN | \
 						 ENABLE_INDEXONLYSCAN)
-#else
-#define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
-						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN)
-#endif
 #define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
@@ -150,11 +133,9 @@ typedef enum HintKeyword
 	HINT_KEYWORD_NOINDEXSCAN,
 	HINT_KEYWORD_NOBITMAPSCAN,
 	HINT_KEYWORD_NOTIDSCAN,
-#if PG_VERSION_NUM >= 90200
 	HINT_KEYWORD_INDEXONLYSCAN,
 	HINT_KEYWORD_INDEXONLYSCANREGEXP,
 	HINT_KEYWORD_NOINDEXONLYSCAN,
-#endif
 	HINT_KEYWORD_NESTLOOP,
 	HINT_KEYWORD_MERGEJOIN,
 	HINT_KEYWORD_HASHJOIN,
@@ -393,15 +374,10 @@ static void make_rels_by_clauseless_joins(PlannerInfo *root,
 static bool has_join_restriction(PlannerInfo *root, RelOptInfo *rel);
 static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 									Index rti, RangeTblEntry *rte);
-#if PG_VERSION_NUM >= 90200
 static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 						   List *live_childrels,
 						   List *all_child_pathkeys);
-#endif
 static List *accumulate_append_subpath(List *subpaths, Path *path);
-#if PG_VERSION_NUM < 90200
-static void set_dummy_rel_pathlist(RelOptInfo *rel);
-#endif
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
 
@@ -469,12 +445,10 @@ static const HintParser parsers[] = {
 	{HINT_NOINDEXSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXSCAN},
 	{HINT_NOBITMAPSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOBITMAPSCAN},
 	{HINT_NOTIDSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOTIDSCAN},
-#if PG_VERSION_NUM >= 90200
 	{HINT_INDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_INDEXONLYSCAN},
 	{HINT_INDEXONLYSCANREGEXP, ScanMethodHintCreate,
 	 HINT_KEYWORD_INDEXONLYSCANREGEXP},
 	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
-#endif
 	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
 	{HINT_MERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_MERGEJOIN},
 	{HINT_HASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_HASHJOIN},
@@ -1300,9 +1274,7 @@ parse_parentheses(const char *str, List **name_list, HintKeyword keyword)
 		skip_space(str);
 
 		if (keyword == HINT_KEYWORD_INDEXSCANREGEXP ||
-#if PG_VERSION_NUM >= 90200
 			keyword == HINT_KEYWORD_INDEXONLYSCANREGEXP ||
-#endif
 			keyword == HINT_KEYWORD_BITMAPSCANREGEXP ||
 			keyword == HINT_KEYWORD_SET)
 		{
@@ -1665,10 +1637,8 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		if (length != 1 &&
 			hint_keyword != HINT_KEYWORD_INDEXSCAN &&
 			hint_keyword != HINT_KEYWORD_INDEXSCANREGEXP &&
-#if PG_VERSION_NUM >= 90200
 			hint_keyword != HINT_KEYWORD_INDEXONLYSCAN &&
 			hint_keyword != HINT_KEYWORD_INDEXONLYSCANREGEXP &&
-#endif
 			hint_keyword != HINT_KEYWORD_BITMAPSCAN &&
 			hint_keyword != HINT_KEYWORD_BITMAPSCANREGEXP)
 		{
@@ -1723,7 +1693,6 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		case HINT_KEYWORD_NOTIDSCAN:
 			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_TIDSCAN;
 			break;
-#if PG_VERSION_NUM >= 90200
 		case HINT_KEYWORD_INDEXONLYSCAN:
 			hint->enforce_mask = ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN;
 			break;
@@ -1734,7 +1703,6 @@ ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate, Query *parse,
 		case HINT_KEYWORD_NOINDEXONLYSCAN:
 			hint->enforce_mask = ENABLE_ALL_SCAN ^ ENABLE_INDEXONLYSCAN;
 			break;
-#endif
 		default:
 			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
 			return NULL;
@@ -1944,13 +1912,8 @@ set_config_option_wrapper(const char *name, const char *value,
 
 	PG_TRY();
 	{
-#if PG_VERSION_NUM >= 90200
 		result = set_config_option(name, value, context, source,
 								   action, changeVal, 0);
-#else
-		result = set_config_option(name, value, context, source,
-								   action, changeVal);
-#endif
 	}
 	PG_CATCH();
 	{
@@ -2012,9 +1975,7 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 
 	if (enforce_mask == ENABLE_SEQSCAN || enforce_mask == ENABLE_INDEXSCAN ||
 		enforce_mask == ENABLE_BITMAPSCAN || enforce_mask == ENABLE_TIDSCAN
-#if PG_VERSION_NUM >= 90200
 		|| enforce_mask == (ENABLE_INDEXSCAN | ENABLE_INDEXONLYSCAN)
-#endif
 		)
 		mask = enforce_mask;
 	else
@@ -2024,9 +1985,7 @@ set_scan_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_indexscan", ENABLE_INDEXSCAN);
 	SET_CONFIG_OPTION("enable_bitmapscan", ENABLE_BITMAPSCAN);
 	SET_CONFIG_OPTION("enable_tidscan", ENABLE_TIDSCAN);
-#if PG_VERSION_NUM >= 90200
 	SET_CONFIG_OPTION("enable_indexonlyscan", ENABLE_INDEXONLYSCAN);
-#endif
 }
 
 static void
@@ -2102,7 +2061,7 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 		stmt = (ExecuteStmt *) node;
 		stmt_name = stmt->name;
 	}
-#if PG_VERSION_NUM >= 90200
+
 	/*
 	 * CREATE AS EXECUTE behavior has changed since 9.2, so we must handle it
 	 * specially here.
@@ -2123,7 +2082,7 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 			stmt_name = estmt->name;
 		}
 	}
-#endif
+
 	if (stmt_name)
 	{
 		PG_TRY();
@@ -2286,10 +2245,8 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		current_hint->init_scan_mask |= ENABLE_BITMAPSCAN;
 	if (enable_tidscan)
 		current_hint->init_scan_mask |= ENABLE_TIDSCAN;
-#if PG_VERSION_NUM >= 90200
 	if (enable_indexonlyscan)
 		current_hint->init_scan_mask |= ENABLE_INDEXONLYSCAN;
-#endif
 	if (enable_nestloop)
 		current_hint->init_join_mask |= ENABLE_NESTLOOP;
 	if (enable_mergejoin)
@@ -3274,11 +3231,7 @@ static void
 set_plain_rel_pathlist(PlannerInfo *root, RelOptInfo *rel, RangeTblEntry *rte)
 {
 	/* Consider sequential scan */
-#if PG_VERSION_NUM >= 90200
 	add_path(rel, create_seqscan_path(root, rel, NULL));
-#else
-	add_path(rel, create_seqscan_path(root, rel));
-#endif
 
 	/* Consider index scans */
 	create_index_paths(root, rel);
@@ -3546,15 +3499,11 @@ static void
 set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				 Index rti, RangeTblEntry *rte)
 {
-#if PG_VERSION_NUM >= 90200
 	if (IS_DUMMY_REL(rel))
 	{
 		/* We already proved the relation empty, so nothing more to do */
 	}
 	else if (rte->inh)
-#else
-	if (rte->inh)
-#endif
 	{
 		/* It's an "append relation", process accordingly */
 		set_append_rel_pathlist(root, rel, rti, rte);
