@@ -1,12 +1,1 @@
-base_plan.out
 fdw.out
-init.out
-pg_hint_plan.out
-ut-A.out
-ut-A2.out
-ut-G.out
-ut-J.out
-ut-L.out
-ut-S.out
-indexonly.out
-create_execute.out

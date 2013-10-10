@@ -14,17 +14,11 @@ REGRESS_OPTS = --encoding=UTF8
 EXTENSION = pg_hint_plan
 DATA = pg_hint_plan--1.0.sql
 
-EXTRA_CLEAN = core.c sql/ut-fdw.sql expected/ut-fdw.out $(REGRESSION_EXPECTED)
+EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out
 
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
-
-core.c: core-$(MAJORVERSION).c
-	cp core-$(MAJORVERSION).c core.c
-
-$(REGRESSION_EXPECTED): %.out: %-$(MAJORVERSION).out
-	cp $< $@
 
 installcheck: $(REGRESSION_EXPECTED)
 
