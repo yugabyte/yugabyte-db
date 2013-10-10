@@ -1,14 +1,14 @@
 # SPEC file for pg_hint_plan
 # Copyright(C) 2013 NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
-%define _pgdir   /usr/pgsql-9.2
+%define _pgdir   /usr/pgsql-9.3
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
 
 ## Set general information for pg_hint_plan.
-Summary:    Optimizer hint for PostgreSQL 9.2
-Name:       pg_hint_plan92
+Summary:    Optimizer hint for PostgreSQL 9.3
+Name:       pg_hint_plan93
 Version:    1.1.0
 Release:    1%{?dist}
 License:    BSD
@@ -32,7 +32,7 @@ plan by adding special comment block with optimizer hint before the query you
 want to optimize.  You can control scan method, join method, join order, and
 planner-related GUC parameters during planning.
 
-Note that this package is available for only PostgreSQL 9.2.
+Note that this package is available for only PostgreSQL 9.3.
 
 ## pre work for build pg_hint_plan
 %prep
