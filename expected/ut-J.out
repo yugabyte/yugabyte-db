@@ -183,14 +183,14 @@ error hint:
 
 -- No. J-1-4-2
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
-             QUERY PLAN              
--------------------------------------
+             QUERY PLAN             
+------------------------------------
  Merge Join
-   Merge Cond: (t1.c1 = t1.c1)
+   Merge Cond: (t1.c1 = t1_1.c1)
    ->  Index Scan using t1_i1 on t1
    ->  Sort
-         Sort Key: t1.c1
-         ->  Seq Scan on t1
+         Sort Key: t1_1.c1
+         ->  Seq Scan on t1 t1_1
 (6 rows)
 
 /*+HashJoin(t1 t1)*/
@@ -204,14 +204,14 @@ duplication hint:
 error hint:
 HashJoin(t1 t1)
 
-             QUERY PLAN              
--------------------------------------
+             QUERY PLAN             
+------------------------------------
  Merge Join
-   Merge Cond: (t1.c1 = t1.c1)
+   Merge Cond: (t1.c1 = t1_1.c1)
    ->  Index Scan using t1_i1 on t1
    ->  Sort
-         Sort Key: t1.c1
-         ->  Seq Scan on t1
+         Sort Key: t1_1.c1
+         ->  Seq Scan on t1 t1_1
 (6 rows)
 
 /*+HashJoin(s1.t1 s2.t1)*/
@@ -223,14 +223,14 @@ HashJoin(s1.t1 s2.t1)
 duplication hint:
 error hint:
 
-             QUERY PLAN              
--------------------------------------
+             QUERY PLAN             
+------------------------------------
  Merge Join
-   Merge Cond: (t1.c1 = t1.c1)
+   Merge Cond: (t1.c1 = t1_1.c1)
    ->  Index Scan using t1_i1 on t1
    ->  Sort
-         Sort Key: t1.c1
-         ->  Seq Scan on t1
+         Sort Key: t1_1.c1
+         ->  Seq Scan on t1 t1_1
 (6 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = s2t1.c1;
@@ -264,18 +264,18 @@ error hint:
 
 -- No. J-1-4-3
 EXPLAIN (COSTS false) SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Merge Join
    Merge Cond: (t1.c1 = t2.c1)
    InitPlan 1 (returns $0)
      ->  Aggregate
            ->  Merge Join
-                 Merge Cond: (t1.c1 = t2.c1)
-                 ->  Index Only Scan using t1_i1 on t1
+                 Merge Cond: (t1_1.c1 = t2_1.c1)
+                 ->  Index Only Scan using t1_i1 on t1 t1_1
                  ->  Sort
-                       Sort Key: t2.c1
-                       ->  Seq Scan on t2
+                       Sort Key: t2_1.c1
+                       ->  Seq Scan on t2 t2_1
    ->  Index Scan using t1_i1 on t1
    ->  Sort
          Sort Key: t2.c1
@@ -291,17 +291,17 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                    
---------------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Hash Join
    Hash Cond: (t1.c1 = t2.c1)
    InitPlan 1 (returns $0)
      ->  Aggregate
            ->  Hash Join
-                 Hash Cond: (t1.c1 = t2.c1)
-                 ->  Seq Scan on t1
+                 Hash Cond: (t1_1.c1 = t2_1.c1)
+                 ->  Seq Scan on t1 t1_1
                  ->  Hash
-                       ->  Seq Scan on t2
+                       ->  Seq Scan on t2 t2_1
    ->  Seq Scan on t1
    ->  Hash
          ->  Seq Scan on t2
@@ -466,21 +466,21 @@ error hint:
 
 -- No. J-1-6-2
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
-              QUERY PLAN               
----------------------------------------
+               QUERY PLAN                
+-----------------------------------------
  Hash Join
    Hash Cond: (t1.c1 = t2.c1)
    ->  Append
          ->  Seq Scan on p1 t1
-         ->  Seq Scan on p1c1 t1
-         ->  Seq Scan on p1c2 t1
-         ->  Seq Scan on p1c3 t1
+         ->  Seq Scan on p1c1 t1_1
+         ->  Seq Scan on p1c2 t1_2
+         ->  Seq Scan on p1c3 t1_3
    ->  Hash
          ->  Append
                ->  Seq Scan on p1 t2
-               ->  Seq Scan on p1c1 t2
-               ->  Seq Scan on p1c2 t2
-               ->  Seq Scan on p1c3 t2
+               ->  Seq Scan on p1c1 t2_1
+               ->  Seq Scan on p1c2 t2_2
+               ->  Seq Scan on p1c3 t2_3
 (13 rows)
 
 /*+NestLoop(t1 t2)*/
@@ -492,22 +492,22 @@ not used hint:
 duplication hint:
 error hint:
 
-                   QUERY PLAN                   
-------------------------------------------------
+                    QUERY PLAN                    
+--------------------------------------------------
  Nested Loop
    ->  Append
          ->  Seq Scan on p1 t1
-         ->  Seq Scan on p1c1 t1
-         ->  Seq Scan on p1c2 t1
-         ->  Seq Scan on p1c3 t1
+         ->  Seq Scan on p1c1 t1_1
+         ->  Seq Scan on p1c2 t1_2
+         ->  Seq Scan on p1c3 t1_3
    ->  Append
          ->  Seq Scan on p1 t2
                Filter: (t1.c1 = c1)
-         ->  Index Scan using p1c1_i on p1c1 t2
+         ->  Index Scan using p1c1_i on p1c1 t2_1
                Index Cond: (c1 = t1.c1)
-         ->  Index Scan using p1c2_i on p1c2 t2
+         ->  Index Scan using p1c2_i on p1c2 t2_2
                Index Cond: (c1 = t1.c1)
-         ->  Index Scan using p1c3_i on p1c3 t2
+         ->  Index Scan using p1c3_i on p1c3 t2_3
                Index Cond: (c1 = t1.c1)
 (15 rows)
 
@@ -675,14 +675,14 @@ error hint:
 
 -- No. J-1-6-9
 EXPLAIN (COSTS false) WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) SELECT * FROM s1.t1, c1 WHERE t1.c1 = c1.c1;
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Nested Loop
    CTE c1
      ->  Aggregate
            ->  Merge Join
-                 Merge Cond: (s1.t1.c1 = t2.c1)
-                 ->  Index Only Scan using t1_i1 on t1
+                 Merge Cond: (t1_1.c1 = t2.c1)
+                 ->  Index Only Scan using t1_i1 on t1 t1_1
                  ->  Sort
                        Sort Key: t2.c1
                        ->  Seq Scan on t2
@@ -701,15 +701,15 @@ not used hint:
 duplication hint:
 error hint:
 
-                      QUERY PLAN                       
--------------------------------------------------------
+                         QUERY PLAN                         
+------------------------------------------------------------
  Hash Join
-   Hash Cond: (s1.t1.c1 = c1.c1)
+   Hash Cond: (t1.c1 = c1.c1)
    CTE c1
      ->  Aggregate
            ->  Nested Loop
                  ->  Seq Scan on t2
-                 ->  Index Only Scan using t1_i1 on t1
+                 ->  Index Only Scan using t1_i1 on t1 t1_1
                        Index Cond: (c1 = t2.c1)
    ->  Seq Scan on t1
    ->  Hash
@@ -718,13 +718,13 @@ error hint:
 
 -- No. J-1-6-10
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 t1, s1.v1 t2 WHERE t1.c1 = t2.c1;
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_1
 (5 rows)
 
 /*+NestLoop(t1 t2)*/
@@ -736,13 +736,13 @@ NestLoop(t1 t2)
 duplication hint:
 error hint:
 
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_1
 (5 rows)
 
 /*+NestLoop(v1t1 v1t1_)*/
@@ -3634,13 +3634,13 @@ error hint:
 
 -- No. J-2-3-4
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_1
 (5 rows)
 
 /*+HashJoin(v1t1 v1t1)*/
@@ -3654,13 +3654,13 @@ duplication hint:
 error hint:
 HashJoin(v1t1 v1t1)
 
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_1
 (5 rows)
 
 -- No. J-2-3-5
@@ -3693,13 +3693,13 @@ error hint:
 
 -- No. J-2-3-6
 EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (r4t1.c1 = r4t1.c1)
+   Hash Cond: (r4t1.c1 = r4t1_1.c1)
    ->  Seq Scan on t1 r4t1
    ->  Hash
-         ->  Seq Scan on t1 r4t1
+         ->  Seq Scan on t1 r4t1_1
 (5 rows)
 
 /*+HashJoin(r4t1 r4t1)*/
@@ -3713,13 +3713,13 @@ duplication hint:
 error hint:
 HashJoin(r4t1 r4t1)
 
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (r4t1.c1 = r4t1.c1)
+   Hash Cond: (r4t1.c1 = r4t1_1.c1)
    ->  Seq Scan on t1 r4t1
    ->  Hash
-         ->  Seq Scan on t1 r4t1
+         ->  Seq Scan on t1 r4t1_1
 (5 rows)
 
 -- No. J-2-3-7
@@ -3818,7 +3818,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
+   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -3827,7 +3827,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
                      ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
                Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*"
+   ->  Values Scan on "*VALUES*_1"
 (11 rows)
 
 /*+ Leading(t4 t3 t2 t1) NestLoop(t4 t3)HashJoin(t4 t3 t2)MergeJoin(t4 t3 t2 t1)*/
@@ -3845,7 +3845,7 @@ error hint:
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
+   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -3854,7 +3854,7 @@ error hint:
                      ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
                Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*"
+   ->  Values Scan on "*VALUES*_1"
 (11 rows)
 
 /*+ Leading(*VALUES* t3 t2 t1) NestLoop(t4 t3)HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)*/
@@ -3878,7 +3878,7 @@ Leading(*VALUES* t3 t2 t1)
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
+   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -3887,7 +3887,7 @@ Leading(*VALUES* t3 t2 t1)
                      ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
                Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*"
+   ->  Values Scan on "*VALUES*_1"
 (11 rows)
 
 ----

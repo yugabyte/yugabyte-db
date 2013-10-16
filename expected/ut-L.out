@@ -255,7 +255,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 WHERE s1.t1.c1 = 
                    QUERY PLAN                   
 ------------------------------------------------
  Merge Join
-   Merge Cond: (t1.c1 = t1.c1)
+   Merge Cond: (t1_1.c1 = t1.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
          ->  Merge Join
@@ -264,8 +264,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 WHERE s1.t1.c1 = 
                ->  Index Scan using t3_i1 on t3
          ->  Index Scan using t2_i1 on t2
    ->  Sort
-         Sort Key: t1.c1
-         ->  Seq Scan on t1
+         Sort Key: t1_1.c1
+         ->  Seq Scan on t1 t1_1
 (12 rows)
 
 /*+Leading(t1 t2 t3 t1)*/
@@ -282,7 +282,7 @@ Leading(t1 t2 t3 t1)
                    QUERY PLAN                   
 ------------------------------------------------
  Merge Join
-   Merge Cond: (t1.c1 = t1.c1)
+   Merge Cond: (t1.c1 = t1_1.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
          ->  Merge Join
@@ -291,8 +291,8 @@ Leading(t1 t2 t3 t1)
                ->  Index Scan using t3_i1 on t3
          ->  Index Scan using t2_i1 on t2
    ->  Sort
-         Sort Key: t1.c1
-         ->  Seq Scan on t1
+         Sort Key: t1_1.c1
+         ->  Seq Scan on t1 t1_1
 (12 rows)
 
 /*+Leading(s1.t1 t2 t3 s2.t1)*/
@@ -307,7 +307,7 @@ error hint:
                    QUERY PLAN                   
 ------------------------------------------------
  Merge Join
-   Merge Cond: (t1.c1 = t1.c1)
+   Merge Cond: (t1.c1 = t1_1.c1)
    ->  Merge Join
          Merge Cond: (t1.c1 = t2.c1)
          ->  Merge Join
@@ -316,8 +316,8 @@ error hint:
                ->  Index Scan using t3_i1 on t3
          ->  Index Scan using t2_i1 on t2
    ->  Sort
-         Sort Key: t1.c1
-         ->  Seq Scan on t1
+         Sort Key: t1_1.c1
+         ->  Seq Scan on t1 t1_1
 (12 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 s2t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2t1.c1;
@@ -653,8 +653,8 @@ error hint:
 
 -- No. L-1-6-2
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 t1, s1.p1 t2, s1.p1 t3, s1.p1 t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                    QUERY PLAN                     
----------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Hash Join
    Hash Cond: (t1.c1 = t4.c1)
    ->  Hash Join
@@ -663,27 +663,27 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 t1, s1.p1 t2, s1.p1 t3, s1.p1 t4 WHERE
                Hash Cond: (t1.c1 = t2.c1)
                ->  Append
                      ->  Seq Scan on p1 t1
-                     ->  Seq Scan on p1c1 t1
-                     ->  Seq Scan on p1c2 t1
-                     ->  Seq Scan on p1c3 t1
+                     ->  Seq Scan on p1c1 t1_1
+                     ->  Seq Scan on p1c2 t1_2
+                     ->  Seq Scan on p1c3 t1_3
                ->  Hash
                      ->  Append
                            ->  Seq Scan on p1 t2
-                           ->  Seq Scan on p1c1 t2
-                           ->  Seq Scan on p1c2 t2
-                           ->  Seq Scan on p1c3 t2
+                           ->  Seq Scan on p1c1 t2_1
+                           ->  Seq Scan on p1c2 t2_2
+                           ->  Seq Scan on p1c3 t2_3
          ->  Hash
                ->  Append
                      ->  Seq Scan on p1 t3
-                     ->  Seq Scan on p1c1 t3
-                     ->  Seq Scan on p1c2 t3
-                     ->  Seq Scan on p1c3 t3
+                     ->  Seq Scan on p1c1 t3_1
+                     ->  Seq Scan on p1c2 t3_2
+                     ->  Seq Scan on p1c3 t3_3
    ->  Hash
          ->  Append
                ->  Seq Scan on p1 t4
-               ->  Seq Scan on p1c1 t4
-               ->  Seq Scan on p1c2 t4
-               ->  Seq Scan on p1c3 t4
+               ->  Seq Scan on p1c1 t4_1
+               ->  Seq Scan on p1c2 t4_2
+               ->  Seq Scan on p1c3 t4_3
 (29 rows)
 
 /*+Leading(t4 t3 t2 t1)*/
@@ -695,8 +695,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                    QUERY PLAN                     
----------------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  Hash Join
    Hash Cond: (t2.c1 = t1.c1)
    ->  Hash Join
@@ -705,27 +705,27 @@ error hint:
                Hash Cond: (t3.c1 = t4.c1)
                ->  Append
                      ->  Seq Scan on p1 t3
-                     ->  Seq Scan on p1c1 t3
-                     ->  Seq Scan on p1c2 t3
-                     ->  Seq Scan on p1c3 t3
+                     ->  Seq Scan on p1c1 t3_1
+                     ->  Seq Scan on p1c2 t3_2
+                     ->  Seq Scan on p1c3 t3_3
                ->  Hash
                      ->  Append
                            ->  Seq Scan on p1 t4
-                           ->  Seq Scan on p1c1 t4
-                           ->  Seq Scan on p1c2 t4
-                           ->  Seq Scan on p1c3 t4
+                           ->  Seq Scan on p1c1 t4_1
+                           ->  Seq Scan on p1c2 t4_2
+                           ->  Seq Scan on p1c3 t4_3
          ->  Hash
                ->  Append
                      ->  Seq Scan on p1 t2
-                     ->  Seq Scan on p1c1 t2
-                     ->  Seq Scan on p1c2 t2
-                     ->  Seq Scan on p1c3 t2
+                     ->  Seq Scan on p1c1 t2_1
+                     ->  Seq Scan on p1c2 t2_2
+                     ->  Seq Scan on p1c3 t2_3
    ->  Hash
          ->  Append
                ->  Seq Scan on p1 t1
-               ->  Seq Scan on p1c1 t1
-               ->  Seq Scan on p1c2 t1
-               ->  Seq Scan on p1c3 t1
+               ->  Seq Scan on p1c1 t1_1
+               ->  Seq Scan on p1c2 t1_2
+               ->  Seq Scan on p1c3 t1_3
 (29 rows)
 
 -- No. L-1-6-3
@@ -1039,21 +1039,21 @@ error hint:
 
 -- No. L-1-6-10
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 t1, s1.v1 t2, s1.v1 t3, s1.v1 t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-                  QUERY PLAN                  
-----------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_3.c1)
    ->  Hash Join
-         Hash Cond: (v1t1.c1 = v1t1.c1)
+         Hash Cond: (v1t1.c1 = v1t1_2.c1)
          ->  Hash Join
-               Hash Cond: (v1t1.c1 = v1t1.c1)
+               Hash Cond: (v1t1.c1 = v1t1_1.c1)
                ->  Seq Scan on t1 v1t1
                ->  Hash
-                     ->  Seq Scan on t1 v1t1
+                     ->  Seq Scan on t1 v1t1_1
          ->  Hash
-               ->  Seq Scan on t1 v1t1
+               ->  Seq Scan on t1 v1t1_2
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_3
 (13 rows)
 
 /*+Leading(t4 t3 t2 t1)*/
@@ -1065,21 +1065,21 @@ Leading(t4 t3 t2 t1)
 duplication hint:
 error hint:
 
-                  QUERY PLAN                  
-----------------------------------------------
+                   QUERY PLAN                   
+------------------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_3.c1)
    ->  Hash Join
-         Hash Cond: (v1t1.c1 = v1t1.c1)
+         Hash Cond: (v1t1.c1 = v1t1_2.c1)
          ->  Hash Join
-               Hash Cond: (v1t1.c1 = v1t1.c1)
+               Hash Cond: (v1t1.c1 = v1t1_1.c1)
                ->  Seq Scan on t1 v1t1
                ->  Hash
-                     ->  Seq Scan on t1 v1t1
+                     ->  Seq Scan on t1 v1t1_1
          ->  Hash
-               ->  Seq Scan on t1 v1t1
+               ->  Seq Scan on t1 v1t1_2
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_3
 (13 rows)
 
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 t1, s1.v1_ t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
@@ -3453,13 +3453,13 @@ error hint:
 
 -- No. L-2-3-4
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_1
 (5 rows)
 
 /*+Leading(v1t1 v1t1)*/
@@ -3473,13 +3473,13 @@ duplication hint:
 error hint:
 Leading(v1t1 v1t1)
 
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (v1t1.c1 = v1t1.c1)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
    ->  Seq Scan on t1 v1t1
    ->  Hash
-         ->  Seq Scan on t1 v1t1
+         ->  Seq Scan on t1 v1t1_1
 (5 rows)
 
 -- No. L-2-3-5
@@ -3513,13 +3513,13 @@ error hint:
 
 -- No. L-2-3-6
 EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (r4t1.c1 = r4t1.c1)
+   Hash Cond: (r4t1.c1 = r4t1_1.c1)
    ->  Seq Scan on t1 r4t1
    ->  Hash
-         ->  Seq Scan on t1 r4t1
+         ->  Seq Scan on t1 r4t1_1
 (5 rows)
 
 /*+Leading(r4t1 r4t1)*/
@@ -3533,13 +3533,13 @@ duplication hint:
 error hint:
 Leading(r4t1 r4t1)
 
-            QUERY PLAN            
-----------------------------------
+             QUERY PLAN             
+------------------------------------
  Hash Join
-   Hash Cond: (r4t1.c1 = r4t1.c1)
+   Hash Cond: (r4t1.c1 = r4t1_1.c1)
    ->  Seq Scan on t1 r4t1
    ->  Hash
-         ->  Seq Scan on t1 r4t1
+         ->  Seq Scan on t1 r4t1_1
 (5 rows)
 
 -- No. L-2-3-7
@@ -3634,7 +3634,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
+   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -3643,7 +3643,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1,
                      ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
                Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*"
+   ->  Values Scan on "*VALUES*_1"
 (11 rows)
 
 /*+ Leading(t4 t3 t2 t1) */
@@ -3658,7 +3658,7 @@ error hint:
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
+   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -3667,7 +3667,7 @@ error hint:
                      ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
                Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*"
+   ->  Values Scan on "*VALUES*_1"
 (11 rows)
 
 /*+ Leading(*VALUES* t3 t2 t1) */
@@ -3684,7 +3684,7 @@ Leading(*VALUES* t3 t2 t1)
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*".column1)
+   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
@@ -3693,7 +3693,7 @@ Leading(*VALUES* t3 t2 t1)
                      ->  Values Scan on "*VALUES*"
          ->  Index Scan using t1_i1 on t1
                Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*"
+   ->  Values Scan on "*VALUES*_1"
 (11 rows)
 
 ----
@@ -4014,26 +4014,26 @@ not used hint:
 duplication hint:
 error hint:
 
-                  QUERY PLAN                   
------------------------------------------------
+                   QUERY PLAN                    
+-------------------------------------------------
  Hash Join
    Hash Cond: (t1.c1 = t3.c1)
    ->  Hash Join
          Hash Cond: (t1.c1 = t2.c1)
          ->  Append
                ->  Seq Scan on p2c1 t1
-               ->  Seq Scan on p2c1c1 t1
-               ->  Seq Scan on p2c1c2 t1
+               ->  Seq Scan on p2c1c1 t1_1
+               ->  Seq Scan on p2c1c2 t1_2
          ->  Hash
                ->  Append
                      ->  Seq Scan on p2c2 t2
-                     ->  Seq Scan on p2c2c1 t2
-                     ->  Seq Scan on p2c2c2 t2
+                     ->  Seq Scan on p2c2c1 t2_1
+                     ->  Seq Scan on p2c2c2 t2_2
    ->  Hash
          ->  Append
                ->  Seq Scan on p2c3 t3
-               ->  Seq Scan on p2c3c1 t3
-               ->  Seq Scan on p2c3c2 t3
+               ->  Seq Scan on p2c3c1 t3_1
+               ->  Seq Scan on p2c3c2 t3_2
 (18 rows)
 
 -- No. L-3-3-2
@@ -4048,26 +4048,26 @@ Leading(p2c1c1 p2c2c1 p2c3c1)
 duplication hint:
 error hint:
 
-                  QUERY PLAN                   
------------------------------------------------
+                   QUERY PLAN                    
+-------------------------------------------------
  Hash Join
    Hash Cond: (t1.c1 = t3.c1)
    ->  Hash Join
          Hash Cond: (t1.c1 = t2.c1)
          ->  Append
                ->  Seq Scan on p2c1 t1
-               ->  Seq Scan on p2c1c1 t1
-               ->  Seq Scan on p2c1c2 t1
+               ->  Seq Scan on p2c1c1 t1_1
+               ->  Seq Scan on p2c1c2 t1_2
          ->  Hash
                ->  Append
                      ->  Seq Scan on p2c2 t2
-                     ->  Seq Scan on p2c2c1 t2
-                     ->  Seq Scan on p2c2c2 t2
+                     ->  Seq Scan on p2c2c1 t2_1
+                     ->  Seq Scan on p2c2c2 t2_2
    ->  Hash
          ->  Append
                ->  Seq Scan on p2c3 t3
-               ->  Seq Scan on p2c3c1 t3
-               ->  Seq Scan on p2c3c2 t3
+               ->  Seq Scan on p2c3c1 t3_1
+               ->  Seq Scan on p2c3c2 t3_2
 (18 rows)
 
 ----
