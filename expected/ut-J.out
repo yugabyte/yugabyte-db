@@ -541,7 +541,6 @@ error hint:
 
 -- No. J-1-6-4
 CREATE TEMP TABLE tm1 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "tm1_pkey" for table "tm1"
 EXPLAIN (COSTS false) SELECT * FROM tm1 t1, tm1 t2 WHERE t1.c1 = t2.c1;
            QUERY PLAN           
 --------------------------------

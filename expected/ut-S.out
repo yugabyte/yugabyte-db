@@ -420,7 +420,6 @@ error hint:
 
 -- No. S-1-5-4
 CREATE TEMP TABLE tm1 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "tm1_pkey" for table "tm1"
 EXPLAIN (COSTS false) SELECT * FROM tm1 WHERE tm1.c1 = 1;
             QUERY PLAN            
 ----------------------------------

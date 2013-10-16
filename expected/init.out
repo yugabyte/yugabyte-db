@@ -2,51 +2,36 @@ SET search_path TO public;
 CREATE EXTENSION pg_hint_plan;
 CREATE SCHEMA s0;
 CREATE TABLE t1 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t1_pkey" for table "t1"
 CREATE TABLE t2 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t2_pkey" for table "t2"
 CREATE TABLE t3 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t3_pkey" for table "t3"
 CREATE TABLE t4 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t4_pkey" for table "t4"
 CREATE TABLE t5 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t5_pkey" for table "t5"
 CREATE TABLE p1 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_pkey" for table "p1"
 CREATE TABLE p1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c1_pkey" for table "p1_c1"
 CREATE TABLE p1_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c2_pkey" for table "p1_c2"
 CREATE TABLE p1_c3 (LIKE p1 INCLUDING ALL, CHECK (id > 200 AND id <= 300)) INHERITS(p1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c3_pkey" for table "p1_c3"
 CREATE TABLE p1_c4 (LIKE p1 INCLUDING ALL, CHECK (id > 300)) INHERITS(p1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c4_pkey" for table "p1_c4"
 CREATE TABLE p1_c1_c1 (LIKE p1 INCLUDING ALL, CHECK (id <= 50)) INHERITS(p1_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c1_c1_pkey" for table "p1_c1_c1"
 CREATE TABLE p1_c1_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INHERITS(p1_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c1_c2_pkey" for table "p1_c1_c2"
 CREATE TABLE p1_c3_c1 (LIKE p1 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p1_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c3_c1_pkey" for table "p1_c3_c1"
 CREATE TABLE p1_c3_c2 (LIKE p1 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p1_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_c3_c2_pkey" for table "p1_c3_c2"
 CREATE TABLE p2 (id int PRIMARY KEY, val text);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_pkey" for table "p2"
 CREATE INDEX p2_id_val_idx ON p2 (id, val);
 CREATE UNIQUE INDEX p2_val_idx ON p2 (val);
 CREATE INDEX p2_ununi_id_val_idx ON p2 (val);
@@ -63,37 +48,28 @@ CREATE INDEX p2_val_idx7 ON p2 (val) WHERE id < 120;
 CREATE TABLE p2_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c1_pkey" for table "p2_c1"
 CREATE TABLE p2_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c2_pkey" for table "p2_c2"
 CREATE TABLE p2_c3 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 300)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c3_pkey" for table "p2_c3"
 CREATE TABLE p2_c4 (LIKE p2 INCLUDING ALL, CHECK (id > 300)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c4_pkey" for table "p2_c4"
 CREATE TABLE p2_c1_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 50)) INHERITS(p2_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c1_c1_pkey" for table "p2_c1_c1"
 CREATE TABLE p2_c1_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INHERITS(p2_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c1_c2_pkey" for table "p2_c1_c2"
 CREATE TABLE p2_c3_c1 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p2_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c3_c1_pkey" for table "p2_c3_c1"
 CREATE TABLE p2_c3_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p2_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_c3_c2_pkey" for table "p2_c3_c2"
 CREATE TABLE s0.t1 (id int PRIMARY KEY, val int);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t1_pkey" for table "t1"
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO t3 SELECT i, i FROM (SELECT generate_series(1, 100) i) t;

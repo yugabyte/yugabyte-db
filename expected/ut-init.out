@@ -21,98 +21,79 @@ CREATE ROLE normal_user
 CREATE SCHEMA s1;
 CREATE SCHEMA s2;
 CREATE TABLE s1.t1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1));
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t1_pkey" for table "t1"
 CREATE TABLE s1.t2 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t2_pkey" for table "t2"
 CREATE TABLE s1.t3 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t3_pkey" for table "t3"
 CREATE TABLE s1.t4 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t4_pkey" for table "t4"
 CREATE TABLE s2.t1 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "t1_pkey" for table "t1"
 CREATE TABLE s1.p1 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1_pkey" for table "p1"
 CREATE UNIQUE INDEX p1_parent ON s1.p1 USING btree (c4 COLLATE "ja_JP" varchar_ops ASC NULLS LAST, (c1 * 2 < 100)) WHERE c1 < 10;
 CREATE TABLE s1.p2 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2_pkey" for table "p2"
 CREATE TABLE s1.p1c1 (LIKE s1.p1 INCLUDING ALL, CHECK (c1 <= 100)) INHERITS(s1.p1);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1c1_pkey" for table "p1c1"
 CREATE TABLE s1.p1c2 (LIKE s1.p1 INCLUDING ALL, CHECK (c1 > 100 AND c1 <= 200)) INHERITS(s1.p1);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1c2_pkey" for table "p1c2"
 CREATE TABLE s1.p1c3 (LIKE s1.p1 INCLUDING ALL, CHECK (c1 > 200)) INHERITS(s1.p1);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p1c3_pkey" for table "p1c3"
 CREATE TABLE s1.p2c1 (LIKE s1.p2 INCLUDING ALL, CHECK (c1 <= 100)) INHERITS(s1.p2);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c1_pkey" for table "p2c1"
 CREATE TABLE s1.p2c2 (LIKE s1.p2 INCLUDING ALL, CHECK (c1 > 100 AND c1 <= 200)) INHERITS(s1.p2);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c2_pkey" for table "p2c2"
 CREATE TABLE s1.p2c3 (LIKE s1.p2 INCLUDING ALL, CHECK (c1 > 200)) INHERITS(s1.p2);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c3_pkey" for table "p2c3"
 CREATE TABLE s1.p2c1c1 (LIKE s1.p2c1 INCLUDING ALL, CHECK (c1 <= 50)) INHERITS(s1.p2c1);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
 NOTICE:  merging constraint "p2c1_c1_check" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c1c1_pkey" for table "p2c1c1"
 CREATE TABLE s1.p2c1c2 (LIKE s1.p2c1 INCLUDING ALL, CHECK (c1 > 50 AND c1 <= 100)) INHERITS(s1.p2c1);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
 NOTICE:  merging constraint "p2c1_c1_check" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c1c2_pkey" for table "p2c1c2"
 CREATE TABLE s1.p2c2c1 (LIKE s1.p2c2 INCLUDING ALL, CHECK (c1 > 100 AND c1 <= 150)) INHERITS(s1.p2c2);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
 NOTICE:  merging constraint "p2c2_c1_check" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c2c1_pkey" for table "p2c2c1"
 CREATE TABLE s1.p2c2c2 (LIKE s1.p2c2 INCLUDING ALL, CHECK (c1 > 150 AND c1 <= 200)) INHERITS(s1.p2c2);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
 NOTICE:  merging constraint "p2c2_c1_check" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c2c2_pkey" for table "p2c2c2"
 CREATE TABLE s1.p2c3c1 (LIKE s1.p2c3 INCLUDING ALL, CHECK (c1 > 200 AND c1 <= 250)) INHERITS(s1.p2c3);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
 NOTICE:  merging constraint "p2c3_c1_check" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c3c1_pkey" for table "p2c3c1"
 CREATE TABLE s1.p2c3c2 (LIKE s1.p2c3 INCLUDING ALL, CHECK (c1 > 250)) INHERITS(s1.p2c3);
 NOTICE:  merging column "c1" with inherited definition
 NOTICE:  merging column "c2" with inherited definition
 NOTICE:  merging column "c3" with inherited definition
 NOTICE:  merging column "c4" with inherited definition
 NOTICE:  merging constraint "p2c3_c1_check" with inherited definition
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "p2c3c2_pkey" for table "p2c3c2"
 CREATE TABLE s1.r1 (LIKE s1.t1);
 CREATE TABLE s1.r2 (LIKE s1.t1);
 CREATE TABLE s1.r3 (LIKE s1.t1);
@@ -122,10 +103,7 @@ CREATE TABLE s1.r1_ (LIKE s1.t1);
 CREATE TABLE s1.r2_ (LIKE s1.t1);
 CREATE TABLE s1.r3_ (LIKE s1.t1);
 CREATE TABLE s1.ti1 (c1 int, c2 int, c3 int, c4 text, PRIMARY KEY (c1), UNIQUE (c2));
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "ti1_pkey" for table "ti1"
-NOTICE:  CREATE TABLE / UNIQUE will create implicit index "ti1_c2_key" for table "ti1"
 CREATE UNLOGGED TABLE s1.ul1 (LIKE s1.t1 INCLUDING ALL);
-NOTICE:  CREATE TABLE / PRIMARY KEY will create implicit index "ul1_pkey" for table "ul1"
 INSERT INTO s1.t1 SELECT i, i, i % 100, i FROM (SELECT generate_series(1, 1000) i) t;
 INSERT INTO s1.t2 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
 INSERT INTO s2.t1 SELECT i, i, i % 10, i FROM (SELECT generate_series(1, 100) i) t;
