@@ -371,7 +371,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE p1.c1 = 1;
  Append
    ->  Seq Scan on p1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1 p1
+   ->  Seq Scan on p1c1
          Filter: (c1 = 1)
 (5 rows)
 
@@ -389,7 +389,7 @@ error hint:
  Append
    ->  Index Scan using p1_i on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1 p1
+   ->  Index Scan using p1c1_i on p1c1
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -4977,7 +4977,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
  Append
    ->  Seq Scan on p1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1 p1
+   ->  Seq Scan on p1c1
          Filter: (c1 = 1)
 (5 rows)
 
@@ -4995,7 +4995,7 @@ error hint:
  Append
    ->  Index Scan using p1_i on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1 p1
+   ->  Index Scan using p1c1_i on p1c1
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -5009,7 +5009,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
  Append
    ->  Seq Scan on p1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1 p1
+   ->  Seq Scan on p1c1
          Filter: (c1 = 1)
 (5 rows)
 
@@ -5027,7 +5027,7 @@ error hint:
  Append
    ->  Index Scan using p1_i on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1 p1
+   ->  Index Scan using p1c1_i on p1c1
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -5038,9 +5038,9 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
  Append
    ->  Seq Scan on p2
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1 p2
+   ->  Seq Scan on p2c1
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1c1 p2
+   ->  Seq Scan on p2c1c1
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5058,9 +5058,9 @@ error hint:
  Append
    ->  Index Scan using p2_i on p2
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1_i on p2c1 p2
+   ->  Index Scan using p2c1_i on p2c1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1c1_i on p2c1c1 p2
+   ->  Index Scan using p2c1c1_i on p2c1c1
          Index Cond: (c1 = 1)
 (7 rows)
 
@@ -5073,9 +5073,9 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
  Append
    ->  Seq Scan on p2
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1 p2
+   ->  Seq Scan on p2c1
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1c1 p2
+   ->  Seq Scan on p2c1c1
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5094,9 +5094,9 @@ error hint:
  Append
    ->  Index Scan using p2_i on p2
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1_i on p2c1 p2
+   ->  Index Scan using p2c1_i on p2c1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p2c1c1_i on p2c1c1 p2
+   ->  Index Scan using p2c1c1_i on p2c1c1
          Index Cond: (c1 = 1)
 (7 rows)
 
@@ -5115,9 +5115,9 @@ error hint:
  Append
    ->  Seq Scan on p2
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1 p2
+   ->  Seq Scan on p2c1
          Filter: (c1 = 1)
-   ->  Seq Scan on p2c1c1 p2
+   ->  Seq Scan on p2c1c1
          Filter: (c1 = 1)
 (7 rows)
 
@@ -5937,7 +5937,7 @@ error hint:
  Append
    ->  Index Scan using p1_pkey on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_pkey on p1c1 p1
+   ->  Index Scan using p1c1_pkey on p1c1
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -5960,7 +5960,7 @@ error hint:
  Append
    ->  Index Scan using p1_i on p1
          Index Cond: (c1 = 1)
-   ->  Index Scan using p1c1_i on p1c1 p1
+   ->  Index Scan using p1c1_i on p1c1
          Index Cond: (c1 = 1)
 (5 rows)
 
@@ -5983,7 +5983,7 @@ error hint:
  Append
    ->  Seq Scan on p1
          Filter: (c1 = 1)
-   ->  Seq Scan on p1c1 p1
+   ->  Seq Scan on p1c1
          Filter: (c1 = 1)
 (5 rows)
 
