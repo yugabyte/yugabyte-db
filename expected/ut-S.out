@@ -5128,7 +5128,7 @@ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
  Append  (cost=0.00..2.75 rows=4 width=10)
    ->  Seq Scan on p1  (cost=0.00..0.00 rows=1 width=32)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
-   ->  Seq Scan on p1c1 p1 (cost=0.00..2.75 rows=3 width=2)
+   ->  Seq Scan on p1c1  (cost=0.00..2.75 rows=3 width=2)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
 (5 rows)
 
@@ -5150,7 +5150,7 @@ error hint:
  Append  (cost=0.12..20.48 rows=4 width=10)
    ->  Index Scan using p1_parent on p1  (cost=0.12..8.15 rows=1 width=32)
          Filter: ((c2 * 2) < 100)
-   ->  Index Scan using p1c1_c4_expr_idx on p1c1 p1  (cost=0.14..12.34 rows=3 width=2)
+   ->  Index Scan using p1c1_c4_expr_idx on p1c1  (cost=0.14..12.34 rows=3 width=2)
          Filter: ((c2 * 2) < 100)
 (5 rows)
 
@@ -5175,9 +5175,9 @@ error hint:
          Index Cond: (c2 = 1)
    ->  Seq Scan on p1c1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c2 p1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+   ->  Seq Scan on p1c2  (cost=10000000000.00..10000000002.25 rows=1 width=4)
          Filter: (c2 = 1)
-   ->  Seq Scan on p1c3 p1  (cost=10000000000.00..10000000002.25 rows=1 width=4)
+   ->  Seq Scan on p1c3  (cost=10000000000.00..10000000002.25 rows=1 width=4)
          Filter: (c2 = 1)
 (9 rows)
 
@@ -5206,9 +5206,9 @@ error hint:
  Append  (cost=10000000000.00..20000000009.77 rows=3 width=34)
    ->  Seq Scan on p2  (cost=10000000000.00..10000000000.00 rows=1 width=44)
          Filter: (c1 = 1)
-   ->  Index Scan using p2c1_pkey on p2c1 p2  (cost=0.12..8.14 rows=1 width=44)
+   ->  Index Scan using p2c1_pkey on p2c1  (cost=0.12..8.14 rows=1 width=44)
          Index Cond: (c1 = 1)
-   ->  Seq Scan on p2c1c1 p2  (cost=10000000000.00..10000000001.62 rows=1 width=14)
+   ->  Seq Scan on p2c1c1  (cost=10000000000.00..10000000001.62 rows=1 width=14)
          Filter: (c1 = 1)
 (7 rows)
 
