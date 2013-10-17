@@ -28,7 +28,7 @@ their requirements depending on your database connection configuration.
 """
 
 try:
-    opts, args = getopt.getopt(sys.argv[1:], "?vn:h:U:p:d:o:", ["help","Fp","nohashfile","nodrop","verbose","schema=","dump_host=","dump_username=","dump_port=","dump_database=","output=","pg_dump_path="])
+    opts, args = getopt.getopt(sys.argv[1:], "?vn:h:U:p:d:o:", ["help","Fp","nohashfile","nodrop","verbose","connection=","schema=","dump_host=","dump_username=","dump_port=","dump_database=","output=","pg_dump_path="])
 except getopt.GetoptError:
     print "Invalid argument"
     print help_string
