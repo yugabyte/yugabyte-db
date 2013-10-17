@@ -1107,6 +1107,26 @@ EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 --No.13-3-3
+CREATE OR REPLACE FUNCTION nested_planner(cnt int) RETURNS int AS $$
+DECLARE
+    new_cnt int;
+BEGIN
+    RAISE NOTICE 'nested_planner(%)', cnt;
+
+    /* 再帰終了の判断 */
+    IF cnt <= 1 THEN
+        RETURN 0;
+    END IF;
+
+	SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1) INTO new_cnt
+	  FROM s1.t1 t_1
+	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
+	 ORDER BY t_1.c1 LIMIT 1;
+
+    RETURN new_cnt;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
 /*+SeqScan(t_2)*/
 EXPLAIN (COSTS false) SELECT nested_planner(5) FROM s1.t1 t_1 ORDER BY t_1.c1;
