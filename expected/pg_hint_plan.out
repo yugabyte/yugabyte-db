@@ -211,15 +211,14 @@ not used hint:
 duplication hint:
 error hint:
 
-                QUERY PLAN                
-------------------------------------------
- Nested Loop
-   ->  Index Scan using t2_pkey on t2
-   ->  Bitmap Heap Scan on t1
-         Recheck Cond: (id = t2.id)
-         ->  Bitmap Index Scan on t1_pkey
-               Index Cond: (id = t2.id)
-(6 rows)
+                 QUERY PLAN                 
+--------------------------------------------
+ Hash Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1
+   ->  Hash
+         ->  Index Scan using t2_pkey on t2
+(5 rows)
 
 /*+Set(work_mem "1M")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
@@ -563,18 +562,19 @@ error hint:
                     QUERY PLAN                    
 --------------------------------------------------
  Merge Join
-   Merge Cond: (t1.id = t4.id)
+   Merge Cond: (t1.id = t3.id)
    ->  Merge Join
-         Merge Cond: (t1.id = t3.id)
+         Merge Cond: (t1.id = t2.id)
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t2_pkey on t2
+   ->  Materialize
          ->  Merge Join
-               Merge Cond: (t1.id = t2.id)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
-   ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
-(12 rows)
+               Merge Cond: (t3.id = t4.id)
+               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+(13 rows)
 
 /*+HashJoin(t3 t4 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -640,18 +640,19 @@ error hint:
                     QUERY PLAN                    
 --------------------------------------------------
  Merge Join
-   Merge Cond: (t1.id = t4.id)
+   Merge Cond: (t1.id = t3.id)
    ->  Merge Join
-         Merge Cond: (t1.id = t3.id)
+         Merge Cond: (t1.id = t2.id)
+         ->  Index Scan using t1_pkey on t1
+         ->  Index Scan using t2_pkey on t2
+   ->  Materialize
          ->  Merge Join
-               Merge Cond: (t1.id = t2.id)
-               ->  Index Scan using t1_pkey on t1
-               ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
-   ->  Sort
-         Sort Key: t4.id
-         ->  Seq Scan on t4
-(12 rows)
+               Merge Cond: (t3.id = t4.id)
+               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t4.id
+                     ->  Seq Scan on t4
+(13 rows)
 
 /*+Leading( */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -3006,13 +3007,14 @@ not used hint:
 duplication hint:
 error hint:
 
-              QUERY PLAN              
---------------------------------------
- Merge Full Join
-   Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1
-   ->  Index Scan using t2_pkey on t2
-(4 rows)
+          QUERY PLAN          
+------------------------------
+ Hash Full Join
+   Hash Cond: (t1.id = t2.id)
+   ->  Seq Scan on t1
+   ->  Hash
+         ->  Seq Scan on t2
+(5 rows)
 
 -- inherite table test
 SET constraint_exclusion TO off;
@@ -5987,6 +5989,7 @@ error hint:
                     QUERY PLAN                    
 --------------------------------------------------
  Nested Loop
+   Join Filter: (t3.id = t4.id)
    ->  Nested Loop
          Join Filter: (t1.val = t3.val)
          ->  Hash Join
@@ -5996,8 +5999,7 @@ error hint:
                ->  Hash
                      ->  Seq Scan on t2
          ->  Seq Scan on t3
-   ->  Index Scan using t4_pkey on t4
-         Index Cond: (id = t3.id)
+   ->  Seq Scan on t4
 (12 rows)
 
 /*+Leading(((t1 t2) t3)) MergeJoin(t1 t2 t3 t4)*/
@@ -6248,13 +6250,15 @@ error hint:
                      Merge Cond: (t1.id = t2.id)
                      ->  Index Scan using t1_pkey on t1
                      ->  Index Scan using t2_pkey on t2
-               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t3.id
+                     ->  Seq Scan on t3
          ->  Sort
                Sort Key: t4.id
                ->  Seq Scan on t4
    ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
          Index Cond: (id = t1.id)
-(15 rows)
+(17 rows)
 
 /*+Leading(((((t5 t4)t3)t2)t1))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -6336,13 +6340,15 @@ error hint:
    ->  Materialize
          ->  Merge Join
                Merge Cond: (t3.id = t1.id)
-               ->  Index Scan using t3_pkey on t3
+               ->  Sort
+                     Sort Key: t3.id
+                     ->  Seq Scan on t3
                ->  Materialize
                      ->  Merge Join
                            Merge Cond: (t2.id = t1.id)
                            ->  Index Scan using t2_pkey on t2
                            ->  Index Scan using t1_pkey on t1
-(17 rows)
+(19 rows)
 
 /*+Leading((((t1 t2)t3)(t4 t5)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
@@ -6363,13 +6369,15 @@ error hint:
                Merge Cond: (t1.id = t2.id)
                ->  Index Scan using t1_pkey on t1
                ->  Index Scan using t2_pkey on t2
-         ->  Index Scan using t3_pkey on t3
+         ->  Sort
+               Sort Key: t3.id
+               ->  Seq Scan on t3
    ->  Materialize
          ->  Merge Join
                Merge Cond: (t4.id = t5.id)
                ->  Index Scan using t4_pkey on t4
                ->  Index Scan using t5_idaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa on t5
-(14 rows)
+(16 rows)
 
 /*+Leading((((t5 t4)t3)(t2 t1)))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4, t5 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id AND t1.id = t5.id;
