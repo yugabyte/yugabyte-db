@@ -1,3 +1,7 @@
+1.4.1
+-- Assign child partitions to the tablespace of the parent. This will only apply to newly created partitions after this update is installed. To fix existing partitions, you will have to manually alter the child tables. Thanks to https://github.com/joelhoffman for the fix.
+
+
 1.4.0
 -- Updated creation of child partition, function & trigger names to take into account the max object length an object can have to guarentee the partition suffix. Involved extensive rewrite of many core functions.
 -- WARNING: If your table names were already long enough to be causing name truncation (over 63 characters), you may get duplicate child tables, functions & triggers created. Please check your object name lengths on your partition sets before installing this update to see if you may be affected by this edge case and its subsequent fix. 
