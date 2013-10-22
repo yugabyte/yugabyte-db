@@ -57,7 +57,7 @@ FOR i IN 1..p_batch_count LOOP
 
 -- do some locking with timeout, if required
     IF p_lock_wait > 0  THEN
-        WHILE v_lock_iter <= 4 LOOP
+        WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
                 v_sql := 'SELECT * FROM ' || p_parent_table ||
@@ -66,12 +66,12 @@ FOR i IN 1..p_batch_count LOOP
                 ||' FOR UPDATE NOWAIT';
                 EXECUTE v_sql;
                 v_lock_obtained := TRUE;
-                EXIT;
             EXCEPTION
                 WHEN lock_not_available THEN
+                    PERFORM pg_sleep( p_lock_wait / 5.0 );
                     CONTINUE;
             END;
-            PERFORM pg_sleep( p_lock_wait / 4 );
+            EXIT WHEN v_lock_obtained;
         END LOOP;
         IF NOT v_lock_obtained THEN
            RETURN -1;
