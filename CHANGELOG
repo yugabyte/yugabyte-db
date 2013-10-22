@@ -1,4 +1,4 @@
-1.4.1
+1.4.2
 -- Added lockwait functionality to background data partitioning, including partition_data_id, partition_data_time, and partition_data.py
 
 1.4.0
