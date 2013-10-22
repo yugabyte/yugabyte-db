@@ -1,7 +1,7 @@
 /*
  * Populate the child table(s) of an id-based partition set with old data from the original parent
  */
-CREATE FUNCTION partition_data_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval int DEFAULT NULL) RETURNS bigint
+CREATE FUNCTION partition_data_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval int DEFAULT NULL, p_lock_wait numeric DEFAULT 0) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -16,6 +16,8 @@ v_partition_id              bigint[];
 v_rowcount                  bigint;
 v_sql                       text;
 v_total_rows                bigint := 0;
+v_lock_iter                 int := 1;
+v_lock_obtained             boolean := FALSE;
 
 BEGIN
 
@@ -49,6 +51,29 @@ FOR i IN 1..p_batch_count LOOP
         v_max_partition_id := v_min_control + p_batch_interval;
     END IF;
 --    RAISE NOTICE 'v_max_partition_id: %',v_max_partition_id;
+
+-- do some locking with timeout, if required
+    IF p_lock_wait > 0  THEN
+        WHILE v_lock_iter <= 5 LOOP
+            v_lock_iter := v_lock_iter + 1;
+            BEGIN
+                v_sql := 'SELECT * FROM ' || p_parent_table ||
+                ' WHERE '||v_control||' >= '||v_min_control||
+                ' AND '||v_control||' < '||v_max_partition_id
+                ||' FOR UPDATE NOWAIT';
+                EXECUTE v_sql;
+                v_lock_obtained := TRUE;
+            EXCEPTION
+                WHEN lock_not_available THEN
+                    PERFORM pg_sleep( p_lock_wait / 5.0 );
+                    CONTINUE;
+            END;
+            EXIT WHEN v_lock_obtained;
+        END LOOP;
+        IF NOT v_lock_obtained THEN
+           RETURN -1;
+        END IF;
+    END IF;
 
     v_sql := 'SELECT @extschema@.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
     ||v_part_interval||','||quote_literal(v_partition_id)||')';
