@@ -1,6 +1,9 @@
+
+1.4.2
+-- Added lockwait functionality to background data partitioning, including partition_data_id, partition_data_time, and partition_data.py
+
 1.4.1
 -- Assign child partitions to the tablespace of the parent. This will only apply to newly created partitions after this update is installed. To fix existing partitions, you will have to manually alter the child tables. Thanks to https://github.com/joelhoffman for the fix.
-
 
 1.4.0
 -- Updated creation of child partition, function & trigger names to take into account the max object length an object can have to guarentee the partition suffix. Involved extensive rewrite of many core functions.

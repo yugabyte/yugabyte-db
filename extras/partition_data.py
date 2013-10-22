@@ -1,113 +1,81 @@
 #!/usr/bin/env python
 
-import psycopg2, sys, getopt, time
+import psycopg2, sys, argparse, time
 
-help_string = """
-This script calls either partition_data_time() or partition_data_id() depending on the value given for --type.
-A commit is done at the end of each --interval and/or fully created partition.
-Returns the total number of rows moved to partitions. Automatically stops when parent is empty.
-
-    --parent (-p):          Parent table an already created partition set. Required.\n
-    --type (-t):            Type of partitioning. Valid values are "time" and "id". Required.\n
-    --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".
-                            Highly recommended to use .pgpass file or environment variables to keep credentials secure.\n
-    --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval argument. 
-                            Use this to set an interval smaller than the partition interval to commit data in smaller batches.
-                            Defaults to the partition interval if not given.\n
-    --batch (-b):           How many times to loop through the value given for --interval.
-                            If --interval not set, will use default partition interval and make at most -b partition(s).
-                            Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function).
-                            If not set, all data in the parent table will be partitioned in a single run of the script.\n
-    --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).\n
-    --schema (-s):          The schema that pg_partman was installed to. Default is "partman".\n
-    --quiet (-q):           Switch setting to stop all output during and after partitioning.
-
+"""
+Examples until we get some real docs:
 Example to partition all data in a parent table. Commit after each partition is made.\n
         python partition_data.py -c "host=localhost dbname=mydb" -p schema.parent_table -t time\n
 Example to partition by id in smaller intervals and pause between them for 5 seconds (assume >100 partition interval)\n
         python partition_data.py -p schema.parent_table -t id -i 100 -w 5\n
 Example to partition by time in smaller intervals for at most 10 partitions in a single run (assume monthly partition interval)\n
-        python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10
+            python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10sta
 """
 
-try: 
-    opts, args = getopt.getopt(sys.argv[1:], "hqt:p:c:b:i:s:w:", ["help","quiet","type=","parent=","connection=","batch=","interval=","schema=", "wait"])
-except getopt.GetoptError:
-    print "Invalid argument"
-    print help_string
-    sys.exit(2)
+parser = argparse.ArgumentParser(description="This script calls either partition_data_time() or partition_data_id() depending on the value given for --type. A commit is done at the end of each --interval and/or fully created partition. Returns the total number of rows moved to partitions. Automatically stops when parent is empty.")
+parser.add_argument('-p','--parent', help="Parent table an already created partition set. Required.")
+parser.add_argument('-t','--type', help="""Type of partitioning. Valid values are "time" and "id". Required.""", choices=["time","id",])
+parser.add_argument('-c','--connection', help="""Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.""", default="host=localhost")
+parser.add_argument('-i','--interval',help="""Value that is passed on to the partitioning function as p_batch_interval argument. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.""")
+parser.add_argument('-b','--batch',type=int,help="""How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and make at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function). If not set, all data in the parent table will be partitioned in a single run of the script.""",default=0)
+parser.add_argument('-w','--wait',type=float,help="Cause the script to pause for a given number of seconds between commits (batches) to reduce write load",default=0)
+parser.add_argument('-l','--lockwait', type=float, help="Have a lock timeout of this many seconds on the data move. If a lock is not obtained, that batch will be tried again.", default=0)
+parser.add_argument('--lockwait_tries', type=int, help="Number of times to allow a lockwait to time out before giving up on the partitioning.  Defaults to 10", default=10)
+parser.add_argument('-s','--schema',help="""The schema that pg_partman was installed to. Default is "partman".""",default="partman")
+parser.add_argument('-q','--quiet',help="Switch setting to stop all output during and after partitioning for use in cron jobs", action="store_true")
+args = parser.parse_args()
 
-arg_parent = ""
-arg_type = ""
-arg_batch = ""
-arg_interval = ""
-arg_wait = ""
-arg_connection = "host=localhost"
-arg_schema = "partman"
-arg_quiet = 0
-batch_count = 0
-total = 0
-for opt, arg in opts:
-    if opt in ("-h", "--help"):
-        print help_string
-        sys.exit()
-    elif opt in ("-p", "--parent"):
-        arg_parent = arg
-    elif opt in ("-t", "--type"):
-        arg_type = arg
-        if arg_type not in ("time", "id"):
-            print "--type (-t) must be one of the following: time, id"
-            sys.exit(2)
-    elif opt in ("-c", "--connection"):
-        arg_connection = arg
-    elif opt in ("-b", "--batch"):
-        arg_batch = arg
-    elif opt in ("-i", "--interval"):
-        arg_interval = arg
-    elif opt in ("-w", "--wait"):
-        arg_wait = arg
-    elif opt in ("-s", "--schema"):
-        arg_schema = arg
-    elif opt in ("-q", "--quiet"):
-        arg_quiet = 1
-
-if arg_parent == "":
+if args.parent == "":
     print "--parent (-p) argument is required"
     sys.exit(2)
-if arg_type == "":
+if args.type == "":
     print "--type (-t) argument is required"
     sys.exit(2)
 
-conn = psycopg2.connect(arg_connection)
+batch_count = 0
+total = 0
+lockwait_count = 0
+
+conn = psycopg2.connect(args.connection)
 
 cur = conn.cursor()
 
-sql = "SELECT " + arg_schema + ".partition_data_" + arg_type + "(%s"
-if arg_interval != "":
+sql = "SELECT " + args.schema + ".partition_data_" + args.type + "(%s"
+if args.interval != "":
     sql += ", p_batch_interval := %s"
-sql += ")"
+sql += ", p_lock_wait := %s)"
 
 while True:
-    if arg_interval != "":
-        li = [arg_parent, arg_interval]
+    if args.interval != "":
+        li = [args.parent, args.interval, args.lockwait]
     else:
-        li = [arg_parent]
+        li = [args.parent, args.lockwait]
 #    print cur.mogrify(sql, li)
     cur.execute(sql, li)
     result = cur.fetchone()
     conn.commit()
-    if arg_quiet == 0:
-        print "Rows moved: " + str(result[0])
-    total += result[0]
-    batch_count += 1
+    if not args.quiet:
+        if result[0] > 0:
+            print "Rows moved: " + str(result[0])
+        elif result[0] == -1:
+            print "Unable to obtain lock, trying again"
+    # if lock wait timeout, do not increment the counter
+    if result[0] <> -1:
+        batch_count += 1
+        total += result[0]
+        lockwait_count = 0
+    else:
+        lockwait_count += 1
+        if lockwait_count > args.lockwait_tries:
+            print "quitting due to inability to get lock on next rows to be moved"
+            print "total rows moved: %d" % total
+            break
     # If no rows left or given batch argument limit is reached
-    if (result[0] == 0) or (arg_batch != "" and batch_count >= int(arg_batch)):
+    if (result[0] == 0) or (args.batch > 0 and batch_count >= int(args.batch)):
         break
-    if arg_wait != "":
-        time.sleep(float(arg_wait))
+    time.sleep(args.wait)
 
-if arg_quiet == 0:
-    print total
+if not args.quiet:
+    print "total rows moved: %d" % total
 
-cur.close()
 conn.close()
