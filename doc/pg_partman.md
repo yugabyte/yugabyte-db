@@ -186,6 +186,8 @@ Extras
  * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval argument. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
  * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and make at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function). If not set, all data in the parent table will be partitioned in a single run of the script.
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
+ * --lockwait (-l):        Have a lock timeout of this many seconds on the data move. If a lock is not obtained, that batch will be tried again.
+ * --lockwait_tries        Number of times to allow a lockwait to time out before giving up on the partitioning. Defaults to 10.
  * --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
  * --quiet (-q):           Switch setting to stop all output during and after partitioning.
  * Please see --help option for some examples.
@@ -202,10 +204,9 @@ Extras
  * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
  * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and undo at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to undo function). If not set, all data will be moved to the parent table in a single run of the script.
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
- * --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
+* --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
  * --droptable (-d):       Switch setting for whether to drop child tables when they are empty. Leave off option to just uninherit.
  * --quiet (-q):           Switch setting to stop all output during and after partitioning undo.
- * Please see --help option for some examples.
 
 *dump_partition.py*
  * A python script to dump out tables contained in the given schema. Uses pg_dump, creates a SHA-512, and then drops the table.

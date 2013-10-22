@@ -9,11 +9,11 @@ Example to partition all data in a parent table. Commit after each partition is 
 Example to partition by id in smaller intervals and pause between them for 5 seconds (assume >100 partition interval)\n
         python partition_data.py -p schema.parent_table -t id -i 100 -w 5\n
 Example to partition by time in smaller intervals for at most 10 partitions in a single run (assume monthly partition interval)\n
-            python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10sta
+            python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10
 """
 
 parser = argparse.ArgumentParser(description="This script calls either partition_data_time() or partition_data_id() depending on the value given for --type. A commit is done at the end of each --interval and/or fully created partition. Returns the total number of rows moved to partitions. Automatically stops when parent is empty.")
-parser.add_argument('-p','--parent', help="Parent table an already created partition set. Required.")
+parser.add_argument('-p','--parent', help="Parent table of an already created partition set. Required.")
 parser.add_argument('-t','--type', help="""Type of partitioning. Valid values are "time" and "id". Required.""", choices=["time","id",])
 parser.add_argument('-c','--connection', help="""Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.""", default="host=localhost")
 parser.add_argument('-i','--interval',help="""Value that is passed on to the partitioning function as p_batch_interval argument. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.""")
