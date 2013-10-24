@@ -1,94 +1,32 @@
-import sys, getopt, hashlib, subprocess, psycopg2, os, os.path
+#!/usr/bin/env python
 
-help_string = """
-This script will dump out and then drop all tables contained in the designated schema using pg_dump. 
-Each table will be in its own separate file along with a SHA-512 hash of the dump file. 
-Tables are not dropped from the database if pg_dump does not return successfully.
-All dump_* option defaults are the same as they would be for pg_dump if they are not given.
+import argparse, getopt, hashlib, os, os.path, psycopg2, subprocess, sys
 
-    --schema (-n):          The schema that contains the tables that will be dumped. (Required)\n
-    --connection (-c):      Connection string for use by psycopg. Must be able to select pg_catalog.pg_tables 
-                            in the relevant database and drop all tables in the given schema. 
-                            Defaults to "host=localhost".
-                            Note this is distinct from the parameters sent to pg_dump. \n
-    --output (-o):          Path to dump file output location. Default is where the script is run from.\n
-    --dump_database (-d):   Used for pg_dump, same as its final database name parameter.\n
-    --dump_host (-h):       Used for pg_dump, same as its --host option.\n
-    --dump_username (-U):   Used for pg_dump, same as its --username option.\n
-    --dump_port (-p):       Used for pg_dump, same as its --port option.\n
-    --pg_dump_path:         Path to pg_dump binary location. Must set if not in current PATH.\n
-    --Fp:                   Dump using pg_dump plain text format. Default is binary custom (-Fc).\n
-    --nohashfile:           Do NOT create a separate file with the SHA-512 hash of the dump.\n
-                            If dump files are very large, hash generation can possibly take a long time.\n
-    --nodrop:               Do NOT drop the tables from the given schema after dumping/hashing.\n
-    --verbose (-v):         Provide more verbose output.\n
+parser = argparse.ArgumentParser(description="This script will dump out and then drop all tables contained in the designated schema using pg_dump.  Each table will be in its own separate file along with a SHA-512 hash of the dump file.  Tables are not dropped from the database if pg_dump does not return successfully. All dump_* option defaults are the same as they would be for pg_dump if they are not given.", epilog="NOTE: The connection options for psyocpg and pg_dump were separated out due to distinct differences in their requirements depending on your database connection configuration.")
+parser.add_argument('-n','--schema', required=True, help="The schema that contains the tables that will be dumped. (Required)")
+parser.add_argument('-c','--connection', default="host=localhost", help="""Connection string for use by psycopg. Must be able to select pg_catalog.pg_tables in the relevant database and drop all tables in the given schema.  Defaults to "host=localhost". Note this is distinct from the parameters sent to pg_dump.""")
+parser.add_argument('-o','--output', default=os.getcwd(), help="Path to dump file output location. Default is where the script is run from.")
+parser.add_argument('-d','--dump_database', help="Used for pg_dump, same as its --dbname (-d) option or final database name parameter.")
+parser.add_argument('--dump_host', help="Used for pg_dump, same as its --host (-h) option.")
+parser.add_argument('--dump_username', help="Used for pg_dump, same as its --username (-U) option.")
+parser.add_argument('--dump_port', help="Used for pg_dump, same as its --port (-p) option.")
+parser.add_argument('--pg_dump_path', help="Path to pg_dump binary location. Must set if not in current PATH.")
+parser.add_argument('--Fp', action="store_true", help="Dump using pg_dump plain text format. Default is binary custom (-Fc).")
+parser.add_argument('--nohashfile', action="store_true", help="Do NOT create a separate file with the SHA-512 hash of the dump. If dump files are very large, hash generation can possibly take a long time.")
+parser.add_argument('--nodrop', action="store_true", help="Do NOT drop the tables from the given schema after dumping/hashing.")
+parser.add_argument('-v','--verbose', action="store_true", help="Provide more verbose output.")
+args = parser.parse_args()
 
-Note: The connection options for psyocpg and pg_dump were separated out due to distinct differences in 
-their requirements depending on your database connection configuration. 
-"""
-
-try:
-    opts, args = getopt.getopt(sys.argv[1:], "?vn:c:h:U:p:d:o:", ["help","Fp","nohashfile","nodrop","verbose","connection=","schema=","dump_host=","dump_username=","dump_port=","dump_database=","output=","pg_dump_path="])
-except getopt.GetoptError:
-    print "Invalid argument"
-    print help_string
-    sys.exit(2)
-
-arg_schema = ""
-arg_connection = "host=localhost"
-arg_host = ""
-arg_username = ""
-arg_port = ""
-arg_database = ""
-arg_output = os.getcwd() 
-arg_pgdump = ""
-arg_fp = ""
-arg_nohashfile = ""
-arg_nodrop = ""
-arg_verbose = ""
-for opt, arg in opts:
-    if opt in ("-?", "--help"):
-        print help_string
-        sys.exit()
-    elif opt in ("-n", "--schema"):
-        arg_schema = arg
-    elif opt in ("-c", "--connection"):
-        arg_connection = arg
-    elif opt in ("-d", "--dump_database"):
-        arg_database = arg
-    elif opt in ("-h", "--dump_host"):
-        arg_host = arg
-    elif opt in ("-p", "--dump_port"):
-        arg_port = arg
-    elif opt in ("-U", "--dump_username"):
-        arg_username = arg
-    elif opt in ("-o", "--output"):
-        arg_output = arg
-    elif opt in ("--pg_dump_path"):
-        arg_pgdump = arg
-    elif opt in ("--Fp"):
-        arg_fp = 1
-    elif opt in ("-n", "--nohashfile"):
-        arg_nohashfile = 1
-    elif opt in ("--nodrop"):
-        arg_nodrop = 1
-    elif opt in ("-v", "--verbose"):
-        arg_verbose = 1
-
-if arg_schema == "":
-    print "--schema (-n) argument is required"
-    sys.exit(2)
-
-if os.path.exists(arg_output) == False:
-    print "Path given by --output (-o) does not exist"
+if not os.path.exists(args.output):
+    print "Path given by --output (-o) does not exist: " + str(args.output)
     sys.exit(2)
 
 
 def get_tables():
-    conn = psycopg2.connect(arg_connection)
+    conn = psycopg2.connect(args.connection)
     cur = conn.cursor()
     sql = "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = %s";
-    cur.execute(sql, [arg_schema])
+    cur.execute(sql, [args.schema])
     result = cur.fetchall()
     cur.close()
     conn.close()
@@ -98,28 +36,27 @@ def get_tables():
 def perform_dump(result):
     table_name = result.pop()[0]
     processcmd = []
-    if arg_pgdump != "":
-        processcmd.append(arg_dump)
+    if args.pg_dump_path != None:
+        processcmd.append(args.pg_dump_path)
     else:
         processcmd.append("pg_dump")
-    if arg_host != "":
-        processcmd.append("--host=" + arg_host)
-    if arg_port != "":
-        processcmd.append("--port=" + arg_port)
-    if arg_username != "":
-        processcmd.append("--username=" + arg_username)
-    if arg_fp == 1:
+    if args.dump_host != None:
+        processcmd.append("--host=" + args.dump_host)
+    if args.dump_port != None:
+        processcmd.append("--port=" + args.dump_port)
+    if args.dump_username != None:
+        processcmd.append("--username=" + args.dump_username)
+    if args.Fp:
         processcmd.append("--format=plain")
     else:
         processcmd.append("--format=custom")
-#    processcmd.append("--schema=" + arg_schema)
-    processcmd.append("--table=" + arg_schema + "." + table_name)
-    output_file = os.path.join(arg_output, arg_schema + "." + table_name + ".pgdump")
+    processcmd.append("--table=" + args.schema + "." + table_name)
+    output_file = os.path.join(args.output, args.schema + "." + table_name + ".pgdump")
     processcmd.append("--file=" + output_file)
-    if arg_database != "":
-        processcmd.append(arg_database)
+    if args.dump_database != None:
+        processcmd.append(args.dump_database)
     
-    if arg_verbose == 1:
+    if args.verbose:
         print processcmd 
     try:
         subprocess.check_call(processcmd)
@@ -131,7 +68,7 @@ def perform_dump(result):
 
 
 def create_hash(table_name):
-    output_file = os.path.join(arg_output, arg_schema + "." + table_name + ".pgdump")
+    output_file = os.path.join(args.output, args.schema + "." + table_name + ".pgdump")
     try:
         with open(output_file, "rb") as fh:
             shash = hashlib.sha512()
@@ -144,8 +81,8 @@ def create_hash(table_name):
         print "Cannot access dump file for hash creation: " + ErrorMessage
         sys.exit(2)
 
-    hash_file = os.path.join(arg_output, arg_schema + "." + table_name + ".hash")
-    if arg_verbose == 1:
+    hash_file = os.path.join(args.output, args.schema + "." + table_name + ".hash")
+    if args.verbose:
         print "hash_file: " + hash_file
     try:
         with open(hash_file, "w") as fh:
@@ -156,9 +93,9 @@ def create_hash(table_name):
 
 
 def drop_table(table_name):
-    conn = psycopg2.connect(arg_connection)
+    conn = psycopg2.connect(args.connection)
     cur = conn.cursor()
-    sql = "DROP TABLE IF EXISTS " + arg_schema + "." + table_name;
+    sql = "DROP TABLE IF EXISTS " + args.schema + "." + table_name;
     print sql 
     cur.execute(sql)
     conn.commit()
@@ -169,7 +106,7 @@ if __name__ == "__main__":
     result = get_tables()
     while len(result) > 0:
         table_name = perform_dump(result)
-        if arg_nohashfile != 1:
+        if not args.nohashfile:
             create_hash(table_name)
-        if arg_nodrop != 1:
+        if not args.nodrop:
             drop_table(table_name)

@@ -188,9 +188,15 @@ Extras
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
  * --lockwait (-l):        Have a lock timeout of this many seconds on the data move. If a lock is not obtained, that batch will be tried again.
  * --lockwait_tries        Number of times to allow a lockwait to time out before giving up on the partitioning. Defaults to 10.
- * --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
  * --quiet (-q):           Switch setting to stop all output during and after partitioning.
- * Please see --help option for some examples.
+ * Examples:
+ > Partition all data in a parent table. Commit after each partition is made.\n
+ >       python partition_data.py -c "host=localhost dbname=mydb" -p schema.parent_table -t time\n
+ > Partition by id in smaller intervals and pause between them for 5 seconds (assume >100 partition interval)\n
+ >       python partition_data.py -p schema.parent_table -t id -i 100 -w 5\n
+ > Partition by time in smaller intervals for at most 10 partitions in a single run (assume monthly partition interval)\n
+ >       python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10
+
 
 *undo_partition.py*
  * A python script to make undoing partitions in committed batches easier. 
@@ -204,7 +210,6 @@ Extras
  * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
  * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and undo at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to undo function). If not set, all data will be moved to the parent table in a single run of the script.
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
-* --schema (-s):          The schema that pg_partman was installed to. Default is "partman".
  * --droptable (-d):       Switch setting for whether to drop child tables when they are empty. Leave off option to just uninherit.
  * --quiet (-q):           Switch setting to stop all output during and after partitioning undo.
 
@@ -219,9 +224,9 @@ Extras
  * --connection (-c):      Connection string for use by psycopg. Must be able to select pg_catalog.pg_tables in the relevant database and drop all tables in the given schema. Defaults to "host=localhost". Note this is distinct from the parameters sent to pg_dump.
  * --output (-o):          Path to dump file output location. Default is where the script is run from.
  * --dump_database (-d):   Used for pg_dump, same as its final database name parameter.
- * --dump_host (-h):       Used for pg_dump, same as its --host option.
- * --dump_username (-U):   Used for pg_dump, same as its --username option.
- * --dump_port (-p):       Used for pg_dump, same as its --port option.
+ * --dump_host:       Used for pg_dump, same as its --host option.
+ * --dump_username:   Used for pg_dump, same as its --username option.
+ * --dump_port:       Used for pg_dump, same as its --port option.
  * --pg_dump_path:         Path to pg_dump binary location. Must set if not in current PATH.
  * --Fp:                   Dump using pg_dump plain text format. Default is binary custom (-Fc).
  * --nohashfile:           Do NOT create a separate file with the SHA-512 hash of the dump. If dump files are very large, hash generation can possibly take a long time.

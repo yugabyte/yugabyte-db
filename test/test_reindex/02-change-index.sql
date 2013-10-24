@@ -16,6 +16,7 @@ SELECT hasnt_index('partman_reindex_test', 'test_reindex', 'test_reindex_stuff_i
 SELECT has_index('partman_reindex_test', 'test_reindex', 'test_reindex_morestuff_idx', ARRAY['morestuff'], 'Check for stuff index in test_reindex');
 SELECT col_is_pk('partman_reindex_test', 'test_reindex', ARRAY['new_id'], 'Check for new primary key in test_reindex');
 SELECT diag('!!! Now run reapply_index.py on "partman_reindex_test.test_reindex" with the --primary option to apply the new indexes to all the children !!!');
+SELECT diag('!!! After that completes, run 03-check-indexes.sql !!!'); 
 SELECT diag('!!! You can set any options you''d like on the python script to test them. Re-run from test 01 to test different options !!! ');
 SELECT * FROM finish();
 
