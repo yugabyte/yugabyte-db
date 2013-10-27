@@ -13,6 +13,9 @@ PG_CONFIG ?= pg_config
 VERSION := $(shell $(PG_CONFIG) --version | awk '{print $$2}')
 INTVERSION := $(shell echo $$(($$(echo $(VERSION) | sed 's/\([[:digit:]]\{1,\}\)\.\([[:digit:]]\{1,\}\).*/\1*100+\2/' ))))
 
+# make "all" the default target
+all:
+
 REGRESS = orafunc dbms_output dbms_utility files
 
 ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
