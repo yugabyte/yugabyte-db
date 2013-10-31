@@ -379,6 +379,9 @@ static void set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void generate_mergeappend_paths(PlannerInfo *root, RelOptInfo *rel,
 						   List *live_childrels,
 						   List *all_child_pathkeys);
+static Path *get_cheapest_parameterized_child_path(PlannerInfo *root,
+									  RelOptInfo *rel,
+									  Relids required_outer);
 static List *accumulate_append_subpath(List *subpaths, Path *path);
 RelOptInfo *pg_hint_plan_make_join_rel(PlannerInfo *root, RelOptInfo *rel1,
 									   RelOptInfo *rel2);
