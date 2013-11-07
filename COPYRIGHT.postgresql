@@ -2,7 +2,7 @@ core.c and make_join_rel.c are parts of PostgreSQL Database Management System.
 (formerly known as Postgres, then as Postgres95)
 Copyright holders of those files are following organizations:
 
-Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
+Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
 
 Portions Copyright (c) 1994, The Regents of the University of California
 
