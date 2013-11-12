@@ -19,8 +19,8 @@ BuildRoot:  %{_tmppath}/%{name}-%{version}-%{release}-%(%{__id_u} -n)
 Vendor:     NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 
 ## We use postgresql-devel package
-BuildRequires:  postgresql92-devel
-Requires:  postgresql92-libs
+BuildRequires:  postgresql93-devel
+Requires:  postgresql93-libs
 
 ## Description for "pg_hint_plan"
 %description
