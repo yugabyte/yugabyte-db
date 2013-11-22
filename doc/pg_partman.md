@@ -190,6 +190,7 @@ Extras
  * --lockwait_tries        Number of times to allow a lockwait to time out before giving up on the partitioning. Defaults to 10.
  * --quiet (-q):           Switch setting to stop all output during and after partitioning.
  * Examples:
+
  > Partition all data in a parent table. Commit after each partition is made.\n
  >       python partition_data.py -c "host=localhost dbname=mydb" -p schema.parent_table -t time\n
  > Partition by id in smaller intervals and pause between them for 5 seconds (assume >100 partition interval)\n

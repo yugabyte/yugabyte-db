@@ -57,9 +57,9 @@ FOR i IN 1..p_batch_count LOOP
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                v_sql := 'SELECT * FROM ' || p_parent_table ||
-                ' WHERE '||v_control||' >= '||v_min_control||
-                ' AND '||v_control||' < '||v_max_partition_id
+                v_sql := 'SELECT * FROM ONLY ' || p_parent_table ||
+                ' WHERE '||v_control||' >= '||quote_literal(v_min_control)||
+                ' AND '||v_control||' < '||quote_literal(v_max_partition_id)
                 ||' FOR UPDATE NOWAIT';
                 EXECUTE v_sql;
                 v_lock_obtained := TRUE;

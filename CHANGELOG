@@ -1,3 +1,7 @@
+1.4.4
+-- Bug fix: Typos in partition_time_data/id() functions. Only ran into this if a lockwait was hit while trying to partition data.
+
+
 1.4.3
 -- Fix "make install" to work in PostgreSQL 9.3.x without throwing an error.
 -- "make install" now installs the python script files to <postgresql_install_prefix>/bin. They are now also executable and have the proper #! line at the top.
