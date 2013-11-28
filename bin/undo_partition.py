@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, getopt, psycopg2, sys, time
+import argparse, psycopg2, time
 
 parser = argparse.ArgumentParser(description="This script calls either undo_partition(), undo_partition_time() or undo_partition_id depending on the value given for --type. A commit is done at the end of each --interval and/or emptied partition. Returns the total number of rows put into the parent. Automatically stops when last child table is empty.")
 parser.add_argument('-p','--parent', required=True, help="Parent table of the partition set. (Required)")

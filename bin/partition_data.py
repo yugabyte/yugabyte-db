@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import psycopg2, sys, argparse, time
+import argparse, psycopg2, time
 
 parser = argparse.ArgumentParser(description="This script calls either partition_data_time() or partition_data_id() depending on the value given for --type. A commit is done at the end of each --interval and/or fully created partition. Returns the total number of rows moved to partitions. Automatically stops when parent is empty. See docs for examples.")
 parser.add_argument('-p','--parent', required=True, help="Parent table of an already created partition set. (Required)")

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, getopt, psycopg2, sys, time
+import argparse, psycopg2, re, time
 from multiprocessing import Process 
 
 parser = argparse.ArgumentParser(description="Script for reapplying indexes on child tables in a partition set after they are changed on the parent table. All indexes on all child tables (not including primary key unless specified) will be dropped and recreated for the given set. Commits are done after each index is dropped/created to help prevent long running transactions & locks.", epilog="WARNING: The default, postgres generated index name is used for all children when recreating indexes. This may cause index naming conflicts if you have multiple, expression indexes that use the same column(s). Also, if your child table names are close to the object length limit (63 chars), you may run into naming conflicts when the index name truncates the original table name to add _idx or _pkey. Please DO NOT use this tool to reindex your partition set if either of these cases apply! Use the --dryrun option first to see what it will do.")
@@ -53,8 +53,12 @@ def get_indexes(conn, child_table):
                 AND i.indisvalid"""
     cur.execute(sql, [args.parent])
     index_tuple = cur.fetchall()
+    sql = """SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"""
+    cur.execute(sql, [args.parent])
+    parent_tablename = str(cur.fetchone()[0])
     cur.close()
     index_list = []
+    regex = re.compile(r" ON %s| ON %s" % (args.parent, parent_tablename))
     for i in index_tuple:
         if i[1] == True and args.primary:
             statement = "ALTER TABLE " + child_table + " ADD PRIMARY KEY (" + i[2] + ")"
@@ -64,7 +68,7 @@ def get_indexes(conn, child_table):
             statement = statement.replace(i[3], "")  # remove parent index name
             if args.concurrent:
                 statement = statement.replace("CREATE INDEX ", "CREATE INDEX CONCURRENTLY ")
-            statement = statement.replace(" ON " + args.parent, " ON " + child_table)
+            statement = regex.sub(" ON " + child_table, statement)  
             index_list.append(statement)
     return index_list
         
