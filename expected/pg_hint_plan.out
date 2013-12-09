@@ -7993,3 +7993,216 @@ error hint:
 CONTEXT:  SQL statement "SELECT /*+SeqScan(t1)*/ t1.id         FROM t1 WHERE t1.id = 1"
 PL/pgSQL function inline_code_block line 5 at SQL statement
 DROP EXTENSION pg_hint_plan;
+--
+-- Rows hint tests
+--
+-- value types
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 #99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #99)
+not used hint:
+duplication hint:
+error hint:
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=99 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 +99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 +99)
+not used hint:
+duplication hint:
+error hint:
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1099 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 -99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 -99)
+not used hint:
+duplication hint:
+error hint:
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=901 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 *99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 *99)
+not used hint:
+duplication hint:
+error hint:
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=99000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 *0.01) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 *0.01)
+not used hint:
+duplication hint:
+error hint:
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=10 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 #aa) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);    -- ERROR
+INFO:  hint syntax error at or near "aa"
+DETAIL:  Rows hint requires valid number as rows estimation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 t2 #aa)
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+/*+ Rows(t1 t2 /99) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);    -- ERROR
+INFO:  hint syntax error at or near "/99"
+DETAIL:  unrecognized rows value type notation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 t2 /99)
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+-- round up to 1
+/*+ Rows(t1 t2 -99999) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 -99999)
+not used hint:
+duplication hint:
+error hint:
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Merge Join  (cost=0.00..90.08 rows=1 width=16)
+   Merge Cond: (t1.id = t2.id)
+   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+(4 rows)
+
+-- complex join tree
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Merge Join  (cost=5.32..6.85 rows=10 width=24)
+   Merge Cond: (t1.id = t3.id)
+   ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+         Merge Cond: (t1.id = t2.id)
+         ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         Sort Key: t3.id
+         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+(9 rows)
+
+/*+ Rows(t1 t2 #22) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #22)
+not used hint:
+duplication hint:
+error hint:
+
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Merge Join  (cost=5.32..9.93 rows=1 width=24)
+   Merge Cond: (t1.id = t3.id)
+   ->  Merge Join  (cost=0.00..90.08 rows=22 width=16)
+         Merge Cond: (t1.id = t2.id)
+         ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         Sort Key: t3.id
+         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+(9 rows)
+
+/*+ Rows(t1 t3 *10) */
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t3 *10)
+not used hint:
+duplication hint:
+error hint:
+
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Merge Join  (cost=5.32..6.85 rows=100 width=24)
+   Merge Cond: (t1.id = t3.id)
+   ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+         Merge Cond: (t1.id = t2.id)
+         ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         Sort Key: t3.id
+         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
+(9 rows)
+
