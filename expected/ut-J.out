@@ -807,6 +807,10 @@ error hint:
          Filter: (c1 = $1)
 (11 rows)
 
+--
+-- There are cases where difference in the measured value and predicted value
+-- depending upon the version of PostgreSQL
+--
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
              QUERY PLAN             
 ------------------------------------

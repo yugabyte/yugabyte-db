@@ -4284,6 +4284,9 @@ error hint:
 (1 row)
 
 --No.13-3-3
+--
+-- Redefine not to use cached plan
+--
 CREATE OR REPLACE FUNCTION nested_planner(cnt int) RETURNS int AS $$
 DECLARE
     new_cnt int;
