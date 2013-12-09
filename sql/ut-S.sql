@@ -614,7 +614,7 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 
 -- No. S-3-3-2
-/*+IndexScan(ti1 ti1_i3 ti1_i4)*/
+/*+IndexScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 
 -- No. S-3-3-3
@@ -626,7 +626,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 
 -- No. S-3-3-5
-/*+BitmapScan(ti1 ti1_i3 ti1_i4)*/
+/*+BitmapScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 
 -- No. S-3-3-6
@@ -638,7 +638,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
 
 -- No. S-3-3-8
-/*+IndexOnlyScan(ti1 ti1_i3 ti1_i4)*/
+/*+IndexOnlyScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
 
 -- No. S-3-3-9
@@ -962,195 +962,195 @@ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
 EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
 
 ----
----- No. S-3-12 specified same table
+---- No. S-3-11 specified same table
 ----
 
--- No. S-3-12-1
+-- No. S-3-11-1
 /*+IndexScan(ti1) BitmapScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-12-2
+-- No. S-3-11-2
 /*+IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-12-3
+-- No. S-3-11-3
 /*+BitmapScan(ti1) IndexScan(ti1) BitmapScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-12-4
+-- No. S-3-11-4
 /*+BitmapScan(ti1 ti1_hash) IndexScan(ti1 ti1_pkey) BitmapScan(ti1 ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
 ----
----- No. S-3-13 message output
+---- No. S-3-12 message output
 ----
 
--- No. S-3-13-1
+-- No. S-3-12-1
 /*+SeqScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-2
+-- No. S-3-12-2
 /*+SeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-3
+-- No. S-3-12-3
 /*+SeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-4
+-- No. S-3-12-4
 /*+IndexScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-5
+-- No. S-3-12-5
 /*+IndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-6
+-- No. S-3-12-6
 /*+IndexScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-7
+-- No. S-3-12-7
 /*+BitmapScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-8
+-- No. S-3-12-8
 /*+BitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-9
+-- No. S-3-12-9
 /*+BitmapScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-10
+-- No. S-3-12-10
 /*+TidScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-11
+-- No. S-3-12-11
 /*+TidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-12
+-- No. S-3-12-12
 /*+TidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-13
+-- No. S-3-12-13
 /*+NoSeqScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-14
+-- No. S-3-12-14
 /*+NoSeqScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-15
+-- No. S-3-12-15
 /*+NoSeqScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-16
+-- No. S-3-12-16
 /*+NoIndexScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-17
+-- No. S-3-12-17
 /*+NoIndexScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-18
+-- No. S-3-12-18
 /*+NoIndexScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-19
+-- No. S-3-12-19
 /*+NoBitmapScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-20
+-- No. S-3-12-20
 /*+NoBitmapScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-21
+-- No. S-3-12-21
 /*+NoBitmapScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-22
+-- No. S-3-12-22
 /*+NoTidScan(ti1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-23
+-- No. S-3-12-23
 /*+NoTidScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-24
+-- No. S-3-12-24
 /*+NoTidScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
--- No. S-3-13-25
+-- No. S-3-12-25
 /*+IndexOnlyScan(ti1)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
--- No. S-3-13-26
+-- No. S-3-12-26
 /*+IndexOnlyScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
--- No. S-3-13-27
+-- No. S-3-12-27
 /*+IndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 >= 1;
 
--- No. S-3-13-28
+-- No. S-3-12-28
 /*+NoIndexOnlyScan(ti1)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
--- No. S-3-13-29
+-- No. S-3-12-29
 /*+NoIndexOnlyScan(ti1 ti1_pkey)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
--- No. S-3-13-30
+-- No. S-3-12-30
 /*+NoIndexOnlyScan(ti1 ti1_pkey ti1_btree)*/
 EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 
 ----
----- No. S-3-14 regular expression
+---- No. S-3-13 message output
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 
--- No. S-3-14-1
+-- No. S-3-13-1
 /*+IndexScanRegexp(ti1 ti1_.*_key)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 
--- No. S-3-14-2
+-- No. S-3-13-2
 /*+IndexScanRegexp(ti1 ti1_i.)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 
--- No. S-3-14-3
+-- No. S-3-13-3
 /*+IndexScanRegexp(ti1 no.*_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 
--- No. S-3-14-4
+-- No. S-3-13-4
 /*+IndexScanRegexp(p1 .*pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 
--- No. S-3-14-5
+-- No. S-3-13-5
 /*+IndexScanRegexp(p1 p1.*i)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 
--- No. S-3-14-6
+-- No. S-3-13-6
 /*+IndexScanRegexp(p1 no.*_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 
 ----
----- No. S-3-15 message output of candidate for index
+---- No. S-3-14 message output
 ----
 
--- No. S-3-15-1
+-- No. S-3-14-1
 /*+IndexScan(ti1 ti1_i1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
--- No. S-3-15-2
+-- No. S-3-14-2
 /*+IndexScan(ti1 not_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
--- No. S-3-15-3
+-- No. S-3-14-3
 /*+IndexScan(ti1 ti1_i1 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
--- No. S-3-15-4
+-- No. S-3-14-4
 /*+IndexScan(ti1 ti1_i1 not_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
--- No. S-3-15-5
+-- No. S-3-14-5
 /*+IndexScan(ti1 not_exist1 not_exist2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;

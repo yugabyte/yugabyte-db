@@ -1107,6 +1107,9 @@ EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 EXPLAIN (COSTS false) SELECT nested_planner(2) FROM s1.t1 t_1 ORDER BY t_1.c1;
 
 --No.13-3-3
+--
+-- Redefine not to use cached plan
+--
 CREATE OR REPLACE FUNCTION nested_planner(cnt int) RETURNS int AS $$
 DECLARE
     new_cnt int;

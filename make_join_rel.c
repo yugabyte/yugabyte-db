@@ -6,7 +6,8 @@
  * src/backend/optimizer/path/joinrels.c
  *     make_join_rel()
  *
- * Portions Copyright (c) 1996-2013, PostgreSQL Global Development Group
+ * Portions Copyright (c) 2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
  *-------------------------------------------------------------------------
@@ -24,6 +25,29 @@
  * when working with outer joins, or with IN or EXISTS clauses that have been
  * turned into joins.
  */
+static double
+adjust_rows(double rows, RowsHint *hint)
+{
+	double		result = 0.0;	/* keep compiler quiet */
+
+	if (hint->value_type == RVT_ABSOLUTE)
+		result = hint->rows;
+	else if (hint->value_type == RVT_ADD)
+		result = rows + hint->rows;
+	else if (hint->value_type == RVT_SUB)
+		result =  rows - hint->rows;
+	else if (hint->value_type == RVT_MULTI)
+		result = rows * hint->rows;
+	else
+		Assert(false);	/* unrecognized rows value type */
+
+	hint->base.state = HINT_STATE_USED;
+	result = clamp_row_est(result);
+	elog(DEBUG1, "adjusted rows %d to %d", (int) rows, (int) result);
+
+	return result;
+}
+
 RelOptInfo *
 make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
@@ -33,6 +57,9 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	SpecialJoinInfo sjinfo_data;
 	RelOptInfo *joinrel;
 	List	   *restrictlist;
+
+	RowsHint   *rows_hint = NULL;
+	int			i;
 
 	/* We should never try to join two overlapping sets of rels. */
 	Assert(!bms_overlap(rel1->relids, rel2->relids));
@@ -84,6 +111,54 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	 */
 	joinrel = build_join_rel(root, joinrelids, rel1, rel2, sjinfo,
 							 &restrictlist);
+
+	/* Apply appropriate Rows hint to the join node, if any. */
+	for (i = 0; i < current_hint->num_hints[HINT_TYPE_ROWS]; i++)
+	{
+		rows_hint = current_hint->rows_hints[i];
+
+		if (bms_equal(joinrelids, rows_hint->joinrelids))
+		{
+			/*
+			 * This join RelOptInfo is exactly a Rows hint specifies, so adjust
+			 * rows estimateion with the hint's content.  Here we never have
+			 * another hint which has same relation combination, so we can skip
+			 * rest of hints.
+			 */
+			if (rows_hint->base.state == HINT_STATE_NOTUSED)
+				joinrel->rows = adjust_rows(joinrel->rows, rows_hint);
+		}
+		else if (bms_is_subset(rows_hint->joinrelids, rel1->relids) ||
+				 bms_is_subset(rows_hint->joinrelids, rel2->relids))
+		{
+			/*
+			 * Otherwise if the relation combination specified in thee Rows
+			 * hint is subset of the set of join elements, re-estimate rows and
+			 * costs again to reflect the adjustment done in down.  This is
+			 * necessary for the first permutation of the combination the
+			 * relations, but it's difficult to determine that this is the
+			 * first, so do this everytime.
+			 */
+			set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
+									   restrictlist);
+		}
+		else if (bms_is_subset(rows_hint->joinrelids, joinrelids))
+		{
+			/*
+			 * If the combination specifed in the Rows hints is subset of the
+			 * join relation and spreads over both children, 
+			 *
+			 * We do adjust rows estimation only when the value type was
+			 * multiplication, because other value types are meanless.
+			 */
+			if (rows_hint->value_type == RVT_MULTI)
+			{
+				set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
+										   restrictlist);
+				joinrel->rows = adjust_rows(joinrel->rows, rows_hint);
+			}
+		}
+	}
 
 	/*
 	 * If we've already proven this join is empty, we needn't consider any
