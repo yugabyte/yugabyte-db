@@ -8000,10 +8000,10 @@ DROP EXTENSION pg_hint_plan;
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+ Merge Join  (cost=0.56..90.36 rows=1000 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 #99) */
@@ -8017,10 +8017,10 @@ error hint:
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=99 width=16)
+ Merge Join  (cost=0.56..90.36 rows=99 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 +99) */
@@ -8034,10 +8034,10 @@ error hint:
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=1099 width=16)
+ Merge Join  (cost=0.56..90.36 rows=1099 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 -99) */
@@ -8051,10 +8051,10 @@ error hint:
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=901 width=16)
+ Merge Join  (cost=0.56..90.36 rows=901 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 *99) */
@@ -8068,10 +8068,10 @@ error hint:
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=99000 width=16)
+ Merge Join  (cost=0.56..90.36 rows=99000 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 *0.01) */
@@ -8085,10 +8085,10 @@ error hint:
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=10 width=16)
+ Merge Join  (cost=0.56..90.36 rows=10 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 #aa) */
@@ -8104,10 +8104,10 @@ Rows(t1 t2 #aa)
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+ Merge Join  (cost=0.56..90.36 rows=1000 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 /*+ Rows(t1 t2 /99) */
@@ -8123,10 +8123,10 @@ Rows(t1 t2 /99)
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+ Merge Join  (cost=0.56..90.36 rows=1000 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 -- round up to 1
@@ -8141,22 +8141,22 @@ error hint:
 
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.00..90.08 rows=1 width=16)
+ Merge Join  (cost=0.56..90.36 rows=1 width=16)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
 (4 rows)
 
 -- complex join tree
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Merge Join  (cost=5.32..6.85 rows=10 width=24)
+ Merge Join  (cost=5.88..7.40 rows=10 width=24)
    Merge Cond: (t1.id = t3.id)
-   ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   ->  Merge Join  (cost=0.56..90.36 rows=1000 width=16)
          Merge Cond: (t1.id = t2.id)
-         ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+         ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
    ->  Sort  (cost=5.32..5.57 rows=100 width=8)
          Sort Key: t3.id
          ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
@@ -8173,12 +8173,12 @@ error hint:
 
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Merge Join  (cost=5.32..9.93 rows=1 width=24)
+ Merge Join  (cost=5.88..10.48 rows=1 width=24)
    Merge Cond: (t1.id = t3.id)
-   ->  Merge Join  (cost=0.00..90.08 rows=22 width=16)
+   ->  Merge Join  (cost=0.56..90.36 rows=22 width=16)
          Merge Cond: (t1.id = t2.id)
-         ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+         ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
    ->  Sort  (cost=5.32..5.57 rows=100 width=8)
          Sort Key: t3.id
          ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
@@ -8195,12 +8195,12 @@ error hint:
 
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Merge Join  (cost=5.32..6.85 rows=100 width=24)
+ Merge Join  (cost=5.88..7.40 rows=100 width=24)
    Merge Cond: (t1.id = t3.id)
-   ->  Merge Join  (cost=0.00..90.08 rows=1000 width=16)
+   ->  Merge Join  (cost=0.56..90.36 rows=1000 width=16)
          Merge Cond: (t1.id = t2.id)
-         ->  Index Scan using t1_pkey on t1  (cost=0.00..318.25 rows=10000 width=8)
-         ->  Index Scan using t2_pkey on t2  (cost=0.00..43.25 rows=1000 width=8)
+         ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
+         ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
    ->  Sort  (cost=5.32..5.57 rows=100 width=8)
          Sort Key: t3.id
          ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
