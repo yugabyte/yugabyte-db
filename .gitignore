@@ -1,4 +1,5 @@
 # Global excludes across all subdirectories
+*.o
 *.so
 core.c
 tags
