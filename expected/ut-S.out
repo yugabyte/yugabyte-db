@@ -3609,19 +3609,19 @@ error hint:
 (3 rows)
 
 -- No. S-3-3-2
-/*+IndexScan(ti1 ti1_i3 ti1_i4)*/
+/*+IndexScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
-LOG:  available indexes for IndexScan(ti1): ti1_i4 ti1_i3
+LOG:  available indexes for IndexScan(ti1): ti1_i3 ti1_i2
 LOG:  pg_hint_plan:
 used hint:
-IndexScan(ti1 ti1_i3 ti1_i4)
+IndexScan(ti1 ti1_i3 ti1_i2)
 not used hint:
 duplication hint:
 error hint:
 
            QUERY PLAN            
 ---------------------------------
- Index Scan using ti1_i4 on ti1
+ Index Scan using ti1_i3 on ti1
    Index Cond: (c2 = 1)
    Filter: (ctid = '(1,1)'::tid)
 (3 rows)
@@ -3665,12 +3665,12 @@ error hint:
 (5 rows)
 
 -- No. S-3-3-5
-/*+BitmapScan(ti1 ti1_i3 ti1_i4)*/
+/*+BitmapScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE ti1.c2 = 1 AND ctid = '(1,1)';
-LOG:  available indexes for BitmapScan(ti1): ti1_i4 ti1_i3
+LOG:  available indexes for BitmapScan(ti1): ti1_i3 ti1_i2
 LOG:  pg_hint_plan:
 used hint:
-BitmapScan(ti1 ti1_i3 ti1_i4)
+BitmapScan(ti1 ti1_i3 ti1_i2)
 not used hint:
 duplication hint:
 error hint:
@@ -3680,7 +3680,7 @@ error hint:
  Bitmap Heap Scan on ti1
    Recheck Cond: (c2 = 1)
    Filter: (ctid = '(1,1)'::tid)
-   ->  Bitmap Index Scan on ti1_i4
+   ->  Bitmap Index Scan on ti1_i3
          Index Cond: (c2 = 1)
 (5 rows)
 
@@ -3722,19 +3722,19 @@ error hint:
 (2 rows)
 
 -- No. S-3-3-8
-/*+IndexOnlyScan(ti1 ti1_i3 ti1_i4)*/
+/*+IndexOnlyScan(ti1 ti1_i3 ti1_i2)*/
 EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE ti1.c2 >= 1;
-LOG:  available indexes for IndexOnlyScan(ti1): ti1_i4 ti1_i3
+LOG:  available indexes for IndexOnlyScan(ti1): ti1_i3 ti1_i2
 LOG:  pg_hint_plan:
 used hint:
-IndexOnlyScan(ti1 ti1_i3 ti1_i4)
+IndexOnlyScan(ti1 ti1_i3 ti1_i2)
 not used hint:
 duplication hint:
 error hint:
 
              QUERY PLAN              
 -------------------------------------
- Index Only Scan using ti1_i4 on ti1
+ Index Only Scan using ti1_i2 on ti1
    Index Cond: (c2 >= 1)
 (2 rows)
 
