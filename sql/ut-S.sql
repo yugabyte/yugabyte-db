@@ -935,29 +935,29 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
 ----
----- No. S-3-11 inheritance table specified table
+---- No. S-3-10 inheritance table specified table
 ----
 
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
--- No. S-3-11-1
+-- No. S-3-10-1
 /*+IndexScan(p2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
--- No. S-3-11-2
+-- No. S-3-10-2
 /*+IndexScan(p2c1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
--- No. S-3-11-3
+-- No. S-3-10-3
 EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 /*+IndexScan(p1 p1_parent)*/
 EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
 
--- No. S-3-11-4
+-- No. S-3-10-4
 /*+IndexScan(p1 p1_i2)*/
 EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
 
--- No. S-3-11-5
+-- No. S-3-10-5
 /*+IndexScan(p2 p2c1_pkey)*/
 EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
 
