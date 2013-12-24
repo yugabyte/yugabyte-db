@@ -4680,7 +4680,7 @@ error hint:
 (6 rows)
 
 ----
----- No. S-3-7 query structure
+---- No. S-3-7 number of tables in a query block
 ----
 -- No. S-3-7-1
 EXPLAIN (COSTS false) 
@@ -5333,7 +5333,7 @@ error hint:
 (5 rows)
 
 ----
----- No. S-3-13 message output
+---- No. S-3-13 message output of hint
 ----
 -- No. S-3-13-1
 /*+SeqScan(ti1)*/
@@ -6009,7 +6009,7 @@ error hint:
 (5 rows)
 
 ----
----- No. S-3-15 message output of candidate for index
+---- No. S-3-15 message output of index candidate
 ----
 -- No. S-3-15-1
 /*+IndexScan(ti1 ti1_i1)*/

@@ -982,7 +982,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 = 1 AND ctid = '(1,1)';
 
 ----
----- No. S-3-13 message output
+---- No. S-3-13 message output of hint
 ----
 
 -- No. S-3-13-1
@@ -1107,7 +1107,7 @@ EXPLAIN (COSTS false) SELECT c1 FROM s1.ti1 WHERE c1 = 1;
 
 
 ----
----- No. S-3-14 message output
+---- No. S-3-14 regular expression
 ----
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 
@@ -1136,7 +1136,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 
 ----
----- No. S-3-15 message output
+---- No. S-3-15 message output of index candidate
 ----
 
 -- No. S-3-15-1
