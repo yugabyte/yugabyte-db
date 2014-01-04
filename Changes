@@ -18,6 +18,7 @@ Revision history for pgTAP
   [TAP spec](http://podwiki.hexten.net/TAP/TAP.html#Skippingtests).
 * Fixed incorrect handling of leading space when comparing diagnostic output
   in `check_test()`.
+* Fixed an installation issue on PostgreSQL 9.3.2.
 
 0.93.0 2013-01-28T20:14:58Z
 ---------------------------
