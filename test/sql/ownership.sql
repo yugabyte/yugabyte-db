@@ -528,7 +528,7 @@ SELECT * FROM check_test(
 
 /****************************************************************************/
 -- Test foreign_table_owner_is().
-CREATE FUNCTION test_fdw() RETURNS SETOF TEXT AS $$
+CREATE FUNCTION public.test_fdw() RETURNS SETOF TEXT AS $$
 DECLARE
     tap record;
 BEGIN
@@ -690,7 +690,7 @@ BEGIN
 END;
 $$ LANGUAGE PLPGSQL;
 
-SELECT * FROM test_fdw();
+SELECT * FROM public.test_fdw();
 
 /****************************************************************************/
 -- Test function_owner_is().

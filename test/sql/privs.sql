@@ -8,7 +8,18 @@ SET client_min_messages = warning;
 CREATE SCHEMA ha;
 CREATE TABLE ha.sometab(id INT);
 CREATE SEQUENCE ha.someseq;
-SET search_path = ha,public,pg_catalog;
+-- Include the new schema in the path.
+CREATE OR REPLACE FUNCTION set_search_path() returns setof text as $$
+BEGIN
+    PERFORM set_config(
+        'search_path',
+        'ha, ' || current_setting('search_path') || ', pg_catalog',
+        true
+    );
+    RETURN;
+END;
+$$ language plpgsql;
+SELECT set_search_path();
 RESET client_min_messages;
 
 /****************************************************************************/
