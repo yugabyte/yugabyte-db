@@ -1,6 +1,10 @@
 Revision history for pgTAP
 ==========================
 
+0.95.0
+---------------------------
+
+
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------
 * Fixed the Makefile to allow `PG_CONFIG=/path/to/pg_config` to actually work.
