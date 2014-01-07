@@ -11,11 +11,7 @@ CREATE SEQUENCE ha.someseq;
 -- Include the new schema in the path.
 CREATE OR REPLACE FUNCTION set_search_path() returns setof text as $$
 BEGIN
-    PERFORM set_config(
-        'search_path',
-        'ha, ' || current_setting('search_path') || ', pg_catalog',
-        true
-    );
+    EXECUTE 'SET search_path = ha, ' || current_setting('search_path') || ', pg_catalog';
     RETURN;
 END;
 $$ language plpgsql;

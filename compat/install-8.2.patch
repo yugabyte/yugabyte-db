@@ -1,5 +1,5 @@
---- sql/pgtap.sql.saf	2013-01-28 11:25:36.000000000 -0800
-+++ sql/pgtap.sql	2013-01-28 11:30:46.000000000 -0800
+--- sql/pgtap.sql.saf	2014-01-06 16:21:22.000000000 -0800
++++ sql/pgtap.sql	2014-01-06 16:21:28.000000000 -0800
 @@ -5,6 +5,59 @@
  --
  -- http://pgtap.org/
@@ -111,7 +111,7 @@
         INTO result;
      output := ok( COALESCE(result, FALSE), descr );
      RETURN output || CASE result WHEN TRUE THEN '' ELSE E'\n' || diag(
-@@ -2316,7 +2354,7 @@
+@@ -2355,7 +2393,7 @@
             pg_catalog.pg_get_userbyid(p.proowner) AS owner,
             array_to_string(p.proargtypes::regtype[], ',') AS args,
             CASE p.proretset WHEN TRUE THEN 'setof ' ELSE '' END
@@ -120,7 +120,7 @@
             p.prolang     AS langoid,
             p.proisstrict AS is_strict,
             p.proisagg    AS is_agg,
-@@ -3452,63 +3490,6 @@
+@@ -3491,63 +3529,6 @@
      SELECT ok( NOT _has_type( $1, ARRAY['e'] ), ('Enum ' || quote_ident($1) || ' should not exist')::text );
  $$ LANGUAGE sql;
  
@@ -184,7 +184,7 @@
  CREATE OR REPLACE FUNCTION _has_role( NAME )
  RETURNS BOOLEAN AS $$
      SELECT EXISTS(
-@@ -5986,13 +5967,13 @@
+@@ -6031,13 +6012,13 @@
          -- Find extra records.
          FOR rec in EXECUTE 'SELECT * FROM ' || have || ' EXCEPT ' || $4
                          || 'SELECT * FROM ' || want LOOP
@@ -200,7 +200,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6216,7 +6197,7 @@
+@@ -6261,7 +6242,7 @@
          -- Find relevant records.
          FOR rec in EXECUTE 'SELECT * FROM ' || want || ' ' || $4
                         || ' SELECT * FROM ' || have LOOP
@@ -209,7 +209,7 @@
          END LOOP;
  
          -- Drop the temporary tables.
-@@ -6311,11 +6292,11 @@
+@@ -6356,11 +6337,11 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -224,7 +224,7 @@
              );
          END IF;
          rownum = rownum + 1;
-@@ -6330,9 +6311,9 @@
+@@ -6375,9 +6356,9 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Number of columns or their types differ between the queries' ||
@@ -237,7 +237,7 @@
              END
          );
  END;
-@@ -6468,7 +6449,7 @@
+@@ -6513,7 +6494,7 @@
      FETCH want INTO want_rec;
      want_found := FOUND;
      WHILE have_found OR want_found LOOP
@@ -246,7 +246,7 @@
              RETURN ok( true, $3 );
          ELSE
              FETCH have INTO have_rec;
-@@ -6482,8 +6463,8 @@
+@@ -6527,8 +6508,8 @@
      WHEN datatype_mismatch THEN
          RETURN ok( false, $3 ) || E'\n' || diag(
              E'    Columns differ between queries:\n' ||
@@ -257,7 +257,7 @@
          );
  END;
  $$ LANGUAGE plpgsql;
-@@ -6608,9 +6589,9 @@
+@@ -6653,9 +6634,9 @@
  DECLARE
      typeof regtype := pg_typeof($1);
  BEGIN
@@ -270,7 +270,7 @@
  END;
  $$ LANGUAGE plpgsql;
  
-@@ -6631,7 +6612,7 @@
+@@ -6676,7 +6657,7 @@
  BEGIN
      -- Find extra records.
      FOR rec in EXECUTE _query($1) LOOP
@@ -279,7 +279,7 @@
      END LOOP;
  
      -- What extra records do we have?
-@@ -6799,7 +6780,7 @@
+@@ -6844,7 +6825,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -288,7 +288,7 @@
                 AND n.nspname = $1
                 AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
              EXCEPT
-@@ -6817,7 +6798,7 @@
+@@ -6862,7 +6843,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -297,7 +297,7 @@
                 AND n.nspname = $1
                 AND t.typtype = ANY( COALESCE($4, ARRAY['b', 'c', 'd', 'p', 'e']) )
          ),
-@@ -6850,7 +6831,7 @@
+@@ -6895,7 +6876,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -306,7 +306,7 @@
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
-@@ -6869,7 +6850,7 @@
+@@ -6914,7 +6895,7 @@
                       t.typrelid = 0
                   OR (SELECT c.relkind = 'c' FROM pg_catalog.pg_class c WHERE c.oid = t.typrelid)
               )
@@ -315,7 +315,7 @@
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
                 AND pg_catalog.pg_type_is_visible(t.oid)
                 AND t.typtype = ANY( COALESCE($3, ARRAY['b', 'c', 'd', 'p', 'e']) )
-@@ -7153,10 +7134,12 @@
+@@ -7198,10 +7179,12 @@
      rec    RECORD;
  BEGIN
      EXECUTE _query($1) INTO rec;
@@ -331,7 +331,7 @@
      );
  END;
  $$ LANGUAGE plpgsql;
-@@ -7303,7 +7286,7 @@
+@@ -7348,7 +7331,7 @@
  
  CREATE OR REPLACE FUNCTION display_oper ( NAME, OID )
  RETURNS TEXT AS $$
@@ -340,7 +340,7 @@
  $$ LANGUAGE SQL;
  
  -- operators_are( schema, operators[], description )
-@@ -7312,7 +7295,7 @@
+@@ -7357,7 +7340,7 @@
      SELECT _areni(
          'operators',
          ARRAY(
@@ -349,7 +349,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE n.nspname = $1
-@@ -7324,7 +7307,7 @@
+@@ -7369,7 +7352,7 @@
              SELECT $2[i]
                FROM generate_series(1, array_upper($2, 1)) s(i)
              EXCEPT
@@ -358,7 +358,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE n.nspname = $1
-@@ -7345,7 +7328,7 @@
+@@ -7390,7 +7373,7 @@
      SELECT _areni(
          'operators',
          ARRAY(
@@ -367,7 +367,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE pg_catalog.pg_operator_is_visible(o.oid)
-@@ -7358,7 +7341,7 @@
+@@ -7403,7 +7386,7 @@
              SELECT $1[i]
                FROM generate_series(1, array_upper($1, 1)) s(i)
              EXCEPT
@@ -376,7 +376,7 @@
                FROM pg_catalog.pg_operator o
                JOIN pg_catalog.pg_namespace n ON o.oprnamespace = n.oid
               WHERE pg_catalog.pg_operator_is_visible(o.oid)
-@@ -8061,40 +8044,6 @@
+@@ -8106,40 +8089,6 @@
      );
  $$ LANGUAGE sql;
  
