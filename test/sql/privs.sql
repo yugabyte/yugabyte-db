@@ -19,7 +19,7 @@ BEGIN
     RETURN;
 END;
 $$ language plpgsql;
-SELECT set_search_path();
+SELECT * FROM set_search_path();
 RESET client_min_messages;
 
 /****************************************************************************/

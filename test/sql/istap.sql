@@ -145,7 +145,7 @@ BEGIN
             false,
             'is(mumble, NULL)',
             '',
-            '       have: (1,hey)
+            '        have: (1,hey)
         want: NULL'
         ) AS b FROM mumble LOOP
             RETURN NEXT tap.b;
