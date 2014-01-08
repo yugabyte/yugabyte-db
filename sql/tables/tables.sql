@@ -3,6 +3,7 @@ CREATE TABLE part_config (
     type text NOT NULL,
     part_interval text NOT NULL,
     control text NOT NULL,
+    constraint_cols text[],
     premake int NOT NULL DEFAULT 4,
     retention text,
     retention_schema text,

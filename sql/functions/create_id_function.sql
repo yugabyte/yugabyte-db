@@ -31,7 +31,7 @@ v_type                          text;
 
 BEGIN
 
-SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
 IF v_jobmon_schema IS NOT NULL THEN
     SELECT current_setting('search_path') INTO v_old_search_path;
     EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
@@ -60,7 +60,7 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
 
 IF v_type = 'id-static' THEN
@@ -120,6 +120,7 @@ IF v_type = 'id-static' THEN
                         ||v_part_interval||', ARRAY[v_next_partition_id]);
                     UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                     PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                    PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
                 END LOOP;
             END IF;
@@ -162,6 +163,7 @@ ELSIF v_type = 'id-dynamic' THEN
                     IF v_next_partition_name IS NOT NULL THEN
                         UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                         PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                        PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     END IF;
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
                 END LOOP;
@@ -195,18 +197,15 @@ END IF;
 EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition function maintenance for table '||p_parent_table||' failed');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE FUNCTION: '||p_parent_table||')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition function maintenance for table '||p_parent_table||' failed'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-

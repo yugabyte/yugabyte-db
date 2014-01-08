@@ -11,15 +11,17 @@ If you attempt to insert data into a partition set that contains data for a part
 
 If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. There is also a method available to dump the tables out if they don't need to be in the database anymore but still need to be kept. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing only data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
 
+One of the things that can make partitioning a big advantage is a feature called **constraint exclusion** (see docs for explanation of functionality and examples http://www.postgresql.org/docs/current/static/ddl-partitioning.html#DDL-PARTITIONING-CONSTRAINT-EXCLUSION). The problem with most partitioning setups however, is that this will only be used on the partitioning control column. If you use a WHERE condition on any other column in the partition set, a scan across all child tables will occur unless there are also constraints on those columns. And predicting what a columns' values will be to precreate constraints can be very hard or impossible. PG Partman has a feature to apply constraints on older tables in a partition set that may no longer have any edits done to them ("old" being defined as older than the premake config value). It checks the current min/max values in the given columns and then applies a constraint to that child table. This can allow the constraint exclusion feature to potentially eliminate scanning older child tables when other columns are used in WHERE condition. Be aware that this limits being able to edit those columns, but for the situations where it is applicable it can have a tremendous affect on query performance for very large partition sets. This means this feature is of limited value to dynamic partitioning, but can very useful for static partitioning. Functions for easily recreating constraints are also available if data does end up having to be edited in those older partitions. Note that constraints managed by PG Partman SHOULD NOT be renamed in order to allow the extension to manage them properly for you. For a better example of how this works, please see this blog post: http://www.keithf4.com/managing-constraint-exclusion-in-table-partitioning
+
 PostgreSQL has an object naming length limit of 63 characters. If you try and create an object with a longer name, it truncates off any characters at the end to fit that limit. This can cause obvious issues with partition names that rely on having a specifically named suffix. PG Partman automatically handles this for all child tables, trigger functions and triggers. It will truncate off the exiting parent table name to fit the required suffix. Be aware that if you have tables with very long, similar names, you may run into naming conflicts if they are part of separate partition sets. With serial based partitioning, be aware that over time the table name will be truncated more an more to fit a longer partition suffix. So while the extention will try and handle this edge case for you, it is recommended to keep table names that will be partitioned as short as possible.
 
 The PG Jobmon extension (https://github.com/omniti-labs/pg_jobmon) is optional and allows auditing and monitoring of partition maintenance. If jobmon is installed and configured properly, it will automatically be used by partman with no additional setup needed. By default, any function that fails to run successfully 3 consecutive times will cause jobmon to raise an alert. This is why the default pre-make value is set to 4 so that an alert will be raised in time for intervention with no additional configuration of jobmon needed. You can of course configure jobmon to alert before (or later) than 3 failures if needed. If you're running partman in a production environment it is HIGHLY recommended to have jobmon installed and some sort of 3rd-party monitoring configured with it to alert when partitioning fails (Nagios, Circonus, etc).
 
-Functions
----------
-A superuser must be used to run these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner. 
+A superuser must be used to run all these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner. 
 
-*create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false)*
+Creation Functions
+------------------
+*create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_debug boolean DEFAULT false)*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
@@ -44,14 +46,9 @@ A superuser must be used to run these functions in order to set privileges & own
  > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. This is the actual integer value, not text values like time-based partitioning. Must be greater than zero.  
  > *Author's Note: If people want decade, century or millenium let me know. They are not trivial to add but I will upon request.*
 
+ * p_constraint_cols - an optional array parameter to set the columns that will have additional constraints set. See the **About** section for more information on how this works and the **apply_constraints()** function for how this is used.
  * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle (behind & ahead). Note that weekly partitioning may occasionally cause an extra partition to be premade due to differing month lengths and daylight savings (on non-UTC systems). This won't hurt anything and will self-correct. If partitioning ever falls behind the premake value, normal running of run_maintenance() and data insertion to id-based tables should automatically catch things up.
  * p_debug - turns on additional debugging information (not yet working).
-
-*run_maintenance()*
- * Run this function as a scheduled job (cronjob, etc) to automatically keep time-based partitioning working and/or use the partition retention system.
- * Every run checks all tables listed in the **part_config** table with the types **time-static** and **time-dynamic** to pre-make child tables (not needed for id-based partitioning).
- * Every run checks all tables of all types listed in the **part_config** table with a value in the **retention** column and drops tables as needed (see **About** and config table below).
- * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
 
 *partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0)*
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
@@ -71,6 +68,56 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
+Maintenance Functions
+---------------------
+*run_maintenance()*
+ * Run this function as a scheduled job (cronjob, etc) to automatically keep time-based partitioning working and/or use the partition retention system.
+ * Every run checks all tables listed in the **part_config** table with the types **time-static** and **time-dynamic** to pre-make child tables (not needed for id-based partitioning).
+ * Every run checks all tables of all types listed in the **part_config** table with a value in the **retention** column and drops tables as needed (see **About** and config table below).
+ * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
+
+*show_partitions (p_parent_table text, p_order text DEFAULT 'ASC')*
+ * List all child tables of a given partition set. Each child table returned as a single row.
+ * Tables are returned in the order that makes sense for the partition interval. 
+ * p_order - optional parameter to set the order the child tables are returned in. Defaults to ASCending. Set to 'DESC' to return in descending order. 
+
+*check_parent()*
+ * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
+ * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
+ * partition_data_time() & partition_data_id() can be used to move data from these parent tables into the proper children. 
+
+*check_unique_column(p_parent_table text, p_column text)* 
+ * Partitioning using inheritance has the shortcoming of not allowing a unique constraint to apply to all tables in the entire partition set without causing large performance issues once the partition set begins to grow very large. This is the first draft of a function to provide a way to monitor if this occurs.
+ * Note that on very large partition sets this can be an expensive query to run, especially if you have no index on it (which you should if it was supposed to be unique anyway).
+ * p_parent_table - the existing parent table of any partition set.
+ * p_column - the column in the partition set to check for uniqueness across all child tables.
+ * If there is a column value that violates the unique constraint, this function will return that column value along with a count of how many of that value there are. 
+
+*apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)*
+ * Apply constraints to child tables in a given partition set for the columns that are configured (constraint names are all prefixed with "partmanconstr_"). 
+ * Columns that are to have constraints are set in the **part_config** table **constraint_cols[]* array column or during creation with the parameter to create_parent().
+ * If the pg_partman constraints already exists on the child table, the function will cleanly skip over the ones that exist and not create duplicates.
+ * If the column(s) given contain all NULL values, no constraint will be made.
+ * If the child table parameter is given, only that child table will have constraints applied.
+ * If child table parameter is not given, constraints are placed on the last child table older than the premake value. For example, if the premake value is 4, then constraints will be placed on the child table that is 5 back from the current partition (as long as partition pre-creation has been kept up to date).
+ * If you need to apply constraints to all older child tables, use the included python script (reapply_constraint.py). This script has options to make constraint application easier with as little impact on performance as possible.
+ * The debug parameter will show you the constraint creation statement that was used.
+
+*drop_constraints(p_parent_table text, p_child_table text, p_debug boolean DEFAULT false)*
+ * Drop constraints that have been created by pg_partman for the columns that are configured in *part_config*. This makes it easy to clean up constraints if old data needs to be edited and the constraints aren't allowing it.
+ * Will only drop constraints that begin with "partmanconstr_* for the given child table and configured columns.
+ * If you need to drop constraints on all child tables, use the included python script (reapply_constraint.py). This script has options to make constraint removal easier with as little impact on performance as possible.
+ * The debug parameter will show you the constraint drop statement that was used.
+
+*reapply_privileges(p_parent_table text)*
+ * This function is used to reapply ownership & grants on all child tables based on what the parent table has set. 
+ * Privileges that the parent table has will be granted to all child tables and privilges that the parent does not have will be revoked (with CASCADE).
+ * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
+ * Be aware that for large partition sets, this can be a very long running operation and is why it was made into a separate function to run independently. Only privileges that are different between the parent & child are applied, but it still has to do system catalog lookups and comparisons for every single child partition and all individual privileges on each.
+ * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
+
+Destruction Functions
+---------------------
 *undo_partition_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_keep_table boolean DEFAULT true) RETURNS bigint*
  * Undo a time-based partition set created by pg_partman. This function MOVES the data from existing child partitions to the parent table.
  * When this function is run, the trigger on the parent table & the trigger function are immediately dropped (if they still exist). This means any further writes are done to the parent.
@@ -110,24 +157,6 @@ A superuser must be used to run these functions in order to set privileges & own
  * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited. 
  * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
 
-*check_parent()*
- * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
- * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
-
-*reapply_privileges(p_parent_table text)*
- * This function is used to reapply ownership & grants on all child tables based on what the parent table has set. 
- * Privileges that the parent table has will be granted to all child tables and privilges that the parent does not have will be revoked (with CASCADE).
- * Privilges that are checked for are SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, & TRIGGER.
- * Be aware that for large partition sets, this can be a very long running operation and is why it was made into a separate function to run independently. Only privileges that are different between the parent & child are applied, but it still has to do system catalog lookups and comparisons for every single child partition and all individual privileges on each.
- * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
-
-*check_unique_column(p_parent_table text, p_column text)* 
- * Partitioning using inheritance has the shortcoming of not allowing a unique constraint to apply to all tables in the entire partition set without causing large performance issues once the partition set begins to grow very large. This is the first draft of a function to provide a way to monitor if this occurs.
- * Note that on very large partition sets this can be an expensive query to run, especially if you have no index on it (which you should if it was supposed to be unique anyway).
- * p_parent_table - the existing parent table of any partition set.
- * p_column - the column in the partition set to check for uniqueness across all child tables.
- * If there is a column value that violates the unique constraint, this function will return that column value along with a count of how many of that value there are. 
-
 *drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
  * This function is used to drop child tables from a time-based partition set. By default, the table is just uninherited and not actually dropped. For automatically dropping old tables, it is recommended to use the **run_maintenance()** function with retention configured instead of calling this directly.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
@@ -149,8 +178,10 @@ A superuser must be used to run these functions in order to set privileges & own
 Tables
 ------
 *part_config*  
-    Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are
-    **retention**, **retention_schema**, **retention_keep_table**, & **retention_keep_index** to configure the partition set's retention policy or **premake** to change the default.   
+    Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are:
+    1) **retention**, **retention_schema**, **retention_keep_table** & **retention_keep_index** to configure the partition set's retention policy 
+    2) **constraint_cols** to have partman manage additional constraints 
+    3) **premake** to change the default.   
     The rest are managed by the extension itself and should not be changed unless absolutely necessary.
 
     parent_table            - Parent table of the partition set
@@ -158,8 +189,11 @@ Tables
     part_interval           - Text type value that determines the interval for each partition. 
                               Must be a value that can either be cast to the interval or bigint data types.
     control                 - Column used as the control for partition constraints. Must be a time or integer based column.
+    constraint_cols         - Array column that lists columns to have additional constraints applied.
+                              See **About** section for more information on how this feature works.
     premake                 - How many partitions to keep pre-made ahead of the current partition. Default is 4.
-                              Also manages number of partitions handled by static partitioning method. See create_parent() function for more info.
+                              Manages number of partitions handled by static partitioning method. See create_parent() function for more info.
+                              Manages which old tables get additional constraints set if configured to do so. See **About** section for more info.
     retention               - Text type value that determines how old the data in a child partition can be before it is dropped. 
                               Must be a value that can either be cast to the interval or bigint data types. 
                               Leave this column NULL (the default) to always keep all child partitions. See **About** section for more info.
@@ -245,8 +279,21 @@ Scripts
  * --parent (-p):          Parent table of an already created partition set. Required.
  * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file to keep credentials secure.
  * --concurrent:           Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.
+ * --drop_concurrent:      Drop indexes concurrently when recreating them (PostgreSQL >= v9.2). Note this does not work on primary keys when --primary is given.
  * --primary:              By default the primary key is not recreated. Set this option if that is needed. Note this will cause an exclusive lock on the child table.
  * --jobs (-j):            Use the python multiprocessing library to recreate indexes in parallel. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.
  * --wait (-w):            Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
  * --dryrun:               Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
  * --quiet:                Turn off all output.
+
+*reapply_constraints.py*
+ * A python script for redoing constraints on child tables in a given partition set for the columns that are configured in **part_config** table. 
+ * Typical useage would be -d mode to drop constraints, edit the data as needed, then -a mode to reapply constraints.
+ * --parent (-p):           Parent table of an already created partition set. (Required)
+ * --connection (-c):       Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".
+ * --drop_constraints (-d): Drop all constraints managed by pg_partman. Drops constraints on all child tables including current & future.
+ * --add_constraints (-a):  Apply configured constraints to all child tables older than the premake value.
+ * --jobs (-j):             Use the python multiprocessing library to recreate indexes in parallel. Value for -j is number of simultaneous jobs to run. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.
+ *--wait (-w):              Wait the given number of seconds after a table has had its constraints dropped or applied before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
+ * --dryrun:                Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
+ * --quiet (-q):            Turn off all output.

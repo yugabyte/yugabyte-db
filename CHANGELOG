@@ -1,3 +1,14 @@
+1.5.0
+-- New functions that can manage additional constraints on child tables older than premake value based on what their min/max values are. This allows constraint exclusion to become usable on columns other than the partitioning column. However, this is only useful if older tables are no longer editing the columns that will have constraints placed on them, otherwise you risk constraint violations. See blog post for a more thorough explanation and examples: http://www.keithf4.com/managing-constraint-exclusion-in-table-partitioning
+-- New python script for using above functions to drop/apply constraints on an entire partition set without causing excessive lock issues.
+-- show_partitions() function is now guarenteed to return a list of partitions in the order that makes sense for the partition type/interval for the set. Additional option to specify ascending or descending order (defaults to ascending).
+-- Check for valid parameter values in partition creation function (github issue #14 from Josh Berkus)
+-- Added drop index concurrently option (--drop_concurrently) to reapply_indexes.py script. Only works for 9.2+ 
+-- Changed run_maintenance() to use advisory transaction lock instead of session level lock.
+-- Fixed missing library import in python scripts.
+-- Organized docmentation of functions.
+
+
 1.4.5
 -- Fixed bug in reapply_indexes.py script that could cause all new indexes to be added to the parent instead of the children. This was happening if the parent table's schema was in the search_path of the role that the script uses to connect to the database.
 -- Removed any unneeded library imports in all python scripts.
@@ -16,7 +27,7 @@
 
 
 1.4.2
--- Added lockwait functionality to background data partitioning, including partition_data_id, partition_data_time, and partition_data.py
+-- Added lockwait functionality to background data partitioning, including partition_data_id, partition_data_time, and partition_data.py (Thanks to Josh Berkus for this feature).
 
 
 1.4.1

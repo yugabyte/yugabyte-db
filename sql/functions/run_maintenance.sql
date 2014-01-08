@@ -25,13 +25,13 @@ v_year                          text;
 
 BEGIN
 
-v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman run_maintenance'));
+v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman run_maintenance'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'Partman maintenance already running.';
     RETURN;
 END IF;
 
-SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
 IF v_jobmon_schema IS NOT NULL THEN
     SELECT current_setting('search_path') INTO v_old_search_path;
     EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
@@ -106,6 +106,10 @@ LOOP
         IF v_row.type = 'time-static' THEN
             EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
         END IF;
+
+        -- Manage additonal constraints if set
+        PERFORM @extschema@.apply_constraints(v_row.parent_table);
+
         v_last_partition_timestamp := v_last_partition_timestamp + v_row.part_interval;
         v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
     END LOOP;
@@ -130,27 +134,18 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
-PERFORM pg_advisory_unlock(hashtext('pg_partman run_maintenance'));
-
 EXCEPTION
-    WHEN QUERY_CANCELED THEN
-        PERFORM pg_advisory_unlock(hashtext('pg_partman run_maintenance'));
-        RAISE EXCEPTION '%', SQLERRM;
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN RUN MAINTENANCE');
-                v_step_id := add_step(v_job_id, 'EXCEPTION before job logging started');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN RUN MAINTENANCE'')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+            ELSIF v_step_id IS NULL THEN
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            IF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
-            END IF;
-            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
-        PERFORM pg_advisory_unlock(hashtext('pg_partman run_maintenance'));
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;

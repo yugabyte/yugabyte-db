@@ -1,7 +1,15 @@
 /*
  * Function to turn a table into the parent of a partition set
  */
-CREATE FUNCTION create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_premake int DEFAULT 4, p_debug boolean DEFAULT false) RETURNS void
+CREATE FUNCTION create_parent(
+    p_parent_table text
+    , p_control text
+    , p_type text
+    , p_interval text
+    , p_constraint_cols text[] DEFAULT NULL 
+    , p_premake int DEFAULT 4
+    , p_debug boolean DEFAULT false) 
+RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -21,6 +29,7 @@ v_starting_partition_id bigint;
 v_step_id               bigint;
 v_tablename             text;
 v_time_interval         interval;
+v_valid_types           text[] := '{"time-static", "time-dynamic", "id-static", "id-dynamic"}';
 
 BEGIN
 
@@ -34,9 +43,13 @@ SELECT tablename INTO v_tablename FROM pg_tables WHERE schemaname || '.' || tabl
     END IF;
 
 SELECT attnotnull INTO v_notnull FROM pg_attribute WHERE attrelid = p_parent_table::regclass AND attname = p_control;
-    IF v_notnull = false THEN
+    IF v_notnull = false OR v_notnull IS NULL THEN
         RAISE EXCEPTION 'Control column (%) for parent table (%) must be NOT NULL', p_control, p_parent_table;
     END IF;
+
+IF NOT (string_to_array(p_type, '') <@ v_valid_types) THEN
+    RAISE EXCEPTION '% is not a valid partitioning type (%)', p_type, array_to_string(v_valid_types, ', ');
+END IF;
 
 EXECUTE 'LOCK TABLE '||p_parent_table||' IN ACCESS EXCLUSIVE MODE';
 
@@ -119,8 +132,8 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         v_partition_id = array_append(v_partition_id, (v_id_interval*i) + v_starting_partition_id);
     END LOOP;
 
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake) VALUES
-        (p_parent_table, p_type, v_id_interval, p_control, p_premake);
+    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols) VALUES
+        (p_parent_table, p_type, v_id_interval, p_control, p_premake, p_constraint_cols);
     EXECUTE 'SELECT @extschema@.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(p_control)||','
         ||v_id_interval||','||quote_literal(v_partition_id)||')' INTO v_last_partition_name;
     -- Doing separate update because create function needs parent table in config table for apply_grants()
@@ -164,16 +177,14 @@ END IF;
 EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN CREATE PARENT: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition creation for table '||p_parent_table||' failed');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE PARENT: '||p_parent_table||')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition creation for table '||p_parent_table||' failed'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
         RAISE EXCEPTION '%', SQLERRM;
 END

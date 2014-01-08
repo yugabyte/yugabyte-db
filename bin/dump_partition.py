@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import argparse, hashlib, os, os.path, psycopg2, subprocess
+import argparse, hashlib, os, os.path, psycopg2, subprocess, sys
 
 parser = argparse.ArgumentParser(description="This script will dump out and then drop all tables contained in the designated schema using pg_dump.  Each table will be in its own separate file along with a SHA-512 hash of the dump file.  Tables are not dropped from the database if pg_dump does not return successfully. All dump_* option defaults are the same as they would be for pg_dump if they are not given.", epilog="NOTE: The connection options for psyocpg and pg_dump were separated out due to distinct differences in their requirements depending on your database connection configuration.")
 parser.add_argument('-n','--schema', required=True, help="The schema that contains the tables that will be dumped. (Required)")
