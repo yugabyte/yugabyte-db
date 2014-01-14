@@ -112,3 +112,21 @@ error hint:
    ->  Index Scan using t1_i1 on t1
          Index Cond: (c1 = ft_1.id)
 
+----
+---- No. R-1-6 object type for the hint
+----
+-- No. R-1-6-6
+\o results/R_1-6-6.out.log
+/*+Rows(ft_1 ft_2 #1)Leading(ft_1 ft_2 t1)*/
+EXPLAIN SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
+LOG:  pg_hint_plan:
+used hint:
+Leading(ft_1 ft_2 t1)
+Rows(ft_1 ft_2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-6.out.log > results/R_1-6-6.out
+\! diff expected/R_1-6-6.out results/R_1-6-6.out

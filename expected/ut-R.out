@@ -1,0 +1,525 @@
+LOAD 'pg_hint_plan';
+SET pg_hint_plan.enable_hint TO on;
+SET pg_hint_plan.debug_print TO on;
+SET client_min_messages TO LOG;
+SET search_path TO public;
+\o results/R_sample.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_sample.out.log > results/R_sample.out
+\! diff expected/R_sample.out results/R_sample.out
+----
+---- No. R-1-1 specified pattern of the object name
+----
+-- No. R-1-1-1
+\o results/R_1-1-1.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-1-1.out.log > results/R_1-1-1.out
+\! diff expected/R_1-1-1.out results/R_1-1-1.out
+-- No. R-1-1-2
+\o results/R_1-1-2.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1 t_1, s1.t2 t_2 WHERE t_1.c1 = t_2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(t1 t2 #1)
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-1-2.out.log > results/R_1-1-2.out
+\! diff expected/R_1-1-2.out results/R_1-1-2.out
+-- No. R-1-1-3
+\o results/R_1-1-3.out.log
+/*+Rows(t_1 t_2 #1)*/
+EXPLAIN SELECT * FROM s1.t1 t_1, s1.t2 t_2 WHERE t_1.c1 = t_2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t_1 t_2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-1-3.out.log > results/R_1-1-3.out
+\! diff expected/R_1-1-3.out results/R_1-1-3.out
+----
+---- No. R-1-2 specified schema name in the hint option
+----
+-- No. R-1-2-1
+\o results/R_1-2-1.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-2-1.out.log > results/R_1-2-1.out
+\! diff expected/R_1-2-1.out results/R_1-2-1.out
+-- No. R-1-2-2
+\o results/R_1-2-2.out.log
+/*+Rows(s1.t1 s1.t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(s1.t1 s1.t2 #1)
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-2-2.out.log > results/R_1-2-2.out
+\! diff expected/R_1-2-2.out results/R_1-2-2.out
+----
+---- No. R-1-3 table doesn't exist in the hint option
+----
+-- No. R-1-3-1
+\o results/R_1-3-1.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-3-1.out.log > results/R_1-3-1.out
+\! diff expected/R_1-3-1.out results/R_1-3-1.out
+-- No. R-1-3-2
+\o results/R_1-3-2.out.log
+/*+Rows(t3 t4 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(t3 t4 #1)
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-3-2.out.log > results/R_1-3-2.out
+\! diff expected/R_1-3-2.out results/R_1-3-2.out
+----
+---- No. R-1-4 conflict table name
+----
+-- No. R-1-4-1
+\o results/R_1-4-1.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-4-1.out.log > results/R_1-4-1.out
+\! diff expected/R_1-4-1.out results/R_1-4-1.out
+-- No. R-1-4-2
+\o results/R_1-4-2.out.log
+EXPLAIN SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
+/*+Rows(t1 t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
+INFO:  hint syntax error at or near "Rows(t1 t1 #1)"
+DETAIL:  Relation name "t1" is ambiguous.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 t1 #1)
+
+/*+Rows(s1.t1 s2.t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(s1.t1 s2.t1 #1)
+duplication hint:
+error hint:
+
+EXPLAIN SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = s2t1.c1;
+/*+Rows(t1 s2t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = s2t1.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(s2t1 t1 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-4-2.out.log > results/R_1-4-2.out
+\! diff expected/R_1-4-2.out results/R_1-4-2.out
+-- No. R-1-4-3
+\o results/R_1-4-3.out.log
+EXPLAIN SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+/*+Rows(st1 st2 #1)Rows(t1 t2 #1)*/
+EXPLAIN SELECT *, (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WHERE st1.c1 = st2.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(st1 st2 #1)
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-4-3.out.log > results/R_1-4-3.out
+\! diff expected/R_1-4-3.out results/R_1-4-3.out
+----
+---- No. R-1-5 conflict table name
+----
+-- No. R-1-5-1
+\o results/R_1-5-1.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-5-1.out.log > results/R_1-5-1.out
+\! diff expected/R_1-5-1.out results/R_1-5-1.out
+-- No. R-1-5-2
+\o results/R_1-5-2.out.log
+/*+Rows(t1 t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "Rows(t1 t1 #1)"
+DETAIL:  Relation name "t1" is duplicated.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 t1 #1)
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-5-2.out.log > results/R_1-5-2.out
+\! diff expected/R_1-5-2.out results/R_1-5-2.out
+-- No. R-1-5-3
+\o results/R_1-5-3.out.log
+/*+(t1 t1)(t2 t2)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "(t1 t1)(t2 t2)"
+DETAIL:  Unrecognized hint keyword "".
+EXPLAIN SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+/*+(t1 t2 t1 t2)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+INFO:  hint syntax error at or near "(t1 t2 t1 t2)"
+DETAIL:  Unrecognized hint keyword "".
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-5-3.out.log > results/R_1-5-3.out
+\! diff expected/R_1-5-3.out results/R_1-5-3.out
+----
+---- No. R-1-6 object type for the hint
+----
+-- No. R-1-6-1
+\o results/R_1-6-1.out.log
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-1.out.log > results/R_1-6-1.out
+\! diff expected/R_1-6-1.out results/R_1-6-1.out
+-- No. R-1-6-2
+\o results/R_1-6-2.out.log
+EXPLAIN SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-2.out.log > results/R_1-6-2.out
+\! diff expected/R_1-6-2.out results/R_1-6-2.out
+-- No. R-1-6-3
+\o results/R_1-6-3.out.log
+EXPLAIN SELECT * FROM s1.ul1 t1, s1.ul1 t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.ul1 t1, s1.ul1 t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-3.out.log > results/R_1-6-3.out
+\! diff expected/R_1-6-3.out results/R_1-6-3.out
+-- No. R-1-6-4
+CREATE TEMP TABLE tm1 (LIKE s1.t1 INCLUDING ALL);
+\o results/R_1-6-4.out.log
+EXPLAIN SELECT * FROM tm1 t1, tm1 t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM tm1 t1, tm1 t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-4.out.log > results/R_1-6-4.out
+\! diff expected/R_1-6-4.out results/R_1-6-4.out
+-- No. R-1-6-5
+\o results/R_1-6-5.out.log
+EXPLAIN SELECT * FROM pg_catalog.pg_class t1, pg_catalog.pg_class t2 WHERE t1.oid = t2.oid;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM pg_catalog.pg_class t1, pg_catalog.pg_class t2 WHERE t1.oid = t2.oid;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-5.out.log > results/R_1-6-5.out
+\! diff expected/R_1-6-5.out results/R_1-6-5.out
+-- No. R-1-6-6
+-- refer ut-fdw.sql
+-- No. R-1-6-7
+\o results/R_1-6-7.out.log
+EXPLAIN SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #3)*/
+EXPLAIN SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #3)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-7.out.log > results/R_1-6-7.out
+\! diff expected/R_1-6-7.out results/R_1-6-7.out
+-- No. R-1-6-8
+\o results/R_1-6-8.out.log
+EXPLAIN SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(t1 t2 #1)
+duplication hint:
+error hint:
+
+/*+Rows(*VALUES* t2 #1)*/
+EXPLAIN SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4),  s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(*VALUES* t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-8.out.log > results/R_1-6-8.out
+\! diff expected/R_1-6-8.out results/R_1-6-8.out
+-- No. R-1-6-9
+\o results/R_1-6-9.out.log
+EXPLAIN WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) SELECT * FROM s1.t1, c1 WHERE t1.c1 = c1.c1;
+/*+Rows(t1 t2 #1)Rows(t1 c1 +1)*/
+EXPLAIN WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) SELECT * FROM s1.t1, c1 WHERE t1.c1 = c1.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(c1 t1 +1)
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-9.out.log > results/R_1-6-9.out
+\! diff expected/R_1-6-9.out results/R_1-6-9.out
+-- No. R-1-6-10
+\o results/R_1-6-10.out.log
+EXPLAIN SELECT * FROM s1.v1 t1, s1.v1 t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.v1 t1, s1.v1 t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(t1 t2 #1)
+duplication hint:
+error hint:
+
+/*+Rows(v1t1 v1t1_ #1)*/
+EXPLAIN SELECT * FROM s1.v1 t1, s1.v1_ t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(v1t1 v1t1_ #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-10.out.log > results/R_1-6-10.out
+\! diff expected/R_1-6-10.out results/R_1-6-10.out
+-- No. R-1-6-11
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.c1 = (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WHERE st1.c1 = st2.c1);
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=12.28..22.56 rows=1 width=29)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=12.00..12.01 rows=1 width=4)
+           ->  Merge Join  (cost=5.60..11.75 rows=100 width=4)
+                 Merge Cond: (st1.c1 = st2.c1)
+                 ->  Index Only Scan using t1_i1 on t1 st1  (cost=0.28..44.27 rows=1000 width=4)
+                 ->  Sort  (cost=5.32..5.57 rows=100 width=4)
+                       Sort Key: st2.c1
+                       ->  Seq Scan on t2 st2  (cost=0.00..2.00 rows=100 width=4)
+   ->  Index Scan using t1_i1 on t1  (cost=0.28..8.29 rows=1 width=15)
+         Index Cond: (c1 = $0)
+   ->  Seq Scan on t2  (cost=0.00..2.25 rows=1 width=14)
+         Filter: (c1 = $0)
+(13 rows)
+
+/*+Rows(t1 t2 #1)Rows(st1 st2 #1)*/
+EXPLAIN (COSTS true) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.c1 = (SELECT max(st1.c1) FROM s1.t1 st1, s1.t2 st2 WHERE st1.c1 = st2.c1);
+LOG:  pg_hint_plan:
+used hint:
+Rows(st1 st2 #1)
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+                                           QUERY PLAN                                            
+-------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=12.28..22.56 rows=1 width=29)
+   InitPlan 1 (returns $0)
+     ->  Aggregate  (cost=12.00..12.01 rows=1 width=4)
+           ->  Merge Join  (cost=5.60..11.75 rows=100 width=4)
+                 Merge Cond: (st1.c1 = st2.c1)
+                 ->  Index Only Scan using t1_i1 on t1 st1  (cost=0.28..44.27 rows=1000 width=4)
+                 ->  Sort  (cost=5.32..5.57 rows=100 width=4)
+                       Sort Key: st2.c1
+                       ->  Seq Scan on t2 st2  (cost=0.00..2.00 rows=100 width=4)
+   ->  Index Scan using t1_i1 on t1  (cost=0.28..8.29 rows=1 width=15)
+         Index Cond: (c1 = $0)
+   ->  Seq Scan on t2  (cost=0.00..2.25 rows=1 width=14)
+         Filter: (c1 = $0)
+(13 rows)
+
+--
+-- There are cases where difference in the measured value and predicted value
+-- depending upon the version of PostgreSQL
+--
+\o results/R_1-6-11.out.log
+EXPLAIN SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+/*+Rows(t1 st2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+Rows(st2 t1 #1)
+duplication hint:
+error hint:
+
+/*+Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-11.out.log > results/R_1-6-11.out
+\! diff expected/R_1-6-11.out results/R_1-6-11.out
+----
+---- No. R-1-7 specified number of conditions
+----
+-- No. R-1-7-1
+\o results/R_1-7-1.out.log
+/*+Rows(t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near ""
+DETAIL:  Rows hint requires at least two relations.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 #1)
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-7-1.out.log > results/R_1-7-1.out
+\! diff expected/R_1-7-1.out results/R_1-7-1.out
+-- No. R-1-7-2
+\o results/R_1-7-2.out.log
+/*+Rows(t1 t2 1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "1"
+DETAIL:  unrecognized rows value type notation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 t2 1)
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-7-2.out.log > results/R_1-7-2.out
+\! diff expected/R_1-7-2.out results/R_1-7-2.out
+-- No. R-1-7-3
+\o results/R_1-7-3.out.log
+/*+Rows(t1 t2 #notrows)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+INFO:  hint syntax error at or near "notrows"
+DETAIL:  Rows hint requires valid number as rows estimation.
+LOG:  pg_hint_plan:
+used hint:
+not used hint:
+duplication hint:
+error hint:
+Rows(t1 t2 #notrows)
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-7-3.out.log > results/R_1-7-3.out
+\! diff expected/R_1-7-3.out results/R_1-7-3.out

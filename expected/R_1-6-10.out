@@ -1,0 +1,27 @@
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1000 width=30)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
+   ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=15)
+   ->  Hash  (cost=xxx rows=1000 width=15)
+         ->  Seq Scan on t1 v1t1_1  (cost=xxx rows=1000 width=15)
+(5 rows)
+
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1000 width=30)
+   Hash Cond: (v1t1.c1 = v1t1_1.c1)
+   ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=15)
+   ->  Hash  (cost=xxx rows=1000 width=15)
+         ->  Seq Scan on t1 v1t1_1  (cost=xxx rows=1000 width=15)
+(5 rows)
+
+                               QUERY PLAN                                
+-------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1 width=30)
+   Hash Cond: (v1t1.c1 = v1t1_.c1)
+   ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=15)
+   ->  Hash  (cost=xxx rows=1000 width=15)
+         ->  Seq Scan on t1 v1t1_  (cost=xxx rows=1000 width=15)
+(5 rows)
+

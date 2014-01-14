@@ -1,0 +1,34 @@
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=301 width=30)
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Append  (cost=xxx rows=301 width=15)
+         ->  Seq Scan on p1 t1  (cost=xxx rows=1 width=44)
+         ->  Seq Scan on p1c1 t1_1  (cost=xxx rows=100 width=14)
+         ->  Seq Scan on p1c2 t1_2  (cost=xxx rows=100 width=16)
+         ->  Seq Scan on p1c3 t1_3  (cost=xxx rows=100 width=16)
+   ->  Hash  (cost=xxx rows=301 width=15)
+         ->  Append  (cost=xxx rows=301 width=15)
+               ->  Seq Scan on p1 t2  (cost=xxx rows=1 width=44)
+               ->  Seq Scan on p1c1 t2_1  (cost=xxx rows=100 width=14)
+               ->  Seq Scan on p1c2 t2_2  (cost=xxx rows=100 width=16)
+               ->  Seq Scan on p1c3 t2_3  (cost=xxx rows=100 width=16)
+(13 rows)
+
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1 width=30)
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Append  (cost=xxx rows=301 width=15)
+         ->  Seq Scan on p1 t1  (cost=xxx rows=1 width=44)
+         ->  Seq Scan on p1c1 t1_1  (cost=xxx rows=100 width=14)
+         ->  Seq Scan on p1c2 t1_2  (cost=xxx rows=100 width=16)
+         ->  Seq Scan on p1c3 t1_3  (cost=xxx rows=100 width=16)
+   ->  Hash  (cost=xxx rows=301 width=15)
+         ->  Append  (cost=xxx rows=301 width=15)
+               ->  Seq Scan on p1 t2  (cost=xxx rows=1 width=44)
+               ->  Seq Scan on p1c1 t2_1  (cost=xxx rows=100 width=14)
+               ->  Seq Scan on p1c2 t2_2  (cost=xxx rows=100 width=16)
+               ->  Seq Scan on p1c3 t2_3  (cost=xxx rows=100 width=16)
+(13 rows)
+

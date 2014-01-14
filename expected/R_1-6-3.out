@@ -1,0 +1,18 @@
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1100 width=88)
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on ul1 t1  (cost=xxx rows=1100 width=44)
+   ->  Hash  (cost=xxx rows=1100 width=44)
+         ->  Seq Scan on ul1 t2  (cost=xxx rows=1100 width=44)
+(5 rows)
+
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1 width=88)
+   Hash Cond: (t1.c1 = t2.c1)
+   ->  Seq Scan on ul1 t1  (cost=xxx rows=1100 width=44)
+   ->  Hash  (cost=xxx rows=1100 width=44)
+         ->  Seq Scan on ul1 t2  (cost=xxx rows=1100 width=44)
+(5 rows)
+

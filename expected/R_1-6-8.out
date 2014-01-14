@@ -1,0 +1,27 @@
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=3 width=58)
+   Hash Cond: (t2.c1 = "*VALUES*".column1)
+   ->  Seq Scan on t2  (cost=xxx rows=100 width=14)
+   ->  Hash  (cost=xxx rows=3 width=44)
+         ->  Values Scan on "*VALUES*"  (cost=xxx rows=3 width=44)
+(5 rows)
+
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=3 width=58)
+   Hash Cond: (t2.c1 = "*VALUES*".column1)
+   ->  Seq Scan on t2  (cost=xxx rows=100 width=14)
+   ->  Hash  (cost=xxx rows=3 width=44)
+         ->  Values Scan on "*VALUES*"  (cost=xxx rows=3 width=44)
+(5 rows)
+
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1 width=58)
+   Hash Cond: (t2.c1 = "*VALUES*".column1)
+   ->  Seq Scan on t2  (cost=xxx rows=100 width=14)
+   ->  Hash  (cost=xxx rows=3 width=44)
+         ->  Values Scan on "*VALUES*"  (cost=xxx rows=3 width=44)
+(5 rows)
+
