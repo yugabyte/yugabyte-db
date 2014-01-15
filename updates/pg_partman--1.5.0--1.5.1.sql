@@ -1,7 +1,10 @@
+-- Fix create_parent() to actually insert the contraint_cols value passed into the function to the config table when using time based partitioning. Thanks to Jeff Amiel for reporting the issue.
+
+
 /*
  * Function to turn a table into the parent of a partition set
  */
-CREATE FUNCTION create_parent(
+CREATE OR REPLACE FUNCTION create_parent(
     p_parent_table text
     , p_control text
     , p_type text
