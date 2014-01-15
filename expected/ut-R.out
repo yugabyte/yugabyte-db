@@ -323,11 +323,11 @@ error hint:
 -- No. R-1-6-7
 \o results/R_1-6-7.out.log
 EXPLAIN SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
-/*+Rows(t1 t2 #3)*/
+/*+Rows(t1 t2 #1)*/
 EXPLAIN SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
 LOG:  pg_hint_plan:
 used hint:
-Rows(t1 t2 #3)
+Rows(t1 t2 #1)
 not used hint:
 duplication hint:
 error hint:
@@ -523,3 +523,680 @@ Rows(t1 t2 #notrows)
 \o
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-7-3.out.log > results/R_1-7-3.out
 \! diff expected/R_1-7-3.out results/R_1-7-3.out
+----
+---- No. R-2-1 some complexity query blocks
+----
+-- No. R-2-1-1
+\o results/R_2-1-1.out.log
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+*/
+EXPLAIN
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+Rows(bmt1 bmt2 #1)Rows(bmt1 bmt2 bmt3 #1)Rows(bmt1 bmt2 bmt3 bmt4 #1)
+Rows(b1t2 b1t3 #1)Rows(b1t2 b1t3 b1t4 #1)Rows(b1t2 b1t3 b1t4 b1t1 #1)
+Rows(b2t3 b2t4 #1)Rows(b2t3 b2t4 b2t1 #1)Rows(b2t3 b2t4 b2t1 b2t2 #1)
+*/
+EXPLAIN
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Rows(b1t2 b1t3 #1)
+Rows(b2t3 b2t4 #1)
+Rows(bmt1 bmt2 #1)
+Rows(b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t3 b2t4 #1)
+Rows(bmt1 bmt2 bmt3 #1)
+Rows(b1t1 b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t2 b2t3 b2t4 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-1.out.log > results/R_2-1-1.out
+\! diff expected/R_2-1-1.out results/R_2-1-1.out
+-- No. R-2-1-2
+\o results/R_2-1-2.out.log
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(b3t4 b3t1)HashJoin(b3t4 b3t1 b3t2)NestLoop(b3t1 b3t2 b3t3 b3t4)
+*/
+EXPLAIN
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+), (
+SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(b3t1 b3t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(b3t1 b3t2 b3t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(b3t4 b3t1)HashJoin(b3t4 b3t1 b3t2)NestLoop(b3t1 b3t2 b3t3 b3t4)
+Rows(bmt1 bmt2 #1)Rows(bmt1 bmt2 bmt3 #1)Rows(bmt1 bmt2 bmt3 bmt4 #1)
+Rows(b1t2 b1t3 #1)Rows(b1t2 b1t3 b1t4 #1)Rows(b1t2 b1t3 b1t4 b1t1 #1)
+Rows(b2t3 b2t4 #1)Rows(b2t3 b2t4 b2t1 #1)Rows(b2t3 b2t4 b2t1 b2t2 #1)
+Rows(b3t4 b3t1 #1)Rows(b3t4 b3t1 b3t2 #1)Rows(b3t1 b3t2 b3t3 b3t4 #1)
+*/
+EXPLAIN
+SELECT max(bmt1.c1), (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+), (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+), (
+SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(b3t1 b3t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(b3t1 b3t2 b3t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+Rows(b1t2 b1t3 #1)
+Rows(b2t3 b2t4 #1)
+Rows(b3t1 b3t4 #1)
+Rows(bmt1 bmt2 #1)
+Rows(b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t3 b2t4 #1)
+Rows(b3t1 b3t2 b3t4 #1)
+Rows(bmt1 bmt2 bmt3 #1)
+Rows(b1t1 b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t2 b2t3 b2t4 #1)
+Rows(b3t1 b3t2 b3t3 b3t4 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-2.out.log > results/R_2-1-2.out
+\! diff expected/R_2-1-2.out results/R_2-1-2.out
+-- No. R-2-1-3
+\o results/R_2-1-3.out.log
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+*/
+EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(bmt4 bmt3 bmt2 bmt1)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt4 bmt3 #1)Rows(bmt4 bmt3 bmt2 #1)Rows(bmt1 bmt2 bmt3 bmt4 #1)
+*/
+EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt3 bmt4 #1)
+Rows(bmt2 bmt3 bmt4 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-3.out.log > results/R_2-1-3.out
+\! diff expected/R_2-1-3.out results/R_2-1-3.out
+-- No. R-2-1-4
+\o results/R_2-1-4.out.log
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+*/
+EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(bmt4 bmt3 bmt2 bmt1)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt4 bmt3 #1)Rows(bmt4 bmt3 bmt2 #1)Rows(bmt1 bmt2 bmt3 bmt4 #1)
+*/
+EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+LOG:  pg_hint_plan:
+used hint:
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt3 bmt4 #1)
+Rows(bmt2 bmt3 bmt4 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-4.out.log > results/R_2-1-4.out
+\! diff expected/R_2-1-4.out results/R_2-1-4.out
+-- No. R-2-1-5
+\o results/R_2-1-5.out.log
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+*/
+EXPLAIN
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+Rows(bmt1 bmt2 #1)Rows(bmt1 bmt2 bmt3 #1)Rows(bmt1 bmt2 bmt3 bmt4 #1)
+Rows(b1t2 b1t3 #1)Rows(b1t2 b1t3 b1t4 #1)Rows(b1t2 b1t3 b1t4 b1t1 #1)
+Rows(b2t3 b2t4 #1)Rows(b2t3 b2t4 b2t1 #1)Rows(b2t3 b2t4 b2t1 b2t2 #1)
+*/
+EXPLAIN
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Rows(b1t2 b1t3 #1)
+Rows(b2t3 b2t4 #1)
+Rows(bmt1 bmt2 #1)
+Rows(b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t3 b2t4 #1)
+Rows(bmt1 bmt2 bmt3 #1)
+Rows(b1t1 b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t2 b2t3 b2t4 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-5.out.log > results/R_2-1-5.out
+\! diff expected/R_2-1-5.out results/R_2-1-5.out
+-- No. R-2-1-6
+\o results/R_2-1-6.out.log
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(b3t4 b3t1)HashJoin(b3t4 b3t1 b3t2)NestLoop(b3t1 b3t2 b3t3 b3t4)
+*/
+EXPLAIN
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+  AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(b3t1 b3t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(b3t1 b3t2 b3t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+MergeJoin(bmt1 bmt2)HashJoin(bmt1 bmt2 bmt3)NestLoop(bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(b3t4 b3t1)HashJoin(b3t4 b3t1 b3t2)NestLoop(b3t1 b3t2 b3t3 b3t4)
+Rows(bmt1 bmt2 #1)Rows(bmt1 bmt2 bmt3 #1)Rows(bmt1 bmt2 bmt3 bmt4 #1)
+Rows(b1t2 b1t3 #1)Rows(b1t2 b1t3 b1t4 #1)Rows(b1t2 b1t3 b1t4 b1t1 #1)
+Rows(b2t3 b2t4 #1)Rows(b2t3 b2t4 b2t1 #1)Rows(b2t3 b2t4 b2t1 b2t2 #1)
+Rows(b3t4 b3t1 #1)Rows(b3t4 b3t1 b3t2 #1)Rows(b3t1 b3t2 b3t3 b3t4 #1)
+*/
+EXPLAIN
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+  AND bmt1.c1 <> (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+) AND bmt1.c1 <> (
+SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(b3t1 b3t4)
+MergeJoin(bmt1 bmt2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(b3t1 b3t2 b3t4)
+HashJoin(bmt1 bmt2 bmt3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt1 bmt2 bmt3 bmt4)
+Leading(bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+Rows(b1t2 b1t3 #1)
+Rows(b2t3 b2t4 #1)
+Rows(b3t1 b3t4 #1)
+Rows(bmt1 bmt2 #1)
+Rows(b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t3 b2t4 #1)
+Rows(b3t1 b3t2 b3t4 #1)
+Rows(bmt1 bmt2 bmt3 #1)
+Rows(b1t1 b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t2 b2t3 b2t4 #1)
+Rows(b3t1 b3t2 b3t3 b3t4 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-6.out.log > results/R_2-1-6.out
+\! diff expected/R_2-1-6.out results/R_2-1-6.out
+-- No. R-2-1-7
+\o results/R_2-1-7.out.log
+/*+
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(c2 c1)HashJoin(c2 c1 bmt1)NestLoop(c2 c1 bmt1 bmt2)MergeJoin(c2 c1 bmt1 bmt2 bmt3)HashJoin(c2 c1 bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+, c2 (c1) AS (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1, c2
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 = c2.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(c1 c2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(bmt1 c1 c2)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(bmt1 bmt2 c1 c2)
+MergeJoin(bmt1 bmt2 bmt3 c1 c2)
+HashJoin(bmt1 bmt2 bmt3 bmt4 c1 c2)
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(c2 c1)HashJoin(c2 c1 bmt1)NestLoop(c2 c1 bmt1 bmt2)MergeJoin(c2 c1 bmt1 bmt2 bmt3)HashJoin(c2 c1 bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+Rows(c2 c1 #1)Rows(c2 c1 bmt1 #1)Rows(c2 c1 bmt1 bmt2 #1)Rows(c2 c1 bmt1 bmt2 bmt3 #1)Rows(c2 c1 bmt1 bmt2 bmt3 bmt4 #1)
+Rows(b1t2 b1t3 #1)Rows(b1t2 b1t3 b1t4 #1)Rows(b1t2 b1t3 b1t4 b1t1 #1)
+Rows(b2t3 b2t4 #1)Rows(b2t3 b2t4 b2t1 #1)Rows(b2t3 b2t4 b2t1 b2t2 #1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+, c2 (c1) AS (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1, c2
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 = c2.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(c1 c2)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(bmt1 c1 c2)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(bmt1 bmt2 c1 c2)
+MergeJoin(bmt1 bmt2 bmt3 c1 c2)
+HashJoin(bmt1 bmt2 bmt3 bmt4 c1 c2)
+Leading(c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Rows(b1t2 b1t3 #1)
+Rows(b2t3 b2t4 #1)
+Rows(c1 c2 #1)
+Rows(b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t3 b2t4 #1)
+Rows(bmt1 c1 c2 #1)
+Rows(b1t1 b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t2 b2t3 b2t4 #1)
+Rows(bmt1 bmt2 c1 c2 #1)
+Rows(bmt1 bmt2 bmt3 c1 c2 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 c1 c2 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-7.out.log > results/R_2-1-7.out
+\! diff expected/R_2-1-7.out results/R_2-1-7.out
+-- No. R-2-1-8
+\o results/R_2-1-8.out.log
+/*+
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+MergeJoin(c3 c2)HashJoin(c3 c2 c1)NestLoop(c3 c2 c1 bmt1)MergeJoin(c3 c2 c1 bmt1 bmt2)HashJoin(c3 c2 c1 bmt1 bmt2 bmt3)NestLoop(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(b3t4 b3t1)HashJoin(b3t4 b3t1 b3t2)NestLoop(b3t1 b3t2 b3t3 b3t4)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+, c2 (c1) AS (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+, c3 (c1) AS (
+SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1, c2, c3
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 = c2.c1
+AND bmt1.c1 = c3.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(b3t1 b3t4)
+MergeJoin(c2 c3)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(b3t1 b3t2 b3t4)
+HashJoin(c1 c2 c3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt1 c1 c2 c3)
+MergeJoin(bmt1 bmt2 c1 c2 c3)
+HashJoin(bmt1 bmt2 bmt3 c1 c2 c3)
+NestLoop(bmt1 bmt2 bmt3 bmt4 c1 c2 c3)
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+not used hint:
+duplication hint:
+error hint:
+
+/*+
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+MergeJoin(c3 c2)HashJoin(c3 c2 c1)NestLoop(c3 c2 c1 bmt1)MergeJoin(c3 c2 c1 bmt1 bmt2)HashJoin(c3 c2 c1 bmt1 bmt2 bmt3)NestLoop(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+MergeJoin(b1t2 b1t3)HashJoin(b1t2 b1t3 b1t4)NestLoop(b1t2 b1t3 b1t4 b1t1)
+MergeJoin(b2t3 b2t4)HashJoin(b2t3 b2t4 b2t1)NestLoop(b2t3 b2t4 b2t1 b2t2)
+MergeJoin(b3t4 b3t1)HashJoin(b3t4 b3t1 b3t2)NestLoop(b3t1 b3t2 b3t3 b3t4)
+Rows(c3 c2 #1)Rows(c3 c2 c1 #1)Rows(c3 c2 c1 bmt1 #1)Rows(c3 c2 c1 bmt1 bmt2 #1)Rows(c3 c2 c1 bmt1 bmt2 bmt3 #1)Rows(c3 c2 c1 bmt1 bmt2 bmt3 bmt4 #1)
+Rows(b1t2 b1t3 #1)Rows(b1t2 b1t3 b1t4 #1)Rows(b1t2 b1t3 b1t4 b1t1 #1)
+Rows(b2t3 b2t4 #1)Rows(b2t3 b2t4 b2t1 #1)Rows(b2t3 b2t4 b2t1 b2t2 #1)
+Rows(b3t4 b3t1 #1)Rows(b3t4 b3t1 b3t2 #1)Rows(b3t1 b3t2 b3t3 b3t4 #1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT max(b1t1.c1) FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+, c2 (c1) AS (
+SELECT max(b2t1.c1) FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+, c3 (c1) AS (
+SELECT max(b3t1.c1) FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+SELECT max(bmt1.c1) FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4
+, c1, c2, c3
+                                                                        WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 = c2.c1
+AND bmt1.c1 = c3.c1
+;
+LOG:  pg_hint_plan:
+used hint:
+MergeJoin(b1t2 b1t3)
+MergeJoin(b2t3 b2t4)
+MergeJoin(b3t1 b3t4)
+MergeJoin(c2 c3)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(b2t1 b2t3 b2t4)
+HashJoin(b3t1 b3t2 b3t4)
+HashJoin(c1 c2 c3)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(b2t1 b2t2 b2t3 b2t4)
+NestLoop(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt1 c1 c2 c3)
+MergeJoin(bmt1 bmt2 c1 c2 c3)
+HashJoin(bmt1 bmt2 bmt3 c1 c2 c3)
+NestLoop(bmt1 bmt2 bmt3 bmt4 c1 c2 c3)
+Leading(c3 c2 c1 bmt1 bmt2 bmt3 bmt4)
+Leading(b1t2 b1t3 b1t4 b1t1)
+Leading(b2t3 b2t4 b2t1 b2t2)
+Leading(b3t4 b3t1 b3t2 b3t3)
+Rows(b1t2 b1t3 #1)
+Rows(b2t3 b2t4 #1)
+Rows(b3t1 b3t4 #1)
+Rows(c2 c3 #1)
+Rows(b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t3 b2t4 #1)
+Rows(b3t1 b3t2 b3t4 #1)
+Rows(c1 c2 c3 #1)
+Rows(b1t1 b1t2 b1t3 b1t4 #1)
+Rows(b2t1 b2t2 b2t3 b2t4 #1)
+Rows(b3t1 b3t2 b3t3 b3t4 #1)
+Rows(bmt1 c1 c2 c3 #1)
+Rows(bmt1 bmt2 c1 c2 c3 #1)
+Rows(bmt1 bmt2 bmt3 c1 c2 c3 #1)
+Rows(bmt1 bmt2 bmt3 bmt4 c1 c2 c3 #1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-1-8.out.log > results/R_2-1-8.out
+\! diff expected/R_2-1-8.out results/R_2-1-8.out
+----
+---- No. R-2-2 the number of the tables per quiry block
+----
+-- No. R-2-2-1
