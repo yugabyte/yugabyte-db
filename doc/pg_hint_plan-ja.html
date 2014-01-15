@@ -276,6 +276,24 @@ postgres-#     JOIN table table3 t3 ON (t2.key = t3.key);
 <h4>見積もり件数補正</h4>
 <p>あるオブジェクトの結合結果の件数を補正できるヒント句のグループです。「Rows」のみを含みます。</p>
 <p>見積もり件数補正対象として指定できるオブジェクトは結合方式と同じです。補正できるのは結合結果の見積もり件数だけで、スキャンの見積もり件数を補正することはできません。</p>
+<p>以下の例では、テーブルaとテーブルbの結合結果の件数を、ヒント句で指定した値に補正しています。</p>
+<pre>
+postgres=# /*+ Rows(a b #10) */
+postgres-# EXPLAIN SELECT *
+postgres-#    FROM pgbench_branches b
+postgres-#    JOIN pgbench_accounts a ON b.bid = a.bid
+postgres-#   WHERE aid &lt; 20
+postgres-#   ORDER BY a.aid;
+                                               QUERY PLAN
+--------------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=0.29..9.92 rows=<span class="strong">10</span> width=461)
+   Join Filter: (b.bid = a.bid)
+   ->  Index Scan using pgbench_accounts_pkey on pgbench_accounts a  (cost=0.29. .8.62 rows=19 width=97)
+         Index Cond: (aid &lt; 20)
+   ->  Materialize  (cost=0.00..1.01 rows=1 width=364)
+         ->  Seq Scan on pgbench_branches b  (cost=0.00..1.01 rows=1 width=364)
+(6 行)
+</pre>
 
 <h4>GUCパラメータ</h4>
 <p>そのクエリの実行計画を作成している間だけGUCパラメータを変更できるヒント句のグループです。「Set」のみを含みます。</p>
@@ -675,7 +693,7 @@ postgres=#
   <a href="pg_hint_plan-ja.html">pg_hint_plan</a>
 </div>
 
-<p class="footer">Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 
 <!--
 <script type="text/javascript">

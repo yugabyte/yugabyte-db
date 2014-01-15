@@ -83,6 +83,7 @@ PostgreSQL 9.2以降で動作します。</td></tr>
         <dt>-件数</dt><dd>指定した件数を本来の見積もり件数から減算します。</dd>
         <dt>*倍率</dt><dd>本来の見積もり件数を指定した倍率に補正します。「*2」とすると見積もり件数が2倍になり、「*0.01」とすると見積もり件数が1/100になります。</dd>
       </dl></p>
+なお、指定された件数や倍率をpg_hint_plan内部でパースするときにstrtod()を使用しています。
 </td></tr>
 
 <tr><td>GUCパラメータ</td>
@@ -101,7 +102,7 @@ PostgreSQL 9.2以降で動作します。</td></tr>
   <a href="hint_list-ja.html">Appendix A. ヒント句一覧</a>
 </div>
 
-<p class="footer">Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+<p class="footer">Copyright (c) 2012-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
 
 <!--
 <script type="text/javascript">
