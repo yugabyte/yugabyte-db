@@ -1,0 +1,38 @@
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=1 width=4)
+   CTE c1
+     ->  Index Only Scan using t1_i1 on t1 b1t1  (cost=xxx rows=1 width=4)
+           Index Cond: (c1 = 1)
+   InitPlan 2 (returns $1)
+     ->  Index Only Scan using t1_i1 on t1 b2t1  (cost=xxx rows=1 width=4)
+           Index Cond: (c1 = 1)
+   InitPlan 3 (returns $2)
+     ->  Index Only Scan using t1_i1 on t1 b3t1  (cost=xxx rows=1 width=4)
+           Index Cond: (c1 = 1)
+   ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1 width=4)
+         Index Cond: (c1 = 1)
+         Filter: (c1 <> $2)
+   ->  CTE Scan on c1  (cost=xxx rows=1 width=4)
+         Filter: (c1 = 1)
+(15 rows)
+
+                                    QUERY PLAN                                    
+----------------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=1 width=4)
+   CTE c1
+     ->  Index Only Scan using t1_i1 on t1 b1t1  (cost=xxx rows=1 width=4)
+           Index Cond: (c1 = 1)
+   InitPlan 2 (returns $1)
+     ->  Index Only Scan using t1_i1 on t1 b2t1  (cost=xxx rows=1 width=4)
+           Index Cond: (c1 = 1)
+   InitPlan 3 (returns $2)
+     ->  Index Only Scan using t1_i1 on t1 b3t1  (cost=xxx rows=1 width=4)
+           Index Cond: (c1 = 1)
+   ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1 width=4)
+         Index Cond: (c1 = 1)
+         Filter: (c1 <> $2)
+   ->  CTE Scan on c1  (cost=xxx rows=1 width=4)
+         Filter: (c1 = 1)
+(15 rows)
+

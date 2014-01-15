@@ -622,3 +622,192 @@ AND bmt1.c1 = c3.c1
 ----
 
 -- No. R-2-2-1
+\o results/R_2-2-1.out.log
+/*+
+Leading(c1 bmt1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1 WHERE b1t1.c1 = 1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+)
+                    FROM s1.t1 bmt1, c1 WHERE bmt1.c1 = 1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1 WHERE b3t1.c1 = 1
+)
+;
+/*+
+Leading(c1 bmt1)
+Rows(bmt1 c1 #1)
+Rows(b1t1 c1 #1)
+Rows(b2t1 c1 #1)
+Rows(b3t1 c1 #1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1 WHERE b1t1.c1 = 1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+)
+                    FROM s1.t1 bmt1, c1 WHERE bmt1.c1 = 1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1 WHERE b3t1.c1 = 1
+)
+;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-2-1.out.log > results/R_2-2-1.out
+\! diff expected/R_2-2-1.out results/R_2-2-1.out
+
+-- No. R-2-2-2
+\o results/R_2-2-2.out.log
+/*+
+Leading(c1 bmt2 bmt1)
+Leading(b1t2 b1t1)
+Leading(b2t2 b2t1)
+Leading(b3t2 b3t1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1, s1.t2 b1t2 WHERE b1t1.c1 = b1t2.c1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1, s1.t2 b2t2 WHERE b2t1.c1 = b2t2.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, c1 WHERE bmt1.c1 = bmt2.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.c1 = b3t2.c1
+)
+;
+/*+
+Leading(c1 bmt2 bmt1)
+Leading(b1t2 b1t1)
+Leading(b2t2 b2t1)
+Leading(b3t2 b3t1)
+Rows(c1 bmt2 #1)
+Rows(c1 bmt1 bmt2 #1)
+Rows(b1t1 b1t2 #1)
+Rows(b2t1 b2t2 #1)
+Rows(b3t1 b3t2 #1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1, s1.t2 b1t2 WHERE b1t1.c1 = b1t2.c1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1, s1.t2 b2t2 WHERE b2t1.c1 = b2t2.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, c1 WHERE bmt1.c1 = bmt2.c1
+AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.c1 = b3t2.c1
+)
+;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-2-2.out.log > results/R_2-2-2.out
+\! diff expected/R_2-2-2.out results/R_2-2-2.out
+
+-- No. R-2-2-3
+\o results/R_2-2-3.out.log
+/*+
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1) 
+Leading(b2t4 b2t3 b2t2 b2t1)
+Leading(b3t4 b3t3 b3t2 b3t1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4, c1 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1 AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+;
+/*+
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1) 
+Leading(b2t4 b2t3 b2t2 b2t1)
+Leading(b3t4 b3t3 b3t2 b3t1)
+Rows(c1 bmt4 #1)
+Rows(c1 bmt4 bmt3 #1)
+Rows(c1 bmt4 bmt3 bmt2 #1)
+Rows(c1 bmt4 bmt3 bmt2 bmt1 #1)
+Rows(b1t4 b1t3 #1)
+Rows(b1t4 b1t3 b1t2 #1)
+Rows(b1t4 b1t3 b1t2 b1t1 #1)
+Rows(b2t4 b2t3 #1)
+Rows(b2t4 b2t3 b2t2 #1)
+Rows(b2t4 b2t3 b2t2 b2t1 #1)
+Rows(b3t4 b3t3 #1)
+Rows(b3t4 b3t3 b3t2 #1)
+Rows(b3t4 b3t3 b3t2 b3t1 #1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1, s1.t2 b2t2, s1.t3 b2t3, s1.t4 b2t4 WHERE b2t1.c1 = b2t2.c1 AND b2t1.c1 = b2t3.c1 AND b2t1.c1 = b2t4.c1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4, c1 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1 AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1 = b3t2.c1 AND b3t1.c1 = b3t3.c1 AND b3t1.c1 = b3t4.c1
+)
+;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-2-3.out.log > results/R_2-2-3.out
+\! diff expected/R_2-2-3.out results/R_2-2-3.out
+
+-- No. R-2-2-4
+\o results/R_2-2-4.out.log
+/*+
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4, c1 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1 AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1
+)
+;
+/*+
+Leading(c1 bmt4 bmt3 bmt2 bmt1)
+Leading(b1t4 b1t3 b1t2 b1t1)
+Rows(c1 bmt4 #1)
+Rows(c1 bmt4 bmt3 #1)
+Rows(c1 bmt4 bmt3 bmt2 #1)
+Rows(c1 bmt4 bmt3 bmt2 bmt1 #1)
+Rows(b1t4 b1t3 #1)
+Rows(b1t4 b1t3 b1t2 #1)
+Rows(b1t4 b1t3 b1t2 b1t1 #1)
+*/
+EXPLAIN
+WITH c1 (c1) AS (
+SELECT b1t1.c1 FROM s1.t1 b1t1, s1.t2 b1t2, s1.t3 b1t3, s1.t4 b1t4 WHERE b1t1.c1 = b1t2.c1 AND b1t1.c1 = b1t3.c1 AND b1t1.c1 = b1t4.c1
+)
+SELECT bmt1.c1, (
+SELECT b2t1.c1 FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
+)
+                    FROM s1.t1 bmt1, s1.t2 bmt2, s1.t3 bmt3, s1.t4 bmt4, c1 WHERE bmt1.c1 = bmt2.c1 AND bmt1.c1 = bmt3.c1 AND bmt1.c1 = bmt4.c1 AND bmt1.c1 = c1.c1
+AND bmt1.c1 <> (
+SELECT b3t1.c1 FROM s1.t1 b3t1
+)
+;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-2-4.out.log > results/R_2-2-4.out
+\! diff expected/R_2-2-4.out results/R_2-2-4.out
