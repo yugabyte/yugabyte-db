@@ -2207,3 +2207,49 @@ error hint:
 \o
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-1-2.out.log > results/R_3-1-2.out
 \! diff expected/R_3-1-2.out results/R_3-1-2.out
+----
+---- No. R-3-2 increase or decrease value
+----
+-- No. R-3-2-1
+\o results/R_3-2-1.out.log
+/*+Rows(t1 t2 +1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 +1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-2-1.out.log > results/R_3-2-1.out
+\! diff expected/R_3-2-1.out results/R_3-2-1.out
+-- No. R-3-2-2
+\o results/R_3-2-2.out.log
+/*+Rows(t1 t2 -1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 -1)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-2-2.out.log > results/R_3-2-2.out
+\! diff expected/R_3-2-2.out results/R_3-2-2.out
+-- No. R-3-2-3
+\o results/R_3-2-3.out.log
+/*+Rows(t1 t2 -1000)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+WARNING:  make rows estimation 1 since below 1 : Rows(t1 t2 -1000)
+LOG:  pg_hint_plan:
+used hint:
+Rows(t1 t2 -1000)
+not used hint:
+duplication hint:
+error hint:
+
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-2-3.out.log > results/R_3-2-3.out
+\! diff expected/R_3-2-3.out results/R_3-2-3.out
