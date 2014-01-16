@@ -40,7 +40,7 @@
    Merge Cond: (t1.c1 = t2.c1)
    InitPlan 1 (returns $0)
      ->  Aggregate  (cost=xxx rows=1 width=4)
-           ->  Merge Join  (cost=xxx rows=100 width=4)
+           ->  Merge Join  (cost=xxx rows=1 width=4)
                  Merge Cond: (st1.c1 = st2.c1)
                  ->  Index Only Scan using t1_i1 on t1 st1  (cost=xxx rows=1000 width=4)
                  ->  Sort  (cost=xxx rows=100 width=4)

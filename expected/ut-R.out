@@ -430,10 +430,10 @@ error hint:
 
                                            QUERY PLAN                                            
 -------------------------------------------------------------------------------------------------
- Nested Loop  (cost=12.28..22.56 rows=1 width=29)
+ Nested Loop  (cost=12.03..22.31 rows=1 width=29)
    InitPlan 1 (returns $0)
-     ->  Aggregate  (cost=12.00..12.01 rows=1 width=4)
-           ->  Merge Join  (cost=5.60..11.75 rows=100 width=4)
+     ->  Aggregate  (cost=11.75..11.76 rows=1 width=4)
+           ->  Merge Join  (cost=5.60..11.75 rows=1 width=4)
                  Merge Cond: (st1.c1 = st2.c1)
                  ->  Index Only Scan using t1_i1 on t1 st1  (cost=0.28..44.27 rows=1000 width=4)
                  ->  Sort  (cost=5.32..5.57 rows=100 width=4)
@@ -1265,6 +1265,11 @@ Leading(c1 bmt2 bmt1)
 Leading(b1t2 b1t1)
 Leading(b2t2 b2t1)
 Leading(b3t2 b3t1)
+MergeJoin(c1 bmt2)
+HashJoin(c1 bmt1 bmt2)
+MergeJoin(b1t1 b1t2)
+MergeJoin(b2t1 b2t2)
+MergeJoin(b3t1 b3t2)
 */
 EXPLAIN
 WITH c1 (c1) AS (
@@ -1281,6 +1286,11 @@ SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.c1 = b3t2.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
+MergeJoin(b1t1 b1t2)
+MergeJoin(b2t1 b2t2)
+MergeJoin(b3t1 b3t2)
+MergeJoin(bmt2 c1)
+HashJoin(bmt1 bmt2 c1)
 Leading(c1 bmt2 bmt1)
 Leading(b1t2 b1t1)
 Leading(b2t2 b2t1)
@@ -1294,6 +1304,11 @@ Leading(c1 bmt2 bmt1)
 Leading(b1t2 b1t1)
 Leading(b2t2 b2t1)
 Leading(b3t2 b3t1)
+MergeJoin(c1 bmt2)
+HashJoin(c1 bmt1 bmt2)
+MergeJoin(b1t1 b1t2)
+MergeJoin(b2t1 b2t2)
+MergeJoin(b3t1 b3t2)
 Rows(c1 bmt2 #1)
 Rows(c1 bmt1 bmt2 #1)
 Rows(b1t1 b1t2 #1)
@@ -1315,6 +1330,11 @@ SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2 WHERE b3t1.c1 = b3t2.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
+MergeJoin(b1t1 b1t2)
+MergeJoin(b2t1 b2t2)
+MergeJoin(b3t1 b3t2)
+MergeJoin(bmt2 c1)
+HashJoin(bmt1 bmt2 c1)
 Leading(c1 bmt2 bmt1)
 Leading(b1t2 b1t1)
 Leading(b2t2 b2t1)
@@ -1338,6 +1358,19 @@ Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1) 
 Leading(b2t4 b2t3 b2t2 b2t1)
 Leading(b3t4 b3t3 b3t2 b3t1)
+MergeJoin(c1 bmt4)
+HashJoin(c1 bmt4 bmt3)
+NestLoop(c1 bmt4 bmt3 bmt2)
+MergeJoin(c1 bmt4 bmt3 bmt2 bmt1)
+HashJoin(b1t4 b1t3)
+NestLoop(b1t4 b1t3 b1t2)
+MergeJoin(b1t4 b1t3 b1t2 b1t1)
+HashJoin(b2t4 b2t3)
+NestLoop(b2t4 b2t3 b2t2)
+MergeJoin(b2t4 b2t3 b2t2 b2t1)
+HashJoin(b3t4 b3t3)
+NestLoop(b3t4 b3t3 b3t2)
+MergeJoin(b3t4 b3t3 b3t2 b3t1)
 */
 EXPLAIN
 WITH c1 (c1) AS (
@@ -1353,6 +1386,19 @@ SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
+HashJoin(b1t3 b1t4)
+HashJoin(b2t3 b2t4)
+HashJoin(b3t3 b3t4)
+MergeJoin(bmt4 c1)
+NestLoop(b1t2 b1t3 b1t4)
+NestLoop(b2t2 b2t3 b2t4)
+NestLoop(b3t2 b3t3 b3t4)
+HashJoin(bmt3 bmt4 c1)
+MergeJoin(b1t1 b1t2 b1t3 b1t4)
+MergeJoin(b2t1 b2t2 b2t3 b2t4)
+MergeJoin(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt2 bmt3 bmt4 c1)
+MergeJoin(bmt1 bmt2 bmt3 bmt4 c1)
 Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1)
 Leading(b2t4 b2t3 b2t2 b2t1)
@@ -1366,6 +1412,19 @@ Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1) 
 Leading(b2t4 b2t3 b2t2 b2t1)
 Leading(b3t4 b3t3 b3t2 b3t1)
+MergeJoin(c1 bmt4)
+HashJoin(c1 bmt4 bmt3)
+NestLoop(c1 bmt4 bmt3 bmt2)
+MergeJoin(c1 bmt4 bmt3 bmt2 bmt1)
+HashJoin(b1t4 b1t3)
+NestLoop(b1t4 b1t3 b1t2)
+MergeJoin(b1t4 b1t3 b1t2 b1t1)
+HashJoin(b2t4 b2t3)
+NestLoop(b2t4 b2t3 b2t2)
+MergeJoin(b2t4 b2t3 b2t2 b2t1)
+HashJoin(b3t4 b3t3)
+NestLoop(b3t4 b3t3 b3t2)
+MergeJoin(b3t4 b3t3 b3t2 b3t1)
 Rows(c1 bmt4 #1)
 Rows(c1 bmt4 bmt3 #1)
 Rows(c1 bmt4 bmt3 bmt2 #1)
@@ -1394,6 +1453,19 @@ SELECT b3t1.c1 FROM s1.t1 b3t1, s1.t2 b3t2, s1.t3 b3t3, s1.t4 b3t4 WHERE b3t1.c1
 ;
 LOG:  pg_hint_plan:
 used hint:
+HashJoin(b1t3 b1t4)
+HashJoin(b2t3 b2t4)
+HashJoin(b3t3 b3t4)
+MergeJoin(bmt4 c1)
+NestLoop(b1t2 b1t3 b1t4)
+NestLoop(b2t2 b2t3 b2t4)
+NestLoop(b3t2 b3t3 b3t4)
+HashJoin(bmt3 bmt4 c1)
+MergeJoin(b1t1 b1t2 b1t3 b1t4)
+MergeJoin(b2t1 b2t2 b2t3 b2t4)
+MergeJoin(b3t1 b3t2 b3t3 b3t4)
+NestLoop(bmt2 bmt3 bmt4 c1)
+MergeJoin(bmt1 bmt2 bmt3 bmt4 c1)
 Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1)
 Leading(b2t4 b2t3 b2t2 b2t1)
@@ -1423,6 +1495,13 @@ error hint:
 /*+
 Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1)
+MergeJoin(c1 bmt4)
+HashJoin(c1 bmt4 bmt3)
+NestLoop(c1 bmt4 bmt3 bmt2)
+MergeJoin(c1 bmt4 bmt3 bmt2 bmt1)
+MergeJoin(b1t4 b1t3)
+HashJoin(b1t4 b1t3 b1t2)
+NestLoop(b1t4 b1t3 b1t2 b1t1)
 */
 EXPLAIN
 WITH c1 (c1) AS (
@@ -1438,6 +1517,13 @@ SELECT b3t1.c1 FROM s1.t1 b3t1
 ;
 LOG:  pg_hint_plan:
 used hint:
+MergeJoin(b1t3 b1t4)
+MergeJoin(bmt4 c1)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(bmt3 bmt4 c1)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(bmt2 bmt3 bmt4 c1)
+MergeJoin(bmt1 bmt2 bmt3 bmt4 c1)
 Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1)
 not used hint:
@@ -1447,6 +1533,13 @@ error hint:
 /*+
 Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1)
+MergeJoin(c1 bmt4)
+HashJoin(c1 bmt4 bmt3)
+NestLoop(c1 bmt4 bmt3 bmt2)
+MergeJoin(c1 bmt4 bmt3 bmt2 bmt1)
+MergeJoin(b1t4 b1t3)
+HashJoin(b1t4 b1t3 b1t2)
+NestLoop(b1t4 b1t3 b1t2 b1t1)
 Rows(c1 bmt4 #1)
 Rows(c1 bmt4 bmt3 #1)
 Rows(c1 bmt4 bmt3 bmt2 #1)
@@ -1469,6 +1562,13 @@ SELECT b3t1.c1 FROM s1.t1 b3t1
 ;
 LOG:  pg_hint_plan:
 used hint:
+MergeJoin(b1t3 b1t4)
+MergeJoin(bmt4 c1)
+HashJoin(b1t2 b1t3 b1t4)
+HashJoin(bmt3 bmt4 c1)
+NestLoop(b1t1 b1t2 b1t3 b1t4)
+NestLoop(bmt2 bmt3 bmt4 c1)
+MergeJoin(bmt1 bmt2 bmt3 bmt4 c1)
 Leading(c1 bmt4 bmt3 bmt2 bmt1)
 Leading(b1t4 b1t3 b1t2 b1t1)
 Rows(b1t3 b1t4 #1)

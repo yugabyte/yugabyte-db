@@ -16,7 +16,7 @@
 
                                             QUERY PLAN                                            
 --------------------------------------------------------------------------------------------------
- Nested Loop  (cost=xxx rows=1 width=19)
+ Nested Loop  (cost=xxx rows=2 width=19)
    CTE c1
      ->  Aggregate  (cost=xxx rows=1 width=4)
            ->  Merge Join  (cost=xxx rows=1 width=4)
