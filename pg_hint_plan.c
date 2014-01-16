@@ -3210,9 +3210,15 @@ create_bms_of_relids(Hint *base, PlannerInfo *root, List *initial_rels,
 		if (relid == -1)
 			base->state = HINT_STATE_ERROR;
 
+		/*
+		 * the aliasname is not found(relid == 0) or same aliasname was used
+		 * multiple times in a query(relid == -1)
+		 */
 		if (relid <= 0)
+		{
+			relids = NULL;
 			break;
-
+		}
 		if (bms_is_member(relid, relids))
 		{
 			hint_ereport(base->hint_str,
@@ -3279,9 +3285,6 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 
 		hint->joinrelids = create_bms_of_relids(&(hint->base), root,
 									 initial_rels, hint->nrels, hint->relnames);
-
-		if (hint->joinrelids == NULL || hint->base.state == HINT_STATE_ERROR)
-			continue;
 	}
 
 	/* Do nothing if no Leading hint was supplied. */

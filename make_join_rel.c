@@ -117,6 +117,13 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	{
 		rows_hint = current_hint->rows_hints[i];
 
+		/*
+		 * This Rows hint specifies aliasname is error, or does not exist in
+		 * query.
+		 */
+		if (!rows_hint->joinrelids ||
+			rows_hint->base.state == HINT_STATE_ERROR)
+			continue;
 		if (bms_equal(joinrelids, rows_hint->joinrelids))
 		{
 			/*
