@@ -1013,3 +1013,70 @@ EXPLAIN SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
 \o
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-7.out.log > results/R_2-3-7.out
 \! diff expected/R_2-3-7.out results/R_2-3-7.out
+
+----
+---- No. R-2-4 VALUES clause
+----
+
+-- No. R-2-4-1
+\o results/R_2-4-1.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+/*+ Leading(t3 t1 t2) Rows(t3 t1 #2)Rows(t3 t1 t2 #2)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+/*+ Leading(*VALUES* t1 t2) Rows(*VALUES* t1 #2)Rows(*VALUES* t1 t2 #2)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-4-1.out.log > results/R_2-4-1.out
+\! diff expected/R_2-4-1.out results/R_2-4-1.out
+
+-- No. R-2-4-2
+\o results/R_2-4-2.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+/*+ Leading(t4 t3 t2 t1) Rows(t4 t3 #2) Rows(t4 t3 t2 #2)Rows(t4 t3 t2 t1 #2)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+/*+ Leading(*VALUES* t3 t2 t1) Rows(t4 t3 #2)Rows(*VALUES* t3 t2 #2)Rows(*VALUES* t3 t2 t1 #2)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-4-2.out.log > results/R_2-4-2.out
+\! diff expected/R_2-4-2.out results/R_2-4-2.out
+
+----
+---- No. R-2-5
+----
+
+-- No. R-2-5-1
+\o results/R_2-5-1.out.log
+EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt1 bmt2 bmt3 bmt4 *0.7)
+*/
+EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-5-1.out.log > results/R_2-5-1.out
+\! diff expected/R_2-5-1.out results/R_2-5-1.out
+
+-- No. R-2-5-2
+\o results/R_2-5-2.out.log
+EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt4 bmt3 *0.6)
+*/
+EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-5-2.out.log > results/R_2-5-2.out
+\! diff expected/R_2-5-2.out results/R_2-5-2.out
+
+-- No. R-2-5-3
+\o results/R_2-5-3.out.log
+EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+/*+
+Leading(bmt4 bmt3 bmt2 bmt1)
+Rows(bmt4 bmt1 *0.5)
+*/
+EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, (SELECT ctid, * FROM s1.t3 bmt3) sbmt3, (SELECT ctid, * FROM s1.t4 bmt4) sbmt4 WHERE bmt1.c1 = sbmt2.c1 AND bmt1.c1 = sbmt3.c1 AND bmt1.c1 = sbmt4.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-5-3.out.log > results/R_2-5-3.out
+\! diff expected/R_2-5-3.out results/R_2-5-3.out
+

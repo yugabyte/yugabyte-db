@@ -1,0 +1,35 @@
+                                           QUERY PLAN                                           
+------------------------------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=100 width=4)
+   Join Filter: (bmt1.c1 = bmt4.c1)
+   ->  Merge Join  (cost=xxx rows=100 width=12)
+         Merge Cond: (bmt1.c1 = bmt2.c1)
+         ->  Merge Join  (cost=xxx rows=1000 width=8)
+               Merge Cond: (bmt1.c1 = bmt3.c1)
+               ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1000 width=4)
+               ->  Index Only Scan using t3_i1 on t3 bmt3  (cost=xxx rows=1100 width=4)
+         ->  Sort  (cost=xxx rows=100 width=4)
+               Sort Key: bmt2.c1
+               ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=4)
+   ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=4)
+         Index Cond: (c1 = bmt3.c1)
+(13 rows)
+
+                                       QUERY PLAN                                        
+-----------------------------------------------------------------------------------------
+ Merge Join  (cost=xxx rows=60 width=4)
+   Merge Cond: (bmt1.c1 = bmt2.c1)
+   ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1000 width=4)
+   ->  Sort  (cost=xxx rows=60 width=12)
+         Sort Key: bmt2.c1
+         ->  Hash Join  (cost=xxx rows=60 width=12)
+               Hash Cond: (bmt3.c1 = bmt2.c1)
+               ->  Hash Join  (cost=xxx rows=660 width=8)
+                     Hash Cond: (bmt3.c1 = bmt4.c1)
+                     ->  Seq Scan on t3 bmt3  (cost=xxx rows=1100 width=4)
+                     ->  Hash  (cost=xxx rows=1100 width=4)
+                           ->  Seq Scan on t4 bmt4  (cost=xxx rows=1100 width=4)
+               ->  Hash  (cost=xxx rows=100 width=4)
+                     ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=4)
+(14 rows)
+
