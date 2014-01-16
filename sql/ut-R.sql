@@ -1080,3 +1080,23 @@ EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, 
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-5-3.out.log > results/R_2-5-3.out
 \! diff expected/R_2-5-3.out results/R_2-5-3.out
 
+----
+---- No. R-3-1 abusolute value
+----
+
+-- No. R-3-1-1
+\o results/R_3-1-1.out.log
+/*+Rows(t1 t2 #0)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-1-1.out.log > results/R_3-1-1.out
+\! diff expected/R_3-1-1.out results/R_3-1-1.out
+
+-- No. R-3-1-2
+\o results/R_3-1-2.out.log
+/*+Rows(t1 t2 #5)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-1-2.out.log > results/R_3-1-2.out
+\! diff expected/R_3-1-2.out results/R_3-1-2.out
+
