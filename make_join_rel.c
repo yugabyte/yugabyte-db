@@ -42,6 +42,10 @@ adjust_rows(double rows, RowsHint *hint)
 		Assert(false);	/* unrecognized rows value type */
 
 	hint->base.state = HINT_STATE_USED;
+	if (result < 1.0)
+		ereport(WARNING,
+				(errmsg("make rows estimation 1 since below 1 : %s",
+					hint->base.hint_str)));
 	result = clamp_row_est(result);
 	elog(DEBUG1, "adjusted rows %d to %d", (int) rows, (int) result);
 
