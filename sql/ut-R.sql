@@ -861,3 +861,155 @@ SELECT b3t1.c1 FROM s1.t1 b3t1
 \o
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-2-4.out.log > results/R_2-2-4.out
 \! diff expected/R_2-2-4.out results/R_2-2-4.out
+
+----
+---- No. R-2-3 RULE or VIEW
+----
+
+-- No. R-2-3-1
+\o results/R_2-3-1.out.log
+/*+
+Leading(r1 t1 t2 t3 t4)
+*/
+EXPLAIN UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r1 t1 t2 t3 t4)
+Rows(r1 t1 t2 t3 t4 #2)
+Rows(r1 t1 t2 t3 #2)
+Rows(r1 t1 t2 #2)
+Rows(r1 t1 #2)
+*/
+EXPLAIN UPDATE s1.r1 SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r1_ b1t1 b1t2 b1t3 b1t4)
+*/
+EXPLAIN UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r1_ b1t1 b1t2 b1t3 b1t4)
+Rows(r1_ b1t1 b1t2 b1t3 b1t4 #2)
+Rows(r1_ b1t1 b1t2 b1t3 #2)
+Rows(r1_ b1t1 b1t2 #2)
+Rows(r1_ b1t1 #2)
+*/
+EXPLAIN UPDATE s1.r1_ SET c1 = c1 WHERE c1 = 1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-1.out.log > results/R_2-3-1.out
+\! diff expected/R_2-3-1.out results/R_2-3-1.out
+
+-- No. R-2-3-2
+\o results/R_2-3-2.out.log
+/*+
+Leading(r2 t1 t2 t3 t4)
+*/
+EXPLAIN UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r2 t1 t2 t3 t4)
+Rows(r2 t1 t2 t3 t4 #2)
+Rows(r2 t1 t2 t3 #2)
+Rows(r2 t1 t2 #2)
+Rows(r2 t1 #2)
+*/
+EXPLAIN UPDATE s1.r2 SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r2_ b1t1 b1t2 b1t3 b1t4)
+Leading(r2_ b2t1 b2t2 b2t3 b2t4)
+*/
+EXPLAIN UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r2_ b1t1 b1t2 b1t3 b1t4)
+Leading(r2_ b2t1 b2t2 b2t3 b2t4)
+Rows(r2_ b1t1 #2)
+Rows(r2_ b1t1 b1t2 #2)
+Rows(r2_ b1t1 b1t2 b1t3 #2)
+Rows(r2_ b1t1 b1t2 b1t3 b1t4 #2)
+Rows(r2_ b2t1 #2)
+Rows(r2_ b2t1 b2t2 #2)
+Rows(r2_ b2t1 b2t2 b2t3  #2)
+Rows(r2_ b2t1 b2t2 b2t3 b2t4 #2)
+*/
+EXPLAIN UPDATE s1.r2_ SET c1 = c1 WHERE c1 = 1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-2.out.log > results/R_2-3-2.out
+\! diff expected/R_2-3-2.out results/R_2-3-2.out
+
+-- No. R-2-3-3
+\o results/R_2-3-3.out.log
+/*+
+Leading(r3 t1 t2 t3 t4)
+*/
+EXPLAIN UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r3 t1 t2 t3 t4)
+Rows(r3 t1 t2 t3 t4 #2)
+Rows(r3 t1 t2 t3 #2)
+Rows(r3 t1 t2 #2)
+Rows(r3 t1 #2)
+*/
+EXPLAIN UPDATE s1.r3 SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r3_ b1t1 b1t2 b1t3 b1t4)
+Leading(r3_ b2t1 b2t2 b2t3 b2t4)
+Leading(r3_ b3t1 b3t2 b3t3 b3t4)
+*/
+EXPLAIN UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1;
+/*+
+Leading(r3_ b1t1 b1t2 b1t3 b1t4)
+Leading(r3_ b2t1 b2t2 b2t3 b2t4)
+Leading(r3_ b3t1 b3t2 b3t3 b3t4)
+Rows(r3_ b1t1 #2)
+Rows(r3_ b1t1 b1t2 #2)
+Rows(r3_ b1t1 b1t2 b1t3 #2)
+Rows(r3_ b1t1 b1t2 b1t3 b1t4 #2)
+Rows(r3_ b2t1 #2)
+Rows(r3_ b2t1 b2t2 #2)
+Rows(r3_ b2t1 b2t2 b2t3 #2)
+Rows(r3_ b2t1 b2t2 b2t3 b2t4 #2)
+Rows(r3_ b3t1 #2)
+Rows(r3_ b3t1 b3t2 #2)
+Rows(r3_ b3t1 b3t2 b3t3 #2)
+Rows(r3_ b3t1 b3t2 b3t3 b3t4 #2)
+*/
+EXPLAIN UPDATE s1.r3_ SET c1 = c1 WHERE c1 = 1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-3.out.log > results/R_2-3-3.out
+\! diff expected/R_2-3-3.out results/R_2-3-3.out
+
+-- No. R-2-3-4
+\o results/R_2-3-4.out.log
+/*+HashJoin(v1t1 v1t1)*/
+EXPLAIN SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+/*+HashJoin(v1t1 v1t1)Rows(v1t1 v1t1 #1)*/
+EXPLAIN SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-4.out.log > results/R_2-3-4.out
+\! diff expected/R_2-3-4.out results/R_2-3-4.out
+
+-- No. R-2-3-5
+\o results/R_2-3-5.out.log
+/*+NestLoop(v1t1 v1t1_)*/
+EXPLAIN SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+/*+NestLoop(v1t1 v1t1_)Rows(v1t1 v1t1_ #1)*/
+EXPLAIN SELECT * FROM s1.v1 v1, s1.v1_ v2 WHERE v1.c1 = v2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-5.out.log > results/R_2-3-5.out
+\! diff expected/R_2-3-5.out results/R_2-3-5.out
+
+-- No. R-2-3-6
+\o results/R_2-3-6.out.log
+/*+RowsHashJoin(r4t1 r4t1)*/
+EXPLAIN SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+/*+RowsHashJoin(r4t1 r4t1)Rows(r4t1 r4t1 #1)*/
+EXPLAIN SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-6.out.log > results/R_2-3-6.out
+\! diff expected/R_2-3-6.out results/R_2-3-6.out
+
+-- No. R-2-3-7
+\o results/R_2-3-7.out.log
+/*+NestLoop(r4t1 r5t1)*/
+EXPLAIN SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+/*+NestLoop(r4t1 r5t1)Rows(r4t1 r5t1 #1)*/
+EXPLAIN SELECT * FROM s1.r4 t1, s1.r5 t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_2-3-7.out.log > results/R_2-3-7.out
+\! diff expected/R_2-3-7.out results/R_2-3-7.out

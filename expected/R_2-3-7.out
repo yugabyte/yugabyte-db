@@ -1,0 +1,16 @@
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=1000 width=30)
+   ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=15)
+   ->  Index Scan using t1_i1 on t1 r5t1  (cost=xxx rows=1 width=15)
+         Index Cond: (c1 = r4t1.c1)
+(4 rows)
+
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Nested Loop  (cost=xxx rows=1 width=30)
+   ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=15)
+   ->  Index Scan using t1_i1 on t1 r5t1  (cost=xxx rows=1 width=15)
+         Index Cond: (c1 = r4t1.c1)
+(4 rows)
+

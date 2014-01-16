@@ -1,0 +1,18 @@
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1000 width=30)
+   Hash Cond: (r4t1.c1 = r4t1_1.c1)
+   ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=15)
+   ->  Hash  (cost=xxx rows=1000 width=15)
+         ->  Seq Scan on t1 r4t1_1  (cost=xxx rows=1000 width=15)
+(5 rows)
+
+                                QUERY PLAN                                
+--------------------------------------------------------------------------
+ Hash Join  (cost=xxx rows=1000 width=30)
+   Hash Cond: (r4t1.c1 = r4t1_1.c1)
+   ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=15)
+   ->  Hash  (cost=xxx rows=1000 width=15)
+         ->  Seq Scan on t1 r4t1_1  (cost=xxx rows=1000 width=15)
+(5 rows)
+
