@@ -1178,3 +1178,42 @@ EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-4-2.out.log > results/R_3-4-2.out
 \! diff expected/R_3-4-2.out results/R_3-4-2.out
 
+----
+---- No. R-3-5 conflict join method hint
+----
+
+-- No. R-3-5-1
+\o results/R_3-5-1.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-5-1.out.log > results/R_3-5-1.out
+\! diff expected/R_3-5-1.out results/R_3-5-1.out
+
+-- No. R-3-5-2
+\o results/R_3-5-2.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)Rows(t1 t2 #1)Rows(t1 t2 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-5-2.out.log > results/R_3-5-2.out
+\! diff expected/R_3-5-2.out results/R_3-5-2.out
+
+-- No. R-3-5-3
+\o results/R_3-5-3.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 #1)Rows(t2 t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-5-3.out.log > results/R_3-5-3.out
+\! diff expected/R_3-5-3.out results/R_3-5-3.out
+
+-- No. R-3-5-4
+\o results/R_3-5-4.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t2 t1 #1)Rows(t1 t2 #1)Rows(t2 t1 #1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-5-4.out.log > results/R_3-5-4.out
+\! diff expected/R_3-5-4.out results/R_3-5-4.out
