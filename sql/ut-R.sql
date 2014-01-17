@@ -1156,3 +1156,25 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-3-3.out.log > results/R_3-3-3.out
 \! diff expected/R_3-3-3.out results/R_3-3-3.out
 
+----
+---- No. R-3-4 join inherit tables
+----
+
+-- No. R-3-4-1
+\o results/R_3-4-1.out.log
+EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+/*+Rows(p1 p2 #1)*/
+EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-4-1.out.log > results/R_3-4-1.out
+\! diff expected/R_3-4-1.out results/R_3-4-1.out
+
+-- No. R-3-4-2
+\o results/R_3-4-2.out.log
+EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+/*+Rows(p1c1 p2c1 #1)*/
+EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-4-2.out.log > results/R_3-4-2.out
+\! diff expected/R_3-4-2.out results/R_3-4-2.out
+
