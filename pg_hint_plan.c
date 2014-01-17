@@ -4,7 +4,7 @@
  *		  do instructions or hints to the planner using C-style block comments
  *		  of the SQL.
  *
- * Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Copyright (c) 2012-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  *
  *-------------------------------------------------------------------------
  */
@@ -54,7 +54,7 @@
 #include "normalize_query.h"
 
 /* PostgreSQL 9.3 */
-#include "htup_details.h"
+#include "access/htup_details.h"
 
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;

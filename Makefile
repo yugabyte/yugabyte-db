@@ -1,7 +1,7 @@
 #
 # pg_hint_plan: Makefile
 #
-# Copyright (c) 2012-2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+# Copyright (c) 2012-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
 #
 
 MODULES = pg_hint_plan

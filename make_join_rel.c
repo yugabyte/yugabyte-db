@@ -6,7 +6,7 @@
  * src/backend/optimizer/path/joinrels.c
  *     make_join_rel()
  *
- * Portions Copyright (c) 2013, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
+ * Portions Copyright (c) 2013-2014, NIPPON TELEGRAPH AND TELEPHONE CORPORATION
  * Portions Copyright (c) 1996-2012, PostgreSQL Global Development Group
  * Portions Copyright (c) 1994, Regents of the University of California
  *
