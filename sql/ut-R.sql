@@ -1217,3 +1217,16 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 \o
 \! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-5-4.out.log > results/R_3-5-4.out
 \! diff expected/R_3-5-4.out results/R_3-5-4.out
+----
+---- No. R-3-6 hint state output
+----
+
+-- No. R-3-6-1
+SET client_min_messages TO DEBUG1;
+\o results/R_3-6-1.out.log
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+/*+Rows(t1 t2 +1)*/
+EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
+\o
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_3-6-1.out.log > results/R_3-6-1.out
+\! diff expected/R_3-6-1.out results/R_3-6-1.out
