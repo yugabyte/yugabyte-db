@@ -47,6 +47,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1
 /*+Rows(ft_1 ft_2 #1)Leading(ft_1 ft_2 t1)*/
 EXPLAIN SELECT * FROM s1.t1, ft1 ft_1, ft1 ft_2 WHERE t1.c1 = ft_1.id AND t1.c1 = ft_2.id;
 \o
-\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-6.out.log > results/R_1-6-6.out
+\! sed 's/cost=[\.0-9]*/cost=xxx/' results/R_1-6-6.out.log > results/R_1-6-6.out_2.log
+\! sed 's/Foreign File: .*/Foreign File: @pg_hint_plan@\/data\/data.csv/' results/R_1-6-6.out_2.log > results/R_1-6-6.out
 \! diff expected/R_1-6-6.out results/R_1-6-6.out
 
