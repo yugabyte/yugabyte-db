@@ -44,7 +44,7 @@ adjust_rows(double rows, RowsHint *hint)
 	hint->base.state = HINT_STATE_USED;
 	if (result < 1.0)
 		ereport(WARNING,
-				(errmsg("make rows estimation 1 since below 1 : %s",
+				(errmsg("Force estimate to be at least one row, to avoid possible divide-by-zero when interpolating costs : %s",
 					hint->base.hint_str)));
 	result = clamp_row_est(result);
 	elog(DEBUG1, "adjusted rows %d to %d", (int) rows, (int) result);
@@ -122,12 +122,13 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 		rows_hint = current_hint->rows_hints[i];
 
 		/*
-		 * This Rows hint specifies aliasname is error, or does not exist in
-		 * query.
+		 * This Rows hint is invalid for some reason, or it contains no
+		 * aliasname which exists in the query.
 		 */
 		if (!rows_hint->joinrelids ||
 			rows_hint->base.state == HINT_STATE_ERROR)
 			continue;
+
 		if (bms_equal(joinrelids, rows_hint->joinrelids))
 		{
 			/*
