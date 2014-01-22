@@ -1,4 +1,5 @@
 -- ########## ID STATIC TESTS ##########
+-- Other tests: Turn off jobmon logging
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -18,7 +19,7 @@ INSERT INTO partman_test.id_static_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_static_table TO partman_basic;
 GRANT ALL ON partman_test.id_static_table TO partman_revoke;
 
-SELECT create_parent('partman_test.id_static_table', 'col1', 'id-static', '10');
+SELECT create_parent('partman_test.id_static_table', 'col1', 'id-static', '10', p_jobmon := false);
 SELECT has_table('partman_test', 'id_static_table_p0', 'Check id_static_table_p0 exists');
 SELECT has_table('partman_test', 'id_static_table_p10', 'Check id_static_table_p10 exists');
 SELECT has_table('partman_test', 'id_static_table_p20', 'Check id_static_table_p20 exists');

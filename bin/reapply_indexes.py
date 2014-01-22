@@ -16,7 +16,7 @@ parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all out
 args = parser.parse_args()
 
 if args.parent.find(".") < 0:
-    print "Parent table must be schema qualified"
+    print "ERROR: Parent table must be schema qualified"
     sys.exit(2)
 
 def create_conn():
@@ -34,6 +34,16 @@ def get_partman_schema(conn):
     cur.close()
     return partman_schema
 
+# Add any checks for version specific features to this function
+def check_version(conn, partman_schema):
+    cur = conn.cursor()
+    if args.drop_concurrent:
+        sql = "SELECT " + partman_schema + ".check_version('9.2.0')"
+        cur.execute(sql)
+        if cur.fetchone()[0] == False:
+            print "ERROR: --drop_concurrent option requires PostgreSQL minimum version 9.2.0"
+            sys.exit(2)
+    cur.close()
 
 def get_indexes(conn, child_table):
     cur = conn.cursor()
@@ -72,7 +82,7 @@ def get_indexes(conn, child_table):
             statement = regex.sub(" ON " + child_table, statement)  
             index_list.append(statement)
     return index_list
-        
+
 
 def get_children(conn, partman_schema):
     cur = conn.cursor()
@@ -106,7 +116,7 @@ def get_drop_list(conn, child_table):
                 statement = "DROP INDEX " + d[1]
             drop_list.append(statement)
     return drop_list
-   
+
 
 def reindex_proc(child_table):
     conn = create_conn()
@@ -137,6 +147,7 @@ if __name__ == "__main__":
     conn = create_conn()
     cur = conn.cursor()
     partman_schema = get_partman_schema(conn)
+    check_version(conn, partman_schema)
     child_list = get_children(conn, partman_schema)
     close_conn(conn)
 
@@ -144,7 +155,7 @@ if __name__ == "__main__":
          for c in child_list:
             reindex_proc(c[0])
             if args.wait > 0:
-                time.sleep(args.wait)       
+                time.sleep(args.wait)
     else:
         child_list.reverse()
         while len(child_list) > 0:

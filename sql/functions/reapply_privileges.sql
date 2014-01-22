@@ -10,10 +10,10 @@ v_all               text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRU
 v_child_owner       text;
 v_child_table       text;
 v_child_grant       record;
-v_count             int;
 v_grant             text;
 v_grantees          text[];
 v_job_id            bigint;
+v_jobmon            boolean;
 v_jobmon_schema     text;
 v_match             boolean;
 v_old_search_path   text;
@@ -26,15 +26,17 @@ v_step_id           bigint;
 
 BEGIN
 
-SELECT count(*) INTO v_count FROM @extschema@.part_config WHERE parent_table = p_parent_table;
-IF v_count = 0 THEN
+SELECT jobmon INTO v_jobmon FROM @extschema@.part_config WHERE parent_table = p_parent_table;
+IF v_jobmon IS NULL THEN
     RAISE EXCEPTION 'Given table is not managed by this extention: %', p_parent_table;
 END IF;
 
-SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
-IF v_jobmon_schema IS NOT NULL THEN
-    SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+IF v_jobmon THEN
+    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        SELECT current_setting('search_path') INTO v_old_search_path;
+        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+    END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -112,17 +114,16 @@ END IF;
 EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition maintenance for table '||p_parent_table||' failed');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN RE-APPLYING PRIVILEGES TO ALL CHILD TABLES OF: '||p_parent_table||''')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            PERFORM update_step(v_step_id, 'BAD', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+

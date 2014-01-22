@@ -354,6 +354,5 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMEST
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q')||' does not exist');
 
-
 SELECT * FROM finish();
 ROLLBACK;

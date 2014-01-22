@@ -14,6 +14,7 @@ v_datetime_string               text;
 v_final_partition_timestamp     timestamptz;
 v_function_name                 text;
 v_job_id                        bigint;
+v_jobmon                        boolean;
 v_jobmon_schema                 text;
 v_old_search_path               text;
 v_new_length                    int;
@@ -31,33 +32,37 @@ v_type                          text;
 
 BEGIN
 
-SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
-IF v_jobmon_schema IS NOT NULL THEN
-    SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
-END IF;
-
-IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
-    v_step_id := add_step(v_job_id, 'Creating partition function for table '||p_parent_table);
-END IF;
-
 SELECT type
     , part_interval::interval
     , control
     , premake
     , datetime_string
+    , jobmon
 INTO v_type
     , v_part_interval
     , v_control
     , v_premake
     , v_datetime_string
+    , v_jobmon
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (type = 'time-static' OR type = 'time-dynamic');
+AND (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom');
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+END IF;
+
+IF v_jobmon THEN
+    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        SELECT current_setting('search_path') INTO v_old_search_path;
+        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+    END IF;
+END IF;
+
+IF v_jobmon_schema IS NOT NULL THEN
+    v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
+    v_step_id := add_step(v_job_id, 'Creating partition function for table '||p_parent_table);
 END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
@@ -80,6 +85,7 @@ IF v_type = 'time-static' THEN
             v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
         WHEN v_part_interval = '1 month' THEN
             v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
+        -- Type time-static plus this interval is the special quarterly interval 
         WHEN v_part_interval = '3 months' THEN
             v_current_partition_timestamp := date_trunc('quarter', CURRENT_TIMESTAMP);
         WHEN v_part_interval = '1 year' THEN
@@ -106,15 +112,15 @@ IF v_type = 'time-static' THEN
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_prev_partition_name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func ||'
-                ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||
-                        quote_literal(v_prev_partition_timestamp + v_part_interval::interval)|| ' THEN 
-                    INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*);';
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_prev_partition_timestamp)||' AND NEW.'||v_control||' < '||
+                    quote_literal(v_prev_partition_timestamp + v_part_interval::interval)|| ' THEN 
+                INSERT INTO '||v_prev_partition_name||' VALUES (NEW.*);';
         END IF;
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_next_partition_name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func ||' 
-                ELSIF NEW.'||v_control||' >= '||quote_literal(v_next_partition_timestamp)||' AND NEW.'||v_control||' < '||
-                    quote_literal(v_final_partition_timestamp)|| ' THEN 
+            ELSIF NEW.'||v_control||' >= '||quote_literal(v_next_partition_timestamp)||' AND NEW.'||v_control||' < '||
+                quote_literal(v_final_partition_timestamp)|| ' THEN 
                 INSERT INTO '||v_next_partition_name||' VALUES (NEW.*);';
         END IF;
 
@@ -183,6 +189,35 @@ ELSIF v_type = 'time-dynamic' THEN
         PERFORM update_step(v_step_id, 'OK', 'Added function for dynamic time table: '||p_parent_table);
     END IF;
 
+ELSIF v_type = 'time-custom' THEN
+
+    v_trig_func := 'CREATE OR REPLACE FUNCTION '||v_function_name||'() RETURNS trigger LANGUAGE plpgsql AS $t$ 
+        DECLARE
+            v_child_table       text;
+            v_count             int; 
+        BEGIN 
+
+        SELECT child_table INTO v_child_table
+        FROM @extschema@.custom_time_partitions 
+        WHERE partition_range @> NEW.'||v_control||' 
+        AND parent_table = '||quote_literal(p_parent_table)||';
+
+        SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname ||''.''|| tablename = v_child_table;
+        IF v_count > 0 THEN
+            EXECUTE ''INSERT INTO ''||v_child_table||'' VALUES ($1.*)'' USING NEW;
+        ELSE
+            RETURN NEW;
+        END IF;
+
+        RETURN NULL; 
+        END $t$;';
+
+    EXECUTE v_trig_func;
+
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'OK', 'Added function for custom time table: '||p_parent_table);
+    END IF;
+
 ELSE
     RAISE EXCEPTION 'ERROR: Invalid time partitioning type given: %', v_type;
 END IF;
@@ -195,17 +230,17 @@ END IF;
 EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition function maintenance for table '||p_parent_table||' failed');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE FUNCTION: '||p_parent_table||''')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
+

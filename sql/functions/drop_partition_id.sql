@@ -1,5 +1,5 @@
 /*
- * Function to drop child tables from a time-based partition set. 
+ * Function to drop child tables from an id-based partition set. 
  * Options to move table to different schema, drop only indexes or actually drop the table from the database.
  */
 CREATE FUNCTION drop_partition_id(p_parent_table text, p_retention bigint DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
@@ -14,6 +14,7 @@ v_drop_count                int := 0;
 v_id_position               int;
 v_index                     record;
 v_job_id                    bigint;
+v_jobmon                    boolean;
 v_jobmon_schema             text;
 v_max                       bigint;
 v_old_search_path           text;
@@ -27,18 +28,11 @@ v_step_id                   bigint;
 
 BEGIN
 
-v_adv_lock := pg_try_advisory_lock(hashtext('pg_partman drop_partition_id'));
+v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman drop_partition_id'));
 IF v_adv_lock = 'false' THEN
     RAISE NOTICE 'drop_partition_id already running.';
     RETURN 0;
 END IF;
-
-SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
-IF v_jobmon_schema IS NOT NULL THEN
-    SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
-END IF;
-
 
 -- Allow override of configuration options
 IF p_retention IS NULL THEN
@@ -49,6 +43,7 @@ IF p_retention IS NULL THEN
         , retention_keep_table
         , retention_keep_index
         , retention_schema
+        , jobmon
     INTO
         v_part_interval
         , v_control
@@ -56,6 +51,7 @@ IF p_retention IS NULL THEN
         , v_retention_keep_table
         , v_retention_keep_index
         , v_retention_schema
+        , v_jobmon
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
     AND (type = 'id-static' OR type = 'id-dynamic') 
@@ -71,12 +67,14 @@ ELSE
         , retention_keep_table
         , retention_keep_index
         , retention_schema
+        , jobmon
     INTO
         v_part_interval
         , v_control
         , v_retention_keep_table
         , v_retention_keep_index
         , v_retention_schema
+        , v_jobmon
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
     AND (type = 'id-static' OR type = 'id-dynamic'); 
@@ -84,6 +82,14 @@ ELSE
 
     IF v_part_interval IS NULL THEN
         RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
+    END IF;
+END IF;
+
+IF v_jobmon THEN
+    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        SELECT current_setting('search_path') INTO v_old_search_path;
+        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
     END IF;
 END IF;
 
@@ -173,29 +179,22 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
-PERFORM pg_advisory_unlock(hashtext('pg_partman drop_partition_id'));
-
 RETURN v_drop_count;
 
 EXCEPTION
-    WHEN QUERY_CANCELED THEN
-        PERFORM pg_advisory_unlock(hashtext('pg_partman drop_partition_id'));
-        RAISE EXCEPTION '%', SQLERRM;
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN DROP ID PARTITION');
-                v_step_id := add_step(v_job_id, 'EXCEPTION before job logging started');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN DROP ID PARTITION: '||p_parent_table||''')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+            ELSIF v_step_id IS NULL THEN
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            IF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
-            END IF;
-            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
-        PERFORM pg_advisory_unlock(hashtext('pg_partman drop_partition_id'));
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
+

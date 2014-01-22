@@ -11,6 +11,7 @@ CREATE TABLE part_config (
     retention_keep_index boolean NOT NULL DEFAULT true,
     datetime_string text,
     last_partition text,
+    jobmon boolean NOT NULL DEFAULT true,
     undo_in_progress boolean NOT NULL DEFAULT false,
     CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table),
     CONSTRAINT part_config_type_check CHECK (@extschema@.check_partition_type(type)),

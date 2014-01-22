@@ -75,18 +75,12 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    v_sql := 'SELECT @extschema@.create_id_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
-    ||v_part_interval||','||quote_literal(v_partition_id)||')';
---    RAISE NOTICE 'v_sql: %', v_sql;
-    EXECUTE v_sql INTO v_last_partition_name;
+    v_last_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
 
-    v_sql := 'WITH partition_data AS (
+    EXECUTE 'WITH partition_data AS (
         DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||v_min_control||
             ' AND '||v_control||' < '||v_max_partition_id||' RETURNING *)
         INSERT INTO '||v_last_partition_name||' SELECT * FROM partition_data';        
-
---    RAISE NOTICE 'v_sql: %', v_sql;
-    EXECUTE v_sql;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;
@@ -100,3 +94,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
+

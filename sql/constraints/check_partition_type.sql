@@ -7,7 +7,7 @@ CREATE FUNCTION check_partition_type (p_type text) RETURNS boolean
 DECLARE
 v_result    boolean;
 BEGIN
-    SELECT p_type IN ('time-static', 'time-dynamic', 'id-static', 'id-dynamic') INTO v_result;
+    SELECT p_type IN ('time-static', 'time-dynamic', 'time-custom', 'id-static', 'id-dynamic') INTO v_result;
     RETURN v_result;
 END
 $$;

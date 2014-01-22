@@ -18,6 +18,8 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.time_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.time_dynamic_table TO partman_revoke;
 
 SELECT create_parent('partman_test.time_dynamic_table', 'col3', 'time-dynamic', 'quarter-hour');
+-- Must run_maintenance because when interval time is between 1 hour and 1 minute, the first partition name done by above is always the nearest hour rounded down 
+SELECT run_maintenance();
 SELECT has_table('partman_test', 'time_dynamic_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0), 'YYYY_MM_DD_HH24MI'), 'Check time_dynamic_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0), 'YYYY_MM_DD_HH24MI')||' exists');

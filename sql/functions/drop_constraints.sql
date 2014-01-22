@@ -11,6 +11,7 @@ v_constraint_cols               text[];
 v_existing_constraint_name      text;
 v_exists                        boolean := FALSE;
 v_job_id                        bigint;
+v_jobmon                        boolean;
 v_jobmon_schema                 text;
 v_old_search_path               text;
 v_sql                           text;
@@ -18,16 +19,23 @@ v_step_id                       bigint;
 
 BEGIN
 
-SELECT constraint_cols INTO v_constraint_cols FROM @extschema@.part_config WHERE parent_table = p_parent_table;
+SELECT constraint_cols 
+    , jobmon
+INTO v_constraint_cols 
+    , v_jobmon
+FROM @extschema@.part_config 
+WHERE parent_table = p_parent_table;
 
 IF v_constraint_cols IS NULL THEN
     RAISE EXCEPTION 'Given parent table (%) not set up for constraint management (constraint_cols is NULL)', p_parent_table;
 END IF;
 
-SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
-IF v_jobmon_schema IS NOT NULL THEN
-    SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+IF v_jobmon THEN 
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        SELECT current_setting('search_path') INTO v_old_search_path;
+        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+    END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -82,8 +90,8 @@ EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN DROP CONSTRAINT: '||p_parent_table||')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition constraint maintenance for table '||p_parent_table||' failed'')' INTO v_step_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN DROP CONSTRAINT: '||p_parent_table||''')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
                 EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
@@ -93,5 +101,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

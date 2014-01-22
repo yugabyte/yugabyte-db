@@ -10,23 +10,34 @@ v_control                   text;
 v_datetime_string           text;
 v_last_partition_name       text;
 v_max_partition_timestamp   timestamp;
+v_last_partition            text;
+v_lock_iter                 int := 1;
+v_lock_obtained             boolean := FALSE;
 v_min_control               timestamp;
 v_min_partition_timestamp   timestamp;
 v_part_interval             interval;
 v_partition_timestamp       timestamp[];
 v_rowcount                  bigint;
 v_sql                       text;
+v_time_position             int;
 v_total_rows                bigint := 0;
-v_lock_iter                 int := 1;
-v_lock_obtained             boolean := FALSE;
+v_type                      text;
 
 BEGIN
 
-SELECT part_interval::interval, control, datetime_string
-INTO v_part_interval, v_control, v_datetime_string
+SELECT type
+    , part_interval::interval
+    , control
+    , datetime_string
+    , last_partition
+INTO v_type
+    , v_part_interval
+    , v_control
+    , v_datetime_string
+    , v_last_partition
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (type = 'time-static' OR type = 'time-dynamic');
+AND (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom');
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
@@ -42,35 +53,54 @@ FOR i IN 1..p_batch_count LOOP
         RETURN 0;
     END IF;
 
-    CASE
-        WHEN v_part_interval = '15 mins' THEN
-            v_min_partition_timestamp := date_trunc('hour', v_min_control) + 
-                '15min'::interval * floor(date_part('minute', v_min_control) / 15.0);
-        WHEN v_part_interval = '30 mins' THEN
-            v_min_partition_timestamp := date_trunc('hour', v_min_control) + 
-                '30min'::interval * floor(date_part('minute', v_min_control) / 30.0);
-        WHEN v_part_interval = '1 hour' THEN
-            v_min_partition_timestamp := date_trunc('hour', v_min_control);
-        WHEN v_part_interval = '1 day' THEN
-            v_min_partition_timestamp := date_trunc('day', v_min_control);
-        WHEN v_part_interval = '1 week' THEN
-            v_min_partition_timestamp := date_trunc('week', v_min_control);
-        WHEN v_part_interval = '1 month' THEN
-            v_min_partition_timestamp := date_trunc('month', v_min_control);
-        WHEN v_part_interval = '3 months' THEN
-            v_min_partition_timestamp := date_trunc('quarter', v_min_control);
-        WHEN v_part_interval = '1 year' THEN
-            v_min_partition_timestamp := date_trunc('year', v_min_control);
-    END CASE;
+    IF v_type = 'time-static' OR v_type = 'time-dynamic' THEN
+        CASE
+            WHEN v_part_interval = '15 mins' THEN
+                v_min_partition_timestamp := date_trunc('hour', v_min_control) + 
+                    '15min'::interval * floor(date_part('minute', v_min_control) / 15.0);
+            WHEN v_part_interval = '30 mins' THEN
+                v_min_partition_timestamp := date_trunc('hour', v_min_control) + 
+                    '30min'::interval * floor(date_part('minute', v_min_control) / 30.0);
+            WHEN v_part_interval = '1 hour' THEN
+                v_min_partition_timestamp := date_trunc('hour', v_min_control);
+            WHEN v_part_interval = '1 day' THEN
+                v_min_partition_timestamp := date_trunc('day', v_min_control);
+            WHEN v_part_interval = '1 week' THEN
+                v_min_partition_timestamp := date_trunc('week', v_min_control);
+            WHEN v_part_interval = '1 month' THEN
+                v_min_partition_timestamp := date_trunc('month', v_min_control);
+            WHEN v_part_interval = '3 months' THEN
+                v_min_partition_timestamp := date_trunc('quarter', v_min_control);
+            WHEN v_part_interval = '1 year' THEN
+                v_min_partition_timestamp := date_trunc('year', v_min_control);
+        END CASE;
+    ELSIF v_type = 'time-custom' THEN
+        -- Keep going backwards, checking if the time interval encompases the current v_min_control value
+        v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
+        v_min_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_datetime_string);
+        v_max_partition_timestamp := v_min_partition_timestamp + v_part_interval;
+        LOOP
+            IF v_min_control >= v_min_partition_timestamp AND v_min_control < v_max_partition_timestamp THEN
+                EXIT;
+            ELSE
+                v_max_partition_timestamp := v_min_partition_timestamp;
+                BEGIN
+                    v_min_partition_timestamp := v_min_partition_timestamp - v_part_interval;
+                EXCEPTION WHEN datetime_field_overflow THEN
+                    RAISE EXCEPTION 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
+                        Unable to create partition with interval before timestamp % ', v_min_partition_interval;
+                END;
+            END IF;
+        END LOOP;
+            
+    END IF;
 
     v_partition_timestamp := ARRAY[v_min_partition_timestamp];
---    RAISE NOTICE 'v_partition_timestamp: %',v_partition_timestamp;
     IF (v_min_control + p_batch_interval) >= (v_min_partition_timestamp + v_part_interval) THEN
         v_max_partition_timestamp := v_min_partition_timestamp + v_part_interval;
     ELSE
         v_max_partition_timestamp := v_min_control + p_batch_interval;
     END IF;
---    RAISE NOTICE 'v_max_partition_timestamp: %',v_max_partition_timestamp;
 
 -- do some locking with timeout, if required
     IF p_lock_wait > 0  THEN
@@ -95,17 +125,12 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    v_sql := 'SELECT @extschema@.create_time_partition('||quote_literal(p_parent_table)||','||quote_literal(v_control)||','
-    ||quote_literal(v_part_interval)||','||quote_literal(v_datetime_string)||','||quote_literal(v_partition_timestamp)||')';
---    RAISE NOTICE 'v_sql: %', v_sql;
-    EXECUTE v_sql INTO v_last_partition_name;
+    v_last_partition_name := @extschema@.create_time_partition(p_parent_table, v_partition_timestamp);
 
-    v_sql := 'WITH partition_data AS (
+    EXECUTE 'WITH partition_data AS (
             DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||quote_literal(v_min_control)||
                 ' AND '||v_control||' < '||quote_literal(v_max_partition_timestamp)||' RETURNING *)
             INSERT INTO '||v_last_partition_name||' SELECT * FROM partition_data';
---    RAISE NOTICE 'v_sql: %', v_sql;
-    EXECUTE v_sql;
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;
@@ -119,4 +144,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

@@ -14,6 +14,7 @@ v_datetime_string               text;
 v_final_partition_id            bigint;
 v_function_name                 text;
 v_job_id                        bigint;
+v_jobmon                        text;
 v_jobmon_schema                 text;
 v_last_partition                text;
 v_next_partition_id             bigint;
@@ -31,33 +32,37 @@ v_type                          text;
 
 BEGIN
 
-SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
-IF v_jobmon_schema IS NOT NULL THEN
-    SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
-END IF;
-
-IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
-    v_step_id := add_step(v_job_id, 'Creating partition function for table '||p_parent_table);
-END IF;
-
 SELECT type
     , part_interval::bigint
     , control
     , premake
     , last_partition
+    , jobmon
 INTO v_type
     , v_part_interval
     , v_control
     , v_premake
     , v_last_partition
+    , v_jobmon
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'id-static' OR type = 'id-dynamic');
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
+END IF;
+
+IF v_jobmon THEN
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        SELECT current_setting('search_path') INTO v_old_search_path;
+        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+    END IF;
+END IF;
+
+IF v_jobmon_schema IS NOT NULL THEN
+    v_job_id := add_job('PARTMAN CREATE FUNCTION: '||p_parent_table);
+    v_step_id := add_step(v_job_id, 'Creating partition function for table '||p_parent_table);
 END IF;
 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
@@ -116,8 +121,7 @@ IF v_type = 'id-static' THEN
                 v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
                 v_next_partition_id := (substring(v_last_partition from v_id_position)::bigint) + '||v_part_interval||';
                 WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
-                    v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
-                        ||v_part_interval||', ARRAY[v_next_partition_id]);
+                    v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', ARRAY[v_next_partition_id]);
                     UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                     PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
                     PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
@@ -158,8 +162,7 @@ ELSIF v_type = 'id-dynamic' THEN
                     RETURN NEW;
                 END IF;
                 WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
-                    v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', '||quote_literal(v_control)||','
-                        ||quote_literal(v_part_interval)||', ARRAY[v_next_partition_id]);
+                    v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', ARRAY[v_next_partition_id]);
                     IF v_next_partition_name IS NOT NULL THEN
                         UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
                         PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
@@ -209,3 +212,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
+

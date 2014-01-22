@@ -15,6 +15,7 @@ v_constraint_name               text;
 v_datetime_string               text;
 v_existing_constraint_name      text;
 v_job_id                        bigint;
+v_jobmon                        boolean;
 v_jobmon_schema                 text;
 v_last_partition                text;
 v_last_partition_id             int; 
@@ -39,12 +40,14 @@ SELECT type
     , datetime_string
     , last_partition
     , constraint_cols
+    , jobmon
 INTO v_type
     , v_part_interval
     , v_premake
     , v_datetime_string
     , v_last_partition
     , v_constraint_cols
+    , v_jobmon
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
@@ -56,11 +59,27 @@ IF v_constraint_cols IS NULL THEN
     RETURN;
 END IF;
 
+IF v_jobmon THEN
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    IF v_jobmon_schema IS NOT NULL THEN
+        SELECT current_setting('search_path') INTO v_old_search_path;
+        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+    END IF;
+END IF;
+
+IF v_jobmon_schema IS NOT NULL THEN
+    v_job_id := add_job('PARTMAN CREATE CONSTRAINT: '||p_parent_table);
+END IF;
+
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 -- If p_child_table is null, figure out the partition that is the one right before the premake value backwards.
 IF p_child_table IS NULL THEN
     
+    IF v_jobmon_schema IS NOT NULL THEN
+        v_step_id := add_step(v_job_id, 'Automatically determining most recent child on which to apply constraints');
+    END IF;
+
     v_suffix_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
 
     IF v_type IN ('time-static', 'time-dynamic') THEN
@@ -73,18 +92,14 @@ IF p_child_table IS NULL THEN
     
     v_child_table := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_partition_suffix, TRUE);
 
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'OK', 'Target child table: '||v_child_table);
+    END IF;
 ELSE
     v_child_table := p_child_table;
 END IF;
     
-SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
 IF v_jobmon_schema IS NOT NULL THEN
-    SELECT current_setting('search_path') INTO v_old_search_path;
-    EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
-END IF;
-
-IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN CREATE CONSTRAINT: '||p_parent_table);
     v_step_id := add_step(v_job_id, 'Checking if target child table exists');
 END IF;
 
@@ -167,8 +182,8 @@ EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE CONSTRAINT: '||p_parent_table||')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition constraint maintenance for table '||p_parent_table||' failed'')' INTO v_step_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE CONSTRAINT: '||p_parent_table||''')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
                 EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
@@ -178,3 +193,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+

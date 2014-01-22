@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(128);
+SELECT plan(127);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -19,6 +19,8 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.time_static_table TO partman_basic;
 GRANT ALL ON partman_test.time_static_table TO partman_revoke;
 
 SELECT create_parent('partman_test.time_static_table', 'col3', 'time-static', 'half-hour');
+-- Must run_maintenance because when interval time is between 1 hour and 1 minute, the first partition name done by above is always the nearest hour rounded down 
+SELECT run_maintenance();
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), 'Check time_static_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD_HH24MI')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
@@ -57,10 +59,12 @@ SELECT has_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)-'120 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)-'120 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
+/* extra previous tables may exist due to new rounding down of the hour. Test left here for manual checking 
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)-'150 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_static_table_'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)-'150 mins'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
+*/
 
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
