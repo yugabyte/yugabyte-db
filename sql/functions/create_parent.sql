@@ -102,6 +102,9 @@ v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
                 RAISE EXCEPTION 'Must use a predefined time interval if not using type "time-custom". See documentation.';
             END IF;
             v_time_interval := p_interval::interval;
+            IF v_time_interval < '1 second'::interval THEN
+                RAISE EXCEPTION 'Partitioning interval must be 1 second or greater';
+            END IF;
     END CASE;
 
     IF v_time_interval >= '1 year' THEN
