@@ -8113,7 +8113,7 @@ Rows(t1 t2 #aa)
 /*+ Rows(t1 t2 /99) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);    -- ERROR
 INFO:  hint syntax error at or near "/99"
-DETAIL:  unrecognized rows value type notation.
+DETAIL:  Unrecognized rows value type notation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -8132,7 +8132,7 @@ Rows(t1 t2 /99)
 -- round up to 1
 /*+ Rows(t1 t2 -99999) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
-WARNING:  make rows estimation 1 since below 1 : Rows(t1 t2 -99999) 
+WARNING:  Force estimate to be at least one row, to avoid possible divide-by-zero when interpolating costs : Rows(t1 t2 -99999) 
 LOG:  pg_hint_plan:
 used hint:
 Rows(t1 t2 -99999)

@@ -496,7 +496,7 @@ Rows(t1 #1)
 /*+Rows(t1 t2 1)*/
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 INFO:  hint syntax error at or near "1"
-DETAIL:  unrecognized rows value type notation.
+DETAIL:  Unrecognized rows value type notation.
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -2182,7 +2182,7 @@ error hint:
 \o results/R_3-1-1.out.log
 /*+Rows(t1 t2 #0)*/
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-WARNING:  make rows estimation 1 since below 1 : Rows(t1 t2 #0)
+WARNING:  Force estimate to be at least one row, to avoid possible divide-by-zero when interpolating costs : Rows(t1 t2 #0)
 LOG:  pg_hint_plan:
 used hint:
 Rows(t1 t2 #0)
@@ -2242,7 +2242,7 @@ error hint:
 \o results/R_3-2-3.out.log
 /*+Rows(t1 t2 -1000)*/
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-WARNING:  make rows estimation 1 since below 1 : Rows(t1 t2 -1000)
+WARNING:  Force estimate to be at least one row, to avoid possible divide-by-zero when interpolating costs : Rows(t1 t2 -1000)
 LOG:  pg_hint_plan:
 used hint:
 Rows(t1 t2 -1000)
@@ -2260,7 +2260,7 @@ error hint:
 \o results/R_3-3-1.out.log
 /*+Rows(t1 t2 *0)*/
 EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-WARNING:  make rows estimation 1 since below 1 : Rows(t1 t2 *0)
+WARNING:  Force estimate to be at least one row, to avoid possible divide-by-zero when interpolating costs : Rows(t1 t2 *0)
 LOG:  pg_hint_plan:
 used hint:
 Rows(t1 t2 *0)
