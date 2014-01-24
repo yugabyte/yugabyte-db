@@ -2089,7 +2089,7 @@ RowsHintParse(RowsHint *hint, HintState *hstate, Query *parse,
 	}
 	else
 	{
-		hint_ereport(rows_str, ("unrecognized rows value type notation."));
+		hint_ereport(rows_str, ("Unrecognized rows value type notation."));
 		hint->base.state = HINT_STATE_ERROR;
 		return str;
 	}
