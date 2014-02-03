@@ -140,9 +140,12 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP; 
 
+IF v_type = 'time-static' THEN
+        PERFORM @extschema@.create_time_function(p_parent_table);
+END IF;    
+
 RETURN v_total_rows;
 
 END
 $$;
-
 

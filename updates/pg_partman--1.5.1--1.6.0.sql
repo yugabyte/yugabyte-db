@@ -5,10 +5,11 @@
   -- For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus premake) will be created.
   -- For id-based partitioning, only the partition starting at the given value (plus premake) will be made. 
 -- pg_jobmon is now truly optional. Additonal configuration option for each individual partition set to turn it off and on. run_maintenance() now has an optional parameter to turn it off when being run. If you tried to partition pg_jobmon tables before, it would cause a permanent lockwait.
--- pg_partman only supports id intervals greater than 1. May see if I can get this working later, but changed create_parent() to check for this and not allow it since it won't work properly at this time. New partitions were not automatically created if interval was set to 1. (Github issue #15)
+-- Fixed partition_data_time() & partition_data_id() functions to recreate the parent trigger function when static partitioning is used. Without this, partitioning more recent data that may have gotten into the parent table could possibly leave the function without conditions for the new partitions. run_maintenance() would eventually fix this for time partitioning, but id partitioning could be left in a broken state forever. (Github issue #16) 
+-- pg_partman only supports id intervals greater than 1. May see if I can an interval of 1 working later, but changed create_parent() to check for this and not allow it since it won't work properly at this time. New partitions were not automatically created if interval was set to 1. (Github issue #15)
 -- Clarify in docs that the id interval value passed to create_parent() must actually be in text type format.
 -- Changed drop & undo partition functions to use transaction based advistory locks.
--- Removed need for internally used function create_next_time_partition(). 
+-- Removed need for internally used function create_next_time_partition() and therefore dropped the function. 
 -- Simplified the create_time_partition() & create_id_partition() parameter lists.
 
 ALTER TABLE @extschema@.part_config ADD jobmon boolean DEFAULT true;
@@ -40,29 +41,22 @@ WHERE routine_schema = '@extschema@'
 AND routine_name = 'undo_partition'; 
 
 INSERT INTO partman_preserve_privs_temp 
+SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.create_id_function(text) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
+FROM information_schema.routine_privileges
+WHERE routine_schema = '@extschema@'
+AND routine_name = 'create_id_function'; 
+
+INSERT INTO partman_preserve_privs_temp 
 SELECT 'GRANT EXECUTE ON FUNCTION @extschema@.run_maintenance(boolean) TO '||array_to_string(array_agg(grantee::text), ',')||';' 
 FROM information_schema.routine_privileges
 WHERE routine_schema = '@extschema@'
 AND routine_name = 'run_maintenance'; 
 
-CREATE FUNCTION replay_preserved_privs() RETURNS void
-    LANGUAGE plpgsql
-    AS $$
-DECLARE
-v_row   record;
-BEGIN
-    FOR v_row IN SELECT statement FROM partman_preserve_privs_temp LOOP
-        IF v_row.statement IS NOT NULL THEN
-            EXECUTE v_row.statement;
-        END IF;
-    END LOOP;
-END
-$$;
-
 DROP FUNCTION @extschema@.create_parent(text, text, text, text, text[], int , boolean);
 DROP FUNCTION @extschema@.create_time_partition (text, text, interval, text, timestamp[]);
 DROP FUNCTION @extschema@.create_id_partition (text, text, bigint, bigint[]);
 DROP FUNCTION @extschema@.undo_partition(text, int, boolean);
+DROP FUNCTION @extschema@.create_id_function(text, bigint);
 DROP FUNCTION @extschema@.run_maintenance();
 DROP FUNCTION @extschema@.create_next_time_partition(text);
 
@@ -151,8 +145,7 @@ RETURNS void
 DECLARE
 
 v_base_timestamp        timestamp;
-v_count                 int := 0;
-v_current_id            bigint;
+v_count                 int := 1;
 v_datetime_string       text;
 v_id_interval           bigint;
 v_job_id                bigint;
@@ -212,8 +205,6 @@ END IF;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
 
-v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
-
     CASE
         WHEN p_interval = 'yearly' THEN
             v_time_interval := '1 year';
@@ -240,6 +231,9 @@ v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
                 RAISE EXCEPTION 'Partitioning interval must be 1 second or greater';
             END IF;
     END CASE;
+
+    -- First partition is either the min premake or p_start_partition
+    v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP - (v_time_interval * p_premake));
 
     IF v_time_interval >= '1 year' THEN
         v_base_timestamp := date_trunc('year', v_start_time);
@@ -282,42 +276,24 @@ v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
         END IF; -- month
     END IF; -- year
 
+    v_partition_time_array := array_append(v_partition_time_array, v_base_timestamp);
     LOOP
-        BEGIN
-            v_partition_time := (v_base_timestamp + (v_time_interval * v_count))::timestamp;
-        EXCEPTION WHEN datetime_field_overflow THEN
-            RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
-                Child partition creation after time % skipped', v_partition_time;
-            v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
-            PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation after time '||v_partition_time||' skipped');
-            CONTINUE;
-        END;
-        v_partition_time_array := array_append(v_partition_time_array, v_partition_time);
-        v_count := v_count + 1;        
-
-        IF CURRENT_TIMESTAMP >= v_partition_time AND CURRENT_TIMESTAMP < (v_partition_time + v_time_interval) THEN
-            EXIT; -- leave loop when current partition is added to array
+        -- If current loop value is less than or equal to the value of the max premake, add time to array.
+        IF (v_base_timestamp + (v_time_interval * v_count)) < (CURRENT_TIMESTAMP + (v_time_interval * p_premake)) THEN
+            BEGIN
+                v_partition_time := (v_base_timestamp + (v_time_interval * v_count))::timestamp;
+                v_partition_time_array := array_append(v_partition_time_array, v_partition_time);
+            EXCEPTION WHEN datetime_field_overflow THEN
+                RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
+                    Child partition creation after time % skipped', v_partition_time;
+                v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
+                PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation after time '||v_partition_time||' skipped');
+                CONTINUE;
+            END;
+        ELSE
+            EXIT; -- all needed partitions added to array. Exit the loop.
         END IF;
-    END LOOP; 
-
-    FOR i IN 1..p_premake LOOP 
-        BEGIN
-            IF p_start_partition IS NULL THEN -- also create previous partitions equal to premake unless start_partition parameter is set
-                v_partition_time_array := array_append(v_partition_time_array, quote_literal(v_base_timestamp - (v_time_interval*i))::timestamp);
-            END IF;
-        EXCEPTION WHEN datetime_field_overflow THEN
-            RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. Child partition creation skipped';
-            v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
-            PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation skipped');
-        END;
-
-        BEGIN
-            v_partition_time_array := array_append(v_partition_time_array, quote_literal(v_base_timestamp + (v_time_interval*i))::timestamp);
-        EXCEPTION WHEN datetime_field_overflow THEN
-            RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. Child partition creation skipped';
-            v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
-            PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation skipped');
-        END;    
+        v_count := v_count + 1;        
     END LOOP;
 
     INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, datetime_string, jobmon) VALUES
@@ -369,13 +345,12 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
-    EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(p_parent_table)||')';
+    PERFORM @extschema@.create_time_function(p_parent_table);
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time function created');
     END IF;
 ELSIF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
-    v_current_id := COALESCE(v_max, 0);    
-    EXECUTE 'SELECT @extschema@.create_id_function('||quote_literal(p_parent_table)||','||v_current_id||')';  
+    PERFORM @extschema@.create_id_function(p_parent_table);  
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID function created');
     END IF;
@@ -385,7 +360,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating partition trigger');
 END IF;
 
-EXECUTE 'SELECT @extschema@.create_trigger('||quote_literal(p_parent_table)||')';
+PERFORM @extschema@.create_trigger(p_parent_table);
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -991,6 +966,10 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP; 
 
+IF v_type = 'time-static' THEN
+        PERFORM @extschema@.create_time_function(p_parent_table);
+END IF;    
+
 RETURN v_total_rows;
 
 END
@@ -1147,7 +1126,7 @@ LOOP
 
         v_create_count := v_create_count + 1;
         IF v_row.type = 'time-static' THEN
-            EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
+            PERFORM @extschema@.create_time_function(v_row.parent_table);
         END IF;
 
         -- Manage additonal constraints if set
@@ -1729,7 +1708,7 @@ $$;
 /*
  * Create the trigger function for the parent table of an id-based partition set
  */
-CREATE OR REPLACE FUNCTION create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
+CREATE OR REPLACE FUNCTION create_id_function(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -1745,6 +1724,7 @@ v_job_id                        bigint;
 v_jobmon                        text;
 v_jobmon_schema                 text;
 v_last_partition                text;
+v_max                           bigint;
 v_next_partition_id             bigint;
 v_next_partition_name           text;
 v_old_search_path               text;
@@ -1797,7 +1777,8 @@ SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_ca
 v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
 
 IF v_type = 'id-static' THEN
-    v_current_partition_id := p_current_id - (p_current_id % v_part_interval);
+    EXECUTE 'SELECT COALESCE(max('||v_control||'), 0) FROM '||p_parent_table INTO v_max;
+    v_current_partition_id = v_max - (v_max % v_part_interval);
     v_next_partition_id := v_current_partition_id + v_part_interval;
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_current_partition_id::text, TRUE);
 
@@ -1851,7 +1832,7 @@ IF v_type = 'id-static' THEN
                 WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', ARRAY[v_next_partition_id]);
                     UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
-                    PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                    PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||');
                     PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
                 END LOOP;
@@ -1893,7 +1874,7 @@ ELSIF v_type = 'id-dynamic' THEN
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', ARRAY[v_next_partition_id]);
                     IF v_next_partition_name IS NOT NULL THEN
                         UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
-                        PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                        PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||');
                         PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     END IF;
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
@@ -1952,6 +1933,8 @@ DECLARE
 
 v_control                   text;
 v_last_partition_name       text;
+v_lock_iter                 int := 1;
+v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
 v_min_control               bigint;
 v_min_partition_id          bigint;
@@ -1960,13 +1943,16 @@ v_partition_id              bigint[];
 v_rowcount                  bigint;
 v_sql                       text;
 v_total_rows                bigint := 0;
-v_lock_iter                 int := 1;
-v_lock_obtained             boolean := FALSE;
+v_type                      text;
 
 BEGIN
 
-SELECT part_interval::bigint, control
-INTO v_part_interval, v_control
+SELECT type
+    , part_interval::bigint
+    , control
+INTO v_type
+    , v_part_interval
+    , v_control
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'id-static' OR type = 'id-dynamic');
@@ -2033,6 +2019,10 @@ FOR i IN 1..p_batch_count LOOP
     END IF;
 
 END LOOP; 
+
+IF v_type = 'id-static' THEN
+        PERFORM @extschema@.create_id_function(p_parent_table);
+END IF;    
 
 RETURN v_total_rows;
 
@@ -3001,7 +2991,16 @@ EXCEPTION
 END
 $$;
 
+DO $$
+DECLARE
+v_row   record;
+BEGIN
+    FOR v_row IN SELECT statement FROM partman_preserve_privs_temp LOOP
+        IF v_row.statement IS NOT NULL THEN
+            EXECUTE v_row.statement;
+        END IF;
+    END LOOP;
+END
+$$;
 
-SELECT @extschema@.replay_preserved_privs();
-DROP FUNCTION @extschema@.replay_preserved_privs();
 DROP TABLE partman_preserve_privs_temp;

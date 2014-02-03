@@ -25,7 +25,7 @@ The smallest interval supported is 1 second and the upper limit is bounded by th
 
 When first running create_parent() to create a partition set, intervals less than a day round down when determining what the first partition to create will be. Intervals less than 24 hours but greater than 1 minute use the nearest hour rounded down. Intervals less than 1 minute use the nearest minute rounded down. However, enough partitions will be made to support up to what the real current time is. This means that when create_parent() is run, more previous partitions may be made than expected and all future partitions may not be made. The first run of run_maintenance() will fix the missing future partitions. This happens due to the nature of being able to support custom time intervals. Any intervals greater than or equal to 24 hours should set things up as would be expected.
 
-Keep in mind that for intervals equal to or greater than 100 years, the extension will use the real start of the century or millennium to determine the partition name & constraint rules. For example, the 21st century and 3rd millennium started January 1, 2001 (not 2000). This also means there is no year "0". It's much too difficult to try to work around this and make nice "even" partition names & rules to handle all possible time periods people may need. Blame the Gregorian authors.
+Keep in mind that for intervals equal to or greater than 100 years, the extension will use the real start of the century or millennium to determine the partition name & constraint rules. For example, the 21st century and 3rd millennium started January 1, 2001 (not 2000). This also means there is no year "0". It's much too difficult to try to work around this and make nice "even" partition names & rules to handle all possible time periods people may need. Blame the Gregorian creators.
 
 ### Naming Length Limits
 
@@ -37,7 +37,7 @@ The PG Jobmon extension (https://github.com/omniti-labs/pg_jobmon) is optional a
 
 Extension Objects
 -----------------
-A superuser must be used to run all these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner. 
+A superuser must be used to run all these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner.
 
 ### Creation Functions
 
@@ -46,26 +46,26 @@ A superuser must be used to run all these functions in order to set privileges &
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
  * p_control - the column that the partitioning will be based on. Must be a time or integer based column.
- * p_type - one of 4 values to set the partitioning type that will be used
+ * p_type - one of 5 values to set the partitioning type that will be used
  
  > **time-static** - Trigger function inserts only into specifically named partitions. The the number of partitions managed behind and ahead of the current one is determined by the **premake** config value (default of 4 means data for 4 previous and 4 future partitions are handled automatically). *Beware setting the premake value too high as that will lessen the efficiency of this partitioning method.* Inserts to parent table outside the hard-coded time window will go to the parent. Ideal for high TPS tables that get inserts of new data only.  Trigger function is kept up to date by run_maintenance() function. 
- > **time-dynamic** - Trigger function can insert into any existing child partition based on the value of the control column at the time of insertion. More flexible but not as efficient as time-static. Does not require run_maintenance() function. 
+ > **time-dynamic** - Trigger function can insert into any existing child partition based on the value of the control column at the time of insertion. More flexible but not as efficient as time-static. Does not require run_maintenance() function.
  > **time-custom** - Allows use of any time interval instead of the premade ones below. Note this uses the same method as time-dynamic (so it can insert into any child at any time) as well as a lookup table. So, while it is the most flexible of the time-based options, it is the least performant.
  > **id-static** - Same functionality and use of the premake value as time-static but for a numeric range instead of time. When the id value reaches 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.  
  > **id-dynamic** - Same functionality and limitations as time-dynamic but for a numeric range instead of time. Uses same 50% rule as id-static to create future partitions. Does NOT require run_maintenance() function to create new partitions. Only supports id values greater than or equal to zero.
 
  * p_interval - the time or numeric range interval for each partition. Not matter the partitioning type, value must be given as text. The premade of "yearly - quarter-hour" are for time-static and time-dynamic and allow better performance than using an arbitrary time interval of time-custom.
 
- > **yearly** - One partition per year  
- > **quarterly** - One partition per yearly quarter. Partitions are named as YYYYqQ (ex: 2012q4)  
- > **monthly** - One partition per month  
- > **weekly** - One partition per week. Follows ISO week date format (http://en.wikipedia.org/wiki/ISO_week_date). Partitions are named as IYYYwIW (ex: 2012w36)  
- > **daily** - One partition per day  
- > **hourly** - One partition per hour  
- > **half-hour** - One partition per 30 minute interval on the half-hour (1200, 1230)  
- > **quarter-hour** - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)  
+ > **yearly** - One partition per year
+ > **quarterly** - One partition per yearly quarter. Partitions are named as YYYYqQ (ex: 2012q4)
+ > **monthly** - One partition per month
+ > **weekly** - One partition per week. Follows ISO week date format (http://en.wikipedia.org/wiki/ISO_week_date). Partitions are named as IYYYwIW (ex: 2012w36)
+ > **daily** - One partition per day
+ > **hourly** - One partition per hour
+ > **half-hour** - One partition per 30 minute interval on the half-hour (1200, 1230)
+ > **quarter-hour** - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)
  > **<interval>** - For the custom-time partitioning type, this can be any interval value that is valid for the PostgreSQL interval data type. Do not type cast the parameter value, just leave as text.
- > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. Enter this as an integer in text format ('100' not just 100). Must be greater than zero.  
+ > **<integer>** - For ID based partitions, the integer value range of the ID that should be set per partition. Enter this as an integer in text format ('100' not just 100). Must be greater than one.
 
  * p_constraint_cols - an optional array parameter to set the columns that will have additional constraints set. See the **About** section for more information on how this works and the **apply_constraints()** function for how this is used.
  * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle (behind & ahead) and also influences which old partitions get additional constraints applied. Note some intervals may occasionally cause an extra partition to be premade or one to be missed due to leap years, differing month lengths, daylight savings (on non-UTC systems), etc. This won't hurt anything and will self-correct. If partitioning ever falls behind the premake value, normal running of run_maintenance() and data insertion to id-based tables should automatically catch things up.
@@ -93,15 +93,15 @@ A superuser must be used to run all these functions in order to set privileges &
 ### Maintenance Functions
 
 *run_maintenance(p_jobmon BOOLEAN DEFAULT true)*
- * Run this function as a scheduled job (cronjob, etc) to automatically keep time-based partitioning working and/or use the partition retention system.
- * Every run checks all tables listed in the **part_config** table with the types **time-static** and **time-dynamic** to pre-make child tables (not needed for id-based partitioning).
+ * Run this function as a scheduled job (cron, etc) to automatically keep time-based partitioning working and/or use the partition retention system.
+ * Every run checks all tables listed in the **part_config** table with the types **time-static**, **time-dynamic**, or **time-custom** to pre-make child tables (not needed for id-based partitioning).
  * Every run checks all tables of all types listed in the **part_config** table with a value in the **retention** column and drops tables as needed (see **About** and config table below).
  * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the trigger function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
  * p_jobmon - an optional paramter to stop run_maintenance() from using the pg_jobmon extension to log what it does. Defaults to true if not set.
 
 *show_partitions (p_parent_table text, p_order text DEFAULT 'ASC')*
  * List all child tables of a given partition set. Each child table returned as a single row.
- * Tables are returned in the order that makes sense for the partition interval. 
+ * Tables are returned in the order that makes sense for the partition interval.
  * p_order - optional parameter to set the order the child tables are returned in. Defaults to ASCending. Set to 'DESC' to return in descending order. 
 
 *check_parent()*

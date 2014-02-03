@@ -148,7 +148,7 @@ LOOP
 
         v_create_count := v_create_count + 1;
         IF v_row.type = 'time-static' THEN
-            EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(v_row.parent_table)||')';
+            PERFORM @extschema@.create_time_function(v_row.parent_table);
         END IF;
 
         -- Manage additonal constraints if set
@@ -196,4 +196,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

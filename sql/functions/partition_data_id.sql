@@ -8,6 +8,8 @@ DECLARE
 
 v_control                   text;
 v_last_partition_name       text;
+v_lock_iter                 int := 1;
+v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
 v_min_control               bigint;
 v_min_partition_id          bigint;
@@ -16,13 +18,16 @@ v_partition_id              bigint[];
 v_rowcount                  bigint;
 v_sql                       text;
 v_total_rows                bigint := 0;
-v_lock_iter                 int := 1;
-v_lock_obtained             boolean := FALSE;
+v_type                      text;
 
 BEGIN
 
-SELECT part_interval::bigint, control
-INTO v_part_interval, v_control
+SELECT type
+    , part_interval::bigint
+    , control
+INTO v_type
+    , v_part_interval
+    , v_control
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'id-static' OR type = 'id-dynamic');
@@ -90,9 +95,12 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP; 
 
+IF v_type = 'id-static' THEN
+        PERFORM @extschema@.create_id_function(p_parent_table);
+END IF;    
+
 RETURN v_total_rows;
 
 END
 $$;
-
 

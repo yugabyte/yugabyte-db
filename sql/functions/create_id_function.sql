@@ -1,7 +1,7 @@
 /*
  * Create the trigger function for the parent table of an id-based partition set
  */
-CREATE FUNCTION create_id_function(p_parent_table text, p_current_id bigint) RETURNS void
+CREATE FUNCTION create_id_function(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -17,6 +17,7 @@ v_job_id                        bigint;
 v_jobmon                        text;
 v_jobmon_schema                 text;
 v_last_partition                text;
+v_max                           bigint;
 v_next_partition_id             bigint;
 v_next_partition_name           text;
 v_old_search_path               text;
@@ -69,7 +70,8 @@ SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_ca
 v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
 
 IF v_type = 'id-static' THEN
-    v_current_partition_id := p_current_id - (p_current_id % v_part_interval);
+    EXECUTE 'SELECT COALESCE(max('||v_control||'), 0) FROM '||p_parent_table INTO v_max;
+    v_current_partition_id = v_max - (v_max % v_part_interval);
     v_next_partition_id := v_current_partition_id + v_part_interval;
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_current_partition_id::text, TRUE);
 
@@ -123,7 +125,7 @@ IF v_type = 'id-static' THEN
                 WHILE ((v_next_partition_id - v_current_partition_id) / '||v_part_interval||') <= '||v_premake||' LOOP 
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', ARRAY[v_next_partition_id]);
                     UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
-                    PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                    PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||');
                     PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
                 END LOOP;
@@ -165,7 +167,7 @@ ELSIF v_type = 'id-dynamic' THEN
                     v_next_partition_name := @extschema@.create_id_partition('||quote_literal(p_parent_table)||', ARRAY[v_next_partition_id]);
                     IF v_next_partition_name IS NOT NULL THEN
                         UPDATE @extschema@.part_config SET last_partition = v_next_partition_name WHERE parent_table = '||quote_literal(p_parent_table)||';
-                        PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||', NEW.'||v_control||');
+                        PERFORM @extschema@.create_id_function('||quote_literal(p_parent_table)||');
                         PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     END IF;
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';

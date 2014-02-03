@@ -17,8 +17,7 @@ RETURNS void
 DECLARE
 
 v_base_timestamp        timestamp;
-v_count                 int := 0;
-v_current_id            bigint;
+v_count                 int := 1;
 v_datetime_string       text;
 v_id_interval           bigint;
 v_job_id                bigint;
@@ -78,8 +77,6 @@ END IF;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
 
-v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
-
     CASE
         WHEN p_interval = 'yearly' THEN
             v_time_interval := '1 year';
@@ -106,6 +103,9 @@ v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
                 RAISE EXCEPTION 'Partitioning interval must be 1 second or greater';
             END IF;
     END CASE;
+
+    -- First partition is either the min premake or p_start_partition
+    v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP - (v_time_interval * p_premake));
 
     IF v_time_interval >= '1 year' THEN
         v_base_timestamp := date_trunc('year', v_start_time);
@@ -148,42 +148,24 @@ v_start_time := COALESCE(p_start_partition::timestamp, CURRENT_TIMESTAMP);
         END IF; -- month
     END IF; -- year
 
+    v_partition_time_array := array_append(v_partition_time_array, v_base_timestamp);
     LOOP
-        BEGIN
-            v_partition_time := (v_base_timestamp + (v_time_interval * v_count))::timestamp;
-        EXCEPTION WHEN datetime_field_overflow THEN
-            RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
-                Child partition creation after time % skipped', v_partition_time;
-            v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
-            PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation after time '||v_partition_time||' skipped');
-            CONTINUE;
-        END;
-        v_partition_time_array := array_append(v_partition_time_array, v_partition_time);
-        v_count := v_count + 1;        
-
-        IF CURRENT_TIMESTAMP >= v_partition_time AND CURRENT_TIMESTAMP < (v_partition_time + v_time_interval) THEN
-            EXIT; -- leave loop when current partition is added to array
+        -- If current loop value is less than or equal to the value of the max premake, add time to array.
+        IF (v_base_timestamp + (v_time_interval * v_count)) < (CURRENT_TIMESTAMP + (v_time_interval * p_premake)) THEN
+            BEGIN
+                v_partition_time := (v_base_timestamp + (v_time_interval * v_count))::timestamp;
+                v_partition_time_array := array_append(v_partition_time_array, v_partition_time);
+            EXCEPTION WHEN datetime_field_overflow THEN
+                RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
+                    Child partition creation after time % skipped', v_partition_time;
+                v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
+                PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation after time '||v_partition_time||' skipped');
+                CONTINUE;
+            END;
+        ELSE
+            EXIT; -- all needed partitions added to array. Exit the loop.
         END IF;
-    END LOOP; 
-
-    FOR i IN 1..p_premake LOOP 
-        BEGIN
-            IF p_start_partition IS NULL THEN -- also create previous partitions equal to premake unless start_partition parameter is set
-                v_partition_time_array := array_append(v_partition_time_array, quote_literal(v_base_timestamp - (v_time_interval*i))::timestamp);
-            END IF;
-        EXCEPTION WHEN datetime_field_overflow THEN
-            RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. Child partition creation skipped';
-            v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
-            PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation skipped');
-        END;
-
-        BEGIN
-            v_partition_time_array := array_append(v_partition_time_array, quote_literal(v_base_timestamp + (v_time_interval*i))::timestamp);
-        EXCEPTION WHEN datetime_field_overflow THEN
-            RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. Child partition creation skipped';
-            v_step_overflow_id := add_step(v_job_id, 'Attempted partition time interval is outside PostgreSQL''s supported time range.');
-            PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation skipped');
-        END;    
+        v_count := v_count + 1;        
     END LOOP;
 
     INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, datetime_string, jobmon) VALUES
@@ -235,13 +217,12 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
-    EXECUTE 'SELECT @extschema@.create_time_function('||quote_literal(p_parent_table)||')';
+    PERFORM @extschema@.create_time_function(p_parent_table);
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time function created');
     END IF;
 ELSIF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
-    v_current_id := COALESCE(v_max, 0);    
-    EXECUTE 'SELECT @extschema@.create_id_function('||quote_literal(p_parent_table)||','||v_current_id||')';  
+    PERFORM @extschema@.create_id_function(p_parent_table);  
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID function created');
     END IF;
@@ -251,7 +232,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating partition trigger');
 END IF;
 
-EXECUTE 'SELECT @extschema@.create_trigger('||quote_literal(p_parent_table)||')';
+PERFORM @extschema@.create_trigger(p_parent_table);
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -278,4 +259,3 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
