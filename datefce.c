@@ -57,7 +57,11 @@ weekday_search(const WeekDays *weekdays, const char *str, int len)
  * External (defined in PgSQL datetime.c (timestamp utils))
  */
 
+#if PG_VERSION_NUM >= 90400
+extern PGDLLIMPORT const char *const days[];
+#else
 extern PGDLLIMPORT char *days[];
+#endif
 extern PGDLLIMPORT pg_tz *session_timezone;
 
 #define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:

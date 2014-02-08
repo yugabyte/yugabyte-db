@@ -30,7 +30,11 @@
  * External (defined in PgSQL datetime.c (timestamp utils))
  */
 
+#if PG_VERSION_NUM >= 90400
+extern PGDLLIMPORT const char *const days[];
+#else
 extern PGDLLIMPORT char *days[];
+#endif
 
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);
