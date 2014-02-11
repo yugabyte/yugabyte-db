@@ -78,7 +78,7 @@ def create_hash(table_name):
                     break
                 shash.update(data)
     except IOError, (ErrorNo, ErrorMsg):
-        print "Cannot access dump file for hash creation: " + ErrorMessage
+        print "Cannot access dump file for hash creation: " + ErrorMsg
         sys.exit(2)
 
     hash_file = os.path.join(args.output, args.schema + "." + table_name + ".hash")
@@ -88,7 +88,7 @@ def create_hash(table_name):
         with open(hash_file, "w") as fh:
             fh.write(shash.hexdigest() + "  " + os.path.basename(output_file))
     except IOError, (ErroNo, ErrorMsg):
-        print "Unable to write to hash file: " + ErrorMessage
+        print "Unable to write to hash file: " + ErrorMsg
         sys.exit(2)
 
 

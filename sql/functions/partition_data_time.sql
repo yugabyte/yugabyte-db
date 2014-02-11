@@ -104,6 +104,7 @@ FOR i IN 1..p_batch_count LOOP
 
 -- do some locking with timeout, if required
     IF p_lock_wait > 0  THEN
+        v_lock_iter := 0;
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
@@ -148,4 +149,3 @@ RETURN v_total_rows;
 
 END
 $$;
-
