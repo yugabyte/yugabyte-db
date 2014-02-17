@@ -61,8 +61,7 @@ time-dynamic  - Trigger function can insert into any existing child partition ba
                 column at the time of insertion.
                 More flexible but not as efficient as time-static. Does not require run_maintenance() function.
 time-custom   - Allows use of any time interval instead of the premade ones below. Note this uses the same 
-                method as time-dynamic.
-                (so it can insert into any child at any time) as well as a lookup table.
+                method as time-dynamic (so it can insert into any child at any time) as well as a lookup table.
                 So, while it is the most flexible of the time-based options, it is the least performant.
 id-static     - Same functionality and use of the premake value as time-static but for a numeric range 
                 instead of time.
@@ -76,7 +75,7 @@ id-dynamic    - Same functionality and limitations as time-dynamic but for a num
                 Only supports id values greater than or equal to zero.
 ````
 
- * p_interval - the time or numeric range interval for each partition. Not matter the partitioning type, value must be given as text. The premade of "yearly - quarter-hour" are for time-static and time-dynamic and allow better performance than using an arbitrary time interval of time-custom.
+ * p_interval - the time or numeric range interval for each partition. No matter the partitioning type, value must be given as text. The generic intervals of "yearly -> quarter-hour" are for time-static and time-dynamic and allow better performance than using an arbitrary time interval (time-custom).
 
 ````
 yearly          - One partition per year
@@ -88,10 +87,10 @@ daily           - One partition per day
 hourly          - One partition per hour
 half-hour       - One partition per 30 minute interval on the half-hour (1200, 1230)
 quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200, 1215, 1230, 1245)
-<interval>      - For the custom-time partitioning type, this can be any interval value that is valid for the 
+<interval>      - For the time-custom partitioning type, this can be any interval value that is valid for the 
                   PostgreSQL interval data type. Do not type cast the parameter value, just leave as text.
 <integer>       - For ID based partitions, the integer value range of the ID that should be set per partition. 
-                  Enter this as an integer in text format ('100' not just 100). Must be greater than one.
+                  Enter this as an integer in text format ('100' not 100). Must be greater than one.
 ````
 
  * p_constraint_cols - an optional array parameter to set the columns that will have additional constraints set. See the **About** section for more information on how this works and the **apply_constraints()** function for how this is used.
@@ -145,7 +144,7 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
 
 *apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)*
  * Apply constraints to child tables in a given partition set for the columns that are configured (constraint names are all prefixed with "partmanconstr_"). 
- * Columns that are to have constraints are set in the **part_config** table **constraint_cols[]* array column or during creation with the parameter to create_parent().
+ * Columns that are to have constraints are set in the **part_config** table **constraint_cols** array column or during creation with the parameter to create_parent().
  * If the pg_partman constraints already exists on the child table, the function will cleanly skip over the ones that exist and not create duplicates.
  * If the column(s) given contain all NULL values, no constraint will be made.
  * If the child table parameter is given, only that child table will have constraints applied.
@@ -208,7 +207,7 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * p_jobmon - an optional paramter to stop undo_partition() from using the pg_jobmon extension to log what it does. Defaults to true if not set.
  * Returns the number of rows moved to the parent table. Returns zero when child tables are all empty.
 
-*drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int
+*drop_partition_time(p_parent_table text, p_retention interval DEFAULT NULL, p_keep_table boolean DEFAULT NULL, p_keep_index boolean DEFAULT NULL, p_retention_schema text DEFAULT NULL) RETURNS int*
  * This function is used to drop child tables from a time-based partition set. By default, the table is just uninherited and not actually dropped. For automatically dropping old tables, it is recommended to use the **run_maintenance()** function with retention configured instead of calling this directly.
  * p_parent_table - the existing parent table of a time-based partition set. MUST be schema qualified, even if in public schema.
  * p_retention - optional parameter to give a retention time interval and immediately drop tables containing only data older than the given interval. If you have a retention value set in the config table already, the function will use that, otherwise this will override it. If not, this parameter is required. See the **About** section above for more information on retention settings.
@@ -279,14 +278,14 @@ If the extension was installed using *make*, the below script files should have 
  * --lockwait_tries        Number of times to allow a lockwait to time out before giving up on the partitioning. Defaults to 10.
  * --quiet (-q):           Switch setting to stop all output during and after partitioning.
  * Examples:
-
- > Partition all data in a parent table. Commit after each partition is made.\n
- >       python partition_data.py -c "host=localhost dbname=mydb" -p schema.parent_table -t time\n
- > Partition by id in smaller intervals and pause between them for 5 seconds (assume >100 partition interval)\n
- >       python partition_data.py -p schema.parent_table -t id -i 100 -w 5\n
- > Partition by time in smaller intervals for at most 10 partitions in a single run (assume monthly partition interval)\n
- >       python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10
-
+````
+Partition all data in a parent table. Commit after each partition is made.
+      python partition_data.py -c "host=localhost dbname=mydb" -p schema.parent_table -t time
+Partition by id in smaller intervals and pause between them for 5 seconds (assume >100 partition interval)
+      python partition_data.py -p schema.parent_table -t id -i 100 -w 5
+Partition by time in smaller intervals for at most 10 partitions in a single run (assume monthly partition interval)
+      python partition_data.py -p schema.parent_table -t time -i "1 week" -b 10
+````
 
 *undo_partition.py*
  * A python script to make undoing partitions in committed batches easier. 
@@ -349,6 +348,6 @@ If the extension was installed using *make*, the below script files should have 
  * --drop_constraints (-d): Drop all constraints managed by pg_partman. Drops constraints on all child tables including current & future.
  * --add_constraints (-a):  Apply configured constraints to all child tables older than the premake value.
  * --jobs (-j):             Use the python multiprocessing library to recreate indexes in parallel. Value for -j is number of simultaneous jobs to run. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.
- *--wait (-w):              Wait the given number of seconds after a table has had its constraints dropped or applied before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
+ * --wait (-w):              Wait the given number of seconds after a table has had its constraints dropped or applied before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
  * --dryrun:                Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
  * --quiet (-q):            Turn off all output.
