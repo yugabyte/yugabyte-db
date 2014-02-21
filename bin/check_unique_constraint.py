@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 
 import argparse, collections, psycopg2, os, subprocess, sys, tempfile
-# use psql \copy so target file can be anywhere current user can write to
-# Have option that will just output a single number count sum of everything found so it can be more easily used by automated monitoring software (resmon, nagios, etc)
 
 parser = argparse.ArgumentParser(description="This script is used to check that all rows in a partition set are unique for the given columns. Since unique constraints are not applied across partition sets, this cannot be enforced within the database. This script can be used as a monitor to ensure uniquness. If any unique violations are found, the values, along with a count of each, are output.")
 parser.add_argument('-p', '--parent', required=True, help="Parent table of the partition set to be checked")
