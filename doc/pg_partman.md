@@ -98,13 +98,15 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * p_start_partition - allows the first partition of a set to be specified instead of it being automatically determined. Must be a valid timestamp (for time-based) or positive integer (for id-based) value. Be aware, though, the actual paramater data type is text. For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus premake) will be created. For id-based partitioning, only the partition starting at the given value (plus premake) will be made. 
  * p_debug - turns on additional debugging information (not yet working).
 
-*partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0)*
+*partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC')*
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
  * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Scripts** section for an included python script that will do this for you.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch_interval - optional argument, a time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
+ * p_lock_wait - optional argument, sets how long in seconds to wait for a row to be unlocked before timing out. Default is to wait forever.
+ * p_order - optional argument, by default data is migrated out of the parent in ascending order (ASC). Allows you to change to descending order (DESC).
  * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 *partition_data_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval int DEFAULT NULL, p_lock_wait numeric DEFAULT 0)* 
@@ -114,7 +116,9 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch_interval - optional argument, an integer amount representing an interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
- * Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
+ * p_lock_wait - optional argument, sets how long in seconds to wait for a row to be unlocked before timing out. Default is to wait forever.
+ * p_order - optional argument, by default data is migrated out of the parent in ascending order (ASC). Allows you to change to descending order (DESC). 
+* Returns the number of rows that were moved from the parent table to partitions. Returns zero when parent table is empty and partitioning is complete.
 
 ### Maintenance Functions
 
@@ -134,13 +138,6 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * Run this function to monitor that the parent tables of the partition sets that pg_partman manages do not get rows inserted to them.
  * Returns a row for each parent table along with the number of rows it contains. Returns zero rows if none found.
  * partition_data_time() & partition_data_id() can be used to move data from these parent tables into the proper children. 
-
-*check_unique_column(p_parent_table text, p_column text)* 
- * Partitioning using inheritance has the shortcoming of not allowing a unique constraint to apply to all tables in the entire partition set without causing large performance issues once the partition set begins to grow very large. This is the first draft of a function to provide a way to monitor if this occurs.
- * Note that on very large partition sets this can be an expensive query to run, especially if you have no index on it (which you should if it was supposed to be unique anyway).
- * p_parent_table - the existing parent table of any partition set.
- * p_column - the column in the partition set to check for uniqueness across all child tables.
- * If there is a column value that violates the unique constraint, this function will return that column value along with a count of how many of that value there are. 
 
 *apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)*
  * Apply constraints to child tables in a given partition set for the columns that are configured (constraint names are all prefixed with "partmanconstr_"). 
@@ -268,6 +265,7 @@ If the extension was installed using *make*, the below script files should have 
  * Calls either partition_data_time() or partition_data_id depending on the value given for --type.
  * A commit is done at the end of each --interval and/or fully created partition.
  * Returns the total number of rows moved to partitions. Automatically stops when parent is empty.
+ * To help avoid heavy load and contention during partitioning, autovacuum is turned off for the parent table and all child tables when this script is run. When partitioning is complete, autovacuum is set back to its default value and the parent table is vacuumed when it is emptied.
  * --parent (-p):          Parent table an already created partition set. Required.
  * --type (-t):            Type of partitioning. Valid values are "time" and "id". Required.
  * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.
@@ -275,7 +273,8 @@ If the extension was installed using *make*, the below script files should have 
  * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and make at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function). If not set, all data in the parent table will be partitioned in a single run of the script.
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
  * --lockwait (-l):        Have a lock timeout of this many seconds on the data move. If a lock is not obtained, that batch will be tried again.
- * --lockwait_tries        Number of times to allow a lockwait to time out before giving up on the partitioning. Defaults to 10.
+ * --lockwait_tries:       Number of times to allow a lockwait to time out before giving up on the partitioning. Defaults to 10.
+ * --autovacuum_on:        Turning autovacuum off requires a brief lock to ALTER the table property. Set this option to leave autovacuum on and avoid the lock attempt. 
  * --quiet (-q):           Switch setting to stop all output during and after partitioning.
  * Examples:
 ````
@@ -351,3 +350,16 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * --wait (-w):              Wait the given number of seconds after a table has had its constraints dropped or applied before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
  * --dryrun:                Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
  * --quiet (-q):            Turn off all output.
+
+*check_unique_constraints.py*
+ * Partitioning using inheritance has the shortcoming of not allowing a unique constraint to apply to all tables in the entire partition set without causing large performance issues once the partition set begins to grow very large. This script is used to check that all rows in a partition set are unique for the given columns.
+ * Note that on very large partition sets this can be an expensive operation to run that can consume a large chunk of storage space. The amount of storage space required is enough to dump out the entire index's column data as a plaintext file.
+ * If there is a column value that violates the unique constraint, this script will return those column values along with a count of how many of each value there are. Output can also be simplified to a single, total integer value to make it easier to use with monitoring applications.
+ * --parent (-p):           Parent table of the partition set to be checked. (Required)
+ * --column_list (-l):      Comma separated list of columns that make up the unique constraint to be checked. (Required)
+ * --connection (-c):       Connection string for use by psycopg. Defaults to "host=localhost".
+ * --temp (-t):             Path to a writable folder that can be used for temp working files. Defaults system temp folder.
+ * --psql                   Full path to psql binary if not in current PATH.
+ * --simple                 Output a single integer value with the total duplicate count. Use this for monitoring software that requires a simple value to be checked for.
+ * --quiet                  Suppress all output unless there is a constraint violation found.
+

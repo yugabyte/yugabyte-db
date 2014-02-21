@@ -136,16 +136,14 @@ RETURN v_total;
 EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
-            EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
             IF v_job_id IS NULL THEN
-                v_job_id := add_job('PARTMAN UNDO PARTITIONING: '||p_parent_table);
-                v_step_id := add_step(v_job_id, 'Partition function maintenance for table '||p_parent_table||' failed');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN UNDO PARTITIONING: '||p_parent_table||''')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition function maintenance for table '||p_parent_table||' failed'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                v_step_id := add_step(v_job_id, 'EXCEPTION before first step logged');
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
             END IF;
-            PERFORM update_step(v_step_id, 'CRITICAL', 'ERROR: '||coalesce(SQLERRM,'unknown'));
-            PERFORM fail_job(v_job_id);
-            EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
+            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
         END IF;
         RAISE EXCEPTION '%', SQLERRM;
 END

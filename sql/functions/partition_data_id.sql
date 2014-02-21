@@ -1,22 +1,22 @@
 /*
  * Populate the child table(s) of an id-based partition set with old data from the original parent
  */
-CREATE FUNCTION partition_data_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval int DEFAULT NULL, p_lock_wait numeric DEFAULT 0) RETURNS bigint
+CREATE FUNCTION partition_data_id(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval int DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC') RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
 
 v_control                   text;
-v_last_partition_name       text;
+v_current_partition_name    text;
 v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
-v_min_control               bigint;
 v_min_partition_id          bigint;
 v_part_interval             bigint;
 v_partition_id              bigint[];
 v_rowcount                  bigint;
 v_sql                       text;
+v_start_control             bigint;
 v_total_rows                bigint := 0;
 v_type                      text;
 
@@ -41,30 +41,45 @@ END IF;
 
 FOR i IN 1..p_batch_count LOOP
 
-    EXECUTE 'SELECT min('||v_control||') FROM ONLY '||p_parent_table INTO v_min_control;
-    IF v_min_control IS NULL THEN
-        RETURN 0;
-    END IF;
+    IF p_order = 'ASC' THEN
+        EXECUTE 'SELECT min('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
+        IF v_start_control IS NULL THEN
+            RETURN 0;
+        END IF;
+        v_min_partition_id = v_start_control - (v_start_control % v_part_interval);
+        v_partition_id := ARRAY[v_min_partition_id];
+        -- Check if custom batch interval overflows current partition maximum
+        IF (v_start_control + p_batch_interval) >= (v_min_partition_id + v_part_interval) THEN
+            v_max_partition_id := v_min_partition_id + v_part_interval;
+        ELSE
+            v_max_partition_id := v_start_control + p_batch_interval;
+        END IF;
 
-    v_min_partition_id = v_min_control - (v_min_control % v_part_interval);
-
-    v_partition_id := ARRAY[v_min_partition_id];
---    RAISE NOTICE 'v_partition_id: %',v_partition_id;
-    IF (v_min_control + p_batch_interval) >= (v_min_partition_id + v_part_interval) THEN
+    ELSIF p_order = 'DESC' THEN
+        EXECUTE 'SELECT max('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
+        IF v_start_control IS NULL THEN
+            RETURN 0;
+        END IF;
+        v_min_partition_id = v_start_control - (v_start_control % v_part_interval);
+        -- Must be greater than max value still in parent table since query below grabs < max
         v_max_partition_id := v_min_partition_id + v_part_interval;
+        v_partition_id := ARRAY[v_min_partition_id];
+        -- Make sure minimum doesn't underflow current partition minimum
+        IF (v_start_control - p_batch_interval) >= v_min_partition_id THEN
+            v_min_partition_id = v_start_control - p_batch_interval;
+        END IF;
     ELSE
-        v_max_partition_id := v_min_control + p_batch_interval;
+        RAISE EXCEPTION 'Invalid value for p_order. Must be ASC or DESC';
     END IF;
---    RAISE NOTICE 'v_max_partition_id: %',v_max_partition_id;
 
--- do some locking with timeout, if required
+    -- do some locking with timeout, if required
     IF p_lock_wait > 0  THEN
         v_lock_iter := 0;
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
                 v_sql := 'SELECT * FROM ONLY ' || p_parent_table ||
-                ' WHERE '||v_control||' >= '||quote_literal(v_min_control)||
+                ' WHERE '||v_control||' >= '||quote_literal(v_min_partition_id)||
                 ' AND '||v_control||' < '||quote_literal(v_max_partition_id)
                 ||' FOR UPDATE NOWAIT';
                 EXECUTE v_sql;
@@ -81,12 +96,12 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    v_last_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
+    v_current_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
 
     EXECUTE 'WITH partition_data AS (
-        DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||v_min_control||
+        DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||v_min_partition_id||
             ' AND '||v_control||' < '||v_max_partition_id||' RETURNING *)
-        INSERT INTO '||v_last_partition_name||' SELECT * FROM partition_data';        
+        INSERT INTO '||v_current_partition_name||' SELECT * FROM partition_data';        
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;
@@ -94,13 +109,14 @@ FOR i IN 1..p_batch_count LOOP
         EXIT;
     END IF;
 
-END LOOP; 
+END LOOP;
 
 IF v_type = 'id-static' THEN
         PERFORM @extschema@.create_id_function(p_parent_table);
-END IF;    
+END IF;
 
 RETURN v_total_rows;
 
 END
 $$;
+

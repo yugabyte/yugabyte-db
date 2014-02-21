@@ -1,4 +1,5 @@
 -- ########## ID STATIC TESTS ##########
+-- Other tests: additional constraints multi column with update
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,16 +7,17 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(76);
+SELECT plan(82);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_owner;
 
 CREATE TABLE partman_test.id_static_table (col1 int primary key, col2 text, col3 timestamptz DEFAULT now());
-INSERT INTO partman_test.id_static_table (col1) VALUES (generate_series(100,109));
+INSERT INTO partman_test.id_static_table (col1, col2) VALUES (generate_series(100,109), 'stuff'||generate_series(100,109));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_static_table TO partman_basic;
 
 SELECT create_parent('partman_test.id_static_table', 'col1', 'id-static', '10');
+UPDATE partman.part_config SET constraint_cols = '{"col2", "col3"}' WHERE parent_table = 'partman_test.id_static_table';
 SELECT has_table('partman_test', 'id_static_table_p100', 'Check id_static_table_p100 exists');
 SELECT has_table('partman_test', 'id_static_table_p110', 'Check id_static_table_p110 exists');
 SELECT has_table('partman_test', 'id_static_table_p120', 'Check id_static_table_p120 exists');
@@ -51,8 +53,16 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.id_static_table', 'Check that p
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p100', ARRAY[10], 'Check count from id_static_table_p100');
 
-INSERT INTO partman_test.id_static_table (col1) VALUES (generate_series(60,99));
-INSERT INTO partman_test.id_static_table (col1) VALUES (generate_series(110,145));
+INSERT INTO partman_test.id_static_table (col1, col2) VALUES (generate_series(60,99), 'stuff'||generate_series(60,99));
+INSERT INTO partman_test.id_static_table (col1, col2) VALUES (generate_series(110,145), 'stuff'||generate_series(110,145));
+
+-- Check for additional constraints on text & date columns
+SELECT col_has_check('partman_test', 'id_static_table_p60', 'col2', 'Check for additional constraint on col2 on id_static_table_p60');
+SELECT col_has_check('partman_test', 'id_static_table_p60', 'col3', 'Check for additional constraint on col3 on id_static_table_p60');
+SELECT col_has_check('partman_test', 'id_static_table_p70', 'col2', 'Check for additional constraint on col2 on id_static_table_p70');
+SELECT col_has_check('partman_test', 'id_static_table_p70', 'col3', 'Check for additional constraint on col3 on id_static_table_p70');
+SELECT col_has_check('partman_test', 'id_static_table_p80', 'col2', 'Check for additional constraint on col2 on id_static_table_p80');
+SELECT col_has_check('partman_test', 'id_static_table_p80', 'col3', 'Check for additional constraint on col3 on id_static_table_p80');
 
 SELECT has_table('partman_test', 'id_static_table_p150', 'Check id_static_table_p150 exists');
 SELECT has_table('partman_test', 'id_static_table_p160', 'Check id_static_table_p160 exists');

@@ -203,7 +203,7 @@ EXCEPTION
     WHEN OTHERS THEN
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE FUNCTION: '||p_parent_table||')' INTO v_job_id;
+                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE FUNCTION: '||p_parent_table||''')' INTO v_job_id;
                 EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition function maintenance for table '||p_parent_table||' failed'')' INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
                 EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
