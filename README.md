@@ -33,11 +33,11 @@ EXAMPLE
 First create a parent table with an appropriate column type for the partitioning type you will do. Apply all defaults, indexes, constraints, privileges & ownership to the parent table and they will be inherited to newly created child tables automatically (not already existing partitions, see docs for how to fix that). Here's one with columns that can be used for either
 
     CREATE schema test;
-    CREATE TABLE test.part_test (col1 serial, col2 text, col3 timestamptz DEFAULT now());
+    CREATE TABLE test.part_test (col1 serial, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 
 If you're looking to do time-based partitioning, and will only be inserting new data, time-static is an appropriate choice. Just run the create_parent() function with the appropriate parameters
 
-    SELECT part.create_parent('test.part_test', 'col3', 'time-static', 'daily');
+    SELECT partman.create_parent('test.part_test', 'col3', 'time-static', 'daily');
 
 This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
 
