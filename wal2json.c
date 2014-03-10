@@ -527,7 +527,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	switch (change->action)
 	{
 		case REORDER_BUFFER_CHANGE_INSERT:
-			if (change->tp.newtuple == NULL)
+			if (change->data.tp.newtuple == NULL)
 			{
 				elog(WARNING, "no tuple data for INSERT in table \"%s\"", NameStr(class_form->relname));
 				return;
@@ -546,7 +546,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				return;
 			}
 
-			if (change->tp.newtuple == NULL)
+			if (change->data.tp.newtuple == NULL)
 			{
 				elog(WARNING, "no tuple data for UPDATE in table \"%s\"", NameStr(class_form->relname));
 				return;
@@ -565,12 +565,14 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				return;
 			}
 
-			if (change->tp.oldtuple == NULL)
+			if (change->data.tp.oldtuple == NULL)
 			{
 				elog(WARNING, "no tuple data for DELETE in table \"%s\"", NameStr(class_form->relname));
 				return;
 			}
 			break;
+		default:
+			Assert(false);
 	}
 
 	/* Change counter */
@@ -594,6 +596,8 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 		case REORDER_BUFFER_CHANGE_DELETE:
 			appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"delete\",\n");
 			break;
+		default:
+			Assert(false);
 	}
 
 	/* Print table name (possibly) qualified */
@@ -605,11 +609,11 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	{
 		case REORDER_BUFFER_CHANGE_INSERT:
 			/* Print the new tuple */
-			columns_to_stringinfo(ctx, tupdesc, &change->tp.newtuple->tuple, false);
+			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, false);
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
 			/* Print the new tuple */
-			columns_to_stringinfo(ctx, tupdesc, &change->tp.newtuple->tuple, true);
+			columns_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, true);
 
 			/*
 			 * The old tuple is available when:
@@ -620,7 +624,7 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			 * FIXME if old tuple is not available we must get only the indexed
 			 * columns (the whole tuple is printed).
 			 */
-			if (change->tp.oldtuple == NULL)
+			if (change->data.tp.oldtuple == NULL)
 			{
 				elog(DEBUG1, "old tuple is null");
 
@@ -628,18 +632,18 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 				if (indexrel != NULL)
 				{
 					indexdesc = RelationGetDescr(indexrel);
-					identity_to_stringinfo(ctx, tupdesc, &change->tp.newtuple->tuple, indexdesc);
+					identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, indexdesc);
 					RelationClose(indexrel);
 				}
 				else
 				{
-					identity_to_stringinfo(ctx, tupdesc, &change->tp.newtuple->tuple, NULL);
+					identity_to_stringinfo(ctx, tupdesc, &change->data.tp.newtuple->tuple, NULL);
 				}
 			}
 			else
 			{
 				elog(DEBUG1, "old tuple is not null");
-				identity_to_stringinfo(ctx, tupdesc, &change->tp.oldtuple->tuple, NULL);
+				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL);
 			}
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
@@ -648,19 +652,21 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			if (indexrel != NULL)
 			{
 				indexdesc = RelationGetDescr(indexrel);
-				identity_to_stringinfo(ctx, tupdesc, &change->tp.oldtuple->tuple, indexdesc);
+				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, indexdesc);
 				RelationClose(indexrel);
 			}
 			else
 			{
-				identity_to_stringinfo(ctx, tupdesc, &change->tp.oldtuple->tuple, NULL);
+				identity_to_stringinfo(ctx, tupdesc, &change->data.tp.oldtuple->tuple, NULL);
 			}
 
-			if (change->tp.oldtuple == NULL)
+			if (change->data.tp.oldtuple == NULL)
 				elog(DEBUG1, "old tuple is null");
 			else
 				elog(DEBUG1, "old tuple is not null");
 			break;
+		default:
+			Assert(false);
 	}
 
 	appendStringInfoString(ctx->out, "\t\t}");
