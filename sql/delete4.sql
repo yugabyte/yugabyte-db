@@ -27,7 +27,7 @@ UNIQUE(g, n)
 INSERT INTO table_with_unique (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(1, 2, 3, 3.54, 876.563452345, 1.23, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', false, '{ "a": 123 }', 'Old Old Parr'::tsvector);
 INSERT INTO table_with_unique (b, c, d, e, f, g, h, i, j, k, l, m, n, o, p) VALUES(4, 5, 6, 3.54, 876.563452345, 4.56, 'teste', 'testando', 'um texto longo', B'001110010101010', '2013-11-02 17:30:52', '2013-02-04', true, '{ "a": 123 }', 'Old Old Parr'::tsvector);
 
-SELECT 'init' FROM pg_create_decoding_replication_slot('regression_slot', 'wal2json');
+SELECT 'init' FROM pg_create_logical_replication_slot('regression_slot', 'wal2json');
 
 -- DELETE: REPLICA IDENTITY INDEX
 ALTER TABLE table_with_unique REPLICA IDENTITY USING INDEX table_with_unique_g_n_key;
@@ -35,5 +35,5 @@ DELETE FROM table_with_unique WHERE b = 1;
 DELETE FROM table_with_unique WHERE n = true;
 ALTER TABLE table_with_unique REPLICA IDENTITY DEFAULT;
 
-SELECT data FROM pg_decoding_slot_get_changes('regression_slot', 'now', 'include-xids', '0');
+SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0');
 SELECT 'stop' FROM pg_drop_replication_slot('regression_slot');
