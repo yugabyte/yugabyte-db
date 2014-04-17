@@ -1,5 +1,5 @@
 \unset ECHO
-1..357
+1..384
 ok 1 - db_owner_is(db, user, desc) should pass
 ok 2 - db_owner_is(db, user, desc) should have the proper description
 ok 3 - db_owner_is(db, user, desc) should have the proper diagnostics
@@ -357,3 +357,30 @@ ok 354 - type_owner_is(non-type, user, desc) should have the proper diagnostics
 ok 355 - type_owner_is(type, non-user, desc) should fail
 ok 356 - type_owner_is(type, non-user, desc) should have the proper description
 ok 357 - type_owner_is(type, non-user, desc) should have the proper diagnostics
+ok 358 - materialized_view_owner_is(sch, materialized_view, user, desc) should pass
+ok 359 - materialized_view_owner_is(sch, materialized_view, user, desc) should have the proper description
+ok 360 - materialized_view_owner_is(sch, materialized_view, user, desc) should have the proper diagnostics
+ok 361 - materialized_view_owner_is(sch, materialized_view, user) should pass
+ok 362 - materialized_view_owner_is(sch, materialized_view, user) should have the proper description
+ok 363 - materialized_view_owner_is(sch, materialized_view, user) should have the proper diagnostics
+ok 364 - materialized_view_owner_is(non-sch, materialized_view, user) should fail
+ok 365 - materialized_view_owner_is(non-sch, materialized_view, user) should have the proper description
+ok 366 - materialized_view_owner_is(non-sch, materialized_view, user) should have the proper diagnostics
+ok 367 - materialized_view_owner_is(sch, non-materialized_view, user) should fail
+ok 368 - materialized_view_owner_is(sch, non-materialized_view, user) should have the proper description
+ok 369 - materialized_view_owner_is(sch, non-materialized_view, user) should have the proper diagnostics
+ok 370 - materialized_view_owner_is(materialized_view, user, desc) should pass
+ok 371 - materialized_view_owner_is(materialized_view, user, desc) should have the proper description
+ok 372 - materialized_view_owner_is(materialized_view, user, desc) should have the proper diagnostics
+ok 373 - materialized_view_owner_is(view, user) should pass
+ok 374 - materialized_view_owner_is(view, user) should have the proper description
+ok 375 - materialized_view_owner_is(view, user) should have the proper diagnostics
+ok 376 - materialized_view_owner_is(non-materialized_view, user) should fail
+ok 377 - materialized_view_owner_is(non-materialized_view, user) should have the proper description
+ok 378 - materialized_view_owner_is(non-materialized_view, user) should have the proper diagnostics
+ok 379 - materialized_view_owner_is(sch, seq, user, desc) should fail
+ok 380 - materialized_view_owner_is(sch, seq, user, desc) should have the proper description
+ok 381 - materialized_view_owner_is(sch, seq, user, desc) should have the proper diagnostics
+ok 382 - materialized_view_owner_is(seq, user, desc) should fail
+ok 383 - materialized_view_owner_is(seq, user, desc) should have the proper description
+ok 384 - materialized_view_owner_is(seq, user, desc) should have the proper diagnostics

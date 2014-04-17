@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(357);
+SELECT plan(384);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -37,6 +37,8 @@ CREATE DOMAIN someschema.us_postal_code AS TEXT CHECK(
 CREATE INDEX idx_name ON someschema.anothertab(name);
 
 CREATE FUNCTION public.somefunction(int) RETURNS VOID LANGUAGE SQL AS '';
+
+CREATE MATERIALIZED VIEW public.somemview AS SELECT * FROM public.sometab;
 
 RESET client_min_messages;
 
@@ -1189,6 +1191,81 @@ SELECT * FROM check_test(
     'mumble',
     '        have: ' || current_user || '
         want: __no-one'
+);
+
+/****************************************************************************/
+-- Test materialized_view_owner_is().
+SELECT * FROM check_test(
+    materialized_view_owner_is('public', 'somemview', current_user, 'mumble'),
+	true,
+    'materialized_view_owner_is(sch, materialized_view, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('public', 'somemview', current_user),
+	true,
+    'materialized_view_owner_is(sch, materialized_view, user)',
+    'Materialized view public.somemview should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('__not__public', 'somemview', current_user, 'mumble'),
+	false,
+    'materialized_view_owner_is(non-sch, materialized_view, user)',
+    'mumble',
+    '    Materialized view __not__public.somemview does not exist'
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('public', '__not__somemview', current_user, 'mumble'),
+	false,
+    'materialized_view_owner_is(sch, non-materialized_view, user)',
+    'mumble',
+    '    Materialized view public.__not__somemview does not exist'
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('somemview', current_user, 'mumble'),
+	true,
+    'materialized_view_owner_is(materialized_view, user, desc)',
+    'mumble',
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('somemview', current_user),
+	true,
+    'materialized_view_owner_is(view, user)',
+    'Materialized view somemview should be owned by ' || current_user,
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('__not__somemview', current_user, 'mumble'),
+	false,
+    'materialized_view_owner_is(non-materialized_view, user)',
+    'mumble',
+    '    Materialized view __not__somemview does not exist'
+);
+
+-- It should ignore the sequence.
+SELECT * FROM check_test(
+    materialized_view_owner_is('public', 'someseq', current_user, 'mumble'),
+	false,
+    'materialized_view_owner_is(sch, seq, user, desc)',
+    'mumble',
+    '    Materialized view public.someseq does not exist'
+);
+
+SELECT * FROM check_test(
+    materialized_view_owner_is('someseq', current_user, 'mumble'),
+	false,
+    'materialized_view_owner_is(seq, user, desc)',
+    'mumble',
+    '    Materialized view someseq does not exist'
 );
 
 /****************************************************************************/

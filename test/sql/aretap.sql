@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(399);
+SELECT plan(429);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -68,6 +68,9 @@ CREATE TYPE someschema."myType" AS (
     id INT,
     foo INT
 );
+
+CREATE MATERIALIZED VIEW public.moo AS SELECT * FROM foo;
+CREATE MATERIALIZED VIEW public.mou AS SELECT * FROM fou;
 
 RESET client_min_messages;
 
@@ -1457,6 +1460,104 @@ SELECT * FROM check_test(
         "myInt"
     Missing columns:
         howdy'
+);
+
+/****************************************************************************/
+-- Test materialized_views_are().
+SELECT * FROM check_test(
+    materialized_views_are( 'public', ARRAY['mou', 'moo'], 'whatever' ),
+    true,
+    'materialized_views_are(schema, materialized_views, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( 'public', ARRAY['mou', 'moo'] ),
+    true,
+    'materialized_views_are(schema, materialized_views)',
+    'Schema public should have the correct materialized views',
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( ARRAY['mou', 'moo'] ),
+    true,
+    'materialized_views_are(views)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( ARRAY['mou', 'moo'], 'whatever' ),
+    true,
+    'materialized_views_are(views, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( 'public', ARRAY['mou', 'moo', 'bar'] ),
+    false,
+    'materialized_views_are(schema, materialized_views) missing',
+    'Schema public should have the correct materialized views',
+    '    Missing Materialized views:
+        bar'
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( ARRAY['mou', 'moo', 'bar'] ),
+    false,
+    'materialized_views_are(materialized_views) missing',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+    '    Missing Materialized views:
+        bar'
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( 'public', ARRAY['mou'] ),
+    false,
+    'materialized_views_are(schema, materialized_views) extra',
+    'Schema public should have the correct materialized views',
+    '    Extra Materialized views:
+        moo'
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( ARRAY['mou'] ),
+    false,
+    'materialized_views_are(materialized_views) extra',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+    '    Extra Materialized views:
+        moo'
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( 'public', ARRAY['bar', 'baz'] ),
+    false,
+    'materialized_views_are(schema, materialized_views) extra and missing',
+    'Schema public should have the correct materialized views',
+    '    Extra Materialized views:
+        mo[ou]
+        mo[ou]
+    Missing Materialized views:
+        ba[rz]
+        ba[rz]',
+    true
+);
+
+SELECT * FROM check_test(
+    materialized_views_are( ARRAY['bar', 'baz'] ),
+    false,
+    'materialized_views_are(materialized_views) extra and missing',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+    '    Extra Materialized views:' || '
+        mo[ou]
+        mo[ou]
+    Missing Materialized views:' || '
+        ba[rz]
+        ba[rz]',
+    true
 );
 
 /****************************************************************************/

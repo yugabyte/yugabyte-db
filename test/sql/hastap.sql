@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(798);
+SELECT plan(828);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -32,6 +32,9 @@ CREATE DOMAIN public."myDomain" AS TEXT CHECK(TRUE);
 CREATE SEQUENCE public.someseq;
 
 CREATE SCHEMA someschema;
+
+CREATE MATERIALIZED VIEW public.mview AS SELECT * FROM public.sometab;
+
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -2414,6 +2417,92 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM test_fdw();
+
+/****************************************************************************/
+-- Test has_materialized_view().
+
+SELECT * FROM check_test(
+    has_materialized_view( '__SDFSDFD__' ),
+    false,
+    'has_materialized_view(non-existent materialized_view)',
+    'Materialized view "__SDFSDFD__" should exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_materialized_view( '__SDFSDFD__', 'howdy' ),
+    false,
+    'has_materialized_view(non-existent materialized_view, desc)',
+    'howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
+    false,
+    'has_materialized_view(sch, non-existtent materialized_view, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_materialized_view( 'mview', 'yowza' ),
+    true,
+    'has_materialized_view(materialized_viewiew, desc)',
+    'yowza',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_materialized_view( 'public', 'mview', 'desc' ),
+    true,
+    'has_materialized_view(sch, materialized_view, desc)',
+    'desc',
+    ''
+);
+
+/****************************************************************************/
+-- Test hasnt_materialized_view().
+
+SELECT * FROM check_test(
+    hasnt_materialized_view( '__SDFSDFD__' ),
+    true,
+    'hasnt_materialized_view(non-existent materialized_view)',
+    'Materialized view "__SDFSDFD__" should not exist',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_materialized_view( '__SDFSDFD__', 'howdy' ),
+    true,
+    'hasnt_materialized_view(non-existent materialized_view, desc)',
+    'howdy',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
+    true,
+    'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+    'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_materialized_view( 'mview', 'yowza' ),
+    false,
+    'hasnt_materialized_view(materialized_viewiew, desc)',
+    'yowza',
+    ''
+);
+
+SELECT * FROM check_test(
+    hasnt_materialized_view( 'public', 'mview', 'desc' ),
+    false,
+    'hasnt_materialized_view(sch, materialized_view, desc)',
+    'desc',
+    ''
+);
 
 /****************************************************************************/
 -- Finish the tests and clean up.
