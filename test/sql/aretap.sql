@@ -1,4 +1,4 @@
-﻿\unset ECHO
+\unset ECHO
 \i test/setup.sql
 
 SELECT plan(429);
@@ -1715,4 +1715,3 @@ SELECT * FROM test_materialized_views_are();
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
- 
