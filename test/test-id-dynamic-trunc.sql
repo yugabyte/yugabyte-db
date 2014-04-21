@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(101);
+SELECT plan(102);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -40,7 +40,7 @@ SELECT table_privs_are('partman_test', 'id_dynamic_table_12345678901234567890123
 SELECT table_privs_are('partman_test', 'id_dynamic_table_123456789012345678901234567890123456789012_p30', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_123456789012345678901234567890123456789012_p30');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_123456789012345678901234567890123456789012_p40', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_123456789012345678901234567890123456789012_p40');
 
-SELECT partition_data_id('partman_test.id_dynamic_table_123456789012345678901234567890123456789012345');
+SELECT results_eq('SELECT partition_data_id(''partman_test.id_dynamic_table_123456789012345678901234567890123456789012345'')::int', ARRAY[9], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_dynamic_table_123456789012345678901234567890123456789012345', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_123456789012345678901234567890123456789012345', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_1234567890123456789012345678901234567890123_p0', ARRAY[9], 'Check count from id_dynamic_table_1234567890123456789012345678901234567890123_p0');

@@ -7,7 +7,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(45);
+SELECT plan(46);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 
@@ -27,7 +27,7 @@ SELECT col_is_pk('partman_test', 'id_static_table_p170', ARRAY['col1'], 'Check f
 SELECT col_is_pk('partman_test', 'id_static_table_p180', ARRAY['col1'], 'Check for primary key in id_static_table_p180');
 SELECT col_is_pk('partman_test', 'id_static_table_p190', ARRAY['col1'], 'Check for primary key in id_static_table_p190');
 
-SELECT partition_data_id('partman_test.id_static_table');
+SELECT results_eq('SELECT partition_data_id(''partman_test.id_static_table'')::int', ARRAY[9], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_static_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p150', ARRAY[9], 'Check count from id_static_table_p150');

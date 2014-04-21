@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(128);
+SELECT plan(129);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -118,7 +118,7 @@ SELECT table_privs_are('partman_test', 'time_static_table_1234567890123456789012
     ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 
     'Check partman_revoke privileges of time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
 
-SELECT partition_data_time('partman_test.time_static_table_1234567890123456789012345678901234567890');
+SELECT results_eq('SELECT partition_data_time(''partman_test.time_static_table_1234567890123456789012345678901234567890'')::int', ARRAY[10], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_static_table_1234567890123456789012345678901234567890', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_1234567890123456789012345678901234567890', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 

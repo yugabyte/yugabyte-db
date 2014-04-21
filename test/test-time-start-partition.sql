@@ -7,7 +7,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(76);
+SELECT plan(77);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 
@@ -83,8 +83,7 @@ SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAM
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'10 days'::interval, 'YYYY_MM_DD'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP-'10 days'::interval, 'YYYY_MM_DD'));
 
-
-SELECT partition_data_time('partman_test.time_static_table');
+SELECT results_eq('SELECT partition_data_time(''partman_test.time_static_table'')::int', ARRAY[10], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_static_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'), 

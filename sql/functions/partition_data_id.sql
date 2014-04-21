@@ -44,7 +44,7 @@ FOR i IN 1..p_batch_count LOOP
     IF p_order = 'ASC' THEN
         EXECUTE 'SELECT min('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
         IF v_start_control IS NULL THEN
-            RETURN 0;
+            EXIT;
         END IF;
         v_min_partition_id = v_start_control - (v_start_control % v_part_interval);
         v_partition_id := ARRAY[v_min_partition_id];
@@ -58,7 +58,7 @@ FOR i IN 1..p_batch_count LOOP
     ELSIF p_order = 'DESC' THEN
         EXECUTE 'SELECT max('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
         IF v_start_control IS NULL THEN
-            RETURN 0;
+            EXIT;
         END IF;
         v_min_partition_id = v_start_control - (v_start_control % v_part_interval);
         -- Must be greater than max value still in parent table since query below grabs < max
@@ -119,4 +119,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

@@ -9,6 +9,7 @@ parser.add_argument('-c','--connection', default="host=localhost", help="""Conne
 parser.add_argument('-t', '--temp', help="Path to a writable folder that can be used for temp working files. Defaults system temp folder.")
 parser.add_argument('--psql', help="Full path to psql binary if not in current PATH")
 parser.add_argument('--simple', action="store_true", help="Output a single integer value with the total duplicate count. Use this for monitoring software that requires a simple value to be checked for.")
+parser.add_argument('--index_scan', action="store_true", help="By default index scans are disabled to force the script to check the actual table data with sequential scans. Set this option if you want the script to allow index scans to be used (does not guarentee that they will be used).")
 parser.add_argument('-q', '--quiet', action="store_true", help="Suppress all output unless there is a constraint violation found.")
 args = parser.parse_args()
 
@@ -19,10 +20,25 @@ else:
 
 fh = open(tmp_copy_file.name, 'w')
 conn = psycopg2.connect(args.connection)
+conn.set_session(isolation_level="REPEATABLE READ", readonly=True)
+cur = conn.cursor()
+if args.index_scan == False:
+    sql = """set enable_bitmapscan = false;
+    set enable_indexonlyscan = false;
+    set enable_indexscan = false;
+    set enable_seqscan = true;"""
+else:
+    sql = """set enable_bitmapscan = true;
+    set enable_indexonlyscan = true;
+    set enable_indexscan = true;
+    set enable_seqscan = false;"""
+cur.execute(sql)
+cur.close()
 cur = conn.cursor()
 if not args.quiet:
     print "Dumping out column data to temp file..."
 cur.copy_to(fh, args.parent, sep=",", columns=args.column_list.split(","))
+conn.rollback()
 conn.close()
 fh.close()
 

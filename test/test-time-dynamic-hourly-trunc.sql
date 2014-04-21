@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(82);
+SELECT plan(83);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -70,7 +70,7 @@ SELECT table_privs_are('partman_test', 'time_dynamic_table_123456789012345678901
     ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 
     'Check partman_revoke privileges of time_dynamic_table_123456789012345678901234567_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP)+'4 hours'::interval, 'YYYY_MM_DD_HH24MI'));
 
-SELECT partition_data_time('partman_test.time_dynamic_table_1234567890123456789012345678901234567890');
+SELECT results_eq('SELECT partition_data_time(''partman_test.time_dynamic_table_1234567890123456789012345678901234567890'')::int', ARRAY[10], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_dynamic_table_1234567890123456789012345678901234567890', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_dynamic_table_1234567890123456789012345678901234567890', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_dynamic_table_123456789012345678901234567_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP), 'YYYY_MM_DD_HH24MI'), 

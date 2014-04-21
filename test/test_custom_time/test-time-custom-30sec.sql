@@ -1,6 +1,9 @@
 -- ########## TIME CUSTOM TESTS ##########
 
--- May fail when run in the second 30 seconds of the minute due to rounding down to the nearest minute.
+-- May fail when run in the first or second 30 seconds of the minute due to rounding down to the nearest minute.
+-- If it does, wait until the next block of 30 seconds starts and try again.
+-- If it is failing no matter when it is run, please create an issue on Github with a log of your result when running with "pg_prove -ovf" 
+
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true

@@ -17,17 +17,6 @@ parser.add_argument('-q','--quiet', action="store_true", help="Switch setting to
 parser.add_argument('--debug', action="store_true", help="Show additional debugging output")
 args = parser.parse_args()
 
-'''
-conn = psycopg2.connect(args.connection)
-conn.autocommit = True
-
-cur = conn.cursor()
-sql = "SELECT nspname FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_partman' AND e.extnamespace = n.oid"
-cur.execute(sql)
-partman_schema = cur.fetchone()[0]
-cur.close()
-'''
-
 def create_conn():
     conn = psycopg2.connect(args.connection)
     conn.autocommit = True

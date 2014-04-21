@@ -5,6 +5,8 @@ SELECT set_config('search_path','partman_reindex_test, partman, public',false);
 
 DROP INDEX test_reindex_stuff_idx;
 CREATE INDEX test_reindex_morestuff_idx ON test_reindex (morestuff);
+CREATE INDEX test_reindex_stuff_morestuff_idx ON test_reindex (stuff, morestuff);
+CREATE INDEX test_reindex_lower_stuff_idx ON test_reindex(lower(stuff));
 ALTER TABLE test_reindex ADD new_id bigint;
 UPDATE test_reindex SET new_id = id;
 ALTER TABLE test_reindex DROP CONSTRAINT test_reindex_id_pkey;

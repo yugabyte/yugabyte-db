@@ -27,6 +27,7 @@ v_part_interval                 bigint;
 v_premake                       int;
 v_prev_partition_id             bigint;
 v_prev_partition_name           text;
+v_run_maint                     boolean;
 v_step_id                       bigint;
 v_trig_func                     text;
 v_type                          text;
@@ -38,12 +39,14 @@ SELECT type
     , control
     , premake
     , last_partition
+    , use_run_maintenance
     , jobmon
 INTO v_type
     , v_part_interval
     , v_control
     , v_premake
     , v_last_partition
+    , v_run_maint
     , v_jobmon
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
@@ -110,14 +113,16 @@ IF v_type = 'id-static' THEN
             IF v_count > 0 THEN
                 v_trig_func := v_trig_func ||'
             ELSIF NEW.'||v_control||' >= '||v_next_partition_id||' AND NEW.'||v_control||' < '||v_final_partition_id|| ' THEN 
-                INSERT INTO '||v_next_partition_name||' VALUES (NEW.*); ';
+                INSERT INTO '||v_next_partition_name||' VALUES (NEW.*);'; 
             END IF;
         END LOOP;
-
         v_trig_func := v_trig_func ||'
             ELSE
                 RETURN NEW;
-            END IF;
+            END IF;';
+
+        IF v_run_maint IS FALSE THEN
+            v_trig_func := v_trig_func ||'
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
                 v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
@@ -129,7 +134,10 @@ IF v_type = 'id-static' THEN
                     PERFORM @extschema@.apply_constraints('||quote_literal(p_parent_table)||');
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
                 END LOOP;
-            END IF;
+            END IF;';
+        END IF;
+
+        v_trig_func := v_trig_func ||'
         END IF; 
         RETURN NULL; 
         END $t$;';
@@ -156,6 +164,15 @@ ELSIF v_type = 'id-dynamic' THEN
         IF TG_OP = ''INSERT'' THEN 
             v_current_partition_id := NEW.'||v_control||' - (NEW.'||v_control||' % '||v_part_interval||');
             v_current_partition_name := @extschema@.check_name_length('''||v_parent_tablename||''', '''||v_parent_schema||''', v_current_partition_id::text, TRUE);
+            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname ||''.''|| tablename = v_current_partition_name;
+            IF v_count > 0 THEN 
+                EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
+            ELSE
+                RETURN NEW;
+            END IF;';
+
+        IF v_run_maint IS FALSE THEN
+            v_trig_func := v_trig_func ||'
             IF (NEW.'||v_control||' % '||v_part_interval||') > ('||v_part_interval||' / 2) THEN
                 v_id_position := (length(v_last_partition) - position(''p_'' in reverse(v_last_partition))) + 2;
                 v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
@@ -172,15 +189,11 @@ ELSIF v_type = 'id-dynamic' THEN
                     END IF;
                     v_next_partition_id := v_next_partition_id + '||v_part_interval||';
                 END LOOP;
-            END IF;
-            SELECT count(*) INTO v_count FROM pg_tables WHERE schemaname ||''.''|| tablename = v_current_partition_name;
-            IF v_count > 0 THEN 
-                EXECUTE ''INSERT INTO ''||v_current_partition_name||'' VALUES($1.*)'' USING NEW;
-            ELSE
-                RETURN NEW;
-            END IF;
+            END IF;';
         END IF;
-        
+
+        v_trig_func := v_trig_func ||'
+        END IF;
         RETURN NULL; 
         END $t$;';
 

@@ -7,8 +7,11 @@ CREATE FUNCTION create_id_partition (p_parent_table text, p_partition_ids bigint
 DECLARE
 
 v_all               text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
+v_analyze           boolean := FALSE;
 v_control           text;
 v_grantees          text[];
+v_hasoids           boolean;
+v_id                bigint;
 v_job_id            bigint;
 v_jobmon            boolean;
 v_jobmon_schema     text;
@@ -21,9 +24,9 @@ v_parent_tablespace text;
 v_part_interval     bigint;
 v_partition_name    text;
 v_revoke            text[];
+v_sql               text;
 v_step_id           bigint;
 v_tablename         text;
-v_id                bigint;
 
 BEGIN
 
@@ -60,12 +63,20 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         CONTINUE;
     END IF;
 
+    -- Ensure analyze is run if a new partition is created. Otherwise if one isn't, will be false and analyze will be skipped
+    v_analyze := TRUE;
+
     IF v_jobmon_schema IS NOT NULL THEN
         v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
         v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_id||' to '||(v_id + v_part_interval)-1);
     END IF;
 
-    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
+    v_sql := 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
+    SELECT relhasoids INTO v_hasoids FROM pg_class WHERE oid::regclass = p_parent_table::regclass;
+    IF v_hasoids IS TRUE THEN
+        v_sql := v_sql || ' WITH (OIDS)';
+    END IF;
+    EXECUTE v_sql;
     SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE 'ALTER TABLE '||v_partition_name||' SET TABLESPACE '||v_parent_tablespace;
@@ -107,6 +118,10 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
 END LOOP;
 
+IF v_analyze THEN
+    EXECUTE 'ANALYZE '||p_parent_table;
+END IF;
+
 IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
@@ -128,4 +143,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

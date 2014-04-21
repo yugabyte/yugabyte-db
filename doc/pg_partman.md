@@ -45,7 +45,7 @@ A superuser must be used to run all these functions in order to set privileges &
 
 ### Creation Functions
 
-*create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL  p_premake int DEFAULT 4, p_start_partition text DEFAULT NULL, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false)*
+*create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false)*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
@@ -60,22 +60,23 @@ time-static   - Trigger function inserts only into specifically named partitions
                 partitioning method.*
                 Inserts to parent table outside the hard-coded time window will go to the parent.
                 Ideal for high TPS tables that get inserts of new data only.
-                Trigger function is kept up to date by run_maintenance() function.
+                Child table creation & trigger function is kept up to date by run_maintenance() function.
 time-dynamic  - Trigger function can insert into any existing child partition based on the value of the control 
                 column at the time of insertion.
                 More flexible but not as efficient as time-static.
+                Child table creation is kept up to date by run_maintenance() function.
 time-custom   - Allows use of any time interval instead of the premade ones below. Note this uses the same 
                 method as time-dynamic (so it can insert into any child at any time) as well as a lookup table.
                 So, while it is the most flexible of the time-based options, it is the least performant.
+                Child table creation is kept up to date by run_maintenance() function.
 id-static     - Same functionality and use of the premake value as time-static but for a numeric range 
                 instead of time.
-                When the id value reaches 50% of the max value for that partition, it will automatically create 
-                the next partition in sequence if it doesn't yet exist.
-                Does NOT require run_maintenance() function to create new partitions.
+                By default, when the id value reaches 50% of the max value for that partition, it will automatically create 
+                the next partition in sequence if it doesn't yet exist. This can be changed to use
+                run_maintenance() instead. See the notes for this function below.
                 Only supports id values greater than or equal to zero.
 id-dynamic    - Same functionality and limitations as time-dynamic but for a numeric range instead of time.
-                Uses same 50% rule as id-static to create future partitions.
-                Does NOT require run_maintenance() function to create new partitions.
+                Uses same 50% rule as id-static to create future partitions or can use run_maintenance() if desired.
                 Only supports id values greater than or equal to zero.
 ````
 
@@ -99,6 +100,7 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
 
  * p_constraint_cols - an optional array parameter to set the columns that will have additional constraints set. See the **About** section for more information on how this works and the **apply_constraints()** function for how this is used.
  * p_premake - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6, 2012, and premake was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the static partitioning trigger function will handle (behind & ahead) and also influences which old partitions get additional constraints applied. Note some intervals may occasionally cause an extra partition to be premade or one to be missed due to leap years, differing month lengths, daylight savings (on non-UTC systems), etc. This won't hurt anything and will self-correct. If partitioning ever falls behind the premake value, normal running of run_maintenance() and data insertion to id-based tables should automatically catch things up.
+ * p_use_run_maintenance - Used to tell partman whether you'd like to override the default way that child partitions are created. Set this value to TRUE to allow you to use the run_maintenance() function to create new child tables for serial partitioning instead of using 50% method mentioned above. Time based partitining MUST use run_maintenance() and this parameter cannot be set to FALSE for it. See **run_mainteanance** in Maintenance Functions section below for more info.
  * p_start_partition - allows the first partition of a set to be specified instead of it being automatically determined. Must be a valid timestamp (for time-based) or positive integer (for id-based) value. Be aware, though, the actual paramater data type is text. For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus premake) will be created. For id-based partitioning, only the partition starting at the given value (plus premake) will be made. 
  * p_debug - turns on additional debugging information (not yet working).
 
@@ -127,10 +129,13 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
 ### Maintenance Functions
 
 *run_maintenance(p_jobmon BOOLEAN DEFAULT true)*
- * Run this function as a scheduled job (cron, etc) to automatically keep time-based partitioning working and/or use the partition retention system.
- * Every run checks all tables listed in the **part_config** table with the types **time-static**, **time-dynamic**, or **time-custom** to pre-make child tables (not needed for id-based partitioning).
+ * Run this function as a scheduled job (cron, etc) to automatically create child tables for partition sets configured to use it.
+ * This function also maintains the partition retention system for any partitions sets that have it turned on.
+ * Every run checks for all tables listed in the **part_config** table with **use_run_maintenance** set to true.
+ * By default, time-based partition sets have use_run_maintenance set to true and cannot be changed to false. This function is required to be run to maintain time-based partitioning.
+ * By default, serial-based partition sets have use_run_maintenance set to false and don't require run_maintenence() for partition maintenance, but can be overridden to do so. By default serial partitioning creates new partitions when the current one reaches 50% of it's max capacity. This can cause contention on very high transaction tables. If configured to use run_maintenance() for serial partitioning, you must call it often enough to keep partition creation ahead of your insertion rate, otherwise data will go into the parent.
  * Every run checks all tables of all types listed in the **part_config** table with a value in the **retention** column and drops tables as needed (see **About** and config table below).
- * Will automatically update the function for **time-static** partitioning to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the trigger function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
+ * Will automatically update the function for **time-static** partitioning (and **id-static** if configured) to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the trigger function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
  * p_jobmon - an optional paramter to stop run_maintenance() from using the pg_jobmon extension to log what it does. Defaults to true if not set.
 
 *show_partitions (p_parent_table text, p_order text DEFAULT 'ASC')*
@@ -256,6 +261,11 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
     datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
     last_partition          - Tracks the last successfully created partition and used to determine the next one.
+    use_run_mainteannce     - Boolean value that tells run_maintenance() function whether it should manage new child table creation.
+                              Defaults to TRUE for time-based partitioning and cannot be set to FALSE.
+                              Defaults to FALSE for serial-based partitioning and can be changed to TRUE if desired. 
+                              If changing an existing serial partitioned set from FALSE to TRUE, you must run 
+                              create_id_function('parent_schema.parent_table') to change the trigger function so it no longer creates new partitions.
     jobmon                  - Boolean value to determine whether the pg_jobmon extension is used to log/monitor partition maintenance. 
                               Defaults to true.
     undo_in_progress        - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation 
@@ -331,18 +341,21 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * A python script for reapplying indexes on child tables in a partition set after they are changed on the parent table. 
  * All indexes on all child tables (not including primary key unless specified) will be dropped and recreated for the given set.
  * Commits are done after each index is dropped/created to help prevent long running transactions & locks.
- * WARNING: The default, postgres generated index name is used for all children when recreating indexes. 
-   * This may cause index naming conflicts if you have multiple, expression indexes that use the same column(s). 
-   * Also, if your child table names are close to the object length limit (63 chars), you may run into naming conflicts when the index name truncates the original table name to add _idx or _pkey.
-   * Please **DO NOT** use this tool to reindex your partition set if either of these cases apply! Use the --dryrun option first to check.
+ * NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.
  * --parent (-p):          Parent table of an already created partition set. Required.
  * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file to keep credentials secure.
  * --concurrent:           Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.
  * --drop_concurrent:      Drop indexes concurrently when recreating them (PostgreSQL >= v9.2). Note this does not work on primary keys when --primary is given.
- * --primary:              By default the primary key is not recreated. Set this option if that is needed. Note this will cause an exclusive lock on the child table.
- * --jobs (-j):            Use the python multiprocessing library to recreate indexes in parallel. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.
- * --wait (-w):            Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.
+ * --primary:              By default the primary key is not recreated. Set this option if that is needed. 
+                           Note this will cause an exclusive lock on the child table.
+ * --jobs (-j):            Use the python multiprocessing library to recreate indexes in parallel. Note that this is per table, not per index. 
+                           Be very careful setting this option if load is a concern on your systems.
+ * --wait (-w):            Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. 
+                           When used with -j, this will set the pause between the batches of parallel jobs instead.
  * --dryrun:               Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
+                           Note that if multiple indexes would get the same default name, the duplicated names will show in the dryrun 
+                            (because the index doesn't exist in the catalog to check for it). 
+                           When the real thing is run, the duplicated names will be handled as stated in the NOTE above.
  * --quiet:                Turn off all output.
 
 *reapply_constraints.py*

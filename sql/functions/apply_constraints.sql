@@ -1,7 +1,7 @@
-/* 
+/*
  * Apply constraints managed by partman extension
  */
-CREATE FUNCTION apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE) RETURNS void
+CREATE FUNCTION apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_analyze boolean DEFAULT TRUE, p_debug boolean DEFAULT FALSE) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -173,6 +173,10 @@ LOOP
 
 END LOOP;
 
+IF p_analyze THEN
+    EXECUTE 'ANALYZE '||p_parent_table;
+END IF;
+
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
@@ -193,4 +197,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(102);
+SELECT plan(104);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -17,7 +17,7 @@ INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.id_dynamic_table TO partman_revoke;
 
-SELECT create_parent('partman_test.id_dynamic_table', 'col1', 'id-dynamic', '10');
+SELECT create_parent('partman_test.id_dynamic_table', 'col1', 'id-dynamic', '10', p_use_run_maintenance := true);
 SELECT has_table('partman_test', 'id_dynamic_table_p0', 'Check id_dynamic_table_p0 exists');
 SELECT has_table('partman_test', 'id_dynamic_table_p10', 'Check id_dynamic_table_p10 exists');
 SELECT has_table('partman_test', 'id_dynamic_table_p20', 'Check id_dynamic_table_p20 exists');
@@ -52,8 +52,14 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.id_dynamic_table', 'Check that 
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p10', ARRAY[10], 'Check count from id_dynamic_table_p10');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p20', ARRAY[6], 'Check count from id_dynamic_table_p20');
 
-SELECT has_table('partman_test', 'id_dynamic_table_p50', 'Check id_dynamic_table_p50 exists');
+SELECT hasnt_table('partman_test', 'id_dynamic_table_p50', 'Check id_dynamic_table_p50 doesn''t exists yet');
 SELECT hasnt_table('partman_test', 'id_dynamic_table_p60', 'Check id_dynamic_table_p60 doesn''t exists yet');
+
+SELECT run_maintenance();
+
+SELECT has_table('partman_test', 'id_dynamic_table_p50', 'Check id_dynamic_table_p50 exists');
+SELECT has_table('partman_test', 'id_dynamic_table_p60', 'Check id_dynamic_table_p60 exists');
+SELECT hasnt_table('partman_test', 'id_dynamic_table_p70', 'Check id_dynamic_table_p70 doesn''t exist yet');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p50', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p50');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p0', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p0');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p10', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p10');
@@ -67,6 +73,7 @@ GRANT DELETE ON partman_test.id_dynamic_table TO partman_basic;
 REVOKE ALL ON partman_test.id_dynamic_table FROM partman_revoke;
 ALTER TABLE partman_test.id_dynamic_table OWNER TO partman_owner;
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(26,38));
+SELECT run_maintenance();
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_dynamic_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table', ARRAY[38], 'Check count from id_dynamic_table');
@@ -85,11 +92,10 @@ SELECT table_privs_are('partman_test', 'id_dynamic_table_p30', 'partman_basic', 
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p40', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p40');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p50', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p50');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p50', 'partman_revoke', ARRAY['SELECT'], 'Check partman_revoke privileges of id_dynamic_table_p50');
-SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p60');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p60');
+SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_revoke', ARRAY['SELECT'], 'Check partman_revoke privileges of id_dynamic_table_p60');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE','DELETE'], 'Check partman_basic privileges of id_dynamic_table_p70');
-SELECT table_owner_is ('partman_test', 'id_dynamic_table_p60', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p60');
 SELECT table_owner_is ('partman_test', 'id_dynamic_table_p70', 'partman_owner', 'Check that ownership change worked for id_dynamic_table_p70');
-SELECT table_privs_are('partman_test', 'id_dynamic_table_p60', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p60');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p70', 'partman_revoke', '{}'::text[], 'Check partman_revoke has no privileges on id_dynamic_table_p70');
 
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(200,210));

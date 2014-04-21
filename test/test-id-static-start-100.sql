@@ -7,7 +7,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(82);
+SELECT plan(83);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_owner;
@@ -48,7 +48,7 @@ SELECT table_privs_are('partman_test', 'id_static_table_p80', 'partman_basic', A
 SELECT table_privs_are('partman_test', 'id_static_table_p70', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_static_table_p70');
 SELECT table_privs_are('partman_test', 'id_static_table_p60', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_static_table_p60');
 
-SELECT partition_data_id('partman_test.id_static_table');
+SELECT results_eq('SELECT partition_data_id(''partman_test.id_static_table'')::int', ARRAY[10], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_static_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table', ARRAY[10], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_static_table_p100', ARRAY[10], 'Check count from id_static_table_p100');

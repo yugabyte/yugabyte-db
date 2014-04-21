@@ -57,7 +57,7 @@ FOR i IN 1..p_batch_count LOOP
     END IF;
 
     IF v_start_control IS NULL THEN
-        RETURN 0;
+        EXIT;
     END IF;
 
     IF v_type = 'time-static' OR v_type = 'time-dynamic' THEN
@@ -167,4 +167,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

@@ -8,6 +8,7 @@ CREATE FUNCTION create_parent(
     , p_interval text
     , p_constraint_cols text[] DEFAULT NULL 
     , p_premake int DEFAULT 4
+    , p_use_run_maintenance boolean DEFAULT NULL
     , p_start_partition text DEFAULT NULL
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
@@ -29,6 +30,7 @@ v_partition_time_array  timestamp[];
 v_partition_id          bigint[];
 v_max                   bigint;
 v_notnull               boolean;
+v_run_maint             boolean;
 v_start_time            timestamp;
 v_starting_partition_id bigint;
 v_step_id               bigint;
@@ -68,6 +70,19 @@ IF p_jobmon THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
         EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
     END IF;
+END IF;
+
+IF p_use_run_maintenance IS NOT NULL THEN
+    IF p_use_run_maintenance IS FALSE AND (p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom') THEN
+        RAISE EXCEPTION 'p_run_maintenance cannot be set to false for time based partitioning';
+    END IF;
+    v_run_maint := p_use_run_maintenance;
+ELSIF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
+    v_run_maint := TRUE;
+ELSIF p_type = 'id-static' OR p_type ='id-dynamic' THEN
+    v_run_maint := FALSE;
+ELSE
+    RAISE EXCEPTION 'use_run_maintenance value cannot be set NULL';
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -168,8 +183,8 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
         v_count := v_count + 1;        
     END LOOP;
 
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, datetime_string, jobmon) VALUES
-        (p_parent_table, p_type, v_time_interval, p_control, p_premake, p_constraint_cols, v_datetime_string, p_jobmon);
+    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, datetime_string, use_run_maintenance, jobmon) VALUES
+        (p_parent_table, p_type, v_time_interval, p_control, p_premake, p_constraint_cols, v_datetime_string, v_run_maint, p_jobmon);
     v_last_partition_name := @extschema@.create_time_partition(p_parent_table, v_partition_time_array);
     -- Doing separate update because create function requires in config table last_partition to be set
     UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
@@ -200,8 +215,8 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         v_partition_id = array_append(v_partition_id, (v_id_interval*i) + v_starting_partition_id);
     END LOOP;
 
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, jobmon) VALUES
-        (p_parent_table, p_type, v_id_interval, p_control, p_premake, p_constraint_cols, p_jobmon);
+    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, use_run_maintenance, jobmon) VALUES
+        (p_parent_table, p_type, v_id_interval, p_control, p_premake, p_constraint_cols, v_run_maint, p_jobmon);
     v_last_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
     -- Doing separate update because create function needs parent table in config table for apply_grants()
     UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
@@ -259,4 +274,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

@@ -8,8 +8,10 @@ RETURNS text
 DECLARE
 
 v_all                           text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
+v_analyze                       boolean := FALSE;
 v_control                       text;
 v_grantees                      text[];
+v_hasoids                       boolean;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
@@ -26,6 +28,7 @@ v_partition_timestamp_end       timestamp;
 v_partition_timestamp_start     timestamp;
 v_quarter                       text;
 v_revoke                        text[];
+v_sql                           text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_tablename                     text;
@@ -107,12 +110,20 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         CONTINUE;
     END IF;
 
+    -- Ensure analyze is run if a new partition is created. Otherwise if one isn't, will be false and analyze will be skipped
+    v_analyze := TRUE;
+
     IF v_jobmon_schema IS NOT NULL THEN
         v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
         v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_partition_timestamp_start||' to '||(v_partition_timestamp_end-'1sec'::interval));
     END IF;
 
-    EXECUTE 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
+    v_sql := 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
+    SELECT relhasoids INTO v_hasoids FROM pg_class WHERE oid::regclass = p_parent_table::regclass;
+    IF v_hasoids IS TRUE THEN
+        v_sql := v_sql || ' WITH (OIDS)';
+    END IF;
+    EXECUTE v_sql;
     SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE 'ALTER TABLE '||v_partition_name||' SET TABLESPACE '||v_parent_tablespace;
@@ -163,6 +174,10 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     END IF;
 
 END LOOP;
+
+IF v_analyze THEN
+    EXECUTE 'ANALYZE '||p_parent_table;
+END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';

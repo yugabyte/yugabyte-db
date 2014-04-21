@@ -11,6 +11,7 @@ CREATE TABLE test_reindex (id bigint, stuff text, morestuff timestamptz default 
 ALTER TABLE test_reindex ADD CONSTRAINT test_reindex_id_pkey PRIMARY KEY (id);
 INSERT INTO test_reindex VALUES (generate_series(1,1000), 'stuff'||generate_series(1, 1000));
 CREATE INDEX test_reindex_stuff_idx ON test_reindex (stuff); 
+CREATE INDEX test_reindex_upper_stuff_idx ON test_reindex(upper(stuff));
 
 SELECT create_parent('partman_reindex_test.test_reindex', 'id', 'id-static', '100');
 
