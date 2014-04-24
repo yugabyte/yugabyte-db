@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(798);
+SELECT plan(828);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -32,6 +32,7 @@ CREATE DOMAIN public."myDomain" AS TEXT CHECK(TRUE);
 CREATE SEQUENCE public.someseq;
 
 CREATE SCHEMA someschema;
+
 RESET client_min_messages;
 
 /****************************************************************************/
@@ -2416,6 +2417,241 @@ SELECT * FROM check_test(
 SELECT * FROM test_fdw();
 
 /****************************************************************************/
+-- Test has_materialized_view().
+
+CREATE FUNCTION test_has_materialized_view() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 93000 THEN
+        EXECUTE $E$
+            CREATE MATERIALIZED VIEW public.mview AS SELECT * FROM public.sometab;
+        $E$;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_materialized_view( '__SDFSDFD__' ),
+            false,
+            'has_materialized_view(non-existent materialized_view)',
+            'Materialized view "__SDFSDFD__" should exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_materialized_view( '__SDFSDFD__', 'howdy' ),
+            false,
+            'has_materialized_view(non-existent materialized_view, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
+            false,
+            'has_materialized_view(sch, non-existtent materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_materialized_view( 'mview', 'yowza' ),
+            true,
+            'has_materialized_view(materialized_viewiew, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_materialized_view( 'public', 'mview', 'desc' ),
+            true,
+            'has_materialized_view(sch, materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+    ELSE
+        FOR tap IN SELECT * FROM check_test(
+            has_view( '__SDFSDFD__' ),
+            false,
+            'has_materialized_view(non-existent materialized_view)',
+            'View "__SDFSDFD__" should exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( '__SDFSDFD__', 'howdy' ),
+            false,
+            'has_materialized_view(non-existent materialized_view, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'foo', '__SDFSDFD__', 'desc' ),
+            false,
+            'has_materialized_view(sch, non-existtent materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'pg_tables', 'yowza' ),
+            true,
+            'has_materialized_view(materialized_view, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            has_view( 'information_schema', 'tables', 'desc' ),
+            true,
+            'has_materialized_view(sch, materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+        
+    end if;
+
+    return;
+end; $$language PLPGSQL;
+
+/****************************************************************************/
+-- Test hasnt_materialized_view().
+CREATE FUNCTION test_hasnt_materialized_views_are() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 93000 THEN
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_materialized_view( '__SDFSDFD__' ),
+            true,
+            'hasnt_materialized_view(non-existent materialized_view)',
+            'Materialized view "__SDFSDFD__" should not exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_materialized_view( '__SDFSDFD__', 'howdy' ),
+            true,
+            'hasnt_materialized_view(non-existent materialized_view, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_materialized_view( 'foo', '__SDFSDFD__', 'desc' ),
+            true,
+            'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_materialized_view( 'mview', 'yowza' ),
+            false,
+            'hasnt_materialized_view(materialized_viewiew, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_materialized_view( 'public', 'mview', 'desc' ),
+            false,
+            'hasnt_materialized_view(sch, materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    else
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( '__SDFSDFD__' ),
+            true,
+            'hasnt_materialized_view(non-existent materialized_view)',
+            'View "__SDFSDFD__" should not exist',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( '__SDFSDFD__', 'howdy' ),
+            true,
+            'hasnt_materialized_view(non-existent materialized_view, desc)',
+            'howdy',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'foo', '__SDFSDFD__', 'desc' ),
+            true,
+            'hasnt_materialized_view(sch, non-existtent materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'pg_tables', 'yowza' ),
+            false,
+            'hasnt_materialized_view(materialized_view, desc)',
+            'yowza',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            hasnt_view( 'information_schema', 'tables', 'desc' ),
+            false,
+            'hasnt_materialized_view(sch, materialized_view, desc)',
+            'desc',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    end if;
+
+    return;
+end; $$language PLPGSQL;
+
+SELECT * FROM test_has_materialized_view();
+
+SELECT * FROm test_hasnt_materialized_views_are();
+
+/****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
+

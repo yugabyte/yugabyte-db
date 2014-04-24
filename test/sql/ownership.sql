@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(357);
+SELECT plan(384);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1192,6 +1192,209 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
+-- Test materialized_view_owner_is().
+CREATE FUNCTION test_materialized_view_owner_is() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 93000 THEN
+        EXECUTE $E$
+            CREATE MATERIALIZED VIEW public.somemview AS SELECT * FROM public.sometab;
+        $E$;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('public', 'somemview', current_user, 'mumble'),
+            true,
+            'materialized_view_owner_is(sch, materialized_view, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('public', 'somemview', current_user),
+            true,
+            'materialized_view_owner_is(sch, materialized_view, user)',
+            'Materialized view public.somemview should be owned by ' || current_user,
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('__not__public', 'somemview', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(non-sch, materialized_view, user)',
+            'mumble',
+            '    Materialized view __not__public.somemview does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('public', '__not__somemview', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(sch, non-materialized_view, user)',
+            'mumble',
+            '    Materialized view public.__not__somemview does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('somemview', current_user, 'mumble'),
+            true,
+            'materialized_view_owner_is(materialized_view, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('somemview', current_user),
+            true,
+            'materialized_view_owner_is(view, user)',
+            'Materialized view somemview should be owned by ' || current_user,
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('__not__somemview', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(non-materialized_view, user)',
+            'mumble',
+            '    Materialized view __not__somemview does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        -- It should ignore the sequence.
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('public', 'someseq', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(sch, seq, user, desc)',
+            'mumble',
+            '    Materialized view public.someseq does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_view_owner_is('someseq', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(seq, user, desc)',
+            'mumble',
+            '    Materialized view someseq does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+    else
+
+    FOR tap IN SELECT * FROM check_test(
+            view_owner_is('public', 'someview', current_user, 'mumble'),
+            true,
+            'materialized_view_owner_is(sch, materialized_view, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('public', 'someview', current_user),
+            true,
+            'materialized_view_owner_is(sch, materialized_view, user)',
+            'View public.someview should be owned by ' || current_user,
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('__not__public', 'someview', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(non-sch, materialized_view, user)',
+            'mumble',
+            '    View __not__public.someview does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('public', '__not__someview', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(sch, non-materialized_view, user)',
+            'mumble',
+            '    View public.__not__someview does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('someview', current_user, 'mumble'),
+            true,
+            'materialized_view_owner_is(materialized_view, user, desc)',
+            'mumble',
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('someview', current_user),
+            true,
+            'materialized_view_owner_is(view, user)',
+            'View someview should be owned by ' || current_user,
+            ''
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('__not__someview', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(non-materialized_view, user)',
+            'mumble',
+            '    View __not__someview does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        -- It should ignore the sequence.
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('public', 'someseq', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(sch, seq, user, desc)',
+            'mumble',
+            '    View public.someseq does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            view_owner_is('someseq', current_user, 'mumble'),
+            false,
+            'materialized_view_owner_is(seq, user, desc)',
+            'mumble',
+            '    View someseq does not exist'
+        ) AS b LOOP
+                    RETURN NEXT tap.b;
+                END LOOP;
+
+    end if;
+
+    return;
+
+end; $$language PLPGSQL;
+
+SELECT * from test_materialized_view_owner_is();
+
+/****************************************************************************/
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
+

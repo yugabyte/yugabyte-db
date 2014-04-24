@@ -1,5 +1,5 @@
 \unset ECHO
-1..399
+1..429
 ok 1 - tablespaces_are(tablespaces, desc) should pass
 ok 2 - tablespaces_are(tablespaces, desc) should have the proper description
 ok 3 - tablespaces_are(tablespaces, desc) should have the proper diagnostics
@@ -399,3 +399,33 @@ ok 396 - columns_are(table, columns) + missing should have the proper diagnostic
 ok 397 - columns_are(table, columns) + extra & missing should fail
 ok 398 - columns_are(table, columns) + extra & missing should have the proper description
 ok 399 - columns_are(table, columns) + extra & missing should have the proper diagnostics
+ok 400 - materialized_views_are(schema, materialized_views, desc) should pass
+ok 401 - materialized_views_are(schema, materialized_views, desc) should have the proper description
+ok 402 - materialized_views_are(schema, materialized_views, desc) should have the proper diagnostics
+ok 403 - materialized_views_are(schema, materialized_views) should pass
+ok 404 - materialized_views_are(schema, materialized_views) should have the proper description
+ok 405 - materialized_views_are(schema, materialized_views) should have the proper diagnostics
+ok 406 - materialized_views_are(views) should pass
+ok 407 - materialized_views_are(views) should have the proper description
+ok 408 - materialized_views_are(views) should have the proper diagnostics
+ok 409 - materialized_views_are(views, desc) should pass
+ok 410 - materialized_views_are(views, desc) should have the proper description
+ok 411 - materialized_views_are(views, desc) should have the proper diagnostics
+ok 412 - materialized_views_are(schema, materialized_views) missing should fail
+ok 413 - materialized_views_are(schema, materialized_views) missing should have the proper description
+ok 414 - materialized_views_are(schema, materialized_views) missing should have the proper diagnostics
+ok 415 - materialized_views_are(materialized_views) missing should fail
+ok 416 - materialized_views_are(materialized_views) missing should have the proper description
+ok 417 - materialized_views_are(materialized_views) missing should have the proper diagnostics
+ok 418 - materialized_views_are(schema, materialized_views) extra should fail
+ok 419 - materialized_views_are(schema, materialized_views) extra should have the proper description
+ok 420 - materialized_views_are(schema, materialized_views) extra should have the proper diagnostics
+ok 421 - materialized_views_are(materialized_views) extra should fail
+ok 422 - materialized_views_are(materialized_views) extra should have the proper description
+ok 423 - materialized_views_are(materialized_views) extra should have the proper diagnostics
+ok 424 - materialized_views_are(schema, materialized_views) extra and missing should fail
+ok 425 - materialized_views_are(schema, materialized_views) extra and missing should have the proper description
+ok 426 - materialized_views_are(schema, materialized_views) extra and missing should have the proper diagnostics
+ok 427 - materialized_views_are(materialized_views) extra and missing should fail
+ok 428 - materialized_views_are(materialized_views) extra and missing should have the proper description
+ok 429 - materialized_views_are(materialized_views) extra and missing should have the proper diagnostics

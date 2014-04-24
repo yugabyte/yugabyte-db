@@ -1804,6 +1804,46 @@ missing views, like so:
     #         v_userlog
     #         eated
 
+### `materialized_views_are()` ###
+
+    SELECT materialized_views_are( :schema, :materialized_views, :description );
+    SELECT materialized_views_are( :schema, :materialized_views );
+    SELECT materialized_views_are( :materialized_views, :description );
+    SELECT materialized_views_are( :materialized_views );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find materialized views.
+
+`:materialized_views`
+: An array of materialized view names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the materialized views in the named schema, or that are
+visible in the search path, are only the materialized views that *should* be there. If the
+`:schema` argument is omitted, materialized views will be sought in the search path,
+excluding `pg_catalog` and `information_schema` If the description is omitted,
+a generally useful default description will be generated. Example:
+
+    SELECT materialized_views_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing materialized views, like so:
+
+    # Failed test 92: "Schema public should have the correct materialized views"
+    #     Extra materialized views:
+    #         v_userlog_tmp
+    #         __test_view
+    #     Missing materialized views:
+    #         v_userlog
+    #         eated
+	
 ### `sequences_are()` ###
 
     SELECT sequences_are( :schema, :sequences, :description );
@@ -2178,7 +2218,7 @@ missing opclasses, like so:
 : A short description of the test.
 
 This function tests that all of the rules on the named relation are only the
-rules that *should* be on that relation (a table or a view). If the `:schema`
+rules that *should* be on that relation (a table, view or a materialized view). If the `:schema`
 argument is omitted, the rules must be visible in the search path, excluding
 `pg_catalog` and `information_schema`. If the description is omitted, a
 generally useful default description will be generated. Example:
@@ -2498,7 +2538,7 @@ specified schema does *not* exist.
 : A short description of the test.
 
 This function tests whether or not a relation exists in the database.
-Relations are tables, views, seqences, composite types, foreign tables, and
+Relations are tables, views, materialized views, seqences, composite types, foreign tables, and
 toast tables. The first argument is a schema name, the second is a relation
 name, and the third is the test description. If you omit the schema, the
 relation must be visible in the search path. Example:
@@ -2626,6 +2666,53 @@ exist".
 
 This function is the inverse of `has_view()`. The test passes if the
 specified view does *not* exist.
+
+### `has_materialized_view()` ###
+
+    SELECT has_materialized_view( :schema, :materialized_view, :description );
+    SELECT has_materialized_view( :materialized_view, :description );
+    SELECT has_materialized_view( :materialized_view );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the materialized view.
+
+`:materialized_view`
+: Name of a materialized view.
+
+`:description`
+: A short description of the test.
+
+This function tests whether or not a materialized view exists in the database. The first
+argument is a schema name, the second is a materialized view name, and the third is the
+test description. If you omit the schema, the materialized view must be visible in the
+search path. Example:
+
+    SELECT has_materialized_view('myschema', 'some_materialized_view');
+
+If you omit the test description, it will be set to "Materialized view `:materialized_view` should
+exist".
+
+### `hasnt_materialized_view()` ###
+
+    SELECT hasnt_materialized_view( :schema, :materialized_view, :description );
+    SELECT hasnt_materialized_view( :materialized_view, :description );
+    SELECT hasnt_materialized_view( :materialized_view );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the materialized view.
+
+`:materialized_view`
+: Name of a materialized view.
+
+`:description`
+: A short description of the test.
+
+This function is the inverse of `has_view()`. The test passes if the
+specified materialized view does *not* exist.
 
 ### `has_sequence()` ###
 
@@ -3610,7 +3697,7 @@ So we have the assertions to validate 'em.
 `:description`
 : A short description of the test.
 
-Tests whether or not a column exists in a given table, view, or composite
+Tests whether or not a column exists in a given table, view, materialized view or composite
 type. The first argument is the schema name, the second the table name, the
 third the column name, and the fourth is the test description. If the schema
 is omitted, the table must be visible in the search path. If the test
@@ -3638,7 +3725,7 @@ exist".
 : A short description of the test.
 
 This function is the inverse of `has_column()`. The test passes if the
-specified column does *not* exist in the specified table, view, or composite
+specified column does *not* exist in the specified table, view, materialized view or composite
 type.
 
 ### `col_not_null()` ###
@@ -5316,7 +5403,7 @@ the diagnostics will look something like:
 `:description`
 : A short description of the test.
 
-Tests the ownership of a relation. Relations are tables, views, seqences,
+Tests the ownership of a relation. Relations are tables, views, materialized views, seqences,
 composite types, foreign tables, and toast tables. If the `:description`
 argument is omitted, an appropriate description will be created. Examples:
 
@@ -5428,6 +5515,50 @@ If the test fails because the view is not owned by the specified user, the
 diagnostics will look something like:
 
     # Failed test 17: "View bar should be owned by root"
+    #         have: postgres
+    #         want: root
+
+### `materialized_view_owner_is ()` ###
+
+    SELECT materialized_view_owner_is ( :schema, :materialized_view, :user, :description );
+    SELECT materialized_view_owner_is ( :materialized_view, :user, :description );
+    SELECT materialized_view_owner_is ( :schema, :materialized_view, :user );
+    SELECT materialized_view_owner_is ( :materialized_view, :user );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find the `:materialized_view`.
+
+`:materialized_view`
+: Name of a materialized view.
+
+`:user`
+: Name of a user.
+
+`:description`
+: A short description of the test.
+
+Tests the ownership of a materialized view. If the `:description` argument is omitted, an
+appropriate description will be created. Examples:
+
+    SELECT view_owner_is(
+        'public', 'mymaterializedview', 'someuser',
+        'mymaterializedview should be owned by someuser'
+    );
+    SELECT materialized_view_owner_is( 'widgets', current_user );
+
+In the event that the test fails because the materialized view in question does not
+actually exist or is not visible, you will see an appropriate diagnostic such
+as:
+
+    # Failed test 16: "Materialized view foo should be owned by www"
+    #     Materialized view foo does not exist
+
+If the test fails because the materialized view is not owned by the specified user, the
+diagnostics will look something like:
+
+    # Failed test 17: "Materialized view bar should be owned by root"
     #         have: postgres
     #         want: root
 

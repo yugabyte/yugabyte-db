@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(399);
+SELECT plan(429);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -1458,6 +1458,258 @@ SELECT * FROM check_test(
     Missing columns:
         howdy'
 );
+
+/****************************************************************************/
+-- Test materialized_views_are().
+CREATE FUNCTION test_materialized_views_are() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+BEGIN
+    IF pg_version_num() >= 90300 THEN
+        EXECUTE $E$
+            CREATE MATERIALIZED VIEW public.moo AS SELECT * FROM foo;
+            CREATE MATERIALIZED VIEW public.mou AS SELECT * FROM fou;
+        $E$;
+        
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( 'public', ARRAY['mou', 'moo'], 'whatever' ),
+            true,
+            'materialized_views_are(schema, materialized_views, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( 'public', ARRAY['mou', 'moo'] ),
+            true,
+            'materialized_views_are(schema, materialized_views)',
+            'Schema public should have the correct materialized views',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( ARRAY['mou', 'moo'] ),
+            true,
+            'materialized_views_are(views)',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( ARRAY['mou', 'moo'], 'whatever' ),
+            true,
+            'materialized_views_are(views, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( 'public', ARRAY['mou', 'moo', 'bar'] ),
+            false,
+            'materialized_views_are(schema, materialized_views) missing',
+            'Schema public should have the correct materialized views',
+            '    Missing Materialized views:
+        bar'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( ARRAY['mou', 'moo', 'bar'] ),
+            false,
+            'materialized_views_are(materialized_views) missing',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+            '    Missing Materialized views:
+        bar'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( 'public', ARRAY['mou'] ),
+            false,
+            'materialized_views_are(schema, materialized_views) extra',
+            'Schema public should have the correct materialized views',
+            '    Extra Materialized views:
+        moo'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( ARRAY['mou'] ),
+            false,
+            'materialized_views_are(materialized_views) extra',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+            '    Extra Materialized views:
+        moo'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( 'public', ARRAY['bar', 'baz'] ),
+            false,
+            'materialized_views_are(schema, materialized_views) extra and missing',
+            'Schema public should have the correct materialized views',
+            '    Extra Materialized views:
+        mo[ou]
+        mo[ou]
+    Missing Materialized views:
+        ba[rz]
+        ba[rz]',
+            true
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            materialized_views_are( ARRAY['bar', 'baz'] ),
+            false,
+            'materialized_views_are(materialized_views) extra and missing',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views',
+            '    Extra Materialized views:' || '
+        mo[ou]
+        mo[ou]
+    Missing Materialized views:' || '
+        ba[rz]
+        ba[rz]',
+            true
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    ELSE
+        -- Fake it with views_are
+        FOR tap IN SELECT * FROM check_test(
+            views_are( 'public', ARRAY['vou', 'voo'], 'whatever' ),
+            true,
+            'materialized_views_are(schema, materialized_views, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( 'public', ARRAY['vou', 'voo'] ),
+            true,
+            'materialized_views_are(schema, materialized_views)',
+            'Schema public should have the correct views',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( ARRAY['vou', 'voo'] ),
+            true,
+            'materialized_views_are(views)',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( ARRAY['vou', 'voo'], 'whatever' ),
+            true,
+            'materialized_views_are(views, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( 'public', ARRAY['vou', 'voo', 'bar'] ),
+            false,
+            'materialized_views_are(schema, materialized_views) missing',
+            'Schema public should have the correct views',
+            '    Missing views:
+        bar'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( ARRAY['vou', 'voo', 'bar'] ),
+            false,
+            'materialized_views_are(materialized_views) missing',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+            '    Missing views:
+        bar'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( 'public', ARRAY['vou'] ),
+            false,
+            'materialized_views_are(schema, materialized_views) extra',
+            'Schema public should have the correct views',
+            '    Extra views:
+        voo'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( ARRAY['vou'] ),
+            false,
+            'materialized_views_are(materialized_views) extra',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+            '    Extra views:
+        voo'
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( 'public', ARRAY['bar', 'baz'] ),
+            false,
+            'materialized_views_are(schema, materialized_views) extra and missing',
+            'Schema public should have the correct views',
+            '    Extra views:
+        vo[ou]
+        vo[ou]
+    Missing views:
+        ba[rz]
+        ba[rz]',
+            true
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            views_are( ARRAY['bar', 'baz'] ),
+            false,
+            'materialized_views_are(materialized_views) extra and missing',
+            'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct views',
+            '    Extra views:' || '
+        vo[ou]
+        vo[ou]
+    Missing views:' || '
+        ba[rz]
+        ba[rz]',
+            true
+        ) AS b LOOP
+            RETURN NEXT tap.b;
+        END LOOP;
+    end IF;
+    
+    RETURN;
+END; 
+$$LANGUAGE PLPGSQL;
+
+SELECT * FROM test_materialized_views_are();
 
 /****************************************************************************/
 -- Finish the tests and clean up.

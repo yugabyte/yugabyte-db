@@ -1,5 +1,5 @@
 \unset ECHO
-1..798
+1..828
 ok 1 - has_tablespace(non-existent tablespace) should fail
 ok 2 - has_tablespace(non-existent tablespace) should have the proper description
 ok 3 - has_tablespace(non-existent tablespace) should have the proper diagnostics
@@ -798,3 +798,33 @@ ok 795 - hasnt_foreign_table(tab, desc) should have the proper diagnostics
 ok 796 - hasnt_foreign_table(sch, tab, desc) should fail
 ok 797 - hasnt_foreign_table(sch, tab, desc) should have the proper description
 ok 798 - hasnt_foreign_table(sch, tab, desc) should have the proper diagnostics
+ok 799 - has_materialized_view(non-existent materialized_view) should fail
+ok 800 - has_materialized_view(non-existent materialized_view) should have the proper description
+ok 801 - has_materialized_view(non-existent materialized_view) should have the proper diagnostics
+ok 802 - has_materialized_view(non-existent materialized_view, desc) should fail
+ok 803 - has_materialized_view(non-existent materialized_view, desc) should have the proper description
+ok 804 - has_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
+ok 805 - has_materialized_view(sch, non-existtent materialized_view, desc) should fail
+ok 806 - has_materialized_view(sch, non-existtent materialized_view, desc) should have the proper description
+ok 807 - has_materialized_view(sch, non-existtent materialized_view, desc) should have the proper diagnostics
+ok 808 - has_materialized_view(materialized_view, desc) should pass
+ok 809 - has_materialized_view(materialized_view, desc) should have the proper description
+ok 810 - has_materialized_view(materialized_view, desc) should have the proper diagnostics
+ok 811 - has_materialized_view(sch, materialized_view, desc) should pass
+ok 812 - has_materialized_view(sch, materialized_view, desc) should have the proper description
+ok 813 - has_materialized_view(sch, materialized_view, desc) should have the proper diagnostics
+ok 814 - hasnt_materialized_view(non-existent materialized_view) should pass
+ok 815 - hasnt_materialized_view(non-existent materialized_view) should have the proper description
+ok 816 - hasnt_materialized_view(non-existent materialized_view) should have the proper diagnostics
+ok 817 - hasnt_materialized_view(non-existent materialized_view, desc) should pass
+ok 818 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper description
+ok 819 - hasnt_materialized_view(non-existent materialized_view, desc) should have the proper diagnostics
+ok 820 - hasnt_materialized_view(sch, non-existtent materialized_view, desc) should pass
+ok 821 - hasnt_materialized_view(sch, non-existtent materialized_view, desc) should have the proper description
+ok 822 - hasnt_materialized_view(sch, non-existtent materialized_view, desc) should have the proper diagnostics
+ok 823 - hasnt_materialized_view(materialized_view, desc) should fail
+ok 824 - hasnt_materialized_view(materialized_view, desc) should have the proper description
+ok 825 - hasnt_materialized_view(materialized_view, desc) should have the proper diagnostics
+ok 826 - hasnt_materialized_view(sch, materialized_view, desc) should fail
+ok 827 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper description
+ok 828 - hasnt_materialized_view(sch, materialized_view, desc) should have the proper diagnostics

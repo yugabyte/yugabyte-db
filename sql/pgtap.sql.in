@@ -9077,3 +9077,122 @@ RETURNS TEXT AS $$
             || ' on server ' || quote_ident($1)
     );
 $$ LANGUAGE SQL;
+
+-- materialized_views_are( schema, materialized_views, description )
+CREATE OR REPLACE FUNCTION materialized_views_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are( 'Materialized views', _extras('m', $1, $2), _missing('m', $1, $2), $3);
+$$ LANGUAGE SQL;
+
+-- materialized_views_are( materialized_views, description )
+CREATE OR REPLACE FUNCTION materialized_views_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are( 'Materialized views', _extras('m', $1), _missing('m', $1), $2);
+$$ LANGUAGE SQL;
+
+-- materialized_views_are( schema, materialized_views )
+CREATE OR REPLACE FUNCTION materialized_views_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'Materialized views', _extras('m', $1, $2), _missing('m', $1, $2),
+        'Schema ' || quote_ident($1) || ' should have the correct materialized views'
+    );
+$$ LANGUAGE SQL;
+
+-- materialized_views_are( materialized_views )
+CREATE OR REPLACE FUNCTION materialized_views_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'Materialized views', _extras('m', $1), _missing('m', $1),
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct materialized views'
+    );
+$$ LANGUAGE SQL;
+
+-- materialized_view_owner_is ( schema, materialized_view, user, description )
+CREATE OR REPLACE FUNCTION materialized_view_owner_is ( NAME, NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('m'::char, $1, $2);
+BEGIN
+    -- Make sure the materialized view exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            E'    Materialized view ' || quote_ident($1) || '.' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- materialized_view_owner_is ( schema, materialized_view, user )
+CREATE OR REPLACE FUNCTION materialized_view_owner_is ( NAME, NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT materialized_view_owner_is(
+        $1, $2, $3,
+        'Materialized view ' || quote_ident($1) || '.' || quote_ident($2) || ' should be owned by ' || quote_ident($3)
+    );
+$$ LANGUAGE sql;
+
+-- materialized_view_owner_is ( materialized_view, user, description )
+CREATE OR REPLACE FUNCTION materialized_view_owner_is ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    owner NAME := _get_rel_owner('m'::char, $1);
+BEGIN
+    -- Make sure the materialized view exists.
+    IF owner IS NULL THEN
+        RETURN ok(FALSE, $3) || E'\n' || diag(
+            E'    Materialized view ' || quote_ident($1) || ' does not exist'
+        );
+    END IF;
+
+    RETURN is(owner, $2, $3);
+END;
+$$ LANGUAGE plpgsql;
+
+-- materialized_view_owner_is ( materialized_view, user )
+CREATE OR REPLACE FUNCTION materialized_view_owner_is ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT materialized_view_owner_is(
+        $1, $2,
+        'Materialized view ' || quote_ident($1) || ' should be owned by ' || quote_ident($2)
+    );
+$$ LANGUAGE sql;
+
+-- has_materialized_view( schema, materialized_view, description )
+CREATE OR REPLACE FUNCTION has_materialized_view ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'm', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_materialized_view( materialized_view, description )
+CREATE OR REPLACE FUNCTION has_materialized_view ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( _rexists( 'm', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- has_materialized_view( materialized_view )
+CREATE OR REPLACE FUNCTION has_materialized_view ( NAME )
+RETURNS TEXT AS $$
+    SELECT has_materialized_view( $1, 'Materialized view ' || quote_ident($1) || ' should exist' );
+$$ LANGUAGE SQL;
+
+-- hasnt_materialized_view( schema, materialized_view, description )
+CREATE OR REPLACE FUNCTION hasnt_materialized_view ( NAME, NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'm', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- hasnt_materialized_view( materialized_view, description )
+CREATE OR REPLACE FUNCTION hasnt_materialized_view ( NAME, TEXT )
+RETURNS TEXT AS $$
+    SELECT ok( NOT _rexists( 'm', $1 ), $2 );
+$$ LANGUAGE SQL;
+
+-- hasnt_materialized_view( materialized_view )
+CREATE OR REPLACE FUNCTION hasnt_materialized_view ( NAME )
+RETURNS TEXT AS $$
+    SELECT hasnt_materialized_view( $1, 'Materialized view ' || quote_ident($1) || ' should not exist' );
+$$ LANGUAGE SQL;
+ 
