@@ -3,7 +3,12 @@ Revision history for pgTAP
 
 0.95.0
 ---------------------------
-
+* Added materialized-view testing assertions functions:
+    + `materialized_views_are()`
+    + `has_materialized_view()`
+    + `hasnt_materialized_view()`
+    + `materialized_view_owner_is()`
+  Thanks to Charly Batista for the contribution!
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------
