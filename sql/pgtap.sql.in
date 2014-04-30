@@ -9195,4 +9195,4 @@ CREATE OR REPLACE FUNCTION hasnt_materialized_view ( NAME )
 RETURNS TEXT AS $$
     SELECT hasnt_materialized_view( $1, 'Materialized view ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
- 
+
