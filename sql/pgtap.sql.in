@@ -814,6 +814,86 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE sql;
 
+-- Convenience function to run a query many times and returns
+-- the middle set of those times as defined by the last argument
+-- e.g. _time_trials('SELECT 1', 100, 0.8) will execute 'SELECT 1'
+-- 100 times, and return the execution times for the middle 80 runs
+--
+-- I could have left this logic in performs_within, but I have
+-- plans to hook into this function for other purposes outside
+-- of pgTAP
+CREATE OR REPLACE FUNCTION _time_trials(TEXT, INT, NUMERIC)
+RETURNS TABLE(a_time NUMERIC) AS $$
+DECLARE
+    query            TEXT := _query($1);
+    iterations       ALIAS FOR $2;
+    return_percent   ALIAS FOR $3;
+    start_time       TEXT;
+    act_time         NUMERIC;
+    times            NUMERIC[];
+    offset_it        INT;
+    limit_it         INT;
+    offset_percent   NUMERIC;
+BEGIN
+    -- Execute the query over and over
+    FOR i IN 1..iterations LOOP
+        start_time := timeofday();
+        EXECUTE query;
+        -- Store the execution time for the run in an array of times
+        times[i] := extract(millisecond from timeofday()::timestamptz - start_time::timestamptz);
+    END LOOP;
+    offset_percent := (1.0 - return_percent) / 2.0;
+    -- Ensure that offset skips the bottom X% of runs, or set it to 0
+    SELECT GREATEST((offset_percent * iterations)::int, 0) INTO offset_it;
+    -- Ensure that with limit the query to returning only the middle X% of runs
+    SELECT GREATEST((return_percent * iterations)::int, 1) INTO limit_it;
+
+    RETURN QUERY SELECT *
+                  FROM (select unnest(times) AS a_time) t2
+                  ORDER BY a_time
+                  OFFSET offset_it
+                  LIMIT limit_it;
+END;
+$$ LANGUAGE plpgsql;
+
+-- performs_within( sql, average_milliseconds, within, iterations, description )
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT, TEXT) RETURNS TEXT AS $$
+DECLARE
+    query          TEXT := _query($1);
+    expected_avg   ALIAS FOR $2;
+    within         ALIAS FOR $3;
+    iterations     ALIAS FOR $4;
+    descr          ALIAS FOR $5;
+    avg_time       NUMERIC;
+BEGIN
+  select avg(a_time) from _time_trials(query, iterations, 0.8) t1 INTO avg_time;
+  IF abs(avg_time - expected_avg) < within THEN RETURN ok(TRUE, descr); END IF;
+  RETURN ok(FALSE, descr) || E'\n' || diag(' average runtime: ' || avg_time || ' ms'
+     || E'\n desired average: ' || expected_avg || ' +/- ' || within || ' ms'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
+-- performs_within( sql, average_milliseconds, within, iterations )
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, INT) RETURNS TEXT AS $$
+SELECT performs_within(
+          $1, $2, $3, $4,
+          'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
+$$ LANGUAGE sql;
+-- performs_within( sql, average_milliseconds, within, description )
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC, TEXT) RETURNS TEXT AS $$
+SELECT performs_within(
+          $1, $2, $3, 10, $4
+        );
+$$ LANGUAGE sql;
+
+-- performs_within( sql, average_milliseconds, within )
+CREATE OR REPLACE FUNCTION performs_within(TEXT, NUMERIC, NUMERIC) RETURNS TEXT AS $$
+SELECT performs_within(
+          $1, $2, $3, 10,
+          'Should run within ' || $2 || ' +/- ' || $3 || ' ms');
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION _relexists ( NAME, NAME )
 RETURNS BOOLEAN AS $$
     SELECT EXISTS(
