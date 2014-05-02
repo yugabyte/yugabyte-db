@@ -119,6 +119,8 @@ throws_ok
 lives_ok
 lives_ok
 performs_ok
+performs_within
+_time_trials
 _ident_array_to_string
 tap_funky
 _got_func

@@ -1023,7 +1023,7 @@ number of milliseconds. An example:
 
 The first argument should be the name of a prepared statement or a string
 representing the query to be executed (see the [summary](#Pursuing+Your+Query)
-for query argument details). `throws_ok()` will use the PL/pgSQL `EXECUTE`
+for query argument details). `performs_ok()` will use the PL/pgSQL `EXECUTE`
 statement to execute the query.
 
 The second argument is the maximum number of milliseconds it should take for
@@ -1041,6 +1041,80 @@ messages. For example:
     # Failed test 19: "The lookup should be fast!"
     #       runtime: 200.266 ms
     #       exceeds: 200 ms
+
+*Note:* There is a little extra time included in the execution time for the
+the overhead of PL/pgSQL's `EXECUTE`, which must compile and execute the SQL
+string. You will want to account for this and pad your estimates accordingly.
+It's best to think of this as a brute force comparison of runtimes, in order
+to ensure that a query is not *really* slow (think seconds).
+
+### `performs_within()` ###
+
+    SELECT performs_within( :sql, :average_milliseconds, :within, :iterations, :description );
+    SELECT performs_within( :sql, :average_milliseconds, :within, :description );
+    SELECT performs_within( :sql, :average_milliseconds, :within, :iterations);
+    SELECT performs_within( :sql, :average_milliseconds, :within);
+
+**Parameters**
+
+`:sql`
+: An SQL statement or the name of a prepared statement, passed as a string.
+
+`:average_milliseconds`
+: Number of milliseconds the query should take on average.
+
+`:within`
+: The number of milliseconds that the average is allowed to vary.
+
+`:iterations`
+: The number of times to run the query.
+
+`:description`
+: A short description of the test.
+
+This function makes sure that an SQL statement, on average, performs within
+an expected window. It does so by running the query a default of 10 times.
+It throws out the top and bottom 10% of runs, and averages the middle 80% of
+the runs it made.  If the average execution time is outside the range specified
+by `within`, the test will fails. An example:
+
+    PREPARE fast_query AS SELECT id FROM try WHERE name = 'Larry';
+    SELECT performs_within(
+        'fast_query',
+        250,
+        10,
+        100,
+        'A select by name should be fast'
+    );
+
+The first argument should be the name of a prepared statement or a string
+representing the query to be executed (see the [summary](#Pursuing+Your+Query)
+for query argument details). `performs_within()` will use the PL/pgSQL `EXECUTE`
+statement to execute the query.
+
+The second argument is the average number of milliseconds it should take for
+the SQL statement to execute. This argument is numeric, so you can even use
+fractions of milliseconds if it floats your boat.
+
+The third argument is the number of milliseconds the query is allowed to vary
+around the average and still still pass the test.  If the query's average is
+falls outside this window, either too fast or too slow, it will fail.
+
+The fourth argument is either the number of iterations or the usual description.
+If not provided, `performs_within()` will execute 10 runs of the query and
+will generate the description "Should run in $average_milliseconds +/- $within ms".
+You'll likely want to provide your own description if you have more than a
+couple of these in a test script or function.
+
+The fifth argument is the usual description as described above, assuming
+you've also specified the number of iterations.
+
+Should a `performs_within()` test fail it produces appropriate diagnostic
+messages. For example:
+
+    # Failed test 19: "The lookup should be fast!"
+    # average runtime: 210.266 ms
+    # desired average: 200 +/- 10 ms
 
 *Note:* There is a little extra time included in the execution time for the
 the overhead of PL/pgSQL's `EXECUTE`, which must compile and execute the SQL
@@ -1843,7 +1917,7 @@ missing materialized views, like so:
     #     Missing materialized views:
     #         v_userlog
     #         eated
-	
+
 ### `sequences_are()` ###
 
     SELECT sequences_are( :schema, :sequences, :description );
@@ -7421,7 +7495,7 @@ No changes. Everything should just work.
   test for columns specified with `DEFAULT NULL` (even though that's the
   implied default default).
 
-* The `has_enums()` function won't work. 
+* The `has_enums()` function won't work.
 
 * A number of assignments casts are added to increase compatibility. The casts
   are:
