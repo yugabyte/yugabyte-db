@@ -52,8 +52,8 @@ SELECT * FROM check_test(
     false,
     'simple select fail',
     'whatever',
-    ' average runtime: [[:digit:]]+([.][[:digit:]]+)? ms
- desired average: 0 \+/- 0 ms',
+    ' average runtime: [[:digit:]]+([.][[:digit:]]+)? ms' ||
+    E'\n' || ' desired average: 0 \+/- 0 ms',
     true
 );
 
@@ -62,8 +62,8 @@ SELECT * FROM check_test(
     false,
     'simple select no desc fail',
     'Should run within 0 +/- 0 ms',
-    ' average runtime: [[:digit:]]+([.][[:digit:]]+)? ms
- desired average: 0 \+/- 0 ms',
+    ' average runtime: [[:digit:]]+([.][[:digit:]]+)? ms' ||
+    E'\n' || ' desired average: 0 \+/- 0 ms',
     true
 );
 
@@ -72,8 +72,8 @@ SELECT * FROM check_test(
     false,
     'simple select no desc numeric fail',
     'Should run within 0.0 +/- 0.0 ms',
-    ' average runtime: [[:digit:]]+([.][[:digit:]]+)? ms
- desired average: 0.0 \+/- 0.0 ms',
+    ' average runtime: [[:digit:]]+([.][[:digit:]]+)? ms' ||
+    E'\n' || ' desired average: 0.0 \+/- 0.0 ms',
     true
 );
 
