@@ -822,8 +822,9 @@ $$ LANGUAGE sql;
 -- I could have left this logic in performs_within, but I have
 -- plans to hook into this function for other purposes outside
 -- of pgTAP
+CREATE TYPE _time_trial_type AS (a_time NUMERIC);
 CREATE OR REPLACE FUNCTION _time_trials(TEXT, INT, NUMERIC)
-RETURNS TABLE(a_time NUMERIC) AS $$
+RETURNS SETOF _time_trial_type AS $$
 DECLARE
     query            TEXT := _query($1);
     iterations       ALIAS FOR $2;
@@ -834,6 +835,7 @@ DECLARE
     offset_it        INT;
     limit_it         INT;
     offset_percent   NUMERIC;
+    a_time	     _time_trial_type;
 BEGIN
     -- Execute the query over and over
     FOR i IN 1..iterations LOOP
@@ -848,11 +850,13 @@ BEGIN
     -- Ensure that with limit the query to returning only the middle X% of runs
     SELECT GREATEST((return_percent * iterations)::int, 1) INTO limit_it;
 
-    RETURN QUERY SELECT *
-                  FROM (select unnest(times) AS a_time) t2
-                  ORDER BY a_time
+    FOR a_time IN SELECT times[i]
+		  FROM generate_series(array_lower(times, 1), array_upper(times, 1)) i
+                  ORDER BY 1
                   OFFSET offset_it
-                  LIMIT limit_it;
+                  LIMIT limit_it LOOP
+	RETURN NEXT a_time;
+    END LOOP;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -866,7 +870,7 @@ DECLARE
     descr          ALIAS FOR $5;
     avg_time       NUMERIC;
 BEGIN
-  select avg(a_time) from _time_trials(query, iterations, 0.8) t1 INTO avg_time;
+  SELECT avg(a_time) FROM _time_trials(query, iterations, 0.8) t1 INTO avg_time;
   IF abs(avg_time - expected_avg) < within THEN RETURN ok(TRUE, descr); END IF;
   RETURN ok(FALSE, descr) || E'\n' || diag(' average runtime: ' || avg_time || ' ms'
      || E'\n desired average: ' || expected_avg || ' +/- ' || within || ' ms'
