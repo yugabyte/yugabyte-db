@@ -38,6 +38,8 @@ extern int no_such_variable
 #endif
 #endif
 
+extern char *nls_date_format;
+
 /* from aggregate.c */
 extern PGDLLEXPORT Datum orafce_listagg1_transfn(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_listagg2_transfn(PG_FUNCTION_ARGS);
@@ -81,6 +83,7 @@ extern PGDLLEXPORT Datum next_day_by_index(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum last_day(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum months_between(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum add_months(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum ora_to_date(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_date_trunc(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_date_round(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_timestamptz_trunc(PG_FUNCTION_ARGS);
@@ -246,4 +249,6 @@ extern PGDLLEXPORT Datum dbms_random_value_range(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_utility_format_call_stack0(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
 
+/* from oraguc.c */
+extern void PGDLLEXPORT _PG_init(void);
 #endif

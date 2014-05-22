@@ -154,10 +154,10 @@ LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_number(text) IS 'Convert string to number';
 
 CREATE FUNCTION pg_catalog.to_date(str text)
-RETURNS date
-AS $$ SELECT $1::date; $$
-LANGUAGE sql IMMUTABLE STRICT;
-COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to date';
+RETURNS timestamp
+AS 'MODULE_PATHNAME','ora_to_date'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
 
 CREATE FUNCTION to_multi_byte(str text)
 RETURNS text

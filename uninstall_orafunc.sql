@@ -1,6 +1,7 @@
 DROP FUNCTION pg_catalog.trunc(value date, fmt text);
 DROP FUNCTION pg_catalog.round(value date, fmt text);
 DROP FUNCTION pg_catalog.next_day(value date, weekday text);
+DROP FUNCTION pg_catalog.next_day(value date, weekday integer);
 DROP FUNCTION pg_catalog.last_day(value date);
 DROP FUNCTION pg_catalog.months_between(date1 date, date2 date);
 DROP FUNCTION pg_catalog.add_months(day date, value int);
@@ -23,7 +24,6 @@ DROP FUNCTION pg_catalog.to_char(num double precision);
 DROP FUNCTION pg_catalog.to_char(num numeric);
 DROP FUNCTION pg_catalog.to_number(str text);
 DROP FUNCTION pg_catalog.to_date(str text);
-DROP FUNCTION pg_catalog.reverse(str text);
 DROP FUNCTION pg_catalog.lnnvl(bool);
 
 DROP AGGREGATE pg_catalog.listagg(text);
@@ -50,17 +50,6 @@ DROP VIEW public.dual CASCADE;
 
 DROP FUNCTION nvl(anyelement, anyelement);
 DROP FUNCTION nvl2(anyelement, anyelement, anyelement);
-
-DROP FUNCTION concat(text, text);
-DROP FUNCTION concat(text, anyarray);
-DROP FUNCTION concat(anyarray, text);
-DROP FUNCTION concat(anyarray, anyarray);
-DROP FUNCTION concat(text, anynonarray);
-DROP FUNCTION concat(anynonarray, text);
-DROP FUNCTION concat(anynonarray, anynonarray);
-DROP FUNCTION concat(text, anyelement);
-DROP FUNCTION concat(anyelement, text);
-DROP FUNCTION concat(anyelement, anyelement);
 
 DROP FUNCTION bitand(bigint, bigint);
 DROP FUNCTION sinh(float8);
@@ -126,7 +115,6 @@ DROP FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestampt
 DROP FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz);
 DROP FUNCTION decode(anyelement, anyelement, timestamptz, anyelement, timestamptz, anyelement, timestamptz, timestamptz);
 
-DROP FUNCTION dbms_random.initialize();
 DROP FUNCTION dbms_random.normal();
 DROP FUNCTION dbms_random.random();
 DROP FUNCTION dbms_random.seed(integer);

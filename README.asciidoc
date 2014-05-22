@@ -72,6 +72,20 @@ year. The 16th of July will be rounded to August.
 ----
 	round(date '2005-07-12', 'yyyy') -> 2006-01-01
 ----
+* to_date(text) timestamp - will typecast input text to timestamp.
+ The GUC orafce.nls_date_format is used to specify input text format for this function.
+ If the value is left blank or set as DEFAULT then input text format according to
+ PostgreSQL's datestyle GUC setting.
++
+	orafce.nls_date_format value to DEFAULT
+----
+	to_date('2014-05-19 17:23:53+5:30') -> 2014-05-19 17:23:53
+----
++
+   orafce.nls_date_format="YYYY-MMDD HH24:MI:SS"
+----
+	to_date('2014-0519 17:23:53+5:30')  -> 2014-05-19 17:23:53
+----
 
 == Table dual
 

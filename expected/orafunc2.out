@@ -1970,9 +1970,9 @@ SELECT to_number('123.456'::text);
 (1 row)
 
 SELECT to_date('2009-01-02');
-  to_date   
-------------
- 2009-01-02
+       to_date       
+---------------------
+ 2009-01-02 00:00:00
 (1 row)
 
 SELECT bitand(5,1), bitand(5,2), bitand(5,4);
@@ -2277,90 +2277,118 @@ select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','mi') = '1990-12-08 0
 -- Tests for to_date
 SET DATESTYLE TO SQL, MDY;
 SELECT to_date('2009-01-02');
-  to_date   
-------------
- 01/02/2009
+       to_date       
+---------------------
+ 01/02/2009 00:00:00
 (1 row)
 
 select to_date('January 8,1999');
-  to_date   
-------------
- 01/08/1999
+       to_date       
+---------------------
+ 01/08/1999 00:00:00
 (1 row)
 
 SET DATESTYLE TO POSTGRES, MDY;
 select to_date('1999-01-08');
-  to_date   
-------------
- 01-08-1999
+         to_date          
+--------------------------
+ Fri Jan 08 00:00:00 1999
 (1 row)
 
 select to_date('1/12/1999');
-  to_date   
-------------
- 01-12-1999
+         to_date          
+--------------------------
+ Tue Jan 12 00:00:00 1999
 (1 row)
 
 SET DATESTYLE TO SQL, DMY;
 select to_date('01/02/03');
-  to_date   
-------------
- 01/02/2003
+       to_date       
+---------------------
+ 01/02/2003 00:00:00
 (1 row)
 
 select to_date('1999-Jan-08');
-  to_date   
-------------
- 08/01/1999
+       to_date       
+---------------------
+ 08/01/1999 00:00:00
 (1 row)
 
 select to_date('Jan-08-1999');
-  to_date   
-------------
- 08/01/1999
+       to_date       
+---------------------
+ 08/01/1999 00:00:00
 (1 row)
 
 select to_date('08-Jan-1999');
-  to_date   
-------------
- 08/01/1999
+       to_date       
+---------------------
+ 08/01/1999 00:00:00
 (1 row)
 
 SET DATESTYLE TO ISO, YMD;
 select to_date('99-Jan-08');
-  to_date   
-------------
- 1999-01-08
+       to_date       
+---------------------
+ 1999-01-08 00:00:00
 (1 row)
 
 SET DATESTYLE TO ISO, DMY;
 select to_date('08-Jan-99');
-  to_date   
-------------
- 1999-01-08
+       to_date       
+---------------------
+ 1999-01-08 00:00:00
 (1 row)
 
 select to_date('Jan-08-99');
-  to_date   
-------------
- 1999-01-08
+       to_date       
+---------------------
+ 1999-01-08 00:00:00
 (1 row)
 
 select to_date('19990108');
-  to_date   
-------------
- 1999-01-08
+       to_date       
+---------------------
+ 1999-01-08 00:00:00
 (1 row)
 
 select to_date('990108');
-  to_date   
-------------
- 1999-01-08
+       to_date       
+---------------------
+ 1999-01-08 00:00:00
 (1 row)
 
 select to_date('J2451187');
-  to_date   
-------------
- 1999-01-08
+       to_date       
+---------------------
+ 1999-01-08 00:00:00
+(1 row)
+
+set orafce.nls_date_format="YY-MonDD HH24:MI:SS";
+select to_date('14-Jan08 11:44:49+05:30');
+       to_date       
+---------------------
+ 2014-01-08 11:44:49
+(1 row)
+
+set orafce.nls_date_format="YY-DDMon HH24:MI:SS";
+select to_date('14-08Jan 11:44:49+05:30');
+       to_date       
+---------------------
+ 2014-01-08 11:44:49
+(1 row)
+
+set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+select to_date('21052014 12:13:44+05:30');
+       to_date       
+---------------------
+ 2014-05-21 12:13:44
+(1 row)
+
+set orafce.nls_date_format="DDMMYY HH24:MI:SS";
+select to_date('210514 12:13:44+05:30');
+       to_date       
+---------------------
+ 2014-05-21 12:13:44
 (1 row)
 

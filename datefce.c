@@ -4,6 +4,7 @@
 #include "utils/builtins.h"
 #include "utils/nabstime.h"
 #include "utils/numeric.h"
+#include "utils/formatting.h"
 #include <sys/time.h>
 #include "orafunc.h"
 #include "builtins.h"
@@ -105,6 +106,7 @@ PG_FUNCTION_INFO_V1(next_day_by_index);
 PG_FUNCTION_INFO_V1(last_day);
 PG_FUNCTION_INFO_V1(months_between);
 PG_FUNCTION_INFO_V1(add_months);
+PG_FUNCTION_INFO_V1(ora_to_date);
 PG_FUNCTION_INFO_V1(ora_date_trunc);
 PG_FUNCTION_INFO_V1(ora_date_round);
 PG_FUNCTION_INFO_V1(ora_timestamptz_trunc);
@@ -566,6 +568,43 @@ _ora_date_round(DateADT day, int f)
 	return result;
 }
 
+/********************************************************************
+ *
+ * ora_to_date
+ *
+ * Syntax:
+ *
+ * timestamp to_date(text date_txt)
+ *
+ * Purpose:
+ *
+ * Returns date and time format w.r.t NLS_DATE_FORMAT GUC
+ *
+ ********************************************************************/
+
+Datum ora_to_date(PG_FUNCTION_ARGS)
+{
+	text *date_txt = PG_GETARG_TEXT_P(0);
+	Timestamp newDate, result;
+
+	if(nls_date_format && strlen(nls_date_format))
+	{
+		/* it will return timestamp at GMT */
+		newDate = DirectFunctionCall2(to_timestamp,
+											CStringGetDatum(date_txt),
+											CStringGetDatum(
+											cstring_to_text(nls_date_format)));
+		/* convert to local timestamp */
+		result = DirectFunctionCall1(timestamptz_timestamp, newDate);
+	}
+	else
+		result = DirectFunctionCall3(timestamp_in,
+									CStringGetDatum(text_to_cstring(date_txt)),
+									ObjectIdGetDatum(InvalidOid),
+									Int32GetDatum(-1));
+
+	PG_RETURN_TIMESTAMP(result);
+}
 
 /********************************************************************
  *
