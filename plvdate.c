@@ -166,11 +166,7 @@ cultural_info defaults_ci[] = {
 	{SUNDAY | SATURDAY, false, usa_holidays, 10}
 };
 
-#if PG_VERSION_NUM >= 90400
-static const char *states[] = {
-#else
-static char *states[] = {
-#endif
+STRING_PTR_FIELD_TYPE states[] = {
 	"Czech", "Germany", "Poland",
 	"Austria", "Slovakia", "Russia",
 	"Gb", "Usa",
