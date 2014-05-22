@@ -59,10 +59,12 @@ weekday_search(const WeekDays *weekdays, const char *str, int len)
  */
 
 #if PG_VERSION_NUM >= 90400
-extern PGDLLIMPORT const char *const days[];
+#define STRING_PTR_FIELD_TYPE const char *const
 #else
-extern PGDLLIMPORT char *days[];
+#define STRING_PTR_FIELD_TYPE char *
 #endif
+
+extern PGDLLIMPORT STRING_PTR_FIELD_TYPE days[];
 extern PGDLLIMPORT pg_tz *session_timezone;
 
 #define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:
@@ -78,7 +80,9 @@ extern PGDLLIMPORT pg_tz *session_timezone;
 #define CASE_fmt_HH	case 27: case 28: case 29:
 #define CASE_fmt_MI	case 30:
 
-char *date_fmt[] =
+
+
+STRING_PTR_FIELD_TYPE date_fmt[] =
 {
 	"Y", "Yy", "Yyy", "Yyyy", "Year", "Syyyy", "syear",
 	"I", "Iy", "Iyy", "Iyyy",
@@ -116,10 +120,11 @@ PG_FUNCTION_INFO_V1(ora_timestamptz_round);
  * Search const value in char array
  *
  */
-int ora_seq_search(const char *name, /*const*/ char **array, int max);
+
+extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 int
-ora_seq_search(const char *name, /*const*/ char **array, int max)
+ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max)
 {
 	int		i;
 
@@ -136,7 +141,7 @@ ora_seq_search(const char *name, /*const*/ char **array, int max)
 }
 
 static int
-ora_seq_prefix_search(const char *name, /*const*/ char **array, int max)
+ora_seq_prefix_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max)
 {
 	int		i;
 

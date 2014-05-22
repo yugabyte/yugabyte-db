@@ -138,7 +138,14 @@ message_buffer *output_buffer = NULL;
 message_buffer *input_buffer = NULL;
 
 pipe* pipes = NULL;
+
+#if PG_VERSION_NUM >= 90400
+LWLockId shmem_lock = NULL;
+#else
+#define NOT_INITIALIZED -1
 LWLockId shmem_lock = NOT_INITIALIZED;
+#endif
+
 unsigned int sid;                                 /* session id */
 
 extern alert_event *events;

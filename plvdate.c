@@ -29,12 +29,15 @@
 /*
  * External (defined in PgSQL datetime.c (timestamp utils))
  */
-
 #if PG_VERSION_NUM >= 90400
-extern PGDLLIMPORT const char *const days[];
+#define STRING_PTR_FIELD_TYPE const char *const
 #else
-extern PGDLLIMPORT char *days[];
+#define STRING_PTR_FIELD_TYPE char *
 #endif
+
+extern PGDLLIMPORT STRING_PTR_FIELD_TYPE days[];
+
+extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);
@@ -70,7 +73,6 @@ do { \
               }                                                      \
 } while (0)
 
-extern int ora_seq_search(const char *name, /*const*/ char **array, int max);
 
 #define SUNDAY     (1 << 0)
 #define SATURDAY   (1 << 6)
@@ -164,7 +166,11 @@ cultural_info defaults_ci[] = {
 	{SUNDAY | SATURDAY, false, usa_holidays, 10}
 };
 
+#if PG_VERSION_NUM >= 90400
+static const char *states[] = {
+#else
 static char *states[] = {
+#endif
 	"Czech", "Germany", "Poland",
 	"Austria", "Slovakia", "Russia",
 	"Gb", "Usa",
