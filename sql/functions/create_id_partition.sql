@@ -27,6 +27,7 @@ v_revoke            text[];
 v_sql               text;
 v_step_id           bigint;
 v_tablename         text;
+v_unlogged          char;
 
 BEGIN
 
@@ -71,8 +72,13 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_id||' to '||(v_id + v_part_interval)-1);
     END IF;
 
-    v_sql := 'CREATE TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
-    SELECT relhasoids INTO v_hasoids FROM pg_class WHERE oid::regclass = p_parent_table::regclass;
+    SELECT relpersistence INTO v_unlogged FROM pg_catalog.pg_class WHERE oid::regclass = p_parent_table::regclass;
+    v_sql := 'CREATE';
+    IF v_unlogged = 'u' THEN
+        v_sql := v_sql || ' UNLOGGED';
+    END IF;
+    v_sql := v_sql || ' TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
+    SELECT relhasoids INTO v_hasoids FROM pg_catalog.pg_class WHERE oid::regclass = p_parent_table::regclass;
     IF v_hasoids IS TRUE THEN
         v_sql := v_sql || ' WITH (OIDS)';
     END IF;
@@ -111,6 +117,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
     EXECUTE 'ALTER TABLE '||v_partition_name||' OWNER TO '||v_parent_owner;
 
+    PERFORM @extschema@.apply_foreign_keys(quote_ident(v_parent_schema)||'.'||quote_ident(v_parent_tablename), v_partition_name);
+
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
         PERFORM close_job(v_job_id);
@@ -143,5 +151,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

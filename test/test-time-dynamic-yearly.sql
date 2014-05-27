@@ -1,4 +1,5 @@
 -- ########## TIME DYNAMIC TESTS ##########
+-- Other tests: Multi-column foreign key
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,13 +7,22 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(83);
+SELECT plan(90);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE TABLE partman_test.time_dynamic_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
+CREATE TABLE partman_test.fk_test_reference (col2 text not null, col4 text not null);
+CREATE UNIQUE INDEX ON partman_test.fk_test_reference(col2, col4);
+INSERT INTO partman_test.fk_test_reference VALUES ('stuff', 'stuff');
+
+CREATE TABLE partman_test.time_dynamic_table (
+    col1 int primary key
+    , col2 text not null default 'stuff'
+    , col3 timestamptz NOT NULL DEFAULT now()
+    , col4 text not null default 'stuff'
+    , FOREIGN KEY (col2, col4) REFERENCES partman_test.fk_test_reference(col2, col4));
 INSERT INTO partman_test.time_dynamic_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.time_dynamic_table TO partman_revoke;
@@ -39,6 +49,16 @@ SELECT col_is_pk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTA
     'Check for primary key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'));
 SELECT col_is_pk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'), ARRAY['col1'], 
     'Check for primary key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
@@ -95,6 +115,8 @@ SELECT hasnt_table('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMES
     'Check time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' exists');
 SELECT col_is_pk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), ARRAY['col1'], 
     'Check for primary key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_basic', 
@@ -124,6 +146,8 @@ SELECT hasnt_table('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMES
     'Check time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY')||' exists');
 SELECT col_is_pk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), ARRAY['col1'], 
     'Check for primary key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT col_is_fk('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), ARRAY['col2', 'col4'], 
+    'Check for inherited foreign key in time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_dynamic_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_basic', 

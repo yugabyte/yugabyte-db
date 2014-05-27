@@ -39,38 +39,44 @@ def get_partman_schema(conn):
 def turn_off_autovacuum(conn, partman_schema):
     cur = conn.cursor()
     sql = "ALTER TABLE " + args.parent + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
+    if not args.quiet:
+        print("Attempting to turn off autovacuum for partition set...")
     if args.debug:
-        print cur.mogrify(sql)
+        print(cur.mogrify(sql))
     cur.execute(sql)
     sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
     if args.debug:
-        print cur.mogrify(sql, [args.parent])
+        print(cur.mogrify(sql, [args.parent]))
     cur.execute(sql, [args.parent])
     result = cur.fetchall()
     for r in result:
         sql = "ALTER TABLE " + r[0] + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
         if args.debug:
-            print cur.mogrify(sql)
+            print(cur.mogrify(sql))
         cur.execute(sql)
+    print("\t... Success!")
     cur.close()
 
 
 def reset_autovacuum(conn, table):
     cur = conn.cursor()
     sql = "ALTER TABLE " + args.parent + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
+    if not args.quiet:
+        print("Attempting to reset autovacuum for old parent table...")
     if args.debug:
-        print cur.mogrify(sql)
+        print(cur.mogrify(sql))
     cur.execute(sql)
     sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
     if args.debug:
-        print cur.mogrify(sql, [args.parent])
+        print(cur.mogrify(sql, [args.parent]))
     cur.execute(sql, [args.parent])
     result = cur.fetchall()
     for r in result:
         sql = "ALTER TABLE " + r[0] + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
         if args.debug:
-            print cur.mogrify(sql)
+            print(cur.mogrify(sql))
         cur.execute(sql)
+    print("\t... Success!")
     cur.close()
 
 
@@ -78,9 +84,9 @@ def vacuum_parent(conn):
     cur = conn.cursor()
     sql = "VACUUM ANALYZE " + args.parent
     if args.debug:
-        print cur.mogrify(sql)
+        print(cur.mogrify(sql))
     if not args.quiet:
-        print "Running vacuum analyze on parent table..."
+        print("Running vacuum analyze on parent table...")
     cur.execute(sql)
     cur.close()
 
@@ -104,24 +110,24 @@ def partition_data(conn, partman_schema):
         else:
             li = [args.parent, args.lockwait, args.order]
         if args.debug:
-            print cur.mogrify(sql, li)
+            print(cur.mogrify(sql, li))
         cur.execute(sql, li)
         result = cur.fetchone()
         if not args.quiet:
             if result[0] > 0:
-                print "Rows moved: " + str(result[0])
+                print("Rows moved: " + str(result[0]))
             elif result[0] == -1:
-                print "Unable to obtain lock, trying again"
+                print("Unable to obtain lock, trying again")
+                print(conn.notices[-1])
         # if lock wait timeout, do not increment the counter
-        if result[0] <> -1:
+        if result[0] != -1:
             batch_count += 1
             total += result[0]
             lockwait_count = 0
         else:
             lockwait_count += 1
             if lockwait_count > args.lockwait_tries:
-                print "quitting due to inability to get lock on next rows to be moved"
-                print "total rows moved: %d" % total
+                print("Quitting due to inability to get lock on next rows to be moved")
                 break
         # If no rows left or given batch argument limit is reached
         if (result[0] == 0) or (args.batch > 0 and batch_count >= int(args.batch)):
@@ -132,7 +138,6 @@ def partition_data(conn, partman_schema):
 
 if __name__ == "__main__":
     conn = create_conn()
-    cur = conn.cursor()
     partman_schema = get_partman_schema(conn)
 
     if not args.autovacuum_on:
@@ -141,7 +146,7 @@ if __name__ == "__main__":
     total = partition_data(conn, partman_schema)
 
     if not args.quiet:
-        print "Total rows moved: %d" % total
+        print("Total rows moved: %d" % total)
 
     vacuum_parent(conn)
 

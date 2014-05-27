@@ -1,3 +1,16 @@
+1.7.1
+-- Foreign keys placed on the parent table are now inherited to child tables.
+    -- Any new partitions created after this update is installed will have the FKs applied to children.
+    -- Existing child partitions will not have FKs applied. See the reapply_foreign_keys.py python script to reapply FKs to all child tables.
+    -- The new apply_foreign_keys() function & reapply_foreign_keys.py script can be applied to any table inheritance set, not just the ones managed by pg_partman.
+    -- See blog post for some more information about partitioning & foreign keys - http://www.keithf4.com/table-partitioning-and-foreign-keys
+-- Unlogged table property on parent table is now automatically inherited to child tables. Note this only applies to newly created child partitions after this update is installed.
+-- Added lockwait options to the undo partition functions (plpgsql & python)
+-- Added the same autovacuum feature & option to undo_partition.py that partition_data.py has.
+-- Made python scripts compatible with python 3
+-- PgTAP tests for unlogged tables and FK inheritance
+
+
 1.7.0
 -- New configuration option to allow serial partitioning to use run_maintenance() instead of creating next partition via trigger.
     -- Use "p_use_run_maintenance" argument to create_parent() to set this during partition creation.

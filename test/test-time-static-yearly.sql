@@ -1,4 +1,5 @@
 -- ########## TIME STATIC TESTS ##########
+-- Other tests: UNLOGGED
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,14 +7,14 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(129);
+SELECT plan(137);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE TABLE partman_test.time_static_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
+CREATE UNLOGGED TABLE partman_test.time_static_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_static_table TO partman_basic;
 GRANT ALL ON partman_test.time_static_table TO partman_revoke;
@@ -40,6 +41,13 @@ SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAM
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY')||' exists');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'5 years'::interval, 'YYYY'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'5 years'::interval, 'YYYY')||' does not exist');
+
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table''::regclass', ARRAY['u'], 'Check that parent table is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||' is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY')||' is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')||' is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY')||' is unlogged');
 
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
@@ -158,6 +166,7 @@ INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(
 
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||' exists');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||' is unlogged');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' exists');
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), ARRAY['col1'], 
@@ -212,6 +221,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_p'||
 
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
     'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' exists');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||'''::regclass', ARRAY['u'], 'Check that partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' is unlogged');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 
     'Check time_static_table_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY')||' exists');
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), ARRAY['col1'], 

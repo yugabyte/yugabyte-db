@@ -1,4 +1,5 @@
 -- ########## ID DYNAMIC TESTS ##########
+-- Additional tests: UNLOGGED
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,13 +7,13 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(102);
+SELECT plan(111);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE TABLE partman_test.id_dynamic_table (col1 int primary key, col2 text, col3 timestamptz DEFAULT now());
+CREATE UNLOGGED TABLE partman_test.id_dynamic_table (col1 int primary key, col2 text, col3 timestamptz DEFAULT now());
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.id_dynamic_table TO partman_revoke;
@@ -39,6 +40,12 @@ SELECT table_privs_are('partman_test', 'id_dynamic_table_p10', 'partman_revoke',
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p20', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_p20');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p30', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_p30');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p40', 'partman_revoke', ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'], 'Check partman_revoke privileges of id_dynamic_table_p40');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table''::regclass', ARRAY['u'], 'Check that parent table is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p0''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p0 is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p10''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p10 is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p20''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p20 is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p30''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p30 is unlogged');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p40''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p40 is unlogged');
 
 SELECT results_eq('SELECT partition_data_id(''partman_test.id_dynamic_table'')::int', ARRAY[9], 'Check that partitioning function returns correct count of rows moved');
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_dynamic_table', 'Check that parent table has had data moved to partition');
@@ -53,6 +60,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p10',
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p20', ARRAY[6], 'Check count from id_dynamic_table_p20');
 
 SELECT has_table('partman_test', 'id_dynamic_table_p50', 'Check id_dynamic_table_p50 exists');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p50''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p50 is unlogged');
 SELECT hasnt_table('partman_test', 'id_dynamic_table_p60', 'Check id_dynamic_table_p60 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p50', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p50');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p0', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p0');
@@ -74,7 +82,9 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p20',
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_dynamic_table_p30', ARRAY[9], 'Check count from id_dynamic_table_p30');
 
 SELECT has_table('partman_test', 'id_dynamic_table_p60', 'Check id_dynamic_table_p60 exists');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p60''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p60 is unlogged');
 SELECT has_table('partman_test', 'id_dynamic_table_p70', 'Check id_dynamic_table_p70 exists');
+SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p70''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p70 is unlogged');
 SELECT hasnt_table('partman_test', 'id_dynamic_table_p80', 'Check id_dynamic_table_p80 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p60', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p60');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p70', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p70');

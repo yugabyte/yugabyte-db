@@ -2,7 +2,7 @@
  * Function to undo partitioning. 
  * Will actually work on any parent/child table set, not just ones created by pg_partman.
  */
-CREATE FUNCTION undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true, p_jobmon boolean DEFAULT true) RETURNS bigint
+CREATE FUNCTION undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -15,6 +15,8 @@ v_copy_sql              text;
 v_function_name         text;
 v_job_id                bigint;
 v_jobmon_schema         text;
+v_lock_iter             int := 1;
+v_lock_obtained         boolean := FALSE;
 v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
@@ -52,7 +54,33 @@ UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = 
 SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
 v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
-EXECUTE 'DROP TRIGGER IF EXISTS '||v_trig_name||' ON '||p_parent_table;
+
+SELECT tgname INTO v_trig_name FROM pg_catalog.pg_trigger t WHERE tgname = v_trig_name;
+IF v_trig_name IS NOT NULL THEN
+    -- lockwait for trigger drop
+    IF p_lock_wait > 0  THEN
+        v_lock_iter := 0;
+        WHILE v_lock_iter <= 5 LOOP
+            v_lock_iter := v_lock_iter + 1;
+            BEGIN
+                EXECUTE 'LOCK TABLE ONLY '||p_parent_table||' IN ACCESS EXCLUSIVE MODE NOWAIT';
+                v_lock_obtained := TRUE;
+            EXCEPTION
+                WHEN lock_not_available THEN
+                    PERFORM pg_sleep( p_lock_wait / 5.0 );
+                    CONTINUE;
+            END;
+            EXIT WHEN v_lock_obtained;
+        END LOOP;
+        IF NOT v_lock_obtained THEN
+            RAISE NOTICE 'Unable to obtain lock on parent table to remove trigger';
+            RETURN -1;
+        END IF;
+    END IF; -- END p_lock_wait IF
+    EXECUTE 'DROP TRIGGER IF EXISTS '||v_trig_name||' ON '||p_parent_table;
+END IF; -- END trigger IF
+v_lock_obtained := FALSE; -- reset for reuse later
+
 EXECUTE 'DROP FUNCTION IF EXISTS '||v_function_name||'()';
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -72,6 +100,29 @@ WHILE v_batch_loop_count < p_batch_count LOOP
     EXECUTE 'SELECT count(*) FROM '||v_child_table INTO v_child_count;
     IF v_child_count = 0 THEN
         -- No rows left in this child table. Remove from partition set.
+
+        -- lockwait timeout for table drop
+        IF p_lock_wait > 0  THEN
+            v_lock_iter := 0;
+            WHILE v_lock_iter <= 5 LOOP
+                v_lock_iter := v_lock_iter + 1;
+                BEGIN
+                    EXECUTE 'LOCK TABLE ONLY '||v_child_table||' IN ACCESS EXCLUSIVE MODE NOWAIT';
+                    v_lock_obtained := TRUE;
+                EXCEPTION
+                    WHEN lock_not_available THEN
+                        PERFORM pg_sleep( p_lock_wait / 5.0 );
+                        CONTINUE;
+                END;
+                EXIT WHEN v_lock_obtained;
+            END LOOP;
+            IF NOT v_lock_obtained THEN
+                RAISE NOTICE 'Unable to obtain lock on child table for removal from partition set';
+                RETURN -1;
+            END IF;
+        END IF; -- END p_lock_wait IF
+        v_lock_obtained := FALSE; -- reset for reuse later
+
         EXECUTE 'ALTER TABLE '||v_child_table||' NO INHERIT ' || p_parent_table;
         IF p_keep_table = false THEN
             EXECUTE 'DROP TABLE '||v_child_table;
@@ -91,6 +142,27 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         v_step_id := add_step(v_job_id, 'Removing child partition: '||v_child_table);
     END IF;
    
+    -- do some locking with timeout, if required
+    IF p_lock_wait > 0  THEN
+        v_lock_iter := 0;
+        WHILE v_lock_iter <= 5 LOOP
+            v_lock_iter := v_lock_iter + 1;
+            BEGIN
+                EXECUTE 'SELECT * FROM '|| v_child_table ||' FOR UPDATE NOWAIT';
+                v_lock_obtained := TRUE;
+            EXCEPTION
+                WHEN lock_not_available THEN
+                    PERFORM pg_sleep( p_lock_wait / 5.0 );
+                    CONTINUE;
+            END;
+            EXIT WHEN v_lock_obtained;
+        END LOOP;
+        IF NOT v_lock_obtained THEN
+           RAISE NOTICE 'Unable to obtain lock on batch of rows to move';
+           RETURN -1;
+        END IF;
+    END IF;
+
     v_copy_sql := 'INSERT INTO '||p_parent_table||' SELECT * FROM '||v_child_table;
     EXECUTE v_copy_sql;
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
@@ -148,4 +220,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

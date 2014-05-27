@@ -18,7 +18,7 @@ parser.add_argument('-v','--verbose', action="store_true", help="Provide more ve
 args = parser.parse_args()
 
 if not os.path.exists(args.output):
-    print "Path given by --output (-o) does not exist: " + str(args.output)
+    print("Path given by --output (-o) does not exist: " + str(args.output))
     sys.exit(2)
 
 
@@ -57,11 +57,11 @@ def perform_dump(result):
         processcmd.append(args.dump_database)
     
     if args.verbose:
-        print processcmd 
+        print(processcmd)
     try:
         subprocess.check_call(processcmd)
-    except subprocess.CalledProcessError, e:
-        print "Error in pg_dump command: " + str(e.cmd)
+    except subprocess.CalledProcessError as e:
+        print("Error in pg_dump command: " + str(e.cmd))
         sys.exit(2)
 
     return table_name 
@@ -77,18 +77,18 @@ def create_hash(table_name):
                 if not data:
                     break
                 shash.update(data)
-    except IOError, (ErrorNo, ErrorMsg):
-        print "Cannot access dump file for hash creation: " + ErrorMsg
+    except IOError as e:
+        print("Cannot access dump file for hash creation: " + e.strerror)
         sys.exit(2)
 
     hash_file = os.path.join(args.output, args.schema + "." + table_name + ".hash")
     if args.verbose:
-        print "hash_file: " + hash_file
+        print("hash_file: " + hash_file)
     try:
         with open(hash_file, "w") as fh:
             fh.write(shash.hexdigest() + "  " + os.path.basename(output_file))
-    except IOError, (ErroNo, ErrorMsg):
-        print "Unable to write to hash file: " + ErrorMsg
+    except IOError as e:
+        print("Unable to write to hash file: " + e.strerror)
         sys.exit(2)
 
 
@@ -96,7 +96,7 @@ def drop_table(table_name):
     conn = psycopg2.connect(args.connection)
     cur = conn.cursor()
     sql = "DROP TABLE IF EXISTS " + args.schema + "." + table_name;
-    print sql 
+    print(sql)
     cur.execute(sql)
     conn.commit()
     cur.close()

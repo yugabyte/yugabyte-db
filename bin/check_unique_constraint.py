@@ -36,7 +36,7 @@ cur.execute(sql)
 cur.close()
 cur = conn.cursor()
 if not args.quiet:
-    print "Dumping out column data to temp file..."
+    print("Dumping out column data to temp file...")
 cur.copy_to(fh, args.parent, sep=",", columns=args.column_list.split(","))
 conn.rollback()
 conn.close()
@@ -44,21 +44,21 @@ fh.close()
 
 total_count = 0
 if not args.quiet:
-    print "Checking for dupes..."
+    print("Checking for dupes...")
 with open(tmp_copy_file.name) as infile:
     counts = collections.Counter(l.strip() for l in infile)
 for line, count in counts.most_common():
     if count > 1:
         if not args.simple:
-            print str(line) + ": " + str(count)
+            print(str(line) + ": " + str(count))
         total_count += count
 
 if args.simple:
     if total_count > 0:
-        print total_count
+        print(total_count)
     elif not args.quiet:
-        print total_count
+        print(total_count)
 else:
     if total_count == 0 and not args.quiet:
-        print "No constraint violations found"
+        print("No constraint violations found")
 
