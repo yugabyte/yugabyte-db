@@ -595,18 +595,18 @@ Datum ora_to_date(PG_FUNCTION_ARGS)
 	if(nls_date_format && strlen(nls_date_format))
 	{
 		/* it will return timestamp at GMT */
-		newDate = DirectFunctionCall2(to_timestamp,
+		newDate = DatumGetTimestamp(DirectFunctionCall2(to_timestamp,
 											CStringGetDatum(date_txt),
 											CStringGetDatum(
-											cstring_to_text(nls_date_format)));
+											cstring_to_text(nls_date_format))));
 		/* convert to local timestamp */
-		result = DirectFunctionCall1(timestamptz_timestamp, newDate);
+		result = DatumGetTimestamp(DirectFunctionCall1(timestamptz_timestamp, newDate));
 	}
 	else
-		result = DirectFunctionCall3(timestamp_in,
+		result = DatumGetTimestamp(DirectFunctionCall3(timestamp_in,
 									CStringGetDatum(text_to_cstring(date_txt)),
 									ObjectIdGetDatum(InvalidOid),
-									Int32GetDatum(-1));
+									Int32GetDatum(-1)));
 
 	PG_RETURN_TIMESTAMP(result);
 }

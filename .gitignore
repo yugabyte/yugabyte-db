@@ -8,3 +8,5 @@
 /sqlparse.h
 /sqlscan.c
 /results
+expected/dbms_pipe_session_B.out
+expected/orafunc.out
