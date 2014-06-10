@@ -57,8 +57,7 @@ ELSE
 END IF;
 
 FOR v_row IN 
-    SELECT keys.conname
-        , keys.confrelid::regclass::text AS ref_table
+    SELECT n.nspname||'.'||cl.relname AS ref_table
         , '"'||string_agg(att.attname, '","')||'"' AS ref_column
         , '"'||string_agg(att2.attname, '","')||'"' AS child_column
     FROM
@@ -75,9 +74,10 @@ FOR v_row IN
           ORDER BY con.conkey
     ) keys
     JOIN pg_catalog.pg_class cl ON cl.oid = keys.confrelid
+    JOIN pg_catalog.pg_namespace n ON cl.relnamespace = n.oid
     JOIN pg_catalog.pg_attribute att ON att.attrelid = keys.confrelid AND att.attnum = keys.child
     JOIN pg_catalog.pg_attribute att2 ON att2.attrelid = keys.conrelid AND att2.attnum = keys.ref
-    GROUP BY keys.conname, keys.confrelid
+    GROUP BY keys.conname, n.nspname, cl.relname
 LOOP
     SELECT schemaname, tablename INTO v_ref_schema, v_ref_table FROM pg_tables WHERE schemaname||'.'||tablename = v_row.ref_table;
     v_sql := format('ALTER TABLE %I.%I ADD FOREIGN KEY (%s) REFERENCES %I.%I (%s)', 
@@ -115,5 +115,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

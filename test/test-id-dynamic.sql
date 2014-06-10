@@ -1,5 +1,5 @@
 -- ########## ID DYNAMIC TESTS ##########
--- Additional tests: UNLOGGED
+-- Additional tests: UNLOGGED, Make sure option to not inherit foreign keys works
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -7,18 +7,24 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(111);
+SELECT plan(119);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE UNLOGGED TABLE partman_test.id_dynamic_table (col1 int primary key, col2 text, col3 timestamptz DEFAULT now());
+CREATE TABLE partman_test.fk_test_reference (col2 text unique not null);
+INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
+
+CREATE UNLOGGED TABLE partman_test.id_dynamic_table (
+    col1 int primary key
+    , col2 text not null default 'stuff' references partman_test.fk_test_reference (col2)
+    , col3 timestamptz DEFAULT now());
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.id_dynamic_table TO partman_revoke;
 
-SELECT create_parent('partman_test.id_dynamic_table', 'col1', 'id-dynamic', '10');
+SELECT create_parent('partman_test.id_dynamic_table', 'col1', 'id-dynamic', '10', p_inherit_fk := false);
 SELECT has_table('partman_test', 'id_dynamic_table_p0', 'Check id_dynamic_table_p0 exists');
 SELECT has_table('partman_test', 'id_dynamic_table_p10', 'Check id_dynamic_table_p10 exists');
 SELECT has_table('partman_test', 'id_dynamic_table_p20', 'Check id_dynamic_table_p20 exists');
@@ -30,6 +36,11 @@ SELECT col_is_pk('partman_test', 'id_dynamic_table_p10', ARRAY['col1'], 'Check f
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p20', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p20');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p30', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p30');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p40', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p40');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p0', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p0');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p10', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p10');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p20', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p20');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p30', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p30');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p40', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p40');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p0', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p0');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p10', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p10');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p20', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p20');
@@ -63,6 +74,7 @@ SELECT has_table('partman_test', 'id_dynamic_table_p50', 'Check id_dynamic_table
 SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oid::regclass = ''partman_test.id_dynamic_table_p50''::regclass', ARRAY['u'], 'Check that id_dynamic_table_p50 is unlogged');
 SELECT hasnt_table('partman_test', 'id_dynamic_table_p60', 'Check id_dynamic_table_p60 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p50', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p50');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p50', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p50');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p0', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p0');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p10', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p10');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p20', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p20');
@@ -88,6 +100,8 @@ SELECT results_eq('SELECT relpersistence::text FROM pg_catalog.pg_class WHERE oi
 SELECT hasnt_table('partman_test', 'id_dynamic_table_p80', 'Check id_dynamic_table_p80 doesn''t exists yet');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p60', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p60');
 SELECT col_is_pk('partman_test', 'id_dynamic_table_p70', ARRAY['col1'], 'Check for primary key in id_dynamic_table_p70');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p60', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p60');
+SELECT col_isnt_fk('partman_test', 'id_dynamic_table_p70', 'col2', 'Check that foreign key was NOT inherited to id_dynamic_table_p70');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p0', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p0');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p10', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p10');
 SELECT table_privs_are('partman_test', 'id_dynamic_table_p20', 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 'Check partman_basic privileges of id_dynamic_table_p20');

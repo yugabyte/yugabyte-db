@@ -10,6 +10,7 @@ CREATE FUNCTION create_parent(
     , p_premake int DEFAULT 4
     , p_use_run_maintenance boolean DEFAULT NULL
     , p_start_partition text DEFAULT NULL
+    , p_inherit_fk boolean DEFAULT true
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS void
@@ -183,8 +184,28 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
         v_count := v_count + 1;        
     END LOOP;
 
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, datetime_string, use_run_maintenance, jobmon) VALUES
-        (p_parent_table, p_type, v_time_interval, p_control, p_premake, p_constraint_cols, v_datetime_string, v_run_maint, p_jobmon);
+    INSERT INTO @extschema@.part_config (
+        parent_table
+        , type
+        , part_interval
+        , control
+        , premake
+        , constraint_cols
+        , datetime_string
+        , use_run_maintenance
+        , inherit_fk
+        , jobmon) 
+    VALUES (
+        p_parent_table
+        , p_type
+        , v_time_interval
+        , p_control
+        , p_premake
+        , p_constraint_cols
+        , v_datetime_string
+        , v_run_maint
+        , p_inherit_fk
+        , p_jobmon);
     v_last_partition_name := @extschema@.create_time_partition(p_parent_table, v_partition_time_array);
     -- Doing separate update because create function requires in config table last_partition to be set
     UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
@@ -215,8 +236,26 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         v_partition_id = array_append(v_partition_id, (v_id_interval*i) + v_starting_partition_id);
     END LOOP;
 
-    INSERT INTO @extschema@.part_config (parent_table, type, part_interval, control, premake, constraint_cols, use_run_maintenance, jobmon) VALUES
-        (p_parent_table, p_type, v_id_interval, p_control, p_premake, p_constraint_cols, v_run_maint, p_jobmon);
+    INSERT INTO @extschema@.part_config (
+        parent_table
+        , type
+        , part_interval
+        , control
+        , premake
+        , constraint_cols
+        , use_run_maintenance
+        , inherit_fk
+        , jobmon) 
+    VALUES (
+        p_parent_table
+        , p_type
+        , v_id_interval
+        , p_control
+        , p_premake
+        , p_constraint_cols
+        , v_run_maint
+        , p_inherit_fk
+        , p_jobmon);
     v_last_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
     -- Doing separate update because create function needs parent table in config table for apply_grants()
     UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
@@ -274,5 +313,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

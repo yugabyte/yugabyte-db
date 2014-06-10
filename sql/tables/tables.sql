@@ -5,6 +5,7 @@ CREATE TABLE part_config (
     control text NOT NULL,
     constraint_cols text[],
     premake int NOT NULL DEFAULT 4,
+    inherit_fk boolean NOT NULL DEFAULT true,
     retention text,
     retention_schema text,
     retention_keep_table boolean NOT NULL DEFAULT true,

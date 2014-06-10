@@ -1,4 +1,5 @@
 -- ########## TIME STATIC TESTS ##########
+-- Other tests: Make sure option to not inherit foreign keys works
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,18 +7,27 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(128);
+SELECT plan(138);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;
 
-CREATE TABLE partman_test.time_static_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
+CREATE TABLE partman_test.fk_test_reference (col2 text not null);
+CREATE UNIQUE INDEX ON partman_test.fk_test_reference(col2);
+INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
+
+CREATE TABLE partman_test.time_static_table (
+    col1 int primary key
+    , col2 text not null default 'stuff'
+    , col3 timestamptz NOT NULL DEFAULT now()
+    , FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2));
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_static_table TO partman_basic;
 GRANT ALL ON partman_test.time_static_table TO partman_revoke;
 
-SELECT create_parent('partman_test.time_static_table', 'col3', 'time-static', 'monthly');
+SELECT create_parent('partman_test.time_static_table', 'col3', 'time-static', 'monthly', p_inherit_fk := false);
+--SELECT create_parent('partman_test.time_static_table', 'col3', 'time-static', 'monthly');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 'Check time_static_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM')||' exists');
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM')||' exists');
@@ -50,8 +60,6 @@ SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAM
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM'));
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 months'::interval, 'YYYY_MM'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 months'::interval, 'YYYY_MM'));
-SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), ARRAY['col1'], 
-    'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'));
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 month'::interval, 'YYYY_MM'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 month'::interval, 'YYYY_MM'));
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 months'::interval, 'YYYY_MM'), ARRAY['col1'], 
@@ -60,6 +68,24 @@ SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAM
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY_MM'));
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP+'2 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP+'4 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 month'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'1 month'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'2 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'));
 
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
@@ -161,6 +187,8 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMEST
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY_MM')||' exists');
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 months'::interval, 'YYYY_MM'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'5 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'5 months'::interval, 'YYYY_MM'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_static_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 months'::interval, 'YYYY_MM'), 
@@ -215,6 +243,8 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMEST
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP+'7 months'::interval, 'YYYY_MM')||' exists');
 SELECT col_is_pk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY_MM'), ARRAY['col1'], 
     'Check for primary key in time_static_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY_MM'));
+SELECT col_isnt_fk('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY_MM'), 'col2', 
+    'Check that foreign key was NOT inherited for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY_MM'));
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_static_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'));
 SELECT table_privs_are('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM'), 'partman_basic', 
@@ -327,6 +357,7 @@ SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TI
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY_MM'));
 SELECT table_owner_is ('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'), 'partman_owner', 
     'Check that ownership change worked for time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 months'::interval, 'YYYY_MM'));
+
 
 -- Currently unable to do drop_partition test reliably for monthly due to differing month lengths (sometimes drops 2 partitions instead of 1)
 SELECT undo_partition_time('partman_test.time_static_table', 20, p_keep_table := false);

@@ -5,7 +5,7 @@
 \set ON_ERROR_STOP true
 
 BEGIN;
-SELECT set_config('search_path','partman, public',false);
+SELECT set_config('search_path','partman, public, partman_test',false);
 
 SELECT plan(90);
 CREATE SCHEMA partman_test;

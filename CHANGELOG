@@ -1,3 +1,8 @@
+1.7.2
+-- Fixed bug in apply_foreign_keys() where new partition creation would fail when the partition set's schema is in the current search_path. Most commonly happened when partition sets with foreig keys were in public, but any schema in current search_path would cause this to manifest. Reported by Isaías Sánchez via my blog. (Github Issue #27)
+-- Foreign key inheritance is now optional since more complex FK relationships may not work ideally with pg_partman's default method. New configuration option in part_config table and parameter to create_parent().
+
+
 1.7.1
 -- Foreign keys placed on the parent table are now inherited to child tables.
     -- Any new partitions created after this update is installed will have the FKs applied to children.

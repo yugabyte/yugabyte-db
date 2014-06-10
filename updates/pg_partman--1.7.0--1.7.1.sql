@@ -1256,4 +1256,4 @@ BEGIN
 END
 $$;
 
-DROP TABLE partman_preserve_privs_temp;
+DROP TABLE IF EXISTS partman_preserve_privs_temp;

@@ -12,6 +12,7 @@ v_analyze                       boolean := FALSE;
 v_control                       text;
 v_grantees                      text[];
 v_hasoids                       boolean;
+v_inherit_fk                    boolean;
 v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
@@ -43,10 +44,12 @@ BEGIN
 SELECT type
     , control
     , part_interval
+    , inherit_fk
     , jobmon
 INTO v_type
     , v_control
     , v_part_interval
+    , v_inherit_fk
     , v_jobmon
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
@@ -170,7 +173,9 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     EXECUTE 'ALTER TABLE '||v_partition_name||' OWNER TO '||v_parent_owner;
 
-    PERFORM @extschema@.apply_foreign_keys(quote_ident(v_parent_schema)||'.'||quote_ident(v_parent_tablename), v_partition_name);
+    IF v_inherit_fk THEN
+        PERFORM @extschema@.apply_foreign_keys(quote_ident(v_parent_schema)||'.'||quote_ident(v_parent_tablename), v_partition_name);
+    END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
