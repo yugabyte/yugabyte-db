@@ -252,6 +252,57 @@ AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
+--can't overwrite PostgreSQL DATE data type!!!
+
+CREATE DOMAIN oracle.date AS timestamp(0);
+
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
+RETURNS timestamp AS $$
+SELECT $1 + interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, integer)
+RETURNS timestamp AS $$
+SELECT $1 - interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = INTEGER,
+  PROCEDURE = oracle.add_days_to_timestamp
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = INTEGER,
+  PROCEDURE = oracle.subtract
+);
+
+CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
+RETURNS TIMESTAMP
+AS $$ SELECT ($1 + interval '1' month * $2)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION oracle.last_day(TIMESTAMPTZ)
+RETURNS TIMESTAMP
+AS $$ SELECT (date_trunc('MONTH', $1) + INTERVAL '1 MONTH - 1 day' + $1::time)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE)
+RETURNS NUMERIC
+AS $$ SELECT pg_catalog.months_between($1::pg_catalog.date,$2::pg_catalog.date); $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.next_day(TIMESTAMP WITH TIME ZONE,INTEGER)
+RETURNS TIMESTAMP
+AS $$ SELECT (pg_catalog.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
+CREATE FUNCTION oracle.next_day(TIMESTAMP WITH TIME ZONE,TEXT)
+RETURNS TIMESTAMP
+AS $$ SELECT (pg_catalog.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
+LANGUAGE SQL IMMUTABLE STRICT;
+
 -- emulation of dual table
 CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;

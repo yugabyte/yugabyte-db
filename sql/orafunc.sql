@@ -27,6 +27,27 @@ SELECT add_months('03/21/2008',3);
 SELECT add_months('20080321',3);
 SELECT add_months('080321',3);
 
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT oracle.add_months ('2003-08-01 10:12:21', 3);
+SELECT oracle.add_months ('2003-08-01 10:21:21', -3);
+SELECT oracle.add_months ('2003-08-21 12:21:21', -3);
+SELECT oracle.add_months ('2003-01-31 01:12:45', 1);
+SELECT oracle.add_months ('2008-02-28 02:12:12', 1);
+SELECT oracle.add_months ('2008-02-29 12:12:12', 1);
+SELECT oracle.add_months ('2008-01-31 11:11:21', 12);
+SELECT oracle.add_months ('2008-01-31 11:21:21', -12);
+SELECT oracle.add_months ('2008-01-31 12:12:12', 95903);
+SELECT oracle.add_months ('2008-01-31 11:32:12', -80640);
+SELECT oracle.add_months ('03-21-2008 08:12:22',3);
+SELECT oracle.add_months ('21-MAR-2008 06:02:12',3);
+SELECT oracle.add_months ('21-MAR-08 12:11:22',3);
+SELECT oracle.add_months ('2008-MAR-21 11:32:43',3);
+SELECT oracle.add_months ('March 21,2008 12:32:12',3);
+SELECT oracle.add_months('03/21/2008 12:32:12',3);
+SELECT oracle.add_months('20080321 123244',3);
+SELECT oracle.add_months('080321 121212',3);
+SET search_path TO default;
+
 SELECT last_day(to_date('2003/03/15', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2003/02/03', 'yyyy/mm/dd'));
 SELECT last_day(to_date('2004/02/03', 'yyyy/mm/dd'));
@@ -35,6 +56,16 @@ SELECT last_day('2000-02-01');
 SELECT last_day('2007-02-01');
 SELECT last_day('2008-02-01');
 
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT oracle.last_day(to_timestamp('2003/03/15 11:12:21', 'yyyy/mm/dd hh:mi:ss'));
+SELECT oracle.last_day(to_timestamp('2003/02/03 10:21:32', 'yyyy/mm/dd hh:mi:ss'));
+SELECT oracle.last_day(to_timestamp('2004/02/03 11:32:12', 'yyyy/mm/dd hh:mi:ss'));
+SELECT oracle.last_day('1900-02-01 12:12:11');
+SELECT oracle.last_day('2000-02-01 121143');
+SELECT oracle.last_day('2007-02-01 12:21:33');
+SELECT oracle.last_day('2008-02-01 121212');
+SET search_path TO default;
+
 SELECT next_day ('2003-08-01', 'TUESDAY');
 SELECT next_day ('2003-08-06', 'WEDNESDAY');
 SELECT next_day ('2003-08-06', 'SUNDAY');
@@ -42,6 +73,16 @@ SELECT next_day ('2008-01-01', 'sun');
 SELECT next_day ('2008-01-01', 'sunAAA');
 SELECT next_day ('2008-01-01', 1);
 SELECT next_day ('2008-01-01', 7);
+
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT oracle.next_day ('2003-08-01 111211', 'TUESDAY');
+SELECT oracle.next_day ('2003-08-06 10:11:43', 'WEDNESDAY');
+SELECT oracle.next_day ('2003-08-06 11:21:21', 'SUNDAY');
+SELECT oracle.next_day ('2008-01-01 111343', 'sun');
+SELECT oracle.next_day ('2008-01-01 121212', 'sunAAA');
+SELECT oracle.next_day ('2008-01-01 111213', 1);
+SELECT oracle.next_day ('2008-01-01 11:12:13', 7);
+SET search_path TO default;
 
 SELECT months_between (to_date ('2003/01/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
 SELECT months_between (to_date ('2003/07/01', 'yyyy/mm/dd'), to_date ('2003/03/14', 'yyyy/mm/dd'));
@@ -52,6 +93,18 @@ SELECT months_between ('2008-01-31', '2008-02-29');
 SELECT months_between ('2008-02-29', '2008-03-31');
 SELECT months_between ('2008-02-29', '2008-04-30');
 SELECT trunc(months_between('21-feb-2008', '2008-02-29'));
+
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT oracle.months_between (to_timestamp ('2003/01/01 12:12:12', 'yyyy/mm/dd h24:mi:ss'), to_timestamp ('2003/03/14 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
+SELECT oracle.months_between (to_timestamp ('2003/07/01 10:11:11', 'yyyy/mm/dd h24:mi:ss'), to_timestamp ('2003/03/14 10:12:12', 'yyyy/mm/dd h24:mi:ss'));
+SELECT oracle.months_between (to_timestamp ('2003/07/02 11:21:21', 'yyyy/mm/dd h24:mi:ss'), to_timestamp ('2003/07/02 11:11:11', 'yyyy/mm/dd h24:mi:ss'));
+SELECT oracle.months_between (to_timestamp ('2003/08/02 10:11:12', 'yyyy/mm/dd h24:mi:ss'), to_timestamp ('2003/06/02 10:10:11', 'yyyy/mm/dd h24:mi:ss'));
+SELECT oracle.months_between ('2007-02-28 111111', '2007-04-30 112121');
+SELECT oracle.months_between ('2008-01-31 11:32:11', '2008-02-29 11:12:12');
+SELECT oracle.months_between ('2008-02-29 10:11:13', '2008-03-31 10:12:11');
+SELECT oracle.months_between ('2008-02-29 111111', '2008-04-30 12:12:12');
+SELECT trunc(oracle.months_between('21-feb-2008 12:11:11', '2008-02-29 11:11:11'));
+SET search_path TO default;
 
 select length('jmenuji se Pavel Stehule'),dbms_pipe.pack_message('jmenuji se Pavel Stehule');
 select length('a bydlim ve Skalici'),dbms_pipe.pack_message('a bydlim ve Skalici');
@@ -152,6 +205,13 @@ select trunc(TIMESTAMP WITH TIME ZONE '2004-10-19 10:23:54+02','MI') = '2004-10-
 select next_day(to_date('01-Aug-03', 'DD-MON-YY'), 'TUESDAY')  =  to_date ('05-Aug-03', 'DD-MON-YY');                                                                 
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'WEDNESDAY') =  to_date ('13-Aug-03', 'DD-MON-YY');
 select next_day(to_date('06-Aug-03', 'DD-MON-YY'), 'SUNDAY')  =  to_date ('10-Aug-03', 'DD-MON-YY');
+
+SET search_path TO oracle,"$user", public, pg_catalog;
+select oracle.next_day(to_timestamp('01-Aug-03 101111', 'DD-MON-YY h24miss'), 'TUESDAY')  =  to_timestamp ('05-Aug-03 101111', 'DD-MON-YY h24miss');
+select oracle.next_day(to_timestamp('06-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS'), 'WEDNESDAY') =  to_timestamp ('13-Aug-03 10:12:13', 'DD-MON-YY H24:MI:SS');
+select oracle.next_day(to_timestamp('06-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS'), 'SUNDAY')  =  to_timestamp ('10-Aug-03 11:11:11', 'DD-MON-YY HH:MI:SS');
+SET search_path TO default;
+
 select instr('Tech on the net', 'e') =2;
 select instr('Tech on the net', 'e', 1, 1) = 2;
 select instr('Tech on the net', 'e', 1, 2) = 11;
