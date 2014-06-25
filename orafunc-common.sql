@@ -117,6 +117,12 @@ AS 'MODULE_PATHNAME','plvstr_instr2'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.instr(text, text) IS 'Search pattern in string';
 
+CREATE FUNCTION pg_catalog.to_char(num smallint)
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_to_char_int4'
+LANGUAGE C IMMUTABLE STRICT;
+COMMENT ON FUNCTION pg_catalog.to_char(smallint) IS 'Convert number to string';
+
 CREATE FUNCTION pg_catalog.to_char(num int)
 RETURNS text
 AS 'MODULE_PATHNAME','orafce_to_char_int4'

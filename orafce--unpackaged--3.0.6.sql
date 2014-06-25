@@ -19,6 +19,7 @@ ALTER EXTENSION orafce ADD function pg_catalog.set_nls_sort(text);
 ALTER EXTENSION orafce ADD function pg_catalog.instr(str text, patt text, start int, nth int);
 ALTER EXTENSION orafce ADD function pg_catalog.instr(str text, patt text, start int);
 ALTER EXTENSION orafce ADD function pg_catalog.instr(str text, patt text);
+ALTER EXTENSION orafce ADD function pg_catalog.to_char(num smallint);
 ALTER EXTENSION orafce ADD function pg_catalog.to_char(num int);
 ALTER EXTENSION orafce ADD function pg_catalog.to_char(num bigint);
 ALTER EXTENSION orafce ADD function pg_catalog.to_char(num real);

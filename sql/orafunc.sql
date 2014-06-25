@@ -461,6 +461,7 @@ select pos,token from plvlex.tokens('select * from a.b.c join d ON x=y', true, t
 
 SET lc_numeric TO 'C';
 select to_char(22);
+select to_char(99::smallint);
 select to_char(-44444);
 select to_char(1234567890123456::bigint);
 select to_char(123.456::real);

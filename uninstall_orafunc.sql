@@ -17,6 +17,7 @@ DROP FUNCTION pg_catalog.set_nls_sort(text);
 DROP FUNCTION pg_catalog.instr(str text, patt text, start int, nth int);
 DROP FUNCTION pg_catalog.instr(str text, patt text, start int);
 DROP FUNCTION pg_catalog.instr(str text, patt text);
+DROP FUNCTION pg_catalog.to_char(num smallint);
 DROP FUNCTION pg_catalog.to_char(num int);
 DROP FUNCTION pg_catalog.to_char(num bigint);
 DROP FUNCTION pg_catalog.to_char(num real);

@@ -2183,6 +2183,12 @@ select to_char(22);
  22
 (1 row)
 
+select to_char(99::smallint);
+ to_char 
+---------
+ 99
+(1 row)
+
 select to_char(-44444);
  to_char 
 ---------
