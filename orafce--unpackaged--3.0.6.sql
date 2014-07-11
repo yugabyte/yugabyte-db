@@ -49,6 +49,7 @@ ALTER EXTENSION orafce ADD function pg_catalog.lnnvl(bool);
 ALTER EXTENSION orafce ADD schema oracle;
 ALTER EXTENSION orafce ADD function oracle.substr(str text, start int);
 ALTER EXTENSION orafce ADD function oracle.substr(str text, start int, len int);
+ALTER EXTENSION orafce ADD function oracle.to_date(text);
 
 -- emulation of dual table
 ALTER EXTENSION orafce ADD view public.dual;

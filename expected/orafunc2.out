@@ -2644,31 +2644,44 @@ select to_date('J2451187');
  1999-01-08 00:00:00
 (1 row)
 
-set orafce.nls_date_format="YY-MonDD HH24:MI:SS";
+set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select to_date('14-Jan08 11:44:49+05:30');
        to_date       
 ---------------------
  2014-01-08 11:44:49
 (1 row)
 
-set orafce.nls_date_format="YY-DDMon HH24:MI:SS";
+set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
 select to_date('14-08Jan 11:44:49+05:30');
        to_date       
 ---------------------
  2014-01-08 11:44:49
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select to_date('21052014 12:13:44+05:30');
        to_date       
 ---------------------
  2014-05-21 12:13:44
 (1 row)
 
-set orafce.nls_date_format="DDMMYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select to_date('210514 12:13:44+05:30');
        to_date       
 ---------------------
  2014-05-21 12:13:44
+(1 row)
+
+set orafce.nls_date_format='DDMMYY HH24:MI:SS.MS';
+select pg_catalog.to_date('210514 12:13:44.55');
+        to_date         
+------------------------
+ 2014-05-21 12:13:44.55
+(1 row)
+
+select oracle.to_date('210514 12:13:44.55');
+       to_date       
+---------------------
+ 2014-05-21 12:13:45
 (1 row)
 

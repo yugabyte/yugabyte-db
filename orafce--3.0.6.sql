@@ -306,6 +306,11 @@ RETURNS TIMESTAMP
 AS $$ SELECT (pg_catalog.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
+CREATE FUNCTION oracle.to_date(TEXT)
+RETURNS TIMESTAMP
+AS $$ SELECT pg_catalog.to_date($1)::oracle.date; $$
+LANGUAGE SQL STABLE STRICT;
+
 -- emulation of dual table
 CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;
