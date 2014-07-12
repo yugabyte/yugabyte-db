@@ -50,6 +50,14 @@ ALTER EXTENSION orafce ADD schema oracle;
 ALTER EXTENSION orafce ADD function oracle.substr(str text, start int);
 ALTER EXTENSION orafce ADD function oracle.substr(str text, start int, len int);
 ALTER EXTENSION orafce ADD function oracle.to_date(text);
+ALTER EXTENSION orafce ADD function oracle.to_date(TEXT,TEXT);
+ALTER EXTENSION orafce ADD function oracle.add_days_to_timestamp(oracle.date,integer);
+ALTER EXTENSION orafce ADD function oracle.subtract (oracle.date, integer);
+ALTER EXTENSION orafce ADD function oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER);
+ALTER EXTENSION orafce ADD function oracle.last_day(TIMESTAMPTZ);
+ALTER EXTENSION orafce ADD function oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE);
+ALTER EXTENSION orafce ADD function oracle.next_day(TIMESTAMP WITH TIME ZONE,INTEGER);
+ALTER EXTENSION orafce ADD function oracle.next_day(TIMESTAMP WITH TIME ZONE,TEXT);
 
 -- emulation of dual table
 ALTER EXTENSION orafce ADD view public.dual;

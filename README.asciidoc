@@ -87,7 +87,9 @@ year. The 16th of July will be rounded to August.
 	to_date('2014-0519 17:23:53+5:30')  -> 2014-05-19 17:23:53
 ----
 == oracle.date data type
+
 This module contain implementation of oracle compatible DATE data type "oracle.date" and functions which are using DATE data type like oracle.add_months,oracle.last_day(),oracle.next_day(),oracle.months_between() etc.
+
 Example:
 ----
 set search_path TO oracle,"$user", public, pg_catalog;
@@ -100,6 +102,7 @@ select * from oracle_date;
 (1 row)
 ----
 == oracle.date functions
+
 * oracle.add_months(timestamp with time zone, integer) - Returns date and time plus n months
 +
 -----
@@ -125,6 +128,11 @@ select * from oracle_date;
 -----
 	oracle.months_between(oracle.date '1995-02-02 10:00:00', oracle.date '1995-01-01 10:21:11') -> 1.03225806451613
 -----
+* oracle.to_date(text,text) - Returns timestamp without time zone.
++
+----
+	oracle.to_date('02/16/09 04:12:12', 'MM/DD/YY HH24:MI:SS') -> 2009-02-16 04:12:12
+----
 
 You need to set search_path TO oracle,"$user", public, pg_catalog
 because the functions like oracle.add_months,oracle.last_day,oracle.next_day,oracle.months_between is installed side-by-side with pg_catalog.add_months,pg_catalog.last_day,pg_catalog.next_day,pg_catalog.months_between.
