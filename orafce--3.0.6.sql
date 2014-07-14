@@ -269,6 +269,36 @@ RETURNS timestamp AS $$
 SELECT $1 - interval '1' day * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,bigint)
+RETURNS timestamp AS $$
+SELECT $1 + interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, bigint)
+RETURNS timestamp AS $$
+SELECT $1 - interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,smallint)
+RETURNS timestamp AS $$
+SELECT $1 + interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, smallint)
+RETURNS timestamp AS $$
+SELECT $1 - interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,numeric)
+RETURNS timestamp AS $$
+SELECT $1 + interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, numeric)
+RETURNS timestamp AS $$
+SELECT $1 - interval '1' day * $2;
+$$ LANGUAGE SQL IMMUTABLE;
+
 CREATE OPERATOR oracle.+ (
   LEFTARG   = oracle.date,
   RIGHTARG  = INTEGER,
@@ -278,6 +308,42 @@ CREATE OPERATOR oracle.+ (
 CREATE OPERATOR oracle.- (
   LEFTARG   = oracle.date,
   RIGHTARG  = INTEGER,
+  PROCEDURE = oracle.subtract
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = bigint,
+  PROCEDURE = oracle.add_days_to_timestamp
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = bigint,
+  PROCEDURE = oracle.subtract
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = smallint,
+  PROCEDURE = oracle.add_days_to_timestamp
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = smallint,
+  PROCEDURE = oracle.subtract
+);
+
+CREATE OPERATOR oracle.+ (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = numeric,
+  PROCEDURE = oracle.add_days_to_timestamp
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = numeric,
   PROCEDURE = oracle.subtract
 );
 

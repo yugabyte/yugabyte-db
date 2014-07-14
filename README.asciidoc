@@ -86,6 +86,7 @@ year. The 16th of July will be rounded to August.
 ----
 	to_date('2014-0519 17:23:53+5:30')  -> 2014-05-19 17:23:53
 ----
+
 == oracle.date data type
 
 This module contain implementation of oracle compatible DATE data type "oracle.date" and functions which are using DATE data type like oracle.add_months,oracle.last_day(),oracle.next_day(),oracle.months_between() etc.
@@ -132,6 +133,54 @@ select * from oracle_date;
 +
 ----
 	oracle.to_date('02/16/09 04:12:12', 'MM/DD/YY HH24:MI:SS') -> 2009-02-16 04:12:12
+----
+* oracle.to_date(text) - Returns oracle.date
++
+----
+	oracle.to_date('02/16/09 04:12:12') -> 2009-02-16 04:12:12
+----
+
+== oracle.date Operators
+
+* oracle.+(oracle.date,smallint) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::smallint -> 2014-07-11 10:08:55
+----
+* oracle.+(oracle.date,integer) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::integer -> 2014-07-11 10:08:55
+----
+* oracle.+(oracle.date,bigint) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::bigint -> 2014-07-11 10:08:55
+----
+* oracle.+(oracle.date,numeric) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::numeric -> 2014-07-11 10:08:55
+----
+* oracle.-(oracle.date,smallint) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::smallint -> 2014-06-23 10:08:55
+----
+* oracle.-(oracle.date,integer) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::integer -> 2014-06-23 10:08:55
+----
+* oracle.-(oracle.date,bigint) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::bigint -> 2014-06-23 10:08:55
+----
+* oracle.-(oracle.date,numeric) - Returns oracle.date
++
+----
+	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::numeric -> 2014-06-23 10:08:55
 ----
 
 You need to set search_path TO oracle,"$user", public, pg_catalog

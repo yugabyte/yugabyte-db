@@ -2772,3 +2772,333 @@ select to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS');
 (1 row)
 
 SET search_path TO default;
+-- Tests for + operator with DATE and number(smallint,integer,bigint,numeric)
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT to_date('2014-07-02 10:08:55') + 9::smallint;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') + 9::smallint;
+      ?column?       
+---------------------
+ 2002-04-09 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::smallint;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::smallint;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') + 9::smallint;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::smallint;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::bigint;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') + 9::bigint;
+      ?column?       
+---------------------
+ 2002-04-09 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::bigint;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::bigint;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') + 9::bigint;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::bigint;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::integer;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') + 9::integer;
+      ?column?       
+---------------------
+ 2002-04-09 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::integer;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::integer;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') + 9::integer;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::integer;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::numeric;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') + 9::numeric;
+      ?column?       
+---------------------
+ 2002-04-09 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') + 9::numeric;
+      ?column?       
+---------------------
+ 1994-03-01 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::numeric;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') + 9::numeric;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::numeric;
+      ?column?       
+---------------------
+ 2014-07-11 10:08:55
+(1 row)
+
+SELECT to_date('2014-01-01 00:00:00') + 1.5;
+      ?column?       
+---------------------
+ 2000-02-21 13:00:00
+(1 row)
+
+SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
+      ?column?       
+---------------------
+ 2014-01-02 12:00:00
+(1 row)
+
+SET search_path TO default;
+-- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') - 9::smallint;
+      ?column?       
+---------------------
+ 2002-03-22 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::smallint;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') - 9::smallint;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::smallint;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::bigint;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') - 9::bigint;
+      ?column?       
+---------------------
+ 2002-03-22 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::bigint;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::bigint;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') - 9::bigint;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::bigint;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::integer;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') - 9::integer;
+      ?column?       
+---------------------
+ 2002-03-22 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::integer;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::integer;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') - 9::integer;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::integer;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::numeric;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55') - 9::numeric;
+      ?column?       
+---------------------
+ 2002-03-22 22:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55') - 9::numeric;
+      ?column?       
+---------------------
+ 1994-02-11 02:10:09
+(1 row)
+
+SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::numeric;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('02-07-2014 10:08:55','DD-MM-YYYY HH:MI:SS') - 9::numeric;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::numeric;
+      ?column?       
+---------------------
+ 2014-06-23 10:08:55
+(1 row)
+
+SELECT to_date('2014-01-01 00:00:00') - 1.5;
+      ?column?       
+---------------------
+ 2000-02-18 13:00:00
+(1 row)
+
+SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
+      ?column?       
+---------------------
+ 2013-12-30 12:00:00
+(1 row)
+
+SET search_path TO default;
