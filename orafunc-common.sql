@@ -162,7 +162,7 @@ COMMENT ON FUNCTION pg_catalog.to_number(text) IS 'Convert string to number';
 CREATE FUNCTION pg_catalog.to_date(str text)
 RETURNS timestamp
 AS 'MODULE_PATHNAME','ora_to_date'
-LANGUAGE C IMMUTABLE STRICT;
+LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_date(text) IS 'Convert string to timestamp';
 
 CREATE FUNCTION to_multi_byte(str text)
