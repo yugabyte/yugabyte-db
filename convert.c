@@ -5,6 +5,7 @@
 #include "utils/builtins.h"
 #include "utils/numeric.h"
 #include "utils/pg_locale.h"
+#include "utils/formatting.h"
 
 #include "orafunc.h"
 #include "builtins.h"
@@ -14,6 +15,7 @@ PG_FUNCTION_INFO_V1(orafce_to_char_int8);
 PG_FUNCTION_INFO_V1(orafce_to_char_float4);
 PG_FUNCTION_INFO_V1(orafce_to_char_float8);
 PG_FUNCTION_INFO_V1(orafce_to_char_numeric);
+PG_FUNCTION_INFO_V1(orafce_to_char_timestamp);
 PG_FUNCTION_INFO_V1(orafce_to_number);
 PG_FUNCTION_INFO_V1(orafce_to_multi_byte);
 
@@ -104,6 +106,37 @@ orafce_to_char_numeric(PG_FUNCTION_ARGS)
 	}
 
 	PG_RETURN_TEXT_P(cstring_to_text(buf->data));
+}
+
+/********************************************************************
+ *
+ * orafec_to_char_timestamp
+ *
+ * Syntax:
+ *
+ * text to_date(timestamp date_txt)
+ *
+ * Purpose:
+ *
+ * Returns date and time format w.r.t NLS_DATE_FORMAT GUC
+ *
+ *********************************************************************/
+
+Datum
+orafce_to_char_timestamp(PG_FUNCTION_ARGS)
+{
+	Timestamp date_txt = PG_GETARG_TIMESTAMP(0);
+	text *result = NULL;
+
+	if(nls_date_format && strlen(nls_date_format))
+	{
+		/* it will return the DATE in nls_date_format*/
+		result = DatumGetTextP(DirectFunctionCall2(timestamp_to_char,
+							CStringGetDatum(date_txt),
+								CStringGetDatum(cstring_to_text(nls_date_format))));
+	}
+
+	PG_RETURN_TEXT_P(result);
 }
 
 Datum

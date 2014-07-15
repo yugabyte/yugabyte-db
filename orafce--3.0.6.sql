@@ -382,6 +382,12 @@ RETURNS TIMESTAMP
 AS $$ SELECT TO_TIMESTAMP($1,$2)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
+CREATE FUNCTION oracle.to_char(timestamp)
+RETURNS TEXT
+AS 'MODULE_PATHNAME','orafce_to_char_timestamp'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.to_char(timestamp) IS 'Convert timestamp to string';
+
 -- emulation of dual table
 CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;

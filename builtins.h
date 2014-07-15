@@ -74,6 +74,7 @@ extern PGDLLEXPORT Datum orafce_to_char_int8(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_char_float4(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_char_float8(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_char_numeric(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_to_char_timestamp(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_number(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_multi_byte(PG_FUNCTION_ARGS);
 
