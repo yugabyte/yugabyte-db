@@ -82,7 +82,7 @@ year. The 16th of July will be rounded to August.
 	to_date('2014-05-19 17:23:53+5:30') -> 2014-05-19 17:23:53
 ----
 +
-   orafce.nls_date_format="YYYY-MMDD HH24:MI:SS"
+   orafce.nls_date_format='YYYY-MMDD HH24:MI:SS'
 ----
 	to_date('2014-0519 17:23:53+5:30')  -> 2014-05-19 17:23:53
 ----
@@ -138,6 +138,23 @@ select * from oracle_date;
 +
 ----
 	oracle.to_date('02/16/09 04:12:12') -> 2009-02-16 04:12:12
+----
+* oracle.to_char(timestamp) - Returns timestamp in nls_date_format.
++
+----
+	orafce.nls_date_format='YY-MonDD HH24:MI:SS'
+----
++
+----
+	oracle.to_char(to_date('14-Jan08 11:44:49+05:30')) -> 14-Jan08 11:44:49
+----
++
+----
+	orafce.nls_date_format='YY-MonDD HH24:MI:SS'
+----
++
+----
+	oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS')) -> 14-May21 12:13:44
 ----
 
 == oracle.date Operators

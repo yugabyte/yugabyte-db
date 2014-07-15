@@ -3104,126 +3104,126 @@ SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
 SET search_path TO default;
 --Tests for oracle.to_char(timestamp)-used to set the DATE output format
 SET search_path TO oracle,"$user", public, pg_catalog;
-set orafce.nls_date_format="YY-MonDD HH24:MI:SS";
+set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(to_date('14-Jan08 11:44:49+05:30'));
       to_char      
 -------------------
  14-Jan08 11:44:49
 (1 row)
 
-set orafce.nls_date_format="YY-DDMon HH24:MI:SS";
+set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
 select oracle.to_char(to_date('14-08Jan 11:44:49+05:30'));
       to_char      
 -------------------
  14-08Jan 11:44:49
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(to_date('21052014 12:13:44+05:30'));
       to_char      
 -------------------
  21052014 12:13:44
 (1 row)
 
-set orafce.nls_date_format="DDMMYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(to_date('210514 12:13:44+05:30'));
      to_char     
 -----------------
  210514 12:13:44
 (1 row)
 
-set orafce.nls_date_format="DDMMYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('2014/02/31 10:11:12', 'YYYY/MM/DD hh12:mi:ss'));
      to_char     
 -----------------
  030314 10:11:12
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('2014/04/25 10:13', 'YYYY/MM/DD HH:MI'));
       to_char      
 -------------------
  25042014 10:13:00
 (1 row)
 
-set orafce.nls_date_format="YY-DDMon HH24:MI:SS";
+set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
 select oracle.to_char(oracle.to_date('16-Feb-09 10:11:11', 'DD-Mon-YY HH:MI:SS'));
       to_char      
 -------------------
  09-16Feb 10:11:11
 (1 row)
 
-set orafce.nls_date_format="YY-DDMon HH24:MI:SS";
+set orafce.nls_date_format='YY-DDMon HH24:MI:SS';
 select oracle.to_char(oracle.to_date('02/16/09 04:12:12', 'MM/DD/YY HH24:MI:SS'));
       to_char      
 -------------------
  09-16Feb 04:12:12
 (1 row)
 
-set orafce.nls_date_format="YY-MonDD HH24:MI:SS";
+set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(oracle.to_date('021609 111213', 'MMDDYY HHMISS'));
       to_char      
 -------------------
  09-Feb16 11:12:13
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('16-Feb-09 11:12:12', 'DD-Mon-YY HH:MI:SS'));
       to_char      
 -------------------
  16022009 11:12:12
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('Feb/16/09 11:21:23', 'Mon/DD/YY HH:MI:SS'));
       to_char      
 -------------------
  16022009 11:21:23
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('February.16.2009 10:11:12', 'Month.DD.YYYY HH:MI:SS'));
       to_char      
 -------------------
  16022009 10:11:12
 (1 row)
 
-set orafce.nls_date_format="YY-MonDD HH24:MI:SS";
+set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(oracle.to_date('20020315111212', 'yyyymmddhh12miss'));
       to_char      
 -------------------
  02-Mar15 11:12:12
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('January 15, 1989, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.'));
       to_char      
 -------------------
  15011989 11:00:00
 (1 row)
 
-set orafce.nls_date_format="DDMMYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('14-Jan08 11:44:49+05:30' ,'YY-MonDD HH24:MI:SS'));
      to_char     
 -----------------
  080114 11:44:49
 (1 row)
 
-set orafce.nls_date_format="DDMMYYYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYYYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('14-08Jan 11:44:49+05:30','YY-DDMon HH24:MI:SS'));
       to_char      
 -------------------
  08012014 11:44:49
 (1 row)
 
-set orafce.nls_date_format="YY-MonDD HH24:MI:SS";
+set orafce.nls_date_format='YY-MonDD HH24:MI:SS';
 select oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS'));
       to_char      
 -------------------
  14-May21 12:13:44
 (1 row)
 
-set orafce.nls_date_format="DDMMYY HH24:MI:SS";
+set orafce.nls_date_format='DDMMYY HH24:MI:SS';
 select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'));
      to_char     
 -----------------
