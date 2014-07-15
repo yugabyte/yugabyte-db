@@ -646,3 +646,5 @@ Other contributors:
 * Amit Langote (amitlan)
 * Rahila Syed (rahila)
 * Beena Emerson (b-emerson)
+* Vinayak Pokale
+* Fujii Masao
