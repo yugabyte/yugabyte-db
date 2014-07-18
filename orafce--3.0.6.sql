@@ -299,6 +299,11 @@ RETURNS timestamp AS $$
 SELECT $1 - interval '1' day * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date,oracle.date)
+RETURNS double precision AS $$
+SELECT date_part('epoch', ($1::timestamp - $2::timestamp)/3600/24);
+$$ LANGUAGE SQL IMMUTABLE;
+
 CREATE OPERATOR oracle.+ (
   LEFTARG   = oracle.date,
   RIGHTARG  = INTEGER,
@@ -344,6 +349,12 @@ CREATE OPERATOR oracle.+ (
 CREATE OPERATOR oracle.- (
   LEFTARG   = oracle.date,
   RIGHTARG  = numeric,
+  PROCEDURE = oracle.subtract
+);
+
+CREATE OPERATOR oracle.- (
+  LEFTARG   = oracle.date,
+  RIGHTARG  = oracle.date,
   PROCEDURE = oracle.subtract
 );
 
@@ -373,12 +384,12 @@ AS $$ SELECT (pg_catalog.next_day($1::pg_catalog.date,$2) + $1::time)::oracle.da
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE FUNCTION oracle.to_date(TEXT)
-RETURNS TIMESTAMP
+RETURNS oracle.date
 AS $$ SELECT pg_catalog.to_date($1)::oracle.date; $$
 LANGUAGE SQL STABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.to_date(TEXT,TEXT)
-RETURNS TIMESTAMP
+RETURNS oracle.date
 AS $$ SELECT TO_TIMESTAMP($1,$2)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 

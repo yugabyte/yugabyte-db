@@ -2774,28 +2774,32 @@ select to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS');
 SET search_path TO default;
 -- Tests for + operator with DATE and number(smallint,integer,bigint,numeric)
 SET search_path TO oracle,"$user", public, pg_catalog;
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') + 9::smallint;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') + 9::smallint;
       ?column?       
 ---------------------
- 2002-04-09 22:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') + 9::smallint;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') + 9::smallint;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') + 9;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::smallint;
@@ -2816,22 +2820,25 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::smallint;
  2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') + 9::bigint;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') + 9::bigint;
       ?column?       
 ---------------------
- 2002-04-09 22:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') + 9::bigint;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') + 9::bigint;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::bigint;
@@ -2852,22 +2859,25 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::bigint;
  2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') + 9::integer;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') + 9::integer;
       ?column?       
 ---------------------
- 2002-04-09 22:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') + 9::integer;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') + 9::integer;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::integer;
@@ -2888,22 +2898,25 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::integer;
  2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') + 9::numeric;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') + 9::numeric;
       ?column?       
 ---------------------
- 2002-04-09 22:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') + 9::numeric;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') + 9::numeric;
       ?column?       
 ---------------------
- 1994-03-01 02:10:09
+ 2014-07-11 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') + 9::numeric;
@@ -2924,10 +2937,11 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') + 9::numeric;
  2014-07-11 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') + 1.5;
       ?column?       
 ---------------------
- 2000-02-21 13:00:00
+ 2014-01-02 12:00:00
 (1 row)
 
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
@@ -2939,28 +2953,32 @@ SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') + 1.5;
 SET search_path TO default;
 -- Tests for - operator with DATE and number(smallint,integer,bigint,numeric)
 SET search_path TO oracle,"$user", public, pg_catalog;
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') - 9::smallint;
       ?column?       
 ---------------------
- 2002-03-22 22:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') - 9::smallint;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') - 9::smallint;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::smallint;
@@ -2981,22 +2999,25 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::smallint;
  2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::bigint;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') - 9::bigint;
       ?column?       
 ---------------------
- 2002-03-22 22:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') - 9::bigint;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') - 9::bigint;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::bigint;
@@ -3017,22 +3038,25 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::bigint;
  2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::integer;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') - 9::integer;
       ?column?       
 ---------------------
- 2002-03-22 22:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') - 9::integer;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') - 9::integer;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::integer;
@@ -3053,22 +3077,25 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::integer;
  2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-07-02 10:08:55') - 9::numeric;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='MM-DD-YYYY HH24:MI:SS';
 SELECT to_date('07-02-2014 10:08:55') - 9::numeric;
       ?column?       
 ---------------------
- 2002-03-22 22:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
-SELECT to_date('2014-07-02 10:08:55') - 9::numeric;
+SET orafce.nls_date_format='DD-MM-YYYY HH24:MI:SS';
+SELECT to_date('02-07-2014 10:08:55') - 9::numeric;
       ?column?       
 ---------------------
- 1994-02-11 02:10:09
+ 2014-06-23 10:08:55
 (1 row)
 
 SELECT to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::numeric;
@@ -3089,10 +3116,11 @@ SELECT to_date('07-02-2014 10:08:55','MM-DD-YYYY HH:MI:SS') - 9::numeric;
  2014-06-23 10:08:55
 (1 row)
 
+SET orafce.nls_date_format='YYYY-MM-DD HH24:MI:SS';
 SELECT to_date('2014-01-01 00:00:00') - 1.5;
       ?column?       
 ---------------------
- 2000-02-18 13:00:00
+ 2013-12-30 12:00:00
 (1 row)
 
 SELECT to_date('2014-01-01 00:00:00','yyyy-mm-dd hh24:mi:ss') - 1.5;
@@ -3228,6 +3256,87 @@ select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'
      to_char     
 -----------------
  210514 12:13:44
+(1 row)
+
+SET search_path TO default;
+--Tests for oracle.-(oracle.date,oracle.date)
+SET search_path TO oracle,"$user", public, pg_catalog;
+SELECT to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
+  ?column?  
+------------
+ 166.048785
+(1 row)
+
+SELECT to_date('2014-07-17 13:14:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
+  ?column?  
+------------
+ 166.134896
+(1 row)
+
+SELECT to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
+  ?column?  
+------------
+ 166.134896
+(1 row)
+
+SELECT to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2015-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
+  ?column?   
+-------------
+ -198.865104
+(1 row)
+
+SELECT to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('01-01-2013 10:00:00', 'mm-dd-yyyy hh24:mi:ss');
+  ?column?  
+------------
+ 562.134896
+(1 row)
+
+SELECT to_date('17-07-2014 13:14:15', 'dd-mm-yyyy hh24:mi:ss') - to_date('01-01-2013 10:00:00', 'dd--mm-yyyy hh24:mi:ss');
+  ?column?  
+------------
+ 562.134896
+(1 row)
+
+SELECT to_date('2014/02/01 10:11:12', 'YYYY/MM/DD hh12:mi:ss') - to_date('2013/02/01 10:11:12', 'YYYY/MM/DD hh12:mi:ss');
+ ?column? 
+----------
+      365
+(1 row)
+
+SELECT to_date('17-Jul-14 10:11:11', 'DD-Mon-YY HH:MI:SS') - to_date('17-Jan-14 00:00:00', 'DD-Mon-YY HH24:MI:SS');
+  ?column?  
+------------
+ 181.424433
+(1 row)
+
+SELECT to_date('July.17.2014 10:11:12', 'Month.DD.YYYY HH:MI:SS') - to_date('February.16.2014 10:21:12', 'Month.DD.YYYY HH:MI:SS');
+  ?column?  
+------------
+ 150.993056
+(1 row)
+
+SELECT to_date('20140717111211', 'yyyymmddhh12miss') - to_date('20140315111212', 'yyyymmddhh12miss');
+  ?column?  
+------------
+ 123.999988
+(1 row)
+
+SELECT to_date('January 15, 1990, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.') - to_date('January 15, 1989, 10:00 A.M.','Month dd, YYYY, HH:MI A.M.');
+  ?column?  
+------------
+ 365.041667
+(1 row)
+
+SELECT to_date('14-Jul14 11:44:49' ,'YY-MonDD HH24:MI:SS') - to_date('14-Jan14 12:44:49' ,'YY-MonDD HH24:MI:SS');
+  ?column?  
+------------
+ 180.958333
+(1 row)
+
+SELECT to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:44','DDMMYY HH24:MI:SS');
+  ?column?  
+------------
+ 120.083333
 (1 row)
 
 SET search_path TO default;

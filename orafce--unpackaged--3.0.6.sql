@@ -59,6 +59,7 @@ ALTER EXTENSION orafce ADD function oracle.subtract (oracle.date, integer);
 ALTER EXTENSION orafce ADD function oracle.subtract (oracle.date, smallint);
 ALTER EXTENSION orafce ADD function oracle.subtract (oracle.date, bigint);
 ALTER EXTENSION orafce ADD function oracle.subtract (oracle.date, numeric);
+ALTER EXTENSION orafce ADD function oracle.subtract (oracle.date, oracle.date);
 ALTER EXTENSION orafce ADD function oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER);
 ALTER EXTENSION orafce ADD function oracle.last_day(TIMESTAMPTZ);
 ALTER EXTENSION orafce ADD function oracle.months_between(TIMESTAMP WITH TIME ZONE,TIMESTAMP WITH TIME ZONE);

@@ -199,6 +199,11 @@ select * from oracle_date;
 ----
 	oracle.to_date('2014-07-02 10:08:55','YYYY-MM-DD HH:MI:SS') - 9::numeric -> 2014-06-23 10:08:55
 ----
+* oracle.-(oracle.date,oracle.date) - Returns double precision
++
+----
+	oracle.to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - oracle.to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss') -> 166.048785
+----
 
 You need to set search_path TO oracle,"$user", public, pg_catalog
 because the functions like oracle.add_months,oracle.last_day,oracle.next_day,oracle.months_between is installed side-by-side with pg_catalog.add_months,pg_catalog.last_day,pg_catalog.next_day,pg_catalog.months_between.
