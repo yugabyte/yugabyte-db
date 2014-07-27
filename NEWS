@@ -1,6 +1,10 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2012  Orafce Global Development Group
 
+Version 3.0.7 - 27. Jul 2014
+* PostgreSQL 9.4 compilation
+* new datatype and related functions: oracle.date
+
 Version 3.0.6 - 8. Sep 2013
 
 * PostgreSQL 9.3 compilation
