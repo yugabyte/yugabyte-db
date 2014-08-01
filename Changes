@@ -11,6 +11,8 @@ Revision history for pgTAP
   Thanks to Charly Batista for the contribution!
 * Added `performs_within()`, a function that tests the average performance of
   an SQL statement over a number of iterations. Contributed by Ryan Duryea.
+* Changed is_member_of to work with roles instead of users. Patch from Jim
+  Nasby.
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------

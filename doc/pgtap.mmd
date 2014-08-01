@@ -5227,21 +5227,21 @@ so.
 
 ### `is_member_of()` ###
 
-    SELECT is_member_of( :group, :users, :description );
-    SELECT is_member_of( :group, :users );
-    SELECT is_member_of( :group, :user, :description );
-    SELECT is_member_of( :group, :user );
+    SELECT is_member_of( :role, :members, :description );
+    SELECT is_member_of( :role, :members );
+    SELECT is_member_of( :role, :member, :description );
+    SELECT is_member_of( :role, :member );
 
 **Parameters**
 
-`:group`
-: Name of a PostgreSQL group.
+`:role`
+: Name of a PostgreSQL group role.
 
-`:users`
-: Array of names of users that should be members of the group.
+`:members`
+: Array of names of roles that should be members of the group role.
 
-`:user`
-: Name of a user that should be a member of the group.
+`:member`
+: Name of a role that should be a member of the group role.
 
 `:description`
 : A short description of the test.
@@ -5249,18 +5249,18 @@ so.
     SELECT is_member_of( 'sweeties', 'anna' 'Anna should be a sweetie' );
     SELECT is_member_of( 'meanies', ARRAY['dr_evil', 'dr_no' ] );
 
-Checks whether a group contains a user or all of an array of users. If the
-description is omitted, it will default to "Should have members of group
-`:group`." On failure, `is_member_of()` will output diagnostics listing the
-missing users, like so:
+Checks whether a group role contains a member role or all of an array of
+member roles. If the description is omitted, it will default to "Should have
+members of role `:role`." On failure, `is_member_of()` will output
+diagnostics listing the missing member roles, like so:
 
-    # Failed test 370: "Should have members of group meanies"
-    #     Users missing from the meanies group:
+    # Failed test 370: "Should have members of role meanies"
+    #     Members missing from the meanies role:
     #         theory
     #         agliodbs
 
-If the group does not exist, the diagnostics will tell you that, instead. But
-you use `has_group()` to make sure the group exists before you check its
+If the group role does not exist, the diagnostics will tell you that, instead.
+But you use `has_role()` to make sure the role exists before you check its
 members, don't you? Of course you do.
 
 ### `rule_is_instead()` ###
