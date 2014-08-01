@@ -3792,9 +3792,9 @@ BEGIN
     SELECT ARRAY(
         SELECT quote_ident($2[i])
           FROM generate_series(1, array_upper($2, 1)) s(i)
-          LEFT JOIN pg_catalog.pg_user ON usename = $2[i]
-         WHERE usesysid IS NULL
-            OR NOT usesysid = ANY ( _grolist($1) )
+          LEFT JOIN pg_catalog.pg_roles r ON rolname = $2[i]
+         WHERE r.oid IS NULL
+            OR NOT r.oid = ANY ( _grolist($1) )
          ORDER BY s.i
     ) INTO missing;
     IF missing[1] IS NULL THEN
