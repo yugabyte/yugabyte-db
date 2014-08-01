@@ -3777,7 +3777,7 @@ RETURNS oid[] AS $$
     );
 $$ LANGUAGE sql;
 
--- is_member_of( group, user[], description )
+-- is_member_of( role, members[], description )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
@@ -3792,34 +3792,34 @@ BEGIN
     SELECT ARRAY(
         SELECT quote_ident($2[i])
           FROM generate_series(1, array_upper($2, 1)) s(i)
-          LEFT JOIN pg_catalog.pg_user ON usename = $2[i]
-         WHERE usesysid IS NULL
-            OR NOT usesysid = ANY ( _grolist($1) )
+          LEFT JOIN pg_catalog.pg_roles r ON rolname = $2[i]
+         WHERE r.oid IS NULL
+            OR NOT r.oid = ANY ( _grolist($1) )
          ORDER BY s.i
     ) INTO missing;
     IF missing[1] IS NULL THEN
         RETURN ok( true, $3 );
     END IF;
     RETURN ok( false, $3 ) || E'\n' || diag(
-        '    Users missing from the ' || quote_ident($1) || E' group:\n        ' ||
+        '    Members missing from the ' || quote_ident($1) || E' role:\n        ' ||
         array_to_string( missing, E'\n        ')
     );
 END;
 $$ LANGUAGE plpgsql;
 
--- is_member_of( group, user, description )
+-- is_member_of( role, member, description )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT is_member_of( $1, ARRAY[$2], $3 );
 $$ LANGUAGE SQL;
 
--- is_member_of( group, user[] )
+-- is_member_of( role, members[] )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME[] )
 RETURNS TEXT AS $$
-    SELECT is_member_of( $1, $2, 'Should have members of group ' || quote_ident($1) );
+    SELECT is_member_of( $1, $2, 'Should have members of role ' || quote_ident($1) );
 $$ LANGUAGE SQL;
 
--- is_member_of( group, user )
+-- is_member_of( role, member )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME )
 RETURNS TEXT AS $$
     SELECT is_member_of( $1, ARRAY[$2] );

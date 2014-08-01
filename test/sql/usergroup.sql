@@ -203,7 +203,7 @@ SELECT * FROM check_test(
     is_member_of('meanies', ARRAY[current_user] ),
     true,
     'is_member_of(meanies, [current_user])',
-    'Should have members of group meanies',
+    'Should have members of role meanies',
     ''
 );
 
@@ -219,7 +219,7 @@ SELECT * FROM check_test(
     is_member_of('meanies', current_user ),
     true,
     'is_member_of(meanies, current_user)',
-    'Should have members of group meanies',
+    'Should have members of role meanies',
     ''
 );
 

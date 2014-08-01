@@ -1,3 +1,4 @@
+.*.swp
 pgtap.sql
 pgtap-core.sql
 pgtap-schema.sql
