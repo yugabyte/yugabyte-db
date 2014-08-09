@@ -13,6 +13,9 @@ Revision history for pgTAP
   an SQL statement over a number of iterations. Contributed by Ryan Duryea.
 * Changed is_member_of to work with roles instead of users. Patch from Jim
   Nasby.
+* Granted SELECT access to the views created by pgTAP to PUBLIC, to avoid
+  permission errors when the tests are run by a user other than the owner of
+  those views. Thanks to Jim Nasby for the report.
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------

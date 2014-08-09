@@ -9280,3 +9280,5 @@ RETURNS TEXT AS $$
     SELECT hasnt_materialized_view( $1, 'Materialized view ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
+GRANT SELECT ON tap_funky           TO PUBLIC;
+GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;
