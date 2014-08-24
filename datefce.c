@@ -590,15 +590,17 @@ _ora_date_round(DateADT day, int f)
 Datum ora_to_date(PG_FUNCTION_ARGS)
 {
 	text *date_txt = PG_GETARG_TEXT_P(0);
-	Timestamp newDate, result;
+	Timestamp result;
 
 	if(nls_date_format && strlen(nls_date_format))
 	{
+		Datum newDate;
+
 		/* it will return timestamp at GMT */
-		newDate = DatumGetTimestamp(DirectFunctionCall2(to_timestamp,
-											CStringGetDatum(date_txt),
-											CStringGetDatum(
-											cstring_to_text(nls_date_format))));
+		newDate = DirectFunctionCall2(to_timestamp,
+							CStringGetDatum(date_txt),
+							CStringGetDatum(cstring_to_text(nls_date_format)));
+
 		/* convert to local timestamp */
 		result = DatumGetTimestamp(DirectFunctionCall1(timestamptz_timestamp, newDate));
 	}
