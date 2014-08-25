@@ -37,7 +37,7 @@ typedef struct {
 PG_FUNCTION_INFO_V1(plvlex_tokens);
 
 extern int      orafce_sql_yyparse();
-extern void orafce_sql_yyerror(const char *message);
+extern void orafce_sql_yyerror(List **result, const char *message);
 extern void orafce_sql_scanner_init(const char *str);
 extern void orafce_sql_scanner_finish(void);
 
@@ -207,7 +207,7 @@ plvlex_tokens(PG_FUNCTION_ARGS)
 
 		orafce_sql_scanner_init(CSTRING(src));
 		if (orafce_sql_yyparse(&lexems) != 0)
-			orafce_sql_yyerror("bogus input");
+			orafce_sql_yyerror(NULL, "bogus input");
 
 		orafce_sql_scanner_finish();
 
