@@ -13,18 +13,6 @@
  *-------------------------------------------------------------------------
  */
 
-/*
- * make_join_rel
- *	   Find or create a join RelOptInfo that represents the join of
- *	   the two given rels, and add to it path information for paths
- *	   created with the two rels as outer and inner rel.
- *	   (The join rel may already contain paths generated from other
- *	   pairs of rels that add up to the same set of base rels.)
- *
- * NB: will return NULL if attempted join is not valid.  This can happen
- * when working with outer joins, or with IN or EXISTS clauses that have been
- * turned into joins.
- */
 static double
 adjust_rows(double rows, RowsHint *hint)
 {
@@ -52,6 +40,18 @@ adjust_rows(double rows, RowsHint *hint)
 	return result;
 }
 
+/*
+ * make_join_rel
+ *	   Find or create a join RelOptInfo that represents the join of
+ *	   the two given rels, and add to it path information for paths
+ *	   created with the two rels as outer and inner rel.
+ *	   (The join rel may already contain paths generated from other
+ *	   pairs of rels that add up to the same set of base rels.)
+ *
+ * NB: will return NULL if attempted join is not valid.  This can happen
+ * when working with outer joins, or with IN or EXISTS clauses that have been
+ * turned into joins.
+ */
 RelOptInfo *
 make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 {
@@ -61,9 +61,6 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	SpecialJoinInfo sjinfo_data;
 	RelOptInfo *joinrel;
 	List	   *restrictlist;
-
-	RowsHint   *rows_hint = NULL;
-	int			i;
 
 	/* We should never try to join two overlapping sets of rels. */
 	Assert(!bms_overlap(rel1->relids, rel2->relids));
@@ -115,6 +112,11 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 	 */
 	joinrel = build_join_rel(root, joinrelids, rel1, rel2, sjinfo,
 							 &restrictlist);
+
+	/* !!! START: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
+    {
+	RowsHint   *rows_hint = NULL;
+	int			i;
 
 	/* Apply appropriate Rows hint to the join node, if any. */
 	for (i = 0; i < current_hint->num_hints[HINT_TYPE_ROWS]; i++)
@@ -171,6 +173,9 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 			}
 		}
 	}
+
+	}
+	/* !!! END: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
 
 	/*
 	 * If we've already proven this join is empty, we needn't consider any

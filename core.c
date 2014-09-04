@@ -44,7 +44,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 	/*
 	 * Generate access paths for each member relation, and remember the
-	 * cheapest path for each one.	Also, identify all pathkeys (orderings)
+	 * cheapest path for each one.  Also, identify all pathkeys (orderings)
 	 * and parameterizations (required_outer sets) available for the member
 	 * relations.
 	 */
@@ -94,7 +94,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 
 		/*
 		 * Collect lists of all the available path orderings and
-		 * parameterizations for all the children.	We use these as a
+		 * parameterizations for all the children.  We use these as a
 		 * heuristic to indicate which sort orderings and parameterizations we
 		 * should build Append and MergeAppend paths for.
 		 */
@@ -180,7 +180,7 @@ set_append_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 	 * so that not that many cases actually get considered here.)
 	 *
 	 * The Append node itself cannot enforce quals, so all qual checking must
-	 * be done in the child paths.	This means that to have a parameterized
+	 * be done in the child paths.  This means that to have a parameterized
 	 * Append path, we must have the exact same parameterization for each
 	 * child path; otherwise some children might be failing to check the
 	 * moved-down quals.  To make them match up, we can try to increase the
@@ -351,7 +351,7 @@ get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
 	 * joinquals to be checked within the path's scan.  However, some existing
 	 * paths might check the available joinquals already while others don't;
 	 * therefore, it's not clear which existing path will be cheapest after
-	 * reparameterization.	We have to go through them all and find out.
+	 * reparameterization.  We have to go through them all and find out.
 	 */
 	cheapest = NULL;
 	foreach(lc, rel->pathlist)
@@ -395,10 +395,15 @@ get_cheapest_parameterized_child_path(PlannerInfo *root, RelOptInfo *rel,
  * accumulate_append_subpath
  *		Add a subpath to the list being built for an Append or MergeAppend
  *
- * It's possible that the child is itself an Append path, in which case
- * we can "cut out the middleman" and just add its child paths to our
- * own list.  (We don't try to do this earlier because we need to
- * apply both levels of transformation to the quals.)
+ * It's possible that the child is itself an Append or MergeAppend path, in
+ * which case we can "cut out the middleman" and just add its child paths to
+ * our own list.  (We don't try to do this earlier because we need to apply
+ * both levels of transformation to the quals.)
+ *
+ * Note that if we omit a child MergeAppend in this way, we are effectively
+ * omitting a sort step, which seems fine: if the parent is to be an Append,
+ * its result would be unsorted anyway, while if the parent is to be a
+ * MergeAppend, there's no point in a separate sort on a child.
  */
 static List *
 accumulate_append_subpath(List *subpaths, Path *path)
@@ -409,6 +414,13 @@ accumulate_append_subpath(List *subpaths, Path *path)
 
 		/* list_copy is important here to avoid sharing list substructure */
 		return list_concat(subpaths, list_copy(apath->subpaths));
+	}
+	else if (IsA(path, MergeAppendPath))
+	{
+		MergeAppendPath *mpath = (MergeAppendPath *) path;
+
+		/* list_copy is important here to avoid sharing list substructure */
+		return list_concat(subpaths, list_copy(mpath->subpaths));
 	}
 	else
 		return lappend(subpaths, path);
@@ -423,7 +435,7 @@ accumulate_append_subpath(List *subpaths, Path *path)
  *		independent jointree items in the query.  This is > 1.
  *
  * 'initial_rels' is a list of RelOptInfo nodes for each independent
- *		jointree item.	These are the components to be joined together.
+ *		jointree item.  These are the components to be joined together.
  *		Note that levels_needed == list_length(initial_rels).
  *
  * Returns the final level of join relations, i.e., the relation that is
@@ -439,7 +451,7 @@ accumulate_append_subpath(List *subpaths, Path *path)
  * needed for these paths need have been instantiated.
  *
  * Note to plugin authors: the functions invoked during standard_join_search()
- * modify root->join_rel_list and root->join_rel_hash.	If you want to do more
+ * modify root->join_rel_list and root->join_rel_hash.  If you want to do more
  * than one join-order search, you'll probably need to save and restore the
  * original states of those data structures.  See geqo_eval() for an example.
  */
@@ -690,7 +702,7 @@ join_search_one_level(PlannerInfo *root, int level)
 
 		/*----------
 		 * When special joins are involved, there may be no legal way
-		 * to make an N-way join for some values of N.	For example consider
+		 * to make an N-way join for some values of N.  For example consider
 		 *
 		 * SELECT ... FROM t1 WHERE
 		 *	 x IN (SELECT ... FROM t2,t3 WHERE ...) AND
@@ -813,7 +825,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 	ListCell   *l;
 
 	/*
-	 * Ensure output params are set on failure return.	This is just to
+	 * Ensure output params are set on failure return.  This is just to
 	 * suppress uninitialized-variable warnings from overly anal compilers.
 	 */
 	*sjinfo_p = NULL;
@@ -821,7 +833,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
 
 	/*
 	 * If we have any special joins, the proposed join might be illegal; and
-	 * in any case we have to determine its join type.	Scan the join info
+	 * in any case we have to determine its join type.  Scan the join info
 	 * list for conflicts.
 	 */
 	match_sjinfo = NULL;
@@ -1044,7 +1056,7 @@ join_is_legal(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2,
  *
  * Essentially, this tests whether have_join_order_restriction() could
  * succeed with this rel and some other one.  It's OK if we sometimes
- * say "true" incorrectly.	(Therefore, we don't bother with the relatively
+ * say "true" incorrectly.  (Therefore, we don't bother with the relatively
  * expensive has_legal_joinclause test.)
  */
 static bool
@@ -1100,7 +1112,7 @@ is_dummy_rel(RelOptInfo *rel)
  * dummy.
  *
  * Also, when called during GEQO join planning, we are in a short-lived
- * memory context.	We must make sure that the dummy path attached to a
+ * memory context.  We must make sure that the dummy path attached to a
  * baserel survives the GEQO cycle, else the baserel is trashed for future
  * GEQO cycles.  On the other hand, when we are marking a joinrel during GEQO,
  * we don't want the dummy path to clutter the main planning context.  Upshot
