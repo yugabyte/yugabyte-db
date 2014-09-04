@@ -13,6 +13,9 @@
  *-------------------------------------------------------------------------
  */
 
+/*
+ * adjust_rows: tweak estimated row numbers according to the hint.
+*/
 static double
 adjust_rows(double rows, RowsHint *hint)
 {
@@ -88,7 +91,7 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 
 	/*
 	 * If it's a plain inner join, then we won't have found anything in
-	 * join_info_list.	Make up a SpecialJoinInfo so that selectivity
+	 * join_info_list.  Make up a SpecialJoinInfo so that selectivity
 	 * estimation functions will know what's being joined.
 	 */
 	if (sjinfo == NULL)
@@ -114,66 +117,80 @@ make_join_rel(PlannerInfo *root, RelOptInfo *rel1, RelOptInfo *rel2)
 							 &restrictlist);
 
 	/* !!! START: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
-    {
-	RowsHint   *rows_hint = NULL;
-	int			i;
-
-	/* Apply appropriate Rows hint to the join node, if any. */
-	for (i = 0; i < current_hint->num_hints[HINT_TYPE_ROWS]; i++)
 	{
-		rows_hint = current_hint->rows_hints[i];
+		RowsHint   *rows_hint = NULL;
+		int			i;
+		RowsHint   *justforme = NULL;
+		RowsHint   *domultiply = NULL;
 
-		/*
-		 * This Rows hint is invalid for some reason, or it contains no
-		 * aliasname which exists in the query.
-		 */
-		if (!rows_hint->joinrelids ||
-			rows_hint->base.state == HINT_STATE_ERROR)
-			continue;
+		/* Search for applicable rows hint for this join node */
+		for (i = 0; i < current_hint->num_hints[HINT_TYPE_ROWS]; i++)
+		{
+			rows_hint = current_hint->rows_hints[i];
 
-		if (bms_equal(joinrelids, rows_hint->joinrelids))
-		{
 			/*
-			 * This join RelOptInfo is exactly a Rows hint specifies, so adjust
-			 * rows estimateion with the hint's content.  Here we never have
-			 * another hint which has same relation combination, so we can skip
-			 * rest of hints.
+			 * Skip this rows_hint if it is invalid from the first or it
+			 * doesn't target any join rels.
 			 */
-			if (rows_hint->base.state == HINT_STATE_NOTUSED)
-				joinrel->rows = adjust_rows(joinrel->rows, rows_hint);
-		}
-		else if (bms_is_subset(rows_hint->joinrelids, rel1->relids) ||
-				 bms_is_subset(rows_hint->joinrelids, rel2->relids))
-		{
-			/*
-			 * Otherwise if the relation combination specified in thee Rows
-			 * hint is subset of the set of join elements, re-estimate rows and
-			 * costs again to reflect the adjustment done in down.  This is
-			 * necessary for the first permutation of the combination the
-			 * relations, but it's difficult to determine that this is the
-			 * first, so do this everytime.
-			 */
-			set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
-									   restrictlist);
-		}
-		else if (bms_is_subset(rows_hint->joinrelids, joinrelids))
-		{
-			/*
-			 * If the combination specifed in the Rows hints is subset of the
-			 * join relation and spreads over both children, 
-			 *
-			 * We do adjust rows estimation only when the value type was
-			 * multiplication, because other value types are meanless.
-			 */
-			if (rows_hint->value_type == RVT_MULTI)
+			if (!rows_hint->joinrelids ||
+				rows_hint->base.state == HINT_STATE_ERROR)
+				continue;
+
+			if (bms_equal(joinrelids, rows_hint->joinrelids))
 			{
-				set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
-										   restrictlist);
-				joinrel->rows = adjust_rows(joinrel->rows, rows_hint);
+				/*
+				 * This joinrel is just the target of this rows_hint, so tweak
+				 * rows estimation according to the hint.
+				 */
+				justforme = rows_hint;
+			}
+			else if (!(bms_is_subset(rows_hint->joinrelids, rel1->relids) ||
+					   bms_is_subset(rows_hint->joinrelids, rel2->relids)) &&
+					 bms_is_subset(rows_hint->joinrelids, joinrelids) &&
+					 rows_hint->value_type == RVT_MULTI)
+			{
+				/*
+				 * If the rows_hint's target relids is not a subset of both of
+				 * component rels and is a subset of this joinrel, ths hint's
+				 * targets spread over both component rels. This menas that
+				 * this hint has been never applied so far and this joinrel is
+				 * the first (and only) chance to fire in current join tree.
+				 * Only the multiplication hint has the cumulative nature so we
+				 * apply only RVT_MULTI in this way.
+				 */
+				domultiply = rows_hint;
 			}
 		}
-	}
 
+		if (justforme)
+		{
+			/*
+			 * If a hint just for me is found, no other adjust method is
+			 * useles, but this cannot be more than twice becuase this joinrel
+			 * is already adjusted by this hint.
+			 */
+			if (justforme->base.state == HINT_STATE_NOTUSED)
+				joinrel->rows = adjust_rows(joinrel->rows, justforme);
+		}
+		else
+		{
+			if (domultiply)
+			{
+				/*
+				 * If we have multiple routes up to this joinrel which are not
+				 * applicable this hint, this multiply hint will applied more
+				 * than twice. But there's no means to know of that,
+				 * re-estimate the row number of this joinrel always just
+				 * before applying the hint. This is a bit different from
+				 * normal planner behavior but it doesn't harm so much.
+				 */
+				set_joinrel_size_estimates(root, joinrel, rel1, rel2, sjinfo,
+										   restrictlist);
+				
+				joinrel->rows = adjust_rows(joinrel->rows, domultiply);
+			}
+			
+		}
 	}
 	/* !!! END: HERE IS THE PART WHICH ADDED FOR PG_HINT_PLAN !!! */
 

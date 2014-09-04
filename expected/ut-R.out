@@ -4392,13 +4392,13 @@ error hint:
 (9 rows)
 
 \o results/ut-R.tmpout
-/*+ Leading(*VALUES* t1 t2) Rows(*VALUES* t1 #2)Rows(*VALUES* t1 t2 #2)*/
+/*+ Leading(*VALUES* t1 t2) Rows(*VALUES* t1 #2)Rows(*VALUES* t1 t2 #20)*/
 EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
 LOG:  pg_hint_plan:
 used hint:
 Leading(*VALUES* t1 t2)
 Rows(*VALUES* t1 #2)
-Rows(*VALUES* t1 t2 #2)
+Rows(*VALUES* t1 t2 #20)
 not used hint:
 duplication hint:
 error hint:
@@ -4407,7 +4407,7 @@ error hint:
 \! sql/maskout.sh results/ut-R.tmpout
                                  QUERY PLAN                                  
 -----------------------------------------------------------------------------
- Nested Loop  (cost=xxx rows=1 width=xxx)
+ Nested Loop  (cost=xxx rows=20 width=xxx)
    ->  Nested Loop  (cost=xxx rows=2 width=xxx)
          ->  Values Scan on "*VALUES*"  (cost=xxx rows=1 width=xxx)
          ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)

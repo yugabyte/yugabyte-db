@@ -12,7 +12,7 @@ REGRESSION_EXPECTED = expected/init.out expected/base_plan.out expected/pg_hint_
 REGRESS_OPTS = --encoding=UTF8
 
 EXTENSION = pg_hint_plan
-DATA = pg_hint_plan--1.0.sql
+DATA = pg_hint_plan--1.1.1.sql
 
 EXTRA_CLEAN = sql/ut-fdw.sql expected/ut-fdw.out
 
@@ -23,4 +23,4 @@ include $(PGXS)
 installcheck: $(REGRESSION_EXPECTED)
 
 # pg_hint_plan.c includes core.c and make_join_rel.c
-pg_hint_plan.o: core.c make_join_rel.c # pg_stat_statements.c
+pg_hint_plan.o: core.c make_join_rel.c pg_stat_statements.c

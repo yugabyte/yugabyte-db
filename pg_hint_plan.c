@@ -53,7 +53,7 @@
 /* partially copied from pg_stat_statements */
 #include "normalize_query.h"
 
-/* PostgreSQL 9.3 */
+/* PostgreSQL */
 #include "access/htup_details.h"
 
 #ifdef PG_MODULE_MAGIC
@@ -3292,7 +3292,7 @@ transform_join_hints(HintState *hstate, PlannerInfo *root, int nbaserel,
 		return false;
 
 	/*
-	 * Decide to use Leading hint。
+	 * Decide whether to use Leading hint
  	 */
 	for (i = 0; i < hstate->num_hints[HINT_TYPE_LEADING]; i++)
 	{
