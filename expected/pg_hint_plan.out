@@ -1,4 +1,5 @@
 SET search_path TO public;
+SET client_min_messages TO log;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -20,7 +21,6 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
 LOAD 'pg_hint_plan';
 SET pg_hint_plan.debug_print TO on;
-SET client_min_messages TO LOG;
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
               QUERY PLAN              
 --------------------------------------
@@ -223,7 +223,7 @@ error hint:
 /*+Set(work_mem "1M")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 INFO:  invalid value for parameter "work_mem": "1M"
-HINT:  Valid units for this parameter are "kB", "MB", and "GB".
+HINT:  Valid units for this parameter are "kB", "MB", "GB", and "TB".
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -6417,13 +6417,11 @@ EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid =
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Seq Scan on p2_c1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-(11 rows)
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(9 rows)
 
 /*+IndexScan(p2 p2_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -6542,22 +6540,17 @@ EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
    ->  Seq Scan on p2_c3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c4
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-(24 rows)
+   ->  Seq Scan on p2_c4
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+(19 rows)
 
 /*+IndexScan(p2 p2_val)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
@@ -6588,22 +6581,17 @@ error hint:
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
    ->  Seq Scan on p2_c3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c4
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-(24 rows)
+   ->  Seq Scan on p2_c4
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+(19 rows)
 
 /*+IndexScan(p2 p2_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -6658,8 +6646,8 @@ not used hint:
 duplication hint:
 error hint:
 
-                   QUERY PLAN                    
--------------------------------------------------
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
  Append
    ->  Index Scan using p2_id2_val on p2
          Index Cond: ((id >= 50) AND (id <= 51))
@@ -6667,13 +6655,11 @@ error hint:
    ->  Index Scan using p2_c1_id2_val on p2_c1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-(13 rows)
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(11 rows)
 
 /*+IndexScan(p2 p2_val2_id)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -6701,13 +6687,11 @@ error hint:
          Filter: (ctid = '(1,1)'::tid)
    ->  Seq Scan on p2_c1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-(12 rows)
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(10 rows)
 
 /*+IndexScan(p2 p2_pkey)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -6770,13 +6754,11 @@ error hint:
    ->  Index Scan using p2_c1_id_val_idx on p2_c1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-(12 rows)
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(10 rows)
 
 /*+IndexScan(p2 no_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -6803,13 +6785,11 @@ error hint:
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
    ->  Seq Scan on p2_c1
          Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-(11 rows)
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(9 rows)
 
 /*+IndexScan(p2 p2_pkey p2_c1_id_val_idx)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -6907,13 +6887,11 @@ error hint:
    ->  Index Scan using p2_c1_id_val_idx on p2_c1
          Index Cond: ((id >= 50) AND (id <= 51))
          Filter: (ctid = '(1,1)'::tid)
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((id >= 50) AND (id <= 51))
-(12 rows)
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((id >= 50) AND (id <= 51) AND (ctid = '(1,1)'::tid))
+(10 rows)
 
 /*+IndexScan(p2 p2_pkey p2_c1_id_val_idx no_exist)*/
 EXPLAIN (COSTS false) SELECT * FROM p2 WHERE id >= 50 AND id <= 51 AND p2.ctid = '(1,1)';
@@ -7029,22 +7007,17 @@ error hint:
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
    ->  Seq Scan on p2_c3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c4
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-(24 rows)
+   ->  Seq Scan on p2_c4
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+(19 rows)
 
 /*+IndexScan(p2 p2_val_idx6)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
@@ -7075,22 +7048,17 @@ error hint:
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
    ->  Seq Scan on p2_c3
          Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
-   ->  Tid Scan on p2_c4
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c1_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c1
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-   ->  Tid Scan on p2_c3_c2
-         TID Cond: (ctid = '(1,1)'::tid)
-         Filter: ((val >= '50'::text) AND (val <= '51'::text))
-(24 rows)
+   ->  Seq Scan on p2_c4
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c1_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c1
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+   ->  Seq Scan on p2_c3_c2
+         Filter: ((val >= '50'::text) AND (val <= '51'::text) AND (ctid = '(1,1)'::tid))
+(19 rows)
 
 /*+IndexScan(p2 p2_val_idx p2_val_idx6)*/
 EXPLAIN (COSTS false) SELECT val FROM p2 WHERE val >= '50' AND val <= '51' AND p2.ctid = '(1,1)';
@@ -7996,16 +7964,23 @@ DROP EXTENSION pg_hint_plan;
 --
 -- Rows hint tests
 --
+-- Explain result includes "Planning time" if COSTS is enabled, but
+-- this test needs it enabled for get rows count. So do tests via psql
+-- and grep -v the mutable line.
 -- value types
+\o results/pg_hint_plan.tmpout
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=1000 width=16)
+ Merge Join  (cost=xxx rows=1000 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #99) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8015,14 +7990,17 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=99 width=16)
+ Merge Join  (cost=xxx rows=99 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 +99) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8032,14 +8010,17 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=1099 width=16)
+ Merge Join  (cost=xxx rows=1099 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 -99) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8049,14 +8030,17 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=901 width=16)
+ Merge Join  (cost=xxx rows=901 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 *99) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8066,14 +8050,17 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=99000 width=16)
+ Merge Join  (cost=xxx rows=99000 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 *0.01) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8083,16 +8070,19 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=10 width=16)
+ Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #aa) */
-EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);    -- ERROR
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
 INFO:  hint syntax error at or near "aa"
 DETAIL:  Rows hint requires valid number as rows estimation.
 LOG:  pg_hint_plan:
@@ -8102,16 +8092,19 @@ duplication hint:
 error hint:
 Rows(t1 t2 #aa)
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=1000 width=16)
+ Merge Join  (cost=xxx rows=1000 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 /99) */
-EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);    -- ERROR
+EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
 INFO:  hint syntax error at or near "/99"
 DETAIL:  Unrecognized rows value type notation.
 LOG:  pg_hint_plan:
@@ -8121,15 +8114,18 @@ duplication hint:
 error hint:
 Rows(t1 t2 /99)
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=1000 width=16)
+ Merge Join  (cost=xxx rows=1000 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
 -- round up to 1
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 -99999) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
 WARNING:  Force estimate to be at least one row, to avoid possible divide-by-zero when interpolating costs : Rows(t1 t2 -99999) 
@@ -8140,29 +8136,35 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                   QUERY PLAN                                  
 ------------------------------------------------------------------------------
- Merge Join  (cost=0.56..90.36 rows=1 width=16)
+ Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.id = t2.id)
-   ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-   ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-(4 rows)
+   ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+   ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+(5 rows)
 
 -- complex join tree
+\o results/pg_hint_plan.tmpout
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Merge Join  (cost=5.88..7.40 rows=10 width=24)
+ Merge Join  (cost=xxx rows=10 width=xxx)
    Merge Cond: (t1.id = t3.id)
-   ->  Merge Join  (cost=0.56..90.36 rows=1000 width=16)
+   ->  Merge Join  (cost=xxx rows=1000 width=xxx)
          Merge Cond: (t1.id = t2.id)
-         ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-         ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+         ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+   ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t3.id
-         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
-(9 rows)
+         ->  Seq Scan on t3  (cost=xxx rows=100 width=xxx)
+(10 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #22) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8172,19 +8174,22 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Merge Join  (cost=5.88..10.48 rows=1 width=24)
+ Merge Join  (cost=xxx rows=1 width=xxx)
    Merge Cond: (t1.id = t3.id)
-   ->  Merge Join  (cost=0.56..90.36 rows=22 width=16)
+   ->  Merge Join  (cost=xxx rows=22 width=xxx)
          Merge Cond: (t1.id = t2.id)
-         ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-         ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+         ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+   ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t3.id
-         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
-(9 rows)
+         ->  Seq Scan on t3  (cost=xxx rows=100 width=xxx)
+(10 rows)
 
+\o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t3 *10) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
 LOG:  pg_hint_plan:
@@ -8194,16 +8199,19 @@ not used hint:
 duplication hint:
 error hint:
 
+\o
+\! sql/maskout.sh results/pg_hint_plan.tmpout
                                      QUERY PLAN                                     
 ------------------------------------------------------------------------------------
- Merge Join  (cost=5.88..7.40 rows=100 width=24)
+ Merge Join  (cost=xxx rows=100 width=xxx)
    Merge Cond: (t1.id = t3.id)
-   ->  Merge Join  (cost=0.56..90.36 rows=1000 width=16)
+   ->  Merge Join  (cost=xxx rows=1000 width=xxx)
          Merge Cond: (t1.id = t2.id)
-         ->  Index Scan using t1_pkey on t1  (cost=0.29..318.29 rows=10000 width=8)
-         ->  Index Scan using t2_pkey on t2  (cost=0.28..43.27 rows=1000 width=8)
-   ->  Sort  (cost=5.32..5.57 rows=100 width=8)
+         ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
+         ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
+   ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t3.id
-         ->  Seq Scan on t3  (cost=0.00..2.00 rows=100 width=8)
-(9 rows)
+         ->  Seq Scan on t3  (cost=xxx rows=100 width=xxx)
+(10 rows)
 
+\! rm results/pg_hint_plan.tmpout

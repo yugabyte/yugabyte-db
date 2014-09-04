@@ -1,4 +1,9 @@
 LOAD 'pg_hint_plan';
+-- We cannot do ALTER USER current_user SET ...
+DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);
+INSERT INTO pg_db_role_setting (SELECT 0, (SELECT oid FROM pg_roles WHERE rolname = current_user), '{client_min_messages=log,pg_hint_plan.debug_print=on}');
+ALTER SYSTEM SET session_preload_libraries TO 'pg_hint_plan';
+\! pg_ctl reload
 SET pg_hint_plan.enable_hint TO on;
 SET pg_hint_plan.debug_print TO on;
 SET client_min_messages TO LOG;
@@ -800,33 +805,26 @@ EXPLAIN (COSTS false) SELECT c2 FROM s1.ti1 WHERE c2 >= 1;
 ----
 
 -- No. S-3-5-1
-/*+IndexScan(ti1 ti1_pred)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\! psql contrib_regression -c "/*+IndexScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
 
 -- No. S-3-5-2
-/*+BitmapScan(ti1 ti1_pred)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\! psql contrib_regression -c "/*+BitmapScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
 
 -- No. S-3-5-3
-/*+IndexOnlyScan(ti1 ti1_pred)*/
-EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+\! psql contrib_regression -c "/*+IndexOnlyScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
 
 -- No. S-3-5-4
-/*+IndexScan(ti1 not_exist)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\! psql contrib_regression -c "/*+IndexScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
 
 -- No. S-3-5-5
-/*+BitmapScan(ti1 not_exist)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100;
+\! psql contrib_regression -c "/*+BitmapScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
 
 -- No. S-3-5-6
-/*+IndexOnlyScan(ti1 not_exist)*/
-EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100;
+\! psql contrib_regression -c "/*+IndexOnlyScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
 
 -- No. S-3-5-7
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-/*+TidScan(t1)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+\! psql contrib_regression -c "/*+TidScan(t1)*/ EXPLAIN (COSTS true) SELECT * FROM s1.t1 WHERE t1.c1 = 1" | grep -v "Planning time:"
 
 ----
 ---- No. S-3-6 query structure
@@ -949,17 +947,15 @@ EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p2 WHERE c1 = 1;
 
 -- No. S-3-10-3
-EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
-/*+IndexScan(p1 p1_parent)*/
-EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10;
+\! psql contrib_regression -c "EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
+\! psql contrib_regression -c "/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
 
 -- No. S-3-10-4
-/*+IndexScan(p1 p1_i2)*/
-EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1;
+
+\! psql contrib_regression -c "/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1" | grep -v "Planning time:"
 
 -- No. S-3-10-5
-/*+IndexScan(p2 p2c1_pkey)*/
-EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1;
+\! psql contrib_regression -c "/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1" | grep -v "Planning time:"
 
 ----
 ---- No. S-3-12 specified same table
@@ -1154,3 +1150,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
 -- No. S-3-15-5
 /*+IndexScan(ti1 not_exist1 not_exist2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c2 = 1;
+
+DELETE FROM pg_db_role_setting WHERE setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user);
+
+ALTER SYSTEM SET session_preload_libraries TO DEFAULT;
+\! pg_ctl reload

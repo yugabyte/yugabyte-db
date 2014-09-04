@@ -118,6 +118,12 @@ CREATE VIEW v4 AS SELECT v_2.t1_id, t_3.id FROM v2 v_2, t3 t_3 WHERE v_2.t1_id =
  * The following GUC parameters need the setting of the default value to
  * succeed in regression test.
  */
+
+/* Fix auto-tunable parameters */
+ALTER SYSTEM SET effective_cache_size TO 16384;
+\! pg_ctl reload
+SET effective_cache_size TO 16384;
+
 CREATE VIEW settings AS
 SELECT name, setting, category
   FROM pg_settings
@@ -125,3 +131,5 @@ SELECT name, setting, category
     OR name = 'client_min_messages'
  ORDER BY category, name;
 SELECT * FROM settings;
+
+ANALYZE;

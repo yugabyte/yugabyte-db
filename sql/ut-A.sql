@@ -511,51 +511,52 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 ----
 ---- No. A-8-1 original GUC parameter
 ----
-
+---- Don't test postgresql itself.
 -- No. A-8-1-1
-SET ROLE super_user;
-SET pg_hint_plan.debug_print TO off;
-SHOW pg_hint_plan.enable_hint;
-SHOW pg_hint_plan.debug_print;
-SHOW pg_hint_plan.parse_messages;
-SET pg_hint_plan.enable_hint TO off;
-SET pg_hint_plan.debug_print TO on;
-SET pg_hint_plan.parse_messages TO error;
-SHOW pg_hint_plan.enable_hint;
-SHOW pg_hint_plan.debug_print;
-SHOW pg_hint_plan.parse_messages;
-RESET pg_hint_plan.enable_hint;
-RESET pg_hint_plan.debug_print;
-RESET pg_hint_plan.parse_messages;
-SHOW pg_hint_plan.enable_hint;
-SHOW pg_hint_plan.debug_print;
-SHOW pg_hint_plan.parse_messages;
-
--- No. A-8-1-2
-SET ROLE normal_user;
-SHOW pg_hint_plan.enable_hint;
-SHOW pg_hint_plan.debug_print;
-SHOW pg_hint_plan.parse_messages;
-SET pg_hint_plan.enable_hint TO off;
-SET pg_hint_plan.debug_print TO on;
-SET pg_hint_plan.parse_messages TO error;
-SHOW pg_hint_plan.enable_hint;
-SHOW pg_hint_plan.debug_print;
-SHOW pg_hint_plan.parse_messages;
-RESET pg_hint_plan.enable_hint;
-RESET pg_hint_plan.debug_print;
-RESET pg_hint_plan.parse_messages;
-SHOW pg_hint_plan.enable_hint;
-SHOW pg_hint_plan.debug_print;
-SHOW pg_hint_plan.parse_messages;
-
-RESET ROLE;
+-- SET ROLE super_user;
+-- SET pg_hint_plan.debug_print TO off;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- SET pg_hint_plan.enable_hint TO off;
+-- SET pg_hint_plan.debug_print TO on;
+-- SET pg_hint_plan.parse_messages TO error;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- RESET pg_hint_plan.enable_hint;
+-- RESET pg_hint_plan.debug_print;
+-- RESET pg_hint_plan.parse_messages;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- 
+-- -- No. A-8-1-2
+-- SET ROLE normal_user;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- SET pg_hint_plan.enable_hint TO off;
+-- SET pg_hint_plan.debug_print TO on;
+-- SET pg_hint_plan.parse_messages TO error;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- RESET pg_hint_plan.enable_hint;
+-- RESET pg_hint_plan.debug_print;
+-- RESET pg_hint_plan.parse_messages;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- 
+-- RESET ROLE;
 
 ----
 ---- No. A-8-2 original GUC parameter pg_hint_plan.enable_hint
 ----
 
 -- No. A-8-2-1
+SET pg_hint_plan.debug_print TO off;
 SET pg_hint_plan.enable_hint TO on;
 SHOW pg_hint_plan.enable_hint;
 /*+Set(enable_indexscan off)*/
@@ -568,20 +569,24 @@ SHOW pg_hint_plan.enable_hint;
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-8-2-3
-SET pg_hint_plan.enable_hint TO DEFAULT;
-SHOW pg_hint_plan.enable_hint;
-/*+Set(enable_indexscan off)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
+-- Don't test PostgreSQL itself.
+-- SET pg_hint_plan.enable_hint TO DEFAULT;
+-- SHOW pg_hint_plan.enable_hint;
+-- /*+Set(enable_indexscan off)*/
+-- EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-8-2-4
-SET pg_hint_plan.enable_hint TO enable;
-SHOW pg_hint_plan.enable_hint;
+-- Don't test PostgreSQL itself
+-- SET pg_hint_plan.enable_hint TO enable;
+-- SHOW pg_hint_plan.enable_hint;
 
 ----
 ---- No. A-8-3 original GUC parameter pg_hint_plan.debug_print
 ----
 
 -- No. A-8-3-1
+SET pg_hint_plan.enable_hint TO on;
+SHOW pg_hint_plan.enable_hint;
 SET pg_hint_plan.debug_print TO on;
 SHOW pg_hint_plan.debug_print;
 /*+Set(enable_indexscan off)*/

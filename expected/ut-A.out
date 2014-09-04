@@ -1612,136 +1612,50 @@ DETAIL:  Nested block comments are not supported.
 ----
 ---- No. A-8-1 original GUC parameter
 ----
+---- Don't test postgresql itself.
 -- No. A-8-1-1
-SET ROLE super_user;
-SET pg_hint_plan.debug_print TO off;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- on
-(1 row)
-
-SHOW pg_hint_plan.debug_print;
- pg_hint_plan.debug_print 
---------------------------
- off
-(1 row)
-
-SHOW pg_hint_plan.parse_messages;
- pg_hint_plan.parse_messages 
------------------------------
- info
-(1 row)
-
-SET pg_hint_plan.enable_hint TO off;
-SET pg_hint_plan.debug_print TO on;
-SET pg_hint_plan.parse_messages TO error;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- off
-(1 row)
-
-SHOW pg_hint_plan.debug_print;
- pg_hint_plan.debug_print 
---------------------------
- on
-(1 row)
-
-SHOW pg_hint_plan.parse_messages;
- pg_hint_plan.parse_messages 
------------------------------
- error
-(1 row)
-
-RESET pg_hint_plan.enable_hint;
-RESET pg_hint_plan.debug_print;
-RESET pg_hint_plan.parse_messages;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- on
-(1 row)
-
-SHOW pg_hint_plan.debug_print;
- pg_hint_plan.debug_print 
---------------------------
- off
-(1 row)
-
-SHOW pg_hint_plan.parse_messages;
- pg_hint_plan.parse_messages 
------------------------------
- info
-(1 row)
-
--- No. A-8-1-2
-SET ROLE normal_user;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- on
-(1 row)
-
-SHOW pg_hint_plan.debug_print;
- pg_hint_plan.debug_print 
---------------------------
- off
-(1 row)
-
-SHOW pg_hint_plan.parse_messages;
- pg_hint_plan.parse_messages 
------------------------------
- info
-(1 row)
-
-SET pg_hint_plan.enable_hint TO off;
-SET pg_hint_plan.debug_print TO on;
-SET pg_hint_plan.parse_messages TO error;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- off
-(1 row)
-
-SHOW pg_hint_plan.debug_print;
- pg_hint_plan.debug_print 
---------------------------
- on
-(1 row)
-
-SHOW pg_hint_plan.parse_messages;
- pg_hint_plan.parse_messages 
------------------------------
- error
-(1 row)
-
-RESET pg_hint_plan.enable_hint;
-RESET pg_hint_plan.debug_print;
-RESET pg_hint_plan.parse_messages;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- on
-(1 row)
-
-SHOW pg_hint_plan.debug_print;
- pg_hint_plan.debug_print 
---------------------------
- off
-(1 row)
-
-SHOW pg_hint_plan.parse_messages;
- pg_hint_plan.parse_messages 
------------------------------
- info
-(1 row)
-
-RESET ROLE;
+-- SET ROLE super_user;
+-- SET pg_hint_plan.debug_print TO off;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- SET pg_hint_plan.enable_hint TO off;
+-- SET pg_hint_plan.debug_print TO on;
+-- SET pg_hint_plan.parse_messages TO error;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- RESET pg_hint_plan.enable_hint;
+-- RESET pg_hint_plan.debug_print;
+-- RESET pg_hint_plan.parse_messages;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- 
+-- -- No. A-8-1-2
+-- SET ROLE normal_user;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- SET pg_hint_plan.enable_hint TO off;
+-- SET pg_hint_plan.debug_print TO on;
+-- SET pg_hint_plan.parse_messages TO error;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- RESET pg_hint_plan.enable_hint;
+-- RESET pg_hint_plan.debug_print;
+-- RESET pg_hint_plan.parse_messages;
+-- SHOW pg_hint_plan.enable_hint;
+-- SHOW pg_hint_plan.debug_print;
+-- SHOW pg_hint_plan.parse_messages;
+-- 
+-- RESET ROLE;
 ----
 ---- No. A-8-2 original GUC parameter pg_hint_plan.enable_hint
 ----
 -- No. A-8-2-1
+SET pg_hint_plan.debug_print TO off;
 SET pg_hint_plan.enable_hint TO on;
 SHOW pg_hint_plan.enable_hint;
  pg_hint_plan.enable_hint 
@@ -1776,36 +1690,26 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 (2 rows)
 
 -- No. A-8-2-3
-SET pg_hint_plan.enable_hint TO DEFAULT;
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- on
-(1 row)
-
-/*+Set(enable_indexscan off)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-            QUERY PLAN            
-----------------------------------
- Bitmap Heap Scan on t1
-   Recheck Cond: (c1 = 1)
-   ->  Bitmap Index Scan on t1_i1
-         Index Cond: (c1 = 1)
-(4 rows)
-
+-- Don't test PostgreSQL itself.
+-- SET pg_hint_plan.enable_hint TO DEFAULT;
+-- SHOW pg_hint_plan.enable_hint;
+-- /*+Set(enable_indexscan off)*/
+-- EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 -- No. A-8-2-4
-SET pg_hint_plan.enable_hint TO enable;
-ERROR:  parameter "pg_hint_plan.enable_hint" requires a Boolean value
-SHOW pg_hint_plan.enable_hint;
- pg_hint_plan.enable_hint 
---------------------------
- on
-(1 row)
-
+-- Don't test PostgreSQL itself
+-- SET pg_hint_plan.enable_hint TO enable;
+-- SHOW pg_hint_plan.enable_hint;
 ----
 ---- No. A-8-3 original GUC parameter pg_hint_plan.debug_print
 ----
 -- No. A-8-3-1
+SET pg_hint_plan.enable_hint TO on;
+SHOW pg_hint_plan.enable_hint;
+ pg_hint_plan.enable_hint 
+--------------------------
+ on
+(1 row)
+
 SET pg_hint_plan.debug_print TO on;
 SHOW pg_hint_plan.debug_print;
  pg_hint_plan.debug_print 
