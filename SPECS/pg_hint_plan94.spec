@@ -5,6 +5,10 @@
 %define _bindir  %{_pgdir}/bin
 %define _libdir  %{_pgdir}/lib
 %define _datadir %{_pgdir}/share
+%if "%(echo ${MAKE_ROOT})" != ""
+  %define _rpmdir %(echo ${MAKE_ROOT})/RPMS
+  %define _sourcedir %(echo ${MAKE_ROOT})
+%endif
 
 ## Set general information for pg_hint_plan.
 Summary:    Optimizer hint for PostgreSQL 9.4
@@ -36,11 +40,19 @@ Note that this package is available for only PostgreSQL 9.4.
 
 ## pre work for build pg_hint_plan
 %prep
+PATH=/usr/pgsql-9.4/bin:$PATH
+if [ "${MAKE_ROOT}" != "" ]; then
+  pushd ${MAKE_ROOT}
+  make clean %{name}-%{version}.tar.gz
+  popd
+fi
+if [ ! -d %{_rpmdir} ]; then mkdir -p %{_rpmdir}; fi
 %setup -q
 
 ## Set variables for build environment
 %build
-make %{?_smp_mflags}
+PATH=/usr/pgsql-9.4/bin:$PATH
+make USE_PGXS=1 %{?_smp_mflags}
 
 ## Set variables for install
 %install
