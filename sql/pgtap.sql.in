@@ -9280,5 +9280,36 @@ RETURNS TEXT AS $$
     SELECT hasnt_materialized_view( $1, 'Materialized view ' || quote_ident($1) || ' should not exist' );
 $$ LANGUAGE SQL;
 
+
+-- foreign_tables_are( schema, tables, description )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are( 'foreign tables', _extras('f', $1, $2), _missing('f', $1, $2), $3);
+$$ LANGUAGE SQL;
+
+-- foreign_tables_are( tables, description )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are( 'foreign tables', _extras('f', $1), _missing('f', $1), $2);
+$$ LANGUAGE SQL;
+
+-- foreign_tables_are( schema, tables )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'foreign tables', _extras('f', $1, $2), _missing('f', $1, $2),
+        'Schema ' || quote_ident($1) || ' should have the correct tables'
+    );
+$$ LANGUAGE SQL;
+
+-- foreign_tables_are( tables )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'foreign tables', _extras('f', $1), _missing('f', $1),
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables'
+    );
+$$ LANGUAGE SQL;
+
 GRANT SELECT ON tap_funky           TO PUBLIC;
 GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;
