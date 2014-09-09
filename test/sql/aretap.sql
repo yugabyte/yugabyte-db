@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(429);
+SELECT plan(459);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -68,6 +68,23 @@ CREATE TYPE someschema."myType" AS (
     id INT,
     foo INT
 );
+
+
+CREATE FOREIGN DATA WRAPPER null_fdw;
+CREATE SERVER server_null_fdw FOREIGN DATA WRAPPER null_fdw;
+
+CREATE FOREIGN TABLE public.ft_foo(
+    id      INT ,
+    "name"  TEXT ,
+    num     NUMERIC(10, 2),
+    "myInt" int
+)
+SERVER server_null_fdw ;
+CREATE FOREIGN TABLE public.ft_bar(
+    id    INT 
+)
+SERVER server_null_fdw ;
+;
 
 RESET client_min_messages;
 
@@ -1712,6 +1729,133 @@ $$LANGUAGE PLPGSQL;
 SELECT * FROM test_materialized_views_are();
 
 /****************************************************************************/
+/* Foreign Table are function tests */
+
+-- foreign_tables_are( schema, tables, description )
+-- CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[], TEXT )
+SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo', 'ft_bar'], 'Correct foreign tables in named schema with custom message' ),
+    true,
+    'foreign_tables_are(schema, tables, desc)',
+    'Correct foreign tables in named schema with custom message',
+    ''
+);
+-- foreign_tables_are( tables, description )
+--CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[], TEXT )
+SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo', 'ft_bar'], 'Correct foreign tables in search_path with custom message' ),
+    true,
+    'foreign_tables_are(tables, desc)',
+    'Correct foreign tables in search_path with custom message',
+    ''
+);
+
+
+-- foreign_tables_are( schema, tables )
+-- CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[] )
+SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo', 'ft_bar'] ),
+    true,
+    'foreign_tables_are(schema, tables)',
+    'Schema public should have the correct foreign tables',
+    ''
+);
+
+-- foreign_tables_are( tables )
+-- +CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[] )
+
+SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo', 'ft_bar'] ),
+    true,
+    'foreign_tables_are(tables)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    ''
+);
+
+
+SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo', 'ft_bar', 'bar'] ),
+    false,
+    'foreign_tables_are(schema, tables) missing',
+    'Schema public should have the correct foreign tables',
+    '    Missing foreign tables:
+        bar'
+);
+
+SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo', 'ft_bar', 'bar'] ),
+    false,
+    'foreign_tables_are(tables) missing',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    '    Missing foreign tables:
+        bar'
+);
+
+SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo'] ),
+    false,
+    'foreign_tables_are(schema, tables) extra',
+    'Schema public should have the correct foreign tables',
+    '    Extra foreign tables:
+        ft_bar'
+);
+
+SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo'] ),
+    false,
+    'foreign_tables_are(tables) extra',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    '    Extra foreign tables:
+        ft_bar'
+);
+
+SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['bar', 'baz'] ),
+    false,
+    'foreign_tables_are(schema, tables) extra and missing',
+    'Schema public should have the correct foreign tables',
+    '    Extra foreign tables:
+        ft_foo
+        ft_bar
+    Missing foreign tables:
+        ba[rz]
+        ba[rz]',
+    true
+);
+/*
+"foreign_tables_are(schema, tables) extra and missing should have the proper diagnostics"
+#                   '    Extra foreign tables:
+#         ft_foo
+#         ft_bar
+#     Missing foreign tables:
+#         bar
+#         baz'
+#    doesn't match: '    Extra foreign tables:
+#         fo[ou]
+#         fo[ou]
+#     Missing foreign tables:
+#         ba[rz]
+#         ba[rz]'
+
+
+
+*/
+
+SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['bar', 'baz'] ),
+    false,
+    'foreign_tables_are(tables) extra and missing',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    '    Extra foreign tables:' || '
+        ft_[fobar]+
+        ft_[fobar]+
+    Missing foreign tables:' || '
+        ba[rz]
+        ba[rz]',
+    true
+);
+
+
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;
