@@ -9298,7 +9298,7 @@ CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT _are(
         'foreign tables', _extras('f', $1, $2), _missing('f', $1, $2),
-        'Schema ' || quote_ident($1) || ' should have the correct tables'
+        'Schema ' || quote_ident($1) || ' should have the correct foreign tables'
     );
 $$ LANGUAGE SQL;
 
@@ -9307,7 +9307,7 @@ CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[] )
 RETURNS TEXT AS $$
     SELECT _are(
         'foreign tables', _extras('f', $1), _missing('f', $1),
-        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct tables'
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables'
     );
 $$ LANGUAGE SQL;
 
