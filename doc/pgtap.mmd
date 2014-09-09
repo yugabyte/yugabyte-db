@@ -1838,6 +1838,46 @@ missing tables, like so:
     #         users
     #         widgets
 
+### `foreign_tables_are()` ###
+
+    SELECT foreign_tables_are( :schema, :foreign_tables, :description );
+    SELECT foreign_tables_are( :schema, :foreign_tables );
+    SELECT foreign_tables_are( :foreign_tables, :description );
+    SELECT foreign_tables_are( :foreign_tables );
+
+**Parameters**
+
+`:schema`
+: Name of a schema in which to find foreign tables.
+
+`:foreign_tables`
+: An array of foreign table names.
+
+`:description`
+: A short description of the test.
+
+This function tests that all of the foreign tables in the named schema, or that are
+visible in the search path, are only the foreign tables that *should* be there. If the
+`:schema` argument is omitted, foreign tables will be sought in the search path,
+excluding `pg_catalog` and `information_schema` If the description is omitted,
+a generally useful default description will be generated. Example:
+
+    SELECT foreign_tables_are(
+        'myschema',
+        ARRAY[ 'users', 'widgets', 'gadgets', 'session' ]
+    );
+
+In the event of a failure, you'll see diagnostics listing the extra and/or
+missing foreign tables, like so:
+
+    # Failed test 91: "Schema public should have the correct foreign tables"
+    #     Extra foreign tables:
+    #         mallots
+    #         __test_table
+    #     Missing foreign tables:
+    #         users
+    #         widgets
+
 ### `views_are()` ###
 
     SELECT views_are( :schema, :views, :description );
