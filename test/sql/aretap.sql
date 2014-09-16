@@ -1720,8 +1720,9 @@ DECLARE
     tap record;
     i int;
 BEGIN
-    IF false and pg_version_num() >= 90100 THEN
+    IF pg_version_num() >= 90100 THEN
         -- setup tables for tests
+        EXECUTE $setup$
         CREATE FOREIGN DATA WRAPPER null_fdw;
         CREATE SERVER server_null_fdw FOREIGN DATA WRAPPER null_fdw;
         CREATE FOREIGN TABLE public.ft_foo(
@@ -1735,6 +1736,7 @@ BEGIN
             id    INT 
         )
         SERVER server_null_fdw ;
+        $setup$;
 
 -- foreign_tables_are( schema, tables, description )
 -- CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[], TEXT )
