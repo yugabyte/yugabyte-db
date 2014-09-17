@@ -905,7 +905,7 @@ SELECT max(b2t1.c1) FROM s1.t1 b2t1 WHERE b2t1.c1 = 1
 SELECT max(b4t1.c1) FROM s1.t1 b4t1 WHERE b4t1.c1 = 1);
 
 ----
----- No. S-3-8 inheritance table select type
+---- No. S-3-8 inheritance table select/update type
 ----
 
 -- No. S-3-8-1
@@ -917,6 +917,20 @@ EXPLAIN (COSTS false) SELECT * FROM ONLY s1.p1 WHERE c1 = 1;
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.p1 WHERE c1 = 1;
+
+-- No. S-3-8-3
+EXPLAIN (COSTS false) UPDATE ONLY s1.p1 SET c4 = c4 WHERE c1 = 1;
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) UPDATE ONLY s1.p1 SET c4 = c4 WHERE c1 = 1;
+/*+IndexScan(p1 p1_pkey)*/
+EXPLAIN (COSTS false) UPDATE ONLY s1.p1 SET c4 = c4 WHERE c1 = 1;
+
+-- No. S-3-8-4
+EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
+/*+IndexScan(p1)*/
+EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
+/*+IndexScan(p1 p1_pkey)*/
+EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
 
 ----
 ---- No. S-3-9 inheritance table number

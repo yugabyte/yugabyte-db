@@ -2529,7 +2529,7 @@ standard_planner_proc:
  * Return scan method hint which matches given aliasname.
  */
 static ScanMethodHint *
-find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
+find_scan_hint(PlannerInfo *root, Index relid, RelOptInfo *rel)
 {
 	RangeTblEntry  *rte;
 	int				i;
@@ -2539,10 +2539,10 @@ find_scan_hint(PlannerInfo *root, RelOptInfo *rel)
 	 *   - not a base relation
 	 *   - not an ordinary relation (such as join and subquery)
 	 */
-	if (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION)
+	if (rel && (rel->reloptkind != RELOPT_BASEREL || rel->rtekind != RTE_RELATION))
 		return NULL;
 
-	rte = root->simple_rte_array[rel->relid];
+	rte = root->simple_rte_array[relid];
 
 	/* We can't force scan method of foreign tables */
 	if (rte->relkind == RELKIND_FOREIGN_TABLE)
@@ -2932,105 +2932,134 @@ static void
 pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 							   bool inhparent, RelOptInfo *rel)
 {
-	ScanMethodHint *hint;
+	ScanMethodHint *hint = NULL;
+	ListCell *l;
+	Index new_parent_relid = 0;
 
 	if (prev_get_relation_info)
 		(*prev_get_relation_info) (root, relationObjectId, inhparent, rel);
 
 	/* 
-	 * Do nothing if we don't have valid hint in this context or current 
-	 * nesting depth is nesting depth of SPI calls.
+	 * Do nothing if we don't have a valid hint in this context or current
+	 * nesting depth is at SPI calls.
 	 */
 	if (!current_hint || nested_level > 0)
 		return;
 
+	/*
+	 * We could register the parent relation of the following children here
+	 * when inhparent == true but inheritnce planner doesn't request
+	 * information for inheritance parents. We also cannot distinguish the
+	 * caller so we should always find the parents without this function being
+	 * called for them.
+	 */
 	if (inhparent)
-	{
-		/* store relid of the parent table. */
-		current_hint->parent_relid = rel->relid;
-	}
-	else if (current_hint->parent_relid != 0)
-	{
-		/*
-		 * We use the same GUC parameter if this table is the child table of a
-		 * table called pg_hint_plan_get_relation_info just before that.
-		 */
-		ListCell   *l;
+		return;
 
-		/* append_rel_list contains all append rels; ignore others */
-		foreach(l, root->append_rel_list)
+	/* Find the parent for this relation */
+	foreach (l, root->append_rel_list)
+	{
+		AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
+
+		if (appinfo->child_relid == rel->relid)
 		{
-			AppendRelInfo *appinfo = (AppendRelInfo *) lfirst(l);
-
-			/* This rel is child table. */
-			if (appinfo->parent_relid == current_hint->parent_relid &&
-				appinfo->child_relid == rel->relid)
-			{
-				if (current_hint->parent_hint)
-					delete_indexes(current_hint->parent_hint, rel,
-								   relationObjectId);
-
-				return;
-			}
+			if (current_hint->parent_relid != appinfo->parent_relid)
+				new_parent_relid = appinfo->parent_relid;
+			break;
 		}
+	}
 
-		/* This rel is not inherit table. */
+	if (!l)
+	{
+		/* This relation doesn't have a parent. Cancel current_hint. */
 		current_hint->parent_relid = 0;
 		current_hint->parent_hint = NULL;
 	}
 
-	/*
-	 * If scan method hint was given, reset GUC parameters which control
-	 * planner behavior about choosing scan methods.
-	 */
-	if ((hint = find_scan_hint(root, rel)) == NULL)
+	if (new_parent_relid > 0)
 	{
-		set_scan_config_options(current_hint->init_scan_mask,
-								current_hint->context);
+		/*
+		 * Here we found a parent relation different from the remembered one.
+		 * Remember it, apply the scan mask of it and then resolve the index
+		 * restriction in order to be used by its children.
+		 */
+		int scanmask = current_hint->init_scan_mask;
+		ScanMethodHint *parent_hint;
+
+		current_hint->parent_relid = new_parent_relid;
+				
+		/*
+		 * Get and apply the hint for the new parent relation. It should be an
+		 * ordinary relation so calling find_scan_hint with rel == NULL is
+		 * safe.
+		 */
+		current_hint->parent_hint = parent_hint = 
+			find_scan_hint(root, current_hint->parent_relid, NULL);
+
+		if (parent_hint)
+		{
+			scanmask = current_hint->parent_hint->enforce_mask;
+			parent_hint->base.state = HINT_STATE_USED;
+
+			/* Resolve index name mask (if any) using the parent. */
+			if (parent_hint->indexnames)
+			{
+				Oid			parentrel_oid;
+				Relation	parent_rel;
+
+				parentrel_oid =
+					root->simple_rte_array[current_hint->parent_relid]->relid;
+				parent_rel = heap_open(parentrel_oid, NoLock);
+
+				/* Search the parent relation for indexes match the hint spec */
+				foreach(l, RelationGetIndexList(parent_rel))
+				{
+					Oid         indexoid = lfirst_oid(l);
+					char       *indexname = get_rel_name(indexoid);
+					ListCell   *lc;
+					ParentIndexInfo *parent_index_info;
+
+					foreach(lc, parent_hint->indexnames)
+					{
+						if (RelnameCmp(&indexname, &lfirst(lc)) == 0)
+							break;
+					}
+					if (!lc)
+						continue;
+
+					parent_index_info =
+						get_parent_index_info(indexoid, parentrel_oid);
+					current_hint->parent_index_infos =
+						lappend(current_hint->parent_index_infos, parent_index_info);
+				}
+				heap_close(parent_rel, NoLock);
+			}
+		}
+			
+		set_scan_config_options(scanmask, current_hint->context);
+	}
+
+	if (current_hint->parent_hint != 0)
+	{
+		delete_indexes(current_hint->parent_hint, rel,
+					   relationObjectId);
+
+		/* Scan fixation status is the same to the parent. */
 		return;
 	}
-	set_scan_config_options(hint->enforce_mask, current_hint->context);
-	hint->base.state = HINT_STATE_USED;
 
-	if (inhparent)
+	/* This table doesn't have a parent hint. Apply its own hint if any. */
+	if ((hint = find_scan_hint(root, rel->relid, rel)) != NULL)
 	{
-		Relation    relation;
-		List       *indexoidlist;
-		ListCell   *l;
+		set_scan_config_options(hint->enforce_mask, current_hint->context);
+		hint->base.state = HINT_STATE_USED;
 
-		current_hint->parent_hint = hint;
-
-		relation = heap_open(relationObjectId, NoLock);
-		indexoidlist = RelationGetIndexList(relation);
-
-		foreach(l, indexoidlist)
-		{
-			Oid         indexoid = lfirst_oid(l);
-			char       *indexname = get_rel_name(indexoid);
-			bool        use_index = false;
-			ListCell   *lc;
-			ParentIndexInfo *parent_index_info;
-
-			foreach(lc, hint->indexnames)
-			{
-				if (RelnameCmp(&indexname, &lfirst(lc)) == 0)
-				{
-					use_index = true;
-					break;
-				}
-			}
-			if (!use_index)
-				continue;
-
-			parent_index_info = get_parent_index_info(indexoid,
-													  relationObjectId);
-			current_hint->parent_index_infos =
-				lappend(current_hint->parent_index_infos, parent_index_info);
-		}
-		heap_close(relation, NoLock);
+		delete_indexes(hint, rel, InvalidOid);
 	}
 	else
-		delete_indexes(hint, rel, InvalidOid);
+		set_scan_config_options(current_hint->init_scan_mask,
+								current_hint->context);
+	return;
 }
 
 /*
@@ -3525,7 +3554,7 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 		 * planner if scan method hint is not specified, otherwise use
 		 * specified hints and mark the hint as used.
 		 */
-		if ((hint = find_scan_hint(root, rel)) == NULL)
+		if ((hint = find_scan_hint(root, rel->relid, rel)) == NULL)
 			set_scan_config_options(hstate->init_scan_mask,
 									hstate->context);
 		else
@@ -3611,7 +3640,7 @@ add_paths_to_joinrel_wrapper(PlannerInfo *root,
 	JoinMethodHint *join_hint;
 	int				save_nestlevel;
 
-	if ((scan_hint = find_scan_hint(root, innerrel)) != NULL)
+	if ((scan_hint = find_scan_hint(root, innerrel->relid, innerrel)) != NULL)
 	{
 		set_scan_config_options(scan_hint->enforce_mask, current_hint->context);
 		scan_hint->base.state = HINT_STATE_USED;
