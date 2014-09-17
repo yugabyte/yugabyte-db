@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(429);
+SELECT plan(459);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -68,6 +68,7 @@ CREATE TYPE someschema."myType" AS (
     id INT,
     foo INT
 );
+
 
 RESET client_min_messages;
 
@@ -1712,6 +1713,217 @@ $$LANGUAGE PLPGSQL;
 SELECT * FROM test_materialized_views_are();
 
 /****************************************************************************/
+-- tests for foreign_tables_are functions
+
+CREATE FUNCTION test_foreign_tables_are() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+    i int;
+BEGIN
+    IF pg_version_num() >= 90100 THEN
+        -- setup tables for tests
+        EXECUTE $setup$
+        CREATE FOREIGN DATA WRAPPER null_fdw;
+        CREATE SERVER server_null_fdw FOREIGN DATA WRAPPER null_fdw;
+        CREATE FOREIGN TABLE public.ft_foo(
+            id      INT ,
+            "name"  TEXT ,
+            num     NUMERIC(10, 2),
+          "myInt" int
+        )
+        SERVER server_null_fdw ;
+        CREATE FOREIGN TABLE public.ft_bar(
+            id    INT 
+        )
+        SERVER server_null_fdw ;
+        $setup$;
+
+-- foreign_tables_are( schema, tables, description )
+-- CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[], TEXT )
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo', 'ft_bar'], 'Correct foreign tables in named schema with custom message' ),
+    true,
+    'foreign_tables_are(schema, tables, desc)',
+    'Correct foreign tables in named schema with custom message',
+    ''
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+-- foreign_tables_are( tables, description )
+--CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[], TEXT )
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo', 'ft_bar'], 'Correct foreign tables in search_path with custom message' ),
+    true,
+    'foreign_tables_are(tables, desc)',
+    'Correct foreign tables in search_path with custom message',
+    ''
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+
+-- foreign_tables_are( schema, tables )
+-- CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[] )
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo', 'ft_bar'] ),
+    true,
+    'foreign_tables_are(schema, tables)',
+    'Schema public should have the correct foreign tables',
+    ''
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+-- foreign_tables_are( tables )
+-- +CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[] )
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo', 'ft_bar'] ),
+    true,
+    'foreign_tables_are(tables)',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    ''
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo', 'ft_bar', 'bar'] ),
+    false,
+    'foreign_tables_are(schema, tables) missing',
+    'Schema public should have the correct foreign tables',
+    '    Missing foreign tables:
+        bar'
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo', 'ft_bar', 'bar'] ),
+    false,
+    'foreign_tables_are(tables) missing',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    '    Missing foreign tables:
+        bar'
+      ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['ft_foo'] ),
+    false,
+    'foreign_tables_are(schema, tables) extra',
+    'Schema public should have the correct foreign tables',
+    '    Extra foreign tables:
+        ft_bar'
+      ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['ft_foo'] ),
+    false,
+    'foreign_tables_are(tables) extra',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    '    Extra foreign tables:
+        ft_bar'
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( 'public', ARRAY['bar', 'baz'] ),
+    false,
+    'foreign_tables_are(schema, tables) extra and missing',
+    'Schema public should have the correct foreign tables',
+    '    Extra foreign tables:
+        ft_foo
+        ft_bar
+    Missing foreign tables:
+        ba[rz]
+        ba[rz]',
+    true
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+   FOR tap IN SELECT * FROM check_test(
+    foreign_tables_are( ARRAY['bar', 'baz'] ),
+    false,
+    'foreign_tables_are(tables) extra and missing',
+    'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables',
+    '    Extra foreign tables:' || '
+        ft_[fobar]+
+        ft_[fobar]+
+    Missing foreign tables:' || '
+        ba[rz]
+        ba[rz]',
+    true
+    ) AS r LOOP
+            RETURN NEXT tap.r;
+        END LOOP;
+
+    else
+       -- 10 fake pass/fail tests to make test work in older postgres. 
+       FOR tap IN SELECT * FROM check_test(pass('pass'), true,
+                'foreign_tables_are(schema, tables, desc)'
+            , 'pass', '') AS r LOOP
+           return next tap.r;
+       end loop;
+       FOR tap IN SELECT * FROM check_test(pass('pass'), true,
+                'foreign_tables_are(tables, desc)'
+            , 'pass', '') AS r LOOP
+           return next tap.r;
+       end loop;
+       FOR tap IN SELECT * FROM check_test(pass('pass'), true, 
+        'foreign_tables_are(schema, tables)'
+        ,'pass' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(pass('pass'), true, 
+        'foreign_tables_are(tables)'
+        ,'pass' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(fail('fail'), false,
+        'foreign_tables_are(schema, tables) missing'
+        ,'fail' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(fail('fail'), false,
+        'foreign_tables_are(tables) missing'
+        ,'fail' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(fail('fail'), false,
+        'foreign_tables_are(schema, tables) extra'
+        ,'fail' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(fail('fail'), false,
+        'foreign_tables_are(tables) extra'
+        ,'fail' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(fail('fail'), false,
+        'foreign_tables_are(schema, tables) extra and missing'
+        ,'fail' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+       FOR tap IN SELECT * FROM check_test(fail('fail'), false,
+        'foreign_tables_are(tables) extra and missing'
+        ,'fail' ,'') AS r LOOP
+           RETURN NEXT tap.r;
+       END LOOP;
+    end if;
+    RETURN;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_foreign_tables_are();
+
+/****************************************************************************/
+
 -- Finish the tests and clean up.
 SELECT * FROM finish();
 ROLLBACK;

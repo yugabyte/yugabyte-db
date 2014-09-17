@@ -16,6 +16,7 @@ Revision history for pgTAP
 * Granted SELECT access to the views created by pgTAP to PUBLIC, to avoid
   permission errors when the tests are run by a user other than the owner of
   those views. Thanks to Jim Nasby for the report.
+* Added `foreign_tables_are()` functions. Thanks to Chad for the pull request!
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------
