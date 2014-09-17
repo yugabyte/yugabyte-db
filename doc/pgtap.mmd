@@ -1856,11 +1856,12 @@ missing tables, like so:
 `:description`
 : A short description of the test.
 
-This function tests that all of the foreign tables in the named schema, or that are
-visible in the search path, are only the foreign tables that *should* be there. If the
-`:schema` argument is omitted, foreign tables will be sought in the search path,
-excluding `pg_catalog` and `information_schema` If the description is omitted,
-a generally useful default description will be generated. Example:
+This function tests that all of the foreign tables in the named schema, or
+that are visible in the search path, are only the foreign tables that *should*
+be there. If the `:schema` argument is omitted, foreign tables will be sought
+in the search path, excluding `pg_catalog` and `information_schema`. If the
+description is omitted, a generally useful default description will be
+generated. Example:
 
     SELECT foreign_tables_are(
         'myschema',
