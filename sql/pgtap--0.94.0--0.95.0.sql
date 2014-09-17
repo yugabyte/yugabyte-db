@@ -33,3 +33,33 @@ CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME[] )
 RETURNS TEXT AS $$
     SELECT is_member_of( $1, $2, 'Should have members of role ' || quote_ident($1) );
 $$ LANGUAGE SQL;
+
+-- foreign_tables_are( schema, tables, description )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are( 'foreign tables', _extras('f', $1, $2), _missing('f', $1, $2), $3);
+$$ LANGUAGE SQL;
+
+-- foreign_tables_are( tables, description )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT _are( 'foreign tables', _extras('f', $1), _missing('f', $1), $2);
+$$ LANGUAGE SQL;
+
+-- foreign_tables_are( schema, tables )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME, NAME[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'foreign tables', _extras('f', $1, $2), _missing('f', $1, $2),
+        'Schema ' || quote_ident($1) || ' should have the correct foreign tables'
+    );
+$$ LANGUAGE SQL;
+
+-- foreign_tables_are( tables )
+CREATE OR REPLACE FUNCTION foreign_tables_are ( NAME[] )
+RETURNS TEXT AS $$
+    SELECT _are(
+        'foreign tables', _extras('f', $1), _missing('f', $1),
+        'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables'
+    );
+$$ LANGUAGE SQL;
