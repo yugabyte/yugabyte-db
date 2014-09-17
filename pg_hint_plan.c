@@ -306,7 +306,6 @@ struct HintState
 	ScanMethodHint **scan_hints;		/* parsed scan hints */
 	int				init_scan_mask;		/* initial value scan parameter */
 	Index			parent_relid;		/* inherit parent table relid */
-	Oid				parent_rel_oid;     /* inherit parent table relid */
 	ScanMethodHint *parent_hint;		/* inherit parent table scan hint */
 	List		   *parent_index_infos; /* information of inherit parent table's
 										 * index */
@@ -830,7 +829,6 @@ HintStateCreate(void)
 	hstate->scan_hints = NULL;
 	hstate->init_scan_mask = 0;
 	hstate->parent_relid = 0;
-	hstate->parent_rel_oid = InvalidOid;
 	hstate->parent_hint = NULL;
 	hstate->parent_index_infos = NIL;
 	hstate->join_hints = NULL;
@@ -2948,9 +2946,8 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 	if (inhparent)
 	{
-		/* store does relids of parent table. */
+		/* store relid of the parent table. */
 		current_hint->parent_relid = rel->relid;
-		current_hint->parent_rel_oid = relationObjectId;
 	}
 	else if (current_hint->parent_relid != 0)
 	{
@@ -2979,7 +2976,6 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 
 		/* This rel is not inherit table. */
 		current_hint->parent_relid = 0;
-		current_hint->parent_rel_oid = InvalidOid;
 		current_hint->parent_hint = NULL;
 	}
 
