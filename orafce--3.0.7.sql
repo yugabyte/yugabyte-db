@@ -255,6 +255,16 @@ AS 'MODULE_PATHNAME','oracle_substr3'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION oracle.substr(text, int, int) IS 'Returns substring started on start_in len chars';
 
+CREATE OR REPLACE FUNCTION oracle.substr(numeric,numeric)
+RETURNS text AS $$
+SELECT oracle.substr($1::text,trunc($2)::int);
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.substr(numeric,numeric,numeric)
+RETURNS text AS $$
+SELECT oracle.substr($1::text,trunc($2)::int,trunc($3)::int);
+$$ LANGUAGE SQL IMMUTABLE;
+
 --can't overwrite PostgreSQL DATE data type!!!
 
 CREATE DOMAIN oracle.date AS timestamp(0);
