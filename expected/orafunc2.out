@@ -1208,6 +1208,138 @@ select oracle.substr('TechOnTheNet', -8, -1) =  '';
  
 (1 row)
 
+select oracle.substr(1234567,3.6::smallint)='4567';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::int)='4567';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::bigint)='4567';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::numeric)='34567';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,-1)='7';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::smallint,2.6)='45';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::smallint,2.6::smallint)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::smallint,2.6::int)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::smallint,2.6::bigint)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::smallint,2.6::numeric)='45';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::int,2.6::smallint)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::int,2.6::int)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::int,2.6::bigint)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::int,2.6::numeric)='45';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::bigint,2.6::smallint)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::bigint,2.6::int)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::bigint,2.6::bigint)='456';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::bigint,2.6::numeric)='45';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::numeric,2.6::smallint)='345';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::numeric,2.6::int)='345';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::numeric,2.6::bigint)='345';
+ ?column? 
+----------
+ t
+(1 row)
+
+select oracle.substr(1234567,3.6::numeric,2.6::numeric)='34';
+ ?column? 
+----------
+ t
+(1 row)
+
 select concat('Tech on', ' the Net') =  'Tech on the Net';
  ?column? 
 ----------
