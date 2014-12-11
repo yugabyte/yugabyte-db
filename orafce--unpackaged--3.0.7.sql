@@ -51,6 +51,8 @@ ALTER EXTENSION orafce ADD function oracle.substr(str text, start int);
 ALTER EXTENSION orafce ADD function oracle.substr(str text, start int, len int);
 ALTER EXTENSION orafce ADD function oracle.substr(numeric,numeric);
 ALTER EXTENSION orafce ADD function oracle.substr(numeric, numeric, numeric);
+ALTER EXTENSION orafce ADD function oracle.substr(varchar, numeric);
+ALTER EXTENSION orafce ADD function oracle.substr(varchar, numeric,numeric);
 ALTER EXTENSION orafce ADD function oracle.to_date(text);
 ALTER EXTENSION orafce ADD function oracle.to_date(TEXT,TEXT);
 ALTER EXTENSION orafce ADD function oracle.add_days_to_timestamp(oracle.date,integer);

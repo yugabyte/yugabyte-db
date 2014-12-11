@@ -265,6 +265,16 @@ RETURNS text AS $$
 SELECT oracle.substr($1::text,trunc($2)::int,trunc($3)::int);
 $$ LANGUAGE SQL IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION oracle.substr(varchar,numeric)
+RETURNS text AS $$
+SELECT oracle.substr($1,trunc($2)::int);
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION oracle.substr(varchar,numeric,numeric)
+RETURNS text AS $$
+SELECT oracle.substr($1,trunc($2)::int,trunc($3)::int);
+$$ LANGUAGE SQL IMMUTABLE;
+
 --can't overwrite PostgreSQL DATE data type!!!
 
 CREATE DOMAIN oracle.date AS timestamp(0);
