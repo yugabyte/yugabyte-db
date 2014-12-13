@@ -2,6 +2,8 @@
 
 Functions and operators that emulate a subset of functions and packages from the Oracle RDBMS.
 
+There is a associated Google group - https://groups.google.com/forum/?hl=en#!forum/orafce-general
+
 == Oracle functions and Oracle packages
 
 This module contains some useful function which can help with porting
