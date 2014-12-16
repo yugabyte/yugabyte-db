@@ -195,7 +195,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
 
 /*+HashJoin(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
-INFO:  hint syntax error at or near "HashJoin(t1 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t1)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -357,7 +357,7 @@ error hint:
 -- No. J-1-5-2
 /*+HashJoin(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "HashJoin(t1 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t1)"
 DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -379,9 +379,9 @@ HashJoin(t1 t1)
 -- No. J-1-5-3
 /*+HashJoin(t1 t1)HashJoin(t2 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "HashJoin(t1 t1)HashJoin(t2 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t1)HashJoin(t2 t2)"
 DETAIL:  Relation name "t1" is duplicated.
-INFO:  hint syntax error at or near "HashJoin(t2 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t2 t2)"
 DETAIL:  Relation name "t2" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -417,7 +417,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND 
 
 /*+HashJoin(t1 t2 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "HashJoin(t1 t2 t1 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t2 t1 t2)"
 DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -3653,7 +3653,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
 
 /*+HashJoin(v1t1 v1t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
-INFO:  hint syntax error at or near "HashJoin(v1t1 v1t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(v1t1 v1t1)"
 DETAIL:  Relation name "v1t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -3712,7 +3712,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
 
 /*+HashJoin(r4t1 r4t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "HashJoin(r4t1 r4t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(r4t1 r4t1)"
 DETAIL:  Relation name "r4t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -3867,11 +3867,11 @@ error hint:
 
 /*+ Leading(*VALUES* t3 t2 t1) NestLoop(t4 t3)HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)"
 DETAIL:  Relation name "*VALUES*" is ambiguous.
-INFO:  hint syntax error at or near "MergeJoin(*VALUES* t3 t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(*VALUES* t3 t2 t1)"
 DETAIL:  Relation name "*VALUES*" is ambiguous.
-INFO:  hint syntax error at or near "Leading(*VALUES* t3 t2 t1) NestLoop(t4 t3)HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(*VALUES* t3 t2 t1) NestLoop(t4 t3)HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)"
 DETAIL:  Relation name "*VALUES*" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -4397,7 +4397,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 -- No. J-3-3-1
 /*+HashJoin(t1 t2)NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t1 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t2)NestLoop(t1 t2)"
 DETAIL:  Conflict join method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4418,9 +4418,9 @@ error hint:
 -- No. J-3-3-2
 /*+MergeJoin(t1 t2)HashJoin(t1 t2)NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "MergeJoin(t1 t2)HashJoin(t1 t2)NestLoop(t1 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(t1 t2)HashJoin(t1 t2)NestLoop(t1 t2)"
 DETAIL:  Conflict join method hint.
-INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t1 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t2)NestLoop(t1 t2)"
 DETAIL:  Conflict join method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4442,7 +4442,7 @@ error hint:
 -- No. J-3-3-3
 /*+HashJoin(t1 t2)NestLoop(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)"
 DETAIL:  Conflict join method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4463,9 +4463,9 @@ error hint:
 -- No. J-3-3-4
 /*+MergeJoin(t2 t1)HashJoin(t1 t2)NestLoop(t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "MergeJoin(t2 t1)HashJoin(t1 t2)NestLoop(t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(t2 t1)HashJoin(t1 t2)NestLoop(t2 t1)"
 DETAIL:  Conflict join method hint.
-INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)"
 DETAIL:  Conflict join method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4574,7 +4574,7 @@ error hint:
 -- No. J-3-4-7
 /*+NestLoop()*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  NestLoop hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
@@ -4590,7 +4590,7 @@ NestLoop()
 -- No. J-3-4-8
 /*+NestLoop(t1)*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  NestLoop hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:

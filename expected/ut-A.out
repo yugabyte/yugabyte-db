@@ -997,7 +997,7 @@ error hint:
 -- No. A-9-2-3
 /*+SeqScan(()*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "(" WHERE "(".c1 = 1;
-INFO:  hint syntax error at or near "()"
+INFO:  pg_hint_plan: hint syntax error at or near "()"
 DETAIL:  Zero-length delimited string.
             QUERY PLAN            
 ----------------------------------
@@ -1024,9 +1024,9 @@ error hint:
 -- No. A-9-2-4
 /*+SeqScan())*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 ")" WHERE ")".c1 = 1;
-INFO:  hint syntax error at or near ")"
+INFO:  pg_hint_plan: hint syntax error at or near ")"
 DETAIL:  SeqScan hint requires a relation.
-INFO:  hint syntax error at or near ")"
+INFO:  pg_hint_plan: hint syntax error at or near ")"
 DETAIL:  Unrecognized hint keyword ")".
 LOG:  pg_hint_plan:
 used hint:
@@ -1075,7 +1075,7 @@ error hint:
 -- No. A-9-2-5
 /*+SeqScan(")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 """" WHERE """".c1 = 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Unterminated quoted string.
             QUERY PLAN             
 -----------------------------------
@@ -1117,7 +1117,7 @@ error hint:
 -- No. A-9-2-6
 /*+SeqScan( )*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 " " WHERE " ".c1 = 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  SeqScan hint requires a relation.
 LOG:  pg_hint_plan:
 used hint:
@@ -1166,7 +1166,7 @@ error hint:
 -- No. A-9-2-7
 /*+SeqScan(	)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "	" WHERE "	".c1 = 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  SeqScan hint requires a relation.
 LOG:  pg_hint_plan:
 used hint:
@@ -1218,7 +1218,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "
 " WHERE "
 ".c1 = 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  SeqScan hint requires a relation.
 LOG:  pg_hint_plan:
 used hint:
@@ -1397,7 +1397,7 @@ error hint:
 -- No. A-9-2-11
 /*+SeqScan(/**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**/" WHERE "/**/".c1 = 1;
-INFO:  hint syntax error at or near "/**/)*/
+INFO:  pg_hint_plan: hint syntax error at or near "/**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**/" WHERE "/**/".c1 = 1;"
 DETAIL:  Nested block comments are not supported.
              QUERY PLAN              
@@ -1408,7 +1408,7 @@ DETAIL:  Nested block comments are not supported.
 
 /*+SeqScan(/**//**//**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**//**//**/" WHERE "/**//**//**/".c1 = 1;
-INFO:  hint syntax error at or near "/**//**//**/)*/
+INFO:  pg_hint_plan: hint syntax error at or near "/**//**//**/)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "/**//**//**/" WHERE "/**//**//**/".c1 = 1;"
 DETAIL:  Nested block comments are not supported.
                  QUERY PLAN                  
@@ -1424,7 +1424,7 @@ Set/**/あ")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "tT()"" 	
 Set/**/あ" WHERE "tT()"" 	
 Set/**/あ".c1 = 1;
-INFO:  hint syntax error at or near "/**/あ")*/
+INFO:  pg_hint_plan: hint syntax error at or near "/**/あ")*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 "tT()"" 	
 Set/**/あ" WHERE "tT()"" 	
 Set/**/あ".c1 = 1;"
@@ -1480,7 +1480,7 @@ error hint:
 -- No. A-7-4-1
 /*+Set(enable_indexscan off)Set enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near "enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
 DETAIL:  Opening parenthesis is necessary.
 LOG:  pg_hint_plan:
 used hint:
@@ -1500,7 +1500,7 @@ error hint:
 -- No. A-7-4-2
 /*+Set(enable_indexscan off)Set(enable_tidscan off Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near "(enable_bitmapscan off)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "(enable_bitmapscan off)SeqScan(t1)"
 DETAIL:  Zero-length delimited string.
 LOG:  pg_hint_plan:
 used hint:
@@ -1520,7 +1520,7 @@ error hint:
 -- No. A-7-4-3
 /*+Set(enable_indexscan off)Set(enable_tidscan "off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Unterminated quoted string.
 LOG:  pg_hint_plan:
 used hint:
@@ -1540,7 +1540,7 @@ error hint:
 -- No. A-7-4-4
 /*+Set(enable_indexscan off)SeqScan("")Set(enable_bitmapscan off)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near ")Set(enable_bitmapscan off)"
+INFO:  pg_hint_plan: hint syntax error at or near ")Set(enable_bitmapscan off)"
 DETAIL:  Zero-length delimited string.
 LOG:  pg_hint_plan:
 used hint:
@@ -1560,7 +1560,7 @@ error hint:
 -- No. A-7-4-5
 /*+Set(enable_indexscan off)NoSet(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near "NoSet(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "NoSet(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
 DETAIL:  Unrecognized hint keyword "NoSet".
 LOG:  pg_hint_plan:
 used hint:
@@ -1580,7 +1580,7 @@ error hint:
 -- No. A-7-4-6
 /*+Set(enable_indexscan off)"Set"(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near ""Set"(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near ""Set"(enable_tidscan off)Set(enable_bitmapscan off)SeqScan(t1)"
 DETAIL:  Unrecognized hint keyword ""Set"".
 LOG:  pg_hint_plan:
 used hint:
@@ -1600,7 +1600,7 @@ error hint:
 -- No. A-7-4-7
 /*+Set(enable_indexscan off)Set(enable_tidscan /* value */off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
-INFO:  hint syntax error at or near "/* value */off)Set(enable_bitmapscan off)SeqScan(t1)*/
+INFO:  pg_hint_plan: hint syntax error at or near "/* value */off)Set(enable_bitmapscan off)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;"
 DETAIL:  Nested block comments are not supported.
           QUERY PLAN          
@@ -1772,7 +1772,8 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
 
 -- No. A-8-3-4
 SET pg_hint_plan.debug_print TO enable;
-ERROR:  parameter "pg_hint_plan.debug_print" requires a Boolean value
+ERROR:  invalid value for parameter "pg_hint_plan.debug_print": "enable"
+HINT:  Available values: off, on, detailed, verbose.
 SHOW pg_hint_plan.debug_print;
  pg_hint_plan.debug_print 
 --------------------------
@@ -1812,7 +1813,7 @@ DEBUG:  name: unnamed; blockState:       STARTED; state: INPROGR, xid/subid/cid:
 DEBUG:  StartTransactionCommand
 DEBUG:  StartTransaction
 DEBUG:  name: unnamed; blockState:       DEFAULT; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
-DEBUG:  hint syntax error at or near ""
+DEBUG:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
 DEBUG:  CommitTransactionCommand
 DEBUG:  CommitTransaction
@@ -1868,7 +1869,7 @@ DEBUG:  name: unnamed; blockState:       STARTED; state: INPROGR, xid/subid/cid:
 DEBUG:  StartTransactionCommand
 DEBUG:  StartTransaction
 DEBUG:  name: unnamed; blockState:       DEFAULT; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
-DEBUG:  hint syntax error at or near ""
+DEBUG:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
 DEBUG:  CommitTransactionCommand
 DEBUG:  CommitTransaction
@@ -1924,7 +1925,7 @@ DEBUG:  name: unnamed; blockState:       STARTED; state: INPROGR, xid/subid/cid:
 DEBUG:  StartTransactionCommand
 DEBUG:  StartTransaction
 DEBUG:  name: unnamed; blockState:       DEFAULT; state: INPROGR, xid/subid/cid: 0/1/0, nestlvl: 1, children: 
-DEBUG:  hint syntax error at or near ""
+DEBUG:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
 DEBUG:  CommitTransactionCommand
 DEBUG:  CommitTransaction
@@ -1954,7 +1955,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-DEBUG:  hint syntax error at or near ""
+DEBUG:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -1977,7 +1978,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-DEBUG:  hint syntax error at or near ""
+DEBUG:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2000,7 +2001,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-LOG:  hint syntax error at or near ""
+LOG:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2023,7 +2024,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2032,7 +2033,7 @@ DETAIL:  Opening parenthesis is necessary.
 
 SET client_min_messages TO notice;
 /*+Set*/SELECT 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2048,7 +2049,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-NOTICE:  hint syntax error at or near ""
+NOTICE:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2071,7 +2072,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-WARNING:  hint syntax error at or near ""
+WARNING:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2094,7 +2095,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-ERROR:  hint syntax error at or near ""
+ERROR:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
 SET client_min_messages TO fatal;
 /*+Set*/SELECT 1;
@@ -2108,7 +2109,7 @@ SHOW pg_hint_plan.parse_messages;
 (1 row)
 
 /*+Set*/SELECT 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Opening parenthesis is necessary.
  ?column? 
 ----------
@@ -2213,7 +2214,7 @@ TRUNCATE hint_plan.hints;
 ----
 -- No. A-9-1-1
 /*+"Set"(enable_indexscan on)*/SELECT 1;
-INFO:  hint syntax error at or near ""Set"(enable_indexscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near ""Set"(enable_indexscan on)"
 DETAIL:  Unrecognized hint keyword ""Set"".
  ?column? 
 ----------
@@ -2221,9 +2222,9 @@ DETAIL:  Unrecognized hint keyword ""Set"".
 (1 row)
 
 /*+Set()(enable_indexscan on)*/SELECT 1;
-INFO:  hint syntax error at or near "Set()(enable_indexscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set()(enable_indexscan on)"
 DETAIL:  Set hint requires name and value of GUC parameter.
-INFO:  hint syntax error at or near "(enable_indexscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "(enable_indexscan on)"
 DETAIL:  Unrecognized hint keyword "".
  ?column? 
 ----------
@@ -2231,7 +2232,7 @@ DETAIL:  Unrecognized hint keyword "".
 (1 row)
 
 /*+Set(enable_indexscan on*/SELECT 1;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Closing parenthesis is necessary.
  ?column? 
 ----------
@@ -2286,7 +2287,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
 
 /*+TidScan(t1)BitmapScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
-INFO:  hint syntax error at or near "TidScan(t1)BitmapScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "TidScan(t1)BitmapScan(t1)"
 DETAIL:  Conflict scan method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -2307,9 +2308,9 @@ error hint:
 
 /*+TidScan(t1)BitmapScan(t1)IndexScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
-INFO:  hint syntax error at or near "TidScan(t1)BitmapScan(t1)IndexScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "TidScan(t1)BitmapScan(t1)IndexScan(t1)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "BitmapScan(t1)IndexScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "BitmapScan(t1)IndexScan(t1)"
 DETAIL:  Conflict scan method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -2329,11 +2330,11 @@ error hint:
 
 /*+TidScan(t1)BitmapScan(t1)IndexScan(t1)SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1 AND t1.ctid = '(1,1)';
-INFO:  hint syntax error at or near "TidScan(t1)BitmapScan(t1)IndexScan(t1)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "TidScan(t1)BitmapScan(t1)IndexScan(t1)SeqScan(t1)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "BitmapScan(t1)IndexScan(t1)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "BitmapScan(t1)IndexScan(t1)SeqScan(t1)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "IndexScan(t1)SeqScan(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "IndexScan(t1)SeqScan(t1)"
 DETAIL:  Conflict scan method hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -3280,7 +3281,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
 PREPARE p1 AS SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
 EXPLAIN (COSTS false) EXECUTE p1;
-INFO:  hint syntax error at or near "NestLoop(t1 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "NestLoop(t1 t1)"
 DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -3343,7 +3344,7 @@ SELECT name, setting FROM settings;
 SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-ERROR:  hint syntax error at or near "NestLoop(t1 t1)"
+ERROR:  pg_hint_plan: hint syntax error at or near "NestLoop(t1 t1)"
 DETAIL:  Relation name "t1" is duplicated.
 SELECT name, setting FROM settings;
            name            |  setting  
@@ -3442,7 +3443,7 @@ SELECT name, setting FROM settings;
 SET pg_hint_plan.parse_messages TO error;
 /*+Set(enable_seqscan off)Set(geqo_threshold 100)SeqScan(t1)MergeJoin(t1 t2)NestLoop(t1 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
-ERROR:  hint syntax error at or near "NestLoop(t1 t1)"
+ERROR:  pg_hint_plan: hint syntax error at or near "NestLoop(t1 t1)"
 DETAIL:  Relation name "t1" is duplicated.
 SELECT name, setting FROM settings;
            name            |  setting  
@@ -4616,7 +4617,7 @@ error hint:
 EXPLAIN (COSTS false)
  SELECT recall_planner() FROM s1.t1 t_1
   ORDER BY t_1.c1;
-INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t_1 t_1)"
 DETAIL:  Relation name "t_1" is duplicated.
 CONTEXT:  SQL function "recall_planner" during startup
 LOG:  pg_hint_plan:
@@ -4672,7 +4673,7 @@ duplication hint:
 error hint:
 
 CONTEXT:  SQL function "recall_planner_one_t" during startup
-INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t_1 t_1)"
 DETAIL:  Relation name "t_1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -4699,7 +4700,7 @@ EXPLAIN (COSTS false)
  SELECT recall_planner() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
-INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t_1 t_1)"
 DETAIL:  Relation name "t_1" is duplicated.
 CONTEXT:  SQL function "recall_planner" during startup
 LOG:  pg_hint_plan:
@@ -4710,7 +4711,7 @@ error hint:
 HashJoin(t_1 t_1)
 
 CONTEXT:  SQL function "recall_planner" during startup
-INFO:  hint syntax error at or near "HashJoin(t_1 t_1)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t_1 t_1)"
 DETAIL:  Relation name "t_1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -4735,9 +4736,9 @@ EXPLAIN (COSTS false)
  SELECT recall_planner() FROM s1.t1 t_1
    JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
   ORDER BY t_1.c1;
-INFO:  hint syntax error at or near "MergeJoin(t_1 t_2)HashJoin(t_1 t_2)"
+INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(t_1 t_2)HashJoin(t_1 t_2)"
 DETAIL:  Conflict join method hint.
-INFO:  hint syntax error at or near "MergeJoin(t_1 t_2)HashJoin(t_1 t_2)"
+INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(t_1 t_2)HashJoin(t_1 t_2)"
 DETAIL:  Conflict join method hint.
 CONTEXT:  SQL function "recall_planner" during startup
 LOG:  pg_hint_plan:

@@ -93,8 +93,9 @@ PG_MODULE_MAGIC;
 #define HINT_ARRAY_DEFAULT_INITSIZE 8
 
 #define hint_ereport(str, detail) \
-	ereport(pg_hint_plan_parse_messages, \
-			(errmsg("hint syntax error at or near \"%s\"", (str)), \
+	ereport(pg_hint_plan_message_level, \
+			(errhidestmt(hidestmt),	\
+			 errmsg("pg_hint_plan%s: hint syntax error at or near \"%s\"", qnostr, (str)), \
 			 errdetail detail))
 
 #define skip_space(str) \
@@ -159,7 +160,7 @@ typedef Hint *(*HintCreateFunction) (const char *hint_str,
 									 const char *keyword,
 									 HintKeyword hint_keyword);
 typedef void (*HintDeleteFunction) (Hint *hint);
-typedef void (*HintDescFunction) (Hint *hint, StringInfo buf);
+typedef void (*HintDescFunction) (Hint *hint, StringInfo buf, bool nolf);
 typedef int (*HintCmpFunction) (const Hint *a, const Hint *b);
 typedef const char *(*HintParseFunction) (Hint *hint, HintState *hstate,
 										  Query *parse, const char *str);
@@ -195,6 +196,9 @@ typedef enum HintStatus
 
 #define hint_state_enabled(hint) ((hint)->base.state == HINT_STATE_NOTUSED || \
 								  (hint)->base.state == HINT_STATE_USED)
+
+static unsigned int qno = 0;
+static char qnostr[32];
 
 /* common data for all hints. */
 struct Hint
@@ -360,35 +364,35 @@ static RelOptInfo *pg_hint_plan_join_search(PlannerInfo *root,
 static Hint *ScanMethodHintCreate(const char *hint_str, const char *keyword,
 								  HintKeyword hint_keyword);
 static void ScanMethodHintDelete(ScanMethodHint *hint);
-static void ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf);
+static void ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf, bool nolf);
 static int ScanMethodHintCmp(const ScanMethodHint *a, const ScanMethodHint *b);
 static const char *ScanMethodHintParse(ScanMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
 static Hint *JoinMethodHintCreate(const char *hint_str, const char *keyword,
 								  HintKeyword hint_keyword);
 static void JoinMethodHintDelete(JoinMethodHint *hint);
-static void JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf);
+static void JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf, bool nolf);
 static int JoinMethodHintCmp(const JoinMethodHint *a, const JoinMethodHint *b);
 static const char *JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate,
 									   Query *parse, const char *str);
 static Hint *LeadingHintCreate(const char *hint_str, const char *keyword,
 							   HintKeyword hint_keyword);
 static void LeadingHintDelete(LeadingHint *hint);
-static void LeadingHintDesc(LeadingHint *hint, StringInfo buf);
+static void LeadingHintDesc(LeadingHint *hint, StringInfo buf, bool nolf);
 static int LeadingHintCmp(const LeadingHint *a, const LeadingHint *b);
 static const char *LeadingHintParse(LeadingHint *hint, HintState *hstate,
 									Query *parse, const char *str);
 static Hint *SetHintCreate(const char *hint_str, const char *keyword,
 						   HintKeyword hint_keyword);
 static void SetHintDelete(SetHint *hint);
-static void SetHintDesc(SetHint *hint, StringInfo buf);
+static void SetHintDesc(SetHint *hint, StringInfo buf, bool nolf);
 static int SetHintCmp(const SetHint *a, const SetHint *b);
 static const char *SetHintParse(SetHint *hint, HintState *hstate, Query *parse,
 								const char *str);
 static Hint *RowsHintCreate(const char *hint_str, const char *keyword,
 							HintKeyword hint_keyword);
 static void RowsHintDelete(RowsHint *hint);
-static void RowsHintDesc(RowsHint *hint, StringInfo buf);
+static void RowsHintDesc(RowsHint *hint, StringInfo buf, bool nolf);
 static int RowsHintCmp(const RowsHint *a, const RowsHint *b);
 static const char *RowsHintParse(RowsHint *hint, HintState *hstate,
 								 Query *parse, const char *str);
@@ -429,10 +433,11 @@ static void pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate,
 
 /* GUC variables */
 static bool	pg_hint_plan_enable_hint = true;
-static bool	pg_hint_plan_debug_print = false;
-static int	pg_hint_plan_parse_messages = INFO;
+static int debug_level = 0;
+static int	pg_hint_plan_message_level = INFO;
 /* Default is off, to keep backward compatibility. */
 static bool	pg_hint_plan_enable_hint_table = false;
+static bool	hidestmt = false;
 
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
@@ -450,6 +455,22 @@ static const struct config_enum_entry parse_messages_level_options[] = {
 	 * {"fatal", FATAL, true},
 	 * {"panic", PANIC, true},
 	 */
+	{NULL, 0, false}
+};
+
+static const struct config_enum_entry parse_debug_level_options[] = {
+	{"off", 0, false},
+	{"on", 1, false},
+	{"detailed", 2, false},
+	{"verbose", 3, false},
+	{"0", 0, true},
+	{"1", 1, true},
+	{"2", 2, true},
+	{"3", 3, true},
+	{"no", 0, true},
+	{"yes", 1, true},
+	{"false", 0, true},
+	{"true", 1, true},
 	{NULL, 0, false}
 };
 
@@ -534,17 +555,18 @@ _PG_init(void)
 							 NULL,
 							 &pg_hint_plan_enable_hint,
 							 true,
-							 PGC_USERSET,
+						     PGC_USERSET,
 							 0,
 							 NULL,
 							 NULL,
 							 NULL);
 
-	DefineCustomBoolVariable("pg_hint_plan.debug_print",
+	DefineCustomEnumVariable("pg_hint_plan.debug_print",
 							 "Logs results of hint parsing.",
 							 NULL,
-							 &pg_hint_plan_debug_print,
+							 &debug_level,
 							 false,
+							 parse_debug_level_options,
 							 PGC_USERSET,
 							 0,
 							 NULL,
@@ -554,7 +576,19 @@ _PG_init(void)
 	DefineCustomEnumVariable("pg_hint_plan.parse_messages",
 							 "Message level of parse errors.",
 							 NULL,
-							 &pg_hint_plan_parse_messages,
+							 &pg_hint_plan_message_level,
+							 INFO,
+							 parse_messages_level_options,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
+
+	DefineCustomEnumVariable("pg_hint_plan.message_level",
+							 "Message level of debug messages.",
+							 NULL,
+							 &pg_hint_plan_message_level,
 							 INFO,
 							 parse_messages_level_options,
 							 PGC_USERSET,
@@ -893,7 +927,7 @@ quote_value(StringInfo buf, const char *value)
 }
 
 static void
-ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf)
+ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf, bool nolf)
 {
 	ListCell   *l;
 
@@ -907,11 +941,13 @@ ScanMethodHintDesc(ScanMethodHint *hint, StringInfo buf)
 			quote_value(buf, (char *) lfirst(l));
 		}
 	}
-	appendStringInfoString(buf, ")\n");
+	appendStringInfoString(buf, ")");
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
 }
 
 static void
-JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf)
+JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf, bool nolf)
 {
 	int	i;
 
@@ -925,8 +961,9 @@ JoinMethodHintDesc(JoinMethodHint *hint, StringInfo buf)
 			quote_value(buf, hint->relnames[i]);
 		}
 	}
-	appendStringInfoString(buf, ")\n");
-
+	appendStringInfoString(buf, ")");
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
 }
 
 static void
@@ -957,7 +994,7 @@ OuterInnerDesc(OuterInnerRels *outer_inner, StringInfo buf)
 }
 
 static void
-LeadingHintDesc(LeadingHint *hint, StringInfo buf)
+LeadingHintDesc(LeadingHint *hint, StringInfo buf, bool nolf)
 {
 	appendStringInfo(buf, "%s(", HINT_LEADING);
 	if (hint->outer_inner == NULL)
@@ -980,11 +1017,13 @@ LeadingHintDesc(LeadingHint *hint, StringInfo buf)
 	else
 		OuterInnerDesc(hint->outer_inner, buf);
 
-	appendStringInfoString(buf, ")\n");
+	appendStringInfoString(buf, ")");
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
 }
 
 static void
-SetHintDesc(SetHint *hint, StringInfo buf)
+SetHintDesc(SetHint *hint, StringInfo buf, bool nolf)
 {
 	bool		is_first = true;
 	ListCell   *l;
@@ -999,11 +1038,13 @@ SetHintDesc(SetHint *hint, StringInfo buf)
 
 		quote_value(buf, (char *) lfirst(l));
 	}
-	appendStringInfo(buf, ")\n");
+	appendStringInfo(buf, ")");
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
 }
 
 static void
-RowsHintDesc(RowsHint *hint, StringInfo buf)
+RowsHintDesc(RowsHint *hint, StringInfo buf, bool nolf)
 {
 	int	i;
 
@@ -1018,8 +1059,9 @@ RowsHintDesc(RowsHint *hint, StringInfo buf)
 		}
 	}
 	appendStringInfo(buf, " %s", hint->rows_str);
-	appendStringInfoString(buf, ")\n");
-
+	appendStringInfoString(buf, ")");
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
 }
 
 /*
@@ -1028,18 +1070,26 @@ RowsHintDesc(RowsHint *hint, StringInfo buf)
  */
 static void
 desc_hint_in_state(HintState *hstate, StringInfo buf, const char *title,
-					HintStatus state)
+				   HintStatus state, bool nolf)
 {
-	int	i;
+	int	i, nshown;
 
-	appendStringInfo(buf, "%s:\n", title);
+	appendStringInfo(buf, "%s:", title);
+	if (!nolf)
+		appendStringInfoChar(buf, '\n');
+
+	nshown = 0;
 	for (i = 0; i < hstate->nall_hints; i++)
 	{
 		if (hstate->all_hints[i]->state != state)
 			continue;
 
-		hstate->all_hints[i]->desc_func(hstate->all_hints[i], buf);
+		hstate->all_hints[i]->desc_func(hstate->all_hints[i], buf, nolf);
+		nshown++;
 	}
+
+	if (nolf && nshown == 0)
+		appendStringInfoString(buf, "(none)");
 }
 
 /*
@@ -1059,12 +1109,39 @@ HintStateDump(HintState *hstate)
 	initStringInfo(&buf);
 
 	appendStringInfoString(&buf, "pg_hint_plan:\n");
-	desc_hint_in_state(hstate, &buf, "used hint", HINT_STATE_USED);
-	desc_hint_in_state(hstate, &buf, "not used hint", HINT_STATE_NOTUSED);
-	desc_hint_in_state(hstate, &buf, "duplication hint", HINT_STATE_DUPLICATION);
-	desc_hint_in_state(hstate, &buf, "error hint", HINT_STATE_ERROR);
+	desc_hint_in_state(hstate, &buf, "used hint", HINT_STATE_USED, false);
+	desc_hint_in_state(hstate, &buf, "not used hint", HINT_STATE_NOTUSED, false);
+	desc_hint_in_state(hstate, &buf, "duplication hint", HINT_STATE_DUPLICATION, false);
+	desc_hint_in_state(hstate, &buf, "error hint", HINT_STATE_ERROR, false);
 
 	elog(LOG, "%s", buf.data);
+
+	pfree(buf.data);
+}
+
+static void
+HintStateDump2(HintState *hstate)
+{
+	StringInfoData	buf;
+
+	if (!hstate)
+	{
+		elog(pg_hint_plan_message_level,
+			 "pg_hint_plan%s: HintStateDump:\nno hint", qnostr);
+		return;
+	}
+
+	initStringInfo(&buf);
+	appendStringInfo(&buf, "pg_hint_plan%s: HintStateDump: ", qnostr);
+	desc_hint_in_state(hstate, &buf, "{used hints", HINT_STATE_USED, true);
+	desc_hint_in_state(hstate, &buf, "}, {not used hints", HINT_STATE_NOTUSED, true);
+	desc_hint_in_state(hstate, &buf, "}, {duplicate hints", HINT_STATE_DUPLICATION, true);
+	desc_hint_in_state(hstate, &buf, "}, {error hints", HINT_STATE_ERROR, true);
+	appendStringInfoChar(&buf, '}');
+
+	ereport(pg_hint_plan_message_level,
+			(errhidestmt(true),
+			 errmsg("%s", buf.data)));
 
 	pfree(buf.data);
 }
@@ -2145,10 +2222,12 @@ set_config_option_wrapper(const char *name, const char *value,
 		errdata = CopyErrorData();
 		FlushErrorState();
 
-		ereport(elevel, (errcode(errdata->sqlerrcode),
-				errmsg("%s", errdata->message),
-				errdata->detail ? errdetail("%s", errdata->detail) : 0,
-				errdata->hint ? errhint("%s", errdata->hint) : 0));
+		ereport(elevel,
+				(errcode(errdata->sqlerrcode),
+				 errhidestmt(hidestmt),
+				 errmsg("%s", errdata->message),
+				 errdata->detail ? errdetail("%s", errdata->detail) : 0,
+				 errdata->hint ? errhint("%s", errdata->hint) : 0));
 		FreeErrorData(errdata);
 	}
 	PG_END_TRY();
@@ -2174,7 +2253,7 @@ set_config_options(SetHint **options, int noptions, GucContext context)
 
 		result = set_config_option_wrapper(hint->name, hint->value, context,
 										   PGC_S_SESSION, GUC_ACTION_SAVE, true,
-										   pg_hint_plan_parse_messages);
+										   pg_hint_plan_message_level);
 		if (result != 0)
 			hint->base.state = HINT_STATE_USED;
 		else
@@ -2243,6 +2322,10 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	 */
 	if (!pg_hint_plan_enable_hint || nested_level > 0)
 	{
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errmsg ("pg_hint_plan: ProcessUtility:"
+							 " pg_hint_plan.enable_hint = off")));
 		if (prev_ProcessUtility)
 			(*prev_ProcessUtility) (parsetree, queryString,
 									context, params,
@@ -2308,6 +2391,12 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 
 	if (stmt_name)
 	{
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errmsg ("pg_hint_plan: ProcessUtility:"
+							 " stmt_name = \"%s\", statement=\"%s\"",
+							 stmt_name, queryString)));
+
 		PG_TRY();
 		{
 			if (prev_ProcessUtility)
@@ -2386,6 +2475,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	int				save_nestlevel;
 	PlannedStmt	   *result;
 	HintState	   *hstate;
+	char 			msgstr[1024];
+
+	qnostr[0] = 0;
+	strcpy(msgstr, "");
+	if (debug_level > 1)
+		snprintf(qnostr, sizeof(qnostr), "[qno=0x%x]", qno++);
+	hidestmt = false;
 
 	/*
 	 * Use standard planner if pg_hint_plan is disabled or current nesting 
@@ -2393,7 +2489,16 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * plan with current_hint if any, so set it to NULL.
 	 */
 	if (!pg_hint_plan_enable_hint || nested_level > 0)
+	{
+		if (debug_level > 1)
+			elog(pg_hint_plan_message_level,
+				 "pg_hint_plan%s: planner: enable_hint=%d,"
+				 " nested_level=%d",
+				 qnostr, pg_hint_plan_enable_hint, nested_level);
+		hidestmt = true;
+
 		goto standard_planner_proc;
+	}
 
 	/* Create hint struct from client-supplied query string. */
 	query = get_query_string();
@@ -2438,12 +2543,41 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 											   &query_len,
 											   GetDatabaseEncoding());
 		hints = get_hints_from_table(norm_query, application_name);
-		elog(DEBUG1,
-			 "pg_hint_plan: get_hints_from_table [%s][%s]=>[%s]",
-			 norm_query, application_name, hints ? hints : "(none)");
+		if (debug_level > 1)
+		{
+			if (hints)
+				snprintf(msgstr, 1024, "hints from table: \"%s\":"
+						 " normalzed_query=\"%s\", application name =\"%s\"",
+						 hints, norm_query, application_name);
+			else
+			{
+				ereport(pg_hint_plan_message_level,
+						(errhidestmt(hidestmt),
+						 errmsg("pg_hint_plan%s:"
+								" no match found in table:"
+								"  application name = \"%s\","
+								" normalzed_query=\"%s\"",
+								qnostr, application_name, norm_query)));
+				hidestmt = true;
+			}
+		}
 	}
 	if (hints == NULL)
+	{
 		hints = get_hints_from_comment(query);
+
+		if (debug_level > 1)
+		{
+			snprintf(msgstr, 1024, "hints in comment=\"%s\"",
+					 hints ? hints : "(none)");
+			if (debug_level > 2 || 
+				stmt_name || strcmp(query, debug_query_string))
+				snprintf(msgstr + strlen(msgstr), 1024- strlen(msgstr), 
+					 ", stmt=\"%s\", query=\"%s\", debug_query_string=\"%s\"",
+						 stmt_name, query, debug_query_string);
+		}
+	}
+
 	hstate = create_hintstate(parse, hints);
 
 	/*
@@ -2481,6 +2615,15 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	if (enable_hashjoin)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
 
+	if (debug_level > 1)
+	{
+		ereport(pg_hint_plan_message_level,
+				(errhidestmt(hidestmt),
+				 errmsg("pg_hint_plan%s: planner: %s",
+						qnostr, msgstr))); 
+		hidestmt = true;
+	}
+
 	/*
 	 * Use PG_TRY mechanism to recover GUC parameters and current_hint to the
 	 * state when this planner started when error occurred in planner.
@@ -2505,8 +2648,10 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	PG_END_TRY();
 
 	/* Print hint in debug mode. */
-	if (pg_hint_plan_debug_print)
+	if (debug_level == 1)
 		HintStateDump(current_hint);
+	else if (debug_level > 1)
+		HintStateDump2(current_hint);
 
 	/*
 	 * Rollback changes of GUC parameters, and pop current hint context from
@@ -2518,6 +2663,14 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	return result;
 
 standard_planner_proc:
+	if (debug_level > 1)
+	{
+		ereport(pg_hint_plan_message_level,
+				(errhidestmt(hidestmt),
+				 errmsg("pg_hint_plan%s: planner: no valid hint (%s)",
+						qnostr, msgstr)));
+		hidestmt = true;
+	}
 	current_hint = NULL;
 	if (prev_planner)
 		return (*prev_planner) (parse, cursorOptions, boundParams);
@@ -2624,7 +2777,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 	 * other than it.
 	 */
 	prev = NULL;
-	if (pg_hint_plan_debug_print)
+	if (debug_level > 0)
 		initStringInfo(&buf);
 
 	for (cell = list_head(rel->indexlist); cell; cell = next)
@@ -2649,7 +2802,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 			if (result)
 			{
 				use_index = true;
-				if (pg_hint_plan_debug_print)
+				if (debug_level > 0)
 				{
 					appendStringInfoCharMacro(&buf, ' ');
 					quote_value(&buf, indexname);
@@ -2808,7 +2961,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 				use_index = true;
 
 				/* to log the candidate of index */
-				if (pg_hint_plan_debug_print)
+				if (debug_level > 0)
 				{
 					appendStringInfoCharMacro(&buf, ' ');
 					quote_value(&buf, indexname);
@@ -2826,7 +2979,7 @@ delete_indexes(ScanMethodHint *hint, RelOptInfo *rel, Oid relationObjectId)
 		pfree(indexname);
 	}
 
-	if (pg_hint_plan_debug_print)
+	if (debug_level == 1)
 	{
 		char   *relname;
 		StringInfoData  rel_buf;
@@ -2944,7 +3097,18 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	 * nesting depth is at SPI calls.
 	 */
 	if (!current_hint || nested_level > 0)
+	{
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errhidestmt(true),
+					 errmsg ("pg_hint_plan%s: get_relation_info"
+							 " no hint to apply: relation=%u(%s), inhparent=%d,"
+							 " current_hint=%p, nested_level=%d",
+							 qnostr, relationObjectId,
+							 get_rel_name(relationObjectId),
+							 inhparent, current_hint, nested_level)));
 		return;
+	}
 
 	/*
 	 * We could register the parent relation of the following children here
@@ -2954,7 +3118,18 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	 * called for them.
 	 */
 	if (inhparent)
+	{
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errhidestmt(true),
+					 errmsg ("pg_hint_plan%s: get_relation_info"
+							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
+							 " current_hint=%p, nested_level=%d",
+							 qnostr, relationObjectId,
+							 get_rel_name(relationObjectId),
+							 inhparent, current_hint, nested_level)));
 		return;
+	}
 
 	/* Find the parent for this relation */
 	foreach (l, root->append_rel_list)
@@ -3045,6 +3220,16 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					   relationObjectId);
 
 		/* Scan fixation status is the same to the parent. */
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errhidestmt(true),
+					 errmsg("pg_hint_plan%s: get_relation_info:"
+							" index deletion by parent hint: "
+							"relation=%u(%s), inhparent=%d, current_hint=%p,"
+							" nested_level=%d",
+							qnostr, relationObjectId,
+							get_rel_name(relationObjectId),
+							inhparent, current_hint, nested_level)));
 		return;
 	}
 
@@ -3055,10 +3240,35 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 		hint->base.state = HINT_STATE_USED;
 
 		delete_indexes(hint, rel, InvalidOid);
+
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errhidestmt(true),
+					 errmsg ("pg_hint_plan%s: get_relation_info"
+							 " index deletion:"
+							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
+							 " nested_level=%d, scanmask=0x%x",
+							 qnostr, relationObjectId,
+							 get_rel_name(relationObjectId),
+							 inhparent, current_hint, nested_level,
+							 hint->enforce_mask)));
 	}
 	else
+	{
+		if (debug_level > 1)
+			ereport(pg_hint_plan_message_level,
+					(errhidestmt (true),
+					 errmsg ("pg_hint_plan%s: get_relation_info"
+							 " no hint applied:"
+							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
+							 " nested_level=%d, scanmask=0x%x",
+							 qnostr, relationObjectId,
+							 get_rel_name(relationObjectId),
+							 inhparent, current_hint, nested_level,
+							 current_hint->init_scan_mask)));
 		set_scan_config_options(current_hint->init_scan_mask,
 								current_hint->context);
+	}
 	return;
 }
 

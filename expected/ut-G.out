@@ -778,7 +778,7 @@ SET client_min_messages TO LOG;
 -- No. G-2-3-1
 /*+Set(enable_indexscan on)Set(enable_indexscan off)*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near "Set(enable_indexscan on)Set(enable_indexscan off)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(enable_indexscan on)Set(enable_indexscan off)"
 DETAIL:  Conflict set hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -795,9 +795,9 @@ error hint:
 -- No. G-2-3-2
 /*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near "Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)"
 DETAIL:  Conflict set hint.
-INFO:  hint syntax error at or near "Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(client_min_messages WARNING)Set(client_min_messages DEBUG2)"
 DETAIL:  Conflict set hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -815,7 +815,7 @@ error hint:
 -- No. G-2-3-3
 /*+Set(enable_indexscan on)Set(enable_indexscan o)*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near "Set(enable_indexscan on)Set(enable_indexscan o)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(enable_indexscan on)Set(enable_indexscan o)"
 DETAIL:  Conflict set hint.
 INFO:  parameter "enable_indexscan" requires a Boolean value
 LOG:  pg_hint_plan:
@@ -833,9 +833,9 @@ Set(enable_indexscan o)
 -- No. G-2-3-4
 /*+Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)*/
 SELECT * FROM s1.t1 WHERE false;
-INFO:  hint syntax error at or near "Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(client_min_messages DEBUG5)Set(client_min_messages WARNING)Set(client_min_messages DEBU)"
 DETAIL:  Conflict set hint.
-INFO:  hint syntax error at or near "Set(client_min_messages WARNING)Set(client_min_messages DEBU)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(client_min_messages WARNING)Set(client_min_messages DEBU)"
 DETAIL:  Conflict set hint.
 INFO:  invalid value for parameter "client_min_messages": "DEBU"
 HINT:  Available values: debug5, debug4, debug3, debug2, debug1, log, notice, warning, error.
@@ -858,9 +858,9 @@ Set(client_min_messages DEBU)
 -- No. G-2-4-1
 /*+SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) */
 SELECT * FROM s1.t1 a, s1.t2 b WHERE false;
-INFO:  hint syntax error at or near " "
+INFO:  pg_hint_plan: hint syntax error at or near " "
 DETAIL:  NestLoop hint requires at least two relations.
-INFO:  hint syntax error at or near "SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) "
+INFO:  pg_hint_plan: hint syntax error at or near "SeqScan(a)IndexScan(a)SeqScan(c)NestLoop(a) "
 DETAIL:  Conflict scan method hint.
 LOG:  pg_hint_plan:
 used hint:

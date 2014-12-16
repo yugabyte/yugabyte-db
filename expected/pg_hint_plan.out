@@ -42,7 +42,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.val = t2.val;
 
 /*+ Test (t1 t2) */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near "Test (t1 t2) "
+INFO:  pg_hint_plan: hint syntax error at or near "Test (t1 t2) "
 DETAIL:  Unrecognized hint keyword "Test".
               QUERY PLAN              
 --------------------------------------
@@ -86,7 +86,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
 
 /*+Set(enable_indexscan off) /* nest comment */ */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near "/* nest comment */ */
+INFO:  pg_hint_plan: hint syntax error at or near "/* nest comment */ */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;"
 DETAIL:  Nested block comments are not supported.
               QUERY PLAN              
@@ -258,7 +258,7 @@ error hint:
 
 /*+Set(work_mem TO "1MB")*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near "Set(work_mem TO "1MB")"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(work_mem TO "1MB")"
 DETAIL:  Set hint requires name and value of GUC parameter.
 LOG:  pg_hint_plan:
 used hint:
@@ -277,7 +277,7 @@ Set(work_mem TO 1MB)
 
 /*+SeqScan(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  SeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
 used hint:
@@ -656,7 +656,7 @@ error hint:
 
 /*+Leading( */
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
-INFO:  hint syntax error at or near ""
+INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  Closing parenthesis is necessary.
                     QUERY PLAN                    
 --------------------------------------------------
@@ -676,7 +676,7 @@ DETAIL:  Closing parenthesis is necessary.
 
 /*+Leading( )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
-INFO:  hint syntax error at or near "Leading( )"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading( )"
 DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
@@ -703,7 +703,7 @@ Leading()
 
 /*+Leading( t3 )*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
-INFO:  hint syntax error at or near "Leading( t3 )"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading( t3 )"
 DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
@@ -805,7 +805,7 @@ error hint:
 
 /*+Leading(t3 t4 t1 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
-INFO:  hint syntax error at or near "Leading(t3 t4 t1 t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t3 t4 t1 t2 t1)"
 DETAIL:  Relation name "t1" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -832,7 +832,7 @@ Leading(t3 t4 t1 t2 t1)
 
 /*+Leading(t3 t4 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
-INFO:  hint syntax error at or near "Leading(t3 t4 t4)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t3 t4 t4)"
 DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -4326,25 +4326,25 @@ error hint:
 -- duplicate hint test
 /*+SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2 WHERE t1.id = t2.id AND t1.ctid = '(1,1)' AND t2.ctid = '(1,1)';
-INFO:  hint syntax error at or near "SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "SeqScan(t1)SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "SeqScan(t2)IndexScan(t1)IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "IndexScan(t2)BitmapScan(t1)BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "BitmapScan(t2)TidScan(t1)TidScan(t2)HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict scan method hint.
-INFO:  hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(t1 t2)NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict join method hint.
-INFO:  hint syntax error at or near "NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "NestLoop(t2 t1)MergeJoin(t1 t2)Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict join method hint.
-INFO:  hint syntax error at or near "Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict set hint.
-INFO:  hint syntax error at or near "Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t1 t2)Leading(t2 t1)Set(enable_seqscan off)Set(enable_mergejoin on)Set(enable_seqscan on)"
 DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -5189,7 +5189,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id 
 
 /*+NestLoop(t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-INFO:  hint syntax error at or near "NestLoop(t1 t2)"
+INFO:  pg_hint_plan: hint syntax error at or near "NestLoop(t1 t2)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -5211,7 +5211,7 @@ NestLoop(t1 t2)
 
 /*+Leading(t1 t2 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, s0.t1, t2 WHERE public.t1.id = s0.t1.id AND public.t1.id = t2.id;
-INFO:  hint syntax error at or near "Leading(t1 t2 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t1 t2 t1)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -5454,7 +5454,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
 
 /*+Leading((t1))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-INFO:  hint syntax error at or near "Leading((t1))"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading((t1))"
 DETAIL:  Leading hint requires two sets of relations when parentheses nests.
 LOG:  pg_hint_plan:
 used hint:
@@ -5501,7 +5501,7 @@ error hint:
 
 /*+Leading((t1 t2 t3))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = t3.val AND t1.id < 10;
-INFO:  hint syntax error at or near "Leading((t1 t2 t3))"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading((t1 t2 t3))"
 DETAIL:  Leading hint requires two sets of relations when parentheses nests.
 LOG:  pg_hint_plan:
 used hint:
@@ -5766,7 +5766,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t2.val = 
 
 /*+Leading(((t1 t2) t3)) Leading(((t3 t1) t2))*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3 WHERE t1.id = t2.id AND t1.val = t3.val AND t1.id < ( SELECT t1_2.id FROM t1 t1_2, t2 t2_2 WHERE t1_2.id = t2_2.id AND t2_2.val > 100 ORDER BY t1_2.id LIMIT 1);
-INFO:  hint syntax error at or near "Leading(((t1 t2) t3)) Leading(((t3 t1) t2))"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(((t1 t2) t3)) Leading(((t3 t1) t2))"
 DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -8083,7 +8083,7 @@ error hint:
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #aa) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
-INFO:  hint syntax error at or near "aa"
+INFO:  pg_hint_plan: hint syntax error at or near "aa"
 DETAIL:  Rows hint requires valid number as rows estimation.
 LOG:  pg_hint_plan:
 used hint:
@@ -8105,7 +8105,7 @@ Rows(t1 t2 #aa)
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 /99) */
 EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id); -- ERROR
-INFO:  hint syntax error at or near "/99"
+INFO:  pg_hint_plan: hint syntax error at or near "/99"
 DETAIL:  Unrecognized rows value type notation.
 LOG:  pg_hint_plan:
 used hint:

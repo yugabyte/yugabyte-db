@@ -276,7 +276,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 WHERE s1.t1.c1 = 
 
 /*+Leading(t1 t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s2.t1 WHERE s1.t1.c1 = t2.c1 AND s1.t1.c1 = t3.c1 AND s1.t1.c1 = s2.t1.c1;
-INFO:  hint syntax error at or near "Leading(t1 t2 t3 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t1 t2 t3 t1)"
 DETAIL:  Relation name "t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -529,7 +529,7 @@ error hint:
 -- No. L-1-5-2
 /*+Leading(t4 t2 t3 t1 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading(t4 t2 t3 t1 t4)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t4 t2 t3 t1 t4)"
 DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -557,7 +557,7 @@ Leading(t4 t2 t3 t1 t4)
 
 /*+Leading(t4 t2 t3 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading(t4 t2 t3 t4)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t4 t2 t3 t4)"
 DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -586,7 +586,7 @@ Leading(t4 t2 t3 t4)
 -- No. L-1-5-3
 /*+Leading(t4 t2 t3 t1 t4 t2 t3 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading(t4 t2 t3 t1 t4 t2 t3 t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t4 t2 t3 t1 t4 t2 t3 t1)"
 DETAIL:  Relation name "t4" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -614,7 +614,7 @@ Leading(t4 t2 t3 t1 t4 t2 t3 t1)
 
 /*+Leading(t4 t2 t2 t4)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading(t4 t2 t2 t4)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t4 t2 t2 t4)"
 DETAIL:  Relation name "t2" is duplicated.
 LOG:  pg_hint_plan:
 used hint:
@@ -3486,7 +3486,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
 
 /*+Leading(v1t1 v1t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.v1 v1, s1.v1 v2 WHERE v1.c1 = v2.c1;
-INFO:  hint syntax error at or near "Leading(v1t1 v1t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(v1t1 v1t1)"
 DETAIL:  Relation name "v1t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -3546,7 +3546,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
 
 /*+Leading(r4t1 r4t1)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.r4 t1, s1.r4 t2 WHERE t1.c1 = t2.c1;
-INFO:  hint syntax error at or near "Leading(r4t1 r4t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(r4t1 r4t1)"
 DETAIL:  Relation name "r4t1" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -3694,7 +3694,7 @@ error hint:
 
 /*+ Leading(*VALUES* t3 t2 t1) */
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading(*VALUES* t3 t2 t1) "
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(*VALUES* t3 t2 t1) "
 DETAIL:  Relation name "*VALUES*" is ambiguous.
 LOG:  pg_hint_plan:
 used hint:
@@ -4114,7 +4114,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.t1
 EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
-INFO:  hint syntax error at or near "Leading(t2 t3 t1)Leading(t1 t2 t3)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t2 t3 t1)Leading(t1 t2 t3)"
 DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4142,9 +4142,9 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
-INFO:  hint syntax error at or near "Leading(t3 t1 t2)Leading(t2 t3 t1)Leading(t1 t2 t3)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t3 t1 t2)Leading(t2 t3 t1)Leading(t1 t2 t3)"
 DETAIL:  Conflict leading hint.
-INFO:  hint syntax error at or near "Leading(t2 t3 t1)Leading(t1 t2 t3)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t2 t3 t1)Leading(t1 t2 t3)"
 DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4173,7 +4173,7 @@ error hint:
 EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
-INFO:  hint syntax error at or near "Leading()"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading()"
 DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
@@ -4202,9 +4202,9 @@ Leading()
 EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
-INFO:  hint syntax error at or near "Leading()"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading()"
 DETAIL:  Leading hint requires at least two relations.
-INFO:  hint syntax error at or near "Leading(t3 t1 t2)Leading(t2 t3 t1)Leading()"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t3 t1 t2)Leading(t2 t3 t1)Leading()"
 DETAIL:  Conflict leading hint.
 LOG:  pg_hint_plan:
 used hint:
@@ -4237,7 +4237,7 @@ Leading()
 EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
-INFO:  hint syntax error at or near "Leading()"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading()"
 DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
@@ -4264,7 +4264,7 @@ Leading()
 EXPLAIN (COSTS false) SELECT * FROM s1.t1
   JOIN s1.t2 ON (t1.c1 = t2.c1)
   JOIN s1.t3 ON (t1.c1 = t3.c1);
-INFO:  hint syntax error at or near "Leading(t1)"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading(t1)"
 DETAIL:  Leading hint requires at least two relations.
 LOG:  pg_hint_plan:
 used hint:
@@ -4342,7 +4342,7 @@ error hint:
 -- No. L-3-6-1
 /*+Leading((t2))*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading((t2))"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading((t2))"
 DETAIL:  Leading hint requires two sets of relations when parentheses nests.
 LOG:  pg_hint_plan:
 used hint:
@@ -4397,7 +4397,7 @@ error hint:
 -- No. L-3-6-3
 /*+Leading((t2 t3 t4))*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near "Leading((t2 t3 t4))"
+INFO:  pg_hint_plan: hint syntax error at or near "Leading((t2 t3 t4))"
 DETAIL:  Leading hint requires two sets of relations when parentheses nests.
 LOG:  pg_hint_plan:
 used hint:
@@ -4454,7 +4454,7 @@ error hint:
 -- No. L-3-6-5
 /*+Leading((((t1 t3) t4) t2)))*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, s1.t3, s1.t4 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
-INFO:  hint syntax error at or near ")"
+INFO:  pg_hint_plan: hint syntax error at or near ")"
 DETAIL:  Unrecognized hint keyword ")".
 LOG:  pg_hint_plan:
 used hint:
