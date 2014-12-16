@@ -36,6 +36,7 @@ CREATE INDEX p2_id_val_idx ON p2 (id, val);
 CREATE UNIQUE INDEX p2_val_idx ON p2 (val);
 CREATE INDEX p2_ununi_id_val_idx ON p2 (val);
 CREATE INDEX p2_val_idx_1 ON p2 USING hash (val);
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE INDEX p2_val_id_idx ON p2 (val, id);
 CREATE INDEX p2_val_idx2 ON p2 (val COLLATE "ja_JP");
 CREATE INDEX p2_val_idx3 ON p2 (val varchar_ops);
@@ -48,27 +49,35 @@ CREATE INDEX p2_val_idx7 ON p2 (val) WHERE id < 120;
 CREATE TABLE p2_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 100)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 100 AND id <= 200)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c3 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 300)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c4 (LIKE p2 INCLUDING ALL, CHECK (id > 300)) INHERITS(p2);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c1_c1 (LIKE p2 INCLUDING ALL, CHECK (id <= 50)) INHERITS(p2_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c1_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 50 AND id <= 100)) INHERITS(p2_c1);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c3_c1 (LIKE p2 INCLUDING ALL, CHECK (id > 200 AND id <= 250)) INHERITS(p2_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE p2_c3_c2 (LIKE p2 INCLUDING ALL, CHECK (id > 250 AND id <= 300)) INHERITS(p2_c3);
 NOTICE:  merging column "id" with inherited definition
 NOTICE:  merging column "val" with inherited definition
+WARNING:  hash indexes are not WAL-logged and their use is discouraged
 CREATE TABLE s0.t1 (id int PRIMARY KEY, val int);
 INSERT INTO t1 SELECT i, i % 100 FROM (SELECT generate_series(1, 10000) i) t;
 INSERT INTO t2 SELECT i, i % 10 FROM (SELECT generate_series(1, 1000) i) t;
