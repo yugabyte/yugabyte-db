@@ -2210,7 +2210,7 @@ set_config_option_wrapper(const char *name, const char *value,
 	PG_TRY();
 	{
 		result = set_config_option(name, value, context, source,
-								   action, changeVal, 0);
+								   action, changeVal, 0, false);
 	}
 	PG_CATCH();
 	{
