@@ -4502,7 +4502,7 @@ error hint:
 ------------------------------------------------------------------------
  Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 100)
-(3 rows)
+(2 rows)
 
 -- No. S-3-5-2
 \! psql contrib_regression -c "/*+BitmapScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
@@ -4518,7 +4518,7 @@ error hint:
 ------------------------------------------------------------------------
  Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 100)
-(3 rows)
+(2 rows)
 
 -- No. S-3-5-3
 \! psql contrib_regression -c "/*+IndexOnlyScan(ti1 ti1_pred)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
@@ -4534,7 +4534,7 @@ error hint:
 -----------------------------------------------------------------------
  Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=4)
    Filter: (c1 = 100)
-(3 rows)
+(2 rows)
 
 -- No. S-3-5-4
 \! psql contrib_regression -c "/*+IndexScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
@@ -4550,7 +4550,7 @@ error hint:
 ------------------------------------------------------------------------
  Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 100)
-(3 rows)
+(2 rows)
 
 -- No. S-3-5-5
 \! psql contrib_regression -c "/*+BitmapScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT * FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
@@ -4566,7 +4566,7 @@ error hint:
 ------------------------------------------------------------------------
  Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 100)
-(3 rows)
+(2 rows)
 
 -- No. S-3-5-6
 \! psql contrib_regression -c "/*+IndexOnlyScan(ti1 not_exist)*/ EXPLAIN (COSTS true) SELECT c1 FROM s1.ti1 WHERE c1 = 100" | grep -v "Planning time:"
@@ -4582,7 +4582,7 @@ error hint:
 -----------------------------------------------------------------------
  Seq Scan on ti1  (cost=10000000000.00..10000000018.50 rows=1 width=4)
    Filter: (c1 = 100)
-(3 rows)
+(2 rows)
 
 -- No. S-3-5-7
 EXPLAIN (COSTS false) SELECT * FROM s1.t1 WHERE t1.c1 = 1;
@@ -4604,7 +4604,7 @@ error hint:
 -----------------------------------------------------------------------
  Seq Scan on t1  (cost=10000000000.00..10000000018.50 rows=1 width=15)
    Filter: (c1 = 1)
-(3 rows)
+(2 rows)
 
 ----
 ---- No. S-3-6 query structure
@@ -5243,7 +5243,7 @@ error hint:
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
    ->  Seq Scan on p1c1  (cost=0.00..2.75 rows=3 width=2)
          Filter: ((c1 < 10) AND ((c2 * 2) < 100))
-(6 rows)
+(5 rows)
 
 \! psql contrib_regression -c "/*+IndexScan(p1 p1_parent)*/ EXPLAIN SELECT c4 FROM s1.p1 WHERE c2 * 2 < 100 AND c1 < 10" | grep -v "Planning time:"
 LOG:  available indexes for IndexScan(p1): p1_parent
@@ -5264,7 +5264,7 @@ error hint:
          Filter: ((c2 * 2) < 100)
    ->  Index Scan using p1c1_c4_expr_idx on p1c1  (cost=0.14..12.34 rows=3 width=2)
          Filter: ((c2 * 2) < 100)
-(6 rows)
+(5 rows)
 
 -- No. S-3-10-4
 \! psql contrib_regression -c "/*+IndexScan(p1 p1_i2)*/ EXPLAIN SELECT c2 FROM s1.p1 WHERE c2 = 1" | grep -v "Planning time:"
@@ -5290,7 +5290,7 @@ error hint:
          Filter: (c2 = 1)
    ->  Seq Scan on p1c3  (cost=10000000000.00..10000000002.25 rows=1 width=4)
          Filter: (c2 = 1)
-(10 rows)
+(9 rows)
 
 -- No. S-3-10-5
 \! psql contrib_regression -c "/*+IndexScan(p2 p2c1_pkey)*/ EXPLAIN (COSTS true) SELECT * FROM s1.p2 WHERE c1 = 1" | grep -v "Planning time:"
@@ -5320,7 +5320,7 @@ error hint:
          Index Cond: (c1 = 1)
    ->  Seq Scan on p2c1c1  (cost=10000000000.00..10000000001.62 rows=1 width=14)
          Filter: (c1 = 1)
-(8 rows)
+(7 rows)
 
 ----
 ---- No. S-3-12 specified same table

@@ -808,7 +808,7 @@ error hint:
          Index Cond: (c1 = $1)
    ->  Seq Scan on t2  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = $1)
-(12 rows)
+(11 rows)
 
 --
 -- There are cases where difference in the measured value and predicted value
@@ -4664,6 +4664,6 @@ error hint:
    ->  Seq Scan on t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=100 width=xxx)
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(6 rows)
+(5 rows)
 
 \! rm results/ut-J.tmpout

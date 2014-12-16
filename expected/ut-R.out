@@ -15,7 +15,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-1-1 specified pattern of the object name
@@ -41,7 +41,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-1-2
 \o results/ut-R.tmpout
@@ -64,7 +64,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t_2.c1
          ->  Seq Scan on t2 t_2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-1-3
 \o results/ut-R.tmpout
@@ -87,7 +87,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t_2.c1
          ->  Seq Scan on t2 t_2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-1-2 specified schema name in the hint option
@@ -113,7 +113,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-2-2
 \o results/ut-R.tmpout
@@ -136,7 +136,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-1-3 table doesn't exist in the hint option
@@ -162,7 +162,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-3-2
 \o results/ut-R.tmpout
@@ -185,7 +185,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-1-4 conflict table name
@@ -211,7 +211,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-4-2
 \o results/ut-R.tmpout
@@ -226,7 +226,7 @@ EXPLAIN SELECT * FROM s1.t1, s2.t1 WHERE s1.t1.c1 = s2.t1.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t1_1.c1
          ->  Seq Scan on t1 t1_1  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t1 #1)*/
@@ -250,7 +250,7 @@ Rows(t1 t1 #1)
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t1_1.c1
          ->  Seq Scan on t1 t1_1  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(s1.t1 s2.t1 #1)*/
@@ -272,7 +272,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t1_1.c1
          ->  Seq Scan on t1 t1_1  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 EXPLAIN SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = s2t1.c1;
@@ -286,7 +286,7 @@ EXPLAIN SELECT * FROM s1.t1, s2.t1 s2t1 WHERE s1.t1.c1 = s2t1.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: s2t1.c1
          ->  Seq Scan on t1 s2t1  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 s2t1 #1)*/
@@ -308,7 +308,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: s2t1.c1
          ->  Seq Scan on t1 s2t1  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-4-3
 \o results/ut-R.tmpout
@@ -331,7 +331,7 @@ EXPLAIN SELECT *, (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1) FROM
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(15 rows)
+(14 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -361,7 +361,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(15 rows)
+(14 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(st1 st2 #1)Rows(t1 t2 #1)*/
@@ -392,7 +392,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(15 rows)
+(14 rows)
 
 ----
 ---- No. R-1-5 conflict table name
@@ -418,7 +418,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-5-2
 \o results/ut-R.tmpout
@@ -443,7 +443,7 @@ Rows(t1 t1 #1)
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-5-3
 \o results/ut-R.tmpout
@@ -461,7 +461,7 @@ DETAIL:  Unrecognized hint keyword "".
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 EXPLAIN SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
@@ -478,7 +478,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2, s1.t3 WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(10 rows)
+(9 rows)
 
 \o results/ut-R.tmpout
 /*+(t1 t2 t1 t2)*/
@@ -502,7 +502,7 @@ DETAIL:  Unrecognized hint keyword "".
                ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
    ->  Index Scan using t4_i1 on t4  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = t3.c1)
-(14 rows)
+(13 rows)
 
 ----
 ---- No. R-1-6 object type for the hint
@@ -528,7 +528,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-6-2
 \o results/ut-R.tmpout
@@ -550,7 +550,7 @@ EXPLAIN SELECT * FROM s1.p1 t1, s1.p1 t2 WHERE t1.c1 = t2.c1;
                ->  Seq Scan on p1c1 t2_1  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c2 t2_2  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c3 t2_3  (cost=xxx rows=100 width=xxx)
-(14 rows)
+(13 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -579,7 +579,7 @@ error hint:
                ->  Seq Scan on p1c1 t2_1  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c2 t2_2  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c3 t2_3  (cost=xxx rows=100 width=xxx)
-(14 rows)
+(13 rows)
 
 -- No. R-1-6-3
 \o results/ut-R.tmpout
@@ -593,7 +593,7 @@ EXPLAIN SELECT * FROM s1.ul1 t1, s1.ul1 t2 WHERE t1.c1 = t2.c1;
    ->  Seq Scan on ul1 t1  (cost=xxx rows=1100 width=xxx)
    ->  Hash  (cost=xxx rows=1100 width=xxx)
          ->  Seq Scan on ul1 t2  (cost=xxx rows=1100 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -614,7 +614,7 @@ error hint:
    ->  Seq Scan on ul1 t1  (cost=xxx rows=1100 width=xxx)
    ->  Hash  (cost=xxx rows=1100 width=xxx)
          ->  Seq Scan on ul1 t2  (cost=xxx rows=1100 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-1-6-4
 CREATE TEMP TABLE tm1 (LIKE s1.t1 INCLUDING ALL);
@@ -629,7 +629,7 @@ EXPLAIN SELECT * FROM tm1 t1, tm1 t2 WHERE t1.c1 = t2.c1;
    ->  Seq Scan on tm1 t1  (cost=xxx rows=1100 width=xxx)
    ->  Hash  (cost=xxx rows=1100 width=xxx)
          ->  Seq Scan on tm1 t2  (cost=xxx rows=1100 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -650,7 +650,7 @@ error hint:
    ->  Seq Scan on tm1 t1  (cost=xxx rows=1100 width=xxx)
    ->  Hash  (cost=xxx rows=1100 width=xxx)
          ->  Seq Scan on tm1 t2  (cost=xxx rows=1100 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-1-6-5
 CREATE TEMP TABLE t_pg_class WITH OIDS AS SELECT * from pg_class LIMIT 100;
@@ -665,7 +665,7 @@ EXPLAIN SELECT * FROM t_pg_class t1, t_pg_class t2 WHERE t1.oid = t2.oid;
    ->  Seq Scan on t_pg_class t1  (cost=xxx rows=360 width=xxx)
    ->  Hash  (cost=xxx rows=360 width=xxx)
          ->  Seq Scan on t_pg_class t2  (cost=xxx rows=360 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -686,7 +686,7 @@ error hint:
    ->  Seq Scan on t_pg_class t1  (cost=xxx rows=360 width=xxx)
    ->  Hash  (cost=xxx rows=360 width=xxx)
          ->  Seq Scan on t_pg_class t2  (cost=xxx rows=360 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-1-6-6
 -- refer ut-fdw.sql
@@ -701,7 +701,7 @@ EXPLAIN SELECT * FROM s1.f1() t1, s1.f1() t2 WHERE t1.c1 = t2.c1;
    Join Filter: (t1.c1 = t2.c1)
    ->  Function Scan on f1 t1  (cost=xxx rows=1 width=xxx)
    ->  Function Scan on f1 t2  (cost=xxx rows=1 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -721,7 +721,7 @@ error hint:
    Join Filter: (t1.c1 = t2.c1)
    ->  Function Scan on f1 t1  (cost=xxx rows=1 width=xxx)
    ->  Function Scan on f1 t2  (cost=xxx rows=1 width=xxx)
-(5 rows)
+(4 rows)
 
 -- No. R-1-6-8
 \o results/ut-R.tmpout
@@ -735,7 +735,7 @@ EXPLAIN SELECT * FROM (VALUES(1,1,1,'1'), (2,2,2,'2'), (3,3,3,'3')) AS t1 (c1, c
    ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
    ->  Hash  (cost=xxx rows=3 width=xxx)
          ->  Values Scan on "*VALUES*"  (cost=xxx rows=3 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -756,7 +756,7 @@ error hint:
    ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
    ->  Hash  (cost=xxx rows=3 width=xxx)
          ->  Values Scan on "*VALUES*"  (cost=xxx rows=3 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(*VALUES* t2 #1)*/
@@ -777,7 +777,7 @@ error hint:
    ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
    ->  Hash  (cost=xxx rows=3 width=xxx)
          ->  Values Scan on "*VALUES*"  (cost=xxx rows=3 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-1-6-9
 \o results/ut-R.tmpout
@@ -798,7 +798,7 @@ EXPLAIN WITH c1(c1) AS (SELECT max(t1.c1) FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1)
    ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = c1.c1)
-(13 rows)
+(12 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)Rows(t1 c1 +1)*/
@@ -827,7 +827,7 @@ error hint:
    ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = c1.c1)
-(13 rows)
+(12 rows)
 
 -- No. R-1-6-10
 \o results/ut-R.tmpout
@@ -841,7 +841,7 @@ EXPLAIN SELECT * FROM s1.v1 t1, s1.v1 t2 WHERE t1.c1 = t2.c1;
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 v1t1_1  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -862,7 +862,7 @@ error hint:
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 v1t1_1  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(v1t1 v1t1_ #1)*/
@@ -883,7 +883,7 @@ error hint:
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 v1t1_  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-1-6-11
 \o results/ut-R.tmpout
@@ -905,7 +905,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1 AND t1.c1 = (SELECT max(s
          Index Cond: (c1 = $0)
    ->  Seq Scan on t2  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = $0)
-(14 rows)
+(13 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)Rows(st1 st2 #1)*/
@@ -935,7 +935,7 @@ error hint:
          Index Cond: (c1 = $0)
    ->  Seq Scan on t2  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = $0)
-(14 rows)
+(13 rows)
 
 --
 -- There are cases where difference in the measured value and predicted value
@@ -953,7 +953,7 @@ EXPLAIN SELECT * FROM s1.t1, (SELECT t2.c1 FROM s1.t2) st2 WHERE t1.c1 = st2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 st2 #1)*/
@@ -975,7 +975,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)*/
@@ -997,7 +997,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-1-7 specified number of conditions
@@ -1025,7 +1025,7 @@ Rows(t1 #1)
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-7-2
 \o results/ut-R.tmpout
@@ -1050,7 +1050,7 @@ Rows(t1 t2 1)
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-1-7-3
 \o results/ut-R.tmpout
@@ -1075,7 +1075,7 @@ Rows(t1 t2 #notrows)
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-2-1 some complexity query blocks
@@ -1164,7 +1164,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(45 rows)
+(44 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -1260,7 +1260,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(45 rows)
+(44 rows)
 
 -- No. R-2-1-2
 \o results/ut-R.tmpout
@@ -1368,7 +1368,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(59 rows)
+(58 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -1491,7 +1491,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(59 rows)
+(58 rows)
 
 -- No. R-2-1-3
 \o results/ut-R.tmpout
@@ -1525,7 +1525,7 @@ error hint:
                                  ->  Seq Scan on t4 bmt4  (cost=xxx rows=1100 width=xxx)
                      ->  Hash  (cost=xxx rows=100 width=xxx)
                            ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
-(16 rows)
+(15 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -1560,7 +1560,7 @@ error hint:
                      Index Cond: (c1 = bmt3.c1)
          ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(14 rows)
+(13 rows)
 
 -- No. R-2-1-4
 \o results/ut-R.tmpout
@@ -1594,7 +1594,7 @@ error hint:
                                  ->  Seq Scan on t4 bmt4  (cost=xxx rows=1100 width=xxx)
                      ->  Hash  (cost=xxx rows=100 width=xxx)
                            ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
-(16 rows)
+(15 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -1629,7 +1629,7 @@ error hint:
                      Index Cond: (c1 = bmt3.c1)
          ->  Index Only Scan using t1_i1 on t1 bmt1  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(14 rows)
+(13 rows)
 
 -- No. R-2-1-5
 \o results/ut-R.tmpout
@@ -1715,7 +1715,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(46 rows)
+(45 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -1813,7 +1813,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(46 rows)
+(45 rows)
 
 -- No. R-2-1-6
 \o results/ut-R.tmpout
@@ -1922,7 +1922,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(60 rows)
+(59 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -2046,7 +2046,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(60 rows)
+(59 rows)
 
 -- No. R-2-1-7
 \o results/ut-R.tmpout
@@ -2149,7 +2149,7 @@ error hint:
                                                          ->  CTE Scan on c2  (cost=xxx rows=1 width=xxx)
                                  ->  Index Only Scan using t2_i1 on t2 bmt2  (cost=xxx rows=1 width=xxx)
                                        Index Cond: (c1 = bmt1.c1)
-(55 rows)
+(54 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -2264,7 +2264,7 @@ error hint:
                                                          ->  CTE Scan on c2  (cost=xxx rows=1 width=xxx)
                                  ->  Index Only Scan using t2_i1 on t2 bmt2  (cost=xxx rows=1 width=xxx)
                                        Index Cond: (c1 = bmt1.c1)
-(55 rows)
+(54 rows)
 
 -- No. R-2-1-8
 \o results/ut-R.tmpout
@@ -2397,7 +2397,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(75 rows)
+(74 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -2548,7 +2548,7 @@ error hint:
                                  ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(75 rows)
+(74 rows)
 
 ----
 ---- No. R-2-2 the number of the tables per quiry block
@@ -2596,7 +2596,7 @@ error hint:
          Filter: (c1 <> $2)
    ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = 1)
-(16 rows)
+(15 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -2648,7 +2648,7 @@ error hint:
          Filter: (c1 <> $2)
    ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
          Filter: (c1 = 1)
-(16 rows)
+(15 rows)
 
 -- No. R-2-2-2
 \o results/ut-R.tmpout
@@ -2728,7 +2728,7 @@ error hint:
                ->  Sort  (cost=xxx rows=100 width=xxx)
                      Sort Key: c1.c1
                      ->  CTE Scan on c1  (cost=xxx rows=100 width=xxx)
-(35 rows)
+(34 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -2818,7 +2818,7 @@ error hint:
                ->  Sort  (cost=xxx rows=1 width=xxx)
                      Sort Key: c1.c1
                      ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
-(35 rows)
+(34 rows)
 
 -- No. R-2-2-3
 \o results/ut-R.tmpout
@@ -2940,7 +2940,7 @@ error hint:
                                        ->  CTE Scan on c1  (cost=xxx rows=100 width=xxx)
                ->  Index Only Scan using t2_i1 on t2 bmt2  (cost=xxx rows=1 width=xxx)
                      Index Cond: (c1 = bmt3.c1)
-(62 rows)
+(61 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3087,7 +3087,7 @@ error hint:
                                        ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
                ->  Index Only Scan using t2_i1 on t2 bmt2  (cost=xxx rows=1 width=xxx)
                      Index Cond: (c1 = bmt3.c1)
-(62 rows)
+(61 rows)
 
 -- No. R-2-2-4
 \o results/ut-R.tmpout
@@ -3169,7 +3169,7 @@ error hint:
                                        ->  CTE Scan on c1  (cost=xxx rows=100 width=xxx)
                ->  Index Only Scan using t2_i1 on t2 bmt2  (cost=xxx rows=1 width=xxx)
                      Index Cond: (c1 = bmt3.c1)
-(38 rows)
+(37 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3264,7 +3264,7 @@ error hint:
                                        ->  CTE Scan on c1  (cost=xxx rows=1 width=xxx)
                ->  Index Only Scan using t2_i1 on t2 bmt2  (cost=xxx rows=1 width=xxx)
                      Index Cond: (c1 = bmt3.c1)
-(38 rows)
+(37 rows)
 
 ----
 ---- No. R-2-3 RULE or VIEW
@@ -3306,7 +3306,7 @@ error hint:
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4  (cost=xxx rows=1 width=xxx)
                TID Cond: (ctid = '(1,1)'::tid)
-(21 rows)
+(20 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3350,7 +3350,7 @@ error hint:
                                  TID Cond: (ctid = '(1,1)'::tid)
                            ->  Seq Scan on r1  (cost=xxx rows=6 width=xxx)
                                  Filter: (c1 = 1)
-(19 rows)
+(18 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3388,7 +3388,7 @@ error hint:
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b1t4  (cost=xxx rows=1 width=xxx)
                TID Cond: (ctid = '(1,1)'::tid)
-(21 rows)
+(20 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3432,7 +3432,7 @@ error hint:
                                  TID Cond: (ctid = '(1,1)'::tid)
                            ->  Seq Scan on r1_  (cost=xxx rows=6 width=xxx)
                                  Filter: (c1 = 1)
-(19 rows)
+(18 rows)
 
 -- No. R-2-3-2
 \o results/ut-R.tmpout
@@ -3499,7 +3499,7 @@ error hint:
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4  (cost=xxx rows=1 width=xxx)
                TID Cond: (ctid = '(1,1)'::tid)
-(43 rows)
+(41 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3573,7 +3573,7 @@ error hint:
                                  TID Cond: (ctid = '(1,1)'::tid)
                            ->  Seq Scan on r2  (cost=xxx rows=6 width=xxx)
                                  Filter: (c1 = 1)
-(39 rows)
+(37 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3642,7 +3642,7 @@ error hint:
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b2t4  (cost=xxx rows=1 width=xxx)
                TID Cond: (ctid = '(1,1)'::tid)
-(43 rows)
+(41 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3731,7 +3731,7 @@ error hint:
                                  TID Cond: (ctid = '(1,1)'::tid)
                            ->  Seq Scan on r2_  (cost=xxx rows=6 width=xxx)
                                  Filter: (c1 = 1)
-(39 rows)
+(37 rows)
 
 -- No. R-2-3-3
 \o results/ut-R.tmpout
@@ -3826,7 +3826,7 @@ error hint:
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4  (cost=xxx rows=1 width=xxx)
                TID Cond: (ctid = '(1,1)'::tid)
-(65 rows)
+(62 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -3930,7 +3930,7 @@ error hint:
                                  TID Cond: (ctid = '(1,1)'::tid)
                            ->  Seq Scan on r3  (cost=xxx rows=6 width=xxx)
                                  Filter: (c1 = 1)
-(59 rows)
+(56 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -4032,7 +4032,7 @@ error hint:
                      TID Cond: (ctid = '(1,1)'::tid)
          ->  Tid Scan on t4 b3t4  (cost=xxx rows=1 width=xxx)
                TID Cond: (ctid = '(1,1)'::tid)
-(65 rows)
+(62 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -4176,7 +4176,7 @@ error hint:
                                  TID Cond: (ctid = '(1,1)'::tid)
                            ->  Seq Scan on r3_  (cost=xxx rows=6 width=xxx)
                                  Filter: (c1 = 1)
-(59 rows)
+(56 rows)
 
 -- No. R-2-3-4
 \o results/ut-R.tmpout
@@ -4200,7 +4200,7 @@ HashJoin(v1t1 v1t1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 v1t1_1  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+HashJoin(v1t1 v1t1)Rows(v1t1 v1t1 #1)*/
@@ -4226,7 +4226,7 @@ Rows(v1t1 v1t1 #1)
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 v1t1_1  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-2-3-5
 \o results/ut-R.tmpout
@@ -4247,7 +4247,7 @@ error hint:
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 v1t1_  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = v1t1.c1)
-(5 rows)
+(4 rows)
 
 \o results/ut-R.tmpout
 /*+NestLoop(v1t1 v1t1_)Rows(v1t1 v1t1_ #1)*/
@@ -4268,7 +4268,7 @@ error hint:
    ->  Seq Scan on t1 v1t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 v1t1_  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = v1t1.c1)
-(5 rows)
+(4 rows)
 
 -- No. R-2-3-6
 \o results/ut-R.tmpout
@@ -4285,7 +4285,7 @@ DETAIL:  Unrecognized hint keyword "RowsHashJoin".
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 r4t1_1  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 \o results/ut-R.tmpout
 /*+RowsHashJoin(r4t1 r4t1)Rows(r4t1 r4t1 #1)*/
@@ -4301,7 +4301,7 @@ DETAIL:  Unrecognized hint keyword "RowsHashJoin".
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
    ->  Hash  (cost=xxx rows=1000 width=xxx)
          ->  Seq Scan on t1 r4t1_1  (cost=xxx rows=1000 width=xxx)
-(6 rows)
+(5 rows)
 
 -- No. R-2-3-7
 \o results/ut-R.tmpout
@@ -4322,7 +4322,7 @@ error hint:
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 r5t1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = r4t1.c1)
-(5 rows)
+(4 rows)
 
 \o results/ut-R.tmpout
 /*+NestLoop(r4t1 r5t1)Rows(r4t1 r5t1 #1)*/
@@ -4343,7 +4343,7 @@ error hint:
    ->  Seq Scan on t1 r4t1  (cost=xxx rows=1000 width=xxx)
    ->  Index Scan using t1_i1 on t1 r5t1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = r4t1.c1)
-(5 rows)
+(4 rows)
 
 ----
 ---- No. R-2-4 VALUES clause
@@ -4363,7 +4363,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) W
                ->  Values Scan on "*VALUES*"  (cost=xxx rows=1 width=xxx)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = t2.c1)
-(9 rows)
+(8 rows)
 
 \o results/ut-R.tmpout
 /*+ Leading(t3 t1 t2) Rows(t3 t1 #2)Rows(t3 t1 t2 #2)*/
@@ -4389,7 +4389,7 @@ error hint:
                ->  Values Scan on "*VALUES*"  (cost=xxx rows=1 width=xxx)
    ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = t2.c1)
-(9 rows)
+(8 rows)
 
 \o results/ut-R.tmpout
 /*+ Leading(*VALUES* t1 t2) Rows(*VALUES* t1 #2)Rows(*VALUES* t1 t2 #20)*/
@@ -4414,7 +4414,7 @@ error hint:
                Index Cond: (c1 = "*VALUES*".column1)
    ->  Index Scan using t2_i1 on t2  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = t1.c1)
-(8 rows)
+(7 rows)
 
 -- No. R-2-4-2
 \o results/ut-R.tmpout
@@ -4434,7 +4434,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), 
          ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = t2.c1)
    ->  Values Scan on "*VALUES*_1"  (cost=xxx rows=2 width=xxx)
-(12 rows)
+(11 rows)
 
 \o results/ut-R.tmpout
 /*+ Leading(t4 t3 t2 t1) Rows(t4 t3 #2) Rows(t4 t3 t2 #2)Rows(t4 t3 t2 t1 #2)*/
@@ -4464,7 +4464,7 @@ error hint:
          ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = t2.c1)
    ->  Values Scan on "*VALUES*_1"  (cost=xxx rows=2 width=xxx)
-(12 rows)
+(11 rows)
 
 \o results/ut-R.tmpout
 /*+ Leading(*VALUES* t3 t2 t1) Rows(t4 t3 #2)Rows(*VALUES* t3 t2 #2)Rows(*VALUES* t3 t2 t1 #2)*/
@@ -4500,7 +4500,7 @@ Rows(*VALUES* t1 t2 t3 #2)
          ->  Index Scan using t1_i1 on t1  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = t2.c1)
    ->  Values Scan on "*VALUES*_1"  (cost=xxx rows=2 width=xxx)
-(12 rows)
+(11 rows)
 
 ----
 ---- No. R-2-5
@@ -4526,7 +4526,7 @@ EXPLAIN SELECT max(bmt1.c1) FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sb
                      ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
          ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
                Index Cond: (c1 = bmt3.c1)
-(15 rows)
+(14 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -4560,7 +4560,7 @@ error hint:
                            ->  Seq Scan on t4 bmt4  (cost=xxx rows=1100 width=xxx)
                ->  Hash  (cost=xxx rows=100 width=xxx)
                      ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
-(15 rows)
+(14 rows)
 
 -- No. R-2-5-2
 \o results/ut-R.tmpout
@@ -4582,7 +4582,7 @@ EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, 
                ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
    ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = bmt3.c1)
-(14 rows)
+(13 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -4616,7 +4616,7 @@ error hint:
                            ->  Seq Scan on t4 bmt4  (cost=xxx rows=1100 width=xxx)
                ->  Hash  (cost=xxx rows=100 width=xxx)
                      ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
-(15 rows)
+(14 rows)
 
 -- No. R-2-5-3
 \o results/ut-R.tmpout
@@ -4638,7 +4638,7 @@ EXPLAIN SELECT bmt1.c1 FROM s1.t1 bmt1, (SELECT ctid, * FROM s1.t2 bmt2) sbmt2, 
                ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
    ->  Index Only Scan using t4_i1 on t4 bmt4  (cost=xxx rows=1 width=xxx)
          Index Cond: (c1 = bmt3.c1)
-(14 rows)
+(13 rows)
 
 \o results/ut-R.tmpout
 /*+
@@ -4672,7 +4672,7 @@ error hint:
                            ->  Seq Scan on t4 bmt4  (cost=xxx rows=1100 width=xxx)
                ->  Hash  (cost=xxx rows=100 width=xxx)
                      ->  Seq Scan on t2 bmt2  (cost=xxx rows=100 width=xxx)
-(15 rows)
+(14 rows)
 
 ----
 ---- No. R-3-1 abusolute value
@@ -4699,7 +4699,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-1-2
 \o results/ut-R.tmpout
@@ -4722,7 +4722,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-3-2 increase or decrease value
@@ -4748,7 +4748,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-2-2
 \o results/ut-R.tmpout
@@ -4771,7 +4771,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-2-3
 \o results/ut-R.tmpout
@@ -4795,7 +4795,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-3-3 multiple 
@@ -4822,7 +4822,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-3-2
 \o results/ut-R.tmpout
@@ -4845,7 +4845,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-3-3
 \o results/ut-R.tmpout
@@ -4868,7 +4868,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-3-4 join inherit tables
@@ -4899,7 +4899,7 @@ EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
                ->  Seq Scan on p1c1  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c2  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c3  (cost=xxx rows=100 width=xxx)
-(20 rows)
+(19 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(p1 p2 #1)*/
@@ -4934,7 +4934,7 @@ error hint:
                ->  Seq Scan on p1c1  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c2  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c3  (cost=xxx rows=100 width=xxx)
-(20 rows)
+(19 rows)
 
 -- No. R-3-4-2
 \o results/ut-R.tmpout
@@ -4962,7 +4962,7 @@ EXPLAIN SELECT * FROM s1.p1, s1.p2 WHERE p1.c1 = p2.c1;
                ->  Seq Scan on p1c1  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c2  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c3  (cost=xxx rows=100 width=xxx)
-(20 rows)
+(19 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(p1c1 p2c1 #1)*/
@@ -4997,7 +4997,7 @@ error hint:
                ->  Seq Scan on p1c1  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c2  (cost=xxx rows=100 width=xxx)
                ->  Seq Scan on p1c3  (cost=xxx rows=100 width=xxx)
-(20 rows)
+(19 rows)
 
 ----
 ---- No. R-3-5 conflict join method hint
@@ -5015,7 +5015,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)Rows(t1 t2 #1)*/
@@ -5040,7 +5040,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-5-2
 \o results/ut-R.tmpout
@@ -5055,7 +5055,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)Rows(t1 t2 #1)Rows(t1 t2 #1)*/
@@ -5083,7 +5083,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-5-3
 \o results/ut-R.tmpout
@@ -5098,7 +5098,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 #1)Rows(t2 t1 #1)*/
@@ -5123,7 +5123,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 -- No. R-3-5-4
 \o results/ut-R.tmpout
@@ -5138,7 +5138,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t2 t1 #1)Rows(t1 t2 #1)Rows(t2 t1 #1)*/
@@ -5166,7 +5166,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 ----
 ---- No. R-3-6 hint state output
@@ -5185,7 +5185,7 @@ EXPLAIN SELECT * FROM s1.t1, s1.t2 WHERE t1.c1 = t2.c1;
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \o results/ut-R.tmpout
 /*+Rows(t1 t2 +1)*/
@@ -5208,6 +5208,6 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t2.c1
          ->  Seq Scan on t2  (cost=xxx rows=100 width=xxx)
-(7 rows)
+(6 rows)
 
 \! rm results/ut-R.tmpout

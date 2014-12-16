@@ -7978,7 +7978,7 @@ EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id);
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #99) */
@@ -7998,7 +7998,7 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 +99) */
@@ -8018,7 +8018,7 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 -99) */
@@ -8038,7 +8038,7 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 *99) */
@@ -8058,7 +8058,7 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 *0.01) */
@@ -8078,7 +8078,7 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #aa) */
@@ -8100,7 +8100,7 @@ Rows(t1 t2 #aa)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 /99) */
@@ -8122,7 +8122,7 @@ Rows(t1 t2 /99)
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 -- round up to 1
 \o results/pg_hint_plan.tmpout
@@ -8144,7 +8144,7 @@ error hint:
    Merge Cond: (t1.id = t2.id)
    ->  Index Scan using t1_pkey on t1  (cost=xxx rows=10000 width=xxx)
    ->  Index Scan using t2_pkey on t2  (cost=xxx rows=1000 width=xxx)
-(5 rows)
+(4 rows)
 
 -- complex join tree
 \o results/pg_hint_plan.tmpout
@@ -8162,7 +8162,7 @@ EXPLAIN SELECT * FROM t1 JOIN t2 ON (t1.id = t2.id) JOIN t3 ON (t3.id = t2.id);
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t3.id
          ->  Seq Scan on t3  (cost=xxx rows=100 width=xxx)
-(10 rows)
+(9 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t2 #22) */
@@ -8187,7 +8187,7 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t3.id
          ->  Seq Scan on t3  (cost=xxx rows=100 width=xxx)
-(10 rows)
+(9 rows)
 
 \o results/pg_hint_plan.tmpout
 /*+ Rows(t1 t3 *10) */
@@ -8212,6 +8212,6 @@ error hint:
    ->  Sort  (cost=xxx rows=100 width=xxx)
          Sort Key: t3.id
          ->  Seq Scan on t3  (cost=xxx rows=100 width=xxx)
-(10 rows)
+(9 rows)
 
 \! rm results/pg_hint_plan.tmpout
