@@ -39,16 +39,6 @@
 #include "executor/spi.h"
 #include "catalog/pg_type.h"
 
-/*
- * We have our own header file "plpgsql-9.1", which is necessary to support
- * hints for queries in PL/pgSQL blocks, in pg_hint_plan source package,
- * because PostgreSQL 9.1 doesn't provide the header file as a part of
- * installation.  This header file is a copy of src/pl/plpgsql/src/plpgsql.h in
- * PostgreSQL 9.1.9 source tree,
- *
- * On the other hand, 9.2 installation provides that header file for external
- * modules, so we include the header in ordinary place.
- */
 #include "plpgsql.h"
 
 /* partially copied from pg_stat_statements */
