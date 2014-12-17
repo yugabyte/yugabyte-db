@@ -81,7 +81,6 @@ PG_MODULE_MAGIC;
 #define HINT_INDEXONLYSCANREGEXP	"IndexOnlyScanRegexp"
 #define HINT_NOINDEXONLYSCAN	"NoIndexOnlyScan"
 #define HINT_NESTLOOP			"NestLoop"
-#define HINT_NESTLOOP_NM		"NestLoop_NM"
 #define HINT_MERGEJOIN			"MergeJoin"
 #define HINT_HASHJOIN			"HashJoin"
 #define HINT_NONESTLOOP			"NoNestLoop"
@@ -115,15 +114,13 @@ enum
 {
 	ENABLE_NESTLOOP = 0x01,
 	ENABLE_MERGEJOIN = 0x02,
-	ENABLE_HASHJOIN = 0x04,
-	ENABLE_MATERIALIZE = 0x08
+	ENABLE_HASHJOIN = 0x04
 } JOIN_TYPE_BITS;
 
 #define ENABLE_ALL_SCAN (ENABLE_SEQSCAN | ENABLE_INDEXSCAN | \
 						 ENABLE_BITMAPSCAN | ENABLE_TIDSCAN | \
 						 ENABLE_INDEXONLYSCAN)
-#define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN |\
-						 ENABLE_MATERIALIZE)
+#define ENABLE_ALL_JOIN (ENABLE_NESTLOOP | ENABLE_MERGEJOIN | ENABLE_HASHJOIN)
 #define DISABLE_ALL_SCAN 0
 #define DISABLE_ALL_JOIN 0
 
@@ -144,7 +141,6 @@ typedef enum HintKeyword
 	HINT_KEYWORD_INDEXONLYSCANREGEXP,
 	HINT_KEYWORD_NOINDEXONLYSCAN,
 	HINT_KEYWORD_NESTLOOP,
-	HINT_KEYWORD_NESTLOOP_NM,
 	HINT_KEYWORD_MERGEJOIN,
 	HINT_KEYWORD_HASHJOIN,
 	HINT_KEYWORD_NONESTLOOP,
@@ -246,7 +242,6 @@ typedef struct JoinMethodHint
 	unsigned char	enforce_mask;
 	Relids			joinrelids;
 	Relids			inner_joinrelids;
-	bool			inhibit_materialize;
 } JoinMethodHint;
 
 /* join order hints */
@@ -496,7 +491,6 @@ static const HintParser parsers[] = {
 	 HINT_KEYWORD_INDEXONLYSCANREGEXP},
 	{HINT_NOINDEXONLYSCAN, ScanMethodHintCreate, HINT_KEYWORD_NOINDEXONLYSCAN},
 	{HINT_NESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP},
-	{HINT_NESTLOOP_NM, JoinMethodHintCreate, HINT_KEYWORD_NESTLOOP_NM},
 	{HINT_MERGEJOIN, JoinMethodHintCreate, HINT_KEYWORD_MERGEJOIN},
 	{HINT_HASHJOIN, JoinMethodHintCreate, HINT_KEYWORD_HASHJOIN},
 	{HINT_NONESTLOOP, JoinMethodHintCreate, HINT_KEYWORD_NONESTLOOP},
@@ -677,7 +671,6 @@ JoinMethodHintCreate(const char *hint_str, const char *keyword,
 	hint->enforce_mask = 0;
 	hint->joinrelids = NULL;
 	hint->inner_joinrelids = NULL;
-	hint->inhibit_materialize = false;
 
 	return (Hint *) hint;
 }
@@ -1896,11 +1889,8 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 
 	switch (hint_keyword)
 	{
-		case HINT_KEYWORD_NESTLOOP_NM:
-			hint->enforce_mask = ENABLE_NESTLOOP;
-			break;
 		case HINT_KEYWORD_NESTLOOP:
-			hint->enforce_mask |= (ENABLE_NESTLOOP | ENABLE_MATERIALIZE);
+			hint->enforce_mask = ENABLE_NESTLOOP;
 			break;
 		case HINT_KEYWORD_MERGEJOIN:
 			hint->enforce_mask = ENABLE_MERGEJOIN;
@@ -1909,13 +1899,13 @@ JoinMethodHintParse(JoinMethodHint *hint, HintState *hstate, Query *parse,
 			hint->enforce_mask = ENABLE_HASHJOIN;
 			break;
 		case HINT_KEYWORD_NONESTLOOP:
-			hint->enforce_mask = (ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP);
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_NESTLOOP;
 			break;
 		case HINT_KEYWORD_NOMERGEJOIN:
-			hint->enforce_mask = (ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN);
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_MERGEJOIN;
 			break;
 		case HINT_KEYWORD_NOHASHJOIN:
-			hint->enforce_mask = (ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN);
+			hint->enforce_mask = ENABLE_ALL_JOIN ^ ENABLE_HASHJOIN;
 			break;
 		default:
 			hint_ereport(str, ("Unrecognized hint keyword \"%s\".", keyword));
@@ -2233,7 +2223,6 @@ set_join_config_options(unsigned char enforce_mask, GucContext context)
 	SET_CONFIG_OPTION("enable_nestloop", ENABLE_NESTLOOP);
 	SET_CONFIG_OPTION("enable_mergejoin", ENABLE_MERGEJOIN);
 	SET_CONFIG_OPTION("enable_hashjoin", ENABLE_HASHJOIN);
-	SET_CONFIG_OPTION("enable_material", ENABLE_MATERIALIZE);
 }
 
 /*
@@ -2491,8 +2480,6 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 		current_hint->init_join_mask |= ENABLE_MERGEJOIN;
 	if (enable_hashjoin)
 		current_hint->init_join_mask |= ENABLE_HASHJOIN;
-	if (enable_material)
-		current_hint->init_join_mask |= ENABLE_MATERIALIZE;
 
 	/*
 	 * Use PG_TRY mechanism to recover GUC parameters and current_hint to the

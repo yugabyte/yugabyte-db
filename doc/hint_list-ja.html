@@ -54,11 +54,9 @@ PostgreSQL 9.2以降で動作します。</td></tr>
 <tr><td nowrap>NoBitmapScan(テーブル)</td>
   <td>指定したテーブルについて、Bitmap Scan以外でコストが最小となるスキャン方式を選択します。</td></tr>
 
-<tr><td rowspan="7" nowrap>結合方式</td>
+<tr><td rowspan="6" nowrap>結合方式</td>
   <td nowrap>NestLoop(テーブル テーブル[ テーブル...])</td>
   <td>指定したテーブル間の結合にNested Loopを選択します。</td></tr>
-  <td nowrap>NestLoop_NM(テーブル テーブル[ テーブル...])</td>
-  <td>指定したテーブル間の結合にNested Loopを選択しますがマテリアライズを禁止します。</td></tr>
 <tr><td nowrap>HashJoin(テーブル テーブル[ テーブル...])</td>
   <td>指定したテーブル間の結合にHash Joinを選択します。</td></tr>
 <tr><td nowrap>MergeJoin(テーブル テーブル[ テーブル...])</td>
