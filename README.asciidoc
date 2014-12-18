@@ -628,6 +628,20 @@ bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr is installed side-by-side with pg_catalog.substr.
 
+== VARCHAR2 and NVARCHAR2 Support
+
+orafce's VARCHAR2 implements part of Oracle database specification about VARCHAR2:
+
+* unit of type modifier = 'bytes' (not 'characters')
+* behaviour on entering a value with length exceeding maximum length (= type modifier)
+  : ERROR (whitespace is not truncated on implicit cast)
+
+And, NVARCHAR2 implements following behavior:
+
+* unit of type modifier = 'characters' (using character set of the database)
+* behaviour on entering a value with length exceeding maximum length (= type modifier)
+  : ERROR (whitespace is not truncated on implicit cast)
+
 == TODO
 
 * better documentation                                             
