@@ -159,6 +159,16 @@ AS 'MODULE_PATHNAME','orafce_to_number'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.to_number(text) IS 'Convert string to number';
 
+CREATE OR REPLACE FUNCTION pg_catalog.to_number(numeric)
+RETURNS numeric AS $$
+SELECT pg_catalog.to_number($1::text);
+$$ LANGUAGE SQL IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION pg_catalog.to_number(numeric,numeric)
+RETURNS numeric AS $$
+SELECT pg_catalog.to_number($1::text,$2::text);
+$$ LANGUAGE SQL IMMUTABLE;
+
 CREATE FUNCTION pg_catalog.to_date(str text)
 RETURNS timestamp
 AS 'MODULE_PATHNAME','ora_to_date'
