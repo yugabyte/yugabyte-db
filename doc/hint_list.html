@@ -1,0 +1,103 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD html 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+<title>Appendix A. Hints list</title>
+<!-- Uncoment after the tool has been hosted somewhere.
+<link rel="home" title="pg_hint_plan" href="index.html">
+-->
+<link rel="stylesheet" type="text/css" href="style.css">
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+</head>
+
+<body>
+<h1 id="pg_hint_plan">pg_hint_plan 1.1 Appendices</h1>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
+  <a href="hint_list-ja.html">Appendix A. Hints list</a>
+</div>
+<hr>
+
+<h2 id="hint-list">Appendix A. Hints list</h2>
+<p>The available hints are listed below.</p>
+<table>
+<thead>
+<tr>
+<tr><th>Group</th><th>Format</th><th>Description</th></tr>
+</tr>
+</thead>
+<tbody>
+<tr><td rowspan="10" nowrap>Scan method</td>
+  <td nowrap>SeqScan(table)</td>
+  <td>Forces sequential scan on the table</td></tr>
+<tr><td>TidScan(table)</td>
+  <td>Forces TID scan on the table.</td></tr>
+<tr><td nowrap>IndexScan(table[ index...])</td>
+  <td>Forces index scan on the table. Restricts to specified indexes if any. </td></tr>
+<tr><td nowrap>IndexOnlyScan(table[ index...])</td>
+  <td>Forces index only scan on the table. Rstricts to specfied indexes if any. Index scan may be used if index only scan is not available. Available for PostgreSQL 9.2 and later.</td></tr>
+<tr><td nowrap>BitmapScan(table[ index...])</td>
+  <td>Forces bitmap scan on the table. Restoricts to specfied indexes if any.</td></tr>
+<tr><td nowrap>NoSeqScan(table)</td>
+  <td>Forces not to do sequential scan on the table.</td></tr>
+<tr><td nowrap>NoTidScan(table)</td>
+  <td>Forces not to do TID scan on the table. </td></tr>
+<tr><td nowrap>NoIndexScan(table)</td>
+  <td>Forces not to do index scan and index only scan (For PostgreSQL
+  9.2 and later) on the table. </td></tr>
+<tr><td nowrap>NoIndexOnlyScan(table)</td>
+  <td>Forces not to do index only scan on the table. Available for PostgreSQL 9.2 and later.</td></tr>
+<tr><td nowrap>NoBitmapScan(table)</td>
+  <td>Forces not to do bitmap scan on the table. </td></tr>
+
+<tr><td rowspan="6" nowrap>Join method</td>
+  <td nowrap>NestLoop(table table[ table...])</td>
+  <td>Forces nested loop for the joins consist of the specifiled tables.</td></tr>
+<tr><td nowrap>HashJoin(table table[ table...])</td>
+  <td>Forces hash join for the joins consist of the  specifiled tables.</td></tr>
+<tr><td nowrap>MergeJoin(table table[ table...])</td>
+  <td>Forces merge join for the joins consist of the specifiled tables.</td></tr>
+<tr><td nowrap>NoNestLoop(table table[ table...])</td>
+  <td>Forces not to do nested loop for the joins consist of the specifiled tables.</td></tr>
+<tr><td nowrap>NoHashJoin(table table[ table...])</td>
+  <td>Forces not to do hash join for the joins consist of the specifiled tables.</td></tr>
+<tr><td nowrap>NoMergeJoin(table table[ table...])</td>
+  <td>Forces not to do merge join for the joins consist of the  specifiled tables.</td></tr>
+
+<tr><td rowspan="2">Join order</td>
+  <td nowrap>Leading(table table[ table...])</td>
+  <td>Forces join order as specified.</td></tr>
+<tr><td nowrap>Leading(&lt;join pair&gt;)</td>
+	<td>Forces join order and directions as specified. A join pair is a pair of tables and/or other join pairs enclosed by parentheses, which can make a nested structure.</td>
+
+<tr><td>Row number correction</td>
+	<td nowrap>Rows(table table[ table...] correction)</td>
+  <td>Corrects row number of a result of the joins consist of the specfied tables. The available correction methods are absolute (#&ltn&gt), addition (+&ltn&gt), subtract (-&ltn&gt) and multiplication (*&ltn&gt). &ltn&gt should be a string that strtod() can read.
+<tr><td>GUC</td>
+  <td nowrap>Set(GUC-param value)</td>
+  <td>Set the GUC parameter to the value while planner is running.</td></tr>
+</tbody>
+</table></p>
+
+
+<hr>
+<div class="navigation">
+  <a href="pg_hint_plan-ja.html">pg_hint_plan</a> &gt;
+  <a href="hint_list-ja.html">Appendix A. hints list</a>
+</div>
+
+<p class="footer">Copyright (c) 2012, NIPPON TELEGRAPH AND TELEPHONE CORPORATION</p>
+
+<!--
+<script type="text/javascript">
+var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+</script><script src="pg_statsinfo-ja_files/ga.js" type="text/javascript"></script>
+<script type="text/javascript">
+try{
+var pageTracker = _gat._getTracker("UA-10244036-6");
+pageTracker._trackPageview();
+} catch(err) {}
+</script>
+-->
+</body>
+</html>
