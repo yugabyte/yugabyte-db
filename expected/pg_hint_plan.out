@@ -7943,14 +7943,16 @@ EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 1;
    Index Cond: (id = 1)
 (2 rows)
 
-DO LANGUAGE plpgsql $$
+-- static function
+CREATE FUNCTION testfunc() RETURNS RECORD AS $$
 DECLARE
-    id integer;
+  ret record;
 BEGIN
-	SELECT /*+SeqScan(t1)*/ t1.id INTO id FROM t1 WHERE t1.id = 1;
-	RETURN;
+  SELECT /*+ SeqScan(t1) */ * INTO ret FROM t1 LIMIT 1;
+  RETURN ret;
 END;
-$$;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
 LOG:  pg_hint_plan:
 used hint:
 SeqScan(t1)
@@ -7958,8 +7960,209 @@ not used hint:
 duplication hint:
 error hint:
 
-CONTEXT:  SQL statement "SELECT /*+SeqScan(t1)*/ t1.id         FROM t1 WHERE t1.id = 1"
-PL/pgSQL function inline_code_block line 5 at SQL statement
+CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ *          FROM t1 LIMIT 1"
+PL/pgSQL function testfunc() line 5 at SQL statement
+ testfunc 
+----------
+ (1,1)
+(1 row)
+
+-- dynamic function
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS void AS $$
+BEGIN
+  EXECUTE format('/*+ SeqScan(t1) */ SELECT * FROM t1');
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "/*+ SeqScan(t1) */ SELECT * FROM t1"
+PL/pgSQL function testfunc() line 3 at EXECUTE statement
+ testfunc 
+----------
+ 
+(1 row)
+
+-- This should not use SeqScan(t1)
+/*+ IndexScan(t1) */ SELECT * from t1 LIMIT 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ id | val 
+----+-----
+  1 |   1
+(1 row)
+
+-- Perform
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS void AS $$
+BEGIN
+  PERFORM  1, /*+ SeqScan(t1) */ * from t1;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT 1, /*+ SeqScan(t1) */ * from t1"
+PL/pgSQL function testfunc() line 3 at PERFORM
+ testfunc 
+----------
+ 
+(1 row)
+
+-- FOR loop
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS int AS $$
+DECLARE
+  sum int;
+  v int;
+BEGIN
+  sum := 0;
+  FOR v IN SELECT /*+ SeqScan(t1) */ v FROM t1 ORDER BY id LOOP
+    sum := sum + v;
+  END LOOP;
+  RETURN v;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ v FROM t1 ORDER BY id"
+PL/pgSQL function testfunc() line 7 at FOR over SELECT rows
+ testfunc 
+----------
+         
+(1 row)
+
+-- Dynamic FOR loop
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS int AS $$
+DECLARE
+  sum int;
+  v int;
+  i   int;
+BEGIN
+  sum := 0;
+  FOR v IN EXECUTE 'SELECT /*+ SeqScan(t1) */ val FROM t1 ORDER BY id' LOOP
+    sum := sum + v;
+  END LOOP;
+  RETURN v;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ val FROM t1 ORDER BY id"
+PL/pgSQL function testfunc() line 8 at FOR over EXECUTE statement
+ testfunc 
+----------
+        0
+(1 row)
+
+-- Cursor FOR loop
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS int AS $$
+DECLARE
+  ref CURSOR FOR SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id;
+  rec record;
+  sum int := 0;
+BEGIN
+  FOR rec IN ref LOOP
+    sum := sum + rec.val;
+  END LOOP;
+  RETURN sum;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id"
+PL/pgSQL function testfunc() line 7 at FOR over cursor
+ testfunc 
+----------
+   495000
+(1 row)
+
+-- RETURN QUERY
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS SETOF t1 AS $$
+BEGIN
+  RETURN QUERY SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM testfunc() LIMIT 1;
+LOG:  pg_hint_plan:
+used hint:
+SeqScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+CONTEXT:  SQL statement "SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id"
+PL/pgSQL function testfunc() line 3 at RETURN QUERY
+ id | val 
+----+-----
+  1 |   1
+(1 row)
+
+-- Test for error exit from inner SQL statement.
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS SETOF t1 AS $$
+BEGIN
+  RETURN QUERY SELECT /*+ SeqScan(t1) */ * FROM ttx ORDER BY id;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM testfunc() LIMIT 1;
+ERROR:  relation "ttx" does not exist
+LINE 1: SELECT /*+ SeqScan(t1) */ * FROM ttx ORDER BY id
+                                         ^
+QUERY:  SELECT /*+ SeqScan(t1) */ * FROM ttx ORDER BY id
+CONTEXT:  PL/pgSQL function testfunc() line 3 at RETURN QUERY
+-- this should not use SeqScan(t1) hint.
+/*+ IndexScan(t1) */ SELECT * from t1 LIMIT 1;
+LOG:  pg_hint_plan:
+used hint:
+IndexScan(t1)
+not used hint:
+duplication hint:
+error hint:
+
+ id | val 
+----+-----
+  1 |   1
+(1 row)
+
+DROP FUNCTION testfunc();
 DROP EXTENSION pg_hint_plan;
 --
 -- Rows hint tests

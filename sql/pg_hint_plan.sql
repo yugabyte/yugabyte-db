@@ -836,14 +836,110 @@ VACUUM ANALYZE hint_plan.hints;
 
 -- plpgsql test
 EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 1;
-DO LANGUAGE plpgsql $$
+
+-- static function
+CREATE FUNCTION testfunc() RETURNS RECORD AS $$
 DECLARE
-    id integer;
+  ret record;
 BEGIN
-	SELECT /*+SeqScan(t1)*/ t1.id INTO id FROM t1 WHERE t1.id = 1;
-	RETURN;
+  SELECT /*+ SeqScan(t1) */ * INTO ret FROM t1 LIMIT 1;
+  RETURN ret;
 END;
-$$;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+
+-- dynamic function
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS void AS $$
+BEGIN
+  EXECUTE format('/*+ SeqScan(t1) */ SELECT * FROM t1');
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+
+-- This should not use SeqScan(t1)
+/*+ IndexScan(t1) */ SELECT * from t1 LIMIT 1;
+
+-- Perform
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS void AS $$
+BEGIN
+  PERFORM  1, /*+ SeqScan(t1) */ * from t1;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+
+-- FOR loop
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS int AS $$
+DECLARE
+  sum int;
+  v int;
+BEGIN
+  sum := 0;
+  FOR v IN SELECT /*+ SeqScan(t1) */ v FROM t1 ORDER BY id LOOP
+    sum := sum + v;
+  END LOOP;
+  RETURN v;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+
+-- Dynamic FOR loop
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS int AS $$
+DECLARE
+  sum int;
+  v int;
+  i   int;
+BEGIN
+  sum := 0;
+  FOR v IN EXECUTE 'SELECT /*+ SeqScan(t1) */ val FROM t1 ORDER BY id' LOOP
+    sum := sum + v;
+  END LOOP;
+  RETURN v;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+
+-- Cursor FOR loop
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS int AS $$
+DECLARE
+  ref CURSOR FOR SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id;
+  rec record;
+  sum int := 0;
+BEGIN
+  FOR rec IN ref LOOP
+    sum := sum + rec.val;
+  END LOOP;
+  RETURN sum;
+END;
+$$ LANGUAGE plpgsql;
+SELECT testfunc();
+
+-- RETURN QUERY
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS SETOF t1 AS $$
+BEGIN
+  RETURN QUERY SELECT /*+ SeqScan(t1) */ * FROM t1 ORDER BY id;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM testfunc() LIMIT 1;
+
+-- Test for error exit from inner SQL statement.
+DROP FUNCTION testfunc();
+CREATE FUNCTION testfunc() RETURNS SETOF t1 AS $$
+BEGIN
+  RETURN QUERY SELECT /*+ SeqScan(t1) */ * FROM ttx ORDER BY id;
+END;
+$$ LANGUAGE plpgsql;
+SELECT * FROM testfunc() LIMIT 1;
+
+-- this should not use SeqScan(t1) hint.
+/*+ IndexScan(t1) */ SELECT * from t1 LIMIT 1;
+
+DROP FUNCTION testfunc();
 DROP EXTENSION pg_hint_plan;
 
 --

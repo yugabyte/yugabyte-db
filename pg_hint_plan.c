@@ -432,7 +432,13 @@ static int debug_level = 0;
 static int	pg_hint_plan_message_level = INFO;
 /* Default is off, to keep backward compatibility. */
 static bool	pg_hint_plan_enable_hint_table = false;
-static bool	hidestmt = false;
+
+/* Internal static variables. */
+static bool	hidestmt = false;				/* Allow or inhibit STATEMENT: output */
+
+static int plpgsql_recurse_level = 0;		/* PLpgSQL recursion level            */
+static int hint_inhibit_level = 0;			/* Inhibit hinting if this is above 0 */
+											/* (This could not be above 1)        */
 
 static const struct config_enum_entry parse_messages_level_options[] = {
 	{"debug", DEBUG2, true},
@@ -518,13 +524,6 @@ static const HintParser parsers[] = {
 	{NULL, NULL, HINT_KEYWORD_UNRECOGNIZED}
 };
 
-/*
- * PL/pgSQL plugin for retrieving string representation of each query during
- * function execution.
- */
-static const char *plpgsql_query_string = NULL;
-static enum PLpgSQL_stmt_types plpgsql_query_string_src;
-
 PLpgSQL_plugin  plugin_funcs = {
 	NULL,
 	NULL,
@@ -534,9 +533,6 @@ PLpgSQL_plugin  plugin_funcs = {
 	NULL,
 	NULL,
 };
-
-/* Current nesting depth of SPI calls, used to prevent recursive calls */
-static int	nested_level = 0;
 
 /*
  * Module load callbacks
@@ -1126,7 +1122,7 @@ HintStateDump2(HintState *hstate)
 	if (!hstate)
 	{
 		elog(pg_hint_plan_message_level,
-			 "pg_hint_plan%s: HintStateDump:\nno hint", qnostr);
+			 "pg_hint_plan%s: HintStateDump: no hint", qnostr);
 		return;
 	}
 
@@ -1589,7 +1585,7 @@ get_hints_from_table(const char *client_query, const char *client_application)
 
 	PG_TRY();
 	{
-		++nested_level;
+		hint_inhibit_level++;
 	
 		SPI_connect();
 	
@@ -1627,11 +1623,11 @@ get_hints_from_table(const char *client_query, const char *client_application)
 	
 		SPI_finish();
 	
-		--nested_level;
+		hint_inhibit_level--;
 	}
 	PG_CATCH();
 	{
-		--nested_level;
+		hint_inhibit_level--;
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
@@ -1647,15 +1643,21 @@ get_query_string(void)
 {
 	const char *p;
 
-	if (stmt_name)
+	if (plpgsql_recurse_level > 0)
+	{
+		/*
+		 * This is quite ugly but this is the only point I could find where
+		 * we can get the query string.
+		 */
+		p = (char*)error_context_stack->arg;
+	}
+	else if (stmt_name)
 	{
 		PreparedStatement  *entry;
 
 		entry = FetchPreparedStatement(stmt_name, true);
 		p = entry->plansource->query_string;
 	}
-	else if (plpgsql_query_string)
-		p = plpgsql_query_string;
 	else
 		p = debug_query_string;
 
@@ -2319,7 +2321,7 @@ pg_hint_plan_ProcessUtility(Node *parsetree, const char *queryString,
 	 * Use standard planner if pg_hint_plan is disabled or current nesting 
 	 * depth is nesting depth of SPI calls. 
 	 */
-	if (!pg_hint_plan_enable_hint || nested_level > 0)
+	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
@@ -2487,13 +2489,13 @@ pg_hint_plan_planner(Query *parse, int cursorOptions, ParamListInfo boundParams)
 	 * depth is nesting depth of SPI calls. Other hook functions try to change
 	 * plan with current_hint if any, so set it to NULL.
 	 */
-	if (!pg_hint_plan_enable_hint || nested_level > 0)
+	if (!pg_hint_plan_enable_hint || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
 			elog(pg_hint_plan_message_level,
 				 "pg_hint_plan%s: planner: enable_hint=%d,"
-				 " nested_level=%d",
-				 qnostr, pg_hint_plan_enable_hint, nested_level);
+				 " hint_inhibit_level=%d",
+				 qnostr, pg_hint_plan_enable_hint, hint_inhibit_level);
 		hidestmt = true;
 
 		goto standard_planner_proc;
@@ -3095,17 +3097,17 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 	 * Do nothing if we don't have a valid hint in this context or current
 	 * nesting depth is at SPI calls.
 	 */
-	if (!current_hint || nested_level > 0)
+	if (!current_hint || hint_inhibit_level > 0)
 	{
 		if (debug_level > 1)
 			ereport(pg_hint_plan_message_level,
 					(errhidestmt(true),
 					 errmsg ("pg_hint_plan%s: get_relation_info"
 							 " no hint to apply: relation=%u(%s), inhparent=%d,"
-							 " current_hint=%p, nested_level=%d",
+							 " current_hint=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, nested_level)));
+							 inhparent, current_hint, hint_inhibit_level)));
 		return;
 	}
 
@@ -3123,10 +3125,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					(errhidestmt(true),
 					 errmsg ("pg_hint_plan%s: get_relation_info"
 							 " skipping inh parent: relation=%u(%s), inhparent=%d,"
-							 " current_hint=%p, nested_level=%d",
+							 " current_hint=%p, hint_inhibit_level=%d",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, nested_level)));
+							 inhparent, current_hint, hint_inhibit_level)));
 		return;
 	}
 
@@ -3225,10 +3227,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					 errmsg("pg_hint_plan%s: get_relation_info:"
 							" index deletion by parent hint: "
 							"relation=%u(%s), inhparent=%d, current_hint=%p,"
-							" nested_level=%d",
+							" hint_inhibit_level=%d",
 							qnostr, relationObjectId,
 							get_rel_name(relationObjectId),
-							inhparent, current_hint, nested_level)));
+							inhparent, current_hint, hint_inhibit_level)));
 		return;
 	}
 
@@ -3246,10 +3248,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					 errmsg ("pg_hint_plan%s: get_relation_info"
 							 " index deletion:"
 							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
-							 " nested_level=%d, scanmask=0x%x",
+							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, nested_level,
+							 inhparent, current_hint, hint_inhibit_level,
 							 hint->enforce_mask)));
 	}
 	else
@@ -3260,10 +3262,10 @@ pg_hint_plan_get_relation_info(PlannerInfo *root, Oid relationObjectId,
 					 errmsg ("pg_hint_plan%s: get_relation_info"
 							 " no hint applied:"
 							 " relation=%u(%s), inhparent=%d, current_hint=%p,"
-							 " nested_level=%d, scanmask=0x%x",
+							 " hint_inhibit_level=%d, scanmask=0x%x",
 							 qnostr, relationObjectId,
 							 get_rel_name(relationObjectId),
-							 inhparent, current_hint, nested_level,
+							 inhparent, current_hint, hint_inhibit_level,
 							 current_hint->init_scan_mask)));
 		set_scan_config_options(current_hint->init_scan_mask,
 								current_hint->context);
@@ -3933,7 +3935,7 @@ pg_hint_plan_join_search(PlannerInfo *root, int levels_needed,
 	 * valid hint is supplied or current nesting depth is nesting depth of SPI
 	 * calls.
 	 */
-	if (!current_hint || nested_level > 0)
+	if (!current_hint || hint_inhibit_level > 0)
 	{
 		if (prev_join_search)
 			return (*prev_join_search) (root, levels_needed, initial_rels);
@@ -4029,48 +4031,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 static void
 pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	PLpgSQL_expr *expr = NULL;
-
-	switch ((enum PLpgSQL_stmt_types) stmt->cmd_type)
-	{
-		case PLPGSQL_STMT_FORS:
-			expr = ((PLpgSQL_stmt_fors *) stmt)->query;
-			break;
-		case PLPGSQL_STMT_FORC:
-				expr = ((PLpgSQL_var *) (estate->datums[((PLpgSQL_stmt_forc *)stmt)->curvar]))->cursor_explicit_expr;
-			break;
-		case PLPGSQL_STMT_RETURN_QUERY:
-			if (((PLpgSQL_stmt_return_query *) stmt)->query != NULL)
-				expr = ((PLpgSQL_stmt_return_query *) stmt)->query;
-			else
-				expr = ((PLpgSQL_stmt_return_query *) stmt)->dynquery;
-			break;
-		case PLPGSQL_STMT_EXECSQL:
-			expr = ((PLpgSQL_stmt_execsql *) stmt)->sqlstmt;
-			break;
-		case PLPGSQL_STMT_DYNEXECUTE:
-			expr = ((PLpgSQL_stmt_dynexecute *) stmt)->query;
-			break;
-		case PLPGSQL_STMT_DYNFORS:
-			expr = ((PLpgSQL_stmt_dynfors *) stmt)->query;
-			break;
-		case PLPGSQL_STMT_OPEN:
-			if (((PLpgSQL_stmt_open *) stmt)->query != NULL)
-				expr = ((PLpgSQL_stmt_open *) stmt)->query;
-			else if (((PLpgSQL_stmt_open *) stmt)->dynquery != NULL)
-				expr = ((PLpgSQL_stmt_open *) stmt)->dynquery;
-			else
-				expr = ((PLpgSQL_var *) (estate->datums[((PLpgSQL_stmt_open *)stmt)->curvar]))->cursor_explicit_expr;
-			break;
-		default:
-			break;
-	}
-
-	if (expr)
-	{
-		plpgsql_query_string = expr->query;
-		plpgsql_query_string_src = (enum PLpgSQL_stmt_types) stmt->cmd_type;
-	}
+	plpgsql_recurse_level++;
 }
 
 /*
@@ -4081,9 +4042,7 @@ pg_hint_plan_plpgsql_stmt_beg(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 static void
 pg_hint_plan_plpgsql_stmt_end(PLpgSQL_execstate *estate, PLpgSQL_stmt *stmt)
 {
-	if (plpgsql_query_string &&
-		plpgsql_query_string_src == stmt->cmd_type)
-		plpgsql_query_string = NULL;
+	plpgsql_recurse_level--;
 }
 
 void plpgsql_query_erase_callback(ResourceReleasePhase phase,
@@ -4093,8 +4052,8 @@ void plpgsql_query_erase_callback(ResourceReleasePhase phase,
 {
 	if (phase != RESOURCE_RELEASE_AFTER_LOCKS)
 		return;
-	/* Force erase stored plpgsql query string */
-	plpgsql_query_string = NULL;
+	/* Cancel plpgsql nest level*/
+	plpgsql_recurse_level = 0;
 }
 
 #define standard_join_search pg_hint_plan_standard_join_search
