@@ -657,6 +657,9 @@ NVARCHAR2 implements the following:
 
 Use this type if character semantics is preferred.
 
+Please note that unlike Oracle, orafce's VARCHAR2 and NVARCHAR2 do not impose the 4000 bytes limit on the 'declared' size.
+In fact it is same as that of PostgreSQL varchar, which is about 10MB (although varchar can theoretically store values of size up to 1GB)
+
 Some byte-based string functions to be used with VARCHAR2 strings
 
 * substrb(VARCHAR2, int [, int]) - extract a substring of specified length (in bytes) starting at a given byte position (counting from one); if the third argument isnot specified then length to the end of the string is considered
