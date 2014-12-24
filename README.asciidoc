@@ -624,6 +624,9 @@ bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 * pg_catalog.listagg(str text [, separator text]) - aggregate values to list
 * pg_catalog.median(float4) - calculate a median
 * pg_catalog.median(float8) - calculate a median
+* pg_catalog.to_number(text) -  converts a string to a number
+* pg_catalog.to_number(numeric) -  converts a string to a number
+* pg_catalog.to_number(numeric,numeric) -  converts a string to a number
 
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr is installed side-by-side with pg_catalog.substr.

@@ -26,6 +26,8 @@ ALTER EXTENSION orafce ADD function pg_catalog.to_char(num real);
 ALTER EXTENSION orafce ADD function pg_catalog.to_char(num double precision);
 ALTER EXTENSION orafce ADD function pg_catalog.to_char(num numeric);
 ALTER EXTENSION orafce ADD function pg_catalog.to_number(str text);
+ALTER EXTENSION orafce ADD function pg_catalog.to_number(numeric);
+ALTER EXTENSION orafce ADD function pg_catalog.to_number(numeric,numeric)
 ALTER EXTENSION orafce ADD function pg_catalog.to_date(str text);
 ALTER EXTENSION orafce ADD function to_multi_byte(str text);
 ALTER EXTENSION orafce ADD function bitand(bigint, bigint);

@@ -502,6 +502,17 @@ select to_char('4.0010'::numeric);
 
 SELECT to_number('123'::text);
 SELECT to_number('123.456'::text);
+SELECT to_number(123);
+SELECT to_number(123::smallint);
+SELECT to_number(123::int);
+SELECT to_number(123::bigint);
+SELECT to_number(123::numeric);
+SELECT to_number(123.456);
+SELECT to_number(1210.73, 9999.99);
+SELECT to_number(1210::smallint, 9999::smallint);
+SELECT to_number(1210::int, 9999::int);
+SELECT to_number(1210::bigint, 9999::bigint);
+SELECT to_number(1210.73::numeric, 9999.99::numeric);
 
 SELECT to_date('2009-01-02');
 
