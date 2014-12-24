@@ -2189,6 +2189,33 @@ UPDATE pg_proc
 SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
 WHERE proname='varchar2';
 
+-- string functions for varchar2 type
+-- these are 'byte' versions of corresponsing text/varchar functions
+
+CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer, integer) RETURNS varchar2
+AS 'bytea_substr'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer) RETURNS varchar2
+AS 'bytea_substr_no_len'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.lengthb(varchar2) RETURNS integer
+AS 'byteaoctetlen'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.lengthb(varchar2) IS 'returns byte length of the input varchar2 string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.strposb(varchar2, varchar2) RETURNS integer
+AS 'byteapos'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.strposb(varchar2, varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
+
 -- oracle.nvarchar2 type support
 
 CREATE FUNCTION nvarchar2in(cstring,oid,integer)

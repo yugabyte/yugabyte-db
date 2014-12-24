@@ -6,10 +6,10 @@ psql:orafunc.sql:1967: NOTICE:  return type varchar2 is only a shell
 psql:orafunc.sql:1974: NOTICE:  argument type varchar2 is only a shell
 psql:orafunc.sql:1995: NOTICE:  argument type varchar2 is only a shell
 psql:orafunc.sql:1995: NOTICE:  return type varchar2 is only a shell
-psql:orafunc.sql:2121: NOTICE:  type "nvarchar2" is not yet defined
+psql:orafunc.sql:2148: NOTICE:  type "nvarchar2" is not yet defined
 DETAIL:  Creating a shell type definition.
-psql:orafunc.sql:2128: NOTICE:  argument type nvarchar2 is only a shell
-psql:orafunc.sql:2142: NOTICE:  return type nvarchar2 is only a shell
-psql:orafunc.sql:2149: NOTICE:  argument type nvarchar2 is only a shell
-psql:orafunc.sql:2170: NOTICE:  argument type nvarchar2 is only a shell
-psql:orafunc.sql:2170: NOTICE:  return type nvarchar2 is only a shell
+psql:orafunc.sql:2155: NOTICE:  argument type nvarchar2 is only a shell
+psql:orafunc.sql:2169: NOTICE:  return type nvarchar2 is only a shell
+psql:orafunc.sql:2176: NOTICE:  argument type nvarchar2 is only a shell
+psql:orafunc.sql:2197: NOTICE:  argument type nvarchar2 is only a shell
+psql:orafunc.sql:2197: NOTICE:  return type nvarchar2 is only a shell

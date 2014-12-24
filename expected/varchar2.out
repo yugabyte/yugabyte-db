@@ -52,3 +52,85 @@ SELECT 'abcde  '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
  f
 (1 row)
 
+--
+-- test string functions created for varchar2
+--
+-- substrb(varchar2, int, int)
+SELECT substrb('ABCありがとう'::VARCHAR2, 7, 6);
+ substrb 
+---------
+ りが
+(1 row)
+
+-- returns 'f' (emtpy string is not NULL)
+SELECT substrb('ABCありがとう'::VARCHAR2, 7, 0) IS NULL;
+ ?column? 
+----------
+ f
+(1 row)
+
+-- If the starting position is zero or less, then return from the start
+-- of the string adjusting the length to be consistent with the "negative start"
+-- per SQL.
+SELECT substrb('ABCありがとう'::VARCHAR2, 0, 4);
+ substrb 
+---------
+ ABC
+(1 row)
+
+-- substrb(varchar2, int)
+SELECT substrb('ABCありがとう', 5);
+ substrb  
+----------
+ りがとう
+(1 row)
+
+-- strposb(varchar2, varchar2)
+SELECT strposb('ABCありがとう', 'りが');
+ strposb 
+---------
+       7
+(1 row)
+
+-- returns 1 (start of the source string)
+SELECT strposb('ABCありがとう', '');
+ strposb 
+---------
+       1
+(1 row)
+
+-- returns 0
+SELECT strposb('ABCありがとう', 'XX');
+ strposb 
+---------
+       0
+(1 row)
+
+-- returns 't'
+SELECT strposb('ABCありがとう', NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+
+-- lengthb(varchar2)
+SELECT lengthb('ABCありがとう');
+ lengthb 
+---------
+      18
+(1 row)
+
+-- returns 0
+SELECT lengthb('');
+ lengthb 
+---------
+       0
+(1 row)
+
+-- returs 't'
+SELECT lengthb(NULL) IS NULL;
+ ?column? 
+----------
+ t
+(1 row)
+

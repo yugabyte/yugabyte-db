@@ -50,4 +50,41 @@ SELECT 'abcde   '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
 -- not equal
 SELECT 'abcde  '::VARCHAR2(10) = 'abcde   '::VARCHAR2(10);
 
+--
+-- test string functions created for varchar2
+--
 
+-- substrb(varchar2, int, int)
+SELECT substrb('ABCありがとう'::VARCHAR2, 7, 6);
+
+-- returns 'f' (emtpy string is not NULL)
+SELECT substrb('ABCありがとう'::VARCHAR2, 7, 0) IS NULL;
+
+-- If the starting position is zero or less, then return from the start
+-- of the string adjusting the length to be consistent with the "negative start"
+-- per SQL.
+SELECT substrb('ABCありがとう'::VARCHAR2, 0, 4);
+
+-- substrb(varchar2, int)
+SELECT substrb('ABCありがとう', 5);
+
+-- strposb(varchar2, varchar2)
+SELECT strposb('ABCありがとう', 'りが');
+
+-- returns 1 (start of the source string)
+SELECT strposb('ABCありがとう', '');
+
+-- returns 0
+SELECT strposb('ABCありがとう', 'XX');
+
+-- returns 't'
+SELECT strposb('ABCありがとう', NULL) IS NULL;
+
+-- lengthb(varchar2)
+SELECT lengthb('ABCありがとう');
+
+-- returns 0
+SELECT lengthb('');
+
+-- returs 't'
+SELECT lengthb(NULL) IS NULL;
