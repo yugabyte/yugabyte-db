@@ -1,5 +1,5 @@
 MODULE_big = orafunc
-OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o oraguc.o
+OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o oraguc.o varchar2.o nvarchar2.o
 
 EXTENSION = orafce
 
@@ -16,7 +16,7 @@ INTVERSION := $(shell echo $$(($$(echo $(VERSION) | sed 's/\([[:digit:]]\{1,\}\)
 # make "all" the default target
 all:
 
-REGRESS = orafunc dbms_output dbms_utility files
+REGRESS = orafunc dbms_output dbms_utility files varchar2 nvarchar2
 
 ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
 REGRESS += aggregates nlssort dbms_random

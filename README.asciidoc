@@ -631,6 +631,38 @@ bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr is installed side-by-side with pg_catalog.substr.
 
+== VARCHAR2 and NVARCHAR2 Support
+
+orafce's VARCHAR2 implements parts of Oracle database specification about VARCHAR2:
+
+* Unit of type modifier = 'bytes' (for character semantics, see NVARCHAR2)
+* Unlike PostgreSQL varchar, implicit cast to VARCHAR2 does not truncate
+  white spaces over declared maximum length
+
+Please note that PostgreSQL does not allow to dynamically specify how we
+interpret varchar strings. It always interprets them as 'character' strings
+as determined by database encoding. So, we can not support both BYTE and
+CHARACTER semantics for a given varchar type in the same database. We choose
+to implement the BYTE semantics as that is default in Oracle. For CHARACTER
+semantics, please see NVARCHAR2 which by default always implements the
+CHARACTER semantics.
+
+Please be careful when using the above type to store strings consisting of
+multibyte encoded characters wherein each character may be composed of an
+arbitrary number of bytes.
+
+NVARCHAR2 implements the following:
+
+* Unit of type modifier = 'characters' (using the character set/encoding of the database)
+
+Use this type if character semantics is preferred.
+
+Some byte-based string functions to be used with VARCHAR2 strings
+
+* substrb(VARCHAR2, int [, int]) - extract a substring of specified length (in bytes) starting at a given byte position (counting from one); if the third argument isnot specified then length to the end of the string is considered
+* strposb(VARCHAR2, VARCHAR2) - returns the location of specified substring in a given string (counting from one)
+* lengthb(VARCHAR2) - returns the length (in bytes) of a given string
+
 == TODO
 
 * better documentation                                             

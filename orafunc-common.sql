@@ -1946,6 +1946,383 @@ AS 'MODULE_PATHNAME','dbms_random_value'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greather or equal to 0 and less then 1';
 
+-- oracle.varchar2 type support
+
+CREATE FUNCTION varchar2in(cstring,oid,integer)
+RETURNS varchar2
+AS 'MODULE_PATHNAME','varchar2in'
+LANGUAGE 'c'
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION varchar2out(varchar2)
+RETURNS CSTRING
+AS 'MODULE_PATHNAME','varchar2out'
+LANGUAGE 'c'
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION varchar2_transform(internal)
+RETURNS internal
+AS 'varchar_transform'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION varchar2recv(internal,oid,integer)
+RETURNS varchar2
+AS 'MODULE_PATHNAME','varchar2recv'
+LANGUAGE 'c'
+STRICT
+STABLE;
+
+CREATE FUNCTION varchar2send(varchar2)
+RETURNS bytea
+AS 'varcharsend'
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION varchar2typmodin(cstring[])
+RETURNS integer
+AS 'varchartypmodin'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION varchar2typmodout(integer)
+RETURNS CSTRING
+AS 'varchartypmodout'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION varchar2(varchar2,integer,boolean)
+RETURNS varchar2
+AS 'MODULE_PATHNAME','varchar2'
+LANGUAGE 'c'
+STRICT
+IMMUTABLE;
+
+/* CREATE TYPE */
+CREATE TYPE varchar2 (
+internallength = VARIABLE,
+input = varchar2in,
+output = varchar2out,
+receive = varchar2recv,
+send = varchar2send,
+category = 'S',
+typmod_in = varchar2typmodin,
+typmod_out = varchar2typmodout
+);
+
+/* CREATE CAST */
+CREATE CAST (varchar2 AS text)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (text AS varchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS char)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (char AS varchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS varchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (varchar AS varchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS varchar2)
+WITH FUNCTION varchar2(varchar2,integer,boolean)
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS real)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (real AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS double precision)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (double precision AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS integer)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (integer AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS smallint)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (smallint AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS bigint)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (bigint AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS numeric)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (numeric AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS date)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (date AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS timestamp)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (timestamp AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (varchar2 AS interval)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (interval AS varchar2)
+WITH INOUT
+AS IMPLICIT;
+
+UPDATE pg_proc
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
+WHERE proname='varchar2';
+
+-- string functions for varchar2 type
+-- these are 'byte' versions of corresponsing text/varchar functions
+
+CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer, integer) RETURNS varchar2
+AS 'bytea_substr'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.substrb(varchar2, integer) RETURNS varchar2
+AS 'bytea_substr_no_len'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.substrb(varchar2, integer, integer) IS 'extracts specified number of bytes from the input varchar2 string starting at the specified byte position (1-based) and returns as a varchar2 string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.lengthb(varchar2) RETURNS integer
+AS 'byteaoctetlen'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.lengthb(varchar2) IS 'returns byte length of the input varchar2 string';
+
+CREATE OR REPLACE FUNCTION pg_catalog.strposb(varchar2, varchar2) RETURNS integer
+AS 'byteapos'
+LANGUAGE internal
+STRICT IMMUTABLE;
+COMMENT ON FUNCTION pg_catalog.strposb(varchar2, varchar2) IS 'returns the byte position of a specified string in the input varchar2 string';
+
+-- oracle.nvarchar2 type support
+
+CREATE FUNCTION nvarchar2in(cstring,oid,integer)
+RETURNS nvarchar2
+AS 'MODULE_PATHNAME','nvarchar2in'
+LANGUAGE 'c'
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION nvarchar2out(nvarchar2)
+RETURNS CSTRING
+AS 'MODULE_PATHNAME','nvarchar2out'
+LANGUAGE 'c'
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION nvarchar2_transform(internal)
+RETURNS internal
+AS 'varchar_transform'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION nvarchar2recv(internal,oid,integer)
+RETURNS nvarchar2
+AS 'MODULE_PATHNAME','nvarchar2recv'
+LANGUAGE 'c'
+STRICT
+STABLE;
+
+CREATE FUNCTION nvarchar2send(nvarchar2)
+RETURNS bytea
+AS 'varcharsend'
+LANGUAGE internal
+STRICT
+STABLE;
+
+CREATE FUNCTION nvarchar2typmodin(cstring[])
+RETURNS integer
+AS 'varchartypmodin'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION nvarchar2typmodout(integer)
+RETURNS CSTRING
+AS 'varchartypmodout'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+CREATE FUNCTION nvarchar2(nvarchar2,integer,boolean)
+RETURNS nvarchar2
+AS 'MODULE_PATHNAME','nvarchar2'
+LANGUAGE 'c'
+STRICT
+IMMUTABLE;
+
+/* CREATE TYPE */
+CREATE TYPE nvarchar2 (
+internallength = VARIABLE,
+input = nvarchar2in,
+output = nvarchar2out,
+receive = nvarchar2recv,
+send = nvarchar2send,
+category = 'S',
+typmod_in = nvarchar2typmodin,
+typmod_out = nvarchar2typmodout
+);
+
+/* CREATE CAST */
+CREATE CAST (nvarchar2 AS text)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (text AS nvarchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS char)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (char AS nvarchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS varchar)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (varchar AS nvarchar2)
+WITHOUT FUNCTION
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS nvarchar2)
+WITH FUNCTION nvarchar2(nvarchar2,integer, boolean)
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS real)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (real AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS double precision)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (double precision AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS integer)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (integer AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS smallint)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (smallint AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS bigint)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (bigint AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS numeric)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (numeric AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS date)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (date AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS timestamp)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (timestamp AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (nvarchar2 AS interval)
+WITH INOUT
+AS IMPLICIT;
+
+CREATE CAST (interval AS nvarchar2)
+WITH INOUT
+AS IMPLICIT;
+
+UPDATE pg_proc
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
+WHERE proname='nvarchar2';
+
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
 GRANT USAGE ON SCHEMA plvdate TO PUBLIC;
