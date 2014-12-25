@@ -35,6 +35,8 @@ endif
 
 installcheck: $(REGRESSION_EXPECTED)
 
+check: $(REGRESSION_EXPECTED)
+
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/orafce.out expected/dbms_pipe_session_B.out
 
 ifndef USE_PGXS
