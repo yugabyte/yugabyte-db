@@ -7,7 +7,7 @@
 #include "utils/pg_locale.h"
 #include "utils/formatting.h"
 
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 PG_FUNCTION_INFO_V1(orafce_to_char_int4);

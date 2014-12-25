@@ -22,7 +22,7 @@
 #include "utils/nabstime.h"
 #include <sys/time.h>
 #include <stdlib.h>
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 

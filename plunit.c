@@ -7,7 +7,7 @@
 #include "funcapi.h"
 #include "parser/parse_oper.h"
 #include "utils/builtins.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 PG_FUNCTION_INFO_V1(plunit_assert_true);

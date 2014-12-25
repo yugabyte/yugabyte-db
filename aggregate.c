@@ -1,6 +1,6 @@
 #include "postgres.h"
 #include "funcapi.h"
-#include "orafunc.h"
+#include "orafce.h"
 
 #if PG_VERSION_NUM >= 80400
 

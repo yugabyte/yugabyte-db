@@ -27,7 +27,7 @@
 #include "utils/memutils.h"
 #include "utils/lsyscache.h"
 #include "access/tupmacs.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 #include "utils/elog.h"

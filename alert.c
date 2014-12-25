@@ -12,7 +12,7 @@
 #include "storage/lwlock.h"
 #include "utils/timestamp.h"
 
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 #include "pipe.h"
 #include "shmmc.h"

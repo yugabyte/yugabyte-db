@@ -6,7 +6,7 @@
 #include "utils/numeric.h"
 #include "utils/formatting.h"
 #include <sys/time.h>
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 #define ENABLE_INTERNATIONALIZED_WEEKDAY

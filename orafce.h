@@ -1,5 +1,5 @@
-#ifndef __ORAFUNC__
-#define __ORAFUNC__
+#ifndef __ORAFCE__
+#define __ORAFCE__
 
 #include "postgres.h"
 #include "catalog/catversion.h"

@@ -17,7 +17,7 @@
 #include "storage/fd.h"
 #include "utils/builtins.h"
 #include "utils/memutils.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 #ifndef ERRCODE_NO_DATA_FOUND

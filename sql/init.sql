@@ -1,2 +1,2 @@
 \set ECHO none
-\i orafunc.sql
+\i orafce.sql

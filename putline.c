@@ -16,7 +16,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 #if defined(WIN32) && !defined(_MSC_VER)

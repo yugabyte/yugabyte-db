@@ -18,7 +18,7 @@
 
 #include "shmmc.h"
 #include "pipe.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 /*

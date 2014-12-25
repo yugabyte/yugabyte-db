@@ -24,7 +24,7 @@
 #include "nodes/pg_list.h"
 #include "funcapi.h"
 #include "catalog/pg_type.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 typedef struct {

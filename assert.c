@@ -8,7 +8,7 @@
 #include "catalog/namespace.h"
 #include "ctype.h"
 #include "string.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 PG_FUNCTION_INFO_V1(dbms_assert_enquote_literal);

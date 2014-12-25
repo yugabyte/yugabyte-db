@@ -1,6 +1,6 @@
 #include "postgres.h"
 #include "utils/guc.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 /*  default value */

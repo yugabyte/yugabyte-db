@@ -9,7 +9,7 @@
 #include "shmmc.h"
 #include "stdlib.h"
 #include "string.h"
-#include "orafunc.h"
+#include "orafce.h"
 
 
 #define LIST_ITEMS  512

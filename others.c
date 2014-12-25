@@ -15,7 +15,7 @@
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
 #include "utils/syscache.h"
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 /*

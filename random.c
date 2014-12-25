@@ -15,7 +15,7 @@
 #include <math.h>
 #include <errno.h>
 
-#include "orafunc.h"
+#include "orafce.h"
 #include "builtins.h"
 
 PG_FUNCTION_INFO_V1(dbms_random_initialize);

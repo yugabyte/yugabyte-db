@@ -1,11 +1,11 @@
-MODULE_big = orafunc
+MODULE_big = orafce
 OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plvsubst.o utility.o plvlex.o alert.o pipe.o sqlparse.o putline.o assert.o plunit.o random.o aggregate.o oraguc.o varchar2.o nvarchar2.o
 
 EXTENSION = orafce
 
-DATA_built = orafunc.sql
-DATA = uninstall_orafunc.sql orafce--3.0.7.sql orafce--unpackaged--3.0.7.sql
-DOCS = README.asciidoc COPYRIGHT.orafunc INSTALL.orafunc
+DATA_built = orafce.sql
+DATA = uninstall_orafce.sql orafce--3.0.7.sql orafce--unpackaged--3.0.7.sql
+DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config
 
@@ -16,14 +16,14 @@ INTVERSION := $(shell echo $$(($$(echo $(VERSION) | sed 's/\([[:digit:]]\{1,\}\)
 # make "all" the default target
 all:
 
-REGRESS = orafunc dbms_output dbms_utility files varchar2 nvarchar2
+REGRESS = orafce dbms_output dbms_utility files varchar2 nvarchar2
 
 ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
 REGRESS += aggregates nlssort dbms_random
 endif
 
 REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
-REGRESSION_EXPECTED = expected/orafunc.out expected/dbms_pipe_session_B.out
+REGRESSION_EXPECTED = expected/orafce.out expected/dbms_pipe_session_B.out
 
 ifeq ($(shell echo $$(($(INTVERSION) <= 802))),1)
 $(REGRESSION_EXPECTED): %.out: %1.out
@@ -35,7 +35,7 @@ endif
 
 installcheck: $(REGRESSION_EXPECTED)
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafunc.sql.in expected/orafunc.out expected/dbms_pipe_session_B.out
+EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/orafce.out expected/dbms_pipe_session_B.out
 
 ifndef USE_PGXS
 top_builddir = ../..
@@ -102,10 +102,10 @@ ifndef MAJORVERSION
 MAJORVERSION := $(basename $(VERSION))
 endif
 
-orafunc.sql.in:
-	if [ -f orafunc-$(MAJORVERSION).sql ] ; \
+orafce.sql.in:
+	if [ -f orafce-$(MAJORVERSION).sql ] ; \
 	then \
-	cat orafunc-common.sql orafunc-$(MAJORVERSION).sql > orafunc.sql.in; \
+	cat orafce-common.sql orafce-$(MAJORVERSION).sql > orafce.sql.in; \
 	else \
-	cat orafunc-common.sql orafunc-common-2.sql > orafunc.sql.in; \
+	cat orafce-common.sql orafce-common-2.sql > orafce.sql.in; \
 	fi
