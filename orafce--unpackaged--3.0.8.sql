@@ -1,5 +1,8 @@
 /* contrib/orafce/orafce--unpackaged--3.0.sql */
 
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION orafce FROM unpackaged" to load this file. \quit
+
 ALTER EXTENSION orafce ADD function pg_catalog.trunc(value date, fmt text);
 ALTER EXTENSION orafce ADD function pg_catalog.round(value date, fmt text);
 ALTER EXTENSION orafce ADD function pg_catalog.next_day(value date, weekday text);

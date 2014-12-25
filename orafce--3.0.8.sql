@@ -1,5 +1,8 @@
 /* contrib/orafce--3.0.sql */
 
+-- complain if script is sourced in psql, rather than via CREATE EXTENSION
+\echo Use "CREATE EXTENSION orafce" to load this file. \quit
+
 CREATE FUNCTION pg_catalog.trunc(value date, fmt text)
 RETURNS date
 AS 'MODULE_PATHNAME','ora_date_trunc'
@@ -2029,14 +2032,14 @@ CREATE AGGREGATE pg_catalog.median(double precision) (
 CREATE FUNCTION varchar2in(cstring,oid,integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','varchar2in'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION varchar2out(varchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','varchar2out'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 IMMUTABLE;
 
@@ -2050,7 +2053,7 @@ IMMUTABLE;
 CREATE FUNCTION varchar2recv(internal,oid,integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','varchar2recv'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 STABLE;
 
@@ -2078,7 +2081,7 @@ IMMUTABLE;
 CREATE FUNCTION varchar2(varchar2,integer,boolean)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','varchar2'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 IMMUTABLE;
 
@@ -2231,14 +2234,14 @@ COMMENT ON FUNCTION pg_catalog.strposb(varchar2, varchar2) IS 'returns the byte 
 CREATE FUNCTION nvarchar2in(cstring,oid,integer)
 RETURNS nvarchar2
 AS 'MODULE_PATHNAME','nvarchar2in'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 IMMUTABLE;
 
 CREATE FUNCTION nvarchar2out(nvarchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','nvarchar2out'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 IMMUTABLE;
 
@@ -2252,7 +2255,7 @@ IMMUTABLE;
 CREATE FUNCTION nvarchar2recv(internal,oid,integer)
 RETURNS nvarchar2
 AS 'MODULE_PATHNAME','nvarchar2recv'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 STABLE;
 
@@ -2280,7 +2283,7 @@ IMMUTABLE;
 CREATE FUNCTION nvarchar2(nvarchar2,integer,boolean)
 RETURNS nvarchar2
 AS 'MODULE_PATHNAME','nvarchar2'
-LANGUAGE 'c'
+LANGUAGE C
 STRICT
 IMMUTABLE;
 

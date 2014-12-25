@@ -39,22 +39,15 @@ check: $(REGRESSION_EXPECTED)
 
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/orafce.out expected/dbms_pipe_session_B.out
 
-ifndef USE_PGXS
+ifdef NO_PGXS
+subdir = contrib/$(MODULE_big)
 top_builddir = ../..
-makefile_global = $(top_builddir)/src/Makefile.global
-ifeq "$(wildcard $(makefile_global))" ""
-USE_PGXS = 1	# use pgxs if not in contrib directory
-endif
-endif
-
-ifdef USE_PGXS
+include $(top_builddir)/src/Makefile.global
+include $(top_srcdir)/contrib/contrib-global.mk
+else
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
-else
-subdir = contrib/$(MODULE_big)
-include $(makefile_global)
-include $(top_srcdir)/contrib/contrib-global.mk
 endif
 
 ifeq ($(enable_nls), yes)
