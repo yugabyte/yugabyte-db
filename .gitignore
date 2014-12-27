@@ -4,9 +4,6 @@
 /.deps/
 /orafce.sql
 /orafce.sql.in
-/sqlparse.c
-/sqlparse.h
-/sqlscan.c
 /results
 expected/dbms_pipe_session_B.out
 expected/orafunc.out

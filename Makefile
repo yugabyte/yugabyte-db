@@ -33,7 +33,7 @@ $(REGRESSION_EXPECTED): %.out: %2.out
 	cp $< $@
 endif
 
-installcheck: $(REGRESSION_EXPECTED)
+installcheck: $(REGRESSION_EXPECTED) orafce.sql
 
 check: $(REGRESSION_EXPECTED)
 
