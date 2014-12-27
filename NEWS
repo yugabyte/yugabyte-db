@@ -1,6 +1,11 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2012  Orafce Global Development Group
 
+Version 3.0.9 - 27. Dec 2014
+* new Varchar2 and Nvarchar2 types
+* enhanced oracle.substr function
+* fix PGXN related issues in process
+
 Version 3.0.7 - 27. Jul 2014
 * PostgreSQL 9.4 compilation
 * new datatype and related functions: oracle.date
