@@ -87,7 +87,7 @@ STRICT
 IMMUTABLE;
 
 UPDATE pg_proc
-SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='nvarchar2_transform')
 WHERE proname='nvarchar2';
 
 CREATE FUNCTION varchar2_transform(internal)
