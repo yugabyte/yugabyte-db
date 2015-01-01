@@ -1962,13 +1962,6 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2_transform(internal)
-RETURNS internal
-AS 'varchar_transform'
-LANGUAGE internal
-STRICT
-IMMUTABLE;
-
 CREATE FUNCTION varchar2recv(internal,oid,integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','varchar2recv'
@@ -2117,10 +2110,6 @@ CREATE CAST (interval AS varchar2)
 WITH INOUT
 AS IMPLICIT;
 
-UPDATE pg_proc
-SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
-WHERE proname='varchar2';
-
 -- string functions for varchar2 type
 -- these are 'byte' versions of corresponsing text/varchar functions
 
@@ -2161,13 +2150,6 @@ CREATE FUNCTION nvarchar2out(nvarchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','nvarchar2out'
 LANGUAGE C
-STRICT
-IMMUTABLE;
-
-CREATE FUNCTION nvarchar2_transform(internal)
-RETURNS internal
-AS 'varchar_transform'
-LANGUAGE internal
 STRICT
 IMMUTABLE;
 
@@ -2318,10 +2300,6 @@ AS IMPLICIT;
 CREATE CAST (interval AS nvarchar2)
 WITH INOUT
 AS IMPLICIT;
-
-UPDATE pg_proc
-SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
-WHERE proname='nvarchar2';
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
