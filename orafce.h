@@ -50,6 +50,7 @@ extern Oid	equality_oper_funcid(Oid argtype);
 #define cstring_to_text(c) \
         DatumGetTextP(CStringGetTextDatum(c))
 text *cstring_to_text_with_len(const char *c, int n);
+#define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
 #endif
 
 #if PG_VERSION_NUM < 80300
