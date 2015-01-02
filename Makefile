@@ -24,6 +24,7 @@ endif
 
 REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
 REGRESSION_EXPECTED = expected/orafce.out expected/dbms_pipe_session_B.out
+REGRESSION_EXPECTED2 =  expected/nvarchar2.out expected/varchar2.out
 
 ifeq ($(shell echo $$(($(INTVERSION) <= 802))),1)
 $(REGRESSION_EXPECTED): %.out: %1.out
@@ -33,11 +34,19 @@ $(REGRESSION_EXPECTED): %.out: %2.out
 	cp $< $@
 endif
 
-installcheck: $(REGRESSION_EXPECTED) orafce.sql
+ifeq ($(shell echo $$(($(INTVERSION) <= 803))),1)
+$(REGRESSION_EXPECTED2): %.out: %1.out
+	cp $< $@
+else
+$(REGRESSION_EXPECTED2): %.out: %2.out
+	cp $< $@
+endif
 
-check: $(REGRESSION_EXPECTED)
+installcheck: $(REGRESSION_EXPECTED) $(REGRESSION_EXPECTED2) orafce.sql
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/orafce.out expected/dbms_pipe_session_B.out
+check: $(REGRESSION_EXPECTED) $(REGRESSION_EXPECTED2)
+
+EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/orafce.out expected/dbms_pipe_session_B.out expected/varchar2.out expected/nvarchar2.out
 
 ifdef NO_PGXS
 subdir = contrib/$(MODULE_big)

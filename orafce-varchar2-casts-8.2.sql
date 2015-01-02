@@ -307,3 +307,353 @@ AS IMPLICIT;
 CREATE CAST (interval AS varchar2)
 WITH FUNCTION interval_varchar2(interval)
 AS IMPLICIT;
+
+--
+-- Operator Functions.
+--
+
+CREATE OR REPLACE FUNCTION nvarchar2_eq( nvarchar2, nvarchar2 )
+RETURNS bool
+AS 'texteq'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nvarchar2_ne( nvarchar2, nvarchar2 )
+RETURNS bool
+AS 'textne'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nvarchar2_lt( nvarchar2, nvarchar2 )
+RETURNS bool
+AS 'text_lt'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nvarchar2_le( nvarchar2, nvarchar2 )
+RETURNS bool
+AS 'text_le'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nvarchar2_gt( nvarchar2, nvarchar2 )
+RETURNS bool
+AS 'text_gt'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nvarchar2_ge( nvarchar2, nvarchar2 )
+RETURNS bool
+AS 'text_ge'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION textcat(nvarchar2, nvarchar2)
+RETURNS nvarchar2
+AS 'textcat'
+LANGUAGE internal IMMUTABLE STRICT;
+
+--
+-- Operators.
+--
+
+CREATE OPERATOR = (
+    LEFTARG    = nvarchar2,
+    RIGHTARG   = nvarchar2,
+    COMMUTATOR = =,
+    NEGATOR    = <>,
+    PROCEDURE  = nvarchar2_eq,
+    RESTRICT   = eqsel,
+    JOIN       = eqjoinsel,
+    HASHES,
+    MERGES
+);
+
+CREATE OPERATOR <> (
+    LEFTARG    = nvarchar2,
+    RIGHTARG   = nvarchar2,
+    NEGATOR    = =,
+    COMMUTATOR = <>,
+    PROCEDURE  = nvarchar2_ne,
+    RESTRICT   = neqsel,
+    JOIN       = neqjoinsel
+);
+
+CREATE OPERATOR < (
+    LEFTARG    = nvarchar2,
+    RIGHTARG   = nvarchar2,
+    NEGATOR    = >=,
+    COMMUTATOR = >,
+    PROCEDURE  = nvarchar2_lt,
+    RESTRICT   = scalarltsel,
+    JOIN       = scalarltjoinsel
+);
+
+CREATE OPERATOR <= (
+    LEFTARG    = nvarchar2,
+    RIGHTARG   = nvarchar2,
+    NEGATOR    = >,
+    COMMUTATOR = >=,
+    PROCEDURE  = nvarchar2_le,
+    RESTRICT   = scalarltsel,
+    JOIN       = scalarltjoinsel
+);
+
+CREATE OPERATOR >= (
+    LEFTARG    = nvarchar2,
+    RIGHTARG   = nvarchar2,
+    NEGATOR    = <,
+    COMMUTATOR = <=,
+    PROCEDURE  = nvarchar2_ge,
+    RESTRICT   = scalargtsel,
+    JOIN       = scalargtjoinsel
+);
+
+CREATE OPERATOR > (
+    LEFTARG    = nvarchar2,
+    RIGHTARG   = nvarchar2,
+    NEGATOR    = <=,
+    COMMUTATOR = <,
+    PROCEDURE  = nvarchar2_gt,
+    RESTRICT   = scalargtsel,
+    JOIN       = scalargtjoinsel
+);
+
+CREATE OPERATOR || (
+    LEFTARG   = nvarchar2,
+    RIGHTARG  = nvarchar2,
+    PROCEDURE = textcat
+);
+
+--
+-- Support functions for indexing.
+--
+
+CREATE OR REPLACE FUNCTION nvarchar2_cmp(nvarchar2, nvarchar2)
+RETURNS int4
+AS 'bttextcmp'
+LANGUAGE INTERNAL STRICT IMMUTABLE;
+
+--
+-- The btree indexing operator class.
+--
+
+CREATE OPERATOR CLASS nvarchar2_ops
+DEFAULT FOR TYPE nvarchar2 USING btree AS
+    OPERATOR    1   <  (nvarchar2, nvarchar2),
+    OPERATOR    2   <= (nvarchar2, nvarchar2),
+    OPERATOR    3   =  (nvarchar2, nvarchar2),
+    OPERATOR    4   >= (nvarchar2, nvarchar2),
+    OPERATOR    5   >  (nvarchar2, nvarchar2),
+    FUNCTION    1   nvarchar2_cmp(nvarchar2, nvarchar2);
+
+--
+-- Aggregates.
+--
+
+CREATE OR REPLACE FUNCTION nvarchar2_smaller(nvarchar2, nvarchar2)
+RETURNS nvarchar2
+AS 'text_smaller'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION nvarchar2_larger(nvarchar2, nvarchar2)
+RETURNS nvarchar2
+AS 'text_larger'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE AGGREGATE min(nvarchar2)  (
+    SFUNC = nvarchar2_smaller,
+    STYPE = nvarchar2,
+    SORTOP = <
+);
+
+CREATE AGGREGATE max(nvarchar2)  (
+    SFUNC = nvarchar2_larger,
+    STYPE = nvarchar2,
+    SORTOP = >
+);
+
+
+CREATE OR REPLACE FUNCTION lower(nvarchar2)
+RETURNS nvarchar2 AS 'lower'
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION upper(nvarchar2)
+RETURNS nvarchar2 AS 'upper'
+LANGUAGE internal IMMUTABLE STRICT;
+
+-- needed to avoid "function is not unique" errors
+-- XXX find a better way to deal with this...
+CREATE FUNCTION quote_literal(nvarchar2)
+RETURNS text AS 'quote_literal'
+LANGUAGE internal IMMUTABLE STRICT;
+
+
+
+--
+-- Operator Functions.
+--
+
+CREATE OR REPLACE FUNCTION varchar2_eq( varchar2, varchar2 )
+RETURNS bool
+AS 'texteq'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION varchar2_ne( varchar2, varchar2 )
+RETURNS bool
+AS 'textne'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION varchar2_lt( varchar2, varchar2 )
+RETURNS bool
+AS 'text_lt'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION varchar2_le( varchar2, varchar2 )
+RETURNS bool
+AS 'text_le'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION varchar2_gt( varchar2, varchar2 )
+RETURNS bool
+AS 'text_gt'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION varchar2_ge( varchar2, varchar2 )
+RETURNS bool
+AS 'text_ge'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION textcat(varchar2, varchar2)
+RETURNS varchar2
+AS 'textcat'
+LANGUAGE internal IMMUTABLE STRICT;
+
+--
+-- Operators.
+--
+
+CREATE OPERATOR = (
+    LEFTARG    = varchar2,
+    RIGHTARG   = varchar2,
+    COMMUTATOR = =,
+    NEGATOR    = <>,
+    PROCEDURE  = varchar2_eq,
+    RESTRICT   = eqsel,
+    JOIN       = eqjoinsel,
+    HASHES,
+    MERGES
+);
+
+CREATE OPERATOR <> (
+    LEFTARG    = varchar2,
+    RIGHTARG   = varchar2,
+    NEGATOR    = =,
+    COMMUTATOR = <>,
+    PROCEDURE  = varchar2_ne,
+    RESTRICT   = neqsel,
+    JOIN       = neqjoinsel
+);
+
+CREATE OPERATOR < (
+    LEFTARG    = varchar2,
+    RIGHTARG   = varchar2,
+    NEGATOR    = >=,
+    COMMUTATOR = >,
+    PROCEDURE  = varchar2_lt,
+    RESTRICT   = scalarltsel,
+    JOIN       = scalarltjoinsel
+);
+
+CREATE OPERATOR <= (
+    LEFTARG    = varchar2,
+    RIGHTARG   = varchar2,
+    NEGATOR    = >,
+    COMMUTATOR = >=,
+    PROCEDURE  = varchar2_le,
+    RESTRICT   = scalarltsel,
+    JOIN       = scalarltjoinsel
+);
+
+CREATE OPERATOR >= (
+    LEFTARG    = varchar2,
+    RIGHTARG   = varchar2,
+    NEGATOR    = <,
+    COMMUTATOR = <=,
+    PROCEDURE  = varchar2_ge,
+    RESTRICT   = scalargtsel,
+    JOIN       = scalargtjoinsel
+);
+
+CREATE OPERATOR > (
+    LEFTARG    = varchar2,
+    RIGHTARG   = varchar2,
+    NEGATOR    = <=,
+    COMMUTATOR = <,
+    PROCEDURE  = varchar2_gt,
+    RESTRICT   = scalargtsel,
+    JOIN       = scalargtjoinsel
+);
+
+CREATE OPERATOR || (
+    LEFTARG   = varchar2,
+    RIGHTARG  = varchar2,
+    PROCEDURE = textcat
+);
+
+--
+-- Support functions for indexing.
+--
+
+CREATE OR REPLACE FUNCTION varchar2_cmp(varchar2, varchar2)
+RETURNS int4
+AS 'bttextcmp'
+LANGUAGE INTERNAL STRICT IMMUTABLE;
+
+--
+-- The btree indexing operator class.
+--
+
+CREATE OPERATOR CLASS varchar2_ops
+DEFAULT FOR TYPE varchar2 USING btree AS
+    OPERATOR    1   <  (varchar2, varchar2),
+    OPERATOR    2   <= (varchar2, varchar2),
+    OPERATOR    3   =  (varchar2, varchar2),
+    OPERATOR    4   >= (varchar2, varchar2),
+    OPERATOR    5   >  (varchar2, varchar2),
+    FUNCTION    1   varchar2_cmp(varchar2, varchar2);
+
+--
+-- Aggregates.
+--
+
+CREATE OR REPLACE FUNCTION varchar2_smaller(varchar2, varchar2)
+RETURNS varchar2
+AS 'text_smaller'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION varchar2_larger(varchar2, varchar2)
+RETURNS varchar2
+AS 'text_larger'
+LANGUAGE INTERNAL IMMUTABLE STRICT;
+
+CREATE AGGREGATE min(varchar2)  (
+    SFUNC = varchar2_smaller,
+    STYPE = varchar2,
+    SORTOP = <
+);
+
+CREATE AGGREGATE max(varchar2)  (
+    SFUNC = varchar2_larger,
+    STYPE = varchar2,
+    SORTOP = >
+);
+
+
+CREATE OR REPLACE FUNCTION lower(varchar2)
+RETURNS varchar2 AS 'lower'
+LANGUAGE internal IMMUTABLE STRICT;
+
+CREATE OR REPLACE FUNCTION upper(varchar2)
+RETURNS varchar2 AS 'upper'
+LANGUAGE internal IMMUTABLE STRICT;
+
+-- needed to avoid "function is not unique" errors
+-- XXX find a better way to deal with this...
+CREATE FUNCTION quote_literal(varchar2)
+RETURNS text AS 'quote_literal'
+LANGUAGE internal IMMUTABLE STRICT;

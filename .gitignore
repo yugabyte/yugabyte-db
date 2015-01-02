@@ -1,4 +1,5 @@
 *.o
+*.a
 *.so
 *.so.*
 /.deps/
@@ -6,4 +7,6 @@
 /orafce.sql.in
 /results
 expected/dbms_pipe_session_B.out
-expected/orafunc.out
+expected/orafce.out
+expected/nvarchar2.out
+expected/varchar2.out
