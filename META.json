@@ -2,7 +2,7 @@
    "name": "orafce",
    "abstract": "Oracle's compatibility functions and packages",
    "description": "This module allows use a well known Oracle's functions and packages inside PostgreSQL",
-   "version": "3.0.10",
+   "version": "3.0.11",
    "maintainer": [
       "Pavel Stehule <pavel.stehule@gmail.com>",
       "Takahiro Itagaki <itagaki.takahiro@gmail.com>"
@@ -17,7 +17,7 @@
             "PostgreSQL": "8.2.0"
          },
          "recommends": {
-            "PostgreSQL": "9.3.0"
+            "PostgreSQL": "9.4.0"
          }
       }
    },
@@ -42,6 +42,7 @@
       "version": "1.0.0",
       "url": "http://pgxn.org/meta/spec.txt"
    },
+   "release_status": "testing",
    "tags": [
       "oracle",
       "compatibility",
