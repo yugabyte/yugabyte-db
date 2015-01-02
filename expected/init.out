@@ -1,15 +1,1 @@
 \set ECHO none
-psql:orafce.sql:1956: NOTICE:  type "varchar2" is not yet defined
-DETAIL:  Creating a shell type definition.
-psql:orafce.sql:1963: NOTICE:  argument type varchar2 is only a shell
-psql:orafce.sql:1970: NOTICE:  return type varchar2 is only a shell
-psql:orafce.sql:1977: NOTICE:  argument type varchar2 is only a shell
-psql:orafce.sql:1998: NOTICE:  argument type varchar2 is only a shell
-psql:orafce.sql:1998: NOTICE:  return type varchar2 is only a shell
-psql:orafce.sql:2147: NOTICE:  type "nvarchar2" is not yet defined
-DETAIL:  Creating a shell type definition.
-psql:orafce.sql:2154: NOTICE:  argument type nvarchar2 is only a shell
-psql:orafce.sql:2161: NOTICE:  return type nvarchar2 is only a shell
-psql:orafce.sql:2168: NOTICE:  argument type nvarchar2 is only a shell
-psql:orafce.sql:2189: NOTICE:  argument type nvarchar2 is only a shell
-psql:orafce.sql:2189: NOTICE:  return type nvarchar2 is only a shell

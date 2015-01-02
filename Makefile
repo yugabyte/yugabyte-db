@@ -16,10 +16,10 @@ INTVERSION := $(shell echo $$(($$(echo $(VERSION) | sed 's/\([[:digit:]]\{1,\}\)
 # make "all" the default target
 all:
 
-REGRESS = orafce dbms_output dbms_utility files varchar2 nvarchar2
+REGRESS = orafce dbms_output dbms_utility files
 
 ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
-REGRESS += aggregates nlssort dbms_random
+REGRESS += aggregates nlssort dbms_random varchar2 nvarchar2
 endif
 
 REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
@@ -100,7 +100,7 @@ endif
 orafce.sql.in:
 	if [ -f orafce-$(MAJORVERSION).sql ] ; \
 	then \
-	cat orafce-common.sql orafce-$(MAJORVERSION).sql > orafce.sql.in; \
+	cat orafce-common.sql orafce-varchar2-casts-$(MAJORVERSION).sql orafce-$(MAJORVERSION).sql > orafce.sql.in; \
 	else \
-	cat orafce-common.sql orafce-common-2.sql > orafce.sql.in; \
+	cat orafce-common.sql orafce-varchar2-casts.sql orafce-common-2.sql > orafce.sql.in; \
 	fi
