@@ -99,10 +99,10 @@ ERROR:  UTL_FILE_INVALID_PATH
 DELETE FROM utl_file.utl_file_dir WHERE dir LIKE 'test_tmp_dir';
 -- Add tmpdir() to utl_file_dir table
 INSERT INTO utl_file.utl_file_dir(dir) VALUES(utl_file.tmpdir());
-SELECT * from utl_file.utl_file_dir;
- dir  
-------
- /tmp
+SELECT count(*) from utl_file.utl_file_dir where dir <> '';
+ count 
+-------
+     1
 (1 row)
 
 -- Trying to access non-existent file

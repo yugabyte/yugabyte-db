@@ -93,7 +93,8 @@ SELECT utl_file.fopen('test_tmp_dir','file.txt.','w');
 DELETE FROM utl_file.utl_file_dir WHERE dir LIKE 'test_tmp_dir';
 -- Add tmpdir() to utl_file_dir table
 INSERT INTO utl_file.utl_file_dir(dir) VALUES(utl_file.tmpdir());
-SELECT * from utl_file.utl_file_dir;
+
+SELECT count(*) from utl_file.utl_file_dir where dir <> '';
 
 -- Trying to access non-existent file
 SELECT utl_file.fopen(utl_file.tmpdir(),'non_existent_file.txt','r');
