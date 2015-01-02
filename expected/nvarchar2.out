@@ -1,16 +1,13 @@
+\set VERBOSITY terse
 --
 -- test type modifier related rules
 --
 -- ERROR (typmod >= 1)
 CREATE TABLE bar (a NVARCHAR2(0));
-ERROR:  length for type varchar must be at least 1
-LINE 1: CREATE TABLE bar (a NVARCHAR2(0));
-                            ^
+ERROR:  length for type varchar must be at least 1 at character 21
 -- ERROR (number of typmods = 1)
 CREATE TABLE bar (a NVARCHAR2(10, 1));
-ERROR:  invalid type modifier
-LINE 1: CREATE TABLE bar (a NVARCHAR2(10, 1));
-                            ^
+ERROR:  invalid type modifier at character 21
 -- OK
 CREATE TABLE bar (a VARCHAR(5000));
 -- cleanup

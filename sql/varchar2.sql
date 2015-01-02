@@ -1,3 +1,5 @@
+\set VERBOSITY terse
+
 --
 -- test type modifier related rules
 --
