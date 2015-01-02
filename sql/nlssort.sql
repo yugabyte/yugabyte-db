@@ -4,7 +4,7 @@ SET client_min_messages = error;
 DROP DATABASE IF EXISTS regression_sort;
 CREATE DATABASE regression_sort WITH TEMPLATE = template0 ENCODING='SQL_ASCII' LC_COLLATE='C' LC_CTYPE='C';
 \c regression_sort
-\set ECHO none
+SET client_min_messages = error;
 \i orafce.sql
 SET client_min_messages = default;
 CREATE TABLE test_sort (name TEXT);
