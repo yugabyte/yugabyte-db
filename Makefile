@@ -4,7 +4,7 @@ OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plv
 EXTENSION = orafce
 
 DATA_built = orafce.sql
-DATA = uninstall_orafce.sql orafce--3.0.11.sql orafce--unpackaged--3.0.11.sql
+DATA = uninstall_orafce.sql orafce--3.0.12.sql orafce--unpackaged--3.0.12.sql
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config

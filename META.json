@@ -2,7 +2,7 @@
    "name": "orafce",
    "abstract": "Oracle's compatibility functions and packages",
    "description": "This module allows use a well known Oracle's functions and packages inside PostgreSQL",
-   "version": "3.0.11",
+   "version": "3.0.12",
    "maintainer": [
       "Pavel Stehule <pavel.stehule@gmail.com>",
       "Takahiro Itagaki <itagaki.takahiro@gmail.com>"
@@ -25,7 +25,7 @@
      "orafce": {
        "file": "sql/orafce.sql",
        "docfile": "README.orafce",
-       "version": "3.0.10",
+       "version": "3.0.12",
        "abstract": "Oracle's compatibility functions and packages"
      }
    },
