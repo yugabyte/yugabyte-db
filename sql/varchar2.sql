@@ -1,4 +1,5 @@
 \set VERBOSITY terse
+SET client_encoding = utf8;
 
 --
 -- test type modifier related rules
