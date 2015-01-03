@@ -4,7 +4,7 @@ OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plv
 EXTENSION = orafce
 
 DATA_built = orafce.sql
-DATA = uninstall_orafce.sql orafce--3.0.12.sql orafce--unpackaged--3.0.12.sql
+DATA = uninstall_orafce.sql orafce--3.0.13.sql orafce--unpackaged--3.0.13.sql
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config
@@ -22,9 +22,15 @@ ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
 REGRESS += aggregates nlssort dbms_random
 endif
 
-REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
+REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
 REGRESSION_EXPECTED = expected/orafce.out expected/dbms_pipe_session_B.out
 REGRESSION_EXPECTED2 =  expected/nvarchar2.out expected/varchar2.out
+
+ifeq ($(shell echo $$(($(INTVERSION) >= 901))),1)
+REGRESS_OPTS += --encoding=utf8
+else
+REGRESS_OPTS += --multibyte=utf8
+endif
 
 ifeq ($(shell echo $$(($(INTVERSION) <= 802))),1)
 $(REGRESSION_EXPECTED): %.out: %1.out
