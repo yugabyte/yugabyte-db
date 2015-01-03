@@ -22,7 +22,7 @@ ifeq ($(shell echo $$(($(INTVERSION) >= 804))),1)
 REGRESS += aggregates nlssort dbms_random
 endif
 
-REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
+REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=utf8
 REGRESSION_EXPECTED = expected/orafce.out expected/dbms_pipe_session_B.out
 REGRESSION_EXPECTED2 =  expected/nvarchar2.out expected/varchar2.out
 
