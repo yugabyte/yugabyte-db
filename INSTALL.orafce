@@ -24,4 +24,4 @@ psql -U postgres postgres < orafunc.sql
 Other administration tools that use this module may have different requirements,
 please consult the tool's documentation for further details.
 
-This package requires PostgreSQL 8.2 or later.
+This package requires PostgreSQL 8.3 or later.

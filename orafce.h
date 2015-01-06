@@ -8,10 +8,6 @@
 #include "utils/datetime.h"
 #include "utils/datum.h"
 
-#ifndef PG_VERSION_NUM
-#define PG_VERSION_NUM		80100	/* assume 8.1. */
-#endif
-
 #define TextPCopy(t) \
 	DatumGetTextP(datumCopy(PointerGetDatum(t), false, -1))
 
@@ -51,27 +47,6 @@ extern Oid	equality_oper_funcid(Oid argtype);
         DatumGetTextP(CStringGetTextDatum(c))
 text *cstring_to_text_with_len(const char *c, int n);
 #define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
-#endif
-
-#if PG_VERSION_NUM < 80300
-#define PGDLLIMPORT				DLLIMPORT
-#define session_timezone		global_timezone
-#define DatumGetTextPP(p)		DatumGetTextP(p)
-#define SET_VARSIZE(PTR, len)	(VARATT_SIZEP((PTR)) = (len))
-#define PG_GETARG_TEXT_PP(n)	PG_GETARG_TEXT_P((n))
-#define VARDATA_ANY(PTR)		VARDATA((PTR))
-#define VARSIZE_ANY_EXHDR(PTR)	(VARSIZE((PTR)) - VARHDRSZ)
-#define att_align_nominal(cur_offset, attalign) \
-	att_align((cur_offset), (attalign))
-#define att_addlength_pointer(cur_offset, attlen, attptr) \
-	att_addlength((cur_offset), (attlen), (attptr))
-#define stringToQualifiedNameList(string) \
-	stringToQualifiedNameList((string), "")
-typedef void *SPIPlanPtr;
-#endif
-
-#if PG_VERSION_NUM < 80200
-#define ARR_NULLBITMAP(a)		(NULL)
 #endif
 
 #endif

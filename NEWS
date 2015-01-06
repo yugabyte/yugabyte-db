@@ -1,6 +1,9 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2012  Orafce Global Development Group
 
+Version 3.0.14
+* remove support for 8.2
+
 Version 3.0.10 - 1. Jan 2015
 * fix compilation issue in new code for Pg <= 9.1
 
