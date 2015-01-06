@@ -6,7 +6,5 @@
 /orafce.sql
 /orafce.sql.in
 /results
-expected/dbms_pipe_session_B.out
-expected/orafce.out
 expected/nvarchar2.out
 expected/varchar2.out
