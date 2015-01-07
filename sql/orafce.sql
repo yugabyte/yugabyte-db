@@ -779,3 +779,154 @@ SELECT (to_date('January 15, 1990, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.') - t
 SELECT (to_date('14-Jul14 11:44:49' ,'YY-MonDD HH24:MI:SS') - to_date('14-Jan14 12:44:49' ,'YY-MonDD HH24:MI:SS'))::numeric(10,4);
 SELECT (to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:44','DDMMYY HH24:MI:SS'))::numeric(10,4);
 SET search_path TO default;
+
+--
+-- Note: each Japanese character used below has display width of 2, otherwise 1.
+-- Note: each output string is surrounded by '|' for improved readability
+--
+
+--
+-- test LPAD family of functions
+--
+
+---- lpad(char, int)
+SELECT '|' || oracle.lpad('あbcd'::char(8), 10) || '|';
+SELECT '|' || oracle.lpad('あbcd'::char(8),  5) || '|';
+SELECT '|' || oracle.lpad('あbcd'::char(8), 1) || '|';
+
+---- lpad(text, int)
+SELECT '|' || oracle.lpad('あbcd'::text, 10) || '|';
+SELECT '|' || oracle.lpad('あbcd'::text,  5) || '|';
+
+---- lpad(varchar2, int)
+SELECT '|' || oracle.lpad('あbcd'::varchar2(10), 10) || '|';
+SELECT '|' || oracle.lpad('あbcd'::varchar2(10), 5) || '|';
+
+---- lpad(nvarchar2, int)
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(10), 10) || '|';
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(10), 5) || '|';
+
+---- lpad(char, int, char)
+SELECT '|' || oracle.lpad('あbcd'::char(5), 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.lpad('あbcd'::char(5),  5, 'xい'::char(3)) || '|';
+
+---- lpad(char, int, text)
+SELECT '|' || oracle.lpad('あbcd'::char(5), 10, 'xい'::text) || '|';
+
+---- lpad(char, int, varchar2)
+SELECT '|' || oracle.lpad('あbcd'::char(5), 10, 'xい'::varchar2(5)) || '|';
+
+---- lpad(char, int, nvarchar2)
+SELECT '|' || oracle.lpad('あbcd'::char(5), 10, 'xい'::nvarchar2(3)) || '|';
+
+---- lpad(text, int, char)
+SELECT '|' || oracle.lpad('あbcd'::text, 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.lpad('あbcd'::text,  5, 'xい'::char(3)) || '|';
+
+---- lpad(text, int, text)
+SELECT '|' || oracle.lpad('あbcd'::text, 10, 'xい'::text) || '|';
+
+---- lpad(text, int, varchar2)
+SELECT '|' || oracle.lpad('あbcd'::text, 10, 'xい'::varchar2(5)) || '|';
+
+---- lpad(text, int, nvarchar2)
+SELECT '|' || oracle.lpad('あbcd'::text, 10, 'xい'::nvarchar2(3)) || '|';
+
+---- lpad(varchar2, int, char)
+SELECT '|' || oracle.lpad('あbcd'::varchar2(5), 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.lpad('あbcd'::varchar2(5),  5, 'xい'::char(3)) || '|';
+
+---- lpad(varchar2, int, text)
+SELECT '|' || oracle.lpad('あbcd'::varchar2(5), 10, 'xい'::text) || '|';
+
+---- lpad(varchar2, int, varchar2)
+SELECT '|' || oracle.lpad('あbcd'::varchar2(5), 10, 'xい'::varchar2(5)) || '|';
+
+---- lpad(varchar2, int, nvarchar2)
+SELECT '|' || oracle.lpad('あbcd'::varchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
+
+---- lpad(nvarchar2, int, char)
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(5), 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(5),  5, 'xい'::char(3)) || '|';
+
+---- lpad(nvarchar2, int, text)
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(5), 10, 'xい'::text) || '|';
+
+---- lpad(nvarchar2, int, varchar2)
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
+
+---- lpad(nvarchar2, int, nvarchar2)
+SELECT '|' || oracle.lpad('あbcd'::nvarchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
+
+--
+-- test RPAD family of functions
+--
+
+---- rpad(char, int)
+SELECT '|' || oracle.rpad('あbcd'::char(8), 10) || '|';
+SELECT '|' || oracle.rpad('あbcd'::char(8),  5) || '|';
+SELECT '|' || oracle.rpad('あbcd'::char(8), 1) || '|';
+
+---- rpad(text, int)
+SELECT '|' || oracle.rpad('あbcd'::text, 10) || '|';
+SELECT '|' || oracle.rpad('あbcd'::text,  5) || '|';
+
+---- rpad(varchar2, int)
+SELECT '|' || oracle.rpad('あbcd'::varchar2(10), 10) || '|';
+SELECT '|' || oracle.rpad('あbcd'::varchar2(10), 5) || '|';
+
+---- rpad(nvarchar2, int)
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(10), 10) || '|';
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(10), 5) || '|';
+
+---- rpad(char, int, char)
+SELECT '|' || oracle.rpad('あbcd'::char(5), 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.rpad('あbcd'::char(5),  5, 'xい'::char(3)) || '|';
+
+---- rpad(char, int, text)
+SELECT '|' || oracle.rpad('あbcd'::char(5), 10, 'xい'::text) || '|';
+
+---- rpad(char, int, varchar2)
+SELECT '|' || oracle.rpad('あbcd'::char(5), 10, 'xい'::varchar2(5)) || '|';
+
+---- rpad(char, int, nvarchar2)
+SELECT '|' || oracle.rpad('あbcd'::char(5), 10, 'xい'::nvarchar2(3)) || '|';
+
+---- rpad(text, int, char)
+SELECT '|' || oracle.rpad('あbcd'::text, 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.rpad('あbcd'::text,  5, 'xい'::char(3)) || '|';
+
+---- rpad(text, int, text)
+SELECT '|' || oracle.rpad('あbcd'::text, 10, 'xい'::text) || '|';
+
+---- rpad(text, int, varchar2)
+SELECT '|' || oracle.rpad('あbcd'::text, 10, 'xい'::varchar2(5)) || '|';
+
+---- rpad(text, int, nvarchar2)
+SELECT '|' || oracle.rpad('あbcd'::text, 10, 'xい'::nvarchar2(3)) || '|';
+
+---- rpad(varchar2, int, char)
+SELECT '|' || oracle.rpad('あbcd'::varchar2(5), 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.rpad('あbcd'::varchar2(5),  5, 'xい'::char(3)) || '|';
+
+---- rpad(varchar2, int, text)
+SELECT '|' || oracle.rpad('あbcd'::varchar2(5), 10, 'xい'::text) || '|';
+
+---- rpad(varchar2, int, varchar2)
+SELECT '|' || oracle.rpad('あbcd'::varchar2(5), 10, 'xい'::varchar2(5)) || '|';
+
+---- rpad(varchar2, int, nvarchar2)
+SELECT '|' || oracle.rpad('あbcd'::varchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
+
+---- rpad(nvarchar2, int, char)
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::char(3)) || '|';
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5),  5, 'xい'::char(3)) || '|';
+
+---- rpad(nvarchar2, int, text)
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::text) || '|';
+
+---- rpad(nvarchar2, int, varchar2)
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
+
+---- rpad(nvarchar2, int, nvarchar2)
+SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
