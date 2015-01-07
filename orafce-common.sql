@@ -2358,28 +2358,28 @@ STRICT
 
 CREATE FUNCTION oracle.rpad(char,integer)
 RETURNS text
-AS $$ SELECT rpad($1, $2, ' '::text); $$
+AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
 CREATE FUNCTION oracle.rpad(text,integer)
 RETURNS text
-AS $$ SELECT rpad($1, $2, ' '::text); $$
+AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
 CREATE FUNCTION oracle.rpad(varchar2,integer)
 RETURNS text
-AS $$ SELECT rpad($1, $2, ' '::text); $$
+AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
 CREATE FUNCTION oracle.rpad(nvarchar2,integer)
 RETURNS text
-AS $$ SELECT rpad($1, $2, ' '::text); $$
+AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;

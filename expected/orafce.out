@@ -3786,60 +3786,60 @@ SELECT '|' || oracle.lpad('あbcd'::nvarchar2(5), 10, 'xい'::nvarchar2(5)) || '
 --
 ---- rpad(char, int)
 SELECT '|' || oracle.rpad('あbcd'::char(8), 10) || '|';
-   ?column?    
----------------
- |あbcd      |
+   ?column?   
+--------------
+ |あbcd     |
 (1 row)
 
 SELECT '|' || oracle.rpad('あbcd'::char(8),  5) || '|';
  ?column? 
 ----------
- |あbcd |
+ |あbcd|
 (1 row)
 
 SELECT '|' || oracle.rpad('あbcd'::char(8), 1) || '|';
  ?column? 
 ----------
- |あ|
+ | |
 (1 row)
 
 ---- rpad(text, int)
 SELECT '|' || oracle.rpad('あbcd'::text, 10) || '|';
-   ?column?    
----------------
- |あbcd      |
+   ?column?   
+--------------
+ |あbcd     |
 (1 row)
 
 SELECT '|' || oracle.rpad('あbcd'::text,  5) || '|';
  ?column? 
 ----------
- |あbcd |
+ |あbcd|
 (1 row)
 
 ---- rpad(varchar2, int)
 SELECT '|' || oracle.rpad('あbcd'::varchar2(10), 10) || '|';
-   ?column?    
----------------
- |あbcd      |
+   ?column?   
+--------------
+ |あbcd     |
 (1 row)
 
 SELECT '|' || oracle.rpad('あbcd'::varchar2(10), 5) || '|';
  ?column? 
 ----------
- |あbcd |
+ |あbcd|
 (1 row)
 
 ---- rpad(nvarchar2, int)
 SELECT '|' || oracle.rpad('あbcd'::nvarchar2(10), 10) || '|';
-   ?column?    
----------------
- |あbcd      |
+   ?column?   
+--------------
+ |あbcd     |
 (1 row)
 
 SELECT '|' || oracle.rpad('あbcd'::nvarchar2(10), 5) || '|';
  ?column? 
 ----------
- |あbcd |
+ |あbcd|
 (1 row)
 
 ---- rpad(char, int, char)
