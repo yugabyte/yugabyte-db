@@ -252,4 +252,9 @@ extern PGDLLEXPORT Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
 
 /* from oraguc.c */
 extern void PGDLLEXPORT _PG_init(void);
+
+/* from charpad.c */
+extern PGDLLEXPORT Datum lpad(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum rpad(PG_FUNCTION_ARGS);
+
 #endif
