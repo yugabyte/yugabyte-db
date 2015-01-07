@@ -294,42 +294,42 @@ CREATE DOMAIN oracle.date AS timestamp(0);
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, integer)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,bigint)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, bigint)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,smallint)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, smallint)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,numeric)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, numeric)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date,oracle.date)
@@ -393,7 +393,7 @@ CREATE OPERATOR oracle.- (
 
 CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
-AS $$ SELECT ($1 + interval '1' month * $2)::oracle.date; $$
+AS $$ SELECT ($1 + interval '1 month' * $2)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.last_day(TIMESTAMPTZ)
@@ -1962,13 +1962,6 @@ LANGUAGE C
 STRICT
 IMMUTABLE;
 
-CREATE FUNCTION varchar2_transform(internal)
-RETURNS internal
-AS 'varchar_transform'
-LANGUAGE internal
-STRICT
-IMMUTABLE;
-
 CREATE FUNCTION varchar2recv(internal,oid,integer)
 RETURNS varchar2
 AS 'MODULE_PATHNAME','varchar2recv'
@@ -2016,110 +2009,6 @@ typmod_in = varchar2typmodin,
 typmod_out = varchar2typmodout
 );
 
-/* CREATE CAST */
-CREATE CAST (varchar2 AS text)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (text AS varchar2)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS char)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (char AS varchar2)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS varchar)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (varchar AS varchar2)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS varchar2)
-WITH FUNCTION varchar2(varchar2,integer,boolean)
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS real)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (real AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS double precision)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (double precision AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS integer)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (integer AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS smallint)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (smallint AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS bigint)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (bigint AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS numeric)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (numeric AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS date)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (date AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS timestamp)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (timestamp AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (varchar2 AS interval)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (interval AS varchar2)
-WITH INOUT
-AS IMPLICIT;
-
-UPDATE pg_proc
-SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
-WHERE proname='varchar2';
 
 -- string functions for varchar2 type
 -- these are 'byte' versions of corresponsing text/varchar functions
@@ -2161,13 +2050,6 @@ CREATE FUNCTION nvarchar2out(nvarchar2)
 RETURNS CSTRING
 AS 'MODULE_PATHNAME','nvarchar2out'
 LANGUAGE C
-STRICT
-IMMUTABLE;
-
-CREATE FUNCTION nvarchar2_transform(internal)
-RETURNS internal
-AS 'varchar_transform'
-LANGUAGE internal
 STRICT
 IMMUTABLE;
 
@@ -2217,111 +2099,6 @@ category = 'S',
 typmod_in = nvarchar2typmodin,
 typmod_out = nvarchar2typmodout
 );
-
-/* CREATE CAST */
-CREATE CAST (nvarchar2 AS text)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (text AS nvarchar2)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS char)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (char AS nvarchar2)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS varchar)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (varchar AS nvarchar2)
-WITHOUT FUNCTION
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS nvarchar2)
-WITH FUNCTION nvarchar2(nvarchar2,integer, boolean)
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS real)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (real AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS double precision)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (double precision AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS integer)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (integer AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS smallint)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (smallint AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS bigint)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (bigint AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS numeric)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (numeric AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS date)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (date AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS timestamp)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (timestamp AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (nvarchar2 AS interval)
-WITH INOUT
-AS IMPLICIT;
-
-CREATE CAST (interval AS nvarchar2)
-WITH INOUT
-AS IMPLICIT;
-
-UPDATE pg_proc
-SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
-WHERE proname='nvarchar2';
 
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;

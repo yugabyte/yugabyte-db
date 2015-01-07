@@ -294,42 +294,42 @@ CREATE DOMAIN oracle.date AS timestamp(0);
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,integer)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, integer)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,bigint)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, bigint)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,smallint)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, smallint)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.add_days_to_timestamp(oracle.date,numeric)
 RETURNS timestamp AS $$
-SELECT $1 + interval '1' day * $2;
+SELECT $1 + interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract (oracle.date, numeric)
 RETURNS timestamp AS $$
-SELECT $1 - interval '1' day * $2;
+SELECT $1 - interval '1 day' * $2;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION oracle.subtract(oracle.date,oracle.date)
@@ -393,7 +393,7 @@ CREATE OPERATOR oracle.- (
 
 CREATE FUNCTION oracle.add_months(TIMESTAMP WITH TIME ZONE,INTEGER)
 RETURNS TIMESTAMP
-AS $$ SELECT ($1 + interval '1' month * $2)::oracle.date; $$
+AS $$ SELECT ($1 + interval '1 month' * $2)::oracle.date; $$
 LANGUAGE SQL IMMUTABLE STRICT;
 
 CREATE OR REPLACE FUNCTION oracle.last_day(TIMESTAMPTZ)

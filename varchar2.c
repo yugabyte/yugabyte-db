@@ -16,6 +16,7 @@
 #include "mb/pg_wchar.h"
 #include "fmgr.h"
 
+#include "orafce.h"
 
 
 /* prototype declarations */

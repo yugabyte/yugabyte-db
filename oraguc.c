@@ -9,6 +9,9 @@ char  *nls_date_format = NULL;
 void
 _PG_init(void)
 {
+
+#if PG_VERSION_NUM >= 80400
+
 	/* Define custom GUC variables. */
 	DefineCustomStringVariable("orafce.nls_date_format",
 									"Emulate oracle's date output behaviour.",
@@ -21,4 +24,17 @@ _PG_init(void)
 									NULL,
 #endif
 									NULL, NULL);
+
+#else
+
+	/* Define custom GUC variables. */
+	DefineCustomStringVariable("orafce.nls_date_format",
+									"Emulate oracle's date output behaviour.",
+									NULL,
+									&nls_date_format,
+									PGC_USERSET,
+									NULL, NULL);
+
+#endif
+
 }

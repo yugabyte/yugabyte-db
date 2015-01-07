@@ -95,14 +95,14 @@ This module contain implementation of oracle compatible DATE data type "oracle.d
 
 Example:
 ----
-set search_path TO oracle,"$user", public, pg_catalog;
-create table oracle_date(col1 date);
-insert into oracle_date values('2014-06-24 12:12:11'::date);
-select * from oracle_date;
-        col1         
----------------------
- 2014-06-24 12:12:11
-(1 row)
+    set search_path TO oracle,"$user", public, pg_catalog;
+    create table oracle_date(col1 date);
+    insert into oracle_date values('2014-06-24 12:12:11'::date);
+    select * from oracle_date;
+            col1         
+    ---------------------
+     2014-06-24 12:12:11
+    (1 row)
 ----
 == oracle.date functions
 

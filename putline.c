@@ -345,9 +345,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 		get_typlenbyvalalign(TEXTOID, &typlen, &typbyval, &typalign);
 		arr = construct_md_array(
 			NULL,
-#if PG_VERSION_NUM >= 80200
 			NULL,
-#endif
 			0, NULL, NULL, TEXTOID, typlen, typbyval, typalign);
 		values[0] = PointerGetDatum(arr);
 	}

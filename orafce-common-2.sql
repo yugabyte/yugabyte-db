@@ -79,4 +79,26 @@ CREATE AGGREGATE pg_catalog.median(double precision) (
   FINALFUNC=pg_catalog.median8_finalfn
 );
 
+CREATE FUNCTION nvarchar2_transform(internal)
+RETURNS internal
+AS 'varchar_transform'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+UPDATE pg_proc
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='nvarchar2_transform')
+WHERE proname='nvarchar2';
+
+CREATE FUNCTION varchar2_transform(internal)
+RETURNS internal
+AS 'varchar_transform'
+LANGUAGE internal
+STRICT
+IMMUTABLE;
+
+UPDATE pg_proc
+SET protransform=(SELECT oid FROM pg_proc WHERE proname='varchar2_transform')
+WHERE proname='varchar2';
+
 COMMIT;

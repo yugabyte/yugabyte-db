@@ -3501,82 +3501,82 @@ select oracle.to_char(oracle.to_date('210514 12:13:44+05:30','DDMMYY HH24:MI:SS'
 SET search_path TO default;
 --Tests for oracle.-(oracle.date,oracle.date)
 SET search_path TO oracle,"$user", public, pg_catalog;
-SELECT to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
-  ?column?  
-------------
- 166.048785
-(1 row)
-
-SELECT to_date('2014-07-17 13:14:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
-  ?column?  
-------------
- 166.134896
-(1 row)
-
-SELECT to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
-  ?column?  
-------------
- 166.134896
-(1 row)
-
-SELECT to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2015-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss');
-  ?column?   
--------------
- -198.865104
-(1 row)
-
-SELECT to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('01-01-2013 10:00:00', 'mm-dd-yyyy hh24:mi:ss');
-  ?column?  
-------------
- 562.134896
-(1 row)
-
-SELECT to_date('17-07-2014 13:14:15', 'dd-mm-yyyy hh24:mi:ss') - to_date('01-01-2013 10:00:00', 'dd--mm-yyyy hh24:mi:ss');
-  ?column?  
-------------
- 562.134896
-(1 row)
-
-SELECT to_date('2014/02/01 10:11:12', 'YYYY/MM/DD hh12:mi:ss') - to_date('2013/02/01 10:11:12', 'YYYY/MM/DD hh12:mi:ss');
- ?column? 
+SELECT (to_date('2014-07-17 11:10:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
+ numeric  
 ----------
-      365
+ 166.0488
 (1 row)
 
-SELECT to_date('17-Jul-14 10:11:11', 'DD-Mon-YY HH:MI:SS') - to_date('17-Jan-14 00:00:00', 'DD-Mon-YY HH24:MI:SS');
-  ?column?  
-------------
- 181.424433
+SELECT (to_date('2014-07-17 13:14:15', 'yyyy-mm-dd hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
+ numeric  
+----------
+ 166.1349
 (1 row)
 
-SELECT to_date('July.17.2014 10:11:12', 'Month.DD.YYYY HH:MI:SS') - to_date('February.16.2014 10:21:12', 'Month.DD.YYYY HH:MI:SS');
-  ?column?  
-------------
- 150.993056
+SELECT (to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2014-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
+ numeric  
+----------
+ 166.1349
 (1 row)
 
-SELECT to_date('20140717111211', 'yyyymmddhh12miss') - to_date('20140315111212', 'yyyymmddhh12miss');
-  ?column?  
-------------
- 123.999988
+SELECT (to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('2015-02-01 10:00:00', 'yyyy-mm-dd hh24:mi:ss'))::numeric(10,4);
+  numeric  
+-----------
+ -198.8651
 (1 row)
 
-SELECT to_date('January 15, 1990, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.') - to_date('January 15, 1989, 10:00 A.M.','Month dd, YYYY, HH:MI A.M.');
-  ?column?  
-------------
- 365.041667
+SELECT (to_date('07-17-2014 13:14:15', 'mm-dd-yyyy hh24:mi:ss') - to_date('01-01-2013 10:00:00', 'mm-dd-yyyy hh24:mi:ss'))::numeric(10,4);
+ numeric  
+----------
+ 562.1349
 (1 row)
 
-SELECT to_date('14-Jul14 11:44:49' ,'YY-MonDD HH24:MI:SS') - to_date('14-Jan14 12:44:49' ,'YY-MonDD HH24:MI:SS');
-  ?column?  
-------------
- 180.958333
+SELECT (to_date('17-07-2014 13:14:15', 'dd-mm-yyyy hh24:mi:ss') - to_date('01-01-2013 10:00:00', 'dd--mm-yyyy hh24:mi:ss'))::numeric(10,4);
+ numeric  
+----------
+ 562.1349
 (1 row)
 
-SELECT to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:44','DDMMYY HH24:MI:SS');
-  ?column?  
-------------
- 120.083333
+SELECT (to_date('2014/02/01 10:11:12', 'YYYY/MM/DD hh12:mi:ss') - to_date('2013/02/01 10:11:12', 'YYYY/MM/DD hh12:mi:ss'))::numeric(10,4);
+ numeric  
+----------
+ 365.0000
+(1 row)
+
+SELECT (to_date('17-Jul-14 10:11:11', 'DD-Mon-YY HH:MI:SS') - to_date('17-Jan-14 00:00:00', 'DD-Mon-YY HH24:MI:SS'))::numeric(10,4);
+ numeric  
+----------
+ 181.4244
+(1 row)
+
+SELECT (to_date('July.17.2014 10:11:12', 'Month.DD.YYYY HH:MI:SS') - to_date('February.16.2014 10:21:12', 'Month.DD.YYYY HH:MI:SS'))::numeric(10,4);
+ numeric  
+----------
+ 150.9931
+(1 row)
+
+SELECT (to_date('20140717111211', 'yyyymmddhh12miss') - to_date('20140315111212', 'yyyymmddhh12miss'))::numeric(10,4);
+ numeric  
+----------
+ 124.0000
+(1 row)
+
+SELECT (to_date('January 15, 1990, 11:00 A.M.','Month dd, YYYY, HH:MI A.M.') - to_date('January 15, 1989, 10:00 A.M.','Month dd, YYYY, HH:MI A.M.'))::numeric(10,4);
+ numeric  
+----------
+ 365.0417
+(1 row)
+
+SELECT (to_date('14-Jul14 11:44:49' ,'YY-MonDD HH24:MI:SS') - to_date('14-Jan14 12:44:49' ,'YY-MonDD HH24:MI:SS'))::numeric(10,4);
+ numeric  
+----------
+ 180.9583
+(1 row)
+
+SELECT (to_date('210514 12:13:44','DDMMYY HH24:MI:SS') - to_date('210114 10:13:44','DDMMYY HH24:MI:SS'))::numeric(10,4);
+ numeric  
+----------
+ 120.0833
 (1 row)
 
 SET search_path TO default;

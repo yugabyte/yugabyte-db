@@ -4,7 +4,7 @@ OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plv
 EXTENSION = orafce
 
 DATA_built = orafce.sql
-DATA = uninstall_orafce.sql orafce--3.0.8.sql orafce--unpackaged--3.0.8.sql
+DATA = uninstall_orafce.sql orafce--3.0.13.sql orafce--unpackaged--3.0.13.sql
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config
@@ -23,9 +23,15 @@ REGRESS += aggregates nlssort dbms_random
 endif
 
 REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule
-REGRESSION_EXPECTED = expected/orafce.out expected/dbms_pipe_session_B.out
+REGRESSION_EXPECTED =  expected/nvarchar2.out expected/varchar2.out
 
-ifeq ($(shell echo $$(($(INTVERSION) <= 802))),1)
+ifeq ($(shell echo $$(($(INTVERSION) >= 901))),1)
+REGRESS_OPTS += --encoding=utf8
+else
+REGRESS_OPTS += --multibyte=utf8
+endif
+
+ifeq ($(shell echo $$(($(INTVERSION) <= 803))),1)
 $(REGRESSION_EXPECTED): %.out: %1.out
 	cp $< $@
 else
@@ -33,11 +39,11 @@ $(REGRESSION_EXPECTED): %.out: %2.out
 	cp $< $@
 endif
 
-installcheck: $(REGRESSION_EXPECTED)
+installcheck: $(REGRESSION_EXPECTED) orafce.sql
 
 check: $(REGRESSION_EXPECTED)
 
-EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/orafce.out expected/dbms_pipe_session_B.out
+EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h orafce.sql.in expected/varchar2.out expected/nvarchar2.out
 
 ifdef NO_PGXS
 subdir = contrib/$(MODULE_big)
@@ -100,7 +106,7 @@ endif
 orafce.sql.in:
 	if [ -f orafce-$(MAJORVERSION).sql ] ; \
 	then \
-	cat orafce-common.sql orafce-$(MAJORVERSION).sql > orafce.sql.in; \
+	cat orafce-common.sql orafce-varchar2-casts-$(MAJORVERSION).sql orafce-$(MAJORVERSION).sql > orafce.sql.in; \
 	else \
-	cat orafce-common.sql orafce-common-2.sql > orafce.sql.in; \
+	cat orafce-common.sql orafce-varchar2-casts.sql orafce-common-2.sql > orafce.sql.in; \
 	fi
