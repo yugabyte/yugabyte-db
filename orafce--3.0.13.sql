@@ -2407,140 +2407,150 @@ WHERE proname='nvarchar2';
 /* PAD */
 
 /* LPAD family */
-CREATE FUNCTION oracle.lpad(char,integer,char)
+
+/* Incompatibility #1:
+ *     pg_catalog.lpad removes trailing blanks of CHAR arguments
+ *     because of implicit cast to text
+ *
+ * Incompatibility #2:
+ *     pg_catalog.lpad considers character length, NOT display length
+ *     so, add functions to use custom C implementation of lpad as defined
+ *     in charpad.c
+ */
+CREATE FUNCTION oracle.lpad(char, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','lpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(char,integer,text)
+CREATE FUNCTION oracle.lpad(char, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','lpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(char,integer,varchar2)
+CREATE FUNCTION oracle.lpad(char, integer, varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','lpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(char,integer,nvarchar2)
+CREATE FUNCTION oracle.lpad(char, integer, nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','lpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(text,integer,char)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(text,integer,text)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(text,integer,varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(text,integer,nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(varchar2,integer,char)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(varchar2,integer,text)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(varchar2,integer,varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(varchar2,integer,nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(nvarchar2,integer,char)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(nvarchar2,integer,text)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(nvarchar2,integer,varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(nvarchar2,integer,nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','lpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.lpad(char,integer)
+CREATE FUNCTION oracle.lpad(char, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(text,integer)
+CREATE FUNCTION oracle.lpad(text, integer, char)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(varchar2, integer, char)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(nvarchar2, integer, char)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(text, integer, text)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(text, integer, varchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(text, integer, nvarchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(text, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(varchar2,integer)
+CREATE FUNCTION oracle.lpad(varchar2, integer, text)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(varchar2, integer, varchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(varchar2, integer, nvarchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
-CREATE FUNCTION oracle.lpad(nvarchar2,integer)
+CREATE FUNCTION oracle.lpad(nvarchar2, integer, text)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(nvarchar2, integer, varchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(nvarchar2, integer, nvarchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','lpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.lpad(nvarchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.lpad($1, $2, ' '::text); $$
 LANGUAGE SQL
@@ -2548,140 +2558,150 @@ STRICT
 ;
 
 /* RPAD family */
-CREATE FUNCTION oracle.rpad(char,integer,char)
+
+/* Incompatibility #1:
+ *     pg_catalog.rpad removes trailing blanks of CHAR arguments
+ *     because of implicit cast to text
+ *
+ * Incompatibility #2:
+ *     pg_catalog.rpad considers character length, NOT display length
+ *     so, add functions to use custom C implementation of rpad as defined
+ *     in charpad.c
+ */
+CREATE FUNCTION oracle.rpad(char, integer, char)
 RETURNS text
 AS 'MODULE_PATHNAME','rpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(char,integer,text)
+CREATE FUNCTION oracle.rpad(char, integer, text)
 RETURNS text
 AS 'MODULE_PATHNAME','rpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(char,integer,varchar2)
+CREATE FUNCTION oracle.rpad(char, integer, varchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','rpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(char,integer,nvarchar2)
+CREATE FUNCTION oracle.rpad(char, integer, nvarchar2)
 RETURNS text
 AS 'MODULE_PATHNAME','rpad'
 LANGUAGE 'c'
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(text,integer,char)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(text,integer,text)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(text,integer,varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(text,integer,nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(varchar2,integer,char)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(varchar2,integer,text)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(varchar2,integer,varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(varchar2,integer,nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(nvarchar2,integer,char)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(nvarchar2,integer,text)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(nvarchar2,integer,varchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(nvarchar2,integer,nvarchar2)
-RETURNS text
-AS 'MODULE_PATHNAME','rpad'
-LANGUAGE 'c'
-STRICT
-;
-
-CREATE FUNCTION oracle.rpad(char,integer)
+CREATE FUNCTION oracle.rpad(char, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(text,integer)
+CREATE FUNCTION oracle.rpad(text, integer, char)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(varchar2, integer, char)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(nvarchar2, integer, char)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(text, integer, text)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(text, integer, varchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(text, integer, nvarchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(text, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(varchar2,integer)
+CREATE FUNCTION oracle.rpad(varchar2, integer, text)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(varchar2, integer, varchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(varchar2, integer, nvarchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(varchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
 STRICT
 ;
 
-CREATE FUNCTION oracle.rpad(nvarchar2,integer)
+CREATE FUNCTION oracle.rpad(nvarchar2, integer, text)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(nvarchar2, integer, varchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(nvarchar2, integer, nvarchar2)
+RETURNS text
+AS 'MODULE_PATHNAME','rpad'
+LANGUAGE 'c'
+STRICT
+;
+
+CREATE FUNCTION oracle.rpad(nvarchar2, integer)
 RETURNS text
 AS $$ SELECT oracle.rpad($1, $2, ' '::text); $$
 LANGUAGE SQL
