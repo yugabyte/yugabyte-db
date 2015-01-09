@@ -3033,7 +3033,7 @@ STRICT
 
 CREATE FUNCTION oracle.btrim(char)
 RETURNS text
-AS $$ SELECT public.btrim($1, ' '::text) $$
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT
 ;
@@ -3068,7 +3068,7 @@ STRICT
 
 CREATE FUNCTION oracle.btrim(text)
 RETURNS text
-AS $$ SELECT public.btrim($1, ' '::text) $$
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT
 ;
@@ -3103,7 +3103,7 @@ STRICT
 
 CREATE FUNCTION oracle.btrim(varchar2)
 RETURNS text
-AS $$ SELECT public.btrim($1, ' '::text) $$
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT
 ;
@@ -3138,7 +3138,7 @@ STRICT
 
 CREATE FUNCTION oracle.btrim(nvarchar2)
 RETURNS text
-AS $$ SELECT public.btrim($1, ' '::text) $$
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
 LANGUAGE SQL
 STRICT
 ;
