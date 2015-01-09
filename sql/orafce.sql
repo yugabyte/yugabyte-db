@@ -923,3 +923,11 @@ SELECT '|' || oracle.btrim(' abcd'::char(10),'ad'::nvarchar2(3)) || '|' as LTRIM
 SELECT '|' || oracle.btrim(' abcd  '::text,'d'::char(3)) || '|' as LTRIM;
 SELECT '|' || oracle.btrim(' abcd  '::varchar2(10),'d'::char(3)) || '|' as LTRIM;
 SELECT '|' || oracle.btrim(' abcd  '::nvarchar2(10),'d'::char(3)) || '|' as LTRIM;
+
+--
+-- test oracle.length()
+--
+
+/* test that trailing blanks are not ignored */
+SELECT oracle.length('あbb'::char(6));
+SELECT oracle.length(''::char(6));

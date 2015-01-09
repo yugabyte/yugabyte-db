@@ -4099,3 +4099,19 @@ SELECT '|' || oracle.btrim(' abcd  '::nvarchar2(10),'d'::char(3)) || '|' as LTRI
  |abc|
 (1 row)
 
+--
+-- test oracle.length()
+--
+/* test that trailing blanks are not ignored */
+SELECT oracle.length('あbb'::char(6));
+ length 
+--------
+      6
+(1 row)
+
+SELECT oracle.length(''::char(6));
+ length 
+--------
+      6
+(1 row)
+
