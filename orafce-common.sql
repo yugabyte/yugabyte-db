@@ -2404,6 +2404,449 @@ LANGUAGE SQL
 STRICT
 ;
 
+/* TRIM */
+
+/* Incompatibility #1:
+ *     pg_catalog.ltrim, pg_catalog.rtrim and pg_catalog.btrim remove
+ *     trailing blanks of CHAR arguments because of implicit cast to
+ *     text.
+ *
+ *     Following re-definitions address this incompatbility so that
+ *     trailing blanks of CHAR arguments are preserved and considered
+ *     significant for the trimming process.
+ */
+
+/* LTRIM family */
+CREATE FUNCTION oracle.ltrim(char, char)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(char, text)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(char, varchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(char, nvarchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(char)
+RETURNS text
+AS $$ SELECT oracle.ltrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(text, char)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(text, text)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(text, varchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(text, nvarchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(text)
+RETURNS text
+AS $$ SELECT oracle.ltrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(varchar2, char)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(varchar2, text)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(varchar2, varchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(varchar2, nvarchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(varchar2)
+RETURNS text
+AS $$ SELECT oracle.ltrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(nvarchar2, char)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(nvarchar2, text)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(nvarchar2, varchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(nvarchar2, nvarchar2)
+RETURNS text
+AS 'ltrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.ltrim(nvarchar2)
+RETURNS text
+AS $$ SELECT oracle.ltrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+/* RTRIM family */
+CREATE FUNCTION oracle.rtrim(char, char)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(char, text)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(char, varchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(char, nvarchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(char)
+RETURNS text
+AS $$ SELECT oracle.rtrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(text, char)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(text, text)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(text, varchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(text, nvarchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(text)
+RETURNS text
+AS $$ SELECT oracle.rtrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(varchar2, char)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(varchar2, text)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(varchar2, varchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(varchar2, nvarchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(varchar2)
+RETURNS text
+AS $$ SELECT oracle.rtrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(nvarchar2, char)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(nvarchar2, text)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(nvarchar2, varchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(nvarchar2, nvarchar2)
+RETURNS text
+AS 'rtrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.rtrim(nvarchar2)
+RETURNS text
+AS $$ SELECT oracle.rtrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+/* BTRIM family */
+CREATE FUNCTION oracle.btrim(char, char)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(char, text)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(char, varchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(char, nvarchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(char)
+RETURNS text
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(text, char)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(text, text)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(text, varchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(text, nvarchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(text)
+RETURNS text
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(varchar2, char)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(varchar2, text)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(varchar2, varchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(varchar2, nvarchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(varchar2)
+RETURNS text
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(nvarchar2, char)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(nvarchar2, text)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(nvarchar2, varchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(nvarchar2, nvarchar2)
+RETURNS text
+AS 'btrim'
+LANGUAGE internal
+STRICT
+;
+
+CREATE FUNCTION oracle.btrim(nvarchar2)
+RETURNS text
+AS $$ SELECT oracle.btrim($1, ' '::text) $$
+LANGUAGE SQL
+STRICT
+;
+
+/* LENGTH */
+CREATE FUNCTION oracle.length(char)
+RETURNS integer
+AS 'MODULE_PATHNAME','bpcharlen'
+LANGUAGE 'c'
+STRICT
+;
+
 GRANT USAGE ON SCHEMA dbms_pipe TO PUBLIC;
 GRANT USAGE ON SCHEMA dbms_alert TO PUBLIC;
 GRANT USAGE ON SCHEMA plvdate TO PUBLIC;

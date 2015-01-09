@@ -257,4 +257,6 @@ extern void PGDLLEXPORT _PG_init(void);
 extern PGDLLEXPORT Datum lpad(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum rpad(PG_FUNCTION_ARGS);
 
+/* from charlen.c */
+extern PGDLLEXPORT Datum bpcharlen(PG_FUNCTION_ARGS);
 #endif

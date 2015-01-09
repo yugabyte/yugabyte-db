@@ -878,3 +878,56 @@ SELECT '|' || oracle.rpad('あbcd'::varchar2(5), 10, 'xい'::nvarchar2(5)) || '|
 SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::text) || '|';
 SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::varchar2(5)) || '|';
 SELECT '|' || oracle.rpad('あbcd'::nvarchar2(5), 10, 'xい'::nvarchar2(5)) || '|';
+
+--
+-- test TRIM family of functions
+--
+
+/* test that trailing blanks of CHAR arguments are not removed and are significant */
+
+--
+-- LTRIM
+--
+SELECT '|' || oracle.ltrim(' abcd'::char(10)) || '|' as LTRIM;
+SELECT '|' || oracle.ltrim(' abcd'::char(10),'a'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.ltrim(' abcd'::char(10),'a'::text) || '|' as LTRIM;
+SELECT '|' || oracle.ltrim(' abcd'::char(10),'a'::varchar2(3)) || '|' as LTRIM;
+SELECT '|' || oracle.ltrim(' abcd'::char(10),'a'::nvarchar2(3)) || '|' as LTRIM;
+
+SELECT '|' || oracle.ltrim(' abcd  '::text,'a'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.ltrim(' abcd  '::varchar2(10),'a'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.ltrim(' abcd  '::nvarchar2(10),'a'::char(3)) || '|' as LTRIM;
+
+--
+-- RTRIM
+--
+SELECT '|' || oracle.rtrim(' abcd'::char(10)) || '|' as LTRIM;
+SELECT '|' || oracle.rtrim(' abcd'::char(10),'d'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.rtrim(' abcd'::char(10),'d'::text) || '|' as LTRIM;
+SELECT '|' || oracle.rtrim(' abcd'::char(10),'d'::varchar2(3)) || '|' as LTRIM;
+SELECT '|' || oracle.rtrim(' abcd'::char(10),'d'::nvarchar2(3)) || '|' as LTRIM;
+
+SELECT '|' || oracle.rtrim(' abcd  '::text,'d'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.rtrim(' abcd  '::varchar2(10),'d'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.rtrim(' abcd  '::nvarchar2(10),'d'::char(3)) || '|' as LTRIM;
+
+--
+-- BTRIM
+--
+SELECT '|' || oracle.btrim(' abcd'::char(10)) || '|' as LTRIM;
+SELECT '|' || oracle.btrim(' abcd'::char(10),'ad'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.btrim(' abcd'::char(10),'ad'::text) || '|' as LTRIM;
+SELECT '|' || oracle.btrim(' abcd'::char(10),'ad'::varchar2(3)) || '|' as LTRIM;
+SELECT '|' || oracle.btrim(' abcd'::char(10),'ad'::nvarchar2(3)) || '|' as LTRIM;
+
+SELECT '|' || oracle.btrim(' abcd  '::text,'d'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.btrim(' abcd  '::varchar2(10),'d'::char(3)) || '|' as LTRIM;
+SELECT '|' || oracle.btrim(' abcd  '::nvarchar2(10),'d'::char(3)) || '|' as LTRIM;
+
+--
+-- test oracle.length()
+--
+
+/* test that trailing blanks are not ignored */
+SELECT oracle.length('あbb'::char(6));
+SELECT oracle.length(''::char(6));
