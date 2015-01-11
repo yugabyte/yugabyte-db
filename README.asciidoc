@@ -640,6 +640,7 @@ because oracle.substr, oracle.lpad, oracle.rpad, oracle.ltrim, oracle.rtrim, ora
 Note that in case of lpad and rpad, parameters string and fill can be of types CHAR, VARCHAR, TEXT, VARCHAR2 or NVARCHAR2 (note that the last two are orafce-provided types). The default fill character is a half-width space. Similarly for ltrim, rtrim and btrim.
 
 Note that oracle.length has a limitation that it works only in units of characters because PostgreSQL CHAR type only supports character semantics. 
+
 == VARCHAR2 and NVARCHAR2 Support
 
 orafce's VARCHAR2 implements parts of Oracle database specification about VARCHAR2:
