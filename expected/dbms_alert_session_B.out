@@ -19,14 +19,14 @@ SELECT dbms_alert.register('tds');
 (1 row)
 
 /* Test: multisession waitone */
-SELECT dbms_alert.waitone('a1',10);
+SELECT dbms_alert.waitone('a1',20);
       waitone      
 -------------------
  ("Msg1 for a1",0)
 (1 row)
 
 /* Test: multisession waitany */
-SELECT dbms_alert.waitany(2);
+SELECT dbms_alert.waitany(10);
        waitany        
 ----------------------
  (a2,"Msg1 for a2",0)
@@ -34,7 +34,7 @@ SELECT dbms_alert.waitany(2);
 
 /* Test defered_signal */
 /* This indicated that the transaction has begun */
-SELECT dbms_alert.waitone('tds',2);
+SELECT dbms_alert.waitone('tds',10);
              waitone             
 ---------------------------------
  ("Begin defered_signal test",0)
@@ -60,7 +60,7 @@ SELECT dbms_alert.signal('b1','Transaction committed');
 (1 row)
 
 /* Since the transaction has commited, the signal will be received */
-SELECT dbms_alert.waitone('tds',2);
+SELECT dbms_alert.waitone('tds',10);
            waitone            
 ------------------------------
  ("Testing defered_signal",0)
@@ -122,7 +122,7 @@ SELECT dbms_alert.signal('b4','to check unremoved alert');
 (1 row)
 
 /* Test: Check if unremoved alert is received */
-SELECT dbms_alert.waitone('a4',2);
+SELECT dbms_alert.waitone('a4',10);
       waitone      
 -------------------
  ("Msg1 for a4",0)

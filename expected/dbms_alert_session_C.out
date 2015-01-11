@@ -13,14 +13,14 @@ SELECT dbms_alert.register('a2');
 (1 row)
 
 /* Test: multisession waitone */
-SELECT dbms_alert.waitone('a1',2);
+SELECT dbms_alert.waitone('a1',10);
       waitone      
 -------------------
  ("Msg1 for a1",0)
 (1 row)
 
 /* Test: multisession waitany */
-SELECT dbms_alert.waitany(2);
+SELECT dbms_alert.waitany(10);
        waitany        
 ----------------------
  (a2,"Msg1 for a2",0)
