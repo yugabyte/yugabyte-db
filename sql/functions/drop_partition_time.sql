@@ -151,7 +151,7 @@ LOOP
                 IF v_jobmon_schema IS NOT NULL THEN
                     v_step_id := add_step(v_job_id, 'Drop table '||v_child_table);
                 END IF;
-                EXECUTE 'DROP TABLE '||v_child_table;
+                EXECUTE 'DROP TABLE '||v_child_table||' CASCADE';
                 IF v_jobmon_schema IS NOT NULL THEN
                     PERFORM update_step(v_step_id, 'OK', 'Done');
                 END IF;
@@ -182,12 +182,15 @@ LOOP
             END IF;
 
             EXECUTE 'ALTER TABLE '||v_child_table||' SET SCHEMA '||v_retention_schema; 
-            
+
             IF v_jobmon_schema IS NOT NULL THEN
                 PERFORM update_step(v_step_id, 'OK', 'Done');
             END IF;
         END IF; -- End retention schema if
-        
+
+        -- If child table is a subpartition, remove it from part_config & part_config_sub (should cascade due to FK)
+        DELETE FROM @extschema@.part_config WHERE parent_table = v_child_table;
+
         v_drop_count := v_drop_count + 1;
     END IF; -- End retention check IF
 

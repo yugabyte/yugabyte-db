@@ -1,5 +1,39 @@
+1.8.0
+-- PG Partman now supports sub-partitioning. This allows automatic configuration to turn the child tables of an existing partition set into parent tables of their own partition sets. (Github Issue #26)
+    -- New function "create_sub_parent()" works exactly like "create_parent()", even taking similar parameters. Instead, the parent_table you're giving it as a parameter is telling it which parent's child tables to partition and how to partition them.
+    -- This can be chained down as many levels as desired. Just recall the 63 character limit on object names since this will be adding a new partition suffix every level down. The final suffix is always guarenteed to be added on in full, but the parent suffix name may get truncated off.
+    -- Due to logical complexity (and possible contention issues at larger data sizes), when using subpartitioning, all parent tables at all partition levels are set to use run_maintenance() by default. This includes serial partitioning which normally by default can use a trigger based method to create future partitions. You can still set it to false so you can force maintenance to run at specific times (see new run_maintenance() feature below), but you MUST force it to run at some point otherwise new partitions will never be made.
+    -- Note that there will ALWAYS be at least one child partition created, even for subpartition parents that are outside the current trigger range. Data outside the currently covered trigger range will still be inserted the the relevant parent.
+    -- Note that for retention policies, whatever retention period is set on the highest level will be honored and ALL child tables will be dropped, cascading all the way down to the bottom. Use this option even more carefully!
+
+-- New parent table name parameter to run_maintenance(). If set, skips all other tables for that maintenance run and only does the one given. (Github Issue #32)
+    -- This is an optional parameter, so should not affect any existing use of the function. When not given, maintenance is run for all partition sets set to use it in the part_config table.
+    -- The already existing configuration option in part_config (use_run_maintenance) can be used to tell run_maintenance() to skip any partition sets for which you do not want it to run when no table name parameter is given. You can then schedule partition maintenance for specific tables to run at specific times using the new argument to run_maintenance(). Note that if a parent table argument is explicitely given to run_maintenance, it will always run the maintenance for it no matter what the configuration table has set.
+    -- Note that when a table argument is given to run_maintenance(), retention settings will only be run for that one specific table given (if configured).
+    -- Be aware that the "use_run_maintenance" configuration option is always set to true for time-based partitioning & subpartition sets and set false for serial based partitioning (when not subpartitioned) when calling create_parent() or create_sub_parent(). Adjust this configuration setting accordingly so run_maintenance() does what you require after you create your partition sets.
+    -- The trigger constraint on the **part_config** table that would not allow "use_run_maintenance" to be set to false for time based partitioning has been removed.
+
+-- New analyze parameter to run_maintenance(). 
+    -- Defaults to true so that if any partition set has a new child table created, an analyze is run on that whole partition set. This is to ensure constraint exclusion works properly.
+    -- Large partition sets were causing run_maintenance() to take a long time to run since the analyze would hold it up. This could cause some contention.
+    -- Setting p_analyze to false will cause the analyze to not run for ALL partition sets that are eligible for new partiton creation or retention management at the time it is called.
+    -- If you set this to false, it is advised that you have some other means to ensure a regular analyze is being run on your partition sets.
+    -- NOTE this parameter is set as the second argument since it's likely to be more commonly used, so make sure to check any current run_maintenence() calls to account for this (previously p_jobmon was the second parameter).
+
+-- Analyze is no longer automatically run on the parent table after create_parent() is run. Since create_parent() takes an exclusive lock on the parent table during setup, tables that already had a lot of existing data where being locked for the length of the analyze run, which could be quite long. When data is partitioned out later, analyze is automatically run. Also, whenever new partitions are created in the future, an analyze will be run as well (if the p_analyze argument to run_maintenance() is true which it is by default). Both those cases should take care of updating the planner statistics when it begins to matter. Run an analyze on the parent table after setup if you want to be sure.
+-- Fixed bug in show_partitions() that caused an error when the values in the control column of a serial partition set were larger than the max int value. This would also cause errors when partitioning existing data with values that high since the partitioning functions use show_partitions() internally. (Reported by S. Kristensen)
+-- create_parent() and new create_sub_parent() now return a boolean value to determine whether they succeeded.
+-- For all pythons scripts, changed the --connection default to "host=" instead of "host=localhost". This makes the default connection to the database use the local socket instead of TCP. Makes it act more predictibly like all other postgres executables (psql, pg_dump, etc). Please check any that you many have scheduled to run to ensure they are still working properly.
+-- Added a --version argument to all python scripts. This tells you the minimum version of pg_partman this script is meant to work with.
+-- Made sure all scripts in bin folder are added to Makefile for installation.
+-- Make sure autovacuum is reset if SIGINT (Ctrl+C) is fired when using partition_data.py or undo_partition.py.
+-- Added howto.md file to doc folder with some more extensive examples.
+-- last_partition column in part_config table no longer in use. Dropped it.
+-- Renamed internal functions create_id_partition(), create_id_function(), create_time_partition() & create_time_function() to create_partition_id(), create_function_id(), create_partition_time() & create_function_time() respectively. This gives all functions a consistent naming pattern.
+
+
 1.7.2
--- Fixed bug in apply_foreign_keys() where new partition creation would fail when the partition set's schema is in the current search_path. Most commonly happened when partition sets with foreig keys were in public, but any schema in current search_path would cause this to manifest. Reported by Isaías Sánchez via my blog. (Github Issue #27)
+-- Fixed bug in apply_foreign_keys() where new partition creation would fail when the partition set's schema is in the current search_path. Most commonly happened when partition sets with foreign keys were in public, but any schema in current search_path would cause this to manifest. Reported by Isaías Sánchez via my blog. (Github Issue #27)
 -- Foreign key inheritance is now optional since more complex FK relationships may not work ideally with pg_partman's default method. New configuration option in part_config table and parameter to create_parent().
 
 

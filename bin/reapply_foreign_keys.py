@@ -2,11 +2,14 @@
 
 import argparse, psycopg2, sys, time
 
+partman_version = "1.8.0"
+
 parser = argparse.ArgumentParser(description="This script will reapply the foreign keys on a parent table to all child tables in an inheritance set. Any existing foreign keys on child tables will be dropped in order to match the parent. A commit is done after each foreign key application to avoid excessive contention. Note that this script can work on any inheritance set, not just partition sets managed by pg_partman.")
-parser.add_argument('-p','--parent', required=True, help="Parent table of an already created partition set. (Required)")
-parser.add_argument('-c','--connection', default="host=localhost", help="""Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".""")
+parser.add_argument('-p','--parent', help="Parent table of an already created partition set. (Required)")
+parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('-q', '--quiet', action="store_true", help="Switch setting to stop all output during and after partitioning undo.")
 parser.add_argument('--dryrun', action="store_true", help="Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.")
+parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 parser.add_argument('--debug', action="store_true", help="Show additional debugging output")
 args = parser.parse_args() 
 
@@ -100,7 +103,20 @@ def get_partman_schema(conn):
     return partman_schema
 
 
+def print_version():
+    print(partman_version)
+    sys.exit()
+
+
 if __name__ == "__main__":
+
+    if args.version:
+        print_version()
+
+    if args.parent == None:
+        print("-p/--parent option is required")
+        sys.exit(2)
+
     conn = create_conn()
 
     partman_schema = get_partman_schema(conn)

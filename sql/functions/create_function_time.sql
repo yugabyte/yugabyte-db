@@ -1,7 +1,7 @@
 /*
  * Create the trigger function for the parent table of a time-based partition set
  */
-CREATE FUNCTION create_time_function(p_parent_table text) RETURNS void
+CREATE FUNCTION create_function_time(p_parent_table text) RETURNS void
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -98,8 +98,16 @@ IF v_type = 'time-static' THEN
     v_trig_func := 'CREATE OR REPLACE FUNCTION '||v_function_name||'() RETURNS trigger LANGUAGE plpgsql AS $t$ 
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
-            IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_next_partition_timestamp)|| ' THEN 
+            IF NEW.'||v_control||' >= '||quote_literal(v_current_partition_timestamp)||' AND NEW.'||v_control||' < '||quote_literal(v_next_partition_timestamp)|| ' THEN ';
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_current_partition_name;
+        IF v_count > 0 THEN
+            v_trig_func := v_trig_func || '
                 INSERT INTO '||v_current_partition_name||' VALUES (NEW.*); ';
+        ELSE
+            v_trig_func := v_trig_func || '
+                -- Child table for current values does not exist in this partition set, so write to parent
+                RETURN NEW;';
+        END IF;
     FOR i IN 1..v_premake LOOP
         v_prev_partition_timestamp := v_current_partition_timestamp - (v_part_interval::interval * i);
         v_next_partition_timestamp := v_current_partition_timestamp + (v_part_interval::interval * i);
@@ -242,5 +250,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

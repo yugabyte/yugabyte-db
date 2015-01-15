@@ -11,9 +11,14 @@ If you attempt to insert data into a partition set that contains data for a part
 
 For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc), foreign keys (optional), tablespace, constraints, privileges & ownership. This also includes the OID and UNLOGGED table properties. For managing privileges, whenever a new partition is created it will obtain its privilege & ownership information from what the parent has at that time. Previous partition privileges are not changed. If previous partitions require that their privileges be updated, a separate function is available. This is kept as a separate process due to being an expensive operation when the partition set grows larger. The defaults, indexes, tablespace & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
 
+### Sub-partitioning
+
+Sub-partitioning with multiple levels is supported. You can do time->time, id->id, time->id and id->time. There is no set limit on the level of subpartitioning you can do, but be sensible and keep in mind performance considerations on managing many tables in a single inheritance set. Also, if the number of tables in a single partition set gets very high, you may have to adjust the max_locks_per_transaction postgresql.conf setting above the default of 64. Otherwise you may run into shared memory issues or even crash the cluster. By default all subpartition sets require run_maintenence() for the creation of new partitions. Single level time-based partition sets already do this, but single level serial sets do not. If you have contention issues when run_maintenence() is called for general maintenance of all partition sets, you can set the **use_run_maintenance** column in the **part_config** table to false if you do not want that general call to manage your subpartition set. But you must then call run_maintenance(parent_table) directly, and often enough, to have to future partitions made.  See the create_parent_sub() & run_maintenance() functions below for more information.
+
 ### Retention
 
 If you don't need to keep data in older partitions, a retention system is available to automatically drop unneeded child partitions. By default, they are only uninherited not actually dropped, but that can be configured if desired. If the old partitions are kept, dropping their indexes can also be configured to recover disk space. Note that this will also remove any primary key or unique constraints in order to allow the indexes to be dropped. There is also a method available to dump the tables out if they don't need to be in the database anymore but still need to be kept. To set the retention policy, enter either an interval or integer value into the **retention** column of the **part_config** table. For time-based partitioning, the interval value will set that any partitions containing only data older than that will be dropped. For id-based partitioning, the integer value will set that any partitions with an id value less than the current maximum id value minus the retention value will be dropped. For example, if the current max id is 100 and the retention value is 30, any partitions with id values less than 70 will be dropped. The current maximum id value at the time the drop function is run is always used.
+Keep in mind that for subpartition sets, when a parent table has a child dropped, if that child table is in turn partitioned, the drop is a CASCADE and ALL child tables down the entire inheritance tree will be dropped.
 
 ### Constraint Exclusion
 
@@ -45,7 +50,7 @@ A superuser must be used to run all these functions in order to set privileges &
 
 ### Creation Functions
 
-CREATE FUNCTION create_parent(p_parent_table text , p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) 
+*create_parent(p_parent_table text , p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean*
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
  * p_parent_table - the existing parent table. MUST be schema qualified, even if in public schema.
@@ -106,10 +111,19 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * p_jobmon - allow pg_partman to use the pg_jobmon extension to monitor that partitioning is working correctly. Defaults to TRUE.
  * p_debug - turns on additional debugging information (not yet working).
 
+*create_sub_parent(p_top_parent text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean*
+ * Create a subpartition set of an already existing partitioned set.
+ * p_top_parent - This parameter is the parent table of an already existing partition set. It tells pg_partman to turn all child tables of the given partition set into their own parent tables of their own partition sets using the rest of the parameters for this function. 
+ * All other parameters to this function have the same exact purpose as those of create_parent(), but instead are used to tell pg_partman how each child table shall itself be partitioned.
+ * For example if you have an existing partition set done by year and you then want to partition each of the year partitions by day, you would use this function.
+ * It is advised that you keep table names short for subpartition sets if you plan on relying on the table names for organization. The suffix added on to the end of a table name is always guarenteed to be there for whatever partition type is active for that set, but if the total length is longer than 63 chars, the original name will get truncated. Longer table names may cause the original parent table names to be truncated and possibly cut off the top level partitioning suffix. I cannot control this and made the requirement that the lowest level partitioning suffix survives.
+ * Note that for the first level of subpartitions, the p_parent argument you originally gave to create_parent() would be the exact same value you give to create_sub_parent(). If you need further subpartitioning, you would then start giving create_sub_parent() a different value (the child tables of the top level partition set).
+
 *partition_data_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_lock_wait numeric DEFAULT 0, p_order text DEFAULT 'ASC')*
  * This function is used to partition data that may have existed prior to setting up the parent table as a time-based partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
  * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Scripts** section for an included python script that will do this for you.
+ * For sub-partitioned sets, you must start partitioning data at the highest level and work your way down each level. All data will not automatically go to the lowest level when run from the top for an sub-partitioned set.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch_interval - optional argument, a time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
@@ -121,6 +135,7 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * This function is used to partition data that may have existed prior to setting up the parent table as a serial id partition set, or to fix data that accidentally gets inserted into the parent.
  * If the needed partition does not exist, it will automatically be created. If the needed partition already exists, the data will be moved there.
  * If you are trying to partition a large amount of previous data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Scripts** section for an included python script that will do this for you.
+ * For sub-partitioned sets, you must start partitioning data at the highest level and work your way down each level. All data will not automatically go to the lowest level when run from the top for an sub-partitioned set.
  * p_parent_table - the existing parent table. This is assumed to be where the unpartitioned data is located. MUST be schema qualified, even if in public schema.
  * p_batch_interval - optional argument, an integer amount representing an interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
  * p_batch_count - optional argument, how many times to run the batch_interval in a single call of this function. Default value is 1.
@@ -130,19 +145,22 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
 
 ### Maintenance Functions
 
-*run_maintenance(p_jobmon BOOLEAN DEFAULT true)*
+*run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true)*
  * Run this function as a scheduled job (cron, etc) to automatically create child tables for partition sets configured to use it.
  * This function also maintains the partition retention system for any partitions sets that have it turned on.
- * Every run checks for all tables listed in the **part_config** table with **use_run_maintenance** set to true.
- * By default, time-based partition sets have use_run_maintenance set to true and cannot be changed to false. This function is required to be run to maintain time-based partitioning.
- * By default, serial-based partition sets have use_run_maintenance set to false and don't require run_maintenence() for partition maintenance, but can be overridden to do so. By default serial partitioning creates new partitions when the current one reaches 50% of it's max capacity. This can cause contention on very high transaction tables. If configured to use run_maintenance() for serial partitioning, you must call it often enough to keep partition creation ahead of your insertion rate, otherwise data will go into the parent. New partitions are only created if the number of child tables ahead of the current one is less than the premake value, so you can run this more often than needed without fear of needlessly creating more partitions.
+ * Every run checks for all tables listed in the **part_config** table with **use_run_maintenance** set to true and either creates new partitions for them or runs their retention policy.
+ * By default, time-based partition sets and all sub-partition sets have use_run_maintenance set to true. This function is required to be run to maintain time-based partitioning & sub-partiton sets.
+ * By default, serial-based partition sets have use_run_maintenance set to false (except if they are sub-partitioned) and don't require run_maintenence() for partition maintenance, but can be overridden to do so. By default serial partitioning creates new partitions when the current one reaches 50% of it's max capacity. This can cause contention on very high transaction tables. If configured to use run_maintenance() for serial partitioning, you must call it often enough to keep partition creation ahead of your insertion rate, otherwise data will go into the parent. 
+ * New partitions are only created if the number of child tables ahead of the current one is less than the premake value, so you can run this more often than needed without fear of needlessly creating more partitions.
  * Every run checks all tables of all types listed in the **part_config** table with a value in the **retention** column and drops tables as needed (see **About** and config table below).
  * Will automatically update the function for **time-static** partitioning (and **id-static** if configured) to keep the parent table pointing at the correct partitions. When using time-static, run this function more often than the partitioning interval to keep the trigger function running its most efficient. For example, if using quarter-hour, run every 5 minutes; if using daily, run at least twice a day, etc.
- * p_jobmon - an optional paramter to stop run_maintenance() from using the pg_jobmon extension to log what it does. Defaults to true if not set.
+ * p_parent_table - an optional parameter that if passed will cause run_maintenance() to be run for ONLY that given table. This occurs no matter what "use_run_maintenance" in part_config is set to. High transcation rate tables can cause contention when maintenance is being run for many tables at the same time, so this allows finer control of when partition maintenance is run for specific tables. Note that this will also cause the retention system to only be run for the given table as well.
+ * p_analyze - By default when a new child table is created, an analyze is run on the parent to ensure statistics are updated for constraint exclusion. However, for large partition sets, this analyze can take a while and if run_maintenance() is managing several partitions in a single run, this can cause contention while the analyze finishes. Set this to false to disable the analyze run and avoid this contention. Please note that you must then schedule an analyze of the parent table at some point for constraint exclusion to work properly on all child tables.
+ * p_jobmon - an optional paramter to control whether run_maintenance() itself uses the pg_jobmon extension to log what it does. Whether the maintenance of a particular table uses pg_jobmon is controlled by the setting in the **part_config** table and this setting will have no affect on that. Defaults to true if not set.
 
 *show_partitions (p_parent_table text, p_order text DEFAULT 'ASC')*
  * List all child tables of a given partition set. Each child table returned as a single row.
- * Tables are returned in the order that makes sense for the partition interval.
+ * Tables are returned in the order that makes sense for the partition interval, not by the locale ordering of their names.
  * p_order - optional parameter to set the order the child tables are returned in. Defaults to ASCending. Set to 'DESC' to return in descending order. 
 
 *check_parent()*
@@ -190,6 +208,7 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables as empty, independent tables.
  * Without setting either batch argument manually, each run of the function will move all the data from a single partition into the parent.
  * Once all child tables have been uninherited/dropped, the configuration data is removed from pg_partman automatically.
+ * For subpartitioned tables, you must start at the lowest level parent table and undo from there then work your way up. If you attempt to undo partitioning on a subpartition set, the function will stop with a warning to let you know.
  * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
  * p_batch_count - an optional argument, this sets how many times to move the amount of data equal to the p_batch_interval argument (or default partition interval if not set) in a single run of the function. Defaults to 1.
  * p_batch_interval - an optional argument, a time interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
@@ -205,6 +224,7 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
  * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables as empty, independent tables.
  * Without setting either batch argument manually, each run of the function will move all the data from a single partition into the parent.
  * Once all child tables have been uninherited/dropped, the configuration data is removed from pg_partman automatically.
+ * For subpartitioned tables, you must start at the lowest level parent table and undo from there then work your way up. If you attempt to undo partitioning on a subpartition set, the function will stop with a warning to let you know.
  * p_parent_table - parent table of the partition set. Must be schema qualified and match a parent table name already configured in pg_partman.
  * p_batch_count - an optional argument, this sets how many times to move the amount of data equal to the p_batch_interval argument (or default partition interval if not set) in a single run of the function. Defaults to 1.
  * p_batch_interval - an optional argument, an integer amount representing an interval of how much of the data to move. This can be smaller than the partition interval, allowing for very large sized partitions to be broken up into smaller commit batches. Defaults to the configured partition interval if not given or if you give an interval larger than the partition interval.
@@ -214,10 +234,11 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
 
 *undo_partition(p_parent_table text, p_batch_count int DEFAULT 1, p_keep_table boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint
  * Undo the parent/child table inheritance of any partition set, not just ones managed by pg_partman. This function COPIES the data from existing child partitions to the parent table.
+     * If used on a sub-partitioned set not managed by pg_partman, results could be unpredictable. It is not recommended you do so.
  * If you need to keep the data in your child tables after it is put into the parent, use this function. 
  * Unlike the other undo functions, data cannot be copied in batches smaller than the partition interval. Every run of the function copies an entire partition to the parent.
  * If you are trying to un-partition a large amount of data automatically, it is recommended to run this function with an external script and appropriate batch settings. This will help avoid transactional locks and prevent a failure from causing an extensive rollback. See **Scripts** section for an included python script that will do this for you.
- * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables exactly as they were but no longer inherited from the parent.
+ * By default, partitions are not DROPPED, they are UNINHERITED. This leave previous child tables exactly as they were but no longer inherited from the parent. Does not work on multiple levels of inheritance (subpartitions) if dropping tables.
  * p_parent_table - parent table of the partition set. Must be schema qualified but does NOT have to be managed by pg_partman.
  * p_batch_count - an optional argument, this sets how many partitions to copy data from in a single run. Defaults to 1.
  * p_keep_table - an optional argument, setting this to false will cause the old child table to be dropped instead of uninherited. 
@@ -274,15 +295,23 @@ quarter-hour    - One partition per 15 minute interval on the quarter-hour (1200
                               Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
     datetime_string         - For time-based partitioning, this is the datetime format string used when naming child partitions. 
     last_partition          - Tracks the last successfully created partition and used to determine the next one.
-    use_run_mainteannce     - Boolean value that tells run_maintenance() function whether it should manage new child table creation.
-                              Defaults to TRUE for time-based partitioning and cannot be set to FALSE.
-                              Defaults to FALSE for serial-based partitioning and can be changed to TRUE if desired. 
+    use_run_mainteannce     - Boolean value that tells run_maintenance() function whether it should manage new child table creation automatically when 
+                                run_maintenance() is called without a table parameter. 
+                              If run_maintenance() is given a table parameter, this option is ignored and maintenace will always run.
+                              Defaults to TRUE for time-based partitioning.
+                              Defaults to FALSE for single-level serial-based partitioning and can be changed to TRUE if desired. 
                               If changing an existing serial partitioned set from FALSE to TRUE, you must run 
                               create_id_function('parent_schema.parent_table') to change the trigger function so it no longer creates new partitions.
+                              Defaults to TRUE for all sub-partition tables
     jobmon                  - Boolean value to determine whether the pg_jobmon extension is used to log/monitor partition maintenance. 
                               Defaults to true.
     undo_in_progress        - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation 
                               and retention management by the run_maintenance() function to stop. Default is false.
+
+*part_config_sub*
+    Stores all configuration data for sub-partitioned sets managed by pg_partman.
+    The **sub_parent** column is the parent table of the subpartition set and all other columns govern how that parent's children are subpartitioned.
+    All columns except sub_parent work the same exact way as their counterparts in the **part_config** table.
 
 ### Scripts
 
@@ -290,13 +319,13 @@ If the extension was installed using *make*, the below script files should have 
 
 *partition_data.py*
  * A python script to make partitioning in committed batches easier.
- * Calls either partition_data_time() or partition_data_id depending on the value given for --type.
+ * Calls either partition_data_time() or partition_data_id() depending on the value given for --type.
  * A commit is done at the end of each --interval and/or fully created partition.
  * Returns the total number of rows moved to partitions. Automatically stops when parent is empty.
  * To help avoid heavy load and contention during partitioning, autovacuum is turned off for the parent table and all child tables when this script is run. When partitioning is complete, autovacuum is set back to its default value and the parent table is vacuumed when it is emptied.
  * --parent (-p):          Parent table an already created partition set. Required.
  * --type (-t):            Type of partitioning. Valid values are "time" and "id". Required.
- * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.
+ * --connection (-c):      Connection string for use by psycopg. Defaults to "host=" (local socket).
  * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval argument. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
  * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and make at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function). If not set, all data in the parent table will be partitioned in a single run of the script.
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
@@ -323,7 +352,7 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * Returns the total number of rows put into the to parent. Automatically stops when last child table is empty.
  * --parent (-p):          Parent table of the partition set. Required.
  * --type (-t):            Type of partitioning. Valid values are "time" and "id". Not setting this argument will use undo_partition() and work on any parent/child table set.
- * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file or environment variables to keep credentials secure.
+ * --connection (-c):      Connection string for use by psycopg. Defaults to "host=" (local socket).
  * --interval (-i):        Value that is passed on to the partitioning function as p_batch_interval. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.
  * --batch (-b):           How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and undo at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to undo function). If not set, all data will be moved to the parent table in a single run of the script.
  * --wait (-w):            Cause the script to pause for a given number of seconds between commits (batches).
@@ -338,7 +367,9 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * All dump_* option defaults are the same as they would be for pg_dump if they are not given.
  * Will work on any given schema, not just the one used to manage pg_partman retention.
  * --schema (-n):          The schema that contains the tables that will be dumped. (Required).
- * --connection (-c):      Connection string for use by psycopg. Role used must be able to select from pg_catalog.pg_tables in the relevant database and drop all tables in the given schema. Defaults to "host=localhost". Note this is distinct from the parameters sent to pg_dump.
+ * --connection (-c):      Connection string for use by psycopg. 
+                             Role used must be able to select pg_catalog.pg_tables in the relevant database and drop all tables in the given schema. 
+                             Defaults to "host=" (local socket). Note this is distinct from the parameters sent to pg_dump. 
  * --output (-o):          Path to dump file output location. Default is where the script is run from.
  * --dump_database (-d):   Used for pg_dump, same as its final database name parameter.
  * --dump_host:            Used for pg_dump, same as its --host option.
@@ -356,7 +387,7 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * Commits are done after each index is dropped/created to help prevent long running transactions & locks.
  * NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.
  * --parent (-p):          Parent table of an already created partition set. Required.
- * --connection (-c):      Connection string for use by psycopg to connect to your database. Defaults to "host=localhost". Highly recommended to use .pgpass file to keep credentials secure.
+ * --connection (-c):      Connection string for use by psycopg. Defaults to "host=" (local socket).
  * --concurrent:           Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.
  * --drop_concurrent:      Drop indexes concurrently when recreating them (PostgreSQL >= v9.2). Note this does not work on primary keys when --primary is given.
  * --primary:              By default the primary key is not recreated. Set this option if that is needed. 
@@ -375,7 +406,7 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * A python script for redoing constraints on child tables in a given partition set for the columns that are configured in **part_config** table. 
  * Typical useage would be -d mode to drop constraints, edit the data as needed, then -a mode to reapply constraints.
  * --parent (-p):           Parent table of an already created partition set. (Required)
- * --connection (-c):       Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".
+ * --connection (-c):       Connection string for use by psycopg. Defaults to "host=" (local socket).
  * --drop_constraints (-d): Drop all constraints managed by pg_partman. Drops constraints on all child tables including current & future.
  * --add_constraints (-a):  Apply configured constraints to all child tables older than the premake value.
  * --jobs (-j):             Use the python multiprocessing library to recreate indexes in parallel. Value for -j is number of simultaneous jobs to run. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.
@@ -387,11 +418,11 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * A python script for redoing the inherited foreign keys for an entire partition set.
  * All existing foreign keys on all child tables are dropped and the foreign keys that exist on the parent at the time this is run will be applied to all children.
  * Commits after each foreign key is created to avoid long periods of contention.
- * --parent (-p)            Parent table of an already created partition set.  (Required)
- * --connection (-c)        Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".
- * --quiet (-q   )          Switch setting to stop all output during and after partitioning undo.
- * --dryrun                 Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
- * --debug                  Show additional debugging output
+ * --parent (-p):           Parent table of an already created partition set.  (Required)
+ * --connection (-c):       Connection string for use by psycopg. Defaults to "host=" (local socket).
+ * --quiet (-q):            Switch setting to stop all output during and after partitioning undo.
+ * --dryrun:                Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
+ * --debug:                 Show additional debugging output
 
 *check_unique_constraints.py*
  * Partitioning using inheritance has the shortcoming of not allowing a unique constraint to apply to all tables in the entire partition set without causing large performance issues once the partition set begins to grow very large. This script is used to check that all rows in a partition set are unique for the given columns.
@@ -399,7 +430,7 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * If there is a column value that violates the unique constraint, this script will return those column values along with a count of how many of each value there are. Output can also be simplified to a single, total integer value to make it easier to use with monitoring applications.
  * --parent (-p):           Parent table of the partition set to be checked. (Required)
  * --column_list (-l):      Comma separated list of columns that make up the unique constraint to be checked. (Required)
- * --connection (-c):       Connection string for use by psycopg. Defaults to "host=localhost".
+ * --connection (-c):       Connection string for use by psycopg. Defaults to "host=" (local socket).
  * --temp (-t):             Path to a writable folder that can be used for temp working files. Defaults system temp folder.
  * --psql                   Full path to psql binary if not in current PATH.
  * --simple                 Output a single integer value with the total duplicate count. Use this for monitoring software that requires a simple value to be checked for.

@@ -5,10 +5,10 @@
 \set ON_ERROR_STOP true
 
 BEGIN;
-SELECT set_config('search_path','partman, public, partman_test',false);
+CREATE SCHEMA partman_test;
 
 SELECT plan(90);
-CREATE SCHEMA partman_test;
+SELECT set_config('search_path','partman, public',false);
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
 CREATE ROLE partman_owner;

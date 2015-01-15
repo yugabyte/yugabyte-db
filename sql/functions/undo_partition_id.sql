@@ -28,6 +28,7 @@ v_part_interval         bigint;
 v_row                   record;
 v_rowcount              bigint;
 v_step_id               bigint;
+v_sub_count             int;
 v_trig_name             text;
 v_total                 bigint := 0;
 v_undo_count            int := 0;
@@ -53,6 +54,20 @@ AND (type = 'id-static' OR type = 'id-dynamic');
 IF v_part_interval IS NULL THEN
     RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
 END IF;
+
+-- Check if any child tables are themselves partitioned or part of an inheritance tree. Prevent undo at this level if so.
+-- Need to either lock child tables at all levels or handle the proper removal of triggers on all child tables first 
+--  before multi-level undo can be performed safely.
+FOR v_row IN 
+    SELECT show_partitions AS child_table FROM @extschema@.show_partitions(p_parent_table)
+LOOP
+    SELECT count(*) INTO v_sub_count 
+    FROM pg_catalog.pg_inherits
+    WHERE inhparent::regclass = v_row.child_table::regclass;
+    IF v_sub_count > 0 THEN
+        RAISE EXCEPTION 'Child table for this parent has child table(s) itself (%). Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent', v_row.child_table;
+    END IF;
+END LOOP;
 
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
@@ -247,4 +262,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

@@ -14,14 +14,19 @@ v_last_partition            text;
 v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_min_partition_timestamp   timestamp;
+v_parent_schema             text;
+v_parent_tablename          text;
 v_part_interval             interval;
+v_partition_suffix          text;
 v_partition_timestamp       timestamp[];
+v_quarter                   text;
 v_rowcount                  bigint;
 v_sql                       text;
 v_start_control             timestamp;
 v_time_position             int;
 v_total_rows                bigint := 0;
 v_type                      text;
+v_year                      text;
 
 BEGIN
 
@@ -29,12 +34,10 @@ SELECT type
     , part_interval::interval
     , control
     , datetime_string
-    , last_partition
 INTO v_type
     , v_part_interval
     , v_control
     , v_datetime_string
-    , v_last_partition
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom');
@@ -45,6 +48,8 @@ END IF;
 IF p_batch_interval IS NULL OR p_batch_interval > v_part_interval THEN
     p_batch_interval := v_part_interval;
 END IF;
+
+SELECT show_partitions INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
 FOR i IN 1..p_batch_count LOOP
 
@@ -144,7 +149,33 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    v_current_partition_name := @extschema@.create_time_partition(p_parent_table, v_partition_timestamp);
+    PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp);
+    -- This suffix generation code is in create_partition_time() as well
+    v_partition_suffix := to_char(v_min_partition_timestamp, 'YYYY');
+    IF v_part_interval < '1 year' AND v_part_interval <> '1 week' THEN 
+        v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_min_partition_timestamp, 'MM');
+        IF v_part_interval < '1 month' AND v_part_interval <> '1 week' THEN 
+            v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_min_partition_timestamp, 'DD');
+            IF v_part_interval < '1 day' THEN
+                v_partition_suffix := v_partition_suffix || '_' || to_char(v_min_partition_timestamp, 'HH24MI');
+                IF v_part_interval < '1 minute' THEN
+                    v_partition_suffix := v_partition_suffix || to_char(v_min_partition_timestamp, 'SS');
+                END IF; -- end < minute IF
+            END IF; -- end < day IF      
+        END IF; -- end < month IF
+    END IF; -- end < year IF
+    IF v_part_interval = '1 week' THEN
+        v_partition_suffix := to_char(v_min_partition_timestamp, 'IYYY') || 'w' || to_char(v_min_partition_timestamp, 'IW');
+    END IF;
+    -- "Q" is ignored in to_timestamp, so handle special case
+    IF v_part_interval = '3 months' AND (v_type = 'time-static' OR v_type = 'time-dynamic') THEN
+        v_year := to_char(v_min_partition_timestamp, 'YYYY');
+        v_quarter := to_char(v_min_partition_timestamp, 'Q');
+        v_partition_suffix := v_year || 'q' || v_quarter;
+    END IF;
+
+    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_parent_table;
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_partition_suffix, TRUE);
 
     EXECUTE 'WITH partition_data AS (
             DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||quote_literal(v_min_partition_timestamp)||
@@ -160,12 +191,11 @@ FOR i IN 1..p_batch_count LOOP
 END LOOP; 
 
 IF v_type = 'time-static' THEN
-        PERFORM @extschema@.create_time_function(p_parent_table);
-END IF;    
+        PERFORM @extschema@.create_function_time(p_parent_table);
+END IF;
 
 RETURN v_total_rows;
 
 END
 $$;
-
 

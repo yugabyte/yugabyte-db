@@ -7,7 +7,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(119);
+SELECT plan(120);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -24,7 +24,7 @@ INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.id_dynamic_table TO partman_revoke;
 
-SELECT create_parent('partman_test.id_dynamic_table', 'col1', 'id-dynamic', '10', p_inherit_fk := false);
+SELECT results_eq('SELECT create_parent(''partman_test.id_dynamic_table'', ''col1'', ''id-dynamic'', ''10'', p_inherit_fk := false)::text', ARRAY['true'], 'Check that create_parent() returns true');
 SELECT has_table('partman_test', 'id_dynamic_table_p0', 'Check id_dynamic_table_p0 exists');
 SELECT has_table('partman_test', 'id_dynamic_table_p10', 'Check id_dynamic_table_p10 exists');
 SELECT has_table('partman_test', 'id_dynamic_table_p20', 'Check id_dynamic_table_p20 exists');

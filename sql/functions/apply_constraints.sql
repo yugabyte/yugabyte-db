@@ -38,14 +38,12 @@ SELECT type
     , part_interval
     , premake
     , datetime_string
-    , last_partition
     , constraint_cols
     , jobmon
 INTO v_type
     , v_part_interval
     , v_premake
     , v_datetime_string
-    , v_last_partition
     , v_constraint_cols
     , v_jobmon
 FROM @extschema@.part_config
@@ -58,6 +56,8 @@ IF v_constraint_cols IS NULL THEN
     -- Returns silently to allow this function to be simply called by maintenance processes without having to check if config options are set.
     RETURN;
 END IF;
+
+SELECT show_partitions INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
 
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
@@ -197,5 +197,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

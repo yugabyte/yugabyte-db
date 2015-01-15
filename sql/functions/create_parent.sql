@@ -13,31 +13,41 @@ CREATE FUNCTION create_parent(
     , p_inherit_fk boolean DEFAULT true
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
-RETURNS void
+RETURNS boolean 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
 
-v_base_timestamp        timestamp;
-v_count                 int := 1;
-v_datetime_string       text;
-v_id_interval           bigint;
-v_job_id                bigint;
-v_jobmon_schema         text;
-v_last_partition_name   text;
-v_old_search_path       text;
-v_partition_time        timestamp;
-v_partition_time_array  timestamp[];
-v_partition_id          bigint[];
-v_max                   bigint;
-v_notnull               boolean;
-v_run_maint             boolean;
-v_start_time            timestamp;
-v_starting_partition_id bigint;
-v_step_id               bigint;
-v_step_overflow_id      bigint;
-v_tablename             text;
-v_time_interval         interval;
+v_base_timestamp                timestamp;
+v_count                         int := 1;
+v_datetime_string               text;
+v_higher_parent                 text := p_parent_table;
+v_id_interval                   bigint;
+v_id_position                   int;
+v_job_id                        bigint;
+v_jobmon_schema                 text;
+v_last_partition_created        boolean;
+v_max                           bigint;
+v_notnull                       boolean;
+v_old_search_path               text;
+v_parent_partition_id           bigint;
+v_parent_partition_timestamp    timestamp;
+v_partition_time                timestamp;
+v_partition_time_array          timestamp[];
+v_partition_id_array            bigint[];
+v_row                           record;
+v_run_maint                     boolean;
+v_sql                           text;
+v_start_time                    timestamp;
+v_starting_partition_id         bigint;
+v_step_id                       bigint;
+v_step_overflow_id              bigint;
+v_sub_parent                    text;
+v_success                       boolean := false;
+v_tablename                     text;
+v_time_interval                 interval;
+v_time_position                 int;
+v_top_parent                    text := p_parent_table;
 
 BEGIN
 
@@ -90,6 +100,63 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job('PARTMAN SETUP PARENT: '||p_parent_table);
     v_step_id := add_step(v_job_id, 'Creating initial partitions on new parent table: '||p_parent_table);
 END IF;
+
+-- If this parent table has siblings that are also partitioned (subpartitions), ensure it gets added to part_config_sub table so future maintenance will subpartition it
+-- Just doing in a loop to avoid having to assign a bunch of variables (should only run once, if at all; constraint should enforce only one value.)
+FOR v_row IN 
+    WITH parent_table AS (
+        SELECT h.inhparent as parent_oid
+        from pg_inherits h
+        where h.inhrelid::regclass = p_parent_table::regclass
+    ), sibling_children as (
+        select i.inhrelid::regclass::text as tablename 
+        from pg_inherits i
+        join parent_table p on i.inhparent = p.parent_oid
+    )
+    SELECT DISTINCT sub_type
+        , sub_control
+        , sub_part_interval
+        , sub_constraint_cols
+        , sub_premake
+        , sub_inherit_fk
+        , sub_retention
+        , sub_retention_schema
+        , sub_retention_keep_table
+        , sub_retention_keep_index
+        , sub_use_run_maintenance
+        , sub_jobmon
+    FROM @extschema@.part_config_sub a
+    JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
+LOOP
+    INSERT INTO @extschema@.part_config_sub (
+        sub_parent
+        , sub_type
+        , sub_control
+        , sub_part_interval
+        , sub_constraint_cols
+        , sub_premake
+        , sub_inherit_fk
+        , sub_retention
+        , sub_retention_schema
+        , sub_retention_keep_table
+        , sub_retention_keep_index
+        , sub_use_run_maintenance
+        , sub_jobmon)
+    VALUES (
+        p_parent_table
+        , v_row.sub_type
+        , v_row.sub_control
+        , v_row.sub_part_interval
+        , v_row.sub_constraint_cols
+        , v_row.sub_premake
+        , v_row.sub_inherit_fk
+        , v_row.sub_retention
+        , v_row.sub_retention_schema
+        , v_row.sub_retention_keep_table
+        , v_row.sub_retention_keep_index
+        , v_row.sub_use_run_maintenance
+        , v_row.sub_jobmon);
+END LOOP;
 
 IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
 
@@ -181,7 +248,7 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
         ELSE
             EXIT; -- all needed partitions added to array. Exit the loop.
         END IF;
-        v_count := v_count + 1;        
+        v_count := v_count + 1;
     END LOOP;
 
     INSERT INTO @extschema@.part_config (
@@ -206,9 +273,46 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
         , v_run_maint
         , p_inherit_fk
         , p_jobmon);
-    v_last_partition_name := @extschema@.create_time_partition(p_parent_table, v_partition_time_array);
-    -- Doing separate update because create function requires in config table last_partition to be set
-    UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
+    v_last_partition_created := @extschema@.create_partition_time(p_parent_table, v_partition_time_array, false);
+
+    IF v_last_partition_created = false THEN 
+        -- This can happen with subpartitioning when future or past partitions prevent child creation because they're out of range of the parent
+        -- First see if this parent is a subpartition managed by pg_partman
+        WITH top_oid AS (
+            SELECT i.inhparent AS top_parent_oid
+            FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname||'.'||c.relname = p_parent_table 
+        ) SELECT n.nspname||'.'||c.relname
+        INTO v_top_parent
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN top_oid t ON c.oid = t.top_parent_oid
+        JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname;
+        IF v_top_parent IS NOT NULL THEN
+            -- If so create the lowest possible partition that is within the boundary of the parent
+            v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
+            v_parent_partition_timestamp := to_timestamp(substring(p_parent_table from v_time_position), v_datetime_string);
+            IF v_base_timestamp >= v_parent_partition_timestamp THEN
+                WHILE v_base_timestamp >= v_parent_partition_timestamp LOOP
+                    v_base_timestamp := v_base_timestamp - v_time_interval;
+                END LOOP;
+                v_base_timestamp := v_base_timestamp + v_time_interval; -- add one back since while loop set it one lower than is needed
+            ELSIF v_base_timestamp < v_parent_partition_timestamp THEN
+                WHILE v_base_timestamp < v_parent_partition_timestamp LOOP
+                    v_base_timestamp := v_base_timestamp + v_time_interval;
+                END LOOP;
+                -- Don't need to remove one since new starting time will fit in top parent interval
+            END IF;
+            v_partition_time_array := NULL;
+            v_partition_time_array := array_append(v_partition_time_array, v_base_timestamp);
+            v_last_partition_created := @extschema@.create_partition_time(p_parent_table, v_partition_time_array, false);
+        ELSE
+            -- Currently unknown edge case if code gets here
+            RAISE EXCEPTION 'No child tables created. Unexpected edge case encountered. Please report this error to author with conditions that led to it.';
+        END IF; 
+    END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time partitions premade: '||p_premake);
@@ -220,20 +324,43 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
     IF v_id_interval <= 1 THEN
         RAISE EXCEPTION 'Interval for serial partitioning must be greater than 1';
     END IF;
-    
-    -- If custom start partition is set, use that. 
-    -- If custom start is not set and there is already data, start partitioning with the highest current value
-    EXECUTE 'SELECT COALESCE('||quote_nullable(p_start_partition::bigint)||', max('||p_control||')::bigint, 0) FROM '||p_parent_table||' LIMIT 1' INTO v_max;
+
+    -- Check if parent table is a subpartition of an already existing id partition set managed by pg_partman. 
+    WHILE v_higher_parent IS NOT NULL LOOP -- initially set in DECLARE
+        WITH top_oid AS (
+            SELECT i.inhparent AS top_parent_oid
+            FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname||'.'||c.relname = v_higher_parent
+        ) SELECT n.nspname||'.'||c.relname
+        INTO v_higher_parent
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN top_oid t ON c.oid = t.top_parent_oid
+        JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
+        WHERE p.type = 'id-static' OR p.type = 'id-dynamic';
+
+        IF v_higher_parent IS NOT NULL THEN
+            -- v_top_parent initially set in DECLARE
+            v_top_parent := v_higher_parent;
+        END IF;
+    END LOOP;
+
+    -- If custom start partition is set, use that.
+    -- If custom start is not set and there is already data, start partitioning with the highest current value and ensure it's grabbed from highest top parent table
+    v_sql := 'SELECT COALESCE('||quote_nullable(p_start_partition::bigint)||', max('||p_control||')::bigint, 0) FROM '||v_top_parent||' LIMIT 1';
+    EXECUTE v_sql INTO v_max;
     v_starting_partition_id := v_max - (v_max % v_id_interval);
     FOR i IN 0..p_premake LOOP
         -- Only make previous partitions if ID value is less than the starting value and positive (and custom start partition wasn't set)
         IF p_start_partition IS NULL AND 
-            (v_starting_partition_id - (v_id_interval*i)) > 0 
-            AND (v_starting_partition_id - (v_id_interval*i)) < v_starting_partition_id 
+            (v_starting_partition_id - (v_id_interval*i)) > 0 AND 
+            (v_starting_partition_id - (v_id_interval*i)) < v_starting_partition_id 
         THEN
-            v_partition_id = array_append(v_partition_id, (v_starting_partition_id - v_id_interval*i));
+            v_partition_id_array = array_append(v_partition_id_array, (v_starting_partition_id - v_id_interval*i));
         END IF; 
-        v_partition_id = array_append(v_partition_id, (v_id_interval*i) + v_starting_partition_id);
+        v_partition_id_array = array_append(v_partition_id_array, (v_id_interval*i) + v_starting_partition_id);
     END LOOP;
 
     INSERT INTO @extschema@.part_config (
@@ -256,27 +383,58 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         , v_run_maint
         , p_inherit_fk
         , p_jobmon);
-    v_last_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
-    -- Doing separate update because create function needs parent table in config table for apply_grants()
-    UPDATE @extschema@.part_config SET last_partition = v_last_partition_name WHERE parent_table = p_parent_table;
-
-    IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'OK', 'ID partitions premade: '||p_premake);
+    v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
+    IF v_last_partition_created = false THEN
+        -- This can happen with subpartitioning when future or past partitions prevent child creation because they're out of range of the parent
+        -- See if it's actually a subpartition of a parent id partition
+        WITH top_oid AS (
+            SELECT i.inhparent AS top_parent_oid
+            FROM pg_catalog.pg_inherits i
+            JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
+            JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname||'.'||c.relname = p_parent_table 
+        ) SELECT n.nspname||'.'||c.relname
+        INTO v_top_parent
+        FROM pg_catalog.pg_class c
+        JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+        JOIN top_oid t ON c.oid = t.top_parent_oid
+        JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
+        WHERE p.type = 'id-static' OR p.type = 'id-dynamic';
+        IF v_top_parent IS NOT NULL THEN
+            -- Create the lowest possible partition that is within the boundary of the parent
+            v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
+            v_parent_partition_id = substring(p_parent_table from v_id_position)::bigint;
+            IF v_starting_partition_id >= v_parent_partition_id THEN
+                WHILE v_starting_partition_id >= v_parent_partition_id LOOP
+                    v_starting_partition_id := v_starting_partition_id - v_id_interval;
+                END LOOP;
+                v_starting_partition_id := v_starting_partition_id + v_id_interval; -- add one back since while loop set it one lower than is needed
+            ELSIF v_starting_partition_id < v_parent_partition_id THEN
+                WHILE v_starting_partition_id < v_parent_partition_id LOOP
+                    v_starting_partition_id := v_starting_partition_id + v_id_interval;
+                END LOOP;
+                -- Don't need to remove one since new starting id will fit in top parent interval
+            END IF;
+            v_partition_id_array = NULL;
+            v_partition_id_array = array_append(v_partition_id_array, v_starting_partition_id);
+            v_last_partition_created := @extschema@.create_partition_id(p_parent_table, v_partition_id_array, false);
+        ELSE
+            -- Currently unknown edge case if code gets here
+            RAISE EXCEPTION 'No child tables created. Unexpected edge case encountered. Please report this error to author with conditions that led to it.';
+        END IF;
     END IF;
-    
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating partition function');
 END IF;
-
 IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
-    PERFORM @extschema@.create_time_function(p_parent_table);
+    PERFORM @extschema@.create_function_time(p_parent_table);
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time function created');
     END IF;
 ELSIF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
-    PERFORM @extschema@.create_id_function(p_parent_table);  
+    PERFORM @extschema@.create_function_id(p_parent_table);  
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID function created');
     END IF;
@@ -285,7 +443,6 @@ END IF;
 IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating partition trigger');
 END IF;
-
 PERFORM @extschema@.create_trigger(p_parent_table);
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -297,6 +454,10 @@ IF v_jobmon_schema IS NOT NULL THEN
     END IF;
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
+
+v_success := true;
+
+RETURN v_success;
 
 EXCEPTION
     WHEN OTHERS THEN
@@ -313,4 +474,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

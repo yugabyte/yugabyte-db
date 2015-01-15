@@ -1,8 +1,12 @@
 /*
- * Function to manage pre-creation of the next partitions in a time-based partition set.
+ * Function to manage pre-creation of the next partitions in a set.
  * Also manages dropping old partitions if the retention option is set.
+ * If p_parent_table is passed, will only run run_maintenance() on that one table (no matter what the configuration table may have set for it)
+ * Otherwise, will run on all tables in the config table with p_run_maintenance() set to true.
+ * For large partition sets, running analyze can cause maintenance to take longer than expected. Can set p_analyze to false to avoid a forced analyze run.
+ * Be aware that constraint exclusion may not work properly until an analyze on the partition set is run. 
  */
-CREATE FUNCTION run_maintenance(p_jobmon BOOLEAN DEFAULT true) RETURNS void 
+CREATE FUNCTION run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true) RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -19,6 +23,7 @@ v_job_id                        bigint;
 v_jobmon                        boolean;
 v_jobmon_schema                 text;
 v_last_partition                text;
+v_last_partition_created        boolean;
 v_last_partition_id             bigint;
 v_last_partition_timestamp      timestamp;
 v_next_partition_id             bigint;
@@ -29,8 +34,11 @@ v_quarter                       text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_step_serial_id                bigint;
+v_sub_parent                    text;
 v_row                           record;
+v_row_sub                       record;
 v_tablename                     text;
+v_tables_list_sql               text;
 v_time_position                 int;
 v_year                          text;
 
@@ -55,31 +63,30 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Running maintenance loop');
 END IF;
 
-FOR v_row IN 
-SELECT parent_table
-    , type
-    , part_interval
-    , control
-    , premake
-    , datetime_string
-    , last_partition
-    , undo_in_progress
-FROM @extschema@.part_config WHERE use_run_maintenance = true
+v_tables_list_sql := 'SELECT parent_table
+                , type
+                , part_interval
+                , control
+                , premake
+                , datetime_string
+                , undo_in_progress
+            FROM @extschema@.part_config';
+
+IF p_parent_table IS NULL THEN
+    v_tables_list_sql := v_tables_list_sql || ' WHERE use_run_maintenance = true';
+ELSE
+    v_tables_list_sql := v_tables_list_sql || format(' WHERE parent_table = %L', p_parent_table);
+END IF;
+
+FOR v_row IN EXECUTE v_tables_list_sql
 LOOP
 
     CONTINUE WHEN v_row.undo_in_progress;
-    
-    -- Double check that last created partition exists
-    IF v_row.last_partition IS NOT NULL THEN
-        SELECT tablename INTO v_tablename FROM pg_tables WHERE schemaname || '.' || tablename = v_row.last_partition;
-        IF v_tablename IS NULL THEN
-            RAISE EXCEPTION 'Last known partition table missing for parent table %. Unable to determine next partition in sequence.', v_row.parent_table;
-        END IF;
-    ELSE
-        RAISE EXCEPTION 'Last known partition missing from config table for parent table %.', p_parent_table;
-    END IF;
+
+    SELECT show_partitions INTO v_last_partition FROM @extschema@.show_partitions(v_row.parent_table, 'DESC') LIMIT 1;
 
     IF v_row.type = 'time-static' OR v_row.type = 'time-dynamic' OR v_row.type = 'time-custom' THEN
+
         IF v_row.type = 'time-static' OR v_row.type = 'time-dynamic' THEN
             CASE
                 WHEN v_row.part_interval::interval = '15 mins' THEN
@@ -112,13 +119,13 @@ LOOP
             v_current_partition_timestamp := to_timestamp(substring(v_current_partition from v_time_position), v_row.datetime_string);
         END IF;
 
-        v_time_position := (length(v_row.last_partition) - position('p_' in reverse(v_row.last_partition))) + 2;
+        v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
         IF v_row.part_interval::interval <> '3 months' OR (v_row.part_interval::interval = '3 months' AND v_row.type = 'time-custom') THEN
-           v_last_partition_timestamp := to_timestamp(substring(v_row.last_partition from v_time_position), v_row.datetime_string);
+           v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_row.datetime_string);
         ELSE
             -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
-            v_year := split_part(substring(v_row.last_partition from v_time_position), 'q', 1);
-            v_quarter := split_part(substring(v_row.last_partition from v_time_position), 'q', 2);
+            v_year := split_part(substring(v_last_partition from v_time_position), 'q', 1);
+            v_quarter := split_part(substring(v_last_partition from v_time_position), 'q', 2);
             CASE
                 WHEN v_quarter = '1' THEN
                     v_last_partition_timestamp := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
@@ -130,9 +137,11 @@ LOOP
                     v_last_partition_timestamp := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
             END CASE;
         END IF;
-        
+
         -- Check and see how many premade partitions there are.
-        v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
+        -- Can be negative when subpartitioning and there are parent partitions in the past compared to current timestamp value.
+        -- abs() prevents run_maintenence from running on those old parent tables
+        v_premade_count = abs(round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval)));
         v_next_partition_timestamp := v_last_partition_timestamp;
         -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed.
         WHILE v_premade_count < v_row.premake LOOP
@@ -148,42 +157,42 @@ LOOP
                 CONTINUE;
             END;
 
-            v_last_partition := @extschema@.create_time_partition(v_row.parent_table, ARRAY[v_next_partition_timestamp]); 
-            IF v_last_partition IS NOT NULL THEN
-                UPDATE @extschema@.part_config SET last_partition = v_last_partition WHERE parent_table = v_row.parent_table;
-            END IF;
-
+            v_last_partition_created := @extschema@.create_partition_time(v_row.parent_table, ARRAY[v_next_partition_timestamp], p_analyze); 
             v_create_count := v_create_count + 1;
-            IF v_row.type = 'time-static' THEN
-                PERFORM @extschema@.create_time_function(v_row.parent_table);
+            IF v_row.type = 'time-static' AND v_last_partition_created THEN
+                PERFORM @extschema@.create_function_time(v_row.parent_table);
             END IF;
 
             -- Manage additonal constraints if set
             PERFORM @extschema@.apply_constraints(v_row.parent_table);
-            v_premade_count = round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
+            -- Can be negative when subpartitioning and there are parent partitions in the past compared to current timestamp value.
+            -- abs() prevents run_maintenence from running on those old parent tables
+            v_premade_count = abs(round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval)));
         END LOOP;
     ELSIF v_row.type = 'id-static' OR v_row.type ='id-dynamic' THEN
---        EXECUTE 'SELECT max('||v_row.control||') - ('||v_row.control||' % '||v_row.part_interval::int||') FROM '||v_row.parent_table INTO v_current_partition_id;
+        -- This doesn't need the overall max of a full subpartition set, just the max of the current partition set
         EXECUTE 'SELECT '||v_row.control||' - ('||v_row.control||' % '||v_row.part_interval::int||') FROM '||v_row.parent_table||'
             WHERE '||v_row.control||' = (SELECT max('||v_row.control||') FROM '||v_row.parent_table||')' 
             INTO v_current_partition_id;
-        v_id_position := (length(v_row.last_partition) - position('p_' in reverse(v_row.last_partition))) + 2;
-        v_last_partition_id = substring(v_row.last_partition from v_id_position)::bigint;
+        v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
+        v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
         -- This catches if there's invalid data in a parent table set that's outside all child table ranges.
         IF v_last_partition_id < v_current_partition_id THEN
             IF v_jobmon_schema IS NOT NULL THEN
                 v_step_serial_id := add_step(v_job_id, 'Found inconsistent data in serial partition set.');
-                PERFORM update_step(v_step_serial_id, 'CRITICAL', 'Child partition creation skipped for parent table '||v_row.parent_table||'. Current max serial id value ('||v_current_partition_id||') is greater than the id range covered by the last partition created ('||v_row.last_partition||'). Run check_parent() to find possible cause.');
+                PERFORM update_step(v_step_serial_id, 'CRITICAL', 'Child partition creation skipped for parent table '||v_row.parent_table||'. Current max serial id value ('||v_current_partition_id||') is greater than the id range covered by the last partition created ('||v_last_partition||'). Run check_parent() to find possible cause.');
             END IF;
-            RAISE WARNING 'Child partition creation skipped for parent table %. Found inconsistent data in serial partition set. Current max serial id value (%) is greater than the id range covered by the last partition created (%). Run check_parent() to find possible cause.', v_row.parent_table, v_current_partition_id, v_row.last_partition;
+            RAISE WARNING 'Child partition creation skipped for parent table %. Found inconsistent data in serial partition set. Current max serial id value (%) is greater than the id range covered by the last partition created (%). Run check_parent() to find possible cause.', v_row.parent_table, v_current_partition_id, v_last_partition;
             CONTINUE;
         END IF;
         v_next_partition_id := v_last_partition_id + v_row.part_interval::bigint;
-        WHILE ((v_next_partition_id - v_current_partition_id) / v_row.part_interval::bigint) <= v_row.premake LOOP 
-            v_last_partition := @extschema@.create_id_partition(v_row.parent_table, ARRAY[v_next_partition_id]);
-            IF v_last_partition IS NOT NULL THEN
-                UPDATE @extschema@.part_config SET last_partition = v_last_partition WHERE parent_table = v_row.parent_table;
-                PERFORM @extschema@.create_id_function(v_row.parent_table);
+        -- Can be negative when subpartitioning and there are parent partitions with lower values compared to current id value.
+        -- abs() prevents run_maintenence from running on those old parent tables
+        WHILE (abs((v_next_partition_id - v_current_partition_id) / v_row.part_interval::bigint)) <= v_row.premake 
+        LOOP 
+            v_last_partition_created := @extschema@.create_partition_id(v_row.parent_table, ARRAY[v_next_partition_id], p_analyze);
+            IF v_last_partition_created THEN
+                PERFORM @extschema@.create_function_id(v_row.parent_table);
                 PERFORM @extschema@.apply_constraints(v_row.parent_table);
             END IF;
             v_next_partition_id := v_next_partition_id + v_row.part_interval::bigint;
@@ -198,12 +207,28 @@ FOR v_row IN
     SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND 
         (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom')
 LOOP
-    v_drop_count := v_drop_count + @extschema@.drop_partition_time(v_row.parent_table);   
+    IF p_parent_table IS NULL THEN
+        v_drop_count := v_drop_count + @extschema@.drop_partition_time(v_row.parent_table);   
+    ELSE -- Only run retention on table given in parameter
+        IF p_parent_table <> v_row.parent_table THEN
+            CONTINUE;
+        ELSE
+            v_drop_count := v_drop_count + @extschema@.drop_partition_time(v_row.parent_table);   
+        END IF;
+    END IF;
 END LOOP; 
 FOR v_row IN 
     SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND (type = 'id-static' OR type = 'id-dynamic')
 LOOP
-    v_drop_count := v_drop_count + @extschema@.drop_partition_id(v_row.parent_table);
+    IF p_parent_table IS NULL THEN
+        v_drop_count := v_drop_count + @extschema@.drop_partition_id(v_row.parent_table);
+    ELSE -- Only run retention on table given in parameter
+        IF p_parent_table <> v_row.parent_table THEN
+            CONTINUE;
+        ELSE
+            v_drop_count := v_drop_count + @extschema@.drop_partition_id(v_row.parent_table);
+        END IF;
+    END IF;
 END LOOP; 
 
 IF v_jobmon_schema IS NOT NULL THEN

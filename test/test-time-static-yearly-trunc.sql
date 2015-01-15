@@ -337,11 +337,20 @@ UPDATE part_config SET retention = '2 years'::interval WHERE parent_table = 'par
 SELECT drop_partition_time('partman_test.time_static_table_1234567890123456789012345678901234567890', p_retention_schema := 'partman_retention_test');
 SELECT hasnt_table('partman_test', 'time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY')||' does not exist');
+/* This test may fail around the end of the year. If so, swap to the commented out one below */
 SELECT has_table('partman_retention_test', 'time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 
-    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY')||' got moved to new schema');
+    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY')||' got moved to new schema. This test may fail around the year boundary. See comment in tests for different test to try.');
+
+/* This test may fail around the beginning of the year. If so, swap to the commented out one above */
+--SELECT has_table('partman_retention_test', 'time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 
+--    'Check time_static_table_'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' got moved to new schema. This test may fail around the year boundary. See comment in tests for different test to try.');
 
 SELECT undo_partition_time('partman_test.time_static_table_1234567890123456789012345678901234567890', 20, p_keep_table := false);
-SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table_1234567890123456789012345678901234567890', ARRAY[129], 'Check count from parent table after undo');
+/* This test may fail around the end of the year. If so, swap to the commented out one below */
+SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table_1234567890123456789012345678901234567890', ARRAY[129], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
+
+/* This test may fail around the beginning of the year. If so, swap to the commented out one above */
+--SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_static_table_1234567890123456789012345678901234567890', ARRAY[108], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
 SELECT hasnt_table('partman_test', 'time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 
     'Check time_static_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_123456789012345678901234567890123456789_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 

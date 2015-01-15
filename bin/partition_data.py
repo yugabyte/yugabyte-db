@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 
-import argparse, psycopg2, time, sys
+import argparse, psycopg2, time, signal, sys
 
-parser = argparse.ArgumentParser(description="This script calls either partition_data_time() or partition_data_id() depending on the value given for --type. A commit is done at the end of each --interval and/or fully created partition. Returns the total number of rows moved to partitions. Automatically stops when parent is empty. See docs for examples.", epilog="NOTE: To help avoid heavy load and contention during partitioning, autovacuum is turned off for the parent table and all child tables when this script is run. When partitioning is complete, autovacuum is set back to its default value and the parent table is vacuumed when it is emptied.")
-parser.add_argument('-p','--parent', required=True, help="Parent table of an already created partition set. (Required)")
-parser.add_argument('-t','--type', choices=["time","id",], required=True, help="""Type of partitioning. Valid values are "time" and "id". (Required)""")
-parser.add_argument('-c','--connection', default="host=localhost", help="""Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".""")
+partman_version = "1.8.0"
+
+parser = argparse.ArgumentParser(description="This script calls either partition_data_time() or partition_data_id() depending on the value given for --type. A commit is done at the end of each --interval and/or fully created partition. Returns the total number of rows moved to partitions. Automatically stops when parent is empty. See docs for examples.", epilog="NOTE: To help avoid heavy load and contention during partitioning, autovacuum is turned off for the parent table when this script is run. When partitioning is complete, autovacuum is set back to its default value and the parent table is vacuumed when it is emptied.")
+parser.add_argument('-p','--parent', help="Parent table of an already created partition set. (Required)")
+parser.add_argument('-t','--type', choices=["time","id",], help="""Type of partitioning. Valid values are "time" and "id". (Required)""")
+parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('-i','--interval', help="Value that is passed on to the partitioning function as p_batch_interval argument. Use this to set an interval smaller than the partition interval to commit data in smaller batches. Defaults to the partition interval if not given.")
 parser.add_argument('-b','--batch', default=0, type=int, help="""How many times to loop through the value given for --interval. If --interval not set, will use default partition interval and make at most -b partition(s). Script commits at the end of each individual batch. (NOT passed as p_batch_count to partitioning function). If not set, all data in the parent table will be partitioned in a single run of the script.""")
 parser.add_argument('-w','--wait', default=0, type=float, help="Cause the script to pause for a given number of seconds between commits (batches) to reduce write load")
@@ -14,17 +16,18 @@ parser.add_argument('-l','--lockwait', default=0, type=float, help="Have a lock 
 parser.add_argument('--lockwait_tries', default=10, type=int, help="Number of times to allow a lockwait to time out before giving up on the partitioning.  Defaults to 10")
 parser.add_argument('--autovacuum_on', action="store_true", help="Turning autovacuum off requires a brief lock to ALTER the table property. Set this option to leave autovacuum on and avoid the lock attempt.")
 parser.add_argument('-q','--quiet', action="store_true", help="Switch setting to stop all output during and after partitioning for use in cron jobs")
+parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 parser.add_argument('--debug', action="store_true", help="Show additional debugging output")
 args = parser.parse_args()
+
+def close_conn(conn):
+    conn.close()
+
 
 def create_conn():
     conn = psycopg2.connect(args.connection)
     conn.autocommit = True
     return conn
-
-
-def close_conn(conn):
-    conn.close()
 
 
 def get_partman_schema(conn):
@@ -34,61 +37,6 @@ def get_partman_schema(conn):
     partman_schema = cur.fetchone()[0]
     cur.close()
     return partman_schema
-
-
-def turn_off_autovacuum(conn, partman_schema):
-    cur = conn.cursor()
-    sql = "ALTER TABLE " + args.parent + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
-    if not args.quiet:
-        print("Attempting to turn off autovacuum for partition set...")
-    if args.debug:
-        print(cur.mogrify(sql))
-    cur.execute(sql)
-    sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
-    if args.debug:
-        print(cur.mogrify(sql, [args.parent]))
-    cur.execute(sql, [args.parent])
-    result = cur.fetchall()
-    for r in result:
-        sql = "ALTER TABLE " + r[0] + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
-        if args.debug:
-            print(cur.mogrify(sql))
-        cur.execute(sql)
-    print("\t... Success!")
-    cur.close()
-
-
-def reset_autovacuum(conn, table):
-    cur = conn.cursor()
-    sql = "ALTER TABLE " + args.parent + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
-    if not args.quiet:
-        print("Attempting to reset autovacuum for old parent table...")
-    if args.debug:
-        print(cur.mogrify(sql))
-    cur.execute(sql)
-    sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
-    if args.debug:
-        print(cur.mogrify(sql, [args.parent]))
-    cur.execute(sql, [args.parent])
-    result = cur.fetchall()
-    for r in result:
-        sql = "ALTER TABLE " + r[0] + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
-        if args.debug:
-            print(cur.mogrify(sql))
-        cur.execute(sql)
-    print("\t... Success!")
-    cur.close()
-
-
-def vacuum_parent(conn):
-    cur = conn.cursor()
-    sql = "VACUUM ANALYZE " + args.parent
-    if args.debug:
-        print(cur.mogrify(sql))
-    if not args.quiet:
-        print("Running vacuum analyze on parent table...")
-    cur.execute(sql)
-    cur.close()
 
 
 def partition_data(conn, partman_schema):
@@ -136,12 +84,93 @@ def partition_data(conn, partman_schema):
 
     return total
 
+
+def print_version():
+    print(partman_version)
+    sys.exit()
+
+
+def reset_autovacuum(conn, table):
+    cur = conn.cursor()
+    sql = "ALTER TABLE " + args.parent + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
+    if not args.quiet:
+        print("Attempting to reset autovacuum for old parent table and all child tables...")
+    if args.debug:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
+    if args.debug:
+        print(cur.mogrify(sql, [args.parent]))
+    cur.execute(sql, [args.parent])
+    result = cur.fetchall()
+    for r in result:
+        sql = "ALTER TABLE " + r[0] + " RESET (autovacuum_enabled, toast.autovacuum_enabled)"
+        if args.debug:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+    print("\t... Success!")
+    cur.close()
+
+
+def sigint_handler(signum, frame):
+    if is_autovac_off == True:
+        reset_autovacuum(conn, partman_schema)
+        sys.exit(2)
+
+
+def turn_off_autovacuum(conn, partman_schema):
+    cur = conn.cursor()
+    sql = "ALTER TABLE " + args.parent + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
+    if not args.quiet:
+        print("Attempting to turn off autovacuum for partition set...")
+    if args.debug:
+        print(cur.mogrify(sql))
+    cur.execute(sql)
+    sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
+    if args.debug:
+        print(cur.mogrify(sql, [args.parent]))
+    cur.execute(sql, [args.parent])
+    result = cur.fetchall()
+    for r in result:
+        sql = "ALTER TABLE " + r[0] + " SET (autovacuum_enabled = false, toast.autovacuum_enabled = false)"
+        if args.debug:
+            print(cur.mogrify(sql))
+        cur.execute(sql)
+    print("\t... Success!")
+    cur.close()
+
+
+def vacuum_parent(conn):
+    cur = conn.cursor()
+    sql = "VACUUM ANALYZE " + args.parent
+    if args.debug:
+        print(cur.mogrify(sql))
+    if not args.quiet:
+        print("Running vacuum analyze on parent table...")
+    cur.execute(sql)
+    cur.close()
+
+
 if __name__ == "__main__":
+    if args.version:
+        print_version()
+
+    if args.parent == None:
+        print("-p/--parent option is required")
+        sys.exit(2)
+
+    if args.type == None:
+        print("-t/--type option is required")
+        sys.exit(2)
+
+    is_autovac_off = False
+    signal.signal(signal.SIGINT, sigint_handler)
     conn = create_conn()
     partman_schema = get_partman_schema(conn)
 
     if not args.autovacuum_on:
         turn_off_autovacuum(conn, partman_schema)
+        is_autovac_off = True
 
     total = partition_data(conn, partman_schema)
 
@@ -152,5 +181,6 @@ if __name__ == "__main__":
 
     if not args.autovacuum_on:
         reset_autovacuum(conn, partman_schema)
+        is_autovac_off = False
 
     close_conn(conn)

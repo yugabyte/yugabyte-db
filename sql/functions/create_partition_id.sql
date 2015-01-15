@@ -1,7 +1,7 @@
 /*
  * Function to create id partitions
  */
-CREATE FUNCTION create_id_partition (p_parent_table text, p_partition_ids bigint[]) RETURNS text
+CREATE FUNCTION create_partition_id(p_parent_table text, p_partition_ids bigint[], p_analyze boolean DEFAULT true) RETURNS boolean
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -12,6 +12,7 @@ v_control           text;
 v_grantees          text[];
 v_hasoids           boolean;
 v_id                bigint;
+v_id_position       int;
 v_inherit_fk        boolean;
 v_job_id            bigint;
 v_jobmon            boolean;
@@ -23,11 +24,17 @@ v_parent_schema     text;
 v_parent_tablename  text;
 v_parent_tablespace text;
 v_part_interval     bigint;
+v_partition_created boolean := false;
 v_partition_name    text;
 v_revoke            text[];
+v_row               record;
 v_sql               text;
 v_step_id           bigint;
+v_sub_id_max        bigint;
+v_sub_id_min        bigint;
 v_tablename         text;
+v_top_interval      bigint;
+v_top_parent        text;
 v_unlogged          char;
 
 BEGIN
@@ -56,11 +63,41 @@ IF v_jobmon THEN
     END IF;
 END IF;
 
+-- Check if parent table is a subpartition of an already existing id based partition set managed by pg_partman
+-- If so, limit what child tables can be created based on parent suffix
+WITH top_oid AS (
+    SELECT i.inhparent AS top_parent_oid
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
+    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname||'.'||c.relname = p_parent_table
+) SELECT n.nspname||'.'||c.relname 
+  INTO v_top_parent 
+  FROM pg_catalog.pg_class c
+  JOIN top_oid t ON c.oid = t.top_parent_oid
+  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+  JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
+  WHERE c.oid = t.top_parent_oid
+  AND p.type = 'id-static' OR p.type = 'id-dynamic';
+
+IF v_top_parent IS NOT NULL THEN 
+    SELECT part_interval::bigint INTO v_top_interval FROM @extschema@.part_config WHERE parent_table = v_top_parent;
+    v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
+    v_sub_id_min = substring(p_parent_table from v_id_position)::bigint;
+    v_sub_id_max = (v_sub_id_min + v_top_interval) - 1;
+END IF;
+
 SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 FOREACH v_id IN ARRAY p_partition_ids LOOP
-    v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_id::text, TRUE);
+-- Do not create the child table if it's outside the bounds of the top parent. 
+    IF v_sub_id_min IS NOT NULL THEN
+        IF v_id < v_sub_id_min OR v_id > v_sub_id_max THEN
+            CONTINUE;
+        END IF;
+    END IF;
 
+    v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_id::text, TRUE);
     -- If child table already exists, skip creation
     SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_tablename IS NOT NULL THEN
@@ -126,12 +163,74 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
+    END IF;
+
+    -- Will only loop once and only if sub_partitioning is actually configured
+    -- This seemed easier than assigning a bunch of variables then doing an IF condition
+    FOR v_row IN 
+        SELECT sub_parent
+            , sub_control
+            , sub_type
+            , sub_part_interval
+            , sub_constraint_cols
+            , sub_premake
+            , sub_inherit_fk
+            , sub_retention
+            , sub_retention_schema
+            , sub_retention_keep_table
+            , sub_retention_keep_index
+            , sub_use_run_maintenance
+            , sub_jobmon
+        FROM @extschema@.part_config_sub
+        WHERE sub_parent = p_parent_table
+    LOOP
+        IF v_jobmon_schema IS NOT NULL THEN
+            v_step_id := add_step(v_job_id, 'Subpartitioning '||v_partition_name);
+        END IF;
+        v_sql := format('SELECT @extschema@.create_parent(
+                 p_parent_table := %L
+                , p_control := %L
+                , p_type := %L
+                , p_interval := %L
+                , p_constraint_cols := %L
+                , p_premake := %L
+                , p_use_run_maintenance := %L
+                , p_inherit_fk := %L
+                , p_jobmon := %L )'
+            , v_partition_name
+            , v_row.sub_control
+            , v_row.sub_type
+            , v_row.sub_part_interval
+            , v_row.sub_constraint_cols
+            , v_row.sub_premake
+            , v_row.sub_inherit_fk
+            , v_row.sub_use_run_maintenance
+            , v_row.sub_jobmon);
+        EXECUTE v_sql;
+
+        UPDATE @extschema@.part_config SET 
+            retention_schema = v_row.sub_retention_schema
+            , retention_keep_table = v_row.sub_retention_keep_table
+            , retention_keep_index = v_row.sub_retention_keep_index
+        WHERE parent_table = v_partition_name;
+
+        IF v_jobmon_schema IS NOT NULL THEN
+            PERFORM update_step(v_step_id, 'OK', 'Done');
+        END IF;
+
+    END LOOP; -- end sub partitioning LOOP
+
+    IF v_jobmon_schema IS NOT NULL THEN
         PERFORM close_job(v_job_id);
     END IF;
+    
+    v_partition_created := true;
 
 END LOOP;
 
-IF v_analyze THEN
+-- v_analyze is a local check if a new table is made.
+-- p_analyze is a parameter to say whether to run the analyze at all. Used by create_parent() to avoid long exclusive lock or run_maintenence() to avoid long creation runs.
+IF v_analyze AND p_analyze THEN
     EXECUTE 'ANALYZE '||p_parent_table;
 END IF;
 
@@ -139,7 +238,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
-RETURN v_partition_name;
+RETURN v_partition_created;
 
 EXCEPTION
     WHEN OTHERS THEN

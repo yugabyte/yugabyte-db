@@ -1,7 +1,5 @@
 /*
  * Function to list all child partitions in a set.
- * Will list all child tables in any inheritance set, 
- * not just those managed by pg_partman.
  */
 CREATE FUNCTION show_partitions (p_parent_table text, p_order text DEFAULT 'ASC') RETURNS SETOF text
     LANGUAGE plpgsql STABLE SECURITY DEFINER 
@@ -27,7 +25,7 @@ INTO v_type
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
-IF v_type IN ('time-static', 'time-dynamic') THEN
+IF v_type IN ('time-static', 'time-dynamic', 'time-custom') THEN
 
     RETURN QUERY EXECUTE '
     SELECT n.nspname::text ||''.''|| c.relname::text AS partition_name FROM
@@ -45,9 +43,11 @@ ELSIF v_type IN ('id-static', 'id-dynamic') THEN
     JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
     WHERE h.inhparent = '||quote_literal(p_parent_table)||'::regclass
-    ORDER BY substring(c.relname from ((length(c.relname) - position(''p_'' in reverse(c.relname))) + 2) )::int ' || p_order;
+    ORDER BY substring(c.relname from ((length(c.relname) - position(''p_'' in reverse(c.relname))) + 2) )::bigint ' || p_order;
 
 END IF;
 
 END
 $$;
+
+

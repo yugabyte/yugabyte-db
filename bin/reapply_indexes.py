@@ -3,9 +3,11 @@
 import argparse, psycopg2, re, sys, time
 from multiprocessing import Process
 
+partman_version = "1.8.0"
+
 parser = argparse.ArgumentParser(description="Script for reapplying indexes on child tables in a partition set after they are changed on the parent table. All indexes on all child tables (not including primary key unless specified) will be dropped and recreated for the given set. Commits are done after each index is dropped/created to help prevent long running transactions & locks.", epilog="NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.")
-parser.add_argument('-p', '--parent', required=True, help="Parent table of an already created partition set. (Required)")
-parser.add_argument('-c', '--connection', default="host=localhost", help="""Connection string for use by psycopg to connect to your database. Defaults to "host=localhost".""")
+parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
+parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('--concurrent', action="store_true", help="Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.")
 parser.add_argument('--primary', action="store_true", help="By default the primary key is not recreated. Set this option if that is needed. Note this will cause an exclusive lock on the child table.")
 parser.add_argument('--drop_concurrent', action="store_true", help="Drop indexes concurrently when recreating them (PostgreSQL >= v9.2). Note this does not work on primary keys when --primary is given.")
@@ -13,11 +15,8 @@ parser.add_argument('-j', '--jobs', type=int, default=0, help="Use the python mu
 parser.add_argument('-w', '--wait', type=float, default=0, help="Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.")
 parser.add_argument('--dryrun', action="store_true", help="Show what the script will do without actually running it against the database. Highly recommend reviewing this before running. Note that if multiple indexes would get the same default name, the duplicated name will show in the dryrun (because the index doesn't exist in the catalog to check for it). When the real thing is run, the duplicated names will be handled as stated in NOTE at the end of --help.")
 parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all output.")
+parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 args = parser.parse_args()
-
-if args.parent.find(".") < 0:
-    print("ERROR: Parent table must be schema qualified")
-    sys.exit(2)
 
 
 # Add any checks for version specific features to this function
@@ -167,6 +166,11 @@ def get_partman_schema(conn):
     return partman_schema
 
 
+def print_version():
+    print(partman_version)
+    sys.exit()
+
+
 def reindex_proc(child_table, partman_schema):
     conn = create_conn()
     conn.autocommit = True # must be turned on to support CONCURRENTLY
@@ -191,6 +195,18 @@ def reindex_proc(child_table, partman_schema):
 
 
 if __name__ == "__main__":
+
+    if args.version:
+        print_version()
+
+    if args.parent == None:
+        print("-p/--parent option is required")
+        sys.exit(2)
+
+    if args.parent.find(".") < 0:
+        print("ERROR: Parent table must be schema qualified")
+        sys.exit(2)
+
     conn = create_conn()
     cur = conn.cursor()
     partman_schema = get_partman_schema(conn)

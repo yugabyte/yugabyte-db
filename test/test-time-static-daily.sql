@@ -1,5 +1,5 @@
 -- ########## TIME STATIC TESTS ##########
--- Other tests: With OIDS
+-- Other tests: With OIDS, run_maintenance(p_analyze := false)
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -154,7 +154,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_static_table_p'||
     ARRAY[15], 'Check count from time_static_table_p'||to_char(CURRENT_TIMESTAMP-'4 days'::interval, 'YYYY_MM_DD'));
 
 UPDATE part_config SET premake = 5 WHERE parent_table = 'partman_test.time_static_table';
-SELECT run_maintenance();
+SELECT run_maintenance(p_analyze := false);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(101,122), CURRENT_TIMESTAMP + '5 days'::interval);
 
 SELECT has_table('partman_test', 'time_static_table_p'||to_char(CURRENT_TIMESTAMP+'5 days'::interval, 'YYYY_MM_DD'), 
@@ -203,7 +203,7 @@ REVOKE ALL ON partman_test.time_static_table FROM partman_revoke;
 ALTER TABLE partman_test.time_static_table OWNER TO partman_owner;
 
 UPDATE part_config SET premake = 6 WHERE parent_table = 'partman_test.time_static_table';
-SELECT run_maintenance();
+SELECT run_maintenance(p_analyze := false);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(123,150), CURRENT_TIMESTAMP + '6 days'::interval);
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_static_table', 'Check that parent table has had no data inserted to it');

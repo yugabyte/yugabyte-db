@@ -1,5 +1,5 @@
 -- ########## TIME DYNAMIC TESTS ##########
--- Other tests: larger than necessary p_batch_count to partition_data_time()
+-- Other tests: larger than necessary p_batch_count to partition_data_time(), create_parent() returns true
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true

@@ -12,6 +12,8 @@ v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
 v_max_partition_id          bigint;
 v_min_partition_id          bigint;
+v_parent_schema             text;
+v_parent_tablename          text;
 v_part_interval             bigint;
 v_partition_id              bigint[];
 v_rowcount                  bigint;
@@ -96,7 +98,9 @@ FOR i IN 1..p_batch_count LOOP
         END IF;
     END IF;
 
-    v_current_partition_name := @extschema@.create_id_partition(p_parent_table, v_partition_id);
+    PERFORM @extschema@.create_partition_id(p_parent_table, v_partition_id);
+    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_parent_table;
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_min_partition_id::text, TRUE);
 
     EXECUTE 'WITH partition_data AS (
         DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||v_min_partition_id||
@@ -112,12 +116,11 @@ FOR i IN 1..p_batch_count LOOP
 END LOOP;
 
 IF v_type = 'id-static' THEN
-        PERFORM @extschema@.create_id_function(p_parent_table);
+        PERFORM @extschema@.create_function_id(p_parent_table);
 END IF;
 
 RETURN v_total_rows;
 
 END
 $$;
-
 

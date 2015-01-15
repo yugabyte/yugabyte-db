@@ -69,7 +69,7 @@ SELECT has_index('partman_reindex_test', 'test_reindex_p1200', 'test_reindex_p12
 SELECT has_index('partman_reindex_test', 'test_reindex_p1300', 'test_reindex_p1300_idx', ARRAY['lower(stuff)'], 'Check for lower(stuff) stuff index in test_reindex_p1300');
 SELECT has_index('partman_reindex_test', 'test_reindex_p1400', 'test_reindex_p1400_idx', ARRAY['lower(stuff)'], 'Check for lower(stuff) stuff index in test_reindex_p1400');
 
-SELECT has_index('partman_reindex_test', 'test_reindex_p0', 'test_reindex_p0_idx1', ARRAY['upper(stuff)'], 'Check for lower(stuff) index in test_reindex_p0');
+SELECT has_index('partman_reindex_test', 'test_reindex_p0', 'test_reindex_p0_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) index in test_reindex_p0');
 SELECT has_index('partman_reindex_test', 'test_reindex_p100', 'test_reindex_p100_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p100');
 SELECT has_index('partman_reindex_test', 'test_reindex_p200', 'test_reindex_p200_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p200');
 SELECT has_index('partman_reindex_test', 'test_reindex_p300', 'test_reindex_p300_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p300');
