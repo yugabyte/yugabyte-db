@@ -254,9 +254,23 @@ extern PGDLLEXPORT Datum dbms_utility_format_call_stack1(PG_FUNCTION_ARGS);
 extern void PGDLLEXPORT _PG_init(void);
 
 /* from charpad.c */
-extern PGDLLEXPORT Datum lpad(PG_FUNCTION_ARGS);
-extern PGDLLEXPORT Datum rpad(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_lpad(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_rpad(PG_FUNCTION_ARGS);
 
 /* from charlen.c */
-extern PGDLLEXPORT Datum bpcharlen(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_bpcharlen(PG_FUNCTION_ARGS);
+
+/* from varchar2.c */
+extern PGDLLEXPORT Datum varchar2in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum varchar2out(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum varchar2(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum varchar2typmodin(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum varchar2recv(PG_FUNCTION_ARGS);
+
+/* from nvarchar2.c */
+extern PGDLLEXPORT Datum nvarchar2in(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum nvarchar2out(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum nvarchar2(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum nvarchar2typmodin(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum nvarchar2recv(PG_FUNCTION_ARGS);
 #endif
