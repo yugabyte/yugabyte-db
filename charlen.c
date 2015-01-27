@@ -22,12 +22,13 @@
 PG_MODULE_MAGIC;
 #endif
 
-extern Datum bpcharlen(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_bpcharlen(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(bpcharlen);
 
+PGDLLEXPORT
 Datum
-bpcharlen(PG_FUNCTION_ARGS)
+orafce_bpcharlen(PG_FUNCTION_ARGS)
 {
     BpChar     *arg = PG_GETARG_BPCHAR_PP(0);
     int         len; 

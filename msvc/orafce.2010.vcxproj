@@ -30,7 +30,7 @@
     <ProjectGuid>{B6B37F22-9E44-4240-AAA0-650D4AC2C2E2}</ProjectGuid>
     <RootNamespace>lib</RootNamespace>
     <Keyword>Win32Proj</Keyword>
-    <ProjectName>orafunc</ProjectName>
+    <ProjectName>orafce</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='9.0|Win32'" Label="Configuration">
@@ -123,12 +123,12 @@
     <LibraryPath Condition="'$(Configuration)|$(Platform)'=='8.4|x64'">C:\Program Files %28x86%29\PostgreSQL\8.4\lib;$(LibraryPath)</LibraryPath>
     <LibraryPath Condition="'$(Configuration)|$(Platform)'=='8.3|Win32'">C:\Program Files %28x86%29\PostgreSQL\8.3\lib;$(LibraryPath)</LibraryPath>
     <LibraryPath Condition="'$(Configuration)|$(Platform)'=='8.3|x64'">C:\Program Files %28x86%29\PostgreSQL\8.3\lib;$(LibraryPath)</LibraryPath>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='9.0|Win32'">orafunc</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='9.0|x64'">orafunc</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.4|Win32'">orafunc</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.4|x64'">orafunc</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.3|Win32'">orafunc</TargetName>
-    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.3|x64'">orafunc</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='9.0|Win32'">orafce</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='9.0|x64'">orafce</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.4|Win32'">orafce</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.4|x64'">orafce</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.3|Win32'">orafce</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='8.3|x64'">orafce</TargetName>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='9.0|Win32'">
     <ClCompile>
@@ -284,26 +284,26 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="..\COPYRIGHT.orafunc" />
+    <None Include="..\COPYRIGHT.orafce" />
     <None Include="..\expected\dbms_output.out" />
     <None Include="..\expected\files.out" />
-    <None Include="..\expected\orafunc.out" />
-    <None Include="..\INSTALL.orafunc" />
-    <None Include="..\orafunc-8.1.sql" />
-    <None Include="..\orafunc-8.2.sql" />
-    <None Include="..\orafunc-8.3.sql" />
-    <None Include="..\orafunc-8.4.sql" />
-    <None Include="..\orafunc-9.0.sql" />
-    <None Include="..\orafunc-9.1.sql" />
-    <None Include="..\orafunc-common.sql" />
-    <None Include="..\README.orafunc" />
+    <None Include="..\expected\orafce.out" />
+    <None Include="..\INSTALL.orafce" />
+    <None Include="..\orafce-8.1.sql" />
+    <None Include="..\orafce-8.2.sql" />
+    <None Include="..\orafce-8.3.sql" />
+    <None Include="..\orafce-8.4.sql" />
+    <None Include="..\orafce-9.0.sql" />
+    <None Include="..\orafce-9.1.sql" />
+    <None Include="..\orafce-common.sql" />
+    <None Include="..\README.orafce" />
     <None Include="..\sqlparse.y" />
     <None Include="..\sqlscan.l" />
     <None Include="..\sql\dbms_output.sql" />
     <None Include="..\sql\dbms_pipe.sql" />
     <None Include="..\sql\files.sql" />
-    <None Include="..\sql\orafunc.sql" />
-    <None Include="..\uninstall_orafunc.sql" />
+    <None Include="..\sql\orafce.sql" />
+    <None Include="..\uninstall_orafce.sql" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\aggregate.c" />
@@ -324,11 +324,16 @@
     <ClCompile Include="..\random.c" />
     <ClCompile Include="..\shmmc.c" />
     <ClCompile Include="..\utility.c" />
+    <ClCompile Include="..\oraguc.c"/>
+    <ClCompile Include="..\charlen.c" />
+    <ClCompile Include="..\charpad.c" />
+    <ClCompile Include="..\nvarchar2.c" />
+    <ClCompile Include="..\varchar2.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\assert.h" />
     <ClInclude Include="..\builtins.h" />
-    <ClInclude Include="..\orafunc.h" />
+    <ClInclude Include="..\orafce.h" />
     <ClInclude Include="..\pipe.h" />
     <ClInclude Include="..\plvlex.h" />
     <ClInclude Include="..\shmmc.h" />

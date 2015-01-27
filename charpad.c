@@ -24,20 +24,21 @@ PG_MODULE_MAGIC;
 #define PAD_MAX 4000
 
 /* Prototype declarations */
-extern Datum lpad(PG_FUNCTION_ARGS);
-extern Datum rpad(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_lpad(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_rpad(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(lpad);
 PG_FUNCTION_INFO_V1(rpad);
 
 /*
- * lpad(string text, length int32 [, fill text])
+ * orafce_lpad(string text, length int32 [, fill text])
  *
  * Fill up the string to length 'length' by prepending
  * the characters fill (a half-width space by default)
  */
+PGDLLEXPORT
 Datum
-lpad(PG_FUNCTION_ARGS)
+orafce_lpad(PG_FUNCTION_ARGS)
 {
 	text	*string1 = PG_GETARG_TEXT_PP(0);
 	int32	output_width = PG_GETARG_INT32(1);
@@ -261,13 +262,14 @@ lpad(PG_FUNCTION_ARGS)
 }
 
 /*
- * rpad(string text, length int32 [, fill text])
+ * orafce_rpad(string text, length int32 [, fill text])
  *
  * Fill up the string to length 'length' by appending
  * the characters fill (a half-width space by default)
  */
+PGDLLEXPORT
 Datum
-rpad(PG_FUNCTION_ARGS)
+orafce_rpad(PG_FUNCTION_ARGS)
 {
 	text	*string1 = PG_GETARG_TEXT_PP(0);
 	int32	output_width = PG_GETARG_INT32(1);
