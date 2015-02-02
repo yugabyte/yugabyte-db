@@ -3583,7 +3583,7 @@ RETURNS TEXT AS $$
                AND n.nspname = $1
                AND t.typname = $2
                AND t.typtype = 'e'
-             ORDER BY e.oid
+             ORDER BY e.enumsortorder
         ),
         $3,
         $4
@@ -3611,7 +3611,7 @@ RETURNS TEXT AS $$
                AND pg_catalog.pg_type_is_visible(t.oid)
                AND t.typname = $1
                AND t.typtype = 'e'
-             ORDER BY e.oid
+             ORDER BY e.enumsortorder
         ),
         $2,
         $3

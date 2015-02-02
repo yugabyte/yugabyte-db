@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(96);
+SELECT plan(108);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -294,6 +294,82 @@ SELECT * FROM check_test(
     Missing types:
         fredy'
 );
+
+/****************************************************************************/
+-- Make sure that we properly handle reordered labels.
+CREATE FUNCTION test_alter_enum() RETURNS SETOF TEXT AS $$
+DECLARE
+    tap record;
+    expect TEXT[];
+    labels TEXT;
+BEGIN
+    IF pg_version_num() >= 90000 THEN
+        -- Mimic ALTER TYPE ADD VALUE by reordering labels.
+        EXECUTE $E$
+            UPDATE pg_catalog.pg_enum
+               SET enumsortorder = CASE enumlabel
+                   WHEN 'closed' THEN 4
+                   WHEN 'open' THEN 5
+                   ELSE 6
+               END
+             WHERE enumtypid IN (
+                 SELECT t.oid
+                   FROM pg_catalog.pg_type t
+                   JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
+                  WHERE n.nspname = 'public'
+                    AND t.typname = 'bug_status'
+                    AND t.typtype = 'e'
+            );
+        $E$;
+        expect := ARRAY['closed', 'open', 'new'];
+    ELSE
+        expect := ARRAY['new', 'open', 'closed'];
+    END IF;
+    labels := array_to_string(expect, ', ');
+
+    FOR tap IN SELECT * FROM check_test(
+        enum_has_labels( 'public', 'bug_status', expect, 'mydesc' ),
+        true,
+        'enum_has_labels(schema, altered_enum, labels, desc)',
+        'mydesc',
+        ''
+    ) AS b LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+        enum_has_labels( 'public', 'bug_status', expect ),
+        true,
+        'enum_has_labels(schema, altered_enum, labels)',
+        'Enum public.bug_status should have labels ('|| labels || ')',
+        ''
+    ) AS b LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+        enum_has_labels( 'bug_status', expect, 'mydesc' ),
+        true,
+        'enum_has_labels(altered_enum, labels, desc)',
+        'mydesc',
+        ''
+    ) AS b LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
+
+    FOR tap IN SELECT * FROM check_test(
+        enum_has_labels( 'bug_status', expect ),
+        true,
+        'enum_has_labels(altered_enum, labels)',
+        'Enum bug_status should have labels (' || labels || ')',
+        ''
+    ) AS b LOOP
+        RETURN NEXT tap.b;
+    END LOOP;
+END;
+$$ LANGUAGE PLPGSQL;
+
+SELECT * FROM test_alter_enum();
 
 /****************************************************************************/
 -- Finish the tests and clean up.

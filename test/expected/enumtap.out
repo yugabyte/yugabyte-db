@@ -1,5 +1,5 @@
 \unset ECHO
-1..96
+1..108
 ok 1 - has_type(enum) should pass
 ok 2 - has_type(enum) should have the proper description
 ok 3 - has_type(enum) should have the proper diagnostics
@@ -96,3 +96,15 @@ ok 93 - enums_are(enums, desc) fail should have the proper diagnostics
 ok 94 - enums_are(enums) fail should fail
 ok 95 - enums_are(enums) fail should have the proper description
 ok 96 - enums_are(enums) fail should have the proper diagnostics
+ok 97 - enum_has_labels(schema, altered_enum, labels, desc) should pass
+ok 98 - enum_has_labels(schema, altered_enum, labels, desc) should have the proper description
+ok 99 - enum_has_labels(schema, altered_enum, labels, desc) should have the proper diagnostics
+ok 100 - enum_has_labels(schema, altered_enum, labels) should pass
+ok 101 - enum_has_labels(schema, altered_enum, labels) should have the proper description
+ok 102 - enum_has_labels(schema, altered_enum, labels) should have the proper diagnostics
+ok 103 - enum_has_labels(altered_enum, labels, desc) should pass
+ok 104 - enum_has_labels(altered_enum, labels, desc) should have the proper description
+ok 105 - enum_has_labels(altered_enum, labels, desc) should have the proper diagnostics
+ok 106 - enum_has_labels(altered_enum, labels) should pass
+ok 107 - enum_has_labels(altered_enum, labels) should have the proper description
+ok 108 - enum_has_labels(altered_enum, labels) should have the proper diagnostics
