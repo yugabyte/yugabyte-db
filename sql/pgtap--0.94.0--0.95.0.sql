@@ -1,3 +1,7 @@
+CREATE OR REPLACE FUNCTION pgtap_version()
+RETURNS NUMERIC AS 'SELECT 0.95;'
+LANGUAGE SQL IMMUTABLE;
+
 -- is_member_of( role, members[], description )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
