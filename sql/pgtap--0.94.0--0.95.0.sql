@@ -71,7 +71,7 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION _fix_enum_has_labels(
 ) RETURNS  VOID LANGUAGE PLPGSQL AS $FIX$
 BEGIN
-    IF pg_version_num() <= 90000 THEN RETURN; END IF;
+    IF pg_version_num() < 90100 THEN RETURN; END IF;
     EXECUTE $RUN$
         -- enum_has_labels( schema, enum, labels, description )
         CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[], TEXT )
