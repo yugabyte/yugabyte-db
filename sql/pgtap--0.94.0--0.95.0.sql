@@ -63,3 +63,42 @@ RETURNS TEXT AS $$
         'Search path ' || pg_catalog.current_setting('search_path') || ' should have the correct foreign tables'
     );
 $$ LANGUAGE SQL;
+
+-- enum_has_labels( schema, enum, labels, description )
+CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT is(
+        ARRAY(
+            SELECT e.enumlabel
+              FROM pg_catalog.pg_type t
+              JOIN pg_catalog.pg_enum e      ON t.oid = e.enumtypid
+              JOIN pg_catalog.pg_namespace n ON t.typnamespace = n.oid
+              WHERE t.typisdefined
+               AND n.nspname = $1
+               AND t.typname = $2
+               AND t.typtype = 'e'
+             ORDER BY e.enumsortorder
+        ),
+        $3,
+        $4
+    );
+$$ LANGUAGE sql;
+
+-- enum_has_labels( enum, labels, description )
+CREATE OR REPLACE FUNCTION enum_has_labels( NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+    SELECT is(
+        ARRAY(
+            SELECT e.enumlabel
+              FROM pg_catalog.pg_type t
+              JOIN pg_catalog.pg_enum e ON t.oid = e.enumtypid
+              WHERE t.typisdefined
+               AND pg_catalog.pg_type_is_visible(t.oid)
+               AND t.typname = $1
+               AND t.typtype = 'e'
+             ORDER BY e.enumsortorder
+        ),
+        $2,
+        $3
+    );
+$$ LANGUAGE sql;
