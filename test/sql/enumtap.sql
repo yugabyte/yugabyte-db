@@ -303,7 +303,7 @@ DECLARE
     expect TEXT[];
     labels TEXT;
 BEGIN
-    IF pg_version_num() >= 90000 THEN
+    IF pg_version_num() >= 90100 THEN
         -- Mimic ALTER TYPE ADD VALUE by reordering labels.
         EXECUTE $E$
             UPDATE pg_catalog.pg_enum
