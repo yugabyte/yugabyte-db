@@ -27,8 +27,8 @@ PG_MODULE_MAGIC;
 extern PGDLLEXPORT Datum orafce_lpad(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_rpad(PG_FUNCTION_ARGS);
 
-PG_FUNCTION_INFO_V1(lpad);
-PG_FUNCTION_INFO_V1(rpad);
+PG_FUNCTION_INFO_V1(orafce_lpad);
+PG_FUNCTION_INFO_V1(orafce_rpad);
 
 /*
  * orafce_lpad(string text, length int32 [, fill text])
