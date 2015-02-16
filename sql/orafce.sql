@@ -522,6 +522,14 @@ SELECT nanvl(12345, 1), nanvl('NaN', 1);
 SELECT nanvl(12345::float4, 1), nanvl('NaN'::float4, 1);
 SELECT nanvl(12345::float8, 1), nanvl('NaN'::float8, 1);
 SELECT nanvl(12345::numeric, 1), nanvl('NaN'::numeric, 1);
+SELECT nanvl(12345, '1'::varchar), nanvl('NaN', 1::varchar);
+SELECT nanvl(12345::float4, '1'::varchar), nanvl('NaN'::float4, '1'::varchar);
+SELECT nanvl(12345::float8, '1'::varchar), nanvl('NaN'::float8, '1'::varchar);
+SELECT nanvl(12345::numeric, '1'::varchar), nanvl('NaN'::numeric, '1'::varchar);
+SELECT nanvl(12345, '1'::char), nanvl('NaN', 1::char);
+SELECT nanvl(12345::float4, '1'::char), nanvl('NaN'::float4, '1'::char);
+SELECT nanvl(12345::float8, '1'::char), nanvl('NaN'::float8, '1'::char);
+SELECT nanvl(12345::numeric, '1'::char), nanvl('NaN'::numeric, '1'::char);
 
 select dbms_assert.enquote_literal('some text '' some text');
 select dbms_assert.enquote_name('''"AAA');

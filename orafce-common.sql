@@ -216,6 +216,21 @@ RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2 ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
+CREATE FUNCTION nanvl(float4, varchar)
+RETURNS float4 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float4 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION nanvl(float8, varchar)
+RETURNS float8 AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::float8 ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
+CREATE FUNCTION nanvl(numeric, varchar)
+RETURNS numeric AS
+$$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
+LANGUAGE sql IMMUTABLE STRICT;
+
 CREATE FUNCTION dump("any") 
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
