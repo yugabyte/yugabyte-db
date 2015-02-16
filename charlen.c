@@ -24,7 +24,7 @@ PG_MODULE_MAGIC;
 
 extern PGDLLEXPORT Datum orafce_bpcharlen(PG_FUNCTION_ARGS);
 
-PG_FUNCTION_INFO_V1(bpcharlen);
+PG_FUNCTION_INFO_V1(orafce_bpcharlen);
 
 PGDLLEXPORT
 Datum
