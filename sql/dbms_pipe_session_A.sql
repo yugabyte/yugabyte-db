@@ -14,7 +14,7 @@ SELECT dbms_pipe.send_message('pipe_test_owner_created_notifier');
 -- Create a new connection under the userid of pipe_test_owner
 SET SESSION AUTHORIZATION pipe_test_owner;
 
-/* create an implicit pipe and sends message using 
+/* create an implicit pipe and sends message using
  * send_message(text,integer,integer)
  */
 CREATE OR REPLACE FUNCTION send(pipename text) RETURNS void AS $$
@@ -70,8 +70,8 @@ BEGIN
 END; $$ LANGUAGE plpgsql;
 
 
-/* Creates an explicit pipe using either create_pipe(text,integer,bool), 
- * create_pipe(text,integer) OR create_pipe(text). 
+/* Creates an explicit pipe using either create_pipe(text,integer,bool),
+ * create_pipe(text,integer) OR create_pipe(text).
  * In case third parameter (bool) absent, default is false, that is, it's a public pipe.
  */
 CREATE OR REPLACE FUNCTION createPipe(name text,ver integer) RETURNS void AS $$
@@ -86,8 +86,8 @@ BEGIN
 END; $$ LANGUAGE plpgsql;
 
 
-/* Testing create_pipe for different versions, one of them, is the case of 
- * private pipe 
+/* Testing create_pipe for different versions, one of them, is the case of
+ * private pipe
  */
 
 CREATE OR REPLACE FUNCTION createExplicitPipe(pipename text,create_version integer) RETURNS void AS $$
@@ -159,7 +159,7 @@ BEGIN
 	PERFORM dbms_pipe.send_message(pipename);
 END; $$ LANGUAGE plpgsql;
 
-\set ECHO all;
+\set ECHO all
 
 SELECT createImplicitPipe();
 
@@ -183,10 +183,10 @@ SELECT notify('recv_public2_notifier');
 SELECT createExplicitPipe('public_pipe_4',1);
 
 -- tests send_message(text)
-SELECT checkSend1(); 
+SELECT checkSend1();
 
 -- tests send_message(text,integer)
-SELECT checkSend2(); 
+SELECT checkSend2();
 
 SELECT notifyDropTemp();
 

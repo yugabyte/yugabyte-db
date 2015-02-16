@@ -6,7 +6,7 @@ SELECT dbms_pipe.receive_message('pipe_test_owner_created_notifier');
 -- create new connection under the userid of 'pipe_test_owner'
 SET SESSION AUTHORIZATION pipe_test_owner;
 
-/* Tests receive_message(text,integer), next_item_type() and all versions of 
+/* Tests receive_message(text,integer), next_item_type() and all versions of
  *  unpack_message_<type>() and  purge(text)
  */
 
@@ -24,9 +24,9 @@ BEGIN
                 ELSIF typ=13 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_timestamp();
                 ELSIF typ=23 THEN RAISE NOTICE 'RECEIVE %: %', typ, encode(dbms_pipe.unpack_message_bytea(),'escape');
                 ELSIF typ=24 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_record();
-                END IF;                 
+                END IF;
         END LOOP;
-        PERFORM dbms_pipe.purge(pipename);      
+        PERFORM dbms_pipe.purge(pipename);
 END;
 $$ LANGUAGE plpgsql;
 
@@ -48,7 +48,7 @@ BEGIN
                 ELSIF typ=13 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_timestamp();
                 ELSIF typ=23 THEN RAISE NOTICE 'RECEIVE %: %', typ, encode(dbms_pipe.unpack_message_bytea()::bytea,'escape');
                 ELSIF typ=24 THEN RAISE NOTICE 'RECEIVE %: %', typ, dbms_pipe.unpack_message_record();
-                END IF;                 
+                END IF;
         END LOOP;
         PERFORM dbms_pipe.purge('named_pipe_2');
 END;
@@ -80,7 +80,7 @@ BEGIN
 	RETURN result;
 END; $$ LANGUAGE plpgsql;
 
-\set ECHO all;
+\set ECHO all
 
 -- Receives messages sent via an implicit pipe
 SELECT receiveFrom('named_pipe');
@@ -98,14 +98,14 @@ DROP USER IF EXISTS pipe_test_other;
 CREATE USER pipe_test_other;
 SET SESSION AUTHORIZATION pipe_test_other;
 
--- Try to receive messages sent via an explicit private pipe under the user 
+-- Try to receive messages sent via an explicit private pipe under the user
 -- 'pipe_test_other' who is not the owner of pipe.
 -- insufficient privileges in case of 'private_pipe_2'.
 
 SELECT dbms_pipe.receive_message('recv_private2_notifier');
 SELECT receiveFrom('private_pipe_2');
 
--- These are explicit private pipes created using create_pipe(text,integer) 
+-- These are explicit private pipes created using create_pipe(text,integer)
 -- and create_pipe(text)
 SELECT dbms_pipe.receive_message('recv_public1_notifier');
 SELECT receiveFrom('public_pipe_3');
@@ -122,16 +122,16 @@ SELECT checkReceive1('pipe_name_1');
 SELECT checkReceive1('pipe_name_2');
 
 -- Tests dbms_pipe.db_pipes view
-SELECT name, items, "limit", private, owner 
-FROM dbms_pipe.db_pipes 
-WHERE name LIKE 'private%' 
+SELECT name, items, "limit", private, owner
+FROM dbms_pipe.db_pipes
+WHERE name LIKE 'private%'
 ORDER BY name;
 
--- Tests dbms_pipe.__list_pipes(); attribute size is not included 
+-- Tests dbms_pipe.__list_pipes(); attribute size is not included
 -- since it can be different across runs.
-SELECT name, items, "limit", private, owner  
+SELECT name, items, "limit", private, owner
 FROM dbms_pipe.__list_pipes()  AS  (name varchar, items int4, siz int4, "limit" int4, private bool, owner varchar)
-WHERE name <> 'pipe_name_4' 
+WHERE name <> 'pipe_name_4'
 ORDER BY 1;
 
 -- Tests remove_pipe(text)
