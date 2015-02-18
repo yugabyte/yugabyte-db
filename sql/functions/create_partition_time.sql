@@ -122,6 +122,10 @@ END IF;
 
 SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
+IF v_jobmon_schema IS NOT NULL THEN
+    v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
+END IF;
+
 FOREACH v_time IN ARRAY p_partition_times LOOP    
     v_partition_timestamp_start := v_time;
     BEGIN
@@ -178,7 +182,6 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     v_analyze := TRUE;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
         v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_partition_timestamp_start||' to '||(v_partition_timestamp_end-'1sec'::interval));
     END IF;
 
@@ -292,14 +295,6 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     END LOOP; -- end sub partitioning LOOP
 
-    IF v_jobmon_schema IS NOT NULL THEN
-        IF v_step_overflow_id IS NOT NULL THEN
-            PERFORM fail_job(v_job_id);
-        ELSE
-            PERFORM close_job(v_job_id);
-        END IF;
-    END IF;
-
     v_partition_created := true;
 
 END LOOP;
@@ -307,7 +302,28 @@ END LOOP;
 -- v_analyze is a local check if a new table is made.
 -- p_analyze is a parameter to say whether to run the analyze at all. Used by create_parent() to avoid long exclusive lock or run_maintenence() to avoid long creation runs.
 IF v_analyze AND p_analyze THEN
+    IF v_jobmon_schema IS NOT NULL THEN
+        v_step_id := add_step(v_job_id, 'Analyzing partition set: '||p_parent_table);
+    END IF;
+
     EXECUTE 'ANALYZE '||p_parent_table;
+
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'OK', 'Done');
+    END IF;
+END IF;
+
+IF v_jobmon_schema IS NOT NULL THEN
+    IF v_partition_created = false THEN
+        v_step_id := add_step(v_job_id, 'No partitions created for partition set: '||p_parent_table);
+        PERFORM update_step(v_step_id, 'OK', 'Done');
+    END IF;
+
+    IF v_step_overflow_id IS NOT NULL THEN
+        PERFORM fail_job(v_job_id);
+    ELSE
+        PERFORM close_job(v_job_id);
+    END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
@@ -331,5 +347,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

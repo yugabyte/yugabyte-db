@@ -1,3 +1,9 @@
+1.8.1
+-- The p_analyze parameter to the apply_constraint() function is now FALSE by default instead of TRUE. This makes it so that by default, an analyze is only run by the create_partition_id/time() functions upon new partition creation. The parameter was left in apply_contraints() in case someone needs to call it directly and ensure an analyze is run so statistics are updated. (Github Issue #45)
+    -- Note: If using reapply_constraints.py, an ANALYZE is always done at the end of the script. It was like that before this update.
+-- Changed the manner in which new partition creation is logged in pg_jobmon. Previously, each individual child table creation was logged as its own, separate job entry in pg_jobmon. Now, if multiple child partitions are created for a single partition set, all those child tables are logged as steps for a single job log entry. This now allows the analyze step (if it is done) to be logged as well in pg_jobmon and allows for easier diagnosis if this if holding up partition maintenance.
+
+
 1.8.0
 -- PG Partman now supports sub-partitioning. This allows automatic configuration to turn the child tables of an existing partition set into parent tables of their own partition sets. (Github Issue #26)
     -- New function "create_sub_parent()" works exactly like "create_parent()", even taking similar parameters. Instead, the parent_table you're giving it as a parameter is telling it which parent's child tables to partition and how to partition them.

@@ -1,7 +1,7 @@
 /*
  * Apply constraints managed by partman extension
  */
-CREATE FUNCTION apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_analyze boolean DEFAULT TRUE, p_debug boolean DEFAULT FALSE) RETURNS void
+CREATE FUNCTION apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_analyze boolean DEFAULT FALSE, p_debug boolean DEFAULT FALSE) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -174,7 +174,18 @@ LOOP
 END LOOP;
 
 IF p_analyze THEN
+    IF v_jobmon_schema IS NOT NULL THEN
+        v_step_id := add_step(v_job_id, 'Running analyze on partition set: '||p_parent_table);
+    END IF;
+    IF p_debug THEN
+        RAISE NOTICE 'Running analyze on partition set: %', p_parent_table;
+    END IF;
+
     EXECUTE 'ANALYZE '||p_parent_table;
+
+    IF v_jobmon_schema IS NOT NULL THEN
+        PERFORM update_step(v_step_id, 'OK', 'Done');
+    END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
