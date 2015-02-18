@@ -557,39 +557,39 @@ We can still take this another level deeper as well. Normally with a large amoun
 
 I won't show the full list here, but you can see how every child table of the above parents is now a parent table itself with the appropriate minimal child table created where needed as well as the child tables around the current max:
 
-keith=# SELECT tablename FROM pg_tables WHERE schemaname = 'partman_test' order by tablename;
-                tablename                
------------------------------------------
- id_static_table
- id_static_table_p0
- id_static_table_p0_p0
- id_static_table_p0_p0_p0
- id_static_table_p0_p1000
- id_static_table_p0_p1000_p1000
- id_static_table_p0_p2000
- id_static_table_p0_p2000_p2000
- ...
- id_static_table_p10000
- id_static_table_p100000
- id_static_table_p100000_p100000
- id_static_table_p100000_p100000_p100000
- id_static_table_p100000_p100000_p100100
- id_static_table_p100000_p100000_p100200
- id_static_table_p100000_p101000
- id_static_table_p100000_p101000_p101000
- id_static_table_p100000_p102000
- id_static_table_p100000_p102000_p102000
- id_static_table_p10000_p10000
- id_static_table_p10000_p10000_p10000
- id_static_table_p10000_p11000
- id_static_table_p10000_p11000_p11000
- ...
- id_static_table_p90000_p98000
- id_static_table_p90000_p98000_p98000
- id_static_table_p90000_p99000
- id_static_table_p90000_p99000_p99800
- id_static_table_p90000_p99000_p99900
-(225 rows)
+    keith=# SELECT tablename FROM pg_tables WHERE schemaname = 'partman_test' order by tablename;
+                    tablename                
+    -----------------------------------------
+     id_static_table
+     id_static_table_p0
+     id_static_table_p0_p0
+     id_static_table_p0_p0_p0
+     id_static_table_p0_p1000
+     id_static_table_p0_p1000_p1000
+     id_static_table_p0_p2000
+     id_static_table_p0_p2000_p2000
+     ...
+     id_static_table_p10000
+     id_static_table_p100000
+     id_static_table_p100000_p100000
+     id_static_table_p100000_p100000_p100000
+     id_static_table_p100000_p100000_p100100
+     id_static_table_p100000_p100000_p100200
+     id_static_table_p100000_p101000
+     id_static_table_p100000_p101000_p101000
+     id_static_table_p100000_p102000
+     id_static_table_p100000_p102000_p102000
+     id_static_table_p10000_p10000
+     id_static_table_p10000_p10000_p10000
+     id_static_table_p10000_p11000
+     id_static_table_p10000_p11000_p11000
+     ...
+     id_static_table_p90000_p98000
+     id_static_table_p90000_p98000_p98000
+     id_static_table_p90000_p99000
+     id_static_table_p90000_p99000_p99800
+     id_static_table_p90000_p99000_p99900
+    (225 rows)
 
 If you ran the check_parent() function, you'd see that now each one of these new parent tables now needs to have its data moved. Now's a good time show a trick for generating many individual statements based on values returned from a query:
 
@@ -765,4 +765,4 @@ Now there is only one table left with all the data
 This is done in the same exact way as for ID->ID->ID except the undo_partition.py script would use the -t time setting and -i would use a time interval value.
 
 
-Hopefully these working examples can help you get started. Again, please see the pg_partman.md doc for the full details on all the functions and features of this extension. If you have any issues or questions, feel free to open an issue on the github page: https://github.com/keithf4/pg_partman
+Hopefully these working examples can help you get started. Again, please see the `pg_partman.md` doc for the full details on all the functions and features of this extension. If you have any issues or questions, feel free to open an issue on the github page: https://github.com/keithf4/pg_partman
