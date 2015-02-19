@@ -69,21 +69,21 @@ SELECT has_index('partman_reindex_test', 'test_reindex_p1200', 'test_reindex_p12
 SELECT has_index('partman_reindex_test', 'test_reindex_p1300', 'test_reindex_p1300_idx', ARRAY['lower(stuff)'], 'Check for lower(stuff) stuff index in test_reindex_p1300');
 SELECT has_index('partman_reindex_test', 'test_reindex_p1400', 'test_reindex_p1400_idx', ARRAY['lower(stuff)'], 'Check for lower(stuff) stuff index in test_reindex_p1400');
 
-SELECT has_index('partman_reindex_test', 'test_reindex_p0', 'test_reindex_p0_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) index in test_reindex_p0');
-SELECT has_index('partman_reindex_test', 'test_reindex_p100', 'test_reindex_p100_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p100');
-SELECT has_index('partman_reindex_test', 'test_reindex_p200', 'test_reindex_p200_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p200');
-SELECT has_index('partman_reindex_test', 'test_reindex_p300', 'test_reindex_p300_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p300');
-SELECT has_index('partman_reindex_test', 'test_reindex_p400', 'test_reindex_p400_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p400');
-SELECT has_index('partman_reindex_test', 'test_reindex_p500', 'test_reindex_p500_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p500');
-SELECT has_index('partman_reindex_test', 'test_reindex_p600', 'test_reindex_p600_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p600');
-SELECT has_index('partman_reindex_test', 'test_reindex_p700', 'test_reindex_p700_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p700');
-SELECT has_index('partman_reindex_test', 'test_reindex_p800', 'test_reindex_p800_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p800');
-SELECT has_index('partman_reindex_test', 'test_reindex_p900', 'test_reindex_p900_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p900');
-SELECT has_index('partman_reindex_test', 'test_reindex_p1000', 'test_reindex_p1000_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1000');
-SELECT has_index('partman_reindex_test', 'test_reindex_p1100', 'test_reindex_p1100_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1100');
-SELECT has_index('partman_reindex_test', 'test_reindex_p1200', 'test_reindex_p1200_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1200');
-SELECT has_index('partman_reindex_test', 'test_reindex_p1300', 'test_reindex_p1300_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1300');
-SELECT has_index('partman_reindex_test', 'test_reindex_p1400', 'test_reindex_p1400_upper_idx', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1400');
+SELECT has_index('partman_reindex_test', 'test_reindex_p0', 'test_reindex_p0_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) index in test_reindex_p0');
+SELECT has_index('partman_reindex_test', 'test_reindex_p100', 'test_reindex_p100_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p100');
+SELECT has_index('partman_reindex_test', 'test_reindex_p200', 'test_reindex_p200_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p200');
+SELECT has_index('partman_reindex_test', 'test_reindex_p300', 'test_reindex_p300_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p300');
+SELECT has_index('partman_reindex_test', 'test_reindex_p400', 'test_reindex_p400_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p400');
+SELECT has_index('partman_reindex_test', 'test_reindex_p500', 'test_reindex_p500_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p500');
+SELECT has_index('partman_reindex_test', 'test_reindex_p600', 'test_reindex_p600_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p600');
+SELECT has_index('partman_reindex_test', 'test_reindex_p700', 'test_reindex_p700_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p700');
+SELECT has_index('partman_reindex_test', 'test_reindex_p800', 'test_reindex_p800_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p800');
+SELECT has_index('partman_reindex_test', 'test_reindex_p900', 'test_reindex_p900_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p900');
+SELECT has_index('partman_reindex_test', 'test_reindex_p1000', 'test_reindex_p1000_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1000');
+SELECT has_index('partman_reindex_test', 'test_reindex_p1100', 'test_reindex_p1100_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1100');
+SELECT has_index('partman_reindex_test', 'test_reindex_p1200', 'test_reindex_p1200_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1200');
+SELECT has_index('partman_reindex_test', 'test_reindex_p1300', 'test_reindex_p1300_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1300');
+SELECT has_index('partman_reindex_test', 'test_reindex_p1400', 'test_reindex_p1400_idx1', ARRAY['upper(stuff)'], 'Check for upper(stuff) stuff index in test_reindex_p1400');
 
 SELECT col_is_pk('partman_reindex_test', 'test_reindex_p0', ARRAY['new_id'], 'Check for new primary key in test_reindex_p0');
 SELECT col_is_pk('partman_reindex_test', 'test_reindex_p100', ARRAY['new_id'], 'Check for new primary key in test_reindex_p100');
@@ -101,7 +101,5 @@ SELECT col_is_pk('partman_reindex_test', 'test_reindex_p1200', ARRAY['new_id'], 
 SELECT col_is_pk('partman_reindex_test', 'test_reindex_p1300', ARRAY['new_id'], 'Check for new primary key in test_reindex_p1300');
 SELECT col_is_pk('partman_reindex_test', 'test_reindex_p1400', ARRAY['new_id'], 'Check for new primary key in test_reindex_p1400');
 
-SELECT diag('!!! Now run reapply_index.py again with all the same arguments as last time but add --recreate_all !!!');
-SELECT diag('!!! After that completes, run 04-check-indexes.sql !!!'); 
-
+SELECT diag('!!! If all tests have passed, you can now run 99-cleanup-reindex-test.sql to remove all reindexing test objects !!!');
 SELECT * FROM finish();

@@ -195,7 +195,6 @@ ELSIF v_type = 'id-dynamic' THEN
             v_last_partition            text := '||quote_literal(v_last_partition)||';
             v_last_partition_id         bigint;
             v_next_partition_id         bigint;
-            v_next_partition_name       text;   
             v_partition_created         boolean;
         BEGIN 
         IF TG_OP = ''INSERT'' THEN 
@@ -263,4 +262,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

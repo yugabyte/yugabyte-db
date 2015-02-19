@@ -36,6 +36,7 @@ v_step_overflow_id              bigint;
 v_step_serial_id                bigint;
 v_sub_parent                    text;
 v_row                           record;
+v_row_max_id                    record;
 v_row_sub                       record;
 v_tablename                     text;
 v_tables_list_sql               text;
@@ -170,21 +171,20 @@ LOOP
             v_premade_count = abs(round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval)));
         END LOOP;
     ELSIF v_row.type = 'id-static' OR v_row.type ='id-dynamic' THEN
-        -- This doesn't need the overall max of a full subpartition set, just the max of the current partition set
-        EXECUTE 'SELECT '||v_row.control||' - ('||v_row.control||' % '||v_row.part_interval::int||') FROM '||v_row.parent_table||'
-            WHERE '||v_row.control||' = (SELECT max('||v_row.control||') FROM '||v_row.parent_table||')' 
-            INTO v_current_partition_id;
+        -- Loop through child tables starting from highest to get current max value in partition set
+        -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
+        FOR v_row_max_id IN
+            SELECT show_partitions FROM @extschema@.show_partitions(v_row.parent_table, 'DESC')
+        LOOP
+            EXECUTE 'SELECT '||v_row.control||' - ('||v_row.control||' % '||v_row.part_interval::int||') FROM '||v_row_max_id.show_partitions||'
+                WHERE '||v_row.control||' = (SELECT max('||v_row.control||') FROM '||v_row_max_id.show_partitions||')'
+                INTO v_current_partition_id;
+                IF v_current_partition_id IS NOT NULL THEN
+                    EXIT;
+                END IF;
+        END LOOP;
         v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
         v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
-        -- This catches if there's invalid data in a parent table set that's outside all child table ranges.
-        IF v_last_partition_id < v_current_partition_id THEN
-            IF v_jobmon_schema IS NOT NULL THEN
-                v_step_serial_id := add_step(v_job_id, 'Found inconsistent data in serial partition set.');
-                PERFORM update_step(v_step_serial_id, 'CRITICAL', 'Child partition creation skipped for parent table '||v_row.parent_table||'. Current max serial id value ('||v_current_partition_id||') is greater than the id range covered by the last partition created ('||v_last_partition||'). Run check_parent() to find possible cause.');
-            END IF;
-            RAISE WARNING 'Child partition creation skipped for parent table %. Found inconsistent data in serial partition set. Current max serial id value (%) is greater than the id range covered by the last partition created (%). Run check_parent() to find possible cause.', v_row.parent_table, v_current_partition_id, v_last_partition;
-            CONTINUE;
-        END IF;
         v_next_partition_id := v_last_partition_id + v_row.part_interval::bigint;
         -- Can be negative when subpartitioning and there are parent partitions with lower values compared to current id value.
         -- abs() prevents run_maintenence from running on those old parent tables

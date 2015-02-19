@@ -1,3 +1,9 @@
+1.8.2
+-- Updated reapply_indexes.py script to, by default, only add new indexes and drop ones that don't exist on the parent. Previously it would drop all indexes on all children and recreate them to match the parent. Now it only does the minimal amount of work to make the children match the parent. An additional option (--recreate_all/-R) was added to allow the old behavior of redoing all indexes from scratch if desired.
+-- Changed the minimal interval that serial partitioning can be done to 10. Ran into issues with an interval of 2 and partitioning anything this low is unrealistic and provides no benefit. 10 seems like a reasonable minimal to have at this point to avoid any future issues. This does not affect any existing partition sets, only newly created ones.
+-- Serial partition maintenance when using run_maintenance() is now much more efficient. Should run significantly faster for very large partition sets.
+
+
 1.8.1
 -- The p_analyze parameter to the apply_constraint() function is now FALSE by default instead of TRUE. This makes it so that by default, an analyze is only run by the create_partition_id/time() functions upon new partition creation. The parameter was left in apply_contraints() in case someone needs to call it directly and ensure an analyze is run so statistics are updated. (Github Issue #45)
     -- Note: If using reapply_constraints.py, an ANALYZE is always done at the end of the script. It was like that before this update.

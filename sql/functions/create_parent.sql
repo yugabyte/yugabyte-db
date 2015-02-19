@@ -321,8 +321,8 @@ END IF;
 
 IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
     v_id_interval := p_interval::bigint;
-    IF v_id_interval <= 1 THEN
-        RAISE EXCEPTION 'Interval for serial partitioning must be greater than 1';
+    IF v_id_interval < 10 THEN
+        RAISE EXCEPTION 'Interval for serial partitioning must be greater than or equal to 10';
     END IF;
 
     -- Check if parent table is a subpartition of an already existing id partition set managed by pg_partman. 
@@ -474,5 +474,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 
