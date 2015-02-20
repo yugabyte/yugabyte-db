@@ -59,6 +59,9 @@ DROP FUNCTION tanh(float8);
 DROP FUNCTION nanvl(float4, float4);
 DROP FUNCTION nanvl(float8, float8);
 DROP FUNCTION nanvl(numeric, numeric);
+DROP FUNCTION nanvl(float4, varchar);
+DROP FUNCTION nanvl(float8, varchar);
+DROP FUNCTION nanvl(numeric, varchar);
 DROP FUNCTION to_multi_byte(text);
 
 DROP FUNCTION decode(anyelement, anyelement, text);
