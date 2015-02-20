@@ -24,6 +24,7 @@ v_retention                 bigint;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
 v_retention_schema          text;
+v_row_max_id                record;
 v_step_id                   bigint;
 
 BEGIN
@@ -107,7 +108,16 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job('PARTMAN DROP ID PARTITION: '|| p_parent_table);
 END IF;
 
-EXECUTE 'SELECT max('||v_control||') FROM '||p_parent_table INTO v_max;
+-- Loop through child tables starting from highest to get current max value in partition set
+-- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
+FOR v_row_max_id IN
+    SELECT show_partitions FROM @extschema@.show_partitions(p_parent_table, 'DESC')
+LOOP
+        EXECUTE 'SELECT max('||v_control||') FROM '||v_row_max_id.show_partitions INTO v_max;
+        IF v_max IS NOT NULL THEN
+            EXIT;
+        END IF;
+END LOOP;
 
 -- Loop through child tables of the given parent
 FOR v_child_table IN 
@@ -199,5 +209,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 

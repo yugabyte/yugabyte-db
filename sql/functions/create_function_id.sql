@@ -29,6 +29,7 @@ v_part_interval                 bigint;
 v_premake                       int;
 v_prev_partition_id             bigint;
 v_prev_partition_name           text;
+v_row_max_id                    record;
 v_run_maint                     boolean;
 v_step_id                       bigint;
 v_top_parent                    text := p_parent_table;
@@ -99,7 +100,19 @@ IF v_type = 'id-static' THEN
 
     END LOOP;
 
-    EXECUTE 'SELECT COALESCE(max('||v_control||'), 0) FROM '||v_top_parent INTO v_max;
+    -- Loop through child tables starting from highest to get current max value in partition set
+    -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
+    FOR v_row_max_id IN
+        SELECT show_partitions FROM @extschema@.show_partitions(v_top_parent, 'DESC')
+    LOOP
+            EXECUTE 'SELECT max('||v_control||') FROM '||v_row_max_id.show_partitions INTO v_max;
+            IF v_max IS NOT NULL THEN
+                EXIT;
+            END IF;
+    END LOOP;
+    IF v_max IS NULL THEN
+        v_max := 0;
+    END IF;
     v_current_partition_id = v_max - (v_max % v_part_interval);
     v_next_partition_id := v_current_partition_id + v_part_interval;
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_current_partition_id::text, TRUE);
