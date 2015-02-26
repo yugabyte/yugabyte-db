@@ -633,6 +633,7 @@ bitand, nanvl, sinh, cosh, tanh and oracle.substr.
 * pg_catalog.to_number(text) -  converts a string to a number
 * pg_catalog.to_number(numeric) -  converts a string to a number
 * pg_catalog.to_number(numeric,numeric) -  converts a string to a number
+* public.to_multi_byte(text) - Convert all single-byte characters to their corresponding multibyte characters
 
 You might need to set search_path to 'oracle, pg_catalog, "$user", public'
 because oracle.substr, oracle.lpad, oracle.rpad, oracle.ltrim, oracle.rtrim, oracle.btrim, oracle.length are installed side-by-side with pg_catalog.substr, pg_catalog.lpad, pg_catalog.rpad, pg_catalog.ltrim, pg_catalog.rtrim, pg_catalog.btrim, pg_catalog.length respectively.
