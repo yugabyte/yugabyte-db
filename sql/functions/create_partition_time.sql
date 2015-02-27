@@ -39,6 +39,7 @@ v_sub_timestamp_max             timestamp;
 v_sub_timestamp_min             timestamp;
 v_tablename                     text;
 v_time_position                 int;
+v_top_datetime_string           text;
 v_top_interval                  interval;
 v_top_parent                    text;
 v_trunc_value                   text;
@@ -85,14 +86,14 @@ WITH top_oid AS (
     JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     WHERE n.nspname||'.'||c.relname = p_parent_table
-) SELECT n.nspname||'.'||c.relname 
-  INTO v_top_parent 
+) SELECT n.nspname||'.'||c.relname, p.datetime_string
+  INTO v_top_parent, v_top_datetime_string
   FROM pg_catalog.pg_class c
   JOIN top_oid t ON c.oid = t.top_parent_oid
   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
   JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
   WHERE c.oid = t.top_parent_oid
-  AND p.type = 'time-static' OR p.type = 'time-dynamic';
+  AND p.type = 'time-static' OR p.type = 'time-dynamic' OR p.type = 'time-custom';
 
 IF v_top_parent IS NOT NULL THEN 
 
@@ -100,7 +101,7 @@ IF v_top_parent IS NOT NULL THEN
 
     v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
     IF v_part_interval::interval <> '3 months' OR (v_part_interval::interval = '3 months' AND v_type = 'time-custom') THEN
-       v_sub_timestamp_min := to_timestamp(substring(p_parent_table from v_time_position), v_datetime_string);
+       v_sub_timestamp_min := to_timestamp(substring(p_parent_table from v_time_position), v_top_datetime_string);
     ELSE
         -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
         v_year := split_part(substring(p_parent_table from v_time_position), 'q', 1);
@@ -117,7 +118,6 @@ IF v_top_parent IS NOT NULL THEN
         END CASE;
     END IF;
     v_sub_timestamp_max = (v_sub_timestamp_min + v_top_interval::interval) - '1 sec'::interval;
-
 END IF;
 
 SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
@@ -347,4 +347,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

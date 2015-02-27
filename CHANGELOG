@@ -1,7 +1,11 @@
 1.8.2
--- Updated reapply_indexes.py script to, by default, only add new indexes and drop ones that don't exist on the parent. Previously it would drop all indexes on all children and recreate them to match the parent. Now it only does the minimal amount of work to make the children match the parent. An additional option (--recreate_all/-R) was added to allow the old behavior of redoing all indexes from scratch if desired.
--- Changed the minimal interval that serial partitioning can be done to 10. Ran into issues with an interval of 2 and partitioning anything this low is unrealistic and provides no benefit. 10 seems like a reasonable minimal to have at this point to avoid any future issues. This does not affect any existing partition sets, only newly created ones.
+-- Fixed a bug in sub-partitioning that would cause child tables outside of the time boundaries of the parent partitions to be created when using time->time sub-partitioning. A user encountered the error when doing weekly->daily subpartitioning, but it was possible it could have happened in other interval combinations I had not tested as well (Github Issue #47).
+-- Updated reapply_indexes.py script to, by default, only add new indexes and drop ones that don't exist on the parent. Previously it would drop all indexes on all children and recreate them to match the parent. Now it only does the minimal amount of work to make the children match the parent. An additional option (--recreate_all/-R) was added to allow the old behavior of redoing all indexes from scratch if desired (Github Issue #41)
+-- Changed the minimal interval that serial partitioning can be done to 10. Ran into issues with an interval of 2 and partitioning anything this low is unrealistic and provides no benefit. 10 seems like a reasonable minimal to have at this point to avoid any future issues. This does not affect any existing partition sets, only newly created ones (Github Issue #39).
 -- Serial partition maintenance when using run_maintenance() is now much more efficient. Should run significantly faster for very large partition sets.
+-- Fixed bug in subpartition creation when using "time-custom" partitioning type. May have created subpartition child tables that were outside the time boundaries of the parent partitions.
+-- Fixed bug in additional constraint management when using "time-custom" partitioning type. May not have always added additional constraints on old child tables.
+-- Added constraint on part_config_sub to ensure valid partition types.
 
 
 1.8.1

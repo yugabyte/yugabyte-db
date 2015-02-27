@@ -82,7 +82,7 @@ IF p_child_table IS NULL THEN
 
     v_suffix_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
 
-    IF v_type IN ('time-static', 'time-dynamic') THEN
+    IF v_type IN ('time-static', 'time-dynamic', 'time-custom') THEN
         v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_suffix_position), v_datetime_string);
         v_partition_suffix := to_char(v_last_partition_timestamp - (v_part_interval::interval * ((v_premake * 2)+1) ), v_datetime_string);
     ELSIF v_type IN ('id-static', 'id-dynamic') THEN

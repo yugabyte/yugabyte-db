@@ -47,6 +47,7 @@ v_success                       boolean := false;
 v_tablename                     text;
 v_time_interval                 interval;
 v_time_position                 int;
+v_top_datetime_string           text;
 v_top_parent                    text := p_parent_table;
 
 BEGIN
@@ -284,8 +285,8 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE n.nspname||'.'||c.relname = p_parent_table 
-        ) SELECT n.nspname||'.'||c.relname
-        INTO v_top_parent
+        ) SELECT n.nspname||'.'||c.relname, p.datetime_string
+        INTO v_top_parent, v_top_datetime_string
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
@@ -293,7 +294,7 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
         IF v_top_parent IS NOT NULL THEN
             -- If so create the lowest possible partition that is within the boundary of the parent
             v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-            v_parent_partition_timestamp := to_timestamp(substring(p_parent_table from v_time_position), v_datetime_string);
+            v_parent_partition_timestamp := to_timestamp(substring(p_parent_table from v_time_position), v_top_datetime_string);
             IF v_base_timestamp >= v_parent_partition_timestamp THEN
                 WHILE v_base_timestamp >= v_parent_partition_timestamp LOOP
                     v_base_timestamp := v_base_timestamp - v_time_interval;
@@ -474,4 +475,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

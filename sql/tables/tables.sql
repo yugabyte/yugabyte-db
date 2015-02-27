@@ -58,6 +58,10 @@ ALTER TABLE @extschema@.part_config
 ADD CONSTRAINT part_config_type_check 
 CHECK (@extschema@.check_partition_type(type));
 
+ALTER TABLE @extschema@.part_config_sub
+ADD CONSTRAINT part_config_sub_type_check
+CHECK (@extschema@.check_partition_type(sub_type));
+
 /* 
  * Ensure that sub-partitioned tables that are themselves sub-partitions have the same configuration options set when they are part of the same inheritance tree
  */
