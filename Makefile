@@ -57,11 +57,7 @@ include $(PGXS)
 endif
 
 ifeq ($(enable_nls), yes)
-ifeq ($(PORTNAME),win32)
-SHLIB_LINK += -lintl
-else
-SHLIB_LINK += -L$(libdir)/gettextlib
-endif
+SHLIB_LINK += $(filter -lintl,$(LIBS))
 endif
 
 # remove dependency to libxml2 and libxslt
