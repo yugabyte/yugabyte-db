@@ -19,6 +19,8 @@ Revision history for pgTAP
 * Added `foreign_tables_are()` functions. Thanks to Chad for the pull request!
 * Updated `enum_has_labels()` to properly sort labels added by `ALTER TYPE ADD
   VALUE`.
+* Added `diag_test_name()` to `pgtap-core`, since it's called by `_runner()`
+  in that extension. Thanks to Jim Nasby for the spot.
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------
