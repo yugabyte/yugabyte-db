@@ -130,6 +130,7 @@ _agg
 is_aggregate
 _strict
 is_strict
+isnt_strict
 _expand_vol
 _refine_vol
 _vol

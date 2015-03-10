@@ -21,6 +21,7 @@ Revision history for pgTAP
   VALUE`.
 * Added `diag_test_name()` to `pgtap-core`, since it's called by `_runner()`
   in that extension. Thanks to Jim Nasby for the spot.
+* Added `isnt_strict()` to complement `is_strict()`. Requested by Jim Nasby.
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------

@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(466);
+SELECT plan(520);
 --SELECT * FROM no_plan();
 
 CREATE SCHEMA someschema;
@@ -983,11 +983,19 @@ SELECT * FROM check_test(
 );
 
 /****************************************************************************/
--- Test is_strict().
+-- Test is_strict() and isnt_strict().
 SELECT * FROM check_test(
     is_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
     'is_strict(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_strict(schema, func, 0 args, desc)',
     'whatever',
     ''
 );
@@ -1001,8 +1009,24 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay', '{}'::name[] ),
+    false,
+    'isnt_strict(schema, func, 0 args)',
+    'Function public.yay() should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
+    'is_strict(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
     'is_strict(schema, func, args, desc)',
     'whatever',
     ''
@@ -1017,9 +1041,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'is_strict(schema, func, args)',
+    'Function public.oww(integer, text) should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'public', 'yay', 'whatever' ),
     true,
     'is_strict(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay', 'whatever' ),
+    false,
+    'isnt_strict(schema, func, desc)',
     'whatever',
     ''
 );
@@ -1033,9 +1073,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay'::name ),
+    false,
+    'isnt_strict(schema, func)',
+    'Function public.yay() should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
     true,
     'is_strict(schema, func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_strict(schema, func, 0 args, desc)',
     'whatever',
     ''
 );
@@ -1049,9 +1105,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay', '{}'::name[] ),
+    false,
+    'isnt_strict(schema, func, 0 args)',
+    'Function public.yay() should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_strict(schema, func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_strict(schema, func, args, desc)',
     'whatever',
     ''
 );
@@ -1065,9 +1137,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'public', 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_strict(schema, func, args)',
+    'Function public.oww(integer, text) should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'public', 'yay', 'whatever' ),
     true,
     'is_strict(schema, func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay', 'whatever' ),
+    false,
+    'isnt_strict(schema, func, desc)',
     'whatever',
     ''
 );
@@ -1077,6 +1165,14 @@ SELECT * FROM check_test(
     true,
     'is_strict(schema, func)',
     'Function public.yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'public', 'yay'::name ),
+    false,
+    'isnt_strict(schema, func)',
+    'Function public.yay() should not be strict',
     ''
 );
 
@@ -1084,6 +1180,14 @@ SELECT * FROM check_test(
     is_strict( 'yay', '{}'::name[], 'whatever' ),
     true,
     'is_strict(func, 0 args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'yay', '{}'::name[], 'whatever' ),
+    false,
+    'isnt_strict(func, 0 args, desc)',
     'whatever',
     ''
 );
@@ -1097,9 +1201,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'yay', '{}'::name[] ),
+    false,
+    'isnt_strict(func, 0 args)',
+    'Function yay() should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'oww', ARRAY['integer', 'text'], 'whatever' ),
     false,
     'is_strict(func, args, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'oww', ARRAY['integer', 'text'], 'whatever' ),
+    true,
+    'isnt_strict(func, args, desc)',
     'whatever',
     ''
 );
@@ -1113,9 +1233,25 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    isnt_strict( 'oww', ARRAY['integer', 'text'] ),
+    true,
+    'isnt_strict(func, args)',
+    'Function oww(integer, text) should not be strict',
+    ''
+);
+
+SELECT * FROM check_test(
     is_strict( 'yay', 'whatever' ),
     true,
     'is_strict(func, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'yay', 'whatever' ),
+    false,
+    'isnt_strict(func, desc)',
     'whatever',
     ''
 );
@@ -1125,6 +1261,14 @@ SELECT * FROM check_test(
     true,
     'is_strict(func)',
     'Function yay() should be strict',
+    ''
+);
+
+SELECT * FROM check_test(
+    isnt_strict( 'yay'::name ),
+    false,
+    'isnt_strict(func)',
+    'Function yay() should not be strict',
     ''
 );
 
