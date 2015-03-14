@@ -89,6 +89,9 @@ _PG_fini(void)
 
 }
 
+/* This function setup the "isExplain" flag for next hooks.
+ * If this flag is setup, we can add hypothetical indexes.
+ */
 void
 hypo_utility_hook(Node *parsetree,
 				  const char *queryString,
@@ -110,6 +113,9 @@ hypo_utility_hook(Node *parsetree,
 
 }
 
+/* Detect if the current utility command is compatible with hypothetical indexes
+ * i.e. an EXPLAIN, no ANALYZE
+ */
 static bool
 hypo_query_walker(Node *parsetree)
 {
@@ -137,8 +143,12 @@ hypo_query_walker(Node *parsetree)
 	return false;
 }
 
+/* Real work here.
+ * Build hypothetical indexes for the specified relation.
+ */
 static void
-addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, RelOptInfo *rel, Relation relation) {
+addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, RelOptInfo *rel, Relation relation)
+{
 	IndexOptInfo *index;
 	int ncolumns, i;
 
@@ -182,7 +192,6 @@ addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, 
 			index->reverse_sort[i] = false;
 			index->nulls_first[i] = false;
 		}
-
 	}
 
 	index->indexprs = NIL;
@@ -200,6 +209,9 @@ addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, 
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
+/* This function will execute the "addHypotheticalIndexes" for every relation
+ * if the isExplain flag is setup.
+ */
 static void hypo_get_relation_info_hook(PlannerInfo *root,
 						  Oid relationObjectId,
 						  bool inhparent,
@@ -224,6 +236,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION)
 		{
+			// Call the main function which will add hypothetical indexes if needed
 			addHypotheticalIndexes(root, relationObjectId, inhparent, rel, relation);
 		}
 
@@ -234,6 +247,8 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 		prev_get_relation_info_hook(root, relationObjectId, inhparent, rel);
 }
 
+/* Generate an hypothetical name if needed.
+ */
 static const char *
 hypo_explain_get_index_name_hook(Oid indexId)
 {
@@ -248,7 +263,7 @@ hypo_explain_get_index_name_hook(Oid indexId)
 	return NULL; // otherwise return NULL, explain_get_index_name will handle it
 }
 
-// stolen from backend/optimisze/util/plancat.c
+// stolen from backend/optimisze/util/plancat.c, not export of this function :(
 static List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation)
@@ -302,4 +317,3 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 
 	return tlist;
 }
-
