@@ -157,15 +157,8 @@ hypo_query_walker(Node *parsetree)
 
 static void
 addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, RelOptInfo *rel, Relation relation) {
-	ListCell   *l;
 	IndexOptInfo *index;
 	int ncolumns, i;
-
-	foreach(l, rel->indexlist)
-	{
-		IndexOptInfo	*info = (IndexOptInfo*)lfirst(l);
-		rel->indexlist = list_delete_ptr(rel->indexlist, info);
-	}
 
 	index = makeNode(IndexOptInfo);
 	index->indexoid = HYPOTHETICAL_INDEX_OID;
