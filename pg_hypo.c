@@ -5,6 +5,8 @@
  * For license terms, see the LICENSE file.
  *
  */
+#include <unistd.h>
+
 #include "postgres.h"
 #include "fmgr.h"
 
@@ -14,23 +16,72 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
 #include "commands/explain.h"
+#include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/plancat.h"
+#include "pgstat.h"
 #include "storage/bufmgr.h"
+#include "storage/fd.h"
+#include "storage/ipc.h"
+#include "storage/spin.h"
 #include "tcop/utility.h"
+#include "utils/guc.h"
 #include "utils/rel.h"
 
-#define HYPOTHETICAL_INDEX_OID	0;
+static const uint32 PGHYPO_FILE_HEADER = 0x6879706f;
 
 PG_MODULE_MAGIC;
+
+#define HYPOTHETICAL_INDEX_OID	0;
+#if PG_VERSION_NUM >= 90300
+#define HYPO_DUMP_FILE "pg_stat/pg_hypo.stat"
+#else
+#define HYPO_DUMP_FILE "global/pg_hypo.stat"
+#endif
+
+bool isExplain = false;
+static bool	fix_empty_table = false;
+static int hypo_max_indexes;	/* max # hypothetical indexes to store */
+
+/*
+ * Hypothetical index storage
+ */
+typedef struct hypoEntry
+{
+	Oid			indexid;	/* hypothetical index Oid */
+	Oid			relid;		/* related relation Oid */
+    char		*indexname;	/* hypothetical index name */
+	slock_t		mutex;		/* protects fields */
+} hypoEntry;
+
+/*
+ * Global shared state
+ */
+typedef struct hypoSharedState
+{
+	LWLockId	lock;			/* protects array search/modification */
+} hypoSharedState;
+
+/* Links to shared memory state */
+static hypoSharedState *hypo = NULL;
+static hypoEntry *hypoEntries = NULL;
 
 
 /*--- Functions --- */
 
 void	_PG_init(void);
 void	_PG_fini(void);
+
+static Size hypo_memsize(void);
+static void entry_reset(void);
+static void entry_store(Oid indexid, Oid relid, char *indexname);
+
+static void hypo_shmem_startup(void);
+static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
+
+static void hypo_shmem_shutdown(int code, Datum arg);
 
 static void hypo_utility_hook(Node *parsetree,
 					   const char *queryString,
@@ -61,14 +112,30 @@ static List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
 
-static bool	fix_empty_table = false;
-bool isExplain = false;
-
 void
 _PG_init(void)
 {
+	/* Define custom GUC variables */
+	DefineCustomIntVariable( "pg_hypo.max_indexes",
+	  "Define how many hypothetical indexes will be stored.",
+							NULL,
+							&hypo_max_indexes,
+							200,
+							1,
+							INT_MAX,
+							PGC_POSTMASTER,
+							0,
+							NULL,
+							NULL,
+							NULL);
+
+	RequestAddinShmemSpace(hypo_memsize());
+	RequestAddinLWLocks(1);
 
 	/* Install hooks */
+	prev_shmem_startup_hook = shmem_startup_hook;
+	shmem_startup_hook = hypo_shmem_startup;
+
 	prev_utility_hook = ProcessUtility_hook;
 	ProcessUtility_hook = hypo_utility_hook;
 
@@ -87,6 +154,193 @@ _PG_fini(void)
 	get_relation_info_hook = prev_get_relation_info_hook;
 	explain_get_index_name_hook = prev_explain_get_index_name_hook;
 
+}
+
+static void
+hypo_shmem_startup(void)
+{
+	bool		found;
+	FILE		*file;
+	int			i,t;
+	uint32		header;
+	int32		num;
+	hypoEntry	*entry;
+	hypoEntry	*buffer = NULL;
+
+	if (prev_shmem_startup_hook)
+		prev_shmem_startup_hook();
+
+	/* reset in case this is a restart within the postmaster */
+	hypo = NULL;
+
+	/* Create or attach to the shared memory state */
+	LWLockAcquire(AddinShmemInitLock, LW_EXCLUSIVE);
+
+	/* global access lock */
+	hypo = ShmemInitStruct("pg_hypo",
+					sizeof(hypoSharedState),
+					&found);
+
+	if (!found)
+	{
+		/* First time through ... */
+		hypo->lock = LWLockAssign();
+	}
+
+	/* allocate stats shared memory structure */
+	hypoEntries = ShmemInitStruct("pg_hypo stats",
+					sizeof(hypoEntry) * hypo_max_indexes,
+					&found);
+
+	if (!found)
+	{
+		entry_reset();
+		entry_store(1, 1, "hypo_toto");
+
+	}
+
+	LWLockRelease(AddinShmemInitLock);
+
+	if (!IsUnderPostmaster)
+		on_shmem_exit(hypo_shmem_shutdown, (Datum) 0);
+
+	/* Load stat file, don't care about locking */
+	file = AllocateFile(HYPO_DUMP_FILE, PG_BINARY_R);
+	if (file == NULL)
+	{
+		if (errno == ENOENT)
+			return;			/* ignore not-found error */
+		goto error;
+	}
+
+	// TODO buffer = (pgskEntry *) palloc(sizeof(pgskEntry));
+
+	// TODO /* check is header is valid */
+	// TODO if (fread(&header, sizeof(uint32), 1, file) != 1 ||
+	// TODO 	header != PGSK_FILE_HEADER)
+	// TODO 	goto error;
+
+	// TODO /* get number of entries */
+	// TODO if (fread(&num, sizeof(int32), 1, file) != 1)
+	// TODO 	goto error;
+
+	// TODO entry = pgskEntries;
+	// TODO for (i = 0; i < num ; i++)
+	// TODO {
+	// TODO 	if (fread(buffer, offsetof(pgskEntry, mutex), 1, file) != 1)
+	// TODO 		goto error;
+
+	// TODO 	entry->dbid = buffer->dbid;
+	// TODO 	for (t = 0; t < CMD_NOTHING; t++)
+	// TODO 	{
+	// TODO 		entry->reads[t] = buffer->reads[t];
+	// TODO 		entry->writes[t] = buffer->writes[t];
+	// TODO 		entry->utime[t] = buffer->utime[t];
+	// TODO 		entry->stime[t] = buffer->stime[t];
+	// TODO 	}
+	// TODO 	/* don't initialize spinlock, already done */
+	// TODO 	entry++;
+	// TODO }
+
+	pfree(buffer);
+	FreeFile(file);
+
+	/*
+	 * Remove the file so it's not included in backups/replication slaves,
+	 * etc. A new file will be written on next shutdown.
+	 */
+	unlink(HYPO_DUMP_FILE);
+
+	return;
+
+error:
+	ereport(LOG,
+			(errcode_for_file_access(),
+			 errmsg("could not read pg_stat_kcache file \"%s\": %m",
+					HYPO_DUMP_FILE)));
+	if (buffer)
+		pfree(buffer);
+	if (file)
+		FreeFile(file);
+	/* delete bogus file, don't care of errors in this case */
+	unlink(HYPO_DUMP_FILE);
+}
+
+/*
+ * shmem_shutdown hook: dump statistics into file.
+ *
+ */
+static void
+hypo_shmem_shutdown(int code, Datum arg)
+{
+	//TODO
+}
+
+static Size
+hypo_memsize(void)
+{
+	Size	size;
+
+	size = MAXALIGN(sizeof(hypoSharedState)) + MAXALIGN(sizeof(hypoEntry)) * hypo_max_indexes;
+	
+	return size;
+}
+
+static void
+entry_reset(void)
+{
+	int i;
+	hypoEntry  *entry;
+
+	LWLockAcquire(hypo->lock, LW_EXCLUSIVE);
+
+	/* Mark all entries indexid with InvalidOid */
+	entry = hypoEntries;
+	for (i = 0; i < hypo_max_indexes ; i++)
+	{
+		entry->indexid = InvalidOid;
+		SpinLockInit(&entry->mutex);
+		entry++;
+	}
+
+	LWLockRelease(hypo->lock);
+	return;
+}
+
+static void
+entry_store(Oid indexid, Oid relid, char *indexname)
+{
+	int i = 0;
+	hypoEntry *entry;
+	bool found = false;
+
+	entry = hypoEntries;
+
+	LWLockAcquire(hypo->lock, LW_SHARED);
+
+	while (i < hypo_max_indexes && !found)
+	{
+		if (entry->indexid == indexid || entry->indexid == InvalidOid) {
+			SpinLockAcquire(&entry->mutex);
+			entry->indexid = indexid;
+			entry->relid = relid;
+			entry->indexname = indexname;
+			SpinLockRelease(&entry->mutex);
+			found = true;
+			break;
+		}
+		entry++;
+		i++;
+	}
+
+	/* if there's no more room, then raise a warning */	
+	if (!found)
+	{
+		elog(WARNING, "pg_hypo: no more free entry for storing index %s (%d)", indexname, indexid);
+	}
+
+	LWLockRelease(hypo->lock);
+	return;
 }
 
 /* This function setup the "isExplain" flag for next hooks.
@@ -152,24 +406,41 @@ addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, 
 	IndexOptInfo *index;
 	int ncolumns, i;
 
+	/* create a node */
 	index = makeNode(IndexOptInfo);
+
+	index->relam = BTREE_AM_OID; // more to be added
+
+	if (index->relam != BTREE_AM_OID)
+	{
+		elog(WARNING, "pg_hypo: Only btree indexes are supported for now");
+		return;
+	}
+
+	// General stuff
 	index->indexoid = HYPOTHETICAL_INDEX_OID;
-	index->reltablespace = rel->reltablespace;
+	index->reltablespace = rel->reltablespace; // same as relation
 	index->rel = rel;
-	index->ncolumns = ncolumns = 1;
+	index->ncolumns = ncolumns = 1; // only 1 col indexes for now
+
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
 	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
 	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
 	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
+
 	for (i = 0; i < ncolumns; i++)
 	{
-		index->indexkeys[i] = 1; // ?
-		index->indexcollations[i] = 0; //?? C_COLLATION_OID;
-		index->opfamily[i] = INTEGER_BTREE_FAM_OID;
-		index->opcintype[i] = INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
+		index->indexkeys[i] = 1; // 1st col, WIP
+		switch (index->relam)
+		{
+			case BTREE_AM_OID:
+				// hardcode int4 cols, WIP
+				index->indexcollations[i] = 0; //?? C_COLLATION_OID;
+				index->opfamily[i] = INTEGER_BTREE_FAM_OID;
+				index->opcintype[i] = INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
+				break;
+		}
 	}
-	index->relam = BTREE_AM_OID;
-	index->amcostestimate = (RegProcedure) 1268; // btcostestimate
 	index->canreturn = true;
 	index->amcanorderbyop = false;
 	index->amoptionalkey = true;
@@ -182,26 +453,29 @@ addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, 
 
 	if (index->relam == BTREE_AM_OID)
 	{
+		index->amcostestimate = (RegProcedure) 1268; // btcostestimate
 		index->sortopfamily = index->opfamily;
+		index->tree_height = 1; // WIP
+
 		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
 		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
 
-		index->tree_height = 1;
 		for (i = 0; i < ncolumns; i++)
 		{
-			index->reverse_sort[i] = false;
-			index->nulls_first[i] = false;
+			index->reverse_sort[i] = false; // not handled for now, WIP
+			index->nulls_first[i] = false; // not handled for now, WIP
 		}
 	}
 
-	index->indexprs = NIL;
-	index->indpred = NIL;
+	index->indexprs = NIL; // not handled for now, WIP
+	index->indpred = NIL; // not handled for now, WIP
+	/* Build targetlist using the completed indexprs data, stolen from PostgreSQL */
 	index->indextlist = build_index_tlist(root, index, relation);
 
 	if (index->indpred == NIL)
 	{
-		index->pages = rel->tuples / 1024;
-		index->tuples = rel->tuples;
+		index->pages = rel->tuples / 10; // Should compute if col width and other stuff, WIP
+		index->tuples = rel->tuples; // Same
 	}
 
 	index->hypothetical = true;
@@ -252,18 +526,38 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 static const char *
 hypo_explain_get_index_name_hook(Oid indexId)
 {
-	if (isExplain && indexId == 0)
+	char *ret = NULL;
+	if (isExplain)
 	{
-		/* we're in an explain-only command and dealing with one of our
-		 * hypothetical indexes.
-		 * return a meaningful name for this index
+		/* we're in an explain-only command. Return the name of the
+		   * hypothetical index name if it's one of ours, otherwise return
+		   * NULL, explain_get_index_name will do it's job.
 		 */
-		return "hypothetical_index_1";
+		int i = 0;
+		hypoEntry *entry;
+		bool found = false;
+
+		entry = hypoEntries;
+
+		LWLockAcquire(hypo->lock, LW_SHARED);
+
+		while (i < hypo_max_indexes && !found)
+		{
+			if (entry->indexid == indexId || entry->indexid == InvalidOid) {
+				SpinLockAcquire(&entry->mutex);
+				ret = entry->indexname;
+				SpinLockRelease(&entry->mutex);
+				break;
+			}
+			entry++;
+			i++;
+		}
+		LWLockRelease(hypo->lock);
 	}
-	return NULL; // otherwise return NULL, explain_get_index_name will handle it
+	return ret;
 }
 
-// stolen from backend/optimisze/util/plancat.c, not export of this function :(
+// stolen from backend/optimisze/util/plancat.c, no export of this function :(
 static List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation)
