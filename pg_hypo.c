@@ -77,8 +77,6 @@ _PG_init(void)
 
 	prev_explain_get_index_name_hook = explain_get_index_name_hook;
 	explain_get_index_name_hook = hypo_explain_get_index_name_hook;
-
-	elog(NOTICE,"pg_hypo installed !");
 }
 
 void
@@ -101,18 +99,6 @@ hypo_utility_hook(Node *parsetree,
 {
 	isExplain = query_or_expression_tree_walker(parsetree, hypo_query_walker, NULL, 0);
 
-	if (isExplain)
-	{
-		elog(NOTICE, "Query is an explain (no analyze) :)");
-		elog(NOTICE, "%s", queryString);
-	}
-	else
-	{
-		elog(NOTICE, "I don't mind this query");
-		elog(NOTICE, "%s", queryString);
-	}
-	elog(NOTICE, "\n");
-
 	if (prev_utility_hook)
 		prev_utility_hook(parsetree, queryString,
 								context, params,
@@ -127,13 +113,9 @@ hypo_utility_hook(Node *parsetree,
 static bool
 hypo_query_walker(Node *parsetree)
 {
-	elog(NOTICE, "Pour info, T_ExplainStmt, = %d", T_ExplainStmt);
 	if (parsetree == NULL)
-	{
-		elog(NOTICE, "node IS NULL");
 		return false;
-	}
-	elog(NOTICE, "node : %d", parsetree->type);
+
 	switch (nodeTag(parsetree))
 	{
 		case T_ExplainStmt:
@@ -216,7 +198,6 @@ addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, 
 	index->hypothetical = true;
 
 	rel->indexlist = lcons(index, rel->indexlist);
-	elog(WARNING, "Hypo index %d added.", index->indexoid);
 }
 
 static void hypo_get_relation_info_hook(PlannerInfo *root,
@@ -229,8 +210,6 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 		Relation 	relation;
 
 		relation = heap_open(relationObjectId, NoLock);
-
-		elog(NOTICE,"gri ET C'EST UN EXPLAIN!!");
 
 		if (fix_empty_table && RelationGetNumberOfBlocks(relation) == 0)
 		{
@@ -250,8 +229,6 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 
 		heap_close(relation, NoLock);
 	}
-	else
-		elog(NOTICE,"gri, no explain");
 
 	if (prev_get_relation_info_hook)
 		prev_get_relation_info_hook(root, relationObjectId, inhparent, rel);
