@@ -8,7 +8,6 @@
 #include "postgres.h"
 #include "fmgr.h"
 
-#include <access/heapam.h>
 #include "catalog/heap.h"
 #include "catalog/pg_collation.h"
 #include "catalog/pg_opclass.h"
@@ -23,10 +22,6 @@
 #include "tcop/utility.h"
 #include <utils/rel.h>
 
-
-/* for testing
-#include "optimizer/planner.h"
-*/
 
 PG_MODULE_MAGIC;
 
@@ -69,11 +64,6 @@ static bool	fix_empty_table = false;
 #define HYPOTHETICAL_INDEX_OID	0;
 bool isExplain = false;
 
-/* for testing
-static PlannedStmt *hypo_plannerhook(Query *query, int cursorOptions, ParamListInfo boundParams);
-static planner_hook_type prev_planner_hook = NULL;
-*/
-
 void
 _PG_init(void)
 {
@@ -89,10 +79,6 @@ _PG_init(void)
 	explain_get_index_name_hook = hypo_explain_get_index_name_hook;
 
 	elog(NOTICE,"pg_hypo installed !");
-	/* for testing
-	prev_planner_hook = planner_hook;
-	planner_hook = hypo_plannerhook;
-	*/
 }
 
 void
@@ -103,9 +89,6 @@ _PG_fini(void)
 	get_relation_info_hook = prev_get_relation_info_hook;
 	explain_get_index_name_hook = prev_explain_get_index_name_hook;
 
-	/* for testing
-	planner_hook = prev_planner_hook;
-	*/
 }
 
 void
@@ -295,24 +278,7 @@ hypo_explain_get_index_name_hook(Oid indexId)
 	return NULL; // otherwise return NULL, explain_get_index_name will handle it
 }
 
-/* testing
-static PlannedStmt *
-hypo_plannerhook(Query *parse,
-			 int cursorOptions,
-			 ParamListInfo boundParams)
-{
-	PlannedStmt *plannedstmt = NULL;
-	if (prev_planner_hook)
-		plannedstmt = prev_planner_hook(parse, cursorOptions, boundParams);
-	else
-		plannedstmt = standard_planner(parse, cursorOptions, boundParams);
-
-	elog(NOTICE,"hypo: %d", (Node *) parse->type);
-	return plannedstmt;
-}
-*/
-
-// from backend/optimisze/util/plancat.c
+// stolen from backend/optimisze/util/plancat.c
 static List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation)
