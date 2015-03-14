@@ -18,9 +18,9 @@
 #include "nodes/nodes.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/plancat.h"
-#include <storage/bufmgr.h>
+#include "storage/bufmgr.h"
 #include "tcop/utility.h"
-#include <utils/rel.h>
+#include "utils/rel.h"
 
 
 PG_MODULE_MAGIC;
