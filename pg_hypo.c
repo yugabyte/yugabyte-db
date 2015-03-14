@@ -22,6 +22,7 @@
 #include "tcop/utility.h"
 #include "utils/rel.h"
 
+#define HYPOTHETICAL_INDEX_OID	0;
 
 PG_MODULE_MAGIC;
 
@@ -61,7 +62,6 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
 
 static bool	fix_empty_table = false;
-#define HYPOTHETICAL_INDEX_OID	0;
 bool isExplain = false;
 
 void
