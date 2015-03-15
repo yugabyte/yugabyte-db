@@ -351,7 +351,7 @@ entry_store(Oid dbid,
 {
 	int i = 0;
 	hypoEntry *entry;
-	bool found = false;
+	int ret = 2;
 
 	/* Make sure user didn't try to add too many columns */
 	if (ncolumns > HYPO_MAX_COLS)
@@ -361,8 +361,19 @@ entry_store(Oid dbid,
 
 	LWLockAcquire(hypo->lock, LW_SHARED);
 
-	while (i < hypo_max_indexes && !found)
+	while (i < hypo_max_indexes && ret == 2)
 	{
+		if ( /* don't store twice the same index */
+			(entry->dbid == dbid) &&
+			(entry->relid == relid) &&
+			(entry->indexkeys == indexkeys) &&
+			(entry->relam == relam)
+		)
+		{
+			ret = 1;
+			break;
+		}
+
 		if (entry->dbid == InvalidOid) {
 			SpinLockAcquire(&entry->mutex);
 			entry->dbid = dbid;
@@ -376,7 +387,7 @@ entry_store(Oid dbid,
 			entry->opfamily = opfamily;
 			entry->opcintype = opcintype;
 			SpinLockRelease(&entry->mutex);
-			found = true;
+			ret = 0;
 			break;
 		}
 		entry++;
@@ -386,10 +397,21 @@ entry_store(Oid dbid,
 	LWLockRelease(hypo->lock);
 
 	/* if there's no more room, then raise a warning */	
-	if (!found)
+	switch(ret)
 	{
-		elog(WARNING, "pg_hypo: no more free entry for storing index %s (%d)", indexname, indexid);
-		return false;
+		case 0:
+			return true;
+			break;
+		case 1:
+			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname, indexid);
+			return false;
+			break;
+		case 2:
+			elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname, indexid);
+			return false;
+		default:
+			return false;
+			break;
 	}
 	return true;
 }
