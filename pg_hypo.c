@@ -31,11 +31,11 @@
 #include "utils/guc.h"
 #include "utils/rel.h"
 
-static const uint32 PGHYPO_FILE_HEADER = 0x6879706f;
-
 PG_MODULE_MAGIC;
 
-#define HYPOTHETICAL_INDEX_OID	123;
+static const uint32 PGHYPO_FILE_HEADER = 0x6879706f;
+
+#define HYPO_MAX_COL	1
 #if PG_VERSION_NUM >= 90300
 #define HYPO_DUMP_FILE "pg_stat/pg_hypo.stat"
 #else
@@ -54,6 +54,12 @@ typedef struct hypoEntry
 	Oid			indexid;	/* hypothetical index Oid */
 	Oid			relid;		/* related relation Oid */
     char		*indexname;	/* hypothetical index name */
+	Oid			relam;
+	int			ncolumns; /* number of columns, only 1 for now */
+	int			indexkeys; /* attnum */
+	Oid			indexcollations;
+	Oid			opfamily;
+	Oid			opcintype;
 	slock_t		mutex;		/* protects fields */
 } hypoEntry;
 
@@ -83,7 +89,15 @@ PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
 
 static Size hypo_memsize(void);
 static void entry_reset(void);
-static bool entry_store(Oid indexid, Oid relid, char *indexname);
+static bool entry_store(Oid indexid,
+			Oid relid,
+			char *indexname,
+			Oid relam,
+			int ncolumns,
+			int indexkeys,
+			int indexcollations,
+			Oid opfamily,
+			Oid opcintype);
 
 static void hypo_shmem_startup(void);
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
@@ -203,7 +217,6 @@ hypo_shmem_startup(void)
 	if (!found)
 	{
 		entry_reset();
-		entry_store(1, 1, "hypo_toto");
 
 	}
 
@@ -316,11 +329,23 @@ entry_reset(void)
 }
 
 static bool
-entry_store(Oid indexid, Oid relid, char *indexname)
+entry_store(Oid indexid,
+			Oid relid,
+			char *indexname,
+			Oid relam,
+			int ncolumns,
+			int indexkeys,
+			int indexcollations,
+			Oid opfamily,
+			Oid opcintype)
 {
 	int i = 0;
 	hypoEntry *entry;
 	bool found = false;
+
+	/* Make sure user didn't try to add too many columns */
+	if (ncolumns > HYPO_MAX_COL)
+		return false;
 
 	entry = hypoEntries;
 
@@ -333,6 +358,12 @@ entry_store(Oid indexid, Oid relid, char *indexname)
 			entry->indexid = indexid;
 			entry->relid = relid;
 			entry->indexname = indexname;
+			entry->relam = relam;
+			entry->ncolumns = ncolumns;
+			entry->indexkeys = indexkeys;
+			entry->indexcollations = indexcollations;
+			entry->opfamily = opfamily;
+			entry->opcintype = opcintype;
 			SpinLockRelease(&entry->mutex);
 			found = true;
 			break;
@@ -419,19 +450,19 @@ addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, Re
 	/* create a node */
 	index = makeNode(IndexOptInfo);
 
-	index->relam = BTREE_AM_OID; // more to be added
+	index->relam = entry.relam;
 
 	if (index->relam != BTREE_AM_OID)
 	{
-		elog(WARNING, "pg_hypo: Only btree indexes are supported for now");
+		elog(WARNING, "pg_hypo: Only btree indexes are supported for now!");
 		return;
 	}
 
 	// General stuff
-	index->indexoid = HYPOTHETICAL_INDEX_OID;
+	index->indexoid = entry.indexid;
 	index->reltablespace = rel->reltablespace; // same as relation
 	index->rel = rel;
-	index->ncolumns = ncolumns = 1; // only 1 col indexes for now
+	index->ncolumns = ncolumns = entry.ncolumns;
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
 	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
@@ -446,23 +477,23 @@ addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, Re
 			case BTREE_AM_OID:
 				// hardcode int4 cols, WIP
 				index->indexcollations[i] = 0; //?? C_COLLATION_OID;
-				index->opfamily[i] = INTEGER_BTREE_FAM_OID;
-				index->opcintype[i] = INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
+				index->opfamily[i] = entry.opfamily; //INTEGER_BTREE_FAM_OID;
+				index->opcintype[i] = entry.opcintype; //INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
 				break;
 		}
 	}
-	index->canreturn = true;
-	index->amcanorderbyop = false;
-	index->amoptionalkey = true;
-	index->amsearcharray = true;
-	index->amsearchnulls = true;
-	index->amhasgettuple = true;
-	index->amhasgetbitmap = true;
-	index->unique = false;
-	index->immediate = true;
 
 	if (index->relam == BTREE_AM_OID)
 	{
+		index->canreturn = true;
+		index->amcanorderbyop = false;
+		index->amoptionalkey = true;
+		index->amsearcharray = true;
+		index->amsearchnulls = true;
+		index->amhasgettuple = true;
+		index->amhasgetbitmap = true;
+		index->unique = false;
+		index->immediate = true;
 		index->amcostestimate = (RegProcedure) 1268; // btcostestimate
 		index->sortopfamily = index->opfamily;
 		index->tree_height = 1; // WIP
@@ -535,9 +566,17 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 					break;
 				if (entry->relid == relationObjectId) {
 					SpinLockAcquire(&entry->mutex);
+
 					current.indexid = entry->indexid;
 					current.relid = entry->relid;
 					current.indexname = entry->indexname;
+					current.relam = entry->relam;
+					current.ncolumns = entry->ncolumns;
+					current.indexkeys = entry->indexkeys;
+					current.indexcollations = entry->indexcollations;
+					current.opfamily = entry->opfamily;
+					current.opcintype = entry->opcintype;
+
 					SpinLockRelease(&entry->mutex);
 					// Call the main function which will add hypothetical indexes if needed
 					addHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, current);
@@ -618,7 +657,14 @@ pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
 	Oid		indexid = PG_GETARG_OID(0);
 	Oid		relid = PG_GETARG_OID(1);
 	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_P(2));
-	return entry_store(indexid, relid, indexname);
+	Oid		relam = PG_GETARG_OID(3);
+	int		ncolumns = PG_GETARG_INT32(4);
+	int		indexkeys = PG_GETARG_INT32(5);
+	Oid		indexcollations = PG_GETARG_OID(6);
+	Oid		opfamily = PG_GETARG_OID(7);
+	Oid		opcintype = PG_GETARG_OID(8);
+
+	return entry_store(indexid, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 }
 
 // stolen from backend/optimisze/util/plancat.c, no export of this function :(
