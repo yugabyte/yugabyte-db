@@ -27,8 +27,13 @@ pg_hypo_add_index_internal(IN indexid oid,
     LANGUAGE c COST 1000
 AS '$libdir/pg_hypo', 'pg_hypo_add_index_internal';
 
+CREATE FUNCTION pg_hypo(OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
+    RETURNS SETOF record
+    LANGUAGE c COST 1000
+AS '$libdir/pg_hypo', 'pg_hypo';
+
 CREATE FUNCTION
-pg_hypo_add_index(IN _nspname name, IN _relname name, IN _attname name, IN _indtype text)
+pg_hypo_add_index(IN _nspname name, IN _relname name, IN _attname name, IN _amname text)
     RETURNS bool
 AS
 $_$
@@ -55,7 +60,21 @@ $_$
             n.nspname = _nspname
             AND c.relname = _relname
             AND a.attname = _attname
-            AND am.amname = _indtype
+            AND am.amname = _amname
     ) src;
+$_$
+LANGUAGE sql;
+
+CREATE FUNCTION pg_hypo_list_indexes(OUT indexname text, OUT nspname name, OUT relname name, OUT attname name, OUT amname name)
+    RETURNS SETOF record
+AS
+$_$
+    SELECT h.indexname, n.nspname, c.relname, a.attname, am.amname
+    FROM pg_hypo() h
+    JOIN pg_class c ON c.oid = h.relid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a on a.attrelid = c.oid
+    JOIN pg_am am ON am.oid = h.amid
+    WHERE a.attnum = h.attnum;
 $_$
 LANGUAGE sql;

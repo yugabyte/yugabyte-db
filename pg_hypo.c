@@ -16,6 +16,7 @@
 #include "catalog/pg_opfamily.h"
 #include "catalog/pg_type.h"
 #include "commands/explain.h"
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodes.h"
@@ -35,7 +36,8 @@ PG_MODULE_MAGIC;
 
 static const uint32 PGHYPO_FILE_HEADER = 0x6879706f;
 
-#define HYPO_MAX_COL	1
+#define HYPO_MAX_COLS	1
+#define HYPO_NB_COLS		4
 #if PG_VERSION_NUM >= 90300
 #define HYPO_DUMP_FILE "pg_stat/pg_hypo.stat"
 #else
@@ -86,6 +88,7 @@ Datum	pg_hypo_add_index_internal(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(pg_hypo_reset);
 PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
+PG_FUNCTION_INFO_V1(pg_hypo);
 
 static Size hypo_memsize(void);
 static void entry_reset(void);
@@ -344,7 +347,7 @@ entry_store(Oid indexid,
 	bool found = false;
 
 	/* Make sure user didn't try to add too many columns */
-	if (ncolumns > HYPO_MAX_COL)
+	if (ncolumns > HYPO_MAX_COLS)
 		return false;
 
 	entry = hypoEntries;
@@ -664,7 +667,94 @@ pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
 	Oid		opfamily = PG_GETARG_OID(7);
 	Oid		opcintype = PG_GETARG_OID(8);
 
+	if (!hypo)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("pg_hypo must be loaded via shared_preload_libraries")));
+
 	return entry_store(indexid, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+}
+
+/*
+ * List created hypothetical indexes
+ */
+Datum
+pg_hypo(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext	per_query_ctx;
+	MemoryContext	oldcontext;
+	hypoEntry		*entry;
+	TupleDesc		tupdesc;
+	Tuplestorestate	*tupstore;
+	int				i = 0;
+
+
+	if (!hypo)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("pg_hypo must be loaded via shared_preload_libraries")));
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+							"allowed in this context")));
+
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	LWLockAcquire(hypo->lock, LW_SHARED);
+
+	entry = hypoEntries;
+	while (i < hypo_max_indexes)
+	{
+		Datum		values[HYPO_NB_COLS];
+		bool		nulls[HYPO_NB_COLS];
+		int			j = 0;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		if (entry->indexid == InvalidOid)
+			break;
+		SpinLockAcquire(&entry->mutex);
+
+		values[j++] = CStringGetTextDatum(entry->indexname);
+		values[j++] = ObjectIdGetDatum(entry->relid);
+		values[j++] = Int32GetDatum(entry->indexkeys);
+		values[j++] = ObjectIdGetDatum(entry->relam);
+
+		SpinLockRelease(&entry->mutex);
+
+		Assert(j == PG_STAT_PLAN_COLS);
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+		entry++;
+		i++;
+	}
+
+	LWLockRelease(hypo->lock);
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
 }
 
 // stolen from backend/optimisze/util/plancat.c, no export of this function :(
