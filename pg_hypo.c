@@ -59,7 +59,7 @@ typedef struct hypoEntry
 	Oid			dbid;		/* on which database is the index */
 	Oid			indexid;	/* hypothetical index Oid */
 	Oid			relid;		/* related relation Oid */
-    char		*indexname;	/* hypothetical index name */
+    char		indexname[NAMEDATALEN];	/* hypothetical index name */
 	Oid			relam;
 	int			ncolumns; /* number of columns, only 1 for now */
 	int			indexkeys; /* attnum */
@@ -329,7 +329,6 @@ entry_reset(void)
 	{
 		entry->dbid = InvalidOid;
 		entry->indexid = InvalidOid;
-		entry->indexname = NULL;
 		SpinLockInit(&entry->mutex);
 		entry++;
 	}
@@ -369,7 +368,7 @@ entry_store(Oid dbid,
 			entry->dbid = dbid;
 			entry->indexid = i+1;
 			entry->relid = relid;
-			entry->indexname = indexname;
+			strncpy(entry->indexname, indexname, NAMEDATALEN);
 			entry->relam = relam;
 			entry->ncolumns = ncolumns;
 			entry->indexkeys = indexkeys;
@@ -582,7 +581,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 					current.dbid = entry->dbid;
 					current.indexid = entry->indexid;
 					current.relid = entry->relid;
-					current.indexname = entry->indexname;
+					strncpy(current.indexname, entry->indexname, NAMEDATALEN);
 					current.relam = entry->relam;
 					current.ncolumns = entry->ncolumns;
 					current.indexkeys = entry->indexkeys;
@@ -671,7 +670,7 @@ pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
 {
 	Oid		indexid = PG_GETARG_OID(0);
 	Oid		relid = PG_GETARG_OID(1);
-	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_P(2));
+	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(2));
 	Oid		relam = PG_GETARG_OID(3);
 	int		ncolumns = PG_GETARG_INT32(4);
 	int		indexkeys = PG_GETARG_INT32(5);
