@@ -403,11 +403,11 @@ entry_store(Oid dbid,
 			return true;
 			break;
 		case 1:
-			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname, indexid);
+			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
 			return false;
 			break;
 		case 2:
-			elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname, indexid);
+			elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname);
 			return false;
 		default:
 			return false;
