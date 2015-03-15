@@ -507,7 +507,7 @@ addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, Re
 
 	for (i = 0; i < ncolumns; i++)
 	{
-		index->indexkeys[i] = 1; // 1st col, WIP
+		index->indexkeys[i] = entry.indexkeys;
 		switch (index->relam)
 		{
 			case BTREE_AM_OID:
@@ -519,6 +519,8 @@ addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, Re
 		}
 	}
 
+	index->unique = false; /* no hypothetical unique index */
+
 	if (index->relam == BTREE_AM_OID)
 	{
 		index->canreturn = true;
@@ -528,7 +530,6 @@ addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, Re
 		index->amsearchnulls = true;
 		index->amhasgettuple = true;
 		index->amhasgetbitmap = true;
-		index->unique = false;
 		index->immediate = true;
 		index->amcostestimate = (RegProcedure) 1268; // btcostestimate
 		index->sortopfamily = index->opfamily;
@@ -545,13 +546,14 @@ addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, Re
 	}
 
 	index->indexprs = NIL; // not handled for now, WIP
-	index->indpred = NIL; // not handled for now, WIP
+	index->indpred = NIL; // no partial index handled for now, WIP
+
 	/* Build targetlist using the completed indexprs data, stolen from PostgreSQL */
 	index->indextlist = build_index_tlist(root, index, relation);
 
 	if (index->indpred == NIL)
 	{
-		index->pages = rel->tuples / 10; // Should compute if col width and other stuff, WIP
+		index->pages = rel->tuples / 10; // Should compute with col width and other stuff, WIP
 		index->tuples = rel->tuples; // Same
 	}
 
