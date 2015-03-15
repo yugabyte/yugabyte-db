@@ -50,9 +50,13 @@ static int hypo_max_indexes;	/* max # hypothetical indexes to store */
 
 /*
  * Hypothetical index storage
+ * An hypothetical index is defined by
+ *   - dbid
+ *   - indexid
  */
 typedef struct hypoEntry
 {
+	Oid			dbid;		/* on which database is the index */
 	Oid			indexid;	/* hypothetical index Oid */
 	Oid			relid;		/* related relation Oid */
     char		*indexname;	/* hypothetical index name */
@@ -92,7 +96,8 @@ PG_FUNCTION_INFO_V1(pg_hypo);
 
 static Size hypo_memsize(void);
 static void entry_reset(void);
-static bool entry_store(Oid indexid,
+static bool entry_store(Oid dbid,
+			Oid indexid,
 			Oid relid,
 			char *indexname,
 			Oid relam,
@@ -318,11 +323,13 @@ entry_reset(void)
 
 	LWLockAcquire(hypo->lock, LW_EXCLUSIVE);
 
-	/* Mark all entries indexid with InvalidOid */
+	/* Mark all entries dbid and indexid with InvalidOid */
 	entry = hypoEntries;
 	for (i = 0; i < hypo_max_indexes ; i++)
 	{
+		entry->dbid = InvalidOid;
 		entry->indexid = InvalidOid;
+		entry->indexname = NULL;
 		SpinLockInit(&entry->mutex);
 		entry++;
 	}
@@ -332,7 +339,8 @@ entry_reset(void)
 }
 
 static bool
-entry_store(Oid indexid,
+entry_store(Oid dbid,
+			Oid indexid,
 			Oid relid,
 			char *indexname,
 			Oid relam,
@@ -356,9 +364,10 @@ entry_store(Oid indexid,
 
 	while (i < hypo_max_indexes && !found)
 	{
-		if (entry->indexid == indexid || entry->indexid == InvalidOid) {
+		if (entry->dbid == InvalidOid) {
 			SpinLockAcquire(&entry->mutex);
-			entry->indexid = indexid;
+			entry->dbid = dbid;
+			entry->indexid = i+1;
 			entry->relid = relid;
 			entry->indexname = indexname;
 			entry->relam = relam;
@@ -565,11 +574,12 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 
 			while (i < hypo_max_indexes)
 			{
-				if (entry->indexid == InvalidOid)
+				if (entry->dbid == InvalidOid)
 					break;
-				if (entry->relid == relationObjectId) {
+				if (entry->relid == relationObjectId && entry->dbid == MyDatabaseId) {
 					SpinLockAcquire(&entry->mutex);
 
+					current.dbid = entry->dbid;
 					current.indexid = entry->indexid;
 					current.relid = entry->relid;
 					current.indexname = entry->indexname;
@@ -620,7 +630,9 @@ hypo_explain_get_index_name_hook(Oid indexId)
 
 		while (i < hypo_max_indexes && !found)
 		{
-			if (entry->indexid == indexId || entry->indexid == InvalidOid) {
+			if (entry->indexid == InvalidOid)
+				break;
+			if (entry->indexid == indexId) {
 				SpinLockAcquire(&entry->mutex);
 				ret = entry->indexname;
 				SpinLockRelease(&entry->mutex);
@@ -672,7 +684,7 @@ pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_hypo must be loaded via shared_preload_libraries")));
 
-	return entry_store(indexid, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+	return entry_store(MyDatabaseId, indexid, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 }
 
 /*
@@ -731,10 +743,11 @@ pg_hypo(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		if (entry->indexid == InvalidOid)
+		if (entry->dbid == InvalidOid)
 			break;
 		SpinLockAcquire(&entry->mutex);
 
+		values[j++] = ObjectIdGetDatum(entry->dbid);
 		values[j++] = CStringGetTextDatum(entry->indexname);
 		values[j++] = ObjectIdGetDatum(entry->relid);
 		values[j++] = Int32GetDatum(entry->indexkeys);

@@ -27,7 +27,7 @@ pg_hypo_add_index_internal(IN indexid oid,
     LANGUAGE c COST 1000
 AS '$libdir/pg_hypo', 'pg_hypo_add_index_internal';
 
-CREATE FUNCTION pg_hypo(OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
+CREATE FUNCTION pg_hypo(OUT dbid Oid, OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
     RETURNS SETOF record
     LANGUAGE c COST 1000
 AS '$libdir/pg_hypo', 'pg_hypo';
@@ -65,16 +65,17 @@ $_$
 $_$
 LANGUAGE sql;
 
-CREATE FUNCTION pg_hypo_list_indexes(OUT indexname text, OUT nspname name, OUT relname name, OUT attname name, OUT amname name)
+CREATE FUNCTION pg_hypo_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT attname name, OUT amname name)
     RETURNS SETOF record
 AS
 $_$
-    SELECT h.indexname, n.nspname, c.relname, a.attname, am.amname
+    SELECT d.datname, h.indexname, n.nspname, c.relname, a.attname, am.amname
     FROM pg_hypo() h
-    JOIN pg_class c ON c.oid = h.relid
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    JOIN pg_attribute a on a.attrelid = c.oid
-    JOIN pg_am am ON am.oid = h.amid
+    JOIN pg_database d ON d.oid = h.dbid
+    LEFT JOIN pg_class c ON c.oid = h.relid
+    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
+    LEFT JOIN pg_attribute a on a.attrelid = c.oid
+    LEFT JOIN pg_am am ON am.oid = h.amid
     WHERE a.attnum = h.attnum;
 $_$
 LANGUAGE sql;
