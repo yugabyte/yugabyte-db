@@ -89,6 +89,7 @@ void	_PG_fini(void);
 
 Datum	pg_hypo_reset(PG_FUNCTION_ARGS);
 Datum	pg_hypo_add_index_internal(PG_FUNCTION_ARGS);
+Datum	pg_hypo(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(pg_hypo_reset);
 PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
