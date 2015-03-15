@@ -27,6 +27,7 @@
 #include "storage/ipc.h"
 #include "storage/spin.h"
 #include "tcop/utility.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
 #include "utils/rel.h"
 
@@ -34,7 +35,7 @@ static const uint32 PGHYPO_FILE_HEADER = 0x6879706f;
 
 PG_MODULE_MAGIC;
 
-#define HYPOTHETICAL_INDEX_OID	0;
+#define HYPOTHETICAL_INDEX_OID	123;
 #if PG_VERSION_NUM >= 90300
 #define HYPO_DUMP_FILE "pg_stat/pg_hypo.stat"
 #else
@@ -74,9 +75,15 @@ static hypoEntry *hypoEntries = NULL;
 void	_PG_init(void);
 void	_PG_fini(void);
 
+Datum	pg_hypo_reset(PG_FUNCTION_ARGS);
+Datum	pg_hypo_add_index_internal(PG_FUNCTION_ARGS);
+
+PG_FUNCTION_INFO_V1(pg_hypo_reset);
+PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
+
 static Size hypo_memsize(void);
 static void entry_reset(void);
-static void entry_store(Oid indexid, Oid relid, char *indexname);
+static bool entry_store(Oid indexid, Oid relid, char *indexname);
 
 static void hypo_shmem_startup(void);
 static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
@@ -101,11 +108,12 @@ static get_relation_info_hook_type	prev_get_relation_info_hook = NULL;
 static const char *hypo_explain_get_index_name_hook(Oid indexId);
 static explain_get_index_name_hook_type prev_explain_get_index_name_hook = NULL;
 
-static void addHypotheticalIndexes(PlannerInfo *root,
+static void addHypotheticalIndex(PlannerInfo *root,
 						Oid relationObjectId,
 						bool inhparent,
 						RelOptInfo *rel,
-						Relation relation);
+						Relation relation,
+						hypoEntry entry);
 static bool hypo_query_walker(Node *node);
 
 static List *
@@ -307,7 +315,7 @@ entry_reset(void)
 	return;
 }
 
-static void
+static bool
 entry_store(Oid indexid, Oid relid, char *indexname)
 {
 	int i = 0;
@@ -333,14 +341,15 @@ entry_store(Oid indexid, Oid relid, char *indexname)
 		i++;
 	}
 
+	LWLockRelease(hypo->lock);
+
 	/* if there's no more room, then raise a warning */	
 	if (!found)
 	{
 		elog(WARNING, "pg_hypo: no more free entry for storing index %s (%d)", indexname, indexid);
+		return false;
 	}
-
-	LWLockRelease(hypo->lock);
-	return;
+	return true;
 }
 
 /* This function setup the "isExplain" flag for next hooks.
@@ -401,10 +410,11 @@ hypo_query_walker(Node *parsetree)
  * Build hypothetical indexes for the specified relation.
  */
 static void
-addHypotheticalIndexes(PlannerInfo *root, Oid relationObjectId, bool inhparent, RelOptInfo *rel, Relation relation)
+addHypotheticalIndex(PlannerInfo *root, Oid relationObjectId, bool inhparent, RelOptInfo *rel, Relation relation, hypoEntry entry)
 {
 	IndexOptInfo *index;
 	int ncolumns, i;
+
 
 	/* create a node */
 	index = makeNode(IndexOptInfo);
@@ -510,8 +520,33 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION)
 		{
-			// Call the main function which will add hypothetical indexes if needed
-			addHypotheticalIndexes(root, relationObjectId, inhparent, rel, relation);
+			hypoEntry *entry;
+			hypoEntry current;
+			int i;
+
+			/* Search for all indexes on specified relation */
+			entry = hypoEntries;
+
+			LWLockAcquire(hypo->lock, LW_SHARED);
+
+			while (i < hypo_max_indexes)
+			{
+				if (entry->indexid == InvalidOid)
+					break;
+				if (entry->relid == relationObjectId) {
+					SpinLockAcquire(&entry->mutex);
+					current.indexid = entry->indexid;
+					current.relid = entry->relid;
+					current.indexname = entry->indexname;
+					SpinLockRelease(&entry->mutex);
+					// Call the main function which will add hypothetical indexes if needed
+					addHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, current);
+				}
+				entry++;
+				i++;
+			}
+
+			LWLockRelease(hypo->lock);
 		}
 
 		heap_close(relation, NoLock);
@@ -555,6 +590,35 @@ hypo_explain_get_index_name_hook(Oid indexId)
 		LWLockRelease(hypo->lock);
 	}
 	return ret;
+}
+
+/*
+ * Reset statistics.
+ */
+Datum
+pg_hypo_reset(PG_FUNCTION_ARGS)
+{
+	if (!hypo)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("pg_hypo must be loaded via shared_preload_libraries")));
+
+	entry_reset();
+	PG_RETURN_VOID();
+}
+
+/*
+ * Add an hypothetical index in the array, with all needed informations
+ * it supposed to be called from the provided sql function, because I'm too
+ * lazy to retrieve all the needed info in C !=
+ */
+Datum
+pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
+{
+	Oid		indexid = PG_GETARG_OID(0);
+	Oid		relid = PG_GETARG_OID(1);
+	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_P(2));
+	return entry_store(indexid, relid, indexname);
 }
 
 // stolen from backend/optimisze/util/plancat.c, no export of this function :(
