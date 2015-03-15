@@ -14,8 +14,7 @@ CREATE FUNCTION pg_hypo_reset()
 AS '$libdir/pg_hypo', 'pg_hypo_reset';
 
 CREATE FUNCTION
-pg_hypo_add_index_internal(IN indexid oid,
-                           IN relid oid,
+pg_hypo_add_index_internal(IN relid oid,
                            IN indexname text,
                            IN relam Oid,
                            IN ncolumns int,
@@ -38,7 +37,6 @@ pg_hypo_add_index(IN _nspname name, IN _relname name, IN _attname name, IN _amna
 AS
 $_$
     SELECT pg_hypo_add_index_internal(
-        id,
         relid,
         indexname,
         amoid,
@@ -48,7 +46,7 @@ $_$
         opfoid,
         atttypid)
     FROM (
-        SELECT DISTINCT 1 AS id, c.oid AS relid, 'idx_hypo_' || _amname || '_' || CASE WHEN nspname = 'public' THEN '' ELSE nspname || '_' END || relname || '_' || attname AS indexname, am.oid AS amoid, 1 AS ncolumns, a.attnum, 0 AS indexcollations, opf.oid AS opfoid, a.atttypid
+        SELECT DISTINCT c.oid AS relid, 'idx_hypo_' || _amname || '_' || CASE WHEN nspname = 'public' THEN '' ELSE nspname || '_' END || relname || '_' || attname AS indexname, am.oid AS amoid, 1 AS ncolumns, a.attnum, 0 AS indexcollations, opf.oid AS opfoid, a.atttypid
         FROM pg_class c
         JOIN pg_namespace n on n.oid = c.relnamespace
         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0

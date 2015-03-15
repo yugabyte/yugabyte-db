@@ -59,7 +59,7 @@ typedef struct hypoEntry
 	Oid			dbid;		/* on which database is the index */
 	Oid			indexid;	/* hypothetical index Oid */
 	Oid			relid;		/* related relation Oid */
-    char		indexname[NAMEDATALEN];	/* hypothetical index name */
+	char		indexname[NAMEDATALEN];	/* hypothetical index name */
 	Oid			relam;
 	int			ncolumns; /* number of columns, only 1 for now */
 	int			indexkeys; /* attnum */
@@ -97,7 +97,6 @@ PG_FUNCTION_INFO_V1(pg_hypo);
 static Size hypo_memsize(void);
 static void entry_reset(void);
 static bool entry_store(Oid dbid,
-			Oid indexid,
 			Oid relid,
 			char *indexname,
 			Oid relam,
@@ -311,7 +310,7 @@ hypo_memsize(void)
 	Size	size;
 
 	size = MAXALIGN(sizeof(hypoSharedState)) + MAXALIGN(sizeof(hypoEntry)) * hypo_max_indexes;
-	
+
 	return size;
 }
 
@@ -339,7 +338,6 @@ entry_reset(void)
 
 static bool
 entry_store(Oid dbid,
-			Oid indexid,
 			Oid relid,
 			char *indexname,
 			Oid relam,
@@ -374,8 +372,10 @@ entry_store(Oid dbid,
 			break;
 		}
 
-		if (entry->dbid == InvalidOid) {
+		if (entry->dbid == InvalidOid)
+		{
 			SpinLockAcquire(&entry->mutex);
+
 			entry->dbid = dbid;
 			entry->indexid = i+1;
 			entry->relid = relid;
@@ -386,7 +386,9 @@ entry_store(Oid dbid,
 			entry->indexcollations = indexcollations;
 			entry->opfamily = opfamily;
 			entry->opcintype = opcintype;
+
 			SpinLockRelease(&entry->mutex);
+
 			ret = 0;
 			break;
 		}
@@ -396,17 +398,18 @@ entry_store(Oid dbid,
 
 	LWLockRelease(hypo->lock);
 
-	/* if there's no more room, then raise a warning */	
 	switch(ret)
 	{
 		case 0:
 			return true;
 			break;
 		case 1:
+			/* if index already exists, then raise a warning */
 			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
 			return false;
 			break;
 		case 2:
+			/* if there's no more room, then raise a warning */
 			elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname);
 			return false;
 		default:
@@ -457,7 +460,7 @@ hypo_query_walker(Node *parsetree)
 				foreach(lc, ((ExplainStmt *) parsetree)->options)
 				{
 					DefElem    *opt = (DefElem *) lfirst(lc);
-		
+
 					if (strcmp(opt->defname, "analyze") == 0)
 						return false;
 				}
@@ -629,38 +632,36 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 		prev_get_relation_info_hook(root, relationObjectId, inhparent, rel);
 }
 
-/* Generate an hypothetical name if needed.
+/* Return the hypothetical index name is indexId is ours, NULL otherwise, as
+ * this is what explain_get_index_name expects to continue his job.
  */
 static const char *
 hypo_explain_get_index_name_hook(Oid indexId)
 {
 	char *ret = NULL;
+
+	/* our index key is position-in-array +1, return NULL if if can't be ours */
+	if (indexId > hypo_max_indexes)
+		return ret;
+
 	if (isExplain)
 	{
 		/* we're in an explain-only command. Return the name of the
-		   * hypothetical index name if it's one of ours, otherwise return
-		   * NULL, explain_get_index_name will do it's job.
+		   * hypothetical index name if it's one of ours, otherwise return NULL
 		 */
-		int i = 0;
 		hypoEntry *entry;
-		bool found = false;
 
 		entry = hypoEntries;
 
 		LWLockAcquire(hypo->lock, LW_SHARED);
 
-		while (i < hypo_max_indexes && !found)
+		entry += (indexId - 1);
+
+		if (entry->dbid != InvalidOid)
 		{
-			if (entry->indexid == InvalidOid)
-				break;
-			if (entry->indexid == indexId) {
-				SpinLockAcquire(&entry->mutex);
-				ret = entry->indexname;
-				SpinLockRelease(&entry->mutex);
-				break;
-			}
-			entry++;
-			i++;
+			SpinLockAcquire(&entry->mutex);
+			ret = entry->indexname;
+			SpinLockRelease(&entry->mutex);
 		}
 		LWLockRelease(hypo->lock);
 	}
@@ -690,22 +691,21 @@ pg_hypo_reset(PG_FUNCTION_ARGS)
 Datum
 pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
 {
-	Oid		indexid = PG_GETARG_OID(0);
-	Oid		relid = PG_GETARG_OID(1);
-	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(2));
-	Oid		relam = PG_GETARG_OID(3);
-	int		ncolumns = PG_GETARG_INT32(4);
-	int		indexkeys = PG_GETARG_INT32(5);
-	Oid		indexcollations = PG_GETARG_OID(6);
-	Oid		opfamily = PG_GETARG_OID(7);
-	Oid		opcintype = PG_GETARG_OID(8);
+	Oid		relid = PG_GETARG_OID(0);
+	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
+	Oid		relam = PG_GETARG_OID(2);
+	int		ncolumns = PG_GETARG_INT32(3);
+	int		indexkeys = PG_GETARG_INT32(4);
+	Oid		indexcollations = PG_GETARG_OID(5);
+	Oid		opfamily = PG_GETARG_OID(6);
+	Oid		opcintype = PG_GETARG_OID(7);
 
 	if (!hypo)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("pg_hypo must be loaded via shared_preload_libraries")));
 
-	return entry_store(MyDatabaseId, indexid, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+	return entry_store(MyDatabaseId, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 }
 
 /*
