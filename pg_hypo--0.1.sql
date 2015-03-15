@@ -71,10 +71,10 @@ AS
 $_$
     SELECT d.datname, h.indexname, n.nspname, c.relname, a.attname, am.amname
     FROM pg_hypo() h
-    JOIN pg_database d ON d.oid = h.dbid
-    LEFT JOIN pg_class c ON c.oid = h.relid
-    LEFT JOIN pg_namespace n ON n.oid = c.relnamespace
-    LEFT JOIN pg_attribute a on a.attrelid = c.oid
+    JOIN pg_database d ON d.datname = current_database()
+    JOIN pg_class c ON c.oid = h.relid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a on a.attrelid = c.oid
     LEFT JOIN pg_am am ON am.oid = h.amid
     WHERE a.attnum = h.attnum;
 $_$
