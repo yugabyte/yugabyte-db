@@ -48,7 +48,7 @@ $_$
         opfoid,
         atttypid)
     FROM (
-        SELECT DISTINCT 1 AS id, c.oid AS relid, 'index_name' AS indexname, am.oid AS amoid, 1 AS ncolumns, a.attnum, 0 AS indexcollations, opf.oid AS opfoid, a.atttypid
+        SELECT DISTINCT 1 AS id, c.oid AS relid, 'idx_hypo_' || CASE WHEN nspname = 'public' THEN '' ELSE nspname || '_' END || relname || '_' || attname AS indexname, am.oid AS amoid, 1 AS ncolumns, a.attnum, 0 AS indexcollations, opf.oid AS opfoid, a.atttypid
         FROM pg_class c
         JOIN pg_namespace n on n.oid = c.relnamespace
         JOIN pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0

@@ -747,7 +747,7 @@ pg_hypo(PG_FUNCTION_ARGS)
 		SpinLockAcquire(&entry->mutex);
 
 		values[j++] = ObjectIdGetDatum(entry->dbid);
-		values[j++] = CStringGetTextDatum(entry->indexname);
+		values[j++] = CStringGetTextDatum(strdup(entry->indexname));
 		values[j++] = ObjectIdGetDatum(entry->relid);
 		values[j++] = Int32GetDatum(entry->indexkeys);
 		values[j++] = ObjectIdGetDatum(entry->relam);
