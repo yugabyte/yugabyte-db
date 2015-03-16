@@ -273,7 +273,7 @@ addHypotheticalIndex(PlannerInfo *root,
 
 	// General stuff
 	index->indexoid = position+1;
-	index->reltablespace = rel->reltablespace; // same as relation
+	index->reltablespace = rel->reltablespace; // same tablespace as relation
 	index->rel = rel;
 	index->ncolumns = ncolumns = entries[position].ncolumns;
 
@@ -350,8 +350,8 @@ addHypotheticalIndex(PlannerInfo *root,
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
-/* This function will execute the "addHypotheticalIndexes" for every relation
- * if the isExplain flag is setup.
+/* This function will execute the "addHypotheticalIndex" for every hypothetical
+ * index found for each relation if the isExplain flag is setup.
  */
 static void hypo_get_relation_info_hook(PlannerInfo *root,
 						  Oid relationObjectId,
@@ -384,7 +384,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 				if (entries[i].relid == InvalidOid)
 					break;
 				if (entries[i].relid == relationObjectId) {
-					// Call the main function which will add hypothetical indexes if needed
+					// hypothetical index found, add it to the relation's indextlist
 					addHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, i);
 				}
 			}
