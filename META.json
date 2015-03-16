@@ -1,0 +1,35 @@
+{
+   "name": "pg_hypo",
+   "abstract": "An extension handling hypothetical indexes.",
+   "version": "__VERSION__",
+   "maintainer": "Julien Rouhaud <julien.rouhaud@dalibo.com>",
+   "license": "postgresql",
+   "release_status": "unstable",
+   "provides": {
+      "pg_hypo": {
+         "abstract": "An extension handling hypothetical indexes.",
+         "file": "pg_hypo.sql",
+         "docfile": "README.md",
+         "version": "__VERSION__"
+      }
+   },
+   "resources": {
+      "bugtracker": {
+         "web": "http://github.com/rjuju/pg_hypo/issues/"
+      },
+      "repository": {
+        "url":  "git://github.com/rjuju/pg_hypo.git",
+        "web":  "http://github.com/rjuju/pg_hypo/",
+        "type": "git"
+      }
+   },
+   "generated_by": "Julien Rouhaud",
+   "meta-spec": {
+      "version": "1.0.0",
+      "url": "http://pgxn.org/meta/spec.txt"
+   },
+   "tags": [
+      "index",
+      "hypothetical"
+   ]
+}
