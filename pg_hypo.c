@@ -20,6 +20,7 @@
 #include "storage/bufmgr.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
+#include "utils/lsyscache.h"
 #include "utils/rel.h"
 
 PG_MODULE_MAGIC;
@@ -256,6 +257,7 @@ addHypotheticalIndex(PlannerInfo *root,
 {
 	IndexOptInfo *index;
 	int ncolumns, i;
+	int ind_avg_width = 0;
 
 
 	/* create a node */
@@ -283,6 +285,7 @@ addHypotheticalIndex(PlannerInfo *root,
 	for (i = 0; i < ncolumns; i++)
 	{
 		index->indexkeys[i] = entries[position].indexkeys;
+		ind_avg_width += get_attavgwidth(relation->rd_id, index->indexkeys[i]);
 		switch (index->relam)
 		{
 			case BTREE_AM_OID:
@@ -328,12 +331,22 @@ addHypotheticalIndex(PlannerInfo *root,
 
 	if (index->indpred == NIL)
 	{
-		index->pages = rel->tuples / 10; // Should compute with col width and other stuff, WIP
-		index->tuples = rel->tuples; // Same
+		/* very quick and pessimistic estimation :
+		 * number of tuples * avg width, with ~ 50% bloat, plus 1 block
+		 */
+		index->pages = (rel->tuples * ind_avg_width * .5 / BLCKSZ) + 1;
+		/* partial index not supported yet, so assume all tuples are in the index */
+		index->tuples = rel->tuples;
 	}
 
+	/* obviously, setup this tag.
+	 * However, it's only checked in selfuncs.c/get_actual_variable_range, so
+	 * we still need to add hypothetical indexes *ONLY* in an
+	 * explain-no-analyze command.
+	 */
 	index->hypothetical = true;
 
+	/* add our hypothetical index in the relation's indexlist */
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
