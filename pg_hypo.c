@@ -27,11 +27,6 @@ PG_MODULE_MAGIC;
 #define HYPO_MAX_COLS	1 /* # of column an hypothetical index can have */
 #define HYPO_NB_COLS		4 /* # of column pg_hypo() returns */
 #define HYPO_NB_INDEXES		50 /* # of hypothetical index a single session can hold */
-#if PG_VERSION_NUM >= 90300
-#define HYPO_DUMP_FILE "pg_stat/pg_hypo.stat"
-#else
-#define HYPO_DUMP_FILE "global/pg_hypo.stat"
-#endif
 
 bool isExplain = false;
 static bool	fix_empty_table = false;
