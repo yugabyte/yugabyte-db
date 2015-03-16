@@ -1,6 +1,6 @@
 # pg_hypo extension
 comment = 'Hypothetical indexes handling'
-default_version = '0.1'
+default_version = '0.0.1'
 module_pathname = '$libdir/pg_hypo'
 relocatable = true
 
