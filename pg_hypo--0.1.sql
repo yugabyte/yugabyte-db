@@ -73,7 +73,7 @@ $_$
     JOIN pg_class c ON c.oid = h.relid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_attribute a on a.attrelid = c.oid
-    LEFT JOIN pg_am am ON am.oid = h.amid
+    JOIN pg_am am ON am.oid = h.amid
     WHERE a.attnum = h.attnum;
 $_$
 LANGUAGE sql;
