@@ -26,7 +26,7 @@ pg_hypo_add_index_internal(IN relid oid,
     LANGUAGE c COST 1000
 AS '$libdir/pg_hypo', 'pg_hypo_add_index_internal';
 
-CREATE FUNCTION pg_hypo(OUT dbid Oid, OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
+CREATE FUNCTION pg_hypo(OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
     RETURNS SETOF record
     LANGUAGE c COST 1000
 AS '$libdir/pg_hypo', 'pg_hypo';
@@ -67,9 +67,8 @@ CREATE FUNCTION pg_hypo_list_indexes(OUT datname name, OUT indexname text, OUT n
     RETURNS SETOF record
 AS
 $_$
-    SELECT d.datname, h.indexname, n.nspname, c.relname, a.attname, am.amname
+    SELECT current_database(), h.indexname, n.nspname, c.relname, a.attname, am.amname
     FROM pg_hypo() h
-    JOIN pg_database d ON d.datname = current_database()
     JOIN pg_class c ON c.oid = h.relid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_attribute a on a.attrelid = c.oid

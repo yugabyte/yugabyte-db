@@ -35,7 +35,7 @@
 PG_MODULE_MAGIC;
 
 #define HYPO_MAX_COLS	1 /* # of column an hypothetical index can have */
-#define HYPO_NB_COLS		5 /* # of column pg_hypo() returns */
+#define HYPO_NB_COLS		4 /* # of column pg_hypo() returns */
 #define HYPO_NB_INDEXES		50 /* # of hypothetical index a single session can hold */
 #if PG_VERSION_NUM >= 90300
 #define HYPO_DUMP_FILE "pg_stat/pg_hypo.stat"
@@ -48,14 +48,9 @@ static bool	fix_empty_table = false;
 
 /*
  * Hypothetical index storage
- * An hypothetical index is defined by
- *   - dbid
- *   - indexid
  */
 typedef struct hypoEntry
 {
-	Oid			dbid;		/* on which database is the index */
-	Oid			indexid;	/* hypothetical index Oid */
 	Oid			relid;		/* related relation Oid */
 	char		indexname[NAMEDATALEN];	/* hypothetical index name */
 	Oid			relam;
@@ -83,8 +78,7 @@ PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
 PG_FUNCTION_INFO_V1(pg_hypo);
 
 static void entry_reset(void);
-static bool entry_store(Oid dbid,
-			Oid relid,
+static bool entry_store(Oid relid,
 			char *indexname,
 			Oid relam,
 			int ncolumns,
@@ -151,19 +145,17 @@ static void
 entry_reset(void)
 {
 	int i;
-	/* Mark all entries dbid and indexid with InvalidOid */
+	/* Mark all entries relid with InvalidOid */
 	for (i = 0; i < HYPO_NB_INDEXES ; i++)
 	{
-		entries[i].dbid = InvalidOid;
-		entries[i].indexid = InvalidOid;
+		entries[i].relid = InvalidOid;
 	}
 
 	return;
 }
 
 static bool
-entry_store(Oid dbid,
-			Oid relid,
+entry_store(Oid relid,
 			char *indexname,
 			Oid relam,
 			int ncolumns,
@@ -181,7 +173,6 @@ entry_store(Oid dbid,
 	while (i < HYPO_NB_INDEXES)
 	{
 		if ( /* don't store twice the same index */
-			(entries[i].dbid == dbid) &&
 			(entries[i].relid == relid) &&
 			(entries[i].indexkeys == indexkeys) &&
 			(entries[i].relam == relam)
@@ -192,10 +183,8 @@ entry_store(Oid dbid,
 			return false;
 		}
 
-		if (entries[i].dbid == InvalidOid)
+		if (entries[i].relid == InvalidOid)
 		{
-			entries[i].dbid = dbid;
-			entries[i].indexid = i+1;
 			entries[i].relid = relid;
 			strncpy(entries[i].indexname, indexname, NAMEDATALEN);
 			entries[i].relam = relam;
@@ -296,7 +285,7 @@ addHypotheticalIndex(PlannerInfo *root,
 	}
 
 	// General stuff
-	index->indexoid = entries[position].indexid;
+	index->indexoid = position+1;
 	index->reltablespace = rel->reltablespace; // same as relation
 	index->rel = rel;
 	index->ncolumns = ncolumns = entries[position].ncolumns;
@@ -394,9 +383,9 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 
 			for (i = 0; i < HYPO_NB_INDEXES; i++)
 			{
-				if (entries[i].dbid == InvalidOid)
+				if (entries[i].relid == InvalidOid)
 					break;
-				if (entries[i].relid == relationObjectId && entries[i].dbid == MyDatabaseId) {
+				if (entries[i].relid == relationObjectId) {
 					// Call the main function which will add hypothetical indexes if needed
 					addHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, i);
 				}
@@ -427,7 +416,7 @@ hypo_explain_get_index_name_hook(Oid indexId)
 		/* we're in an explain-only command. Return the name of the
 		   * hypothetical index name if it's one of ours, otherwise return NULL
 		 */
-		if (entries[indexId-1].dbid != InvalidOid)
+		if (entries[indexId-1].relid != InvalidOid)
 		{
 			ret = entries[indexId-1].indexname;
 		}
@@ -462,7 +451,7 @@ pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
 	Oid		opfamily = PG_GETARG_OID(6);
 	Oid		opcintype = PG_GETARG_OID(7);
 
-	return entry_store(MyDatabaseId, relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 }
 
 /*
@@ -513,10 +502,9 @@ pg_hypo(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		if (entries[i].dbid == InvalidOid)
+		if (entries[i].relid == InvalidOid)
 			break;
 
-		values[j++] = ObjectIdGetDatum(entries[i].dbid);
 		values[j++] = CStringGetTextDatum(strdup(entries[i].indexname));
 		values[j++] = ObjectIdGetDatum(entries[i].relid);
 		values[j++] = Int32GetDatum(entries[i].indexkeys);
