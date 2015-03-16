@@ -332,9 +332,10 @@ addHypotheticalIndex(PlannerInfo *root,
 	if (index->indpred == NIL)
 	{
 		/* very quick and pessimistic estimation :
-		 * number of tuples * avg width, with ~ 50% bloat, plus 1 block
+		 * number of tuples * avg width,
+		 * with ~ 50% bloat (including 10% fillfactor), plus 1 block
 		 */
-		index->pages = (rel->tuples * ind_avg_width * .5 / BLCKSZ) + 1;
+		index->pages = (rel->tuples * ind_avg_width * 2 / BLCKSZ) + 1;
 		/* partial index not supported yet, so assume all tuples are in the index */
 		index->tuples = rel->tuples;
 	}
