@@ -15,11 +15,11 @@
    },
    "resources": {
       "bugtracker": {
-         "web": "http://github.com/rjuju/pg_hypo/issues/"
+         "web": "http://github.com/dalibo/pg_hypo/issues/"
       },
       "repository": {
-        "url":  "git://github.com/rjuju/pg_hypo.git",
-        "web":  "http://github.com/rjuju/pg_hypo/",
+        "url":  "git://github.com/dalibo/pg_hypo.git",
+        "web":  "http://github.com/dalibo/pg_hypo/",
         "type": "git"
       }
    },
