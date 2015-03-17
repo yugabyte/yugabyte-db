@@ -282,8 +282,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , v_row.sub_part_interval
             , v_row.sub_constraint_cols
             , v_row.sub_premake
-            , v_row.sub_inherit_fk
             , v_row.sub_use_run_maintenance
+            , v_row.sub_inherit_fk
             , v_row.sub_jobmon);
         EXECUTE v_sql;
 

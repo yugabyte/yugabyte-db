@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(128);
+SELECT plan(129);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -360,6 +360,8 @@ SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('ce
     'Check time_static_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'100 years'::interval, 'YYYY')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_static_table_p'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'200 years'::interval, 'YYYY'), 
     'Check time_static_table_'||to_char(date_trunc('century', CURRENT_TIMESTAMP)-'200 years'::interval, 'YYYY')||' does not exist');
+
+SELECT is_empty('SELECT * FROM custom_time_partitions WHERE parent_table = ''partman_test.time_static_table''', 'Check that custom_time_partitions table is empty');
 
 SELECT * FROM finish();
 ROLLBACK;

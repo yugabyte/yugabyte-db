@@ -142,6 +142,9 @@ LOOP
         IF v_jobmon_schema IS NOT NULL THEN
             v_step_id := add_step(v_job_id, 'Uninherit table '||v_child_table||' from '||p_parent_table);
         END IF;
+        IF v_type = 'time-custom' THEN
+            DELETE FROM @extschema@.custom_time_partitions WHERE parent_table = p_parent_table AND child_table = v_child_table;
+        END IF;
         EXECUTE 'ALTER TABLE '||v_child_table||' NO INHERIT ' || p_parent_table;
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -220,4 +223,5 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
+
 

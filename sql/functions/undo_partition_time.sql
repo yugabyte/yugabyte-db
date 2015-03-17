@@ -30,6 +30,7 @@ v_step_id               bigint;
 v_sub_count             int;
 v_total                 bigint := 0;
 v_trig_name             text;
+v_type                  text;
 v_undo_count            int := 0;
 
 BEGIN
@@ -40,10 +41,12 @@ IF v_adv_lock = 'false' THEN
     RETURN 0;
 END IF;
 
-SELECT part_interval::interval
+SELECT type
+    , part_interval::interval
     , control
     , jobmon
-INTO v_part_interval
+INTO v_type
+    , v_part_interval
     , v_control
     , v_jobmon
 FROM @extschema@.part_config 
@@ -176,6 +179,9 @@ WHILE v_batch_loop_count < p_batch_count LOOP
                 PERFORM update_step(v_step_id, 'OK', 'Child table UNINHERITED, not DROPPED. Moved '||v_child_loop_total||' rows to parent');
             END IF;
         END IF;
+        IF v_type = 'time-custom' THEN
+            DELETE FROM @extschema@.custom_time_partitions WHERE parent_table = p_parent_table AND child_table = v_child_table;
+        END IF;
         v_undo_count := v_undo_count + 1;
         CONTINUE outer_child_loop;
     END IF;
@@ -261,5 +267,4 @@ EXCEPTION
         RAISE EXCEPTION '%', SQLERRM;
 END
 $$;
-
 
