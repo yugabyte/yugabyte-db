@@ -4,17 +4,17 @@
 -- Copyright (C) 2015: Julien ROuhaud
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
-\echo Use "CREATE EXTENSION pg_hypo" to load this file. \quit
+\echo Use "CREATE EXTENSION hypopg" to load this file. \quit
 
 SET client_encoding = 'UTF8';
 
-CREATE FUNCTION pg_hypo_reset()
+CREATE FUNCTION hypopg_reset()
     RETURNS void
     LANGUAGE c COST 1000
-AS '$libdir/pg_hypo', 'pg_hypo_reset';
+AS '$libdir/hypopg', 'hypopg_reset';
 
 --CREATE FUNCTION
---pg_hypo_add_index_internal(IN relid oid,
+--hypopg_add_index_internal(IN relid oid,
 --                           IN indexname text,
 --                           IN relam Oid,
 --                           IN ncolumns int,
@@ -24,25 +24,25 @@ AS '$libdir/pg_hypo', 'pg_hypo_reset';
 --                           IN opcintype Oid)
 --    RETURNS bool
 --    LANGUAGE c COST 1000
---AS '$libdir/pg_hypo', 'pg_hypo_add_index_internal';
+--AS '$libdir/hypopg', 'hypopg_add_index_internal';
 
 CREATE FUNCTION
-pg_hypo_create_index(IN sql_order text)
+hypopg_create_index(IN sql_order text)
     RETURNS text
     LANGUAGE c COST 1000
-AS '$libdir/pg_hypo', 'pg_hypo_create_index';
+AS '$libdir/hypopg', 'hypopg_create_index';
 
-CREATE FUNCTION pg_hypo(OUT indexname text, OUT relid Oid, OUT amid Oid)
+CREATE FUNCTION hypopg(OUT indexname text, OUT relid Oid, OUT amid Oid)
     RETURNS SETOF record
     LANGUAGE c COST 1000
-AS '$libdir/pg_hypo', 'pg_hypo';
+AS '$libdir/hypopg', 'hypopg';
 
-CREATE FUNCTION pg_hypo_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT amname name)
+CREATE FUNCTION hypopg_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT amname name)
     RETURNS SETOF record
 AS
 $_$
     SELECT current_database(), h.indexname, n.nspname, c.relname, am.amname
-    FROM pg_hypo() h
+    FROM hypopg() h
     JOIN pg_class c ON c.oid = h.relid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_am am ON am.oid = h.amid
@@ -51,17 +51,17 @@ LANGUAGE sql;
 
 
 
---CREATE FUNCTION pg_hypo(OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
+--CREATE FUNCTION hypopg(OUT indexname text, OUT relid Oid, OUT attnum int, OUT amid Oid)
 --    RETURNS SETOF record
 --    LANGUAGE c COST 1000
---AS '$libdir/pg_hypo', 'pg_hypo';
+--AS '$libdir/hypopg', 'hypopg';
 
 --CREATE FUNCTION
---pg_hypo_add_index(IN _nspname name, IN _relname name, IN _attname name, IN _amname text)
+--hypopg_add_index(IN _nspname name, IN _relname name, IN _attname name, IN _amname text)
 --    RETURNS bool
 --AS
 --$_$
---    SELECT pg_hypo_add_index_internal(
+--    SELECT hypopg_add_index_internal(
 --        relid,
 --        indexname,
 --        amoid,
@@ -88,12 +88,12 @@ LANGUAGE sql;
 --$_$
 --LANGUAGE sql;
 
---CREATE FUNCTION pg_hypo_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT attname name, OUT amname name)
+--CREATE FUNCTION hypopg_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT attname name, OUT amname name)
 --    RETURNS SETOF record
 --AS
 --$_$
 --    SELECT current_database(), h.indexname, n.nspname, c.relname, a.attname, am.amname
---    FROM pg_hypo() h
+--    FROM hypopg() h
 --    JOIN pg_class c ON c.oid = h.relid
 --    JOIN pg_namespace n ON n.oid = c.relnamespace
 --    JOIN pg_attribute a on a.attrelid = c.oid

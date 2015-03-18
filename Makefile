@@ -1,4 +1,4 @@
-EXTENSION = pg_hypo
+EXTENSION = hypopg
 EXTVERSION   = $(shell grep default_version $(EXTENSION).control | sed -e "s/default_version[[:space:]]*=[[:space:]]*'\([^']*\)'/\1/")
 TESTS        = $(wildcard test/sql/*.sql)
 REGRESS      = $(patsubst test/sql/%.sql,%,$(TESTS))
@@ -7,19 +7,19 @@ DOCS         = $(wildcard README.md)
 
 PG_CONFIG = pg_config
 
-MODULE_big = pg_hypo
-OBJS = pg_hypo.o
+MODULE_big = hypopg
+OBJS = hypopg.o
 
 all:
 
 release-zip: all
-	git archive --format zip --prefix=pg_hypo-${EXTVERSION}/ --output ./pg_hypo-${EXTVERSION}.zip HEAD
-	unzip ./pg_hypo-$(EXTVERSION).zip
-	rm ./pg_hypo-$(EXTVERSION).zip
-	rm ./pg_hypo-$(EXTVERSION)/.gitignore
-	sed -i -e "s/__VERSION__/$(EXTVERSION)/g"  ./pg_hypo-$(EXTVERSION)/META.json
-	zip -r ./pg_hypo-$(EXTVERSION).zip ./pg_hypo-$(EXTVERSION)/
-	rm ./pg_hypo-$(EXTVERSION) -rf
+	git archive --format zip --prefix=hypopg-${EXTVERSION}/ --output ./hypopg-${EXTVERSION}.zip HEAD
+	unzip ./hypopg-$(EXTVERSION).zip
+	rm ./hypopg-$(EXTVERSION).zip
+	rm ./hypopg-$(EXTVERSION)/.gitignore
+	sed -i -e "s/__VERSION__/$(EXTVERSION)/g"  ./hypopg-$(EXTVERSION)/META.json
+	zip -r ./hypopg-$(EXTVERSION).zip ./hypopg-$(EXTVERSION)/
+	rm ./hypopg-$(EXTVERSION) -rf
 
 
 DATA = $(wildcard *--*.sql)

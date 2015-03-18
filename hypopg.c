@@ -33,7 +33,7 @@
 PG_MODULE_MAGIC;
 
 #define HYPO_MAX_COLS	10 /* # of column an hypothetical index can have */
-#define HYPO_NB_COLS		3 /* # of column pg_hypo() returns */
+#define HYPO_NB_COLS		3 /* # of column hypopg() returns */
 #define HYPO_NB_INDEXES		50 /* # of hypothetical index a single session can hold */
 #define HYPO_MAX_INDEXNAME	4096
 
@@ -63,15 +63,15 @@ hypoEntry	entries[HYPO_NB_INDEXES];
 void	_PG_init(void);
 void	_PG_fini(void);
 
-Datum	pg_hypo_reset(PG_FUNCTION_ARGS);
-//Datum	pg_hypo_add_index_internal(PG_FUNCTION_ARGS);
-Datum	pg_hypo(PG_FUNCTION_ARGS);
-Datum	pg_hypo_create_index(PG_FUNCTION_ARGS);
+Datum	hypopg_reset(PG_FUNCTION_ARGS);
+//Datum	hypopg_add_index_internal(PG_FUNCTION_ARGS);
+Datum	hypopg(PG_FUNCTION_ARGS);
+Datum	hypopg_create_index(PG_FUNCTION_ARGS);
 
-PG_FUNCTION_INFO_V1(pg_hypo_reset);
-//PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
-PG_FUNCTION_INFO_V1(pg_hypo);
-PG_FUNCTION_INFO_V1(pg_hypo_create_index);
+PG_FUNCTION_INFO_V1(hypopg_reset);
+//PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
+PG_FUNCTION_INFO_V1(hypopg);
+PG_FUNCTION_INFO_V1(hypopg_create_index);
 
 static void entry_reset(void);
 //static bool entry_store(Oid relid,
@@ -180,7 +180,7 @@ entry_reset(void)
 //		)
 //		{
 //			/* if index already exists, then raise a warning */
-//			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
+//			elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
 //			return false;
 //		}
 //
@@ -201,7 +201,7 @@ entry_reset(void)
 //	}
 //
 //	/* if there's no more room, then raise a warning */
-//	elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname);
+//	elog(WARNING, "hypopg: no more free entry for storing index \"%s\"", indexname);
 //	return false;
 //}
 
@@ -265,7 +265,7 @@ entry_store2(IndexStmt *node)
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("pg_hypo: access method \"%s\" does not exist",
+					 errmsg("hypopg: access method \"%s\" does not exist",
 						 node->accessMethod)));
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
@@ -287,7 +287,7 @@ entry_store2(IndexStmt *node)
 		//)
 		//{
 		//	/* if index already exists, then raise a warning */
-		//	elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
+		//	elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
 		//	return false;
 		//}
 
@@ -313,7 +313,7 @@ entry_store2(IndexStmt *node)
 				tuple = SearchSysCacheAttName(relid, indexelem->name);
 				if (!HeapTupleIsValid(tuple))
 				{
-					elog(ERROR, "pg_hypo: column \"%s\" does not exist",
+					elog(ERROR, "hypopg: column \"%s\" does not exist",
 						indexelem->name);
 				}
 				attform = (Form_pg_attribute) GETSTRUCT(tuple);
@@ -346,7 +346,7 @@ entry_store2(IndexStmt *node)
 	}
 
 	/* if there's no more room, then raise a warning */
-	elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexRelationName);
+	elog(WARNING, "hypopg: no more free entry for storing index \"%s\"", indexRelationName);
 	return false;
 }
 
@@ -428,7 +428,7 @@ addHypotheticalIndex(PlannerInfo *root,
 
 	if (index->relam != BTREE_AM_OID)
 	{
-		elog(WARNING, "pg_hypo: Only btree indexes are supported for now!");
+		elog(WARNING, "hypopg: Only btree indexes are supported for now!");
 		return;
 	}
 
@@ -588,7 +588,7 @@ hypo_explain_get_index_name_hook(Oid indexId)
  * Reset statistics.
  */
 Datum
-pg_hypo_reset(PG_FUNCTION_ARGS)
+hypopg_reset(PG_FUNCTION_ARGS)
 {
 	entry_reset();
 	PG_RETURN_VOID();
@@ -600,7 +600,7 @@ pg_hypo_reset(PG_FUNCTION_ARGS)
  * lazy to retrieve all the needed info in C !=
  */
 //Datum
-//pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
+//hypopg_add_index_internal(PG_FUNCTION_ARGS)
 //{
 //	Oid		relid = PG_GETARG_OID(0);
 //	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
@@ -618,7 +618,7 @@ pg_hypo_reset(PG_FUNCTION_ARGS)
  * List created hypothetical indexes
  */
 Datum
-pg_hypo(PG_FUNCTION_ARGS)
+hypopg(PG_FUNCTION_ARGS)
 {
 	ReturnSetInfo	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext	per_query_ctx;
@@ -685,7 +685,7 @@ pg_hypo(PG_FUNCTION_ARGS)
  * List created hypothetical indexes
  */
 Datum
-pg_hypo_create_index(PG_FUNCTION_ARGS)
+hypopg_create_index(PG_FUNCTION_ARGS)
 {
 	char		*sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
 	List		*parsetree_list;
@@ -701,7 +701,7 @@ pg_hypo_create_index(PG_FUNCTION_ARGS)
 		if (nodeTag(parsetree) != T_IndexStmt)
 		{
 			elog(WARNING,
-					"pg_hypo: SQL order #%d is not a CREATE INDEX statement",
+					"hypopg: SQL order #%d is not a CREATE INDEX statement",
 					i);
 		}
 		else
