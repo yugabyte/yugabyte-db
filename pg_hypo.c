@@ -35,6 +35,7 @@ PG_MODULE_MAGIC;
 #define HYPO_MAX_COLS	10 /* # of column an hypothetical index can have */
 #define HYPO_NB_COLS		3 /* # of column pg_hypo() returns */
 #define HYPO_NB_INDEXES		50 /* # of hypothetical index a single session can hold */
+#define HYPO_MAX_INDEXNAME	4096
 
 bool isExplain = false;
 static bool	fix_empty_table = false;
@@ -45,7 +46,7 @@ static bool	fix_empty_table = false;
 typedef struct hypoEntry
 {
 	Oid			relid;		/* related relation Oid */
-	char		indexname[4096];	/* hypothetical index name */
+	char		indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
 	Oid			relam;
 	int			ncolumns; /* number of columns, only 1 for now */
 	int			indexkeys[HYPO_MAX_COLS]; /* attnums */
@@ -240,7 +241,8 @@ entry_store2(IndexStmt *node)
 	int			i = 0;
 	int			ncolumns;
 
-	indexRelationName = strdup("idx_hypo_");
+	indexRelationName = palloc0(sizeof(char) * HYPO_MAX_INDEXNAME);
+	indexRelationName = strcat(indexRelationName,"idx_hypo_");
 	indexRelationName = strcat(indexRelationName, node->accessMethod);
 	indexRelationName = strcat(indexRelationName, "_");
 
