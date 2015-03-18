@@ -10,23 +10,30 @@
 #include "postgres.h"
 #include "fmgr.h"
 
+#include "access/htup_details.h"
 #include "catalog/heap.h"
+#include "catalog/namespace.h"
+#include "catalog/pg_opclass.h"
+#include "commands/defrem.h"
 #include "commands/explain.h"
 #include "funcapi.h"
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
 #include "optimizer/plancat.h"
+#include "parser/parser.h"
+#include "parser/parse_coerce.h"
 #include "storage/bufmgr.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/rel.h"
+#include "utils/syscache.h"
 
 PG_MODULE_MAGIC;
 
-#define HYPO_MAX_COLS	1 /* # of column an hypothetical index can have */
-#define HYPO_NB_COLS		4 /* # of column pg_hypo() returns */
+#define HYPO_MAX_COLS	10 /* # of column an hypothetical index can have */
+#define HYPO_NB_COLS		3 /* # of column pg_hypo() returns */
 #define HYPO_NB_INDEXES		50 /* # of hypothetical index a single session can hold */
 
 bool isExplain = false;
@@ -38,13 +45,13 @@ static bool	fix_empty_table = false;
 typedef struct hypoEntry
 {
 	Oid			relid;		/* related relation Oid */
-	char		indexname[NAMEDATALEN];	/* hypothetical index name */
+	char		indexname[4096];	/* hypothetical index name */
 	Oid			relam;
 	int			ncolumns; /* number of columns, only 1 for now */
-	int			indexkeys; /* attnum */
+	int			indexkeys[HYPO_MAX_COLS]; /* attnums */
 	Oid			indexcollations;
-	Oid			opfamily;
-	Oid			opcintype;
+	Oid			opfamily[HYPO_MAX_COLS];
+	Oid			opcintype[HYPO_MAX_COLS];
 } hypoEntry;
 
 hypoEntry	entries[HYPO_NB_INDEXES];
@@ -56,22 +63,26 @@ void	_PG_init(void);
 void	_PG_fini(void);
 
 Datum	pg_hypo_reset(PG_FUNCTION_ARGS);
-Datum	pg_hypo_add_index_internal(PG_FUNCTION_ARGS);
+//Datum	pg_hypo_add_index_internal(PG_FUNCTION_ARGS);
 Datum	pg_hypo(PG_FUNCTION_ARGS);
+Datum	pg_hypo_create_index(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(pg_hypo_reset);
-PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
+//PG_FUNCTION_INFO_V1(pg_hypo_add_index_internal);
 PG_FUNCTION_INFO_V1(pg_hypo);
+PG_FUNCTION_INFO_V1(pg_hypo_create_index);
 
 static void entry_reset(void);
-static bool entry_store(Oid relid,
-			char *indexname,
-			Oid relam,
-			int ncolumns,
-			int indexkeys,
-			int indexcollations,
-			Oid opfamily,
-			Oid opcintype);
+//static bool entry_store(Oid relid,
+//			char *indexname,
+//			Oid relam,
+//			int ncolumns,
+//			int indexkeys,
+//			int indexcollations,
+//			Oid opfamily,
+//			Oid opcintype);
+
+static bool entry_store2(IndexStmt *node);
 
 static void hypo_utility_hook(Node *parsetree,
 					   const char *queryString,
@@ -102,6 +113,9 @@ static bool hypo_query_walker(Node *node);
 static List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
+static Oid
+GetIndexOpClass(List *opclass, Oid attrType,
+						char *accessMethodName, Oid accessMethodId);
 
 void
 _PG_init(void)
@@ -140,45 +154,189 @@ entry_reset(void)
 	return;
 }
 
-static bool
-entry_store(Oid relid,
-			char *indexname,
-			Oid relam,
-			int ncolumns,
-			int indexkeys,
-			int indexcollations,
-			Oid opfamily,
-			Oid opcintype)
-{
-	int i = 0;
+//static bool
+//entry_store(Oid relid,
+//			char *indexname,
+//			Oid relam,
+//			int ncolumns,
+//			int indexkeys,
+//			int indexcollations,
+//			Oid opfamily,
+//			Oid opcintype)
+//{
+//	int i = 0;
+//
+//	/* Make sure user didn't try to add too many columns */
+//	if (ncolumns > HYPO_MAX_COLS)
+//		return false;
+//
+//	while (i < HYPO_NB_INDEXES)
+//	{
+//		if ( /* don't store twice the same index */
+//			(entries[i].relid == relid) &&
+//			(entries[i].indexkeys == indexkeys) &&
+//			(entries[i].relam == relam)
+//		)
+//		{
+//			/* if index already exists, then raise a warning */
+//			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
+//			return false;
+//		}
+//
+//		if (entries[i].relid == InvalidOid)
+//		{
+//			entries[i].relid = relid;
+//			"_"[i].indexname, indexname, NAMEDATALEN);
+//			entries[i].relam = relam;
+//			entries[i].ncolumns = ncolumns;
+//			entries[i].indexkeys = indexkeys;
+//			entries[i].indexcollations = indexcollations;
+//			entries[i].opfamily = opfamily;
+//			entries[i].opcintype = opcintype;
+//
+//			return true;
+//		}
+//		i++;
+//	}
+//
+//	/* if there's no more room, then raise a warning */
+//	elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname);
+//	return false;
+//}
 
-	/* Make sure user didn't try to add too many columns */
+static bool
+entry_store2(IndexStmt *node)
+{
+	LOCKMODE			lockmode;
+	HeapTuple			tuple;
+	Form_pg_attribute	attform;
+	Oid					relid;
+	char				*indexRelationName;
+	//char	   *accessMethodName;
+	//Oid		   *typeObjectId;
+	//Oid		   *collationObjectId;
+	//Oid		   *classObjectId;
+	Oid					accessMethodId;
+	//Oid			namespaceId;
+	//Oid			tablespaceId;
+	//List	   *indexColNames;
+	//Relation	rel;
+	//Relation	indexRelation;
+	//HeapTuple	tuple;
+	//Form_pg_am	accessMethodForm;
+	//bool		amcanorder;
+	//RegProcedure amoptions;
+	//Datum		reloptions;
+	//int16	   *coloptions;
+	//IndexInfo  *indexInfo;
+	//int			numberOfAttributes;
+	//TransactionId limitXmin;
+	//VirtualTransactionId *old_snapshots;
+	//int			n_old_snapshots;
+	//LockRelId	heaprelid;
+	//LOCKTAG		heaplocktag;
+	//LOCKMODE	lockmode;
+	//Snapshot	snapshot;
+	int			i = 0;
+	int			ncolumns;
+
+	indexRelationName = strdup("idx_hypo_");
+	indexRelationName = strcat(indexRelationName, node->accessMethod);
+	indexRelationName = strcat(indexRelationName, "_");
+
+	if (node->relation->schemaname != NULL && (strcmp(node->relation->schemaname, "public") != 0))
+	{
+		indexRelationName = strcat(indexRelationName, node->relation->schemaname);
+		indexRelationName = strcat(indexRelationName, "_");
+	}
+
+	indexRelationName = strcat(indexRelationName, node->relation->relname);
+
+	lockmode = AccessShareLock;
+
+	relid =
+		RangeVarGetRelid(node->relation, lockmode, false);
+
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(node->accessMethod));
+	if (!HeapTupleIsValid(tuple))
+	{
+		if (!HeapTupleIsValid(tuple))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("pg_hypo: access method \"%s\" does not exist",
+						 node->accessMethod)));
+	}
+	accessMethodId = HeapTupleGetOid(tuple);
+	//accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
+
+	ReleaseSysCache(tuple);
+
+	/* now add the hypothetical index */
+	ncolumns = list_length(node->indexParams);
 	if (ncolumns > HYPO_MAX_COLS)
 		return false;
 
 	while (i < HYPO_NB_INDEXES)
 	{
-		if ( /* don't store twice the same index */
-			(entries[i].relid == relid) &&
-			(entries[i].indexkeys == indexkeys) &&
-			(entries[i].relam == relam)
-		)
-		{
-			/* if index already exists, then raise a warning */
-			elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
-			return false;
-		}
+		//if ( /* don't store twice the same index */
+		//	(entries[i].relid == relid) &&
+		//	(entries[i].indexkeys == indexkeys) &&
+		//	(entries[i].relam == relam)
+		//)
+		//{
+		//	/* if index already exists, then raise a warning */
+		//	elog(WARNING, "pg_hypo: Index already existing \"%s\"", indexname);
+		//	return false;
+		//}
 
 		if (entries[i].relid == InvalidOid)
 		{
+			ListCell	*lc;
+			int			j = 0;
+
 			entries[i].relid = relid;
-			strncpy(entries[i].indexname, indexname, NAMEDATALEN);
-			entries[i].relam = relam;
-			entries[i].ncolumns = ncolumns;
-			entries[i].indexkeys = indexkeys;
-			entries[i].indexcollations = indexcollations;
-			entries[i].opfamily = opfamily;
-			entries[i].opcintype = opcintype;
+			entries[i].relam = accessMethodId;
+			entries[i].ncolumns = ncolumns = list_length(node->indexParams);
+
+			/* iterate through columns */
+			foreach(lc, node->indexParams)
+			{
+				IndexElem *indexelem = (IndexElem *) lfirst(lc);
+				Oid		atttype;
+				Oid		opclass;
+
+				indexRelationName = strcat(indexRelationName, "_");
+				indexRelationName = strcat(indexRelationName, indexelem->name);
+				/* get the attribute catalog info */
+				tuple = SearchSysCacheAttName(relid, indexelem->name);
+				if (!HeapTupleIsValid(tuple))
+				{
+					elog(ERROR, "pg_hypo: column \"%s\" does not exist",
+						indexelem->name);
+				}
+				attform = (Form_pg_attribute) GETSTRUCT(tuple);
+
+				/* setup the attnum */
+				entries[i].indexkeys[j] = attform->attnum;
+
+				/* get the atttype */
+				atttype = attform->atttypid;
+				/* get the opclass */
+				opclass = GetIndexOpClass(indexelem->opclass,
+						atttype,
+						node->accessMethod,
+						accessMethodId);
+				/* setup the opfamily */
+				entries[i].opfamily[j] = get_opclass_family(opclass);
+
+				ReleaseSysCache(tuple);
+
+				entries[i].opcintype[j] = atttype; //TODO
+
+				j++;
+			}
+			entries[i].indexcollations = 0; /* TODO */
+			strcpy(entries[i].indexname, indexRelationName);
 
 			return true;
 		}
@@ -186,9 +344,10 @@ entry_store(Oid relid,
 	}
 
 	/* if there's no more room, then raise a warning */
-	elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexname);
+	elog(WARNING, "pg_hypo: no more free entry for storing index \"%s\"", indexRelationName);
 	return false;
 }
+
 
 /* This function setup the "isExplain" flag for next hooks.
  * If this flag is setup, we can add hypothetical indexes.
@@ -284,15 +443,15 @@ addHypotheticalIndex(PlannerInfo *root,
 
 	for (i = 0; i < ncolumns; i++)
 	{
-		index->indexkeys[i] = entries[position].indexkeys;
+		index->indexkeys[i] = entries[position].indexkeys[i];
 		ind_avg_width += get_attavgwidth(relation->rd_id, index->indexkeys[i]);
 		switch (index->relam)
 		{
 			case BTREE_AM_OID:
 				// hardcode int4 cols, WIP
 				index->indexcollations[i] = 0; //?? C_COLLATION_OID;
-				index->opfamily[i] = entries[position].opfamily; //INTEGER_BTREE_FAM_OID;
-				index->opcintype[i] = entries[position].opcintype; //INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
+				index->opfamily[i] = entries[position].opfamily[i]; //INTEGER_BTREE_FAM_OID;
+				index->opcintype[i] = entries[position].opcintype[i]; //INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
 				break;
 		}
 	}
@@ -438,20 +597,20 @@ pg_hypo_reset(PG_FUNCTION_ARGS)
  * it supposed to be called from the provided sql function, because I'm too
  * lazy to retrieve all the needed info in C !=
  */
-Datum
-pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
-{
-	Oid		relid = PG_GETARG_OID(0);
-	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
-	Oid		relam = PG_GETARG_OID(2);
-	int		ncolumns = PG_GETARG_INT32(3);
-	int		indexkeys = PG_GETARG_INT32(4);
-	Oid		indexcollations = PG_GETARG_OID(5);
-	Oid		opfamily = PG_GETARG_OID(6);
-	Oid		opcintype = PG_GETARG_OID(7);
-
-	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
-}
+//Datum
+//pg_hypo_add_index_internal(PG_FUNCTION_ARGS)
+//{
+//	Oid		relid = PG_GETARG_OID(0);
+//	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
+//	Oid		relam = PG_GETARG_OID(2);
+//	int		ncolumns = PG_GETARG_INT32(3);
+//	int		indexkeys = PG_GETARG_INT32(4);
+//	Oid		indexcollations = PG_GETARG_OID(5);
+//	Oid		opfamily = PG_GETARG_OID(6);
+//	Oid		opcintype = PG_GETARG_OID(7);
+//
+//	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+//}
 
 /*
  * List created hypothetical indexes
@@ -506,7 +665,6 @@ pg_hypo(PG_FUNCTION_ARGS)
 
 		values[j++] = CStringGetTextDatum(strdup(entries[i].indexname));
 		values[j++] = ObjectIdGetDatum(entries[i].relid);
-		values[j++] = Int32GetDatum(entries[i].indexkeys);
 		values[j++] = ObjectIdGetDatum(entries[i].relam);
 
 		Assert(j == PG_STAT_PLAN_COLS);
@@ -519,6 +677,39 @@ pg_hypo(PG_FUNCTION_ARGS)
 	tuplestore_donestoring(tupstore);
 
 	return (Datum) 0;
+}
+
+/*
+ * List created hypothetical indexes
+ */
+Datum
+pg_hypo_create_index(PG_FUNCTION_ARGS)
+{
+	char		*sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
+	List		*parsetree_list;
+	ListCell	*parsetree_item;
+	char		*res;
+	int			i = 1;
+
+	parsetree_list = pg_parse_query(sql);
+
+	foreach(parsetree_item, parsetree_list)
+	{
+		Node	   *parsetree = (Node *) lfirst(parsetree_item);
+		if (nodeTag(parsetree) != T_IndexStmt)
+		{
+			elog(WARNING,
+					"pg_hypo: SQL order #%d is not a CREATE INDEX statement",
+					i);
+		}
+		else
+		{
+			entry_store2((IndexStmt *) parsetree);
+		}
+		i++;
+	}
+	res = nodeToString(parsetree_list);
+	PG_RETURN_TEXT_P(cstring_to_text(res));
 }
 
 // stolen from backend/optimisze/util/plancat.c, no export of this function :(
@@ -574,4 +765,113 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 		elog(ERROR, "wrong number of index expressions");
 
 	return tlist;
+}
+
+/*
+ * Stolen from src/backend/commands/indexcmds.c, not exported :/
+ * Resolve possibly-defaulted operator class specification
+ */
+static Oid
+GetIndexOpClass(List *opclass, Oid attrType,
+						char *accessMethodName, Oid accessMethodId)
+{
+	char	   *schemaname;
+	char	   *opcname;
+	HeapTuple	tuple;
+	Oid			opClassId,
+				opInputType;
+
+	/*
+	 * Release 7.0 removed network_ops, timespan_ops, and datetime_ops, so we
+	 * ignore those opclass names so the default *_ops is used.  This can be
+	 * removed in some later release.  bjm 2000/02/07
+	 *
+	 * Release 7.1 removes lztext_ops, so suppress that too for a while.  tgl
+	 * 2000/07/30
+	 *
+	 * Release 7.2 renames timestamp_ops to timestamptz_ops, so suppress that
+	 * too for awhile.  I'm starting to think we need a better approach. tgl
+	 * 2000/10/01
+	 *
+	 * Release 8.0 removes bigbox_ops (which was dead code for a long while
+	 * anyway).  tgl 2003/11/11
+	 */
+	if (list_length(opclass) == 1)
+	{
+		char	   *claname = strVal(linitial(opclass));
+
+		if (strcmp(claname, "network_ops") == 0 ||
+				strcmp(claname, "timespan_ops") == 0 ||
+				strcmp(claname, "datetime_ops") == 0 ||
+				strcmp(claname, "lztext_ops") == 0 ||
+				strcmp(claname, "timestamp_ops") == 0 ||
+				strcmp(claname, "bigbox_ops") == 0)
+			opclass = NIL;
+	}
+
+	if (opclass == NIL)
+	{
+		/* no operator class specified, so find the default */
+		opClassId = GetDefaultOpClass(attrType, accessMethodId);
+		if (!OidIsValid(opClassId))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("data type %s has no default operator class for access method \"%s\"",
+						 format_type_be(attrType), accessMethodName),
+					 errhint("You must specify an operator class for the index or define a default operator class for the data type.")));
+		return opClassId;
+	}
+
+	/*
+	 * Specific opclass name given, so look up the opclass.
+	 */
+
+	/* deconstruct the name list */
+	DeconstructQualifiedName(opclass, &schemaname, &opcname);
+
+	if (schemaname)
+	{
+		/* Look in specific schema only */
+		Oid			namespaceId;
+
+		namespaceId = LookupExplicitNamespace(schemaname, false);
+		tuple = SearchSysCache3(CLAAMNAMENSP,
+				ObjectIdGetDatum(accessMethodId),
+				PointerGetDatum(opcname),
+				ObjectIdGetDatum(namespaceId));
+	}
+	else
+	{
+		/* Unqualified opclass name, so search the search path */
+		opClassId = OpclassnameGetOpcid(accessMethodId, opcname);
+		if (!OidIsValid(opClassId))
+			ereport(ERROR,
+					(errcode(ERRCODE_UNDEFINED_OBJECT),
+					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
+						 opcname, accessMethodName)));
+		tuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(opClassId));
+	}
+
+	if (!HeapTupleIsValid(tuple))
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
+					 NameListToString(opclass), accessMethodName)));
+
+	/*
+	 * Verify that the index operator class accepts this datatype.  Note we
+	 * will accept binary compatibility.
+	 */
+	opClassId = HeapTupleGetOid(tuple);
+	opInputType = ((Form_pg_opclass) GETSTRUCT(tuple))->opcintype;
+
+	if (!IsBinaryCoercible(attrType, opInputType))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+				 errmsg("operator class \"%s\" does not accept data type %s",
+					 NameListToString(opclass), format_type_be(attrType))));
+
+	ReleaseSysCache(tuple);
+
+	return opClassId;
 }
