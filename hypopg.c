@@ -74,16 +74,16 @@ PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 
 static void entry_reset(void);
-//static bool entry_store(Oid relid,
-//			char *indexname,
-//			Oid relam,
-//			int ncolumns,
-//			int indexkeys,
-//			int indexcollations,
-//			Oid opfamily,
-//			Oid opcintype);
+static bool entry_store(Oid relid,
+			char *indexname,
+			Oid relam,
+			int ncolumns,
+			int indexkeys,
+			int indexcollations,
+			Oid opfamily,
+			Oid opcintype);
 
-static bool entry_store2(IndexStmt *node);
+static bool entry_store_parsetree(IndexStmt *node);
 
 static void hypo_utility_hook(Node *parsetree,
 					   const char *queryString,
@@ -103,7 +103,7 @@ static get_relation_info_hook_type	prev_get_relation_info_hook = NULL;
 static const char *hypo_explain_get_index_name_hook(Oid indexId);
 static explain_get_index_name_hook_type prev_explain_get_index_name_hook = NULL;
 
-static void addHypotheticalIndex(PlannerInfo *root,
+static void injectHypotheticalIndex(PlannerInfo *root,
 						Oid relationObjectId,
 						bool inhparent,
 						RelOptInfo *rel,
@@ -155,58 +155,58 @@ entry_reset(void)
 	return;
 }
 
-//static bool
-//entry_store(Oid relid,
-//			char *indexname,
-//			Oid relam,
-//			int ncolumns,
-//			int indexkeys,
-//			int indexcollations,
-//			Oid opfamily,
-//			Oid opcintype)
-//{
-//	int i = 0;
-//
-//	/* Make sure user didn't try to add too many columns */
-//	if (ncolumns > HYPO_MAX_COLS)
-//		return false;
-//
-//	while (i < HYPO_NB_INDEXES)
-//	{
-//		if ( /* don't store twice the same index */
-//			(entries[i].relid == relid) &&
-//			(entries[i].indexkeys == indexkeys) &&
-//			(entries[i].relam == relam)
-//		)
-//		{
-//			/* if index already exists, then raise a warning */
-//			elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
-//			return false;
-//		}
-//
-//		if (entries[i].relid == InvalidOid)
-//		{
-//			entries[i].relid = relid;
-//			"_"[i].indexname, indexname, NAMEDATALEN);
-//			entries[i].relam = relam;
-//			entries[i].ncolumns = ncolumns;
-//			entries[i].indexkeys = indexkeys;
-//			entries[i].indexcollations = indexcollations;
-//			entries[i].opfamily = opfamily;
-//			entries[i].opcintype = opcintype;
-//
-//			return true;
-//		}
-//		i++;
-//	}
-//
-//	/* if there's no more room, then raise a warning */
-//	elog(WARNING, "hypopg: no more free entry for storing index \"%s\"", indexname);
-//	return false;
-//}
+static bool
+entry_store(Oid relid,
+			char *indexname,
+			Oid relam,
+			int ncolumns,
+			int indexkeys,
+			int indexcollations,
+			Oid opfamily,
+			Oid opcintype)
+{
+	int i = 0;
+
+	/* Make sure user didn't try to add too many columns */
+	if (ncolumns > HYPO_MAX_COLS)
+		return false;
+
+	while (i < HYPO_NB_INDEXES)
+	{
+		//if ( /* don't store twice the same index */
+		//	(entries[i].relid == relid) &&
+		//	(entries[i].indexkeys == indexkeys) &&
+		//	(entries[i].relam == relam)
+		//)
+		//{
+		//	/* if index already exists, then raise a warning */
+		//	elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
+		//	return false;
+		//}
+
+		//if (entries[i].relid == InvalidOid)
+		{
+			entries[i].relid = relid;
+			strcpy(entries[i].indexname, strncat(entries[i].indexname, indexname, HYPO_MAX_INDEXNAME));
+			entries[i].relam = relam;
+			entries[i].ncolumns = ncolumns;
+			entries[i].indexkeys[0] = indexkeys;
+			entries[i].indexcollations = indexcollations;
+			entries[i].opfamily[0] = opfamily;
+			entries[i].opcintype[0] = opcintype;
+
+			return true;
+		}
+		i++;
+	}
+
+	/* if there's no more room, then raise a warning */
+	elog(WARNING, "hypopg: no more free entry for storing index \"%s\"", indexname);
+	return false;
+}
 
 static bool
-entry_store2(IndexStmt *node)
+entry_store_parsetree(IndexStmt *node)
 {
 	LOCKMODE			lockmode;
 	HeapTuple			tuple;
@@ -409,7 +409,7 @@ hypo_query_walker(Node *parsetree)
  * Build hypothetical indexes for the specified relation.
  */
 static void
-addHypotheticalIndex(PlannerInfo *root,
+injectHypotheticalIndex(PlannerInfo *root,
 					 Oid relationObjectId,
 					 bool inhparent,
 					 RelOptInfo *rel,
@@ -512,7 +512,7 @@ addHypotheticalIndex(PlannerInfo *root,
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
-/* This function will execute the "addHypotheticalIndex" for every hypothetical
+/* This function will execute the "injectHypotheticalIndex" for every hypothetical
  * index found for each relation if the isExplain flag is setup.
  */
 static void hypo_get_relation_info_hook(PlannerInfo *root,
@@ -547,7 +547,7 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 					break;
 				if (entries[i].relid == relationObjectId) {
 					// hypothetical index found, add it to the relation's indextlist
-					addHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, i);
+					injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, i);
 				}
 			}
 		}
@@ -599,20 +599,20 @@ hypopg_reset(PG_FUNCTION_ARGS)
  * it supposed to be called from the provided sql function, because I'm too
  * lazy to retrieve all the needed info in C !=
  */
-//Datum
-//hypopg_add_index_internal(PG_FUNCTION_ARGS)
-//{
-//	Oid		relid = PG_GETARG_OID(0);
-//	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
-//	Oid		relam = PG_GETARG_OID(2);
-//	int		ncolumns = PG_GETARG_INT32(3);
-//	int		indexkeys = PG_GETARG_INT32(4);
-//	Oid		indexcollations = PG_GETARG_OID(5);
-//	Oid		opfamily = PG_GETARG_OID(6);
-//	Oid		opcintype = PG_GETARG_OID(7);
-//
-//	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
-//}
+Datum
+hypopg_add_index_internal(PG_FUNCTION_ARGS)
+{
+	Oid		relid = PG_GETARG_OID(0);
+	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
+	Oid		relam = PG_GETARG_OID(2);
+	int		ncolumns = PG_GETARG_INT32(3);
+	int		indexkeys = PG_GETARG_INT32(4);
+	Oid		indexcollations = PG_GETARG_OID(5);
+	Oid		opfamily = PG_GETARG_OID(6);
+	Oid		opcintype = PG_GETARG_OID(7);
+
+	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+}
 
 /*
  * List created hypothetical indexes
@@ -706,7 +706,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			entry_store2((IndexStmt *) parsetree);
+			entry_store_parsetree((IndexStmt *) parsetree);
 		}
 		i++;
 	}
