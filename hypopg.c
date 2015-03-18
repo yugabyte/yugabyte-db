@@ -41,18 +41,22 @@ bool isExplain = false;
 static bool	fix_empty_table = false;
 
 /*
- * Hypothetical index storage
+ * Hypothetical index storage, pretty much an IndexOptInfo
  */
 typedef struct hypoEntry
 {
 	Oid			relid;		/* related relation Oid */
+	Oid			reltablespace;
 	char		indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
-	Oid			relam;
 	int			ncolumns; /* number of columns, only 1 for now */
 	int			indexkeys[HYPO_MAX_COLS]; /* attnums */
-	Oid			indexcollations;
+	Oid			indexcollations[HYPO_MAX_COLS];
 	Oid			opfamily[HYPO_MAX_COLS];
 	Oid			opcintype[HYPO_MAX_COLS];
+	Oid			sortopfamily[HYPO_MAX_COLS];
+	bool		reverse_sort[HYPO_MAX_COLS];
+	bool		nulls_first[HYPO_MAX_COLS];
+	Oid			relam;
 } hypoEntry;
 
 hypoEntry	entries[HYPO_NB_INDEXES];
@@ -64,7 +68,7 @@ void	_PG_init(void);
 void	_PG_fini(void);
 
 Datum	hypopg_reset(PG_FUNCTION_ARGS);
-//Datum	hypopg_add_index_internal(PG_FUNCTION_ARGS);
+Datum	hypopg_add_index_internal(PG_FUNCTION_ARGS);
 Datum	hypopg(PG_FUNCTION_ARGS);
 Datum	hypopg_create_index(PG_FUNCTION_ARGS);
 
@@ -191,7 +195,7 @@ entry_store(Oid relid,
 			entries[i].relam = relam;
 			entries[i].ncolumns = ncolumns;
 			entries[i].indexkeys[0] = indexkeys;
-			entries[i].indexcollations = indexcollations;
+			entries[i].indexcollations[0] = indexcollations;
 			entries[i].opfamily[0] = opfamily;
 			entries[i].opcintype[0] = opcintype;
 
@@ -208,7 +212,6 @@ entry_store(Oid relid,
 static bool
 entry_store_parsetree(IndexStmt *node)
 {
-	LOCKMODE			lockmode;
 	HeapTuple			tuple;
 	Form_pg_attribute	attform;
 	Oid					relid;
@@ -241,6 +244,10 @@ entry_store_parsetree(IndexStmt *node)
 	int			i = 0;
 	int			ncolumns;
 
+	ncolumns = list_length(node->indexParams);
+	if (ncolumns > HYPO_MAX_COLS)
+		return false;
+
 	indexRelationName = palloc0(sizeof(char) * HYPO_MAX_INDEXNAME);
 	indexRelationName = strcat(indexRelationName,"idx_hypo_");
 	indexRelationName = strcat(indexRelationName, node->accessMethod);
@@ -254,10 +261,8 @@ entry_store_parsetree(IndexStmt *node)
 
 	indexRelationName = strcat(indexRelationName, node->relation->relname);
 
-	lockmode = AccessShareLock;
-
 	relid =
-		RangeVarGetRelid(node->relation, lockmode, false);
+		RangeVarGetRelid(node->relation, AccessShareLock, false);
 
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(node->accessMethod));
 	if (!HeapTupleIsValid(tuple))
@@ -274,10 +279,6 @@ entry_store_parsetree(IndexStmt *node)
 	ReleaseSysCache(tuple);
 
 	/* now add the hypothetical index */
-	ncolumns = list_length(node->indexParams);
-	if (ncolumns > HYPO_MAX_COLS)
-		return false;
-
 	while (i < HYPO_NB_INDEXES)
 	{
 		//if ( /* don't store twice the same index */
@@ -334,10 +335,10 @@ entry_store_parsetree(IndexStmt *node)
 				ReleaseSysCache(tuple);
 
 				entries[i].opcintype[j] = atttype; //TODO
+			entries[i].indexcollations[j] = 0; /* TODO */
 
 				j++;
 			}
-			entries[i].indexcollations = 0; /* TODO */
 			strcpy(entries[i].indexname, indexRelationName);
 
 			return true;
