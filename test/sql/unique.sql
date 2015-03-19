@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(48);
+SELECT plan(18*3);
 
 -- This will be rolled back. :-)
 SET client_min_messages = warning;
@@ -89,6 +89,22 @@ SELECT * FROM check_test(
     true,
     'col_is_unique( table, columns, description )',
     'sometab.numb+myint should be unique',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_is_unique( 'public', 'sometab', 'name'::name ),
+    true,
+    'col_is_unique( schema, table, column )',
+    'Column sometab(name) should have a unique constraint',
+    ''
+);
+
+SELECT * FROM check_test(
+    col_is_unique( 'public', 'sometab', ARRAY['numb'::name, 'myint'] ),
+    true,
+    'col_is_unique( schema, table, columns )',
+    'Columns sometab(numb, myint) should have a unique constraint',
     ''
 );
 

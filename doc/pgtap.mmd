@@ -4421,6 +4421,8 @@ in question does not exist.
 
     SELECT col_is_unique( schema, table, columns, description );
     SELECT col_is_unique( schema, table, column, description );
+    SELECT col_is_unique( schema, table, columns );
+    SELECT col_is_unique( schema, table, column );
     SELECT col_is_unique( table, columns, description );
     SELECT col_is_unique( table, column, description );
     SELECT col_is_unique( table, columns );
@@ -4435,10 +4437,10 @@ in question does not exist.
 : Name of a table containing the unique constraint.
 
 `:columns`
-: Array of the names of the unique columns.
+: Array of the names of the unique columns. Note that if you don't include :description this must be an array of names.
 
 `:column`
-: Name of the unique column.
+: Name of the unique column. Note that if you don't include :description this must be a name, not text.
 
 `:description`
 : A short description of the test.
