@@ -11,7 +11,7 @@ Revision history for pgTAP
   Thanks to Charly Batista for the contribution!
 * Added `performs_within()`, a function that tests the average performance of
   an SQL statement over a number of iterations. Contributed by Ryan Duryea.
-* Changed is_member_of to work with roles instead of users. Patch from Jim
+* Changed `is_member_of()` to work with roles instead of users. Patch from Jim
   Nasby.
 * Granted SELECT access to the views created by pgTAP to PUBLIC, to avoid
   permission errors when the tests are run by a user other than the owner of
@@ -26,13 +26,16 @@ Revision history for pgTAP
   Jim Nasby.
 * The `runtests()` function now executes each test as a TAP subtest, with its
   own plan and test count. This allows each test function to function more
-  independently of the others. It's easier to read the TAP, too.
+  independently of the others. It's easier to read the TAP, too. Users of
+  xUnit-style tests with `pg_regress` will need to update their expected
+  output files, however.
 * An exception thrown by a test no run by `runtests()` no longer halts
-  execution. It is instead properly rolled back and the error message emitted
-  as a diagnostic message. Thanks to Vitaliy Kotov for the report.
+  execution. It is instead properly rolled back, reported as a subtest
+  failure, and the error message emitted as a diagnostic message. Thanks to
+  Vitaliy Kotov for the report.
 * Eliminated the temporary table `__tresults__`. Test results are no longer
-  written to a table, but simply emitted. This should make tests run a bit
-  faster, as that I/O overhead has been eliminated.
+  written to a table, but simply emitted. This elimination of unnecessary I/O
+  should make tests run a bit faster.
 * Added missing functions `has_sequence(:schema, :sequence)` mentioned in the
   docs (Issue #58):
 
