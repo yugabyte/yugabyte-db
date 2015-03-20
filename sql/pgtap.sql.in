@@ -6053,13 +6053,13 @@ BEGIN
     -- Record how startup tests have failed.
     tfaild := num_failed();
 
-    FOR i IN 1..array_upper(tests, 1) LOOP
+    FOR i IN 1..COALESCE(array_upper(tests, 1), 0) LOOP
         -- What subtest are we running?
         RETURN NEXT '    ' || diag_test_name('Subtest: ' || tests[i]);
 
         -- Reset the results.
         tok := TRUE;
-        tnumb := currval('__tresults___numb_seq');
+        tnumb := COALESCE(_get('curr_test'), 0);
 
         IF tnumb > 0 THEN
             EXECUTE 'TRUNCATE __tresults__';
@@ -6084,12 +6084,13 @@ BEGIN
                 END LOOP;
 
                 -- Emit the plan.
-                fnumb := currval('__tresults___numb_seq');
+                fnumb := COALESCE(_get('curr_test'), 0);
                 RETURN NEXT '    1..' || fnumb;
 
                 -- Emit any error messages.
                 IF fnumb = 0 THEN
                     RETURN NEXT '    # No tests run!';
+                    tok = false;
                 ELSE
                     -- Report failures.
                     ffaild := num_failed();
@@ -6134,7 +6135,7 @@ BEGIN
     FOR tap IN SELECT * FROM _runem(shutdown, false) LOOP RETURN NEXT tap; END LOOP;
 
     -- Finish up.
-    FOR tap IN SELECT * FROM _finish( currval('__tresults___numb_seq')::integer, 0, tfaild ) LOOP
+    FOR tap IN SELECT * FROM _finish( COALESCE(_get('curr_test'), 0), 0, tfaild ) LOOP
         RETURN NEXT tap;
     END LOOP;
 
