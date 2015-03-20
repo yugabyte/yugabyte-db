@@ -37,7 +37,7 @@ PG_MODULE_MAGIC;
 
 #define HYPO_MAX_COLS	10 /* # of column an hypothetical index can have */
 #define HYPO_NB_COLS		4 /* # of column hypopg() returns */
-#define HYPO_MAX_INDEXNAME	4096
+#define HYPO_MAX_INDEXNAME	1024 /* max length of an hypothetical index */
 
 bool isExplain = false;
 static bool	fix_empty_table = false;
@@ -47,19 +47,35 @@ static bool	fix_empty_table = false;
  */
 typedef struct hypoEntry
 {
-	Oid			oid; /* hypothetical index unique identifier */
-	Oid			relid;		/* related relation Oid */
-	Oid			reltablespace; /* tablespace of the index, if set */
-	char		indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
-	int			ncolumns; /* number of columns, only 1 for now */
-	int			indexkeys[HYPO_MAX_COLS]; /* attnums */
-	Oid			indexcollations[HYPO_MAX_COLS]; /* OIDs of collations of index columns */
-	Oid			opfamily[HYPO_MAX_COLS]; /* OIDs of operator families for columns */
-	Oid			opcintype[HYPO_MAX_COLS]; /* OIDs of opclass declared input data types */
-	Oid			sortopfamily[HYPO_MAX_COLS]; /* OIDs of btree opfamilies, if orderable */
-	bool		reverse_sort[HYPO_MAX_COLS]; /* is sort order descending? */
-	bool		nulls_first[HYPO_MAX_COLS]; /* do NULLs come first in the sort order? */
-	Oid			relam;  /* OID of the access method (in pg_am) */
+	Oid				oid; /* hypothetical index unique identifier */
+	Oid				relid;		/* related relation Oid */
+	Oid				reltablespace; /* tablespace of the index, if set */
+	char			indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
+
+	/* index descriptor informations */
+	int				ncolumns; /* number of columns, only 1 for now */
+	int				indexkeys[HYPO_MAX_COLS]; /* attnums */
+	Oid				indexcollations[HYPO_MAX_COLS]; /* OIDs of collations of index columns */
+	Oid				opfamily[HYPO_MAX_COLS]; /* OIDs of operator families for columns */
+	Oid				opcintype[HYPO_MAX_COLS]; /* OIDs of opclass declared input data types */
+	Oid				sortopfamily[HYPO_MAX_COLS]; /* OIDs of btree opfamilies, if orderable */
+	bool			reverse_sort[HYPO_MAX_COLS]; /* is sort order descending? */
+	bool			nulls_first[HYPO_MAX_COLS]; /* do NULLs come first in the sort order? */
+	Oid				relam;  /* OID of the access method (in pg_am) */
+
+	RegProcedure	amcostestimate; /* OID of the access method's cost fcn */
+
+	bool			predOK;			/* true if predicate matches query */
+	bool			unique;			/* true if a unique index */
+	bool			immediate;		/* is uniqueness enforced immediately? */
+	bool			canreturn;		/* can index return IndexTuples? */
+	bool			amcanorderbyop; /* does AM support order by operator result? */
+	bool			amoptionalkey;	/* can query omit key for the first column? */
+	bool			amsearcharray;	/* can AM handle ScalarArrayOpExpr quals? */
+	bool			amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
+	bool			amhasgettuple;	/* does AM have amgettuple interface? */
+	bool			amhasgetbitmap; /* does AM have amgetbitmap interface? */
+
 } hypoEntry;
 
 List *entries = NIL;
@@ -80,7 +96,7 @@ PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 
-static hypoEntry * newHypoEntry(Oid relid);
+static hypoEntry * newHypoEntry(Oid relid, Oid relam);
 static Oid hypoGetNewOid(Oid relid);
 static void addHypoEntry(hypoEntry *entry);
 
@@ -153,9 +169,9 @@ _PG_fini(void)
 
 }
 
-/* palloc a new hypoEntry, and give it a new OID */
+/* palloc a new hypoEntry, and give it a new OID, and some other global stuff */
 static hypoEntry *
-newHypoEntry(Oid relid)
+newHypoEntry(Oid relid, Oid relam)
 {
 	hypoEntry *entry;
 	MemoryContext oldcontext;
@@ -167,6 +183,27 @@ newHypoEntry(Oid relid)
 	MemoryContextSwitchTo(oldcontext);
 
 	entry->oid = hypoGetNewOid(relid);
+	entry->relid = relid;
+	entry->relam = relam;
+
+	switch (entry->relam)
+	{
+		case BTREE_AM_OID:
+			entry->amcostestimate = (RegProcedure) 1268; // btcostestimate
+			entry->immediate = true;
+			entry->canreturn = true;
+			entry->amcanorderbyop = false;
+			entry->amoptionalkey = true;
+			entry->amsearcharray = true;
+			entry->amsearchnulls = true;
+			entry->amhasgettuple = true;
+			entry->amhasgetbitmap = true;
+			break;
+		default:
+			elog(WARNING, "pg_hypo: access method %d is not supported",
+					entry->relam);
+			break;
+	}
 
 	return entry;
 }
@@ -232,12 +269,9 @@ entry_store(Oid relid,
 	if (ncolumns > HYPO_MAX_COLS)
 		return false;
 
-	entry = newHypoEntry(relid);
+	entry = newHypoEntry(relid, relam);
 
-	entry->oid = hypoGetNewOid(relid);
-	entry->relid = relid;
 	strcpy(entry->indexname, indexname);
-	entry->relam = relam;
 	entry->ncolumns = ncolumns;
 	entry->indexkeys[0] = indexkeys;
 	entry->indexcollations[0] = indexcollations;
@@ -297,10 +331,8 @@ entry_store_parsetree(IndexStmt *node)
 	ReleaseSysCache(tuple);
 
 	/* now add the hypothetical index */
-	entry = newHypoEntry(relid);
+	entry = newHypoEntry(relid, accessMethodId);
 
-	entry->relid = relid;
-	entry->relam = accessMethodId;
 	entry->ncolumns = ncolumns = list_length(node->indexParams);
 
 	/* iterate through columns */
@@ -457,28 +489,29 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	index->unique = false; /* no hypothetical unique index */
 
+	index->amcostestimate = entry->amcostestimate;
+	index->immediate = entry->immediate;
+	index->canreturn = entry->canreturn;
+	index->amcanorderbyop = entry->canreturn;
+	index->amoptionalkey = entry->amoptionalkey;
+	index->amsearcharray = entry->amsearcharray;
+	index->amsearchnulls = entry->amsearchnulls;
+	index->amhasgettuple = entry->amhasgettuple;
+	index->amhasgetbitmap = entry->amhasgetbitmap;
+
 	if (index->relam == BTREE_AM_OID)
 	{
-		index->canreturn = true;
-		index->amcanorderbyop = false;
-		index->amoptionalkey = true;
-		index->amsearcharray = true;
-		index->amsearchnulls = true;
-		index->amhasgettuple = true;
-		index->amhasgetbitmap = true;
-		index->immediate = true;
-		index->amcostestimate = (RegProcedure) 1268; // btcostestimate
-		index->sortopfamily = index->opfamily;
 		index->tree_height = 1; // TODO
+		index->sortopfamily = index->opfamily;
+	}
 
-		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+	index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
+	index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
 
-		for (i = 0; i < ncolumns; i++)
-		{
-			index->reverse_sort[i] = false; // not handled for now, WIP
-			index->nulls_first[i] = false; // not handled for now, WIP
-		}
+	for (i = 0; i < ncolumns; i++)
+	{
+		index->reverse_sort[i] = false; // not handled for now, WIP
+		index->nulls_first[i] = false; // not handled for now, WIP
 	}
 
 	index->indexprs = NIL; // not handled for now, WIP
