@@ -49,17 +49,17 @@ typedef struct hypoEntry
 {
 	Oid			oid; /* hypothetical index unique identifier */
 	Oid			relid;		/* related relation Oid */
-	Oid			reltablespace;
+	Oid			reltablespace; /* tablespace of the index, if set */
 	char		indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
 	int			ncolumns; /* number of columns, only 1 for now */
 	int			indexkeys[HYPO_MAX_COLS]; /* attnums */
-	Oid			indexcollations[HYPO_MAX_COLS];
-	Oid			opfamily[HYPO_MAX_COLS];
-	Oid			opcintype[HYPO_MAX_COLS];
-	Oid			sortopfamily[HYPO_MAX_COLS];
-	bool		reverse_sort[HYPO_MAX_COLS];
-	bool		nulls_first[HYPO_MAX_COLS];
-	Oid			relam;
+	Oid			indexcollations[HYPO_MAX_COLS]; /* OIDs of collations of index columns */
+	Oid			opfamily[HYPO_MAX_COLS]; /* OIDs of operator families for columns */
+	Oid			opcintype[HYPO_MAX_COLS]; /* OIDs of opclass declared input data types */
+	Oid			sortopfamily[HYPO_MAX_COLS]; /* OIDs of btree opfamilies, if orderable */
+	bool		reverse_sort[HYPO_MAX_COLS]; /* is sort order descending? */
+	bool		nulls_first[HYPO_MAX_COLS]; /* do NULLs come first in the sort order? */
+	Oid			relam;  /* OID of the access method (in pg_am) */
 } hypoEntry;
 
 List *entries = NIL;
