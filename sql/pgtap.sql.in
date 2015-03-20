@@ -204,7 +204,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql strict;
 
-CREATE OR REPLACE FUNCTION _finish ( INTEGER, INTEGER, INTEGER)
+CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER)
 RETURNS SETOF TEXT AS $$
 DECLARE
     curr_test ALIAS FOR $1;
@@ -6032,9 +6032,14 @@ DECLARE
     setup    ALIAS FOR $3;
     teardown ALIAS FOR $4;
     tests    ALIAS FOR $5;
-    tap      text;
-    verbos   boolean := _is_verbose(); -- verbose is a reserved word in 8.5.
-    num_faild INTEGER := 0;
+    tap      TEXT;
+    verbos   BOOLEAN := _is_verbose(); -- verbose is a reserved word in 8.5.
+    tfaild   INTEGER := 0;
+    ffaild   INTEGER := 0;
+    tnumb    INTEGER := 0;
+    fnumb    INTEGER := 0;
+    tok      BOOLEAN := TRUE;
+    errmsg   TEXT;
 BEGIN
     BEGIN
         -- No plan support.
@@ -6043,52 +6048,94 @@ BEGIN
     EXCEPTION
         -- Catch all exceptions and simply rethrow custom exceptions. This
         -- will roll back everything in the above block.
-        WHEN raise_exception THEN
-            RAISE EXCEPTION '%', SQLERRM;
+        WHEN raise_exception THEN RAISE EXCEPTION '%', SQLERRM;
     END;
 
-    BEGIN
-        FOR i IN 1..array_upper(tests, 1) LOOP
-            BEGIN
-                -- What test are we running?
-                IF verbos THEN RETURN NEXT diag_test_name(tests[i]); END IF;
+    -- Record how startup tests have failed.
+    tfaild := num_failed();
 
+    FOR i IN 1..array_upper(tests, 1) LOOP
+        -- What subtest are we running?
+        RETURN NEXT '    ' || diag_test_name('Subtest: ' || tests[i]);
+
+        -- Reset the results.
+        tok := TRUE;
+        tnumb := currval('__tresults___numb_seq');
+
+        IF tnumb > 0 THEN
+            EXECUTE 'TRUNCATE __tresults__';
+            EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH 1';
+        END IF;
+
+        BEGIN
+            BEGIN
                 -- Run the setup functions.
-                FOR tap IN SELECT * FROM _runem(setup, false) LOOP RETURN NEXT tap; END LOOP;
+                FOR tap IN SELECT * FROM _runem(setup, false) LOOP
+                    RETURN NEXT regexp_replace(tap, '^', '    ', 'gn');
+                END LOOP;
 
                 -- Run the actual test function.
                 FOR tap IN EXECUTE 'SELECT * FROM ' || tests[i] || '()' LOOP
-                    RETURN NEXT tap;
+                    RETURN NEXT regexp_replace(tap, '^', '    ', 'gn');
                 END LOOP;
 
                 -- Run the teardown functions.
-                FOR tap IN SELECT * FROM _runem(teardown, false) LOOP RETURN NEXT tap; END LOOP;
+                FOR tap IN SELECT * FROM _runem(teardown, false) LOOP
+                    RETURN NEXT regexp_replace(tap, '^', '    ', 'gn');
+                END LOOP;
 
-                -- Remember how many failed and then roll back.
-                num_faild := num_faild + num_failed();
-                RAISE EXCEPTION '__TAP_ROLLBACK__';
+                -- Emit the plan.
+                fnumb := currval('__tresults___numb_seq');
+                RETURN NEXT '    1..' || fnumb;
+
+                -- Emit any error messages.
+                IF fnumb = 0 THEN
+                    RETURN NEXT '    # No tests run!';
+                ELSE
+                    -- Report failures.
+                    ffaild := num_failed();
+                    IF ffaild > 0 THEN
+                        tok := FALSE;
+                        RETURN NEXT '    ' || diag(
+                            'Looks like you failed ' || ffaild || ' test' ||
+                             CASE tfaild WHEN 1 THEN '' ELSE 's' END
+                             || ' of ' || fnumb
+                        );
+                    END IF;
+                END IF;
 
             EXCEPTION WHEN raise_exception THEN
-                IF SQLERRM <> '__TAP_ROLLBACK__' THEN
-                    -- We didn't raise it, so propagate it.
-                    RAISE EXCEPTION '%', SQLERRM;
-                END IF;
+                -- Something went wrong. Record that fact.
+                errmsg := SQLERRM;
             END;
-        END LOOP;
 
-        -- Run the shutdown functions.
-        FOR tap IN SELECT * FROM _runem(shutdown, false) LOOP RETURN NEXT tap; END LOOP;
+            -- Always raise an exception to rollback any changes.
+            RAISE EXCEPTION '__TAP_ROLLBACK__';
 
-        -- Raise an exception to rollback any changes.
-        RAISE EXCEPTION '__TAP_ROLLBACK__';
-    EXCEPTION WHEN raise_exception THEN
-        IF SQLERRM <> '__TAP_ROLLBACK__' THEN
-            -- We didn't raise it, so propagate it.
-            RAISE EXCEPTION '%', SQLERRM;
-        END IF;
-    END;
+        EXCEPTION WHEN raise_exception THEN
+            IF errmsg IS NOT NULL THEN
+                -- Something went wrong. Emit the error message.
+                tok := FALSE;
+                RETURN NEXT '    ' || diag('Test died: ' || errmsg);
+                errmsg := NULL;
+            END IF;
+       END;
+
+        -- Restore the sequence.
+        EXECUTE 'TRUNCATE __tresults__';
+        EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb + 1;
+
+        -- Record this test.
+        RETURN NEXT ok(tok, tests[i]);
+        IF NOT tok THEN tfaild := tfaild + 1; END IF;
+
+    END LOOP;
+
+    -- Run the shutdown functions.
+    FOR tap IN SELECT * FROM _runem(shutdown, false) LOOP RETURN NEXT tap; END LOOP;
+
     -- Finish up.
-    FOR tap IN SELECT * FROM _finish( currval('__tresults___numb_seq')::integer, 0, num_faild ) LOOP
+    FOR tap IN SELECT * FROM _finish( currval('__tresults___numb_seq')::integer, 0, tfaild ) LOOP
         RETURN NEXT tap;
     END LOOP;
 

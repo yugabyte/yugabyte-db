@@ -1,38 +1,54 @@
 \unset ECHO
 ok 1 - starting up
 ok 2 - starting up some more
-# whatever."test ident"()
-ok 3 - setup
-ok 4 - Should be nothing in the test table
-ok 5 - setup more
-ok 6 - ident
-ok 7 - ident 2
-ok 8 - teardown
-ok 9 - teardown more
-# whatever.testplpgsql()
-ok 10 - setup
-ok 11 - Should be nothing in the test table
-ok 12 - setup more
-ok 13 - plpgsql simple
-ok 14 - plpgsql simple 2
-ok 15 - Should be a 1 in the test table
-ok 16 - teardown
-ok 17 - teardown more
-# whatever.testthis()
-ok 18 - setup
-ok 19 - Should be nothing in the test table
-ok 20 - setup more
-ok 21 - simple pass
-ok 22 - another simple pass
-ok 23 - teardown
-ok 24 - teardown more
-# whatever.testz()
-ok 25 - setup
-ok 26 - Should be nothing in the test table
-ok 27 - setup more
-ok 28 - Late test should find nothing in the test table
-ok 29 - teardown
-ok 30 - teardown more
-ok 31 - shutting down
-ok 32 - shutting down more
-1..32
+    # Subtest: whatever."test ident"()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - ident
+    ok 5 - ident 2
+    ok 6 - teardown
+    ok 7 - teardown more
+    1..7
+ok 3 - whatever."test ident"
+    # Subtest: whatever.testexception()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    # Test died: This test should die, but not halt execution
+not ok 4 - whatever.testexception
+# Failed test 4: "whatever.testexception"
+    # Subtest: whatever.testplpgsql()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - plpgsql simple
+    ok 5 - plpgsql simple 2
+    ok 6 - Should be a 1 in the test table
+    ok 7 - teardown
+    ok 8 - teardown more
+    1..8
+ok 5 - whatever.testplpgsql
+    # Subtest: whatever.testthis()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - simple pass
+    ok 5 - another simple pass
+    ok 6 - teardown
+    ok 7 - teardown more
+    1..7
+ok 6 - whatever.testthis
+    # Subtest: whatever.testz()
+    ok 1 - setup
+    ok 2 - Should be nothing in the test table
+    ok 3 - setup more
+    ok 4 - Late test should find nothing in the test table
+    ok 5 - teardown
+    ok 6 - teardown more
+    1..6
+ok 7 - whatever.testz
+ok 8 - shutting down
+ok 9 - shutting down more
+1..9
+# Looks like you failed 1 test of 9

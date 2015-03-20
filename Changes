@@ -24,6 +24,12 @@ Revision history for pgTAP
 * Added `isnt_strict()` to complement `is_strict()`. Requested by Jim Nasby.
 * Added schema/table/column variations of `col_is_unique()`. Contributed by
   Jim Nasby.
+* The `runtests()` function now executes each test as a TAP subtest, with its
+  own plan and test count. This allows each test function to function more
+  independently of the others. It's easier to read the TAP, too.
+* An exception thrown by a test no run by `runtests()` no longer halts
+  execution. It is instead properly rolled back and the error message emitted
+  as a diagnostic message. Thanks to Vitaliy Kotov for the report.
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------

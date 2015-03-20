@@ -17,9 +17,10 @@ CREATE OR REPLACE FUNCTION whatever.startupmore() RETURNS SETOF TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.setup() RETURNS SETOF TEXT AS $$
-    SELECT pass('setup')
-    UNION
-    SELECT is( MAX(id), NULL, 'Should be nothing in the test table') FROM whatever.foo;
+    SELECT collect_tap(
+        pass('setup'),
+        (SELECT is( MAX(id), NULL, 'Should be nothing in the test table') FROM whatever.foo)
+    );
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.setupmore() RETURNS SETOF TEXT AS $$
@@ -43,9 +44,10 @@ CREATE OR REPLACE FUNCTION whatever.shutdownmore() RETURNS SETOF TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.testthis() RETURNS SETOF TEXT AS $$
-    SELECT pass('simple pass') AS foo
-    UNION SELECT pass('another simple pass')
-    ORDER BY foo ASC;
+    SELECT collect_tap(
+           pass('simple pass'),
+           pass('another simple pass')
+    );
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.testplpgsql() RETURNS SETOF TEXT AS $$
@@ -54,6 +56,16 @@ BEGIN
     RETURN NEXT pass( 'plpgsql simple 2' );
     INSERT INTO whatever.foo VALUES(1);
     RETURN NEXT is( MAX(id), 1, 'Should be a 1 in the test table') FROM whatever.foo;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION whatever.testexception() RETURNS SETOF TEXT AS $$
+BEGIN
+    RETURN NEXT pass( 'plpgsql simple' );
+    RETURN NEXT pass( 'plpgsql simple 2' );
+    INSERT INTO whatever.foo VALUES(1);
+    RETURN NEXT is( MAX(id), 1, 'Should be a 1 in the test table') FROM whatever.foo;
+    RAISE EXCEPTION 'This test should die, but not halt execution';
 END;
 $$ LANGUAGE plpgsql;
 

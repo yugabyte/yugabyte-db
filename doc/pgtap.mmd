@@ -7278,7 +7278,7 @@ failing tests.
 `:pattern`
 : Regular expression pattern against which to match function names.
 
-If you'd like pgTAP to plan, run all of your tests functions, and finish all
+If you'd like pgTAP to plan, run all of your test functions, and finish, all
 in one fell swoop, use `runtests()`. This most closely emulates the xUnit
 testing environment, similar to the functionality of
 [PGUnit](http://en.dklab.ru/lib/dklab_pgunit/) and
@@ -7295,8 +7295,22 @@ than a pattern:
 
 Unlike `do_tap()`, `runtests()` fully supports startup, shutdown, setup, and
 teardown functions, as well as transactional rollbacks between tests. It also
-outputs the test plan and fishes the tests, so you don't have to call `plan()`
-or `finish()` yourself.
+outputs the test plan, executes each test function as a TAP subtest, and
+finishes the tests, so you don't have to call `plan()` or `finish()` yourself.
+The output, assuming a single startup test, two subtests, and a single
+shutdown test, will look something like this:
+
+    ok 1 - Startup test
+        # Subtest: public.test_this()
+        ok 1 - simple pass
+        ok 2 - another simple pass
+    ok 2 - public.test_this()
+        # Subtest: public.test_that()
+        ok 1 - that simple
+        ok 2 - that simple 2
+    ok 3 - public.test_that()
+    ok 4 - Shutdown test
+    1..4
 
 The fixture functions run by `runtests()` are as follows:
 
