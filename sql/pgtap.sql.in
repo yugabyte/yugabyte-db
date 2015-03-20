@@ -60,6 +60,7 @@ BEGIN
 
     -- Save the plan and return.
     PERFORM _set('plan', $1 );
+    PERFORM _set('failed', 0 );
     RETURN '1..' || $1;
 END;
 $$ LANGUAGE plpgsql strict;
@@ -174,14 +175,14 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
-    IF NOT $1 THEN PERFORM _set('failed', COALESCE(_get('failed'), 0) + 1); END IF;
+    IF NOT $1 THEN PERFORM _set('failed', _get('failed') + 1); END IF;
     RETURN nextval('__tresults___numb_seq');
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION num_failed ()
 RETURNS INTEGER AS $$
-    SELECT COALESCE(_get('failed'), 0);
+    SELECT _get('failed');
 $$ LANGUAGE SQL strict;
 
 CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER)
