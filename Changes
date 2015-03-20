@@ -1,6 +1,9 @@
 Revision history for pgTAP
 ==========================
 
+0.95.1
+---------------------------
+
 0.95.0 2015-03-20T20:31:41Z
 ---------------------------
 * Added materialized-view testing assertions functions:
