@@ -62,7 +62,6 @@ typedef struct hypoEntry
 	Oid			relam;
 } hypoEntry;
 
-//hypoEntry	entries[HYPO_NB_INDEXES];
 List *entries = NIL;
 
 
@@ -206,17 +205,6 @@ entry_store(Oid relid,
 
 	entry = palloc0(sizeof(hypoEntry));
 
-	//if ( /* don't store twice the same index */
-	//	(entries[i].relid == relid) &&
-	//	(entries[i].indexkeys == indexkeys) &&
-	//	(entries[i].relam == relam)
-	//)
-	//{
-	//	/* if index already exists, then raise a warning */
-	//	elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
-	//	return false;
-	//}
-
 	entry->oid = hypoGetNewOid(relid);
 	entry->relid = relid;
 	strcpy(entry->indexname, indexname);
@@ -243,31 +231,7 @@ entry_store_parsetree(IndexStmt *node)
 	Form_pg_attribute	attform;
 	Oid					relid;
 	char				*indexRelationName;
-	//char	   *accessMethodName;
-	//Oid		   *typeObjectId;
-	//Oid		   *collationObjectId;
-	//Oid		   *classObjectId;
 	Oid					accessMethodId;
-	//Oid			namespaceId;
-	//Oid			tablespaceId;
-	//List	   *indexColNames;
-	//Relation	rel;
-	//Relation	indexRelation;
-	//HeapTuple	tuple;
-	//Form_pg_am	accessMethodForm;
-	//bool		amcanorder;
-	//RegProcedure amoptions;
-	//Datum		reloptions;
-	//int16	   *coloptions;
-	//IndexInfo  *indexInfo;
-	//int			numberOfAttributes;
-	//TransactionId limitXmin;
-	//VirtualTransactionId *old_snapshots;
-	//int			n_old_snapshots;
-	//LockRelId	heaprelid;
-	//LOCKTAG		heaplocktag;
-	//LOCKMODE	lockmode;
-	//Snapshot	snapshot;
 	int			ncolumns;
 	ListCell	*lc;
 	int			j = 0;
@@ -303,22 +267,10 @@ entry_store_parsetree(IndexStmt *node)
 						 node->accessMethod)));
 	}
 	accessMethodId = HeapTupleGetOid(tuple);
-	//accessMethodForm = (Form_pg_am) GETSTRUCT(tuple);
 
 	ReleaseSysCache(tuple);
 
 	/* now add the hypothetical index */
-		//if ( /* don't store twice the same index */
-		//	(entries[i].relid == relid) &&
-		//	(entries[i].indexkeys == indexkeys) &&
-		//	(entries[i].relam == relam)
-		//)
-		//{
-		//	/* if index already exists, then raise a warning */
-		//	elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
-		//	return false;
-		//}
-
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	entry = palloc0(sizeof(hypoEntry));
@@ -464,7 +416,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	// General stuff
 	index->indexoid = entry->oid;
-	index->reltablespace = rel->reltablespace; // same tablespace as relation
+	index->reltablespace = rel->reltablespace; // same tablespace as relation, TODO
 	index->rel = rel;
 	index->ncolumns = ncolumns = entry->ncolumns;
 
@@ -480,10 +432,9 @@ injectHypotheticalIndex(PlannerInfo *root,
 		switch (index->relam)
 		{
 			case BTREE_AM_OID:
-				// hardcode int4 cols, WIP
-				index->indexcollations[i] = 0; //?? C_COLLATION_OID;
-				index->opfamily[i] = entry->opfamily[i]; //INTEGER_BTREE_FAM_OID;
-				index->opcintype[i] = entry->opcintype[i]; //INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
+				index->indexcollations[i] = entry->indexcollations[i];
+				index->opfamily[i] = entry->opfamily[i];
+				index->opcintype[i] = entry->opcintype[i];
 				break;
 		}
 	}
@@ -502,7 +453,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 		index->immediate = true;
 		index->amcostestimate = (RegProcedure) 1268; // btcostestimate
 		index->sortopfamily = index->opfamily;
-		index->tree_height = 1; // WIP
+		index->tree_height = 1; // TODO
 
 		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
 		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
