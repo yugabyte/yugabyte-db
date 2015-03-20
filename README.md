@@ -89,7 +89,7 @@ full use of its API. It also requires PL/pgSQL.
 Copyright and License
 ---------------------
 
-Copyright (c) 2008-2013 David E. Wheeler. Some rights reserved.
+Copyright (c) 2008-2015 David E. Wheeler. Some rights reserved.
 
 Permission to use, copy, modify, and distribute this software and its
 documentation for any purpose, without fee, and without a written agreement is
