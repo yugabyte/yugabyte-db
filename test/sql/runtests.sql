@@ -69,6 +69,10 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION whatever.testy() RETURNS SETOF TEXT AS $$
+    SELECT fail('this test intentionally fails');
+$$ LANGUAGE SQL;
+
 CREATE OR REPLACE FUNCTION whatever.testz() RETURNS SETOF TEXT AS $$
     SELECT is( MAX(id), NULL, 'Late test should find nothing in the test table') FROM whatever.foo;
 $$ LANGUAGE SQL;
