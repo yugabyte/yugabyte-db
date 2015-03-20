@@ -80,7 +80,9 @@ PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 
+static hypoEntry * newHypoEntry(Oid relid);
 static Oid hypoGetNewOid(Oid relid);
+static void addHypoEntry(hypoEntry *entry);
 
 static void entry_reset(void);
 static bool entry_store(Oid relid,
@@ -151,6 +153,24 @@ _PG_fini(void)
 
 }
 
+/* palloc a new hypoEntry, and give it a new OID */
+static hypoEntry *
+newHypoEntry(Oid relid)
+{
+	hypoEntry *entry;
+	MemoryContext oldcontext;
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entry = palloc0(sizeof(hypoEntry));
+
+	MemoryContextSwitchTo(oldcontext);
+
+	entry->oid = hypoGetNewOid(relid);
+
+	return entry;
+}
+
 /* Wrapper around GetNewRelFileNode */
 static Oid
 hypoGetNewOid(Oid relid)
@@ -178,6 +198,18 @@ hypoGetNewOid(Oid relid)
 }
 
 static void
+addHypoEntry(hypoEntry *entry)
+{
+	MemoryContext oldcontext;
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entries = lappend(entries, entry);
+
+	MemoryContextSwitchTo(oldcontext);
+}
+
+static void
 entry_reset(void)
 {
 	list_free(entries);
@@ -194,16 +226,13 @@ entry_store(Oid relid,
 			Oid opfamily,
 			Oid opcintype)
 {
-	MemoryContext oldcontext;
 	hypoEntry *entry;
 
 	/* Make sure user didn't try to add too many columns */
 	if (ncolumns > HYPO_MAX_COLS)
 		return false;
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-	entry = palloc0(sizeof(hypoEntry));
+	entry = newHypoEntry(relid);
 
 	entry->oid = hypoGetNewOid(relid);
 	entry->relid = relid;
@@ -215,9 +244,7 @@ entry_store(Oid relid,
 	entry->opfamily[0] = opfamily;
 	entry->opcintype[0] = opcintype;
 
-	entries = lappend(entries, entry);
-
-	MemoryContextSwitchTo(oldcontext);
+	addHypoEntry(entry);
 
 	return true;
 }
@@ -225,7 +252,6 @@ entry_store(Oid relid,
 static bool
 entry_store_parsetree(IndexStmt *node)
 {
-	MemoryContext oldcontext;
 	hypoEntry			*entry;
 	HeapTuple			tuple;
 	Form_pg_attribute	attform;
@@ -271,13 +297,7 @@ entry_store_parsetree(IndexStmt *node)
 	ReleaseSysCache(tuple);
 
 	/* now add the hypothetical index */
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-	entry = palloc0(sizeof(hypoEntry));
-
-	MemoryContextSwitchTo(oldcontext);
-
-	entry->oid = hypoGetNewOid(relid);
+	entry = newHypoEntry(relid);
 
 	entry->relid = relid;
 	entry->relam = accessMethodId;
@@ -323,11 +343,7 @@ entry_store_parsetree(IndexStmt *node)
 	}
 	strcpy(entry->indexname, indexRelationName);
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-	entries = lappend(entries, entry);
-
-	MemoryContextSwitchTo(oldcontext);
+	addHypoEntry(entry);
 
 	return true;
 }
