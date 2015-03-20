@@ -6033,7 +6033,6 @@ DECLARE
     teardown ALIAS FOR $4;
     tests    ALIAS FOR $5;
     tap      TEXT;
-    verbos   BOOLEAN := _is_verbose(); -- verbose is a reserved word in 8.5.
     tfaild   INTEGER := 0;
     ffaild   INTEGER := 0;
     tnumb    INTEGER := 0;
