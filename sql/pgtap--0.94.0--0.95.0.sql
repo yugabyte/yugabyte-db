@@ -2,6 +2,94 @@ CREATE OR REPLACE FUNCTION pgtap_version()
 RETURNS NUMERIC AS 'SELECT 0.95;'
 LANGUAGE SQL IMMUTABLE;
 
+CREATE OR REPLACE FUNCTION plan( integer )
+RETURNS TEXT AS $$
+DECLARE
+    rcount INTEGER;
+BEGIN
+    BEGIN
+        EXECUTE '
+            CREATE TEMP SEQUENCE __tcache___id_seq;
+            CREATE TEMP TABLE __tcache__ (
+                id    INTEGER NOT NULL DEFAULT nextval(''__tcache___id_seq''),
+                label TEXT    NOT NULL,
+                value INTEGER NOT NULL,
+                note  TEXT    NOT NULL DEFAULT ''''
+            );
+            CREATE UNIQUE INDEX __tcache___key ON __tcache__(id);
+            GRANT ALL ON TABLE __tcache__ TO PUBLIC;
+            GRANT ALL ON TABLE __tcache___id_seq TO PUBLIC;
+
+            CREATE TEMP SEQUENCE __tresults___numb_seq;
+            GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
+        ';
+
+    EXCEPTION WHEN duplicate_table THEN
+        -- Raise an exception if there's already a plan.
+        EXECUTE 'SELECT TRUE FROM __tcache__ WHERE label = ''plan''';
+      GET DIAGNOSTICS rcount = ROW_COUNT;
+        IF rcount > 0 THEN
+           RAISE EXCEPTION 'You tried to plan twice!';
+        END IF;
+    END;
+
+    -- Save the plan and return.
+    PERFORM _set('plan', $1 );
+    RETURN '1..' || $1;
+END;
+$$ LANGUAGE plpgsql strict;
+
+CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
+RETURNS integer AS $$
+BEGIN
+    IF NOT $1 THEN PERFORM _set('failed', COALESCE(_get('failed'), 0) + 1); END IF;
+    RETURN nextval('__tresults___numb_seq');
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION num_failed ()
+RETURNS INTEGER AS $$
+    SELECT COALESCE(_get('failed'), 0);
+$$ LANGUAGE SQL strict;
+
+CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER)
+RETURNS SETOF TEXT AS $$
+DECLARE
+    curr_test ALIAS FOR $1;
+    exp_tests INTEGER := $2;
+    num_faild ALIAS FOR $3;
+    plural    CHAR;
+BEGIN
+    plural    := CASE exp_tests WHEN 1 THEN '' ELSE 's' END;
+
+    IF curr_test IS NULL THEN
+        RAISE EXCEPTION '# No tests run!';
+    END IF;
+
+    IF exp_tests = 0 OR exp_tests IS NULL THEN
+         -- No plan. Output one now.
+        exp_tests = curr_test;
+        RETURN NEXT '1..' || exp_tests;
+    END IF;
+
+    IF curr_test <> exp_tests THEN
+        RETURN NEXT diag(
+            'Looks like you planned ' || exp_tests || ' test' ||
+            plural || ' but ran ' || curr_test
+        );
+    ELSIF num_faild > 0 THEN
+        RETURN NEXT diag(
+            'Looks like you failed ' || num_faild || ' test' ||
+            CASE num_faild WHEN 1 THEN '' ELSE 's' END
+            || ' of ' || exp_tests
+        );
+    ELSE
+
+    END IF;
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
 -- is_member_of( role, members[], description )
 CREATE OR REPLACE FUNCTION is_member_of( NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
@@ -227,9 +315,9 @@ BEGIN
         tnumb := COALESCE(_get('curr_test'), 0);
 
         IF tnumb > 0 THEN
-            EXECUTE 'TRUNCATE __tresults__';
             EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH 1';
             PERFORM _set('curr_test', 0);
+            PERFORM _set('failed', 0);
         END IF;
 
         BEGIN
@@ -288,9 +376,9 @@ BEGIN
        END;
 
         -- Restore the sequence.
-        EXECUTE 'TRUNCATE __tresults__';
         EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb + 1;
         PERFORM _set('curr_test', tnumb);
+        PERFORM _set('failed', tfaild);
 
         -- Record this test.
         RETURN NEXT ok(tok, tests[i]);
@@ -311,6 +399,113 @@ BEGIN
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
+
+-- check_test( test_output, pass, name, description, diag, match_diag )
+CREATE OR REPLACE FUNCTION check_test( TEXT, BOOLEAN, TEXT, TEXT, TEXT, BOOLEAN )
+RETURNS SETOF TEXT AS $$
+DECLARE
+    tnumb   INTEGER;
+    aok     BOOLEAN;
+    adescr  TEXT;
+    res     BOOLEAN;
+    descr   TEXT;
+    adiag   TEXT;
+    have    ALIAS FOR $1;
+    eok     ALIAS FOR $2;
+    name    ALIAS FOR $3;
+    edescr  ALIAS FOR $4;
+    ediag   ALIAS FOR $5;
+    matchit ALIAS FOR $6;
+BEGIN
+    -- What test was it that just ran?
+    tnumb := currval('__tresults___numb_seq');
+
+    -- Fetch the results.
+    aok    := substring(have, 1, 2) = 'ok';
+    adescr := COALESCE(substring(have FROM  E'(?:not )?ok [[:digit:]]+ - ([^\n]+)'), '');
+
+    -- Now delete those results.
+    EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb;
+    IF NOT aok THEN PERFORM _set('failed', _get('failed') - 1); END IF;
+
+    -- Set up the description.
+    descr := coalesce( name || ' ', 'Test ' ) || 'should ';
+
+    -- So, did the test pass?
+    RETURN NEXT is(
+        aok,
+        eok,
+        descr || CASE eok WHEN true then 'pass' ELSE 'fail' END
+    );
+
+    -- Was the description as expected?
+    IF edescr IS NOT NULL THEN
+        RETURN NEXT is(
+            adescr,
+            edescr,
+            descr || 'have the proper description'
+        );
+    END IF;
+
+    -- Were the diagnostics as expected?
+    IF ediag IS NOT NULL THEN
+        -- Remove ok and the test number.
+        adiag := substring(
+            have
+            FROM CASE WHEN aok THEN 4 ELSE 9 END + char_length(tnumb::text)
+        );
+
+        -- Remove the description, if there is one.
+        IF adescr <> '' THEN
+            adiag := substring(
+                adiag FROM 1 + char_length( ' - ' || substr(diag( adescr ), 3) )
+            );
+        END IF;
+
+        IF NOT aok THEN
+            -- Remove failure message from ok().
+            adiag := substring(adiag FROM 1 + char_length(diag(
+                'Failed test ' || tnumb ||
+                CASE adescr WHEN '' THEN '' ELSE COALESCE(': "' || adescr || '"', '') END
+            )));
+        END IF;
+
+        IF ediag <> '' THEN
+           -- Remove the space before the diagnostics.
+           adiag := substring(adiag FROM 2);
+        END IF;
+
+        -- Remove the #s.
+        adiag := replace( substring(adiag from 3), E'\n# ', E'\n' );
+
+        -- Now compare the diagnostics.
+        IF matchit THEN
+            RETURN NEXT matches(
+                adiag,
+                ediag,
+                descr || 'have the proper diagnostics'
+            );
+        ELSE
+            RETURN NEXT is(
+                adiag,
+                ediag,
+                descr || 'have the proper diagnostics'
+            );
+        END IF;
+    END IF;
+
+    -- And we're done
+    RETURN;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION _cleanup()
+RETURNS boolean AS $$
+    DROP SEQUENCE __tresults___numb_seq;
+    DROP TABLE __tcache__;
+    DROP SEQUENCE __tcache___id_seq;
+    SELECT TRUE;
+$$ LANGUAGE sql;
 
 GRANT SELECT ON tap_funky           TO PUBLIC;
 GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;

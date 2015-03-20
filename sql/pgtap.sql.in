@@ -46,16 +46,6 @@ BEGIN
             GRANT ALL ON TABLE __tcache___id_seq TO PUBLIC;
 
             CREATE TEMP SEQUENCE __tresults___numb_seq;
-            CREATE TEMP TABLE __tresults__ (
-                numb   INTEGER NOT NULL DEFAULT nextval(''__tresults___numb_seq''),
-                ok     BOOLEAN NOT NULL DEFAULT TRUE,
-                aok    BOOLEAN NOT NULL DEFAULT TRUE,
-                descr  TEXT    NOT NULL DEFAULT '''',
-                type   TEXT    NOT NULL DEFAULT '''',
-                reason TEXT    NOT NULL DEFAULT ''''
-            );
-            CREATE UNIQUE INDEX __tresults___key ON __tresults__(numb);
-            GRANT ALL ON TABLE __tresults__ TO PUBLIC;
             GRANT ALL ON TABLE __tresults___numb_seq TO PUBLIC;
         ';
 
@@ -184,25 +174,15 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION add_result ( bool, bool, text, text, text )
 RETURNS integer AS $$
 BEGIN
-    EXECUTE 'INSERT INTO __tresults__ ( ok, aok, descr, type, reason )
-    VALUES( ' || $1 || ', '
-              || $2 || ', '
-              || quote_literal(COALESCE($3, '')) || ', '
-              || quote_literal($4) || ', '
-              || quote_literal($5) || ' )';
-    RETURN currval('__tresults___numb_seq');
+    IF NOT $1 THEN PERFORM _set('failed', COALESCE(_get('failed'), 0) + 1); END IF;
+    RETURN nextval('__tresults___numb_seq');
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION num_failed ()
 RETURNS INTEGER AS $$
-DECLARE
-    ret integer;
-BEGIN
-    EXECUTE 'SELECT COUNT(*)::INTEGER FROM __tresults__ WHERE ok = FALSE' INTO ret;
-    RETURN ret;
-END;
-$$ LANGUAGE plpgsql strict;
+    SELECT COALESCE(_get('failed'), 0);
+$$ LANGUAGE SQL strict;
 
 CREATE OR REPLACE FUNCTION _finish (INTEGER, INTEGER, INTEGER)
 RETURNS SETOF TEXT AS $$
@@ -4326,7 +4306,7 @@ RETURNS NAME[] AS $$
          WHERE pg_catalog.pg_table_is_visible(c.oid)
            AND n.nspname <> 'pg_catalog'
            AND c.relkind = $1
-           AND c.relname NOT IN ('__tcache__', '__tresults__', 'pg_all_foreign_keys', 'tap_funky', '__tresults___numb_seq', '__tcache___id_seq')
+           AND c.relname NOT IN ('__tcache__', 'pg_all_foreign_keys', 'tap_funky', '__tresults___numb_seq', '__tcache___id_seq')
         EXCEPT
         SELECT $2[i]
           FROM generate_series(1, array_upper($2, 1)) s(i)
@@ -5824,12 +5804,12 @@ BEGIN
     tnumb := currval('__tresults___numb_seq');
 
     -- Fetch the results.
-    EXECUTE 'SELECT aok, descr FROM __tresults__ WHERE numb = ' || tnumb
-       INTO aok, adescr;
+    aok    := substring(have, 1, 2) = 'ok';
+    adescr := COALESCE(substring(have FROM  E'(?:not )?ok [[:digit:]]+ - ([^\n]+)'), '');
 
     -- Now delete those results.
-    EXECUTE 'DELETE FROM __tresults__ WHERE numb = ' || tnumb;
     EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb;
+    IF NOT aok THEN PERFORM _set('failed', _get('failed') - 1); END IF;
 
     -- Set up the description.
     descr := coalesce( name || ' ', 'Test ' ) || 'should ';
@@ -6011,7 +5991,6 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION _cleanup()
 RETURNS boolean AS $$
-    DROP TABLE __tresults__;
     DROP SEQUENCE __tresults___numb_seq;
     DROP TABLE __tcache__;
     DROP SEQUENCE __tcache___id_seq;
@@ -6062,9 +6041,9 @@ BEGIN
         tnumb := COALESCE(_get('curr_test'), 0);
 
         IF tnumb > 0 THEN
-            EXECUTE 'TRUNCATE __tresults__';
             EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH 1';
             PERFORM _set('curr_test', 0);
+            PERFORM _set('failed', 0);
         END IF;
 
         BEGIN
@@ -6123,9 +6102,9 @@ BEGIN
        END;
 
         -- Restore the sequence.
-        EXECUTE 'TRUNCATE __tresults__';
         EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb + 1;
         PERFORM _set('curr_test', tnumb);
+        PERFORM _set('failed', tfaild);
 
         -- Record this test.
         RETURN NEXT ok(tok, tests[i]);

@@ -29,7 +29,7 @@ SELECT is(
 /****************************************************************************/
 -- Check num_failed
 SELECT is( num_failed(), 1, 'We should have one failure' );
-UPDATE __tresults__ SET ok = true, aok = true WHERE numb = :fail_numb;
+UPDATE  __tcache__ SET value = 0 WHERE label = 'failed';
 SELECT is( num_failed(), 0, 'We should now have no failures' );
 
 /****************************************************************************/
@@ -110,15 +110,13 @@ SELECT * FROM check_test( ok(false, 'foo'), false, 'ok(false, ''foo'')', 'foo', 
 SELECT * FROM check_test( ok(NULL, 'null'), false, 'ok(NULL, ''null'')', 'null', '    (test result was NULL)' );
 
 /****************************************************************************/
--- test multiline description.
+-- test multiline description. Second line is effectively diagnostic output.
 SELECT * FROM check_test(
     ok( true, 'foo
 bar' ),
      true,
-     'multiline desc', 'foo
-bar',
-    ''
-);
+     'multiline desc', 'foo', 'bar'
+ );
 
 /****************************************************************************/
 -- Finish the tests and clean up.
