@@ -272,11 +272,14 @@ entry_store(Oid relid,
 	entry = newHypoEntry(relid, relam);
 
 	strcpy(entry->indexname, indexname);
+	entry->unique = false;
 	entry->ncolumns = ncolumns;
 	entry->indexkeys[0] = indexkeys;
 	entry->indexcollations[0] = indexcollations;
 	entry->opfamily[0] = opfamily;
 	entry->opcintype[0] = opcintype;
+	entry->reverse_sort[0] = false;
+	entry->nulls_first[0] = false;
 
 	addHypoEntry(entry);
 
@@ -330,8 +333,10 @@ entry_store_parsetree(IndexStmt *node)
 
 	ReleaseSysCache(tuple);
 
-	/* now add the hypothetical index */
+	/* now create the hypothetical index entry */
 	entry = newHypoEntry(relid, accessMethodId);
+
+	entry->unique = node->unique;
 
 	entry->ncolumns = ncolumns = list_length(node->indexParams);
 
@@ -370,6 +375,8 @@ entry_store_parsetree(IndexStmt *node)
 
 		entry->opcintype[j] = atttype; //TODO
 		entry->indexcollations[j] = 0; /* TODO */
+		entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC ? true : false);
+		entry->nulls_first[j] = (indexelem->nulls_ordering == SORTBY_NULLS_FIRST ? true : false);
 
 		j++;
 	}
@@ -487,7 +494,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 		}
 	}
 
-	index->unique = false; /* no hypothetical unique index */
+	index->unique = entry->unique;
 
 	index->amcostestimate = entry->amcostestimate;
 	index->immediate = entry->immediate;
@@ -510,8 +517,8 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	for (i = 0; i < ncolumns; i++)
 	{
-		index->reverse_sort[i] = false; // not handled for now, WIP
-		index->nulls_first[i] = false; // not handled for now, WIP
+		index->reverse_sort[i] = entry->reverse_sort[i];
+		index->nulls_first[i] = entry->nulls_first[i];
 	}
 
 	index->indexprs = NIL; // not handled for now, WIP
