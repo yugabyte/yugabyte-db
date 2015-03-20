@@ -17,10 +17,10 @@ CREATE OR REPLACE FUNCTION whatever.startupmore() RETURNS SETOF TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.setup() RETURNS SETOF TEXT AS $$
-    SELECT collect_tap(
+    SELECT collect_tap(ARRAY[
         pass('setup'),
         (SELECT is( MAX(id), NULL, 'Should be nothing in the test table') FROM whatever.foo)
-    );
+    ]);
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.setupmore() RETURNS SETOF TEXT AS $$
@@ -44,10 +44,10 @@ CREATE OR REPLACE FUNCTION whatever.shutdownmore() RETURNS SETOF TEXT AS $$
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.testthis() RETURNS SETOF TEXT AS $$
-    SELECT collect_tap(
+    SELECT collect_tap(ARRAY[
            pass('simple pass'),
            pass('another simple pass')
-    );
+    ]);
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.testplpgsql() RETURNS SETOF TEXT AS $$

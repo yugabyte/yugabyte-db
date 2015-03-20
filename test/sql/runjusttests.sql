@@ -9,10 +9,10 @@ CREATE TABLE whatever.foo ( id serial primary key );
 SET client_min_messages = notice;
 
 CREATE OR REPLACE FUNCTION whatever.testthis() RETURNS SETOF TEXT AS $$
-    SELECT collect_tap(
+    SELECT collect_tap(ARRAY[
            pass('simple pass'),
            pass('another simple pass')
-    );
+    ]);
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.testplpgsql() RETURNS SETOF TEXT AS $$
@@ -35,10 +35,10 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION whatever.testy() RETURNS SETOF TEXT AS $$
-    SELECT collect_tap(
+    SELECT collect_tap(ARRAY[
         pass('pass'),
         fail('this test intentionally fails')
-    );
+    ]);
 $$ LANGUAGE SQL;
 
 CREATE OR REPLACE FUNCTION whatever.testnada() RETURNS SETOF TEXT AS $$

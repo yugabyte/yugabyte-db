@@ -1,6 +1,6 @@
---- sql/pgtap.sql.saf	2014-01-06 15:56:37.000000000 -0800
-+++ sql/pgtap.sql	2014-01-06 15:56:44.000000000 -0800
-@@ -7225,7 +7225,6 @@
+--- sql/pgtap.sql
++++ sql/pgtap.sql
+@@ -7418,7 +7418,6 @@
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE n.nspname = $1
                 AND c.relname = $2
@@ -8,7 +8,7 @@
              EXCEPT
              SELECT $3[i]
                FROM generate_series(1, array_upper($3, 1)) s(i)
-@@ -7240,7 +7239,6 @@
+@@ -7433,7 +7432,6 @@
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE n.nspname = $1
                 AND c.relname = $2
@@ -16,7 +16,7 @@
          ),
          $4
      );
-@@ -7264,7 +7262,6 @@
+@@ -7457,7 +7455,6 @@
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
               WHERE c.relname = $1
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
@@ -24,7 +24,7 @@
              EXCEPT
              SELECT $2[i]
                FROM generate_series(1, array_upper($2, 1)) s(i)
-@@ -7278,7 +7275,6 @@
+@@ -7471,7 +7468,6 @@
                JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
                JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
                 AND n.nspname NOT IN ('pg_catalog', 'information_schema')
