@@ -191,6 +191,3 @@ BEGIN
     RETURN;
 END;
 $$ LANGUAGE plpgsql;
-
-GRANT SELECT ON tap_funky           TO PUBLIC;
-GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;
