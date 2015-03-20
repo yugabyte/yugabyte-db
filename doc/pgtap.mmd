@@ -2832,6 +2832,7 @@ specified materialized view does *not* exist.
 ### `has_sequence()` ###
 
     SELECT has_sequence( :schema, :sequence, :description );
+    SELECT has_sequence( :schema, :sequence );
     SELECT has_sequence( :sequence, :description );
     SELECT has_sequence( :sequence );
 
@@ -2851,10 +2852,13 @@ argument is a schema name, the second is a sequence name, and the third is the
 test description. If you omit the schema, the sequence must be visible in the
 search path. Example:
 
-    SELECT has_sequence('myschema', 'somesequence');
+    SELECT has_sequence('somesequence');
 
-If you omit the test description, it will be set to "Sequence `:sequence` should
-exist".
+If you omit the test description, it will be set to
+"Sequence `:schema`.`:sequence` should exist". If you find that the function
+call seems to be getting confused, cast the sequence to the `NAME` type:
+
+    SELECT has_sequence('myschema', 'somesequence'::NAME);
 
 ### `hasnt_sequence()` ###
 

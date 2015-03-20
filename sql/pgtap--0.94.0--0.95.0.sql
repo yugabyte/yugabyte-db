@@ -508,5 +508,14 @@ RETURNS boolean AS $$
     SELECT TRUE;
 $$ LANGUAGE sql;
 
+-- has_sequence( schema, sequence )
+CREATE OR REPLACE FUNCTION has_sequence ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _rexists( 'S', $1, $2 ),
+        'Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
+    );
+$$ LANGUAGE SQL;
+
 GRANT SELECT ON tap_funky           TO PUBLIC;
 GRANT SELECT ON pg_all_foreign_keys TO PUBLIC;

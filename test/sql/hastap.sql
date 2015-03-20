@@ -1,7 +1,7 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(828);
+SELECT plan(830);
 --SELECT * FROM no_plan();
 
 -- This will be rolled back. :-)
@@ -408,6 +408,14 @@ SELECT * FROM check_test(
     true,
     'has_sequence(sch, sequence, desc)',
     'desc',
+    ''
+);
+
+SELECT * FROM check_test(
+    has_sequence( 'public', 'someseq'::name ),
+    true,
+    'has_sequence(sch, sequence)',
+    'Sequence public.someseq should exist'
     ''
 );
 

@@ -88,7 +88,7 @@ RETURNS integer[] AS $$
 DECLARE
     ret integer[];
 BEGIN
-    EXECUTE 'SELECT ARRAY[ id, value] FROM __tcache__ WHERE label = ' ||
+    EXECUTE 'SELECT ARRAY[id, value] FROM __tcache__ WHERE label = ' ||
     quote_literal($1) || ' AND id = (SELECT MAX(id) FROM __tcache__ WHERE label = ' ||
     quote_literal($1) || ') LIMIT 1' INTO ret;
     RETURN ret;
@@ -1053,6 +1053,15 @@ $$ LANGUAGE SQL;
 CREATE OR REPLACE FUNCTION has_sequence ( NAME, NAME, TEXT )
 RETURNS TEXT AS $$
     SELECT ok( _rexists( 'S', $1, $2 ), $3 );
+$$ LANGUAGE SQL;
+
+-- has_sequence( schema, sequence )
+CREATE OR REPLACE FUNCTION has_sequence ( NAME, NAME )
+RETURNS TEXT AS $$
+    SELECT ok(
+        _rexists( 'S', $1, $2 ),
+        'Sequence ' || quote_ident($1) || '.' || quote_ident($2) || ' should exist'
+    );
 $$ LANGUAGE SQL;
 
 -- has_sequence( sequence, description )

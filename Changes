@@ -33,6 +33,8 @@ Revision history for pgTAP
 * Eliminated the temporary table `__tresults__`. Test results are no longer
   written to a table, but simply emitted. This should make tests run a bit
   faster, as that I/O overhead has been eliminated.
+* Added missing functions `has_sequence(:schema, :sequence)` mentioned in the
+  docs (Issue #58):
 
 0.94.0 2014-01-07T01:32:36Z
 ---------------------------
