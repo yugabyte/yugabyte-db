@@ -11,13 +11,13 @@ ok 2 - starting up some more
     ok 7 - teardown more
     1..7
 ok 3 - whatever."test ident"
-    # Subtest: whatever.testexception()
+    # Subtest: whatever.test_exception()
     ok 1 - setup
     ok 2 - Should be nothing in the test table
     ok 3 - setup more
     # Test died: This test should die, but not halt execution
-not ok 4 - whatever.testexception
-# Failed test 4: "whatever.testexception"
+not ok 4 - whatever.test_exception
+# Failed test 4: "whatever.test_exception"
     # Subtest: whatever.testplpgsql()
     ok 1 - setup
     ok 2 - Should be nothing in the test table

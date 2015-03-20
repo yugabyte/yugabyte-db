@@ -59,7 +59,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION whatever.testexception() RETURNS SETOF TEXT AS $$
+CREATE OR REPLACE FUNCTION whatever.test_exception() RETURNS SETOF TEXT AS $$
 BEGIN
     RETURN NEXT pass( 'plpgsql simple' );
     RETURN NEXT pass( 'plpgsql simple 2' );
