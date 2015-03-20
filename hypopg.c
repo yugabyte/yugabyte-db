@@ -11,8 +11,10 @@
 #include "fmgr.h"
 
 #include "access/htup_details.h"
+#include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_class.h"
 #include "catalog/pg_opclass.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
@@ -27,14 +29,14 @@
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
+#include "utils/memutils.h"
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
 PG_MODULE_MAGIC;
 
 #define HYPO_MAX_COLS	10 /* # of column an hypothetical index can have */
-#define HYPO_NB_COLS		3 /* # of column hypopg() returns */
-#define HYPO_NB_INDEXES		50 /* # of hypothetical index a single session can hold */
+#define HYPO_NB_COLS		4 /* # of column hypopg() returns */
 #define HYPO_MAX_INDEXNAME	4096
 
 bool isExplain = false;
@@ -45,6 +47,7 @@ static bool	fix_empty_table = false;
  */
 typedef struct hypoEntry
 {
+	Oid			oid; /* hypothetical index unique identifier */
 	Oid			relid;		/* related relation Oid */
 	Oid			reltablespace;
 	char		indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
@@ -59,7 +62,8 @@ typedef struct hypoEntry
 	Oid			relam;
 } hypoEntry;
 
-hypoEntry	entries[HYPO_NB_INDEXES];
+//hypoEntry	entries[HYPO_NB_INDEXES];
+List *entries = NIL;
 
 
 /*--- Functions --- */
@@ -73,9 +77,11 @@ Datum	hypopg(PG_FUNCTION_ARGS);
 Datum	hypopg_create_index(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
-//PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
+PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
+
+static Oid hypoGetNewOid(Oid relid);
 
 static void entry_reset(void);
 static bool entry_store(Oid relid,
@@ -112,7 +118,7 @@ static void injectHypotheticalIndex(PlannerInfo *root,
 						bool inhparent,
 						RelOptInfo *rel,
 						Relation relation,
-						int position);
+						hypoEntry *entry);
 static bool hypo_query_walker(Node *node);
 
 static List *
@@ -146,16 +152,36 @@ _PG_fini(void)
 
 }
 
+/* Wrapper around GetNewRelFileNode */
+static Oid
+hypoGetNewOid(Oid relid)
+{
+	Relation	pg_class;
+	Relation	relation;
+	Oid			newoid;
+	Oid			reltablespace;
+	char		relpersistence;
+
+	relation = heap_open(relid, AccessShareLock);
+
+	reltablespace = relation->rd_rel->reltablespace;
+	relpersistence = relation->rd_rel->relpersistence;
+
+	heap_close(relation, AccessShareLock);
+
+	pg_class = heap_open(RelationRelationId, RowExclusiveLock);
+
+	newoid = GetNewRelFileNode(reltablespace, pg_class, relpersistence);
+
+	heap_close(pg_class, RowExclusiveLock);
+
+	return newoid;
+}
+
 static void
 entry_reset(void)
 {
-	int i;
-	/* Mark all entries relid with InvalidOid */
-	for (i = 0; i < HYPO_NB_INDEXES ; i++)
-	{
-		entries[i].relid = InvalidOid;
-	}
-
+	list_free(entries);
 	return;
 }
 
@@ -169,49 +195,50 @@ entry_store(Oid relid,
 			Oid opfamily,
 			Oid opcintype)
 {
-	int i = 0;
+	MemoryContext oldcontext;
+	hypoEntry *entry;
 
 	/* Make sure user didn't try to add too many columns */
 	if (ncolumns > HYPO_MAX_COLS)
 		return false;
 
-	while (i < HYPO_NB_INDEXES)
-	{
-		//if ( /* don't store twice the same index */
-		//	(entries[i].relid == relid) &&
-		//	(entries[i].indexkeys == indexkeys) &&
-		//	(entries[i].relam == relam)
-		//)
-		//{
-		//	/* if index already exists, then raise a warning */
-		//	elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
-		//	return false;
-		//}
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
-		//if (entries[i].relid == InvalidOid)
-		{
-			entries[i].relid = relid;
-			strcpy(entries[i].indexname, strncat(entries[i].indexname, indexname, HYPO_MAX_INDEXNAME));
-			entries[i].relam = relam;
-			entries[i].ncolumns = ncolumns;
-			entries[i].indexkeys[0] = indexkeys;
-			entries[i].indexcollations[0] = indexcollations;
-			entries[i].opfamily[0] = opfamily;
-			entries[i].opcintype[0] = opcintype;
+	entry = palloc0(sizeof(hypoEntry));
 
-			return true;
-		}
-		i++;
-	}
+	//if ( /* don't store twice the same index */
+	//	(entries[i].relid == relid) &&
+	//	(entries[i].indexkeys == indexkeys) &&
+	//	(entries[i].relam == relam)
+	//)
+	//{
+	//	/* if index already exists, then raise a warning */
+	//	elog(WARNING, "hypopg: Index already existing \"%s\"", indexname);
+	//	return false;
+	//}
 
-	/* if there's no more room, then raise a warning */
-	elog(WARNING, "hypopg: no more free entry for storing index \"%s\"", indexname);
-	return false;
+	entry->oid = hypoGetNewOid(relid);
+	entry->relid = relid;
+	strcpy(entry->indexname, indexname);
+	entry->relam = relam;
+	entry->ncolumns = ncolumns;
+	entry->indexkeys[0] = indexkeys;
+	entry->indexcollations[0] = indexcollations;
+	entry->opfamily[0] = opfamily;
+	entry->opcintype[0] = opcintype;
+
+	entries = lappend(entries, entry);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return true;
 }
 
 static bool
 entry_store_parsetree(IndexStmt *node)
 {
+	MemoryContext oldcontext;
+	hypoEntry			*entry;
 	HeapTuple			tuple;
 	Form_pg_attribute	attform;
 	Oid					relid;
@@ -241,8 +268,10 @@ entry_store_parsetree(IndexStmt *node)
 	//LOCKTAG		heaplocktag;
 	//LOCKMODE	lockmode;
 	//Snapshot	snapshot;
-	int			i = 0;
 	int			ncolumns;
+	ListCell	*lc;
+	int			j = 0;
+
 
 	ncolumns = list_length(node->indexParams);
 	if (ncolumns > HYPO_MAX_COLS)
@@ -279,8 +308,6 @@ entry_store_parsetree(IndexStmt *node)
 	ReleaseSysCache(tuple);
 
 	/* now add the hypothetical index */
-	while (i < HYPO_NB_INDEXES)
-	{
 		//if ( /* don't store twice the same index */
 		//	(entries[i].relid == relid) &&
 		//	(entries[i].indexkeys == indexkeys) &&
@@ -292,63 +319,65 @@ entry_store_parsetree(IndexStmt *node)
 		//	return false;
 		//}
 
-		if (entries[i].relid == InvalidOid)
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entry = palloc0(sizeof(hypoEntry));
+
+	MemoryContextSwitchTo(oldcontext);
+
+	entry->oid = hypoGetNewOid(relid);
+
+	entry->relid = relid;
+	entry->relam = accessMethodId;
+	entry->ncolumns = ncolumns = list_length(node->indexParams);
+
+	/* iterate through columns */
+	foreach(lc, node->indexParams)
+	{
+		IndexElem *indexelem = (IndexElem *) lfirst(lc);
+		Oid		atttype;
+		Oid		opclass;
+
+		indexRelationName = strcat(indexRelationName, "_");
+		indexRelationName = strcat(indexRelationName, indexelem->name);
+		/* get the attribute catalog info */
+		tuple = SearchSysCacheAttName(relid, indexelem->name);
+		if (!HeapTupleIsValid(tuple))
 		{
-			ListCell	*lc;
-			int			j = 0;
-
-			entries[i].relid = relid;
-			entries[i].relam = accessMethodId;
-			entries[i].ncolumns = ncolumns = list_length(node->indexParams);
-
-			/* iterate through columns */
-			foreach(lc, node->indexParams)
-			{
-				IndexElem *indexelem = (IndexElem *) lfirst(lc);
-				Oid		atttype;
-				Oid		opclass;
-
-				indexRelationName = strcat(indexRelationName, "_");
-				indexRelationName = strcat(indexRelationName, indexelem->name);
-				/* get the attribute catalog info */
-				tuple = SearchSysCacheAttName(relid, indexelem->name);
-				if (!HeapTupleIsValid(tuple))
-				{
-					elog(ERROR, "hypopg: column \"%s\" does not exist",
-						indexelem->name);
-				}
-				attform = (Form_pg_attribute) GETSTRUCT(tuple);
-
-				/* setup the attnum */
-				entries[i].indexkeys[j] = attform->attnum;
-
-				/* get the atttype */
-				atttype = attform->atttypid;
-				/* get the opclass */
-				opclass = GetIndexOpClass(indexelem->opclass,
-						atttype,
-						node->accessMethod,
-						accessMethodId);
-				/* setup the opfamily */
-				entries[i].opfamily[j] = get_opclass_family(opclass);
-
-				ReleaseSysCache(tuple);
-
-				entries[i].opcintype[j] = atttype; //TODO
-			entries[i].indexcollations[j] = 0; /* TODO */
-
-				j++;
-			}
-			strcpy(entries[i].indexname, indexRelationName);
-
-			return true;
+			elog(ERROR, "hypopg: column \"%s\" does not exist",
+					indexelem->name);
 		}
-		i++;
-	}
+		attform = (Form_pg_attribute) GETSTRUCT(tuple);
 
-	/* if there's no more room, then raise a warning */
-	elog(WARNING, "hypopg: no more free entry for storing index \"%s\"", indexRelationName);
-	return false;
+		/* setup the attnum */
+		entry->indexkeys[j] = attform->attnum;
+
+		/* get the atttype */
+		atttype = attform->atttypid;
+		/* get the opclass */
+		opclass = GetIndexOpClass(indexelem->opclass,
+				atttype,
+				node->accessMethod,
+				accessMethodId);
+		/* setup the opfamily */
+		entry->opfamily[j] = get_opclass_family(opclass);
+
+		ReleaseSysCache(tuple);
+
+		entry->opcintype[j] = atttype; //TODO
+		entry->indexcollations[j] = 0; /* TODO */
+
+		j++;
+	}
+	strcpy(entry->indexname, indexRelationName);
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entries = lappend(entries, entry);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	return true;
 }
 
 
@@ -415,7 +444,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 					 bool inhparent,
 					 RelOptInfo *rel,
 					 Relation relation,
-					 int position)
+					 hypoEntry *entry)
 {
 	IndexOptInfo *index;
 	int ncolumns, i;
@@ -425,7 +454,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 	/* create a node */
 	index = makeNode(IndexOptInfo);
 
-	index->relam = entries[position].relam;
+	index->relam = entry->relam;
 
 	if (index->relam != BTREE_AM_OID)
 	{
@@ -434,10 +463,10 @@ injectHypotheticalIndex(PlannerInfo *root,
 	}
 
 	// General stuff
-	index->indexoid = position+1;
+	index->indexoid = entry->oid;
 	index->reltablespace = rel->reltablespace; // same tablespace as relation
 	index->rel = rel;
-	index->ncolumns = ncolumns = entries[position].ncolumns;
+	index->ncolumns = ncolumns = entry->ncolumns;
 
 	index->indexkeys = (int *) palloc(sizeof(int) * ncolumns);
 	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
@@ -446,15 +475,15 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	for (i = 0; i < ncolumns; i++)
 	{
-		index->indexkeys[i] = entries[position].indexkeys[i];
+		index->indexkeys[i] = entry->indexkeys[i];
 		ind_avg_width += get_attavgwidth(relation->rd_id, index->indexkeys[i]);
 		switch (index->relam)
 		{
 			case BTREE_AM_OID:
 				// hardcode int4 cols, WIP
 				index->indexcollations[i] = 0; //?? C_COLLATION_OID;
-				index->opfamily[i] = entries[position].opfamily[i]; //INTEGER_BTREE_FAM_OID;
-				index->opcintype[i] = entries[position].opcintype[i]; //INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
+				index->opfamily[i] = entry->opfamily[i]; //INTEGER_BTREE_FAM_OID;
+				index->opcintype[i] = entry->opcintype[i]; //INT4OID; // ??INT4_BTREE_OPS_OID; // btree integer opclass
 				break;
 		}
 	}
@@ -540,15 +569,15 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION)
 		{
-			int i;
+			ListCell *lc;
 
-			for (i = 0; i < HYPO_NB_INDEXES; i++)
+			foreach(lc, entries)
 			{
-				if (entries[i].relid == InvalidOid)
-					break;
-				if (entries[i].relid == relationObjectId) {
+				hypoEntry *entry = (hypoEntry *) lfirst(lc);
+
+				if (entry->relid == relationObjectId) {
 					// hypothetical index found, add it to the relation's indextlist
-					injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, i);
+					injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, entry);
 				}
 			}
 		}
@@ -568,18 +597,19 @@ hypo_explain_get_index_name_hook(Oid indexId)
 {
 	char *ret = NULL;
 
-	/* our index key is position-in-array +1, return NULL if if can't be ours */
-	if (indexId > HYPO_NB_INDEXES)
-		return ret;
-
 	if (isExplain)
 	{
 		/* we're in an explain-only command. Return the name of the
 		   * hypothetical index name if it's one of ours, otherwise return NULL
 		 */
-		if (entries[indexId-1].relid != InvalidOid)
+		ListCell *lc;
+		foreach(lc, entries)
 		{
-			ret = entries[indexId-1].indexname;
+			hypoEntry *entry = (hypoEntry *) lfirst(lc);
+			if (entry->oid == indexId)
+			{
+				ret = entry->indexname;
+			}
 		}
 	}
 	return ret;
@@ -626,7 +656,7 @@ hypopg(PG_FUNCTION_ARGS)
 	MemoryContext	oldcontext;
 	TupleDesc		tupdesc;
 	Tuplestorestate	*tupstore;
-	int				i = 0;
+	ListCell		*lc;
 
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -654,8 +684,9 @@ hypopg(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	while (i < HYPO_NB_INDEXES)
+	foreach(lc, entries)
 	{
+		hypoEntry *entry = (hypoEntry *) lfirst(lc);
 		Datum		values[HYPO_NB_COLS];
 		bool		nulls[HYPO_NB_COLS];
 		int			j = 0;
@@ -663,17 +694,14 @@ hypopg(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		if (entries[i].relid == InvalidOid)
-			break;
-
-		values[j++] = CStringGetTextDatum(strdup(entries[i].indexname));
-		values[j++] = ObjectIdGetDatum(entries[i].relid);
-		values[j++] = ObjectIdGetDatum(entries[i].relam);
+		values[j++] = ObjectIdGetDatum(entry->oid);
+		values[j++] = CStringGetTextDatum(strdup(entry->indexname));
+		values[j++] = ObjectIdGetDatum(entry->relid);
+		values[j++] = ObjectIdGetDatum(entry->relam);
 
 		Assert(j == PG_STAT_PLAN_COLS);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-		i++;
 	}
 
 	/* clean up and return the tuplestore */

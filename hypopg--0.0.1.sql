@@ -32,7 +32,7 @@ hypopg_create_index(IN sql_order text)
     LANGUAGE c COST 1000
 AS '$libdir/hypopg', 'hypopg_create_index';
 
-CREATE FUNCTION hypopg(OUT indexname text, OUT relid Oid, OUT amid Oid)
+CREATE FUNCTION hypopg(OUT oid Oid, OUT indexname text, OUT relid Oid, OUT amid Oid)
     RETURNS SETOF record
     LANGUAGE c COST 1000
 AS '$libdir/hypopg', 'hypopg';
