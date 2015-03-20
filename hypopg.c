@@ -90,11 +90,13 @@ Datum	hypopg_reset(PG_FUNCTION_ARGS);
 Datum	hypopg_add_index_internal(PG_FUNCTION_ARGS);
 Datum	hypopg(PG_FUNCTION_ARGS);
 Datum	hypopg_create_index(PG_FUNCTION_ARGS);
+Datum	hypopg_drop_index(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
 PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
+PG_FUNCTION_INFO_V1(hypopg_drop_index);
 
 static hypoEntry * newHypoEntry(Oid relid, Oid relam);
 static Oid hypoGetNewOid(Oid relid);
@@ -109,8 +111,8 @@ static bool entry_store(Oid relid,
 			int indexcollations,
 			Oid opfamily,
 			Oid opcintype);
-
 static bool entry_store_parsetree(IndexStmt *node);
+static bool entry_remove(Oid indexid);
 
 static void hypo_utility_hook(Node *parsetree,
 					   const char *queryString,
@@ -387,6 +389,24 @@ entry_store_parsetree(IndexStmt *node)
 	return true;
 }
 
+/* Remove an hypothetical index from the list */
+static bool
+entry_remove(Oid indexid)
+{
+	ListCell *lc;
+
+	foreach(lc, entries)
+	{
+		hypoEntry *entry = (hypoEntry *) lfirst(lc);
+
+		if (entry->oid == indexid)
+		{
+			entries = list_delete_ptr(entries, entry);
+			return true;
+		}
+	}
+	return false;
+}
 
 /* This function setup the "isExplain" flag for next hooks.
  * If this flag is setup, we can add hypothetical indexes.
@@ -718,7 +738,7 @@ hypopg(PG_FUNCTION_ARGS)
 }
 
 /*
- * List created hypothetical indexes
+ * SQL wrapper to create an hypothetical index with his parsetree
  */
 Datum
 hypopg_create_index(PG_FUNCTION_ARGS)
@@ -748,6 +768,17 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 	}
 	res = nodeToString(parsetree_list);
 	PG_RETURN_TEXT_P(cstring_to_text(res));
+}
+
+/*
+ * SQL wrapper to drop an hypothetical index.
+ */
+Datum
+hypopg_drop_index(PG_FUNCTION_ARGS)
+{
+	Oid indexid = PG_GETARG_OID(0);
+
+	PG_RETURN_BOOL(entry_remove(indexid));
 }
 
 // stolen from backend/optimisze/util/plancat.c, no export of this function :(

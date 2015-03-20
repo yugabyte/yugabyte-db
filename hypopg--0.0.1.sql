@@ -10,7 +10,7 @@ SET client_encoding = 'UTF8';
 
 CREATE FUNCTION hypopg_reset()
     RETURNS void
-    LANGUAGE c COST 1000
+    LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_reset';
 
 CREATE FUNCTION
@@ -23,18 +23,24 @@ hypopg_add_index_internal(IN relid oid,
                            IN opfamily Oid,
                            IN opcintype Oid)
     RETURNS bool
-    LANGUAGE c COST 1000
+    LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_add_index_internal';
 
 CREATE FUNCTION
 hypopg_create_index(IN sql_order text)
     RETURNS text
-    LANGUAGE c COST 1000
+    LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_create_index';
+
+CREATE FUNCTION
+hypopg_drop_index(IN indexid oid)
+    RETURNS bool
+    LANGUAGE c COST 100
+AS '$libdir/hypopg', 'hypopg_drop_index';
 
 CREATE FUNCTION hypopg(OUT oid Oid, OUT indexname text, OUT relid Oid, OUT amid Oid)
     RETURNS SETOF record
-    LANGUAGE c COST 1000
+    LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg';
 
 CREATE FUNCTION hypopg_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT amname name)
