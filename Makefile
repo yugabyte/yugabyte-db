@@ -145,6 +145,6 @@ test: test/setup.sql
 	pg_prove --pset tuples_only=1 $(TESTS)
 
 html:
-	MultiMarkdown.pl doc/pgtap.mmd > doc/pgtap.html
+	multimarkdown doc/pgtap.mmd > doc/pgtap.html
 	./tocgen doc/pgtap.html 2> doc/toc.html
 	perl -MPod::Simple::XHTML -E "my \$$p = Pod::Simple::XHTML->new; \$$p->html_header_tags('<meta http-equiv=\"Content-Type\" content=\"text/html; charset=UTF-8\">'); \$$p->strip_verbatim_indent(sub { my \$$l = shift; (my \$$i = \$$l->[0]) =~ s/\\S.*//; \$$i }); \$$p->parse_from_file('`perldoc -l pg_prove`')" > doc/pg_prove.html
