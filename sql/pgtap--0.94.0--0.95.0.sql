@@ -229,6 +229,7 @@ BEGIN
         IF tnumb > 0 THEN
             EXECUTE 'TRUNCATE __tresults__';
             EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH 1';
+            PERFORM _set('curr_test', 0);
         END IF;
 
         BEGIN
@@ -289,6 +290,7 @@ BEGIN
         -- Restore the sequence.
         EXECUTE 'TRUNCATE __tresults__';
         EXECUTE 'ALTER SEQUENCE __tresults___numb_seq RESTART WITH ' || tnumb + 1;
+        PERFORM _set('curr_test', tnumb);
 
         -- Record this test.
         RETURN NEXT ok(tok, tests[i]);
