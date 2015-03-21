@@ -251,7 +251,8 @@ addHypoEntry(hypoEntry *entry)
 static void
 entry_reset(void)
 {
-	list_free(entries);
+	list_free_deep(entries);
+	entries = NIL;
 	return;
 }
 
