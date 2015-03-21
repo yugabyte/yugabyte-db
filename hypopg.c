@@ -35,7 +35,6 @@
 
 PG_MODULE_MAGIC;
 
-#define HYPO_MAX_COLS	10 /* # of column an hypothetical index can have */
 #define HYPO_NB_COLS		4 /* # of column hypopg() returns */
 #define HYPO_MAX_INDEXNAME	1024 /* max length of an hypothetical index */
 
@@ -54,13 +53,13 @@ typedef struct hypoEntry
 
 	/* index descriptor informations */
 	int				ncolumns; /* number of columns, only 1 for now */
-	int				indexkeys[HYPO_MAX_COLS]; /* attnums */
-	Oid				indexcollations[HYPO_MAX_COLS]; /* OIDs of collations of index columns */
-	Oid				opfamily[HYPO_MAX_COLS]; /* OIDs of operator families for columns */
-	Oid				opcintype[HYPO_MAX_COLS]; /* OIDs of opclass declared input data types */
-	Oid				sortopfamily[HYPO_MAX_COLS]; /* OIDs of btree opfamilies, if orderable */
-	bool			reverse_sort[HYPO_MAX_COLS]; /* is sort order descending? */
-	bool			nulls_first[HYPO_MAX_COLS]; /* do NULLs come first in the sort order? */
+	int				*indexkeys; /* attnums */
+	Oid				*indexcollations; /* OIDs of collations of index columns */
+	Oid				*opfamily; /* OIDs of operator families for columns */
+	Oid				*opcintype; /* OIDs of opclass declared input data types */
+	Oid				*sortopfamily; /* OIDs of btree opfamilies, if orderable */
+	bool			*reverse_sort; /* is sort order descending? */
+	bool			*nulls_first; /* do NULLs come first in the sort order? */
 	Oid				relam;  /* OID of the access method (in pg_am) */
 
 	RegProcedure	amcostestimate; /* OID of the access method's cost fcn */
@@ -98,7 +97,7 @@ PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 
-static hypoEntry * newHypoEntry(Oid relid, Oid relam);
+static hypoEntry * newHypoEntry(Oid relid, Oid relam, int ncolumns);
 static Oid hypoGetNewOid(Oid relid);
 static void addHypoEntry(hypoEntry *entry);
 
@@ -173,7 +172,7 @@ _PG_fini(void)
 
 /* palloc a new hypoEntry, and give it a new OID, and some other global stuff */
 static hypoEntry *
-newHypoEntry(Oid relid, Oid relam)
+newHypoEntry(Oid relid, Oid relam, int ncolumns)
 {
 	hypoEntry *entry;
 	MemoryContext oldcontext;
@@ -181,6 +180,14 @@ newHypoEntry(Oid relid, Oid relam)
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	entry = palloc0(sizeof(hypoEntry));
+	/* palloc all arrays */
+	entry->indexkeys = palloc0(sizeof(int) * ncolumns);
+	entry->indexcollations = palloc0(sizeof(Oid) * ncolumns);
+	entry->opfamily = palloc0(sizeof(Oid) * ncolumns);
+	entry->opcintype = palloc0(sizeof(Oid) * ncolumns);
+	entry->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+	entry->reverse_sort = palloc0(sizeof(bool) * ncolumns);
+	entry->nulls_first = palloc0(sizeof(bool) * ncolumns);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -251,7 +258,15 @@ addHypoEntry(hypoEntry *entry)
 static void
 entry_reset(void)
 {
-	list_free_deep(entries);
+	ListCell *lc;
+
+	foreach(lc, entries)
+	{
+		hypoEntry *entry = (hypoEntry *) lc;
+		entry_remove(entry->oid);
+	}
+
+	list_free(entries);
 	entries = NIL;
 	return;
 }
@@ -268,11 +283,7 @@ entry_store(Oid relid,
 {
 	hypoEntry *entry;
 
-	/* Make sure user didn't try to add too many columns */
-	if (ncolumns > HYPO_MAX_COLS)
-		return false;
-
-	entry = newHypoEntry(relid, relam);
+	entry = newHypoEntry(relid, relam, 1);
 
 	strcpy(entry->indexname, indexname);
 	entry->unique = false;
@@ -304,8 +315,6 @@ entry_store_parsetree(IndexStmt *node)
 
 
 	ncolumns = list_length(node->indexParams);
-	if (ncolumns > HYPO_MAX_COLS)
-		return false;
 
 	indexRelationName = palloc0(sizeof(char) * HYPO_MAX_INDEXNAME);
 	indexRelationName = strcat(indexRelationName,"idx_hypo_");
@@ -337,11 +346,12 @@ entry_store_parsetree(IndexStmt *node)
 	ReleaseSysCache(tuple);
 
 	/* now create the hypothetical index entry */
-	entry = newHypoEntry(relid, accessMethodId);
+	ncolumns = list_length(node->indexParams);
+
+	entry = newHypoEntry(relid, accessMethodId, ncolumns);
 
 	entry->unique = node->unique;
-
-	entry->ncolumns = ncolumns = list_length(node->indexParams);
+	entry->ncolumns = ncolumns;
 
 	/* iterate through columns */
 	foreach(lc, node->indexParams)
@@ -383,7 +393,7 @@ entry_store_parsetree(IndexStmt *node)
 
 		j++;
 	}
-	strcpy(entry->indexname, indexRelationName);
+	strncpy(entry->indexname, indexRelationName, HYPO_MAX_INDEXNAME);
 
 	addHypoEntry(entry);
 
@@ -402,6 +412,13 @@ entry_remove(Oid indexid)
 
 		if (entry->oid == indexid)
 		{
+			pfree(entry->indexkeys);
+			pfree(entry->indexcollations);
+			pfree(entry->opfamily);
+			pfree(entry->opcintype);
+			pfree(entry->sortopfamily);
+			pfree(entry->reverse_sort);
+			pfree(entry->nulls_first);
 			entries = list_delete_ptr(entries, entry);
 			return true;
 		}
