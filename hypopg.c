@@ -562,7 +562,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 	index->indexprs = NIL; // not handled for now, WIP
 	index->indpred = NIL; // no partial index handled for now, WIP
 
-	/* Build targetlist using the completed indexprs data, stolen from PostgreSQL */
+	/* Build targetlist using the completed indexprs data, copied from PostgreSQL */
 	index->indextlist = build_index_tlist(root, index, relation);
 
 	if (index->indpred == NIL)
@@ -799,7 +799,16 @@ hypopg_drop_index(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(entry_remove(indexid));
 }
 
-// stolen from backend/optimisze/util/plancat.c, no export of this function :(
+/* copied from backend/optimizer/util/plancat.c, not exported.
+ *
+ * Build a targetlist representing the columns of the specified index.
+ * Each column is represented by a Var for the corresponding base-relation
+ * column, or an expression in base-relation Vars, as appropriate.
+ *
+ * There are never any dropped columns in indexes, so unlike
+ * build_physical_tlist, we need no failure case.
+ */
+
 static List *
 build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation)
@@ -855,7 +864,7 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 }
 
 /*
- * Stolen from src/backend/commands/indexcmds.c, not exported :/
+ * Copied from src/backend/commands/indexcmds.c, not exported.
  * Resolve possibly-defaulted operator class specification
  */
 static Oid
