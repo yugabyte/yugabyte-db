@@ -16,6 +16,7 @@
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_opclass.h"
+#include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
 #include "funcapi.h"
@@ -35,7 +36,7 @@
 
 PG_MODULE_MAGIC;
 
-#define HYPO_NB_COLS		4 /* # of column hypopg() returns */
+#define HYPO_NB_COLS		18 /* # of column hypopg() returns */
 #define HYPO_MAX_INDEXNAME	1024 /* max length of an hypothetical index */
 
 bool isExplain = false;
@@ -53,9 +54,10 @@ typedef struct hypoEntry
 
 	/* index descriptor informations */
 	int				ncolumns; /* number of columns, only 1 for now */
-	int				*indexkeys; /* attnums */
+	short int		*indexkeys; /* attnums */
 	Oid				*indexcollations; /* OIDs of collations of index columns */
 	Oid				*opfamily; /* OIDs of operator families for columns */
+	Oid				*opclass; /* OIDs of opclass data types */
 	Oid				*opcintype; /* OIDs of opclass declared input data types */
 	Oid				*sortopfamily; /* OIDs of btree opfamilies, if orderable */
 	bool			*reverse_sort; /* is sort order descending? */
@@ -74,8 +76,20 @@ typedef struct hypoEntry
 	bool			amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
 	bool			amhasgettuple;	/* does AM have amgettuple interface? */
 	bool			amhasgetbitmap; /* does AM have amgetbitmap interface? */
-
 } hypoEntry;
+
+typedef struct
+{
+	int32		vl_len_;		/* these fields must match ArrayType! */
+	int			ndim;			/* always 1 for oidvector */
+	int32		dataoffset;		/* always 0 for oidvector */
+	Oid			elemtype;
+	int			dim1;
+	int			lbound1;
+	int		values[FLEXIBLE_ARRAY_MEMBER];
+} int4vector;
+
+#define Int4VectorSize(n)	(offsetof(int4vector, values) + (n) * sizeof(int))
 
 List *entries = NIL;
 
@@ -106,7 +120,7 @@ static bool entry_store(Oid relid,
 			char *indexname,
 			Oid relam,
 			int ncolumns,
-			int indexkeys,
+			short int indexkeys,
 			int indexcollations,
 			Oid opfamily,
 			Oid opcintype);
@@ -139,12 +153,10 @@ static void injectHypotheticalIndex(PlannerInfo *root,
 						hypoEntry *entry);
 static bool hypo_query_walker(Node *node);
 
-static List *
-build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
-				  Relation heapRelation);
-static Oid
-GetIndexOpClass(List *opclass, Oid attrType,
-						char *accessMethodName, Oid accessMethodId);
+static List * build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
+								Relation heapRelation);
+static Oid GetIndexOpClass(List *opclass, Oid attrType,
+						   char *accessMethodName, Oid accessMethodId);
 
 void
 _PG_init(void)
@@ -181,9 +193,10 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 
 	entry = palloc0(sizeof(hypoEntry));
 	/* palloc all arrays */
-	entry->indexkeys = palloc0(sizeof(int) * ncolumns);
+	entry->indexkeys = palloc0(sizeof(short int) * ncolumns);
 	entry->indexcollations = palloc0(sizeof(Oid) * ncolumns);
 	entry->opfamily = palloc0(sizeof(Oid) * ncolumns);
+	entry->opclass = palloc0(sizeof(Oid) * ncolumns);
 	entry->opcintype = palloc0(sizeof(Oid) * ncolumns);
 	entry->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
 	entry->reverse_sort = palloc0(sizeof(bool) * ncolumns);
@@ -276,7 +289,7 @@ entry_store(Oid relid,
 			char *indexname,
 			Oid relam,
 			int ncolumns,
-			int indexkeys,
+			short int indexkeys,
 			int indexcollations,
 			Oid opfamily,
 			Oid opcintype)
@@ -311,7 +324,7 @@ entry_store_parsetree(IndexStmt *node)
 	Oid					accessMethodId;
 	int			ncolumns;
 	ListCell	*lc;
-	int			j = 0;
+	int			j;
 
 
 	ncolumns = list_length(node->indexParams);
@@ -354,6 +367,7 @@ entry_store_parsetree(IndexStmt *node)
 	entry->ncolumns = ncolumns;
 
 	/* iterate through columns */
+	j = 0;
 	foreach(lc, node->indexParams)
 	{
 		IndexElem *indexelem = (IndexElem *) lfirst(lc);
@@ -381,6 +395,7 @@ entry_store_parsetree(IndexStmt *node)
 				atttype,
 				node->accessMethod,
 				accessMethodId);
+		entry->opclass[j] = opclass;
 		/* setup the opfamily */
 		entry->opfamily[j] = get_opclass_family(opclass);
 
@@ -415,6 +430,7 @@ entry_remove(Oid indexid)
 			pfree(entry->indexkeys);
 			pfree(entry->indexcollations);
 			pfree(entry->opfamily);
+			pfree(entry->opclass);
 			pfree(entry->opcintype);
 			pfree(entry->sortopfamily);
 			pfree(entry->reverse_sort);
@@ -672,20 +688,19 @@ hypopg_reset(PG_FUNCTION_ARGS)
 
 /*
  * Add an hypothetical index in the array, with all needed informations
- * it supposed to be called from the provided sql function, because I'm too
- * lazy to retrieve all the needed info in C !=
+ * it supposed to be called from the provided sql function.
  */
 Datum
 hypopg_add_index_internal(PG_FUNCTION_ARGS)
 {
-	Oid		relid = PG_GETARG_OID(0);
-	char	*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
-	Oid		relam = PG_GETARG_OID(2);
-	int		ncolumns = PG_GETARG_INT32(3);
-	int		indexkeys = PG_GETARG_INT32(4);
-	Oid		indexcollations = PG_GETARG_OID(5);
-	Oid		opfamily = PG_GETARG_OID(6);
-	Oid		opcintype = PG_GETARG_OID(7);
+	Oid			relid = PG_GETARG_OID(0);
+	char		*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
+	Oid			relam = PG_GETARG_OID(2);
+	int			ncolumns = PG_GETARG_INT32(3);
+	short int	indexkeys = PG_GETARG_INT16(4);
+	Oid			indexcollations = PG_GETARG_OID(5);
+	Oid			opfamily = PG_GETARG_OID(6);
+	Oid			opcintype = PG_GETARG_OID(7);
 
 	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 }
@@ -739,11 +754,18 @@ hypopg(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		values[j++] = ObjectIdGetDatum(entry->oid);
 		values[j++] = CStringGetTextDatum(strdup(entry->indexname));
+		values[j++] = ObjectIdGetDatum(entry->oid);
 		values[j++] = ObjectIdGetDatum(entry->relid);
+		values[j++] = Int8GetDatum(entry->ncolumns);
+		values[j++] = BoolGetDatum(entry->unique);
+		values[j++] = PointerGetDatum(buildint2vector(entry->indexkeys, entry->ncolumns));
+		values[j++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
+		values[j++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
+		nulls[j++] = true; /* no indoption for now, TODO */
+		nulls[j++] = true; /* no hypothetical index on expr for now */
+		nulls[j++] = true; /* no hypothetical index on predicate for now */
 		values[j++] = ObjectIdGetDatum(entry->relam);
-
 		Assert(j == PG_STAT_PLAN_COLS);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);

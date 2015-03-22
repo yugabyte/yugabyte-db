@@ -18,7 +18,7 @@ hypopg_add_index_internal(IN relid oid,
                            IN indexname text,
                            IN relam Oid,
                            IN ncolumns int,
-                           IN indexkeys int,
+                           IN indexkeys smallint,
                            IN indexcollations Oid,
                            IN opfamily Oid,
                            IN opcintype Oid)
@@ -38,7 +38,12 @@ hypopg_drop_index(IN indexid oid)
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_drop_index';
 
-CREATE FUNCTION hypopg(OUT oid Oid, OUT indexname text, OUT relid Oid, OUT amid Oid)
+CREATE FUNCTION hypopg(OUT indexname text, OUT indexrelid Oid,
+                       OUT indrelid Oid, OUT innatts integer,
+                       OUT indisunique boolean, OUT indkey int2vector,
+                       OUT indcollation oidvector, OUT indclass oidvector,
+                       OUT indoption oidvector, OUT indexprs pg_node_tree,
+                       OUT indpred pg_node_tree, OUT amid Oid)
     RETURNS SETOF record
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg';
@@ -49,7 +54,7 @@ AS
 $_$
     SELECT current_database(), h.indexname, n.nspname, c.relname, am.amname
     FROM hypopg() h
-    JOIN pg_class c ON c.oid = h.relid
+    JOIN pg_class c ON c.oid = h.indrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_am am ON am.oid = h.amid
 $_$
