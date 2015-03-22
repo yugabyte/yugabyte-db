@@ -194,12 +194,12 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 	entry->oid = hypoGetNewOid(relid);
 	entry->relid = relid;
 	entry->relam = relam;
+	entry->immediate = true;
 
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
 			entry->amcostestimate = (RegProcedure) 1268; // btcostestimate
-			entry->immediate = true;
 			entry->canreturn = true;
 			entry->amcanorderbyop = false;
 			entry->amoptionalkey = true;
