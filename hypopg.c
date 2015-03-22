@@ -78,19 +78,6 @@ typedef struct hypoEntry
 	bool			amhasgetbitmap; /* does AM have amgetbitmap interface? */
 } hypoEntry;
 
-typedef struct
-{
-	int32		vl_len_;		/* these fields must match ArrayType! */
-	int			ndim;			/* always 1 for oidvector */
-	int32		dataoffset;		/* always 0 for oidvector */
-	Oid			elemtype;
-	int			dim1;
-	int			lbound1;
-	int		values[FLEXIBLE_ARRAY_MEMBER];
-} int4vector;
-
-#define Int4VectorSize(n)	(offsetof(int4vector, values) + (n) * sizeof(int))
-
 List *entries = NIL;
 
 
