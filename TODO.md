@@ -5,7 +5,7 @@ Important
 ---------
 
 - [X] handle multiple columns
-- [ ] handle collation (and what 0 means for collation ?)
+- [X] handle collation
 - [ ] handle other am other than btree
 - [ ] better formula for number of pages in index
 - [ ] handle tree height

@@ -385,11 +385,13 @@ entry_store_parsetree(IndexStmt *node)
 		entry->opclass[j] = opclass;
 		/* setup the opfamily */
 		entry->opfamily[j] = get_opclass_family(opclass);
+		/* setup the collation */
+		entry->indexcollations[j] = attform->attcollation;
 
 		ReleaseSysCache(tuple);
 
 		entry->opcintype[j] = get_opclass_input_type(opclass);
-		entry->indexcollations[j] = 0; /* TODO */
+
 		entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC ? true : false);
 		entry->nulls_first[j] = (indexelem->nulls_ordering == SORTBY_NULLS_FIRST ? true : false);
 
