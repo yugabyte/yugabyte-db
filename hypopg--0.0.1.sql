@@ -28,7 +28,7 @@ AS '$libdir/hypopg', 'hypopg_add_index_internal';
 
 CREATE FUNCTION
 hypopg_create_index(IN sql_order text)
-    RETURNS text
+    RETURNS bool
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_create_index';
 

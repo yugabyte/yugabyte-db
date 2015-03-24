@@ -773,7 +773,6 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 	char		*sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
 	List		*parsetree_list;
 	ListCell	*parsetree_item;
-	char		*res;
 	int			i = 1;
 
 	parsetree_list = pg_parse_query(sql);
@@ -793,8 +792,8 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		}
 		i++;
 	}
-	res = nodeToString(parsetree_list);
-	PG_RETURN_TEXT_P(cstring_to_text(res));
+
+	PG_RETURN_BOOL(true);
 }
 
 /*
