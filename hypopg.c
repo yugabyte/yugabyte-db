@@ -209,7 +209,7 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 			entry->amhasgetbitmap = true;
 			break;
 		default:
-			elog(WARNING, "pg_hypo: access method %d is not supported",
+			elog(ERROR, "pg_hypo: access method %d is not supported",
 					entry->relam);
 			break;
 	}
