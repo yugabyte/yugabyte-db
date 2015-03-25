@@ -582,6 +582,13 @@ SELECT to_multi_byte('123$test');
 SELECT octet_length('abc');
 SELECT octet_length(to_multi_byte('abc'));
 
+-- Tests for to_single_byte
+SELECT to_single_byte('123$test');
+SELECT to_single_byte('１２３＄ｔｅｓｔ');
+-- Check internal representation difference
+SELECT octet_length('ａｂｃ');
+SELECT octet_length(to_single_byte('ａｂｃ'));
+
 -- Tests for round(TIMESTAMP WITH TIME ZONE)
 select round(TIMESTAMP WITH TIME ZONE'12/08/1990 05:35:25','YEAR') = '1991-01-01 00:00:00';
 select round(TIMESTAMP WITH TIME ZONE'05/08/1990 05:35:25','Q') = '1990-04-01 00:00:00';

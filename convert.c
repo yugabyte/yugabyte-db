@@ -18,6 +18,9 @@ PG_FUNCTION_INFO_V1(orafce_to_char_numeric);
 PG_FUNCTION_INFO_V1(orafce_to_char_timestamp);
 PG_FUNCTION_INFO_V1(orafce_to_number);
 PG_FUNCTION_INFO_V1(orafce_to_multi_byte);
+PG_FUNCTION_INFO_V1(orafce_to_single_byte);
+
+static int getindex(const char **map, char *mbchar, int mblen);
 
 Datum
 orafce_to_char_int4(PG_FUNCTION_ARGS)
@@ -431,6 +434,86 @@ orafce_to_multi_byte(PG_FUNCTION_ARGS)
 		else
 		{
 			*d++ = s[i];
+		}
+	}
+
+	dstlen = d - VARDATA(dst);
+	SET_VARSIZE(dst, VARHDRSZ + dstlen);
+
+	PG_RETURN_TEXT_P(dst);
+}
+
+static int
+getindex(const char **map, char *mbchar, int mblen)
+{
+	int		i;
+
+	for (i = 0; i < 95; i++)
+	{
+		if (!memcmp(map[i], mbchar, mblen))
+			return i;
+	}
+
+	return -1;
+}
+
+Datum
+orafce_to_single_byte(PG_FUNCTION_ARGS)
+{
+	text	   *src;
+	text	   *dst;
+	char	   *s;
+	char	   *d;
+	int			srclen;
+	int			dstlen;
+	const char **map;
+
+	switch (GetDatabaseEncoding())
+	{
+		case PG_UTF8:
+			map = TO_MULTI_BYTE_UTF8;
+			break;
+		case PG_EUC_JP:
+#if PG_VERSION_NUM >= 80300
+		case PG_EUC_JIS_2004:
+#endif
+			map = TO_MULTI_BYTE_EUCJP;
+			break;
+		/*
+		 * TODO: Add converter for encodings.
+		 */
+		default:	/* no need to convert */
+			PG_RETURN_DATUM(PG_GETARG_DATUM(0));
+	}
+
+	src = PG_GETARG_TEXT_PP(0);
+	s = VARDATA_ANY(src);
+	srclen = VARSIZE_ANY_EXHDR(src);
+
+	/* XXX - The output length should be <= input length */
+	dst = (text *) palloc0(VARHDRSZ + srclen);
+	d = VARDATA(dst);
+
+	while (*s && (s - VARDATA_ANY(src) < srclen))
+	{
+		char   *u = s;
+		int		clen;
+		int		mapindex;
+
+		clen = pg_mblen(u);
+		s += clen;
+
+		if (clen == 1)
+			*d++ = *u;
+		else if ((mapindex = getindex(map, u, clen)) >= 0)
+		{
+			const char m = 0x20 + mapindex;
+			*d++ = m;
+		}
+		else
+		{
+			memcpy(d, u, clen);
+			d += clen;
 		}
 	}
 
