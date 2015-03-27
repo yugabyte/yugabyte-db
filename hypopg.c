@@ -44,6 +44,8 @@ static bool	fix_empty_table = false;
 
 /*
  * Hypothetical index storage, pretty much an IndexOptInfo
+ * Some dynamic informations such as pages and lines are not storedn but
+ * computed when the hypothetical index is added.
  */
 typedef struct hypoEntry
 {
@@ -209,6 +211,7 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 			entry->amhasgetbitmap = true;
 			break;
 		default:
+			/* do not store hypothetical indexes with access method not supported */
 			elog(ERROR, "pg_hypo: access method %d is not supported",
 					entry->relam);
 			break;
@@ -217,7 +220,9 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 	return entry;
 }
 
-/* Wrapper around GetNewRelFileNode */
+/* Wrapper around GetNewRelFileNode
+ * Return a new OID for an hypothetical index.
+ */
 static Oid
 hypoGetNewOid(Oid relid)
 {
@@ -243,6 +248,8 @@ hypoGetNewOid(Oid relid)
 	return newoid;
 }
 
+/* Add an hypoEntry to hypoEntries */
+
 static void
 addHypoEntry(hypoEntry *entry)
 {
@@ -255,6 +262,10 @@ addHypoEntry(hypoEntry *entry)
 	MemoryContextSwitchTo(oldcontext);
 }
 
+/* Remove cleanly all hypothetical indexes by calling entry_remove on each
+ * entry.
+ * hypo_remove function pfree all allocated memory
+ */
 static void
 entry_reset(void)
 {
@@ -271,6 +282,8 @@ entry_reset(void)
 	return;
 }
 
+/* Simplified function to add an hypotehtical index, with inly 1 column index
+ */
 static bool
 entry_store(Oid relid,
 			char *indexname,
@@ -300,6 +313,8 @@ entry_store(Oid relid,
 	return true;
 }
 
+/* Create an hypothetical index from its CREATE INDEX parsetree
+ */
 static bool
 entry_store_parsetree(IndexStmt *node)
 {
@@ -404,7 +419,9 @@ entry_store_parsetree(IndexStmt *node)
 	return true;
 }
 
-/* Remove an hypothetical index from the list */
+/* Remove an hypothetical index from the list of hypothetical indexes.
+ * pfree all memory that has been allocated.
+ */
 static bool
 entry_remove(Oid indexid)
 {
@@ -485,8 +502,9 @@ hypo_query_walker(Node *parsetree)
 	return false;
 }
 
-/* Real work here.
- * Build hypothetical indexes for the specified relation.
+/* Add an hypothetical index to the list of indexes.
+ * Caller should have check that the specified hypoEntry does belong to the
+ * specified relation
  */
 static void
 injectHypotheticalIndex(PlannerInfo *root,
@@ -508,6 +526,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	if (index->relam != BTREE_AM_OID)
 	{
+		/* skip this index if access method is not handled */
 		elog(WARNING, "hypopg: Only btree indexes are supported for now!");
 		return;
 	}
@@ -572,7 +591,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	if (index->indpred == NIL)
 	{
-		/* very quick and pessimistic estimation :
+		/* very quick and pessimistic estimation:
 		 * number of tuples * avg width,
 		 * with ~ 50% bloat (including 10% fillfactor), plus 1 block
 		 */
@@ -809,7 +828,7 @@ hypopg_drop_index(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(entry_remove(indexid));
 }
 
-/* copied from backend/optimizer/util/plancat.c, not exported.
+/* Copied from backend/optimizer/util/plancat.c, not exported.
  *
  * Build a targetlist representing the columns of the specified index.
  * Each column is represented by a Var for the corresponding base-relation
