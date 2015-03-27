@@ -40,7 +40,6 @@ PG_MODULE_MAGIC;
 #define HYPO_MAX_INDEXNAME	1024 /* max length of an hypothetical index */
 
 bool isExplain = false;
-static bool	fix_empty_table = false;
 
 /*
  * Hypothetical index storage, pretty much an IndexOptInfo
@@ -624,17 +623,6 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 		Relation 	relation;
 
 		relation = heap_open(relationObjectId, NoLock);
-
-		if (fix_empty_table && RelationGetNumberOfBlocks(relation) == 0)
-		{
-			/*
-			 * estimate_rel_size() could be too pessimistic for particular
-			 * workload
-			 */
-			rel->pages = 0.0;
-			rel->tuples = 0.0;
-		}
-
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION)
 		{
