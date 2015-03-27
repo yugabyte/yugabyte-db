@@ -4,6 +4,7 @@ TODO
 Important
 ---------
 
+- [ ] Use StringInfoData/initStringInfo/appendStringInfo/appendStringInfoString/appendStringInfoChar/.data for IndexName handling
 - [X] handle multiple columns
 - [X] handle collation
 - [ ] handle other am other than btree
@@ -12,6 +13,7 @@ Important
 - [ ] Add some more (or enhance) function. Following are intereseting:
       [ ] estimated index size
       [ ] estimated number of lines
+- [ ] add hypopg_get_indexdef(oid) (based on src/backend/utils/adt/ruleutils.c/pg_get_indexdef_worker())
 
 Less important
 --------------
