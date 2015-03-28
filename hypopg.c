@@ -37,7 +37,6 @@
 PG_MODULE_MAGIC;
 
 #define HYPO_NB_COLS		18 /* # of column hypopg() returns */
-#define HYPO_MAX_INDEXNAME	1024 /* max length of an hypothetical index */
 
 bool isExplain = false;
 
@@ -51,7 +50,7 @@ typedef struct hypoEntry
 	Oid				oid; /* hypothetical index unique identifier */
 	Oid				relid;		/* related relation Oid */
 	Oid				reltablespace; /* tablespace of the index, if set */
-	char			indexname[HYPO_MAX_INDEXNAME];	/* hypothetical index name */
+	char			*indexname;	/* hypothetical index name */
 
 	/* index descriptor informations */
 	int				ncolumns; /* number of columns, only 1 for now */
@@ -294,8 +293,15 @@ entry_store(Oid relid,
 			Oid opcintype)
 {
 	hypoEntry *entry;
+	MemoryContext oldcontext;
 
 	entry = newHypoEntry(relid, relam, 1);
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entry->indexname = palloc(strlen(indexname));
+
+	MemoryContextSwitchTo(oldcontext);
 
 	strcpy(entry->indexname, indexname);
 	entry->unique = false;
@@ -318,10 +324,11 @@ static bool
 entry_store_parsetree(IndexStmt *node)
 {
 	hypoEntry			*entry;
+	MemoryContext		oldcontext;
 	HeapTuple			tuple;
 	Form_pg_attribute	attform;
 	Oid					relid;
-	char				*indexRelationName;
+	StringInfoData		indexRelationName;
 	Oid					accessMethodId;
 	int			ncolumns;
 	ListCell	*lc;
@@ -330,18 +337,18 @@ entry_store_parsetree(IndexStmt *node)
 
 	ncolumns = list_length(node->indexParams);
 
-	indexRelationName = palloc0(sizeof(char) * HYPO_MAX_INDEXNAME);
-	indexRelationName = strcat(indexRelationName,"idx_hypo_");
-	indexRelationName = strcat(indexRelationName, node->accessMethod);
-	indexRelationName = strcat(indexRelationName, "_");
+	initStringInfo(&indexRelationName);
+	appendStringInfo(&indexRelationName, "idx_hypo_");
+	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
+	appendStringInfo(&indexRelationName, "_");
 
 	if (node->relation->schemaname != NULL && (strcmp(node->relation->schemaname, "public") != 0))
 	{
-		indexRelationName = strcat(indexRelationName, node->relation->schemaname);
-		indexRelationName = strcat(indexRelationName, "_");
+		appendStringInfo(&indexRelationName, "%s", node->relation->schemaname);
+		appendStringInfo(&indexRelationName, "_");
 	}
 
-	indexRelationName = strcat(indexRelationName, node->relation->relname);
+	appendStringInfo(&indexRelationName, "%s", node->relation->relname);
 
 	relid =
 		RangeVarGetRelid(node->relation, AccessShareLock, false);
@@ -375,8 +382,8 @@ entry_store_parsetree(IndexStmt *node)
 		Oid		atttype;
 		Oid		opclass;
 
-		indexRelationName = strcat(indexRelationName, "_");
-		indexRelationName = strcat(indexRelationName, indexelem->name);
+		appendStringInfo(&indexRelationName, "_");
+		appendStringInfo(&indexRelationName, "%s", indexelem->name);
 		/* get the attribute catalog info */
 		tuple = SearchSysCacheAttName(relid, indexelem->name);
 		if (!HeapTupleIsValid(tuple))
@@ -411,7 +418,14 @@ entry_store_parsetree(IndexStmt *node)
 
 		j++;
 	}
-	strncpy(entry->indexname, indexRelationName, HYPO_MAX_INDEXNAME);
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entry->indexname = palloc(strlen(indexRelationName.data));
+
+	strcpy(entry->indexname, indexRelationName.data);
+
+	MemoryContextSwitchTo(oldcontext);
 
 	addHypoEntry(entry);
 
@@ -432,6 +446,7 @@ entry_remove(Oid indexid)
 
 		if (entry->oid == indexid)
 		{
+			pfree(entry->indexname);
 			pfree(entry->indexkeys);
 			pfree(entry->indexcollations);
 			pfree(entry->opfamily);
