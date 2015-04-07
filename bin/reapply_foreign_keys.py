@@ -19,16 +19,24 @@ def apply_foreign_keys(conn, child_tables):
         print("Applying foreign keys to child tables...")
     cur = conn.cursor()
     for c in child_tables:
-        sql = """SELECT keys.conname
-                    , keys.confrelid::regclass::text AS ref_table
+        sql = """SELECT keys.confrelid::regclass::text AS ref_table
                     , '"'||string_agg(att.attname, '","')||'"' AS ref_column
                     , '"'||string_agg(att2.attname, '","')||'"' AS child_column
+                    , keys.confmatchtype
+                    , keys.confupdtype
+                    , keys.confdeltype
+                    , keys.condeferrable
+                    , keys.condeferred
                 FROM
-                    ( SELECT con.conname
-                            , unnest(con.conkey) as ref
+                    ( SELECT unnest(con.conkey) as ref
                             , unnest(con.confkey) as child
                             , con.confrelid
                             , con.conrelid
+                            , con.condeferred
+                            , con.condeferrable
+                            , con.confupdtype
+                            , con.confdeltype
+                            , con.confmatchtype
                       FROM pg_catalog.pg_class c
                       JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
                       JOIN pg_catalog.pg_constraint con ON c.oid = con.conrelid
@@ -39,18 +47,54 @@ def apply_foreign_keys(conn, child_tables):
                 JOIN pg_catalog.pg_class cl ON cl.oid = keys.confrelid
                 JOIN pg_catalog.pg_attribute att ON att.attrelid = keys.confrelid AND att.attnum = keys.child
                 JOIN pg_catalog.pg_attribute att2 ON att2.attrelid = keys.conrelid AND att2.attnum = keys.ref
-                GROUP BY keys.conname, keys.confrelid""";
+                GROUP BY keys.confrelid, keys.condeferred, keys.condeferrable, keys.confupdtype, keys.confdeltype, keys.confmatchtype""";
         if args.debug:
             print(cur.mogrify(sql, [args.parent]))
         cur.execute(sql, [args.parent])
         parent_fkeys = cur.fetchall()
         for pfk in parent_fkeys:
-            alter_sql = "ALTER TABLE " + c[0] + " ADD FOREIGN KEY (" + pfk[3] + ") REFERENCES " + pfk[1] + "(" + pfk[2] + ")"
+            alter_sql = "ALTER TABLE " + c[0] + " ADD FOREIGN KEY (" + pfk[2] + ") REFERENCES " + pfk[0] + "(" + pfk[1] + ")"
+
+            if pfk[3] == "f":
+                alter_sql += " MATCH FULL "
+            elif (pfk[3] == "s" or pfk[3] == "u":
+                alter_sql += " MATCH SIMPLE "
+            elif pfk[3] == "p":
+                alter_sql += " MATCH PARTIAL "
+
+            if pfk[4] == "a":
+                alter_sql += " ON UPDATE NO ACTION "
+            elif pfk[4] == "r":
+                alter_sql += " ON UPDATE RESTRICT "
+            elif pfk[4] == "c":
+                alter_sql += " ON UPDATE CASCADE "
+            elif pfk[4] == "n":
+                alter_sql += " ON UPDATE SET NULL "
+            elif pfk[4] == "d":
+                alter_sql += " ON UPDATE SET DEFAULT "
+
+            if pfk[5] == "a":
+                alter_sql += " ON DELETE NO ACTION "
+            elif pfk[5] == "r":
+                alter_sql += " ON DELETE RESTRICT "
+            elif pfk[5] == "c":
+                alter_sql += " ON DELETE CASCADE "
+            elif pfk[5] == "n":
+                alter_sql += " ON DELETE SET NULL "
+            elif pfk[5] == "d":
+                alter_sql += " ON DELETE SET DEFAULT "
+
+            if pfk[6] == True and pfk[7] == True:
+                alter_sql += " DEFERRABLE INITIALLY DEFERRED "
+            elif pfk[6] == False and pfk[7] == False:
+                alter_sql += " NOT DEFERRABLE "
+            elif pfk[6] == True and pfk[7] == False:
+                alter_sql += " DEFERRABLE INITIALLY IMMEDIATE "
+
             if not args.quiet:
                 print(alter_sql)
             if not args.dryrun:
                 cur.execute(alter_sql)
-
 
 def create_conn():
     conn = psycopg2.connect(args.connection)
@@ -82,25 +126,21 @@ def drop_foreign_keys(conn, child_tables):
                 cur.execute(alter_sql)
 
 
-def get_child_tables(conn, part_schema):
+def get_child_tables(conn):
     if not args.quiet:
         print("Getting list of child tables...")
     cur = conn.cursor()
-    sql = "SELECT * FROM " + partman_schema + ".show_partitions(%s)"
+    sql = """SELECT n.nspname::text ||'.'|| c.relname::text AS partition_name FROM
+    pg_catalog.pg_inherits h
+    JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE h.inhparent = %s::regclass"""
+
     if args.debug:
         print(cur.mogrify(sql, [args.parent]))
     cur.execute(sql, [args.parent])
     result = cur.fetchall()
     return result
-
-
-def get_partman_schema(conn):
-    cur = conn.cursor()
-    sql = "SELECT nspname FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_partman' AND e.extnamespace = n.oid"
-    cur.execute(sql)
-    partman_schema = cur.fetchone()[0]
-    cur.close()
-    return partman_schema
 
 
 def print_version():
@@ -119,8 +159,7 @@ if __name__ == "__main__":
 
     conn = create_conn()
 
-    partman_schema = get_partman_schema(conn)
-    child_tables = get_child_tables(conn, partman_schema)
+    child_tables = get_child_tables(conn)
 
     drop_foreign_keys(conn, child_tables)
     apply_foreign_keys(conn, child_tables)

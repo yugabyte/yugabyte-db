@@ -1,7 +1,15 @@
+-- When inheriting foreign keys to children, also account for the following additional options:
+    -- MATCH FULL/PARTIAL/SIMPLE
+    -- ON UPDATE/DELETE NO ACTION/RESTRICT/CASCADE/SET NULL/SET DEFAULT
+    -- DEFERRABLE / NOT DEFERRABLE
+    -- INITIALLY IMMEDIATE/DEFERRED
+-- Note that none of the above properties were being inherited to child tables before. If you need to reapply foreign keys on children to enforce these options, see the reapply_foreign_keys.py python script or apply_foreign_keys() plpgsql function. The script is the preferred method to avoid contentions.
+-- reapply_foreign_keys.py claimed it could work on partition sets not managed by pg_partman, but that wasn't true. Removed dependency on show_partitions() function, so now that is true.
+
 /*
  * Apply foreign keys that exist on the given parent to the given child table
  */
-CREATE FUNCTION apply_foreign_keys(p_parent_table text, p_child_table text DEFAULT NULL, p_debug boolean DEFAULT false) RETURNS void
+CREATE OR REPLACE FUNCTION apply_foreign_keys(p_parent_table text, p_child_table text DEFAULT NULL, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE

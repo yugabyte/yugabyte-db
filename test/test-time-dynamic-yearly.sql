@@ -22,7 +22,7 @@ CREATE TABLE partman_test.time_dynamic_table (
     , col2 text not null default 'stuff'
     , col3 timestamptz NOT NULL DEFAULT now()
     , col4 text not null default 'stuff'
-    , FOREIGN KEY (col2, col4) REFERENCES partman_test.fk_test_reference(col2, col4));
+    , FOREIGN KEY (col2, col4) REFERENCES partman_test.fk_test_reference(col2, col4) MATCH FULL ON DELETE RESTRICT DEFERRABLE);
 INSERT INTO partman_test.time_dynamic_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_dynamic_table TO partman_basic;
 GRANT ALL ON partman_test.time_dynamic_table TO partman_revoke;

@@ -1,3 +1,13 @@
+1.8.4
+-- When inheriting foreign keys to children, also account for the following additional options:
+    -- MATCH FULL/PARTIAL/SIMPLE
+    -- ON UPDATE/DELETE NO ACTION/RESTRICT/CASCADE/SET NULL/SET DEFAULT
+    -- DEFERRABLE / NOT DEFERRABLE
+    -- INITIALLY IMMEDIATE/DEFERRED
+-- Note that none of the above properties were being inherited to child tables before. If you need to reapply foreign keys on children to enforce these options, see the reapply_foreign_keys.py python script or apply_foreign_keys() plpgsql function. The script is the preferred method to avoid contentions.
+-- reapply_foreign_keys.py claimed it could work on partition sets not managed by pg_partman, but that wasn't true. Removed dependency on show_partitions() function, so now that is true.
+
+
 1.8.3
 -- Fix both the retention system and the undo partitioning functions/scripts not cleaning up the custom_time_partitions table when using a custom time interval (Github Issue #49).
 -- When using sub-partitioning, the call to create_parent() that is within create_partition_id() & create_partition_time() was passing 2 of the parameters through incorrectly. p_use_run_maintenance was being fed to p_inherit_fk and vice versa, so the inherit_fk and use_run_maintenance columns in part_config & part_config_sub may be reversed. Since these are both boolean parameters, no error was being raised. If you've used sub-partitioning and used anything other than the default values for either of these configuration options, please double-check the part_config & part_config_sub tables to ensure the proper values are there. If you did not set them specifically, the default values were set for both and things should be fine.

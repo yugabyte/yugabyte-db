@@ -18,7 +18,7 @@ INSERT INTO partman_test.fk_test_reference VALUES ('stuff');
 
 CREATE TABLE partman_test.id_dynamic_table (
     col1 int primary key
-    , col2 text not null default 'stuff' references partman_test.fk_test_reference (col2)
+    , col2 text not null default 'stuff' references partman_test.fk_test_reference (col2) ON UPDATE CASCADE DEFERRABLE INITIALLY IMMEDIATE
     , col3 timestamptz DEFAULT now());
 INSERT INTO partman_test.id_dynamic_table (col1) VALUES (generate_series(1,9));
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_dynamic_table TO partman_basic;

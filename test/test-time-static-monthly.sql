@@ -21,7 +21,7 @@ CREATE TABLE partman_test.time_static_table (
     col1 int primary key
     , col2 text not null default 'stuff'
     , col3 timestamptz NOT NULL DEFAULT now()
-    , FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2));
+    , FOREIGN KEY (col2) REFERENCES partman_test.fk_test_reference(col2) MATCH SIMPLE NOT DEFERRABLE);
 INSERT INTO partman_test.time_static_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
 GRANT SELECT,INSERT,UPDATE ON partman_test.time_static_table TO partman_basic;
 GRANT ALL ON partman_test.time_static_table TO partman_revoke;
