@@ -1,3 +1,4 @@
+\set VERBOSITY terse
 -- predictability
 SET synchronous_commit = on;
 DROP TABLE IF EXISTS table_with_pk;

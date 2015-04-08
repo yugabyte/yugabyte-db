@@ -1,5 +1,8 @@
 -- this is the first test (CREATE EXTENSION, no DROP TABLE)
 LOAD 'test_decoding';
+
+\set VERBOSITY terse
+
 -- predictability
 SET synchronous_commit = on;
 

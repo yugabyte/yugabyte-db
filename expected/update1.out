@@ -1,3 +1,4 @@
+\set VERBOSITY terse
 -- predictability
 SET synchronous_commit = on;
 DROP TABLE IF EXISTS table_with_pk;
@@ -79,9 +80,7 @@ UPDATE table_with_pk SET b = -b WHERE b = 1;
 UPDATE table_with_unique SET n = false WHERE b = 1;
 SELECT data FROM pg_logical_slot_get_changes('regression_slot', NULL, NULL, 'include-xids', '0');
 WARNING:  table "table_without_pk" without primary key or replica identity is nothing
-CONTEXT:  slot "regression_slot", output plugin "wal2json", in the change callback, associated LSN 0/170E8E8
 WARNING:  table "table_with_unique" without primary key or replica identity is nothing
-CONTEXT:  slot "regression_slot", output plugin "wal2json", in the change callback, associated LSN 0/170ECA0
                                                                                                               data                                                                                                              
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
  {                                                                                                                                                                                                                             +

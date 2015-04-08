@@ -1,3 +1,5 @@
+\set VERBOSITY terse
+
 -- predictability
 SET synchronous_commit = on;
 

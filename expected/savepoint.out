@@ -1,3 +1,4 @@
+\set VERBOSITY terse
 -- predictability
 SET synchronous_commit = on;
 CREATE TABLE xpto (a SERIAL PRIMARY KEY, b text);
