@@ -219,7 +219,7 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	{
 		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, txn->end_lsn));
 
-		appendStringInfo(ctx->out, "\t\"next lsn\": \"%s\",\n", lsn_str);
+		appendStringInfo(ctx->out, "\t\"nextlsn\": \"%s\",\n", lsn_str);
 
 		pfree(lsn_str);
 	}
