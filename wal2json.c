@@ -26,6 +26,7 @@
 #include "utils/builtins.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
+#include "utils/pg_lsn.h"
 #include "utils/rel.h"
 #include "utils/relcache.h"
 #include "utils/syscache.h"
@@ -43,6 +44,12 @@ typedef struct
 	bool		include_timestamp;	/* include transaction timestamp */
 	bool		include_schemas;	/* qualify tables */
 	bool		include_types;		/* include data types */
+
+	/*
+	 * LSN pointing to the end of commit record + 1 (txn->end_lsn)
+	 * It is useful for tools that wants a position to restart from.
+	 */
+	bool		include_lsn;		/* include LSNs */
 
 	uint64		nr_changes;			/* # of passes in pg_decode_change() */
 									/* FIXME replace with txn->nentries */
@@ -94,6 +101,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_timestamp = false;
 	data->include_schemas = true;
 	data->include_types = true;
+	data->include_lsn = false;
 
 	data->nr_changes = 0;
 
@@ -160,6 +168,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
 							 strVal(elem->arg), elem->defname)));
 		}
+		else if (strcmp(elem->defname, "include-lsn") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "include-lsn argument is null");
+				data->include_lsn = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->include_lsn))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
 		else
 		{
 			elog(WARNING, "option %s = %s is unknown",
@@ -193,6 +214,15 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 
 	if (data->include_xids)
 		appendStringInfo(ctx->out, "\t\"xid\": %u,\n", txn->xid);
+
+	if (data->include_lsn)
+	{
+		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, txn->end_lsn));
+
+		appendStringInfo(ctx->out, "\t\"next lsn\": \"%s\",\n", lsn_str);
+
+		pfree(lsn_str);
+	}
 
 	if (data->include_timestamp)
 		appendStringInfo(ctx->out, "\t\"timestamp\": \"%s\",\n", timestamptz_to_str(txn->commit_time));
