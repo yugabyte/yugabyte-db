@@ -3,6 +3,7 @@ before_install:
   - wget https://gist.githubusercontent.com/petere/5893799/raw/apt.postgresql.org.sh
   - wget https://gist.githubusercontent.com/petere/6023944/raw/pg-travis-test.sh
   - sudo sh ./apt.postgresql.org.sh
+  - sudo rm -vf /etc/apt/sources.list.d/pgdg-source.list
 env:
   - PGVERSION=8.2
   - PGVERSION=8.3
