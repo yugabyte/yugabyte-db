@@ -34,7 +34,11 @@ v_quarter                       text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_step_serial_id                bigint;
+v_sub_id_max                    bigint;
+v_sub_id_min                    bigint;
 v_sub_parent                    text;
+v_sub_timestamp_max             timestamp;
+v_sub_timestamp_min             timestamp;
 v_row                           record;
 v_row_max_id                    record;
 v_row_sub                       record;
@@ -120,6 +124,15 @@ LOOP
             v_current_partition_timestamp := to_timestamp(substring(v_current_partition from v_time_position), v_row.datetime_string);
         END IF;
 
+        -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
+        SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
+        -- No need to run maintenance if it's outside the bounds of the top parent. 
+        IF v_sub_timestamp_min IS NOT NULL THEN
+            IF v_current_partition_timestamp < v_sub_timestamp_min OR v_current_partition_timestamp > v_sub_timestamp_max THEN
+                CONTINUE;
+            END IF;
+        END IF;
+
         v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
         IF v_row.part_interval::interval <> '3 months' OR (v_row.part_interval::interval = '3 months' AND v_row.type = 'time-custom') THEN
            v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_row.datetime_string);
@@ -140,9 +153,7 @@ LOOP
         END IF;
 
         -- Check and see how many premade partitions there are.
-        -- Can be negative when subpartitioning and there are parent partitions in the past compared to current timestamp value.
-        -- abs() prevents run_maintenence from running on those old parent tables
-        v_premade_count = abs(round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval)));
+        v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
         v_next_partition_timestamp := v_last_partition_timestamp;
         -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed.
         WHILE v_premade_count < v_row.premake LOOP
@@ -168,7 +179,7 @@ LOOP
             PERFORM @extschema@.apply_constraints(v_row.parent_table);
             -- Can be negative when subpartitioning and there are parent partitions in the past compared to current timestamp value.
             -- abs() prevents run_maintenence from running on those old parent tables
-            v_premade_count = abs(round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval)));
+            v_premade_count = round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
         END LOOP;
     ELSIF v_row.type = 'id-static' OR v_row.type ='id-dynamic' THEN
         -- Loop through child tables starting from highest to get current max value in partition set
@@ -183,12 +194,20 @@ LOOP
                     EXIT;
                 END IF;
         END LOOP;
+
+        -- Determine if this table is a child of a subpartition parent. If so, get limits to see if run_maintenance even needs to run for it.
+        SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'id');
+        -- No need to run maintenance if it's outside the bounds of the top parent. 
+        IF v_sub_id_min IS NOT NULL THEN
+            IF v_current_partition_id < v_sub_id_min OR v_current_partition_id > v_sub_id_max THEN
+                CONTINUE;
+            END IF;
+        END IF;
+
         v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
         v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
         v_next_partition_id := v_last_partition_id + v_row.part_interval::bigint;
-        -- Can be negative when subpartitioning and there are parent partitions with lower values compared to current id value.
-        -- abs() prevents run_maintenence from running on those old parent tables
-        WHILE (abs((v_next_partition_id - v_current_partition_id) / v_row.part_interval::bigint)) <= v_row.premake 
+        WHILE ((v_next_partition_id - v_current_partition_id) / v_row.part_interval::bigint) <= v_row.premake 
         LOOP 
             v_last_partition_created := @extschema@.create_partition_id(v_row.parent_table, ARRAY[v_next_partition_id], p_analyze);
             IF v_last_partition_created THEN

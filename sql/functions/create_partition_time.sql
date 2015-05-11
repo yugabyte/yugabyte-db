@@ -10,7 +10,6 @@ DECLARE
 v_all                           text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
 v_analyze                       boolean := FALSE;
 v_control                       text;
-v_datetime_string               text;
 v_grantees                      text[];
 v_hasoids                       boolean;
 v_inherit_fk                    boolean;
@@ -38,10 +37,6 @@ v_step_overflow_id              bigint;
 v_sub_timestamp_max             timestamp;
 v_sub_timestamp_min             timestamp;
 v_tablename                     text;
-v_time_position                 int;
-v_top_datetime_string           text;
-v_top_interval                  interval;
-v_top_parent                    text;
 v_trunc_value                   text;
 v_time                          timestamp;
 v_type                          text;
@@ -61,7 +56,6 @@ INTO v_type
     , v_part_interval
     , v_inherit_fk
     , v_jobmon
-    , v_datetime_string
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
 AND (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom');
@@ -78,47 +72,8 @@ IF v_jobmon THEN
     END IF;
 END IF;
 
--- Check if parent table is a subpartition of an already existing time-based partition set managed by pg_partman
--- If so, limit what child tables can be created based on parent suffix
-WITH top_oid AS (
-    SELECT i.inhparent AS top_parent_oid
-    FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
-    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname||'.'||c.relname = p_parent_table
-) SELECT n.nspname||'.'||c.relname, p.datetime_string
-  INTO v_top_parent, v_top_datetime_string
-  FROM pg_catalog.pg_class c
-  JOIN top_oid t ON c.oid = t.top_parent_oid
-  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-  JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
-  WHERE c.oid = t.top_parent_oid
-  AND p.type = 'time-static' OR p.type = 'time-dynamic' OR p.type = 'time-custom';
-
-IF v_top_parent IS NOT NULL THEN 
-
-    SELECT part_interval::interval INTO v_top_interval FROM @extschema@.part_config WHERE parent_table = v_top_parent;
-
-    v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-    IF v_part_interval::interval <> '3 months' OR (v_part_interval::interval = '3 months' AND v_type = 'time-custom') THEN
-       v_sub_timestamp_min := to_timestamp(substring(p_parent_table from v_time_position), v_top_datetime_string);
-    ELSE
-        -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
-        v_year := split_part(substring(p_parent_table from v_time_position), 'q', 1);
-        v_quarter := split_part(substring(p_parent_table from v_time_position), 'q', 2);
-        CASE
-            WHEN v_quarter = '1' THEN
-                v_sub_timestamp_min := to_timestamp(v_year || '-01-01', 'YYYY-MM-DD');
-            WHEN v_quarter = '2' THEN
-                v_sub_timestamp_min := to_timestamp(v_year || '-04-01', 'YYYY-MM-DD');
-            WHEN v_quarter = '3' THEN
-                v_sub_timestamp_min := to_timestamp(v_year || '-07-01', 'YYYY-MM-DD');
-            WHEN v_quarter = '4' THEN
-                v_sub_timestamp_min := to_timestamp(v_year || '-10-01', 'YYYY-MM-DD');
-        END CASE;
-    END IF;
-    v_sub_timestamp_max = (v_sub_timestamp_min + v_top_interval::interval) - '1 sec'::interval;
-END IF;
+-- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
+SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
 
 SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
@@ -137,6 +92,13 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         PERFORM update_step(v_step_overflow_id, 'CRITICAL', 'Child partition creation after time '||v_time||' skipped');
         CONTINUE;
     END;
+
+    -- Do not create the child table if it's outside the bounds of the top parent. 
+    IF v_sub_timestamp_min IS NOT NULL THEN
+        IF v_time < v_sub_timestamp_min OR v_time > v_sub_timestamp_max THEN
+            CONTINUE;
+        END IF;
+    END IF;
 
     -- This suffix generation code is in partition_data_time() as well
     v_partition_suffix := to_char(v_time, 'YYYY');
@@ -162,14 +124,6 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         v_year := to_char(v_time, 'YYYY');
         v_quarter := to_char(v_time, 'Q');
         v_partition_suffix := v_year || 'q' || v_quarter;
-    END IF;
-
-
--- Do not create the child table if it's outside the bounds of the top parent. 
-    IF v_sub_timestamp_min IS NOT NULL THEN
-        IF v_time < v_sub_timestamp_min OR v_time > v_sub_timestamp_max THEN
-            CONTINUE;
-        END IF;
     END IF;
 
     v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_partition_suffix, TRUE);

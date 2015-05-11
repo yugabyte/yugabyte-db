@@ -1,3 +1,7 @@
+1.8.5
+-- If run_maintenance() had not been called for a while outside of a partition set's interval, running it again was not creating the necessary child partitions to catch up. Recovery from this scenario was possible if the latest partition was manually created. This update fixes the problem and if you have a partition set that was not catching up before, running it with this version installed should fix things with no further manual intervention. This bug was introduced with version 1.8.0. (Github Issue #56).
+
+
 1.8.4
 -- When inheriting foreign keys to children, also account for the following additional options:
     -- MATCH FULL/PARTIAL/SIMPLE

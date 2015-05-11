@@ -12,7 +12,6 @@ v_control           text;
 v_grantees          text[];
 v_hasoids           boolean;
 v_id                bigint;
-v_id_position       int;
 v_inherit_fk        boolean;
 v_job_id            bigint;
 v_jobmon            boolean;
@@ -33,8 +32,6 @@ v_step_id           bigint;
 v_sub_id_max        bigint;
 v_sub_id_min        bigint;
 v_tablename         text;
-v_top_interval      bigint;
-v_top_parent        text;
 v_unlogged          char;
 
 BEGIN
@@ -63,29 +60,8 @@ IF v_jobmon THEN
     END IF;
 END IF;
 
--- Check if parent table is a subpartition of an already existing id based partition set managed by pg_partman
--- If so, limit what child tables can be created based on parent suffix
-WITH top_oid AS (
-    SELECT i.inhparent AS top_parent_oid
-    FROM pg_catalog.pg_class c
-    JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
-    JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname||'.'||c.relname = p_parent_table
-) SELECT n.nspname||'.'||c.relname 
-  INTO v_top_parent 
-  FROM pg_catalog.pg_class c
-  JOIN top_oid t ON c.oid = t.top_parent_oid
-  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-  JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
-  WHERE c.oid = t.top_parent_oid
-  AND p.type = 'id-static' OR p.type = 'id-dynamic';
-
-IF v_top_parent IS NOT NULL THEN 
-    SELECT part_interval::bigint INTO v_top_interval FROM @extschema@.part_config WHERE parent_table = v_top_parent;
-    v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
-    v_sub_id_min = substring(p_parent_table from v_id_position)::bigint;
-    v_sub_id_max = (v_sub_id_min + v_top_interval) - 1;
-END IF;
+-- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
+SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'id');
 
 SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
