@@ -5916,7 +5916,7 @@ RETURNS SETOF TEXT AS $$
     SELECT * FROM check_test( $1, $2, NULL, NULL, NULL, FALSE );
 $$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION findfuncs( NAME, TEXT )
+CREATE OR REPLACE FUNCTION findfuncs( NAME, TEXT, TEXT )
 RETURNS TEXT[] AS $$
     SELECT ARRAY(
         SELECT DISTINCT quote_ident(n.nspname) || '.' || quote_ident(p.proname) AS pname
@@ -5924,11 +5924,16 @@ RETURNS TEXT[] AS $$
           JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
          WHERE n.nspname = $1
            AND p.proname ~ $2
+           AND ($3 IS NULL OR p.proname !~ $3)
          ORDER BY pname
     );
 $$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION findfuncs( NAME, TEXT )
+RETURNS TEXT[] AS $$
+    SELECT findfuncs( $1, $2, NULL )
+$$ LANGUAGE sql;
 
-CREATE OR REPLACE FUNCTION findfuncs( TEXT )
+CREATE OR REPLACE FUNCTION findfuncs( TEXT, TEXT )
 RETURNS TEXT[] AS $$
     SELECT ARRAY(
         SELECT DISTINCT quote_ident(n.nspname) || '.' || quote_ident(p.proname) AS pname
@@ -5936,8 +5941,13 @@ RETURNS TEXT[] AS $$
           JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid
          WHERE pg_catalog.pg_function_is_visible(p.oid)
            AND p.proname ~ $1
+           AND ($2 IS NULL OR p.proname !~ $2)
          ORDER BY pname
     );
+$$ LANGUAGE sql;
+CREATE OR REPLACE FUNCTION findfuncs( TEXT )
+RETURNS TEXT[] AS $$
+    SELECT findfuncs( $1, NULL )
 $$ LANGUAGE sql;
 
 CREATE OR REPLACE FUNCTION _runem( text[], boolean )
@@ -6043,6 +6053,7 @@ BEGIN
     tfaild := num_failed();
 
     FOR i IN 1..COALESCE(array_upper(tests, 1), 0) LOOP
+
         -- What subtest are we running?
         RETURN NEXT '    ' || diag_test_name('Subtest: ' || tests[i]);
 
@@ -6144,7 +6155,7 @@ RETURNS SETOF TEXT AS $$
         findfuncs( $1, '^shutdown' ),
         findfuncs( $1, '^setup' ),
         findfuncs( $1, '^teardown' ),
-        findfuncs( $1, $2 )
+        findfuncs( $1, $2, '^(startup|shutdown|setup|teardown)' )
     );
 $$ LANGUAGE sql;
 
@@ -6162,7 +6173,7 @@ RETURNS SETOF TEXT AS $$
         findfuncs( '^shutdown' ),
         findfuncs( '^setup' ),
         findfuncs( '^teardown' ),
-        findfuncs( $1 )
+        findfuncs( $1, '^(startup|shutdown|setup|teardown)' )
     );
 $$ LANGUAGE sql;
 

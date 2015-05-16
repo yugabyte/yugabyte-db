@@ -87,4 +87,7 @@ $$ LANGUAGE plpgsql;
 -- Run the actual tests. Yes, it's a one-liner!
 SELECT * FROM runtests('whatever'::name);
 
+-- Verify that startup, shutdown, etc aren't run as normal tests
+SELECT * FROM runtests('whatever'::name, '.*');
+
 ROLLBACK;

@@ -2,7 +2,7 @@
 \i test/setup.sql
 SET client_min_messages = notice;
 
-SELECT plan(26);
+SELECT plan(28);
 --SELECT * FROM no_plan();
 
 CREATE OR REPLACE FUNCTION public.testthis() RETURNS SETOF TEXT AS $$
@@ -28,9 +28,21 @@ END;
 $$ LANGUAGE plpgsql;
 
 SELECT is(
-    findfuncs('public', '^test'),
+    findfuncs('public'::name, '^test', 'this'),
+    ARRAY[ 'public."test ident"', 'public.testplpgsql'],
+    'findfuncs(public, ^test, this) should work'
+);
+
+SELECT is(
+    findfuncs('public'::name, '^test'),
     ARRAY[ 'public."test ident"', 'public.testplpgsql', 'public.testthis' ],
     'findfuncs(public, ^test) should work'
+);
+
+SELECT is(
+    findfuncs('^test', 'this'),
+    ARRAY[ 'public."test ident"', 'public.testplpgsql'],
+    'findfuncs(^test, this) should work'
 );
 
 SELECT is(
