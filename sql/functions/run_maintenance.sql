@@ -125,7 +125,7 @@ LOOP
         END IF;
 
         -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
-        SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
+        SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(v_row.parent_table, 'time');
         -- No need to run maintenance if it's outside the bounds of the top parent. 
         IF v_sub_timestamp_min IS NOT NULL THEN
             IF v_current_partition_timestamp < v_sub_timestamp_min OR v_current_partition_timestamp > v_sub_timestamp_max THEN
@@ -196,7 +196,7 @@ LOOP
         END LOOP;
 
         -- Determine if this table is a child of a subpartition parent. If so, get limits to see if run_maintenance even needs to run for it.
-        SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'id');
+        SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(v_row.parent_table, 'id');
         -- No need to run maintenance if it's outside the bounds of the top parent. 
         IF v_sub_id_min IS NOT NULL THEN
             IF v_current_partition_id < v_sub_id_min OR v_current_partition_id > v_sub_id_max THEN
