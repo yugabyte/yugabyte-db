@@ -777,7 +777,7 @@ hypopg(PG_FUNCTION_ARGS)
 		nulls[j++] = true; /* no hypothetical index on expr for now */
 		nulls[j++] = true; /* no hypothetical index on predicate for now */
 		values[j++] = ObjectIdGetDatum(entry->relam);
-		Assert(j == PG_STAT_PLAN_COLS);
+		Assert(j == HYPO_NB_COLS);
 
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
