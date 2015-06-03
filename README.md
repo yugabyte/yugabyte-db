@@ -11,7 +11,7 @@ This project is sponsored by [Dalibo](http://dalibo.com).
 Installation
 ------------
 
-- Compatible with PostgreSQL 9.3 and above
+- Compatible with PostgreSQL 9.2 and above
 - Needs PostgreSQL header files
 - sudo make install
 - create extension hypopg
