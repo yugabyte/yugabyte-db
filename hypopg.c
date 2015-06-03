@@ -10,7 +10,9 @@
 #include "postgres.h"
 #include "fmgr.h"
 
+#if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
+#endif
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
@@ -116,8 +118,13 @@ static bool entry_remove(Oid indexid);
 
 static void hypo_utility_hook(Node *parsetree,
 					   const char *queryString,
+#if PG_VERSION_NUM >= 90300
 					   ProcessUtilityContext context,
+#endif
 					   ParamListInfo params,
+#if PG_VERSION_NUM < 90300
+					   bool isTopLevel,
+#endif
 					   DestReceiver *dest,
 					   char *completionTag);
 static ProcessUtility_hook_type prev_utility_hook = NULL;
@@ -468,8 +475,13 @@ entry_remove(Oid indexid)
 void
 hypo_utility_hook(Node *parsetree,
 				  const char *queryString,
-				  ProcessUtilityContext context,
-				  ParamListInfo params,
+#if PG_VERSION_NUM >= 90300
+					   ProcessUtilityContext context,
+#endif
+					   ParamListInfo params,
+#if PG_VERSION_NUM < 90300
+					   bool isTopLevel,
+#endif
 				  DestReceiver *dest,
 				  char *completionTag)
 {
@@ -477,11 +489,23 @@ hypo_utility_hook(Node *parsetree,
 
 	if (prev_utility_hook)
 		prev_utility_hook(parsetree, queryString,
-								context, params,
+#if PG_VERSION_NUM >= 90300
+							context,
+#endif
+							params,
+#if PG_VERSION_NUM < 90300
+							isTopLevel,
+#endif
 								dest, completionTag);
 	else
 		standard_ProcessUtility(parsetree, queryString,
-								context, params,
+#if PG_VERSION_NUM >= 90300
+							context,
+#endif
+							params,
+#if PG_VERSION_NUM < 90300
+							isTopLevel,
+#endif
 								dest, completionTag);
 
 }
@@ -584,7 +608,9 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	if (index->relam == BTREE_AM_OID)
 	{
+#if PG_VERSION_NUM >= 90300
 		index->tree_height = 1; // TODO
+#endif
 		index->sortopfamily = index->opfamily;
 	}
 
@@ -962,7 +988,11 @@ GetIndexOpClass(List *opclass, Oid attrType,
 		/* Look in specific schema only */
 		Oid			namespaceId;
 
+#if PG_VERSION_NUM >= 90300
 		namespaceId = LookupExplicitNamespace(schemaname, false);
+#else
+		namespaceId = LookupExplicitNamespace(schemaname);
+#endif
 		tuple = SearchSysCache3(CLAAMNAMENSP,
 				ObjectIdGetDatum(accessMethodId),
 				PointerGetDatum(opcname),
