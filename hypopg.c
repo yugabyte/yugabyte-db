@@ -182,6 +182,7 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 {
 	hypoEntry *entry;
 	MemoryContext oldcontext;
+	HeapTuple tuple;
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -361,14 +362,15 @@ entry_store_parsetree(IndexStmt *node)
 		RangeVarGetRelid(node->relation, AccessShareLock, false);
 
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(node->accessMethod));
+
 	if (!HeapTupleIsValid(tuple))
 	{
-		if (!HeapTupleIsValid(tuple))
-			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_OBJECT),
-					 errmsg("hypopg: access method \"%s\" does not exist",
-						 node->accessMethod)));
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("hypopg: access method \"%s\" does not exist",
+					 node->accessMethod)));
 	}
+
 	accessMethodId = HeapTupleGetOid(tuple);
 
 	ReleaseSysCache(tuple);
@@ -393,6 +395,7 @@ entry_store_parsetree(IndexStmt *node)
 		appendStringInfo(&indexRelationName, "%s", indexelem->name);
 		/* get the attribute catalog info */
 		tuple = SearchSysCacheAttName(relid, indexelem->name);
+
 		if (!HeapTupleIsValid(tuple))
 		{
 			elog(ERROR, "hypopg: column \"%s\" does not exist",
@@ -1011,10 +1014,12 @@ GetIndexOpClass(List *opclass, Oid attrType,
 	}
 
 	if (!HeapTupleIsValid(tuple))
+	{
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
 					 NameListToString(opclass), accessMethodName)));
+	}
 
 	/*
 	 * Verify that the index operator class accepts this datatype.  Note we
