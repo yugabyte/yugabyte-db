@@ -599,7 +599,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 	index->amcostestimate = entry->amcostestimate;
 	index->immediate = entry->immediate;
 	index->canreturn = entry->canreturn;
-	index->amcanorderbyop = entry->canreturn;
+	index->amcanorderbyop = entry->amcanorderbyop;
 	index->amoptionalkey = entry->amoptionalkey;
 	index->amsearcharray = entry->amsearcharray;
 	index->amsearchnulls = entry->amsearchnulls;
