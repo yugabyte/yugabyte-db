@@ -100,14 +100,14 @@ PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 
-static hypoEntry * newHypoEntry(Oid relid, Oid relam, int ncolumns);
+static hypoEntry * newHypoEntry(Oid relid, char *accessMethod, int ncolumns);
 static Oid hypoGetNewOid(Oid relid);
 static void addHypoEntry(hypoEntry *entry);
 
 static void entry_reset(void);
 static bool entry_store(Oid relid,
 			char *indexname,
-			Oid relam,
+			char *accessMethod,
 			int ncolumns,
 			short int indexkeys,
 			int indexcollations,
@@ -178,7 +178,7 @@ _PG_fini(void)
 
 /* palloc a new hypoEntry, and give it a new OID, and some other global stuff */
 static hypoEntry *
-newHypoEntry(Oid relid, Oid relam, int ncolumns)
+newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 {
 	hypoEntry *entry;
 	MemoryContext oldcontext;
@@ -201,20 +201,40 @@ newHypoEntry(Oid relid, Oid relam, int ncolumns)
 
 	entry->oid = hypoGetNewOid(relid);
 	entry->relid = relid;
-	entry->relam = relam;
 	entry->immediate = true;
 
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethod));
+
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("hypopg: access method \"%s\" does not exist",
+					 accessMethod)));
+	}
+
+	entry->relam = HeapTupleGetOid(tuple);
+	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
+	entry->amcanorderbyop = ((Form_pg_am) GETSTRUCT(tuple))->amcanorderbyop;
+	entry->amoptionalkey = ((Form_pg_am) GETSTRUCT(tuple))->amoptionalkey;
+	entry->amsearcharray = ((Form_pg_am) GETSTRUCT(tuple))->amsearcharray;
+	entry->amsearchnulls = ((Form_pg_am) GETSTRUCT(tuple))->amsearchnulls;
+	entry->amhasgettuple = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgettuple);
+	entry->amhasgetbitmap = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgetbitmap);
+
+	ReleaseSysCache(tuple);
+
+
+
+
+
+	/* canreturn should been checked with the amcanreturn proc, but
+	 * this can't be done without a real Relation, so just let force it
+	 */
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
-			entry->amcostestimate = (RegProcedure) 1268; // btcostestimate
 			entry->canreturn = true;
-			entry->amcanorderbyop = false;
-			entry->amoptionalkey = true;
-			entry->amsearcharray = true;
-			entry->amsearchnulls = true;
-			entry->amhasgettuple = true;
-			entry->amhasgetbitmap = true;
 			break;
 		default:
 			/* do not store hypothetical indexes with access method not supported */
@@ -293,7 +313,7 @@ entry_reset(void)
 static bool
 entry_store(Oid relid,
 			char *indexname,
-			Oid relam,
+			char *accessMethod,
 			int ncolumns,
 			short int indexkeys,
 			int indexcollations,
@@ -303,7 +323,7 @@ entry_store(Oid relid,
 	hypoEntry *entry;
 	MemoryContext oldcontext;
 
-	entry = newHypoEntry(relid, relam, 1);
+	entry = newHypoEntry(relid, accessMethod, 1);
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -337,7 +357,6 @@ entry_store_parsetree(IndexStmt *node)
 	Form_pg_attribute	attform;
 	Oid					relid;
 	StringInfoData		indexRelationName;
-	Oid					accessMethodId;
 	int			ncolumns;
 	ListCell	*lc;
 	int			j;
@@ -361,24 +380,10 @@ entry_store_parsetree(IndexStmt *node)
 	relid =
 		RangeVarGetRelid(node->relation, AccessShareLock, false);
 
-	tuple = SearchSysCache1(AMNAME, PointerGetDatum(node->accessMethod));
-
-	if (!HeapTupleIsValid(tuple))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("hypopg: access method \"%s\" does not exist",
-					 node->accessMethod)));
-	}
-
-	accessMethodId = HeapTupleGetOid(tuple);
-
-	ReleaseSysCache(tuple);
-
 	/* now create the hypothetical index entry */
 	ncolumns = list_length(node->indexParams);
 
-	entry = newHypoEntry(relid, accessMethodId, ncolumns);
+	entry = newHypoEntry(relid, node->accessMethod, ncolumns);
 
 	entry->unique = node->unique;
 	entry->ncolumns = ncolumns;
@@ -412,7 +417,7 @@ entry_store_parsetree(IndexStmt *node)
 		opclass = GetIndexOpClass(indexelem->opclass,
 				atttype,
 				node->accessMethod,
-				accessMethodId);
+				entry->relam);
 		entry->opclass[j] = opclass;
 		/* setup the opfamily */
 		entry->opfamily[j] = get_opclass_family(opclass);
@@ -735,14 +740,14 @@ hypopg_add_index_internal(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
 	char		*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
-	Oid			relam = PG_GETARG_OID(2);
+	char		*accessMethod = TextDatumGetCString(PG_GETARG_TEXT_PP(2));
 	int			ncolumns = PG_GETARG_INT32(3);
 	short int	indexkeys = PG_GETARG_INT16(4);
 	Oid			indexcollations = PG_GETARG_OID(5);
 	Oid			opfamily = PG_GETARG_OID(6);
 	Oid			opcintype = PG_GETARG_OID(7);
 
-	return entry_store(relid, indexname, relam, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+	return entry_store(relid, indexname, accessMethod, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 }
 
 /*
