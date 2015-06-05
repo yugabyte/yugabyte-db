@@ -71,7 +71,11 @@ typedef struct hypoEntry
 	bool			predOK;			/* true if predicate matches query */
 	bool			unique;			/* true if a unique index */
 	bool			immediate;		/* is uniqueness enforced immediately? */
+#if PG_VERSION_NUM >= 90500
+	bool			*canreturn;		/* which index cols can be returned in an index-only scan? */
+#else
 	bool			canreturn;		/* can index return IndexTuples? */
+#endif
 	bool			amcanorderbyop; /* does AM support order by operator result? */
 	bool			amoptionalkey;	/* can query omit key for the first column? */
 	bool			amsearcharray;	/* can AM handle ScalarArrayOpExpr quals? */
@@ -183,6 +187,9 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 	hypoEntry *entry;
 	MemoryContext oldcontext;
 	HeapTuple tuple;
+#if PG_VERSION_NUM >= 90500
+	int i;
+#endif
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
@@ -196,6 +203,9 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 	entry->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
 	entry->reverse_sort = palloc0(sizeof(bool) * ncolumns);
 	entry->nulls_first = palloc0(sizeof(bool) * ncolumns);
+#if PG_VERSION_NUM >= 90500
+	entry->canreturn = palloc0(sizeof(bool) * ncolumns);
+#endif
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -224,17 +234,19 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 
 	ReleaseSysCache(tuple);
 
-
-
-
-
 	/* canreturn should been checked with the amcanreturn proc, but
 	 * this can't be done without a real Relation, so just let force it
 	 */
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
+			/* btree always support Index-Only scan */
+#if PG_VERSION_NUM >= 90500
+			for(i=0; i<ncolumns; i++)
+				entry->canreturn[i] = true;
+#else
 			entry->canreturn = true;
+#endif
 			break;
 		default:
 			/* do not store hypothetical indexes with access method not supported */
@@ -587,6 +599,8 @@ injectHypotheticalIndex(PlannerInfo *root,
 	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
 	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
 	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
+#if PG_VERSION_NUM >= 90300
+#endif
 
 	for (i = 0; i < ncolumns; i++)
 	{
@@ -606,7 +620,9 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	index->amcostestimate = entry->amcostestimate;
 	index->immediate = entry->immediate;
+#if PG_VERSION_NUM < 90500
 	index->canreturn = entry->canreturn;
+#endif
 	index->amcanorderbyop = entry->amcanorderbyop;
 	index->amoptionalkey = entry->amoptionalkey;
 	index->amsearcharray = entry->amsearcharray;
@@ -624,11 +640,17 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
 	index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+#if PG_VERSION_NUM >= 90500
+	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
+#endif
 
 	for (i = 0; i < ncolumns; i++)
 	{
 		index->reverse_sort[i] = entry->reverse_sort[i];
 		index->nulls_first[i] = entry->nulls_first[i];
+#if PG_VERSION_NUM >= 90500
+		index->canreturn[i] = entry->canreturn[i];
+#endif
 	}
 
 	index->indexprs = NIL; // not handled for now, WIP
