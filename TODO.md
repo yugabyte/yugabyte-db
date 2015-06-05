@@ -4,7 +4,7 @@ TODO
 Important
 ---------
 
-- [X] Use StringInfoData/initStringInfo/appendStringInfo/appendStringInfoString/appendStringInfoChar/.data for IndexName handling
+- [ ] Choose a naming convention for index naming, including the index oid
 - [X] handle multiple columns
 - [X] handle collation
 - [ ] handle other am other than btree
