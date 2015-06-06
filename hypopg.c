@@ -38,7 +38,7 @@
 
 PG_MODULE_MAGIC;
 
-#define HYPO_NB_COLS		18 /* # of column hypopg() returns */
+#define HYPO_NB_COLS		12 /* # of column hypopg() returns */
 
 bool isExplain = false;
 
