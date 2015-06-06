@@ -439,6 +439,7 @@ entry_store_parsetree(IndexStmt *node)
 
 		j++;
 	}
+	Assert(j == ncolumns);
 
 	hypo_set_indexname(entry, indexRelationName.data);
 
