@@ -151,6 +151,8 @@ static void injectHypotheticalIndex(PlannerInfo *root,
 						hypoEntry *entry);
 static bool hypo_query_walker(Node *node);
 
+static void hypo_set_indexname(hypoEntry *entry, char* indexname);
+
 static List * build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 								Relation heapRelation);
 static Oid GetIndexOpClass(List *opclass, Oid attrType,
@@ -333,17 +335,10 @@ entry_store(Oid relid,
 			Oid opcintype)
 {
 	hypoEntry *entry;
-	MemoryContext oldcontext;
 
 	entry = newHypoEntry(relid, accessMethod, 1);
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-	entry->indexname = palloc(strlen(indexname));
-
-	MemoryContextSwitchTo(oldcontext);
-
-	strcpy(entry->indexname, indexname);
+	hypo_set_indexname(entry, indexname);
 	entry->unique = false;
 	entry->ncolumns = ncolumns;
 	entry->indexkeys[0] = indexkeys;
@@ -364,7 +359,6 @@ static bool
 entry_store_parsetree(IndexStmt *node)
 {
 	hypoEntry			*entry;
-	MemoryContext		oldcontext;
 	HeapTuple			tuple;
 	Form_pg_attribute	attform;
 	Oid					relid;
@@ -446,13 +440,7 @@ entry_store_parsetree(IndexStmt *node)
 		j++;
 	}
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-	entry->indexname = palloc(strlen(indexRelationName.data));
-
-	strcpy(entry->indexname, indexRelationName.data);
-
-	MemoryContextSwitchTo(oldcontext);
+	hypo_set_indexname(entry, indexRelationName.data);
 
 	addHypoEntry(entry);
 
@@ -885,6 +873,23 @@ hypopg_drop_index(PG_FUNCTION_ARGS)
 	Oid indexid = PG_GETARG_OID(0);
 
 	PG_RETURN_BOOL(entry_remove(indexid));
+}
+
+/* Simple function to set the indexname, dealing with the ending \0 and correct
+ * palloc size
+ */
+static void
+hypo_set_indexname(hypoEntry *entry, char* indexname)
+{
+	MemoryContext oldcontext;
+
+	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+	entry->indexname = palloc(strlen(indexname) + 1);
+
+	MemoryContextSwitchTo(oldcontext);
+
+	strncpy(entry->indexname, indexname, strlen(indexname) + 1);
 }
 
 /* Copied from backend/optimizer/util/plancat.c, not exported.
