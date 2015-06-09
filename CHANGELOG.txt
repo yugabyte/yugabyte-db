@@ -1,3 +1,9 @@
+1.8.7
+-- This update has no core code changes. It is being released to give users that ran into a situation where the trigger functions for serial partition sets called a function that was renamed. In v1.8.0 create_id_partition() was renamed to create_partition_id(). All core code was updated to use this new function, but any existing trigger function from previous versions may have the old function name in the code that creates new partitions when the current one reaches 50% of the max.
+-- The code block contained in "updates/pg_partman-1.8.6--1.8.7.sql" will go through and recreate all the trigger functions on all partition sets managed by pg_partman. This should fix the issue described above. While only serial partition sets should have been affected, the code below does it for both time & id to just ensure everything is fixed.
+-- This code MUST must be run manually because if the trigger functions are recreated as part of an extension update, then those trigger functions become members of the pg_partman extension itself. Just copy-n-paste it into psql and things should be good to go.
+
+
 1.8.6
 -- Fixed bug with run_maintenance() and subpartitioning. If you had any subpartitioned sets that went back a significant amount of time, or had a significant number of subpartitions, calls to run_maintenance() would seem to hang. It would finish eventually, but could take quite a long time and if you have pg_jobmon installed, would also cause many entries mentioning old partiton sets. This bug was introduced with the fixed included in v1.8.5.
 
