@@ -18,6 +18,10 @@ RETURNS boolean
     AS $$
 DECLARE
 
+ex_context                      text;
+ex_detail                       text;
+ex_hint                         text;
+ex_message                      text;
 v_base_timestamp                timestamp;
 v_count                         int := 1;
 v_datetime_string               text;
@@ -70,10 +74,6 @@ IF NOT @extschema@.check_partition_type(p_type) THEN
     RAISE EXCEPTION '% is not a valid partitioning type', p_type;
 END IF;
 
-IF p_type = 'time-custom' AND @extschema@.check_version('9.2.0') IS FALSE THEN
-    RAISE EXCEPTION 'The "time-custom" type requires a minimum PostgreSQL version of 9.2.0';
-END IF;
-
 EXECUTE 'LOCK TABLE '||p_parent_table||' IN ACCESS EXCLUSIVE MODE';
 
 IF p_jobmon THEN
@@ -85,13 +85,13 @@ IF p_jobmon THEN
 END IF;
 
 IF p_use_run_maintenance IS NOT NULL THEN
-    IF p_use_run_maintenance IS FALSE AND (p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom') THEN
+    IF p_use_run_maintenance IS FALSE AND (p_type = 'time' OR p_type = 'time-custom') THEN
         RAISE EXCEPTION 'p_run_maintenance cannot be set to false for time based partitioning';
     END IF;
     v_run_maint := p_use_run_maintenance;
-ELSIF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
+ELSIF p_type = 'time' OR p_type = 'time-custom' THEN
     v_run_maint := TRUE;
-ELSIF p_type = 'id-static' OR p_type ='id-dynamic' THEN
+ELSIF p_type = 'id' THEN
     v_run_maint := FALSE;
 ELSE
     RAISE EXCEPTION 'use_run_maintenance value cannot be set NULL';
@@ -102,7 +102,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating initial partitions on new parent table: '||p_parent_table);
 END IF;
 
--- If this parent table has siblings that are also partitioned (subpartitions), ensure it gets added to part_config_sub table so future maintenance will subpartition it
+-- If this parent table has siblings that are also partitioned (subpartitions), ensure this parent gets added to part_config_sub table so future maintenance will subpartition it
 -- Just doing in a loop to avoid having to assign a bunch of variables (should only run once, if at all; constraint should enforce only one value.)
 FOR v_row IN 
     WITH parent_table AS (
@@ -114,9 +114,9 @@ FOR v_row IN
         from pg_inherits i
         join parent_table p on i.inhparent = p.parent_oid
     )
-    SELECT DISTINCT sub_type
+    SELECT DISTINCT sub_partition_type
         , sub_control
-        , sub_part_interval
+        , sub_partition_interval
         , sub_constraint_cols
         , sub_premake
         , sub_inherit_fk
@@ -131,9 +131,9 @@ FOR v_row IN
 LOOP
     INSERT INTO @extschema@.part_config_sub (
         sub_parent
-        , sub_type
+        , sub_partition_type
         , sub_control
-        , sub_part_interval
+        , sub_partition_interval
         , sub_constraint_cols
         , sub_premake
         , sub_inherit_fk
@@ -145,9 +145,9 @@ LOOP
         , sub_jobmon)
     VALUES (
         p_parent_table
-        , v_row.sub_type
+        , v_row.sub_partition_type
         , v_row.sub_control
-        , v_row.sub_part_interval
+        , v_row.sub_partition_interval
         , v_row.sub_constraint_cols
         , v_row.sub_premake
         , v_row.sub_inherit_fk
@@ -159,7 +159,7 @@ LOOP
         , v_row.sub_jobmon);
 END LOOP;
 
-IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
+IF p_type = 'time' OR p_type = 'time-custom' THEN
 
     CASE
         WHEN p_interval = 'yearly' THEN
@@ -203,7 +203,7 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
             END IF; -- 100
         END IF; -- 10
     END IF; -- 1
-   
+
     v_datetime_string := 'YYYY';
     IF v_time_interval < '1 year' THEN
         IF p_interval = 'quarterly' THEN
@@ -254,8 +254,8 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
 
     INSERT INTO @extschema@.part_config (
         parent_table
-        , type
-        , part_interval
+        , partition_type
+        , partition_interval
         , control
         , premake
         , constraint_cols
@@ -320,7 +320,7 @@ IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' T
     END IF;
 END IF;
 
-IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
+IF p_type = 'id' THEN
     v_id_interval := p_interval::bigint;
     IF v_id_interval < 10 THEN
         RAISE EXCEPTION 'Interval for serial partitioning must be greater than or equal to 10';
@@ -340,7 +340,7 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
         JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
-        WHERE p.type = 'id-static' OR p.type = 'id-dynamic';
+        WHERE p.partition_type = 'id';
 
         IF v_higher_parent IS NOT NULL THEN
             -- v_top_parent initially set in DECLARE
@@ -366,8 +366,8 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
 
     INSERT INTO @extschema@.part_config (
         parent_table
-        , type
-        , part_interval
+        , partition_type
+        , partition_interval
         , control
         , premake
         , constraint_cols
@@ -400,7 +400,7 @@ IF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
         JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
-        WHERE p.type = 'id-static' OR p.type = 'id-dynamic';
+        WHERE p.partition_type = 'id';
         IF v_top_parent IS NOT NULL THEN
             -- Create the lowest possible partition that is within the boundary of the parent
             v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
@@ -429,12 +429,12 @@ END IF;
 IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating partition function');
 END IF;
-IF p_type = 'time-static' OR p_type = 'time-dynamic' OR p_type = 'time-custom' THEN
+IF p_type = 'time' OR p_type = 'time-custom' THEN
     PERFORM @extschema@.create_function_time(p_parent_table);
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time function created');
     END IF;
-ELSIF p_type = 'id-static' OR p_type = 'id-dynamic' THEN
+ELSIF p_type = 'id' THEN
     PERFORM @extschema@.create_function_id(p_parent_table);  
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID function created');
@@ -462,17 +462,24 @@ RETURN v_success;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE PARENT: '||p_parent_table||''')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''Partition creation for table '||p_parent_table||' failed'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN CREATE PARENT: %s'')', v_jobmon_schema, p_parent_table) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''Partition creation for table '||p_parent_table||' failed'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
 

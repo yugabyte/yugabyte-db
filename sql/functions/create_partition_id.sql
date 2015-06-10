@@ -6,47 +6,51 @@ CREATE FUNCTION create_partition_id(p_parent_table text, p_partition_ids bigint[
     AS $$
 DECLARE
 
-v_all               text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
-v_analyze           boolean := FALSE;
-v_control           text;
-v_grantees          text[];
-v_hasoids           boolean;
-v_id                bigint;
-v_inherit_fk        boolean;
-v_job_id            bigint;
-v_jobmon            boolean;
-v_jobmon_schema     text;
-v_old_search_path   text;
-v_parent_grant      record;
-v_parent_owner      text;
-v_parent_schema     text;
-v_parent_tablename  text;
-v_parent_tablespace text;
-v_part_interval     bigint;
-v_partition_created boolean := false;
-v_partition_name    text;
-v_revoke            text[];
-v_row               record;
-v_sql               text;
-v_step_id           bigint;
-v_sub_id_max        bigint;
-v_sub_id_min        bigint;
-v_tablename         text;
-v_unlogged          char;
+ex_context              text;
+ex_detail               text;
+ex_hint                 text;
+ex_message              text;
+v_all                   text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
+v_analyze               boolean := FALSE;
+v_control               text;
+v_grantees              text[];
+v_hasoids               boolean;
+v_id                    bigint;
+v_inherit_fk            boolean;
+v_job_id                bigint;
+v_jobmon                boolean;
+v_jobmon_schema         text;
+v_old_search_path       text;
+v_parent_grant          record;
+v_parent_owner          text;
+v_parent_schema         text;
+v_parent_tablename      text;
+v_parent_tablespace     text;
+v_partition_interval    bigint;
+v_partition_created     boolean := false;
+v_partition_name        text;
+v_revoke                text[];
+v_row                   record;
+v_sql                   text;
+v_step_id               bigint;
+v_sub_id_max            bigint;
+v_sub_id_min            bigint;
+v_tablename             text;
+v_unlogged              char;
 
 BEGIN
 
 SELECT control
-    , part_interval
+    , partition_interval
     , inherit_fk
     , jobmon
 INTO v_control
-    , v_part_interval
+    , v_partition_interval
     , v_inherit_fk
     , v_jobmon
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
-AND (type = 'id-static' OR type = 'id-dynamic');
+AND partition_type = 'id';
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
@@ -88,7 +92,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     v_analyze := TRUE;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_id||' to '||(v_id + v_part_interval)-1);
+        v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_id||' to '||(v_id + v_partition_interval)-1);
     END IF;
 
     SELECT relpersistence INTO v_unlogged FROM pg_catalog.pg_class WHERE oid::regclass = p_parent_table::regclass;
@@ -107,7 +111,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         EXECUTE 'ALTER TABLE '||v_partition_name||' SET TABLESPACE '||v_parent_tablespace;
     END IF;
     EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check 
-        CHECK ('||v_control||'>='||quote_literal(v_id)||' AND '||v_control||'<'||quote_literal(v_id + v_part_interval)||')';
+        CHECK ('||v_control||'>='||quote_literal(v_id)||' AND '||v_control||'<'||quote_literal(v_id + v_partition_interval)||')';
     EXECUTE 'ALTER TABLE '||v_partition_name||' INHERIT '||p_parent_table;
 
     FOR v_parent_grant IN 
@@ -149,8 +153,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     FOR v_row IN 
         SELECT sub_parent
             , sub_control
-            , sub_type
-            , sub_part_interval
+            , sub_partition_type
+            , sub_partition_interval
             , sub_constraint_cols
             , sub_premake
             , sub_inherit_fk
@@ -178,8 +182,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
                 , p_jobmon := %L )'
             , v_partition_name
             , v_row.sub_control
-            , v_row.sub_type
-            , v_row.sub_part_interval
+            , v_row.sub_partition_type
+            , v_row.sub_partition_interval
             , v_row.sub_constraint_cols
             , v_row.sub_premake
             , v_row.sub_use_run_maintenance
@@ -234,17 +238,25 @@ RETURN v_partition_created;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE TABLE: '||p_parent_table||''')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN CREATE TABLE: %s'')', v_jobmon_schema, p_parent_table) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before job logging started'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

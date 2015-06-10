@@ -1,31 +1,55 @@
+[![PGXN version](https://badge.fury.io/pg/pg_partman.svg)](https://badge.fury.io/pg/pg_partman)
+
 PG Partition Manager
 ====================
 
-pg_partman is an extension to create and manage both time-based and serial-based table partition sets. Sub-partitoning is supported. Child table & trigger function creation is all managed by the extension itself. Tables with existing data can also have their data partitioned in easily managed smaller batches. Optional retention policy can automatically drop partitions no longer needed.
+pg_partman is an extension to create and manage both time-based and serial-based table partition sets. Sub-partitoning is also supported. Child table & trigger function creation is all managed by the extension itself. Tables with existing data can also have their data partitioned in easily managed smaller batches. Optional retention policy can automatically drop partitions no longer needed.
+A background worker (BGW) process is included to automatically run partition maintenance without the need of an external scheduler (cron, etc) in most cases.
+
+All bug reports, feature requests and general questions can be directed to the Issues section on Github - https://github.com/keithf4/pg_partman/issues
 
 INSTALLATION
 ------------
-Recommended: pg_jobmon (>=v1.1.2). PG Job Monitor will automatically be used if it is installed.  
+Requirement: PostgreSQL 9.4 or greater
+
+Recommended: pg_jobmon (>=v1.2.0). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
 
-In directory where you downloaded pg_partman to run
+In the directory where you downloaded pg_partman, run
 
-    make
     make install
 
-Log into PostgreSQL and run the following commands. Schema can be whatever you wish, but it cannot be changed after installation.
+If you do not want the background worker compiled and just want the plain PL/PGSQL functions, you can run this instead:
+
+    make NO_BGW=1 install
+
+The background worker must be loaded on database start by adding the library to shared_preload_libraries in postgresql.conf
+
+    shared_preload_libraries = 'pg_partman_bgw'     # (change requires restart)
+
+You can also set other control variables for the BGW in postgresql.conf. "dbname" is required at a minimum for maintenance to run on the given database(s). These can be added/changed at anytime with a simple reload. See the documentation for more details. An example with some of them:
+
+    pg_partman_bgw.interval = 3600
+    pg_partman_bgw.role = 'keith'
+    pg_partman_bgw.dbname = 'keith'
+
+Log into PostgreSQL and run the following commands. Schema is optional (but recommended) and can be whatever you wish, but it cannot be changed after installation. If you're using the BGW, the database cluster can be safely started without having the extension first created in the configured database(s). You can create the extension at any time and the BGW will automatically pick up that it exists without restarting the cluster (as long as shared_preload_libraries was set) and begin running maintenance as configured.
 
     CREATE SCHEMA partman;
     CREATE EXTENSION pg_partman SCHEMA partman;
 
 Functions must either be run as a superuser or you can set the ownership of the extension functions to a superuser role and they will also work (SECURITY DEFINER is set).
 
+The 1.8.x branch is still available on github if you have PostgreSQL versions 9.1 - 9.3. You will have to install the 1.8.7 tagged release located here: https://github.com/keithf4/pg_partman/releases/tag/v1.8.7 then check the "updates" folder in the latest 2.x.x release to see if there have been any updates to the 1.8.x series since then and apply them. Only bug fixes are being applied to the 1.8.x series and only while versions of PostgreSQL prior to 9.4 are still officially supported themselves. All new development is being done on 2.x.x, so it's advised that you update your PostgreSQL cluster to make managing this extension easier.
+
 UPGRADE
 -------
 
-Make sure all the upgrade scripts for the version you have installed up to the most recent version are in the $/share/extension folder.  Running make install should take care of this.
+Run "make install" same as above to put the script files and libraries in place. Then run the following in PostgreSQL itself:
 
     ALTER EXTENSION pg_partman UPDATE TO '<latest version>';
+
+If upgrading from 1.x to 2.x, please see the CHANGELOG or the notes in the update script itself for additional instructions for updating your trigger functions to the newer version and other important considerations for the update.
 
 EXAMPLE
 -------
@@ -37,7 +61,7 @@ First create a parent table with an appropriate column type for the partitioning
 
 If you're looking to do time-based partitioning, and will only be inserting new data, time-static is an appropriate choice. Just run the create_parent() function with the appropriate parameters
 
-    SELECT partman.create_parent('test.part_test', 'col3', 'time-static', 'daily');
+    SELECT partman.create_parent('test.part_test', 'col3', 'time', 'daily');
 
 This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
 

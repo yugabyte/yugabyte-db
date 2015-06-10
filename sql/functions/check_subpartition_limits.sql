@@ -34,14 +34,14 @@ IF p_type = 'id' THEN
         JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname||'.'||c.relname = p_parent_table
-    ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.part_interval, p.type
+    ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.partition_interval, p.partition_type
       INTO v_top_parent, v_top_datetime_string, v_top_interval, v_top_type
       FROM pg_catalog.pg_class c
       JOIN top_oid t ON c.oid = t.top_parent_oid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
       WHERE c.oid = t.top_parent_oid
-      AND p.type = 'id-static' OR p.type = 'id-dynamic';
+      AND p.partition_type = 'id';
 
     IF v_top_parent IS NOT NULL THEN 
         v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
@@ -59,14 +59,14 @@ ELSIF p_type = 'time' THEN
         JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname||'.'||c.relname = p_parent_table
-    ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.part_interval, p.type
+    ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.partition_interval, p.partition_type
       INTO v_top_parent, v_top_datetime_string, v_top_interval, v_top_type
       FROM pg_catalog.pg_class c
       JOIN top_oid t ON c.oid = t.top_parent_oid
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
       WHERE c.oid = t.top_parent_oid
-      AND p.type = 'time-static' OR p.type = 'time-dynamic' OR p.type = 'time-custom';
+      AND p.partition_type = 'time' OR p.partition_type = 'time-custom';
 
     IF v_top_parent IS NOT NULL THEN 
         v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;

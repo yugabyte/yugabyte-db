@@ -6,6 +6,10 @@ CREATE FUNCTION apply_constraints(p_parent_table text, p_child_table text DEFAUL
     AS $$
 DECLARE
 
+ex_context                      text;
+ex_detail                       text;
+ex_hint                         text;
+ex_message                      text;
 v_child_table                   text;
 v_child_tablename               text;
 v_col                           text;
@@ -24,7 +28,7 @@ v_constraint_values             record;
 v_old_search_path               text;
 v_parent_schema                 text;
 v_parent_tablename              text;
-v_part_interval                 text;
+v_partition_interval            text;
 v_partition_suffix              text;
 v_premake                       int;
 v_sql                           text;
@@ -34,14 +38,14 @@ v_type                          text;
 
 BEGIN
 
-SELECT type
-    , part_interval
+SELECT partition_type
+    , partition_interval
     , premake
     , datetime_string
     , constraint_cols
     , jobmon
 INTO v_type
-    , v_part_interval
+    , v_partition_interval
     , v_premake
     , v_datetime_string
     , v_constraint_cols
@@ -82,14 +86,14 @@ IF p_child_table IS NULL THEN
 
     v_suffix_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
 
-    IF v_type IN ('time-static', 'time-dynamic', 'time-custom') THEN
+    IF v_type IN ('time', 'time-custom') THEN
         v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_suffix_position), v_datetime_string);
-        v_partition_suffix := to_char(v_last_partition_timestamp - (v_part_interval::interval * ((v_premake * 2)+1) ), v_datetime_string);
-    ELSIF v_type IN ('id-static', 'id-dynamic') THEN
+        v_partition_suffix := to_char(v_last_partition_timestamp - (v_partition_interval::interval * ((v_premake * 2)+1) ), v_datetime_string);
+    ELSIF v_type = 'id' THEN
         v_last_partition_id := substring(v_last_partition from v_suffix_position)::int;
-        v_partition_suffix := (v_last_partition_id - (v_part_interval::int * ((v_premake * 2)+1) ))::text; 
+        v_partition_suffix := (v_last_partition_id - (v_partition_interval::int * ((v_premake * 2)+1) ))::text; 
     END IF;
-    
+
     v_child_table := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_partition_suffix, TRUE);
 
     IF v_jobmon_schema IS NOT NULL THEN
@@ -195,17 +199,25 @@ END IF;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE CONSTRAINT: '||p_parent_table||''')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN CREATE CONSTRAINT: %s'')', v_jobmon_schema, p_parent_table) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before job logging started'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

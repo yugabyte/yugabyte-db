@@ -14,31 +14,28 @@ v_max_partition_id          bigint;
 v_min_partition_id          bigint;
 v_parent_schema             text;
 v_parent_tablename          text;
-v_part_interval             bigint;
+v_partition_interval             bigint;
 v_partition_id              bigint[];
 v_rowcount                  bigint;
 v_sql                       text;
 v_start_control             bigint;
 v_total_rows                bigint := 0;
-v_type                      text;
 
 BEGIN
 
-SELECT type
-    , part_interval::bigint
+SELECT partition_interval::bigint
     , control
-INTO v_type
-    , v_part_interval
+INTO v_partition_interval
     , v_control
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
-AND (type = 'id-static' OR type = 'id-dynamic');
+AND partition_type = 'id';
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
-IF p_batch_interval IS NULL OR p_batch_interval > v_part_interval THEN
-    p_batch_interval := v_part_interval;
+IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
+    p_batch_interval := v_partition_interval;
 END IF;
 
 FOR i IN 1..p_batch_count LOOP
@@ -48,11 +45,11 @@ FOR i IN 1..p_batch_count LOOP
         IF v_start_control IS NULL THEN
             EXIT;
         END IF;
-        v_min_partition_id = v_start_control - (v_start_control % v_part_interval);
+        v_min_partition_id = v_start_control - (v_start_control % v_partition_interval);
         v_partition_id := ARRAY[v_min_partition_id];
         -- Check if custom batch interval overflows current partition maximum
-        IF (v_start_control + p_batch_interval) >= (v_min_partition_id + v_part_interval) THEN
-            v_max_partition_id := v_min_partition_id + v_part_interval;
+        IF (v_start_control + p_batch_interval) >= (v_min_partition_id + v_partition_interval) THEN
+            v_max_partition_id := v_min_partition_id + v_partition_interval;
         ELSE
             v_max_partition_id := v_start_control + p_batch_interval;
         END IF;
@@ -62,9 +59,9 @@ FOR i IN 1..p_batch_count LOOP
         IF v_start_control IS NULL THEN
             EXIT;
         END IF;
-        v_min_partition_id = v_start_control - (v_start_control % v_part_interval);
+        v_min_partition_id = v_start_control - (v_start_control % v_partition_interval);
         -- Must be greater than max value still in parent table since query below grabs < max
-        v_max_partition_id := v_min_partition_id + v_part_interval;
+        v_max_partition_id := v_min_partition_id + v_partition_interval;
         v_partition_id := ARRAY[v_min_partition_id];
         -- Make sure minimum doesn't underflow current partition minimum
         IF (v_start_control - p_batch_interval) >= v_min_partition_id THEN
@@ -115,12 +112,11 @@ FOR i IN 1..p_batch_count LOOP
 
 END LOOP;
 
-IF v_type = 'id-static' THEN
-        PERFORM @extschema@.create_function_id(p_parent_table);
-END IF;
+PERFORM @extschema@.create_function_id(p_parent_table);
 
 RETURN v_total_rows;
 
 END
 $$;
+
 

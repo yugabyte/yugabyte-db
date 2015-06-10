@@ -11,6 +11,10 @@ CREATE FUNCTION run_maintenance(p_parent_table text DEFAULT NULL, p_analyze bool
     AS $$
 DECLARE
 
+ex_context                      text;
+ex_detail                       text;
+ex_hint                         text;
+ex_message                      text;
 v_adv_lock                      boolean;
 v_create_count                  int := 0;
 v_current_partition             text;
@@ -31,6 +35,9 @@ v_next_partition_timestamp      timestamp;
 v_old_search_path               text;
 v_premade_count                 int;
 v_quarter                       text;
+v_row                           record;
+v_row_max_id                    record;
+v_row_sub                       record;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_step_serial_id                bigint;
@@ -39,9 +46,6 @@ v_sub_id_min                    bigint;
 v_sub_parent                    text;
 v_sub_timestamp_max             timestamp;
 v_sub_timestamp_min             timestamp;
-v_row                           record;
-v_row_max_id                    record;
-v_row_sub                       record;
 v_tablename                     text;
 v_tables_list_sql               text;
 v_time_position                 int;
@@ -69,8 +73,8 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 v_tables_list_sql := 'SELECT parent_table
-                , type
-                , part_interval
+                , partition_type
+                , partition_interval
                 , control
                 , premake
                 , datetime_string
@@ -90,30 +94,30 @@ LOOP
 
     SELECT show_partitions INTO v_last_partition FROM @extschema@.show_partitions(v_row.parent_table, 'DESC') LIMIT 1;
 
-    IF v_row.type = 'time-static' OR v_row.type = 'time-dynamic' OR v_row.type = 'time-custom' THEN
+    IF v_row.partition_type = 'time' OR v_row.partition_type = 'time-custom' THEN
 
-        IF v_row.type = 'time-static' OR v_row.type = 'time-dynamic' THEN
+        IF v_row.partition_type = 'time' THEN
             CASE
-                WHEN v_row.part_interval::interval = '15 mins' THEN
+                WHEN v_row.partition_interval::interval = '15 mins' THEN
                     v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
                         '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
-                WHEN v_row.part_interval::interval = '30 mins' THEN
+                WHEN v_row.partition_interval::interval = '30 mins' THEN
                     v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
                         '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
-                WHEN v_row.part_interval::interval = '1 hour' THEN
+                WHEN v_row.partition_interval::interval = '1 hour' THEN
                     v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
-                 WHEN v_row.part_interval::interval = '1 day' THEN
+                 WHEN v_row.partition_interval::interval = '1 day' THEN
                     v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
-                WHEN v_row.part_interval::interval = '1 week' THEN
+                WHEN v_row.partition_interval::interval = '1 week' THEN
                     v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
-                WHEN v_row.part_interval::interval = '1 month' THEN
+                WHEN v_row.partition_interval::interval = '1 month' THEN
                     v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
-                WHEN v_row.part_interval::interval = '3 months' THEN
+                WHEN v_row.partition_interval::interval = '3 months' THEN
                     v_current_partition_timestamp := date_trunc('quarter', CURRENT_TIMESTAMP);
-                WHEN v_row.part_interval::interval = '1 year' THEN
+                WHEN v_row.partition_interval::interval = '1 year' THEN
                     v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
             END CASE;
-        ELSIF v_row.type = 'time-custom' THEN
+        ELSIF v_row.partition_type = 'time-custom' THEN
             SELECT child_table INTO v_current_partition FROM @extschema@.custom_time_partitions 
                 WHERE parent_table = v_row.parent_table AND partition_range @> CURRENT_TIMESTAMP;
             IF v_current_partition IS NULL THEN
@@ -134,7 +138,7 @@ LOOP
         END IF;
 
         v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
-        IF v_row.part_interval::interval <> '3 months' OR (v_row.part_interval::interval = '3 months' AND v_row.type = 'time-custom') THEN
+        IF v_row.partition_interval::interval <> '3 months' OR (v_row.partition_interval::interval = '3 months' AND v_row.partition_type = 'time-custom') THEN
            v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_row.datetime_string);
         ELSE
             -- to_timestamp doesn't recognize 'Q' date string formater. Handle it
@@ -153,12 +157,12 @@ LOOP
         END IF;
 
         -- Check and see how many premade partitions there are.
-        v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
+        v_premade_count = round(EXTRACT('epoch' FROM age(v_last_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.partition_interval::interval));
         v_next_partition_timestamp := v_last_partition_timestamp;
         -- Loop premaking until config setting is met. Allows it to catch up if it fell behind or if premake changed.
         WHILE v_premade_count < v_row.premake LOOP
             BEGIN
-                v_next_partition_timestamp := v_next_partition_timestamp + v_row.part_interval::interval;
+                v_next_partition_timestamp := v_next_partition_timestamp + v_row.partition_interval::interval;
             EXCEPTION WHEN datetime_field_overflow THEN
                 v_premade_count := v_row.premake; -- do this so it can exit the premake check loop and continue in the outer for loop 
                 IF v_jobmon_schema IS NOT NULL THEN
@@ -171,23 +175,19 @@ LOOP
 
             v_last_partition_created := @extschema@.create_partition_time(v_row.parent_table, ARRAY[v_next_partition_timestamp], p_analyze); 
             v_create_count := v_create_count + 1;
-            IF v_row.type = 'time-static' AND v_last_partition_created THEN
-                PERFORM @extschema@.create_function_time(v_row.parent_table);
-            END IF;
+            PERFORM @extschema@.create_function_time(v_row.parent_table);
 
             -- Manage additonal constraints if set
             PERFORM @extschema@.apply_constraints(v_row.parent_table);
-            -- Can be negative when subpartitioning and there are parent partitions in the past compared to current timestamp value.
-            -- abs() prevents run_maintenence from running on those old parent tables
-            v_premade_count = round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.part_interval::interval));
+            v_premade_count = round(EXTRACT('epoch' FROM age(v_next_partition_timestamp, v_current_partition_timestamp)) / EXTRACT('epoch' FROM v_row.partition_interval::interval));
         END LOOP;
-    ELSIF v_row.type = 'id-static' OR v_row.type ='id-dynamic' THEN
+    ELSIF v_row.partition_type = 'id' THEN
         -- Loop through child tables starting from highest to get current max value in partition set
         -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
         FOR v_row_max_id IN
             SELECT show_partitions FROM @extschema@.show_partitions(v_row.parent_table, 'DESC')
         LOOP
-            EXECUTE 'SELECT '||v_row.control||' - ('||v_row.control||' % '||v_row.part_interval::int||') FROM '||v_row_max_id.show_partitions||'
+            EXECUTE 'SELECT '||v_row.control||' - ('||v_row.control||' % '||v_row.partition_interval::int||') FROM '||v_row_max_id.show_partitions||'
                 WHERE '||v_row.control||' = (SELECT max('||v_row.control||') FROM '||v_row_max_id.show_partitions||')'
                 INTO v_current_partition_id;
                 IF v_current_partition_id IS NOT NULL THEN
@@ -206,15 +206,15 @@ LOOP
 
         v_id_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
         v_last_partition_id = substring(v_last_partition from v_id_position)::bigint;
-        v_next_partition_id := v_last_partition_id + v_row.part_interval::bigint;
-        WHILE ((v_next_partition_id - v_current_partition_id) / v_row.part_interval::bigint) <= v_row.premake 
+        v_next_partition_id := v_last_partition_id + v_row.partition_interval::bigint;
+        WHILE ((v_next_partition_id - v_current_partition_id) / v_row.partition_interval::bigint) <= v_row.premake 
         LOOP 
             v_last_partition_created := @extschema@.create_partition_id(v_row.parent_table, ARRAY[v_next_partition_id], p_analyze);
             IF v_last_partition_created THEN
                 PERFORM @extschema@.create_function_id(v_row.parent_table);
                 PERFORM @extschema@.apply_constraints(v_row.parent_table);
             END IF;
-            v_next_partition_id := v_next_partition_id + v_row.part_interval::bigint;
+            v_next_partition_id := v_next_partition_id + v_row.partition_interval::bigint;
         END LOOP;
 
     END IF; -- end main IF check for time or id
@@ -224,7 +224,7 @@ END LOOP; -- end of creation loop
 -- Manage dropping old partitions if retention option is set
 FOR v_row IN 
     SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND 
-        (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom')
+        (partition_type = 'time' OR partition_type = 'time-custom')
 LOOP
     IF p_parent_table IS NULL THEN
         v_drop_count := v_drop_count + @extschema@.drop_partition_time(v_row.parent_table);   
@@ -237,7 +237,7 @@ LOOP
     END IF;
 END LOOP; 
 FOR v_row IN 
-    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND (type = 'id-static' OR type = 'id-dynamic')
+    SELECT parent_table FROM @extschema@.part_config WHERE retention IS NOT NULL AND undo_in_progress = false AND partition_type = 'id'
 LOOP
     IF p_parent_table IS NULL THEN
         v_drop_count := v_drop_count + @extschema@.drop_partition_id(v_row.parent_table);
@@ -262,17 +262,24 @@ END IF;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN RUN MAINTENANCE'')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN RUN MAINTENANCE'')', v_jobmon_schema) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before job logging started'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
 

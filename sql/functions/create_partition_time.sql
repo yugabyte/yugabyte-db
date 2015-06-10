@@ -7,6 +7,10 @@ RETURNS boolean
     AS $$
 DECLARE
 
+ex_context                      text;
+ex_detail                       text;
+ex_hint                         text;
+ex_message                      text;
 v_all                           text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
 v_analyze                       boolean := FALSE;
 v_control                       text;
@@ -25,7 +29,7 @@ v_partition_created             boolean := false;
 v_partition_name                text;
 v_partition_suffix              text;
 v_parent_tablespace             text;
-v_part_interval                 interval;
+v_partition_interval            interval;
 v_partition_timestamp_end       timestamp;
 v_partition_timestamp_start     timestamp;
 v_quarter                       text;
@@ -45,20 +49,20 @@ v_year                          text;
 
 BEGIN
 
-SELECT type
+SELECT partition_type
     , control
-    , part_interval
+    , partition_interval
     , inherit_fk
     , jobmon
     , datetime_string
 INTO v_type
     , v_control
-    , v_part_interval
+    , v_partition_interval
     , v_inherit_fk
     , v_jobmon
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
-AND (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom');
+AND partition_type = 'time' OR partition_type = 'time-custom';
 
 IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
@@ -84,7 +88,7 @@ END IF;
 FOREACH v_time IN ARRAY p_partition_times LOOP    
     v_partition_timestamp_start := v_time;
     BEGIN
-        v_partition_timestamp_end := v_time + v_part_interval;
+        v_partition_timestamp_end := v_time + v_partition_interval;
     EXCEPTION WHEN datetime_field_overflow THEN
         RAISE WARNING 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
             Child partition creation after time % skipped', v_time;
@@ -102,25 +106,25 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
 
     -- This suffix generation code is in partition_data_time() as well
     v_partition_suffix := to_char(v_time, 'YYYY');
-    IF v_part_interval < '1 year' AND v_part_interval <> '1 week' THEN 
+    IF v_partition_interval < '1 year' AND v_partition_interval <> '1 week' THEN 
         v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_time, 'MM');
-        IF v_part_interval < '1 month' AND v_part_interval <> '1 week' THEN 
+        IF v_partition_interval < '1 month' AND v_partition_interval <> '1 week' THEN 
             v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_time, 'DD');
-            IF v_part_interval < '1 day' THEN
+            IF v_partition_interval < '1 day' THEN
                 v_partition_suffix := v_partition_suffix || '_' || to_char(v_time, 'HH24MI');
-                IF v_part_interval < '1 minute' THEN
+                IF v_partition_interval < '1 minute' THEN
                     v_partition_suffix := v_partition_suffix || to_char(v_time, 'SS');
                 END IF; -- end < minute IF
             END IF; -- end < day IF      
         END IF; -- end < month IF
     END IF; -- end < year IF
 
-    IF v_part_interval = '1 week' THEN
+    IF v_partition_interval = '1 week' THEN
         v_partition_suffix := to_char(v_time, 'IYYY') || 'w' || to_char(v_time, 'IW');
     END IF;
 
     -- "Q" is ignored in to_timestamp, so handle special case
-    IF v_part_interval = '3 months' AND (v_type = 'time-static' OR v_type = 'time-dynamic') THEN
+    IF v_partition_interval = '3 months' AND v_type = 'time' THEN
         v_year := to_char(v_time, 'YYYY');
         v_quarter := to_char(v_time, 'Q');
         v_partition_suffix := v_year || 'q' || v_quarter;
@@ -203,8 +207,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     FOR v_row IN 
         SELECT sub_parent
             , sub_control
-            , sub_type
-            , sub_part_interval
+            , sub_partition_type
+            , sub_partition_interval
             , sub_constraint_cols
             , sub_premake
             , sub_inherit_fk
@@ -232,8 +236,8 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_jobmon := %L )'
             , v_partition_name
             , v_row.sub_control
-            , v_row.sub_type
-            , v_row.sub_part_interval
+            , v_row.sub_partition_type
+            , v_row.sub_partition_interval
             , v_row.sub_constraint_cols
             , v_row.sub_premake
             , v_row.sub_use_run_maintenance
@@ -288,18 +292,24 @@ RETURN v_partition_created;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN CREATE TABLE: '||p_parent_table||''')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN CREATE TABLE: %s'')', v_jobmon_schema, p_parent_table) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before job logging started'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

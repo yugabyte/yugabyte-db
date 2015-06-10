@@ -4,11 +4,11 @@
 CREATE FUNCTION check_parent() RETURNS SETOF @extschema@.check_parent_table
     LANGUAGE plpgsql STABLE SECURITY DEFINER
     AS $$
-DECLARE 
-    
-v_count 	bigint = 0;
+DECLARE
+
+v_count     bigint = 0;
 v_sql       text;
-v_tables 	record;
+v_tables    record;
 v_trouble   @extschema@.check_parent_table%rowtype;
 
 BEGIN
@@ -26,7 +26,7 @@ LOOP
         RETURN NEXT v_trouble;
     END IF;
 
-	v_count := 0;
+    v_count := 0;
 
 END LOOP;
 
@@ -34,3 +34,5 @@ RETURN;
 
 END
 $$;
+
+

@@ -1,7 +1,7 @@
 {
     "name": "pg_partman",
     "abstract": "Extension to manage partitioned tables by time or ID",
-    "version": "1.8.7",
+    "version": "2.0.0",
     "maintainer": [ 
         "Keith Fiske <keith@omniti.com>"
     ],
@@ -11,18 +11,18 @@
     "prereqs": {
         "runtime": {
             "requires": {
-                "PostgreSQL": "9.1.0"
+                "PostgreSQL": "9.4.0"
             },
             "recommends": {
-                "pg_jobmon": "1.1.2"
+                "pg_jobmon": "1.2.0"
             }
         }
     },
     "provides": {
         "pg_partman": {
-            "file": "sql/pg_partman--1.8.7.sql",
+            "file": "sql/pg_partman--2.0.0.sql",
             "docfile": "doc/pg_partman.md",
-            "version": "1.8.7",
+            "version": "2.0.0",
             "abstract": "Extension to manage partitioned tables by time or ID"
         }
     },
@@ -45,6 +45,9 @@
         "partitions",
         "partitioning",
         "table",
-        "tables"
+        "tables",
+        "bgw",
+        "background worker",
+        "custom background worker"
     ]
 }

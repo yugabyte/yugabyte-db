@@ -57,7 +57,7 @@ def apply_foreign_keys(conn, child_tables):
 
             if pfk[3] == "f":
                 alter_sql += " MATCH FULL "
-            elif (pfk[3] == "s" or pfk[3] == "u":
+            elif pfk[3] == "s":
                 alter_sql += " MATCH SIMPLE "
             elif pfk[3] == "p":
                 alter_sql += " MATCH PARTIAL "

@@ -6,6 +6,10 @@ CREATE FUNCTION undo_partition_time(p_parent_table text, p_batch_count int DEFAU
     AS $$
 DECLARE
 
+ex_context              text;
+ex_detail               text;
+ex_hint                 text;
+ex_message              text;
 v_adv_lock              boolean;
 v_batch_loop_count      int := 0;
 v_child_min             timestamptz;
@@ -23,7 +27,7 @@ v_move_sql              text;
 v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
-v_part_interval         interval;
+v_partition_interval    interval;
 v_row                   record;
 v_rowcount              bigint;
 v_step_id               bigint;
@@ -35,25 +39,25 @@ v_undo_count            int := 0;
 
 BEGIN
 
-v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_time_partition'));
+v_adv_lock := pg_try_advisory_xact_lock(hashtext('pg_partman undo_partition_time'));
 IF v_adv_lock = 'false' THEN
-    RAISE NOTICE 'undo_time_partition already running.';
+    RAISE NOTICE 'undo_partition_time already running.';
     RETURN 0;
 END IF;
 
-SELECT type
-    , part_interval::interval
+SELECT partition_type
+    , partition_interval::interval
     , control
     , jobmon
 INTO v_type
-    , v_part_interval
+    , v_partition_interval
     , v_control
     , v_jobmon
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table 
-AND (type = 'time-static' OR type = 'time-dynamic' OR type = 'time-custom');
+AND (partition_type = 'time' OR partition_type = 'time-custom');
 
-IF v_part_interval IS NULL THEN
+IF v_partition_interval IS NULL THEN
     RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
 END IF;
 
@@ -85,7 +89,7 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF p_batch_interval IS NULL THEN
-    p_batch_interval := v_part_interval;
+    p_batch_interval := v_partition_interval;
 END IF;
 
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
@@ -254,17 +258,24 @@ RETURN v_total;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN UNDO PARTITIONING: '||p_parent_table||''')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN UNDO PARTITIONING: %s'')', v_jobmon_schema, p_parent_table) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before job logging started'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
 

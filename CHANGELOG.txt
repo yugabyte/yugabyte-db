@@ -1,7 +1,32 @@
+2.0.0
+-- IMPORTANT NOTE: This version, and all future versions of pg_partman >= 2.0.0, are only compatible with PostgreSQL 9.4 and greater.
+    -- I do not have any current plans for development on the v1.x.x branch anymore. Reported bugs will be fixed, but all development will only be on the 2.x.x from here on out. Bug fixes will also only be done while versions of PostgreSQL older than 9.4 are themselves officially supported. If a bug only exists in an unsupported version of PostgreSQL, it WILL NOT be fixed. And once PostgreSQL 9.3 goes EOL, the 1.8 series will be deprecated entirely.
+    -- No new features, API changes, configuration options or major internal structure changes will be accepted for the 1.x.x series. These will be locked to the 1.8.x series. No future 1.x.x versions after 1.8.7 will be able to be installed directly. You will have to install 1.8.7 (tagged version releases are available on github) and then install the updates found in the "updates" folder of later versions to get to the latest 1.x.x version. I unfortunately don't have time to be maintaining two independent branches with the way extension versions work now in PostgreSQL. Even fixing bugs in the 1.8.x series will be troublesome since I then have to redo every 1.8.x -> 2.x.x update file every time to ensure all fixes are applied no matter the upgrade path. This will unfortunately break managing the 1.x.x series via PGXN. I'm sorry but I don't see any other way around this with the way extension versions are managed right now. I highly recommend updating your database to 9.4+ if you wish to easily maintain this extension going forward. There's tons of other great new features and performance improvements, so it's definitely worth the effort!
+
+-- A background worker process (BGW) has been added to pg_partman for general partition maintenance.
+    -- A separate scheduler is no longer required in most cases if you compile pg_partman with the background worker option.
+    -- New postgresql.conf configuration options are listed in the documentation. You must at minimum give the database names you want the BGW to run for. The rest have defaults if not set. Only a reload is required to change values once the database is started with the BGW running.
+    -- The BGW can only be started at cluster start. This may change later, but it is done this way for initial simplicity and with future design ideas in mind.
+
+-- There are no longer distinct "static" and "dynamic" partitioning modes. The features of each mode have been combined into a single trigger format.
+    -- All triggers now have the static INSERT statements for the premake window first followed by a fallback, dynamic option to insert to the child table if it exists.
+    -- Whenever the next child partition is created for a partition set, its function will automatically be updated to the new version. If you'd like to update all partition sets immediately, see the code following these release notes in the update file. I cannot make this automatically part of the update because doing so would cause all the new trigger functions that are created to be part of the extension. After updating, all old "static" sets will still work as they did before, but will have an additional fallback case to handle inserts to child tables outside the current premake value if the child table exists. All old "dynamic" sets will now have the "static" conditions added before the dynamic portion and you should see a performance improvement for any data inserted within the premake window. As before, any data that is inserted that has no associated child table will go to the parent.
+    -- The "time-custom" partition type still exists and has not changed for those that need an interval other than the predefined ones. It still uses a lookup table and sacrifices performance for flexibility.
+    -- Eliminated nearly half of the existing pgtap tests due to this change (but added some new ones).
+    -- See my blog post for the explanation of what "static" and "dynamic" meant. http://www.keithf4.com/postgresql-partition-manager
+
+-- If retention system is turned on, jobmon no longer logs entries if no retention work was actually done. Would previously just log that zero tables were dropped. If anything is dropped/uninherited, it will be logged as expected.
+-- Changed column "type" in part_config to "partition_type". "type" is a reserved word, but not currently strictly enforced (doesn't require double-quoting). This avoids any possible future issues. Also changed sub_type in part_config_sub to "sub_partition_type" for consistency
+-- Changed column "part_interval" in part_config & part_config_sub to "partition_interval" to be more consistent with above renamed column.
+-- Now uses new, more extensive GET STACKED DIAGNOSTIC feature added in 9.2 to provide more detailed errors when an exception is encountered. Previously when functions called other functions and a custom exception block was used, only the latest function called would report the error. Now a more full stack trace is available to see the original function that caused the error.
+-- Thanks to https://github.com/IMSoP for the extensive documentation formatting improvements.
+
+
 1.8.7
 -- This update has no core code changes. It is being released to give users that ran into a situation where the trigger functions for serial partition sets called a function that was renamed. In v1.8.0 create_id_partition() was renamed to create_partition_id(). All core code was updated to use this new function, but any existing trigger function from previous versions may have the old function name in the code that creates new partitions when the current one reaches 50% of the max.
 -- The code block contained in "updates/pg_partman-1.8.6--1.8.7.sql" will go through and recreate all the trigger functions on all partition sets managed by pg_partman. This should fix the issue described above. While only serial partition sets should have been affected, the code below does it for both time & id to just ensure everything is fixed.
 -- This code MUST must be run manually because if the trigger functions are recreated as part of an extension update, then those trigger functions become members of the pg_partman extension itself. Just copy-n-paste it into psql and things should be good to go.
+-- Thanks to Jan Lentfer for finding this bug during v2.0.0 testing.
 
 
 1.8.6
@@ -17,7 +42,7 @@
     -- MATCH FULL/PARTIAL/SIMPLE
     -- ON UPDATE/DELETE NO ACTION/RESTRICT/CASCADE/SET NULL/SET DEFAULT
     -- DEFERRABLE / NOT DEFERRABLE
-    -- INITIALLY IMMEDIATE/DEFERRED
+    -- INITIALLY IMMEDIATE / INITIALLY DEFERRED , when it is DEFERRABLE, MATCH, & CASCADE actions. 
 -- Note that none of the above properties were being inherited to child tables before. If you need to reapply foreign keys on children to enforce these options, see the reapply_foreign_keys.py python script or apply_foreign_keys() plpgsql function. The script is the preferred method to avoid contentions.
 -- reapply_foreign_keys.py claimed it could work on partition sets not managed by pg_partman, but that wasn't true. Removed dependency on show_partitions() function, so now that is true.
 

@@ -7,6 +7,10 @@ CREATE FUNCTION drop_partition_id(p_parent_table text, p_retention bigint DEFAUL
     AS $$
 DECLARE
 
+ex_context                  text;
+ex_detail                   text;
+ex_hint                     text;
+ex_message                  text;
 v_adv_lock                  boolean;
 v_child_table               text;
 v_control                   text;
@@ -18,7 +22,7 @@ v_jobmon                    boolean;
 v_jobmon_schema             text;
 v_max                       bigint;
 v_old_search_path           text;
-v_part_interval             bigint;
+v_partition_interval        bigint;
 v_partition_id              bigint;
 v_retention                 bigint;
 v_retention_keep_index      boolean;
@@ -38,7 +42,7 @@ END IF;
 -- Allow override of configuration options
 IF p_retention IS NULL THEN
     SELECT  
-        part_interval::bigint
+        partition_interval::bigint
         , control
         , retention::bigint
         , retention_keep_table
@@ -46,7 +50,7 @@ IF p_retention IS NULL THEN
         , retention_schema
         , jobmon
     INTO
-        v_part_interval
+        v_partition_interval
         , v_control
         , v_retention
         , v_retention_keep_table
@@ -55,22 +59,22 @@ IF p_retention IS NULL THEN
         , v_jobmon
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
-    AND (type = 'id-static' OR type = 'id-dynamic') 
+    AND partition_type = 'id'
     AND retention IS NOT NULL;
 
-    IF v_part_interval IS NULL THEN
+    IF v_partition_interval IS NULL THEN
         RAISE EXCEPTION 'Configuration for given parent table with a retention period not found: %', p_parent_table;
     END IF;
 ELSE
      SELECT  
-        part_interval::bigint
+        partition_interval::bigint
         , control
         , retention_keep_table
         , retention_keep_index
         , retention_schema
         , jobmon
     INTO
-        v_part_interval
+        v_partition_interval
         , v_control
         , v_retention_keep_table
         , v_retention_keep_index
@@ -78,10 +82,10 @@ ELSE
         , v_jobmon
     FROM @extschema@.part_config 
     WHERE parent_table = p_parent_table 
-    AND (type = 'id-static' OR type = 'id-dynamic'); 
+    AND partition_type = 'id'; 
     v_retention := p_retention;
 
-    IF v_part_interval IS NULL THEN
+    IF v_partition_interval IS NULL THEN
         RAISE EXCEPTION 'Configuration for given parent table not found: %', p_parent_table;
     END IF;
 END IF;
@@ -104,10 +108,6 @@ IF p_retention_schema IS NOT NULL THEN
     v_retention_schema = p_retention_schema;
 END IF;
 
-IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN DROP ID PARTITION: '|| p_parent_table);
-END IF;
-
 -- Loop through child tables starting from highest to get current max value in partition set
 -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
 FOR v_row_max_id IN
@@ -127,7 +127,12 @@ LOOP
     v_partition_id := substring(v_child_table from v_id_position)::bigint;
 
     -- Add one interval since partition names contain the start of the constraint period
-    IF v_retention <= (v_max - (v_partition_id + v_part_interval)) THEN
+    IF v_retention <= (v_max - (v_partition_id + v_partition_interval)) THEN
+        -- Only create a jobmon entry if there's actual retention work done
+        IF v_jobmon_schema IS NOT NULL AND v_job_id IS NULL THEN
+            v_job_id := add_job('PARTMAN DROP ID PARTITION: '|| p_parent_table);
+        END IF;
+
         IF v_jobmon_schema IS NOT NULL THEN
             v_step_id := add_step(v_job_id, 'Uninherit table '||v_child_table||' from '||p_parent_table);
         END IF;
@@ -186,9 +191,11 @@ LOOP
 END LOOP; -- End child table loop
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_step_id := add_step(v_job_id, 'Finished partition drop maintenance');
-    PERFORM update_step(v_step_id, 'OK', v_drop_count||' partitions dropped.');
-    PERFORM close_job(v_job_id);
+    IF v_job_id IS NOT NULL THEN
+        v_step_id := add_step(v_job_id, 'Finished partition drop maintenance');
+        PERFORM update_step(v_step_id, 'OK', v_drop_count||' partitions dropped.');
+        PERFORM close_job(v_job_id);
+    END IF;
     EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
 END IF;
 
@@ -196,17 +203,24 @@ RETURN v_drop_count;
 
 EXCEPTION
     WHEN OTHERS THEN
+        GET STACKED DIAGNOSTICS ex_message = MESSAGE_TEXT,
+                                ex_context = PG_EXCEPTION_CONTEXT,
+                                ex_detail = PG_EXCEPTION_DETAIL,
+                                ex_hint = PG_EXCEPTION_HINT;
         IF v_jobmon_schema IS NOT NULL THEN
             IF v_job_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_job(''PARTMAN DROP ID PARTITION: '||p_parent_table||''')' INTO v_job_id;
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before job logging started'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_job(''PARTMAN DROP ID PARTITION: %s'')', v_jobmon_schema, p_parent_table) INTO v_job_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before job logging started'')', v_jobmon_schema, v_job_id, p_parent_table) INTO v_step_id;
             ELSIF v_step_id IS NULL THEN
-                EXECUTE 'SELECT '||v_jobmon_schema||'.add_step('||v_job_id||', ''EXCEPTION before first step logged'')' INTO v_step_id;
+                EXECUTE format('SELECT %I.add_step(%s, ''EXCEPTION before first step logged'')', v_jobmon_schema, v_job_id) INTO v_step_id;
             END IF;
-            EXECUTE 'SELECT '||v_jobmon_schema||'.update_step('||v_step_id||', ''CRITICAL'', ''ERROR: '||coalesce(SQLERRM,'unknown')||''')';
-            EXECUTE 'SELECT '||v_jobmon_schema||'.fail_job('||v_job_id||')';
+            EXECUTE format('SELECT %I.update_step(%s, ''CRITICAL'', %L)', v_jobmon_schema, v_step_id, 'ERROR: '||coalesce(SQLERRM,'unknown'));
+            EXECUTE format('SELECT %I.fail_job(%s)', v_jobmon_schema, v_job_id);
         END IF;
-        RAISE EXCEPTION '%', SQLERRM;
+        RAISE EXCEPTION '%
+CONTEXT: %
+DETAIL: %
+HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
 

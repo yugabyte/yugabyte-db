@@ -74,8 +74,8 @@ END LOOP;
 INSERT INTO @extschema@.part_config_sub (
     sub_parent
     , sub_control
-    , sub_type
-    , sub_part_interval
+    , sub_partition_type
+    , sub_partition_interval
     , sub_constraint_cols
     , sub_premake
     , sub_inherit_fk
@@ -98,5 +98,4 @@ RETURN v_success;
 
 END
 $$;
-
 
