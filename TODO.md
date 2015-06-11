@@ -10,8 +10,8 @@ Important
 - [ ] handle other am other than btree
 - [ ] better formula for number of pages in index
 - [ ] handle tree height
-- [ ] Add some more (or enhance) function. Following are intereseting:
-- [ ] estimated index size
+- [ ] Add some more (or enhance) function. Following are interesting:
+- [X] estimated index size
 - [ ] estimated number of lines
 - [ ] add hypopg_get_indexdef(oid) (based on src/backend/utils/adt/ruleutils.c/pg_get_indexdef_worker())
 

@@ -48,11 +48,11 @@ CREATE FUNCTION hypopg(OUT indexname text, OUT indexrelid Oid,
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg';
 
-CREATE FUNCTION hypopg_list_indexes(OUT datname name, OUT indexname text, OUT nspname name, OUT relname name, OUT amname name)
+CREATE FUNCTION hypopg_list_indexes(OUT indexrelid oid, OUT indexname text, OUT nspname name, OUT relname name, OUT amname name)
     RETURNS SETOF record
 AS
 $_$
-    SELECT current_database(), h.indexname, n.nspname, c.relname, am.amname
+    SELECT h.indexrelid, h.indexname, n.nspname, c.relname, am.amname
     FROM hypopg() h
     JOIN pg_class c ON c.oid = h.indrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace

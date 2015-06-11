@@ -13,15 +13,16 @@ Installation
 
 - Compatible with PostgreSQL 9.2 and above
 - Needs PostgreSQL header files
+- decompress the tarball
 - sudo make install
-- create extension hypopg
+- In every needed database: CREATE EXTENSION hypopg;
 
 Usage
 -----
 
 NOTE: The hypothetical indexes are contained in a single backend. Therefeore,
 if you add multiple hypothetical indexes, concurrent connexions doing
-EXPLAIN won't be bother by your indexes.
+EXPLAIN won't be bothered by your hypothetical indexes.
 
 Assuming a simple test case:
 
@@ -37,7 +38,7 @@ rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
 ```
 
 The easiest way to create an hypothetical index is to use the
-**hypopg_create_index** functions is a regular CREATE INDEX statement.
+**hypopg_create_index** functions with a regular CREATE INDEX statement as arg.
 
 For instance:
 
@@ -52,12 +53,16 @@ future release.
 You can check the available hypothetical indexes in your own backend:
 
 ```
-rjuju=# SELECT * FROM hypopg();
-  oid   |       indexname        | relid  | amid
---------+------------------------+--------+------
- 141869 | idx_hypo_btree_hypo_id | 141863 |  403
+rjuju=# SELECT * FROM hypopg_list_indexes();
+ indexrelid |                 indexname                 | nspname | relname | amname
+ -----------+-------------------------------------------+---------+---------+--------
+     205101 | idx_hypo_btree_hypo_id                    | public  | hypo    | btree
 
 ```
+
+If you need more technical informations on the hypothetical indexes, the
+hypopg() function will return the hypothetical indexes in a similar way as
+pg_index system catalog.
 
 And now, let's see if your previous EXPLAIN statement would use such an index:
 
@@ -86,4 +91,4 @@ rjuju=# EXPLAIN ANALYZE SELECT * FROM hypo WHERE id = 1;
 
 To remove your backend's hypothetical indexes, you can use the function
 **hypopg_drop_index(indexid)** with the OID that **hypopg()** function returns,
-or just close your current connection.
+call hypopg_reset() to remove all at once or just close your current connection.
