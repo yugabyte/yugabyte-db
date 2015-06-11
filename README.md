@@ -12,7 +12,7 @@ INSTALLATION
 ------------
 Requirement: PostgreSQL 9.4 or greater
 
-Recommended: pg_jobmon (>=v1.2.0). PG Job Monitor will automatically be used if it is installed and setup properly.
+Recommended: pg_jobmon (>=v1.3.0). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
 
 In the directory where you downloaded pg_partman, run
