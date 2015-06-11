@@ -92,3 +92,9 @@ $_$
     ) src;
 $_$
 LANGUAGE sql;
+
+CREATE FUNCTION
+hypopg_relation_size(IN indexid Oid)
+    RETURNS bigint
+LANGUAGE c COST 100
+AS '$libdir/hypopg', 'hypopg_relation_size';

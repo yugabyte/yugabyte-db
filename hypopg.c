@@ -13,6 +13,9 @@
 #if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
 #endif
+#include "access/nbtree.h"
+#include "access/sysattr.h"
+#include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
@@ -53,6 +56,10 @@ typedef struct hypoEntry
 	Oid				relid;		/* related relation Oid */
 	Oid				reltablespace; /* tablespace of the index, if set */
 	char			*indexname;	/* hypothetical index name */
+
+	BlockNumber		pages; /* number of estimated disk pages for the index */
+	double			tuples; /* number of estimated tuples in the index */
+	int				tree_height; /* estimated index tree height, -1 if unknown */
 
 	/* index descriptor informations */
 	int				ncolumns; /* number of columns, only 1 for now */
@@ -97,12 +104,14 @@ Datum	hypopg_add_index_internal(PG_FUNCTION_ARGS);
 Datum	hypopg(PG_FUNCTION_ARGS);
 Datum	hypopg_create_index(PG_FUNCTION_ARGS);
 Datum	hypopg_drop_index(PG_FUNCTION_ARGS);
+Datum	hypopg_relation_size(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
 PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
+PG_FUNCTION_INFO_V1(hypopg_relation_size);
 
 static hypoEntry * newHypoEntry(Oid relid, char *accessMethod, int ncolumns);
 static Oid hypoGetNewOid(Oid relid);
@@ -152,6 +161,9 @@ static void injectHypotheticalIndex(PlannerInfo *root,
 static bool hypo_query_walker(Node *node);
 
 static void hypo_set_indexname(hypoEntry *entry, char* indexname);
+static void hypo_estimate_index_simple(hypoEntry *entry,
+		BlockNumber *pages, double *tuples);
+static void hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel);
 
 static List * build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 								Relation heapRelation);
@@ -252,7 +264,7 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 			break;
 		default:
 			/* do not store hypothetical indexes with access method not supported */
-			elog(ERROR, "pg_hypo: access method %d is not supported",
+			elog(ERROR, "hypopg: access method %d is not supported",
 					entry->relam);
 			break;
 	}
@@ -621,9 +633,6 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	if (index->relam == BTREE_AM_OID)
 	{
-#if PG_VERSION_NUM >= 90300
-		index->tree_height = 1; // TODO
-#endif
 		index->sortopfamily = index->opfamily;
 	}
 
@@ -648,16 +657,16 @@ injectHypotheticalIndex(PlannerInfo *root,
 	/* Build targetlist using the completed indexprs data, copied from PostgreSQL */
 	index->indextlist = build_index_tlist(root, index, relation);
 
-	if (index->indpred == NIL)
-	{
-		/* very quick and pessimistic estimation:
-		 * number of tuples * avg width,
-		 * with ~ 50% bloat (including 10% fillfactor), plus 1 block
-		 */
-		index->pages = (rel->tuples * ind_avg_width * 2 / BLCKSZ) + 1;
-		/* partial index not supported yet, so assume all tuples are in the index */
-		index->tuples = rel->tuples;
-	}
+	/* estimate most of the hypothyetical index stuff, more exactly
+	 * - tuples
+	 *  - pages
+	 *  - tree_height
+	 */
+	hypo_estimate_index(entry, rel);
+
+	index->pages = entry->pages;
+	index->tuples = entry->tuples;
+	index->tree_height = entry->tree_height;
 
 	/* obviously, setup this tag.
 	 * However, it's only checked in selfuncs.c/get_actual_variable_range, so
@@ -876,6 +885,32 @@ hypopg_drop_index(PG_FUNCTION_ARGS)
 	PG_RETURN_BOOL(entry_remove(indexid));
 }
 
+/*
+ * SQL Wrapper around the hypothetical index size estimation
+ */
+Datum
+hypopg_relation_size(PG_FUNCTION_ARGS)
+{
+	BlockNumber pages;
+	double tuples;
+	Oid indexid = PG_GETARG_OID(0);
+	ListCell *lc;
+
+	pages = 0;
+	tuples = 0;
+	foreach(lc, entries)
+	{
+		hypoEntry *entry = (hypoEntry *) lfirst(lc);
+		if (entry->oid == indexid)
+		{
+			hypo_estimate_index_simple(entry, &pages, &tuples);
+		}
+	}
+
+	PG_RETURN_INT64(pages * BLCKSZ);
+}
+
+
 /* Simple function to set the indexname, dealing with the ending \0 and correct
  * palloc size
  */
@@ -892,6 +927,107 @@ hypo_set_indexname(hypoEntry *entry, char* indexname)
 
 	strncpy(entry->indexname, indexname, strlen(indexname) + 1);
 }
+
+/*
+ * Fill the pages and tuples information for a given hypoentry.
+ */
+static void
+hypo_estimate_index_simple(hypoEntry *entry, BlockNumber *pages, double *tuples)
+{
+	RelOptInfo *rel;
+	Relation relation;
+
+	/* retrieve number of tuples and pages of the related relation, adapted
+	 * from plancat.c/get_relation_info().
+	 */
+
+	rel = makeNode(RelOptInfo);
+
+	relation = heap_open(entry->relid, AccessShareLock);
+
+	if (!RelationNeedsWAL(relation) && RecoveryInProgress())
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("hypopg: cannot access temporary or unlogged relations during recovery")));
+
+	rel->min_attr = FirstLowInvalidHeapAttributeNumber + 1;
+	rel->max_attr = RelationGetNumberOfAttributes(relation);
+	rel->reltablespace = RelationGetForm(relation)->reltablespace;
+
+	estimate_rel_size(relation, rel->attr_widths - rel->min_attr,
+			&rel->pages, &rel->tuples, &rel->allvisfrac);
+
+	heap_close(relation, NoLock);
+
+	hypo_estimate_index(entry, rel);
+	*pages = entry->pages;
+	*tuples = entry->tuples;
+}
+
+
+/*
+ * Fill the pages and tuples information for a given hypoentry and a given
+ * RelOptInfo
+ */
+static void
+hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
+{
+	int i, ind_avg_width = 0;
+	int usable_page_size;
+	int line_size;
+	double bloat_factor;
+	int additional_bloat = 20;
+
+	for (i=0; i< entry->ncolumns; i++)
+	{
+		ind_avg_width += get_attavgwidth(entry->relid, entry->indexkeys[i]);
+	}
+
+	/*
+	 * TODO: handle here when indpred and indexpres will be added, and
+	 * other access methods
+	 */
+
+	switch (entry->relam)
+	{
+		case BTREE_AM_OID:
+			/* Will need to change this when handling predicate */
+			entry->tuples = rel->tuples;
+
+			/*
+			 * quick estimating of index size:
+			 *
+			 * sizeof(PageHeader) : 24 (1 per page)
+			 * sizeof(BTPageOpaqueData): 16 (1 per page)
+			 * sizeof(IndexTupleData): 8 (1 per tuple, referencing heap)
+			 * sizeof(ItemIdData): 4 (1 per tuple, storing the index item)
+			 * default fillfactor: 90%
+			 * no NULL handling
+			 * fixed additional bloat: 20%
+			 *
+			 * I'll also need to read more carefully nbtree code to check is
+			 * this is accurate enough.
+			 *
+			 */
+			line_size = ind_avg_width +
+					+ (sizeof(IndexTupleData) * entry->ncolumns)
+					+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
+
+			usable_page_size = BLCKSZ - sizeof(PageHeaderData) - sizeof(BTPageOpaqueData);
+			bloat_factor = (200.0 - BTREE_DEFAULT_FILLFACTOR + additional_bloat) / 100;
+
+			entry->pages =
+						  entry->tuples * line_size * bloat_factor / usable_page_size;
+#if PG_VERSION_NUM >= 90300
+			entry->tree_height = -1; // TODO
+#endif
+		break;
+		default:
+			elog(WARNING, "hypopg: access method %d is not supported",
+					entry->relam);
+	}
+}
+
 
 /* Copied from backend/optimizer/util/plancat.c, not exported.
  *
