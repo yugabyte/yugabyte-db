@@ -59,7 +59,9 @@ typedef struct hypoEntry
 
 	BlockNumber		pages; /* number of estimated disk pages for the index */
 	double			tuples; /* number of estimated tuples in the index */
+#if PG_VERSION_NUM >= 90300
 	int				tree_height; /* estimated index tree height, -1 if unknown */
+#endif
 
 	/* index descriptor informations */
 	int				ncolumns; /* number of columns, only 1 for now */
@@ -660,13 +662,15 @@ injectHypotheticalIndex(PlannerInfo *root,
 	/* estimate most of the hypothyetical index stuff, more exactly
 	 * - tuples
 	 *  - pages
-	 *  - tree_height
+	 *  - tree_height (9.3+)
 	 */
 	hypo_estimate_index(entry, rel);
 
 	index->pages = entry->pages;
 	index->tuples = entry->tuples;
+#if PG_VERSION_NUM >= 90300
 	index->tree_height = entry->tree_height;
+#endif
 
 	/* obviously, setup this tag.
 	 * However, it's only checked in selfuncs.c/get_actual_variable_range, so
