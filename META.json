@@ -23,6 +23,13 @@
         "type": "git"
       }
    },
+   "prereqs": {
+       "runtime": {
+           "requires": {
+               "PostgreSQL": "9.2.0",
+           }
+       }
+   },
    "generated_by": "Julien Rouhaud",
    "meta-spec": {
       "version": "1.0.0",
