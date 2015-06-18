@@ -47,7 +47,7 @@ SELECT matches(
 );
 
 SELECT is(
-    findfuncs('pg_catalog', '^abs$'),
+    findfuncs('pg_catalog'::name, '^abs$'),
     ARRAY['pg_catalog.abs'],
     'findfincs() should return distinct values'
 );

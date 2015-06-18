@@ -1,40 +1,42 @@
 \unset ECHO
-1..26
-ok 1 - findfuncs(public, ^test) should work
-ok 2 - findfuncs(^test) should work
+1..28
+ok 1 - findfuncs(public, ^test, this) should work
+ok 2 - findfuncs(public, ^test) should work
+ok 3 - findfuncs(^test, this) should work
+ok 4 - findfuncs(^test) should work
 # public."test ident"()
-ok 3 - ident
-ok 4 - ident 2
+ok 5 - ident
+ok 6 - ident 2
 # public.testplpgsql()
-ok 5 - plpgsql simple
-ok 6 - plpgsql simple 2
+ok 7 - plpgsql simple
+ok 8 - plpgsql simple 2
 # public.testthis()
-ok 7 - simple pass
-ok 8 - another simple pass
+ok 10 - another simple pass
+ok 9 - simple pass
 # public."test ident"()
-ok 9 - ident
-ok 10 - ident 2
+ok 11 - ident
+ok 12 - ident 2
 # public.testplpgsql()
-ok 11 - plpgsql simple
-ok 12 - plpgsql simple 2
+ok 13 - plpgsql simple
+ok 14 - plpgsql simple 2
 # public.testthis()
-ok 13 - simple pass
-ok 14 - another simple pass
+ok 15 - simple pass
+ok 16 - another simple pass
 # public."test ident"()
-ok 15 - ident
-ok 16 - ident 2
+ok 17 - ident
+ok 18 - ident 2
 # public.testplpgsql()
-ok 17 - plpgsql simple
-ok 18 - plpgsql simple 2
+ok 19 - plpgsql simple
+ok 20 - plpgsql simple 2
 # public.testthis()
-ok 19 - simple pass
-ok 20 - another simple pass
+ok 21 - simple pass
+ok 22 - another simple pass
 # public."test ident"()
-ok 21 - ident
-ok 22 - ident 2
+ok 23 - ident
+ok 24 - ident 2
 # public.testplpgsql()
-ok 23 - plpgsql simple
-ok 24 - plpgsql simple 2
+ok 25 - plpgsql simple
+ok 26 - plpgsql simple 2
 # public.testthis()
-ok 25 - simple pass
-ok 26 - another simple pass
+ok 27 - simple pass
+ok 28 - another simple pass

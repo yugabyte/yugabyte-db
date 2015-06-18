@@ -7175,7 +7175,9 @@ in 8.4 and higher.
 
 ### `findfuncs()` ###
 
+    SELECT findfuncs( :schema, :pattern, :exclude_pattern );
     SELECT findfuncs( :schema, :pattern );
+    SELECT findfuncs( :pattern, :exclude_pattern );
     SELECT findfuncs( :pattern );
 
 **Parameters**
@@ -7186,10 +7188,18 @@ in 8.4 and higher.
 `:pattern`
 : Regular expression pattern against which to match function names.
 
+`:pattern`
+: Regular expression pattern to exclude functions with matching names.
+
+
 This function searches the named schema or, if no schema is passed, the search
 patch, for all functions that match the regular expression pattern. The
-functions it finds are returned as an array of text values, with each value
-consisting of the schema name, a dot, and the function name. For example:
+optional exclude regular expression pattern can be used to prevent matchin
+startup/setup/teardown/shutdown functions.
+
+The functions it finds are returned as an array of text values, with each
+value consisting of the schema name, a dot, and the function name. For
+example:
 
     SELECT findfuncs('tests', '^test);
                 findfuncs
