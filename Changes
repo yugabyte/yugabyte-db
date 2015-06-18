@@ -3,6 +3,9 @@ Revision history for pgTAP
 
 0.95.1
 ---------------------------
+* Added an optional `:exclude_pattern` parameter to `findfuncs()` to prevent
+  matching of some functions. This is useful to prevent matching
+  startup/setup/teardown/shutdown functions. Patch from Jim Nasby.
 
 0.95.0 2015-03-20T20:31:41Z
 ---------------------------
