@@ -1,8 +1,7 @@
 CREATE OR REPLACE FUNCTION pgtap_version()
-RETURNS NUMERIC AS 'SELECT 0.95;'
+RETURNS NUMERIC AS 'SELECT 0.96;'
 LANGUAGE SQL IMMUTABLE;
 
-DROP FUNCTION findfuncs( NAME, TEXT );
 CREATE OR REPLACE FUNCTION findfuncs( NAME, TEXT, TEXT )
 RETURNS TEXT[] AS $$
     SELECT ARRAY(
@@ -59,5 +58,3 @@ RETURNS SETOF TEXT AS $$
         findfuncs( $1, '^(startup|shutdown|setup|teardown)' )
     );
 $$ LANGUAGE sql;
-
-
