@@ -210,6 +210,7 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	entry = palloc0(sizeof(hypoEntry));
+	entry->indexname = palloc0(NAMEDATALEN);
 	/* palloc all arrays */
 	entry->indexkeys = palloc0(sizeof(short int) * ncolumns);
 	entry->indexcollations = palloc0(sizeof(Oid) * ncolumns);
@@ -385,7 +386,6 @@ entry_store_parsetree(IndexStmt *node)
 	ncolumns = list_length(node->indexParams);
 
 	initStringInfo(&indexRelationName);
-	appendStringInfo(&indexRelationName, "idx_hypo_");
 	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
 	appendStringInfo(&indexRelationName, "_");
 
@@ -485,6 +485,9 @@ entry_remove(Oid indexid)
 			pfree(entry->sortopfamily);
 			pfree(entry->reverse_sort);
 			pfree(entry->nulls_first);
+#if PG_VERSION_NUM >= 90500
+			pfree(entry->canreturn);
+#endif
 			entries = list_delete_ptr(entries, entry);
 			return true;
 		}
@@ -915,21 +918,26 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
 }
 
 
-/* Simple function to set the indexname, dealing with the ending \0 and correct
- * palloc size
+/* Simple function to set the indexname, dealing with max name length, and the
+ * ending \0
  */
 static void
 hypo_set_indexname(hypoEntry *entry, char* indexname)
 {
-	MemoryContext oldcontext;
+	char oid[12]; /* store <oid>, oid shouldn't be more than 9999999999 */
+	int totalsize;
 
-	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+	snprintf(oid, sizeof(oid), "<%d>", entry->oid);
 
-	entry->indexname = palloc(strlen(indexname) + 1);
+	/* we'll prefix the given indexname with the oid, and reserve a final \0 */
+	totalsize = strlen(oid) + strlen(indexname) + 1;
 
-	MemoryContextSwitchTo(oldcontext);
+	/* final index name must not exceed NAMEDATALEN */
+	if (totalsize > NAMEDATALEN)
+		totalsize = NAMEDATALEN;
 
-	strncpy(entry->indexname, indexname, strlen(indexname) + 1);
+	/* eventually truncate the given indexname at NAMEDATALEN-1 if needed */
+	strncpy(entry->indexname, strcat(oid, indexname), totalsize-1);
 }
 
 /*
