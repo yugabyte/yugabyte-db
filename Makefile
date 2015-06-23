@@ -17,6 +17,8 @@ release-zip: all
 	unzip ./hypopg-$(EXTVERSION).zip
 	rm ./hypopg-$(EXTVERSION).zip
 	rm ./hypopg-$(EXTVERSION)/.gitignore
+	rm ./hypopg-$(EXTVERSION)/typedefs.list
+	rm ./hypopg-$(EXTVERSION)/TODO.md
 	sed -i -e "s/__VERSION__/$(EXTVERSION)/g"  ./hypopg-$(EXTVERSION)/META.json
 	zip -r ./hypopg-$(EXTVERSION).zip ./hypopg-$(EXTVERSION)/
 	rm ./hypopg-$(EXTVERSION) -rf

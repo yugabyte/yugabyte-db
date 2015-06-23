@@ -4,11 +4,11 @@ TODO
 Important
 ---------
 
-- [ ] Choose a better naming convention, including the index oid
+- [X] Choose a better naming convention, including the index oid
 - [X] handle multiple columns
 - [X] handle collation
 - [ ] handle other am other than btree
-- [ ] better formula for number of pages in index
+- [X] better formula for number of pages in index
 - [ ] handle tree height
 - [ ] Add some more (or enhance) function. Following are interesting:
 - [X] estimated index size
