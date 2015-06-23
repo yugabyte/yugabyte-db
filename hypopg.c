@@ -41,9 +41,9 @@
 
 PG_MODULE_MAGIC;
 
-#define HYPO_NB_COLS		12 /* # of column hypopg() returns */
+#define HYPO_NB_COLS		12	/* # of column hypopg() returns */
 
-bool isExplain = false;
+bool		isExplain = false;
 
 /*
  * Hypothetical index storage, pretty much an IndexOptInfo
@@ -52,61 +52,63 @@ bool isExplain = false;
  */
 typedef struct hypoEntry
 {
-	Oid				oid; /* hypothetical index unique identifier */
-	Oid				relid;		/* related relation Oid */
-	Oid				reltablespace; /* tablespace of the index, if set */
-	char			*indexname;	/* hypothetical index name */
+	Oid			oid;			/* hypothetical index unique identifier */
+	Oid			relid;			/* related relation Oid */
+	Oid			reltablespace;	/* tablespace of the index, if set */
+	char	   *indexname;		/* hypothetical index name */
 
-	BlockNumber		pages; /* number of estimated disk pages for the index */
-	double			tuples; /* number of estimated tuples in the index */
+	BlockNumber pages;			/* number of estimated disk pages for the
+								 * index */
+	double		tuples;			/* number of estimated tuples in the index */
 #if PG_VERSION_NUM >= 90300
-	int				tree_height; /* estimated index tree height, -1 if unknown */
+	int			tree_height;	/* estimated index tree height, -1 if unknown */
 #endif
 
 	/* index descriptor informations */
-	int				ncolumns; /* number of columns, only 1 for now */
-	short int		*indexkeys; /* attnums */
-	Oid				*indexcollations; /* OIDs of collations of index columns */
-	Oid				*opfamily; /* OIDs of operator families for columns */
-	Oid				*opclass; /* OIDs of opclass data types */
-	Oid				*opcintype; /* OIDs of opclass declared input data types */
-	Oid				*sortopfamily; /* OIDs of btree opfamilies, if orderable */
-	bool			*reverse_sort; /* is sort order descending? */
-	bool			*nulls_first; /* do NULLs come first in the sort order? */
-	Oid				relam;  /* OID of the access method (in pg_am) */
+	int			ncolumns;		/* number of columns, only 1 for now */
+	short int  *indexkeys;		/* attnums */
+	Oid		   *indexcollations;	/* OIDs of collations of index columns */
+	Oid		   *opfamily;		/* OIDs of operator families for columns */
+	Oid		   *opclass;		/* OIDs of opclass data types */
+	Oid		   *opcintype;		/* OIDs of opclass declared input data types */
+	Oid		   *sortopfamily;	/* OIDs of btree opfamilies, if orderable */
+	bool	   *reverse_sort;	/* is sort order descending? */
+	bool	   *nulls_first;	/* do NULLs come first in the sort order? */
+	Oid			relam;			/* OID of the access method (in pg_am) */
 
-	RegProcedure	amcostestimate; /* OID of the access method's cost fcn */
+	RegProcedure amcostestimate;	/* OID of the access method's cost fcn */
 
-	bool			predOK;			/* true if predicate matches query */
-	bool			unique;			/* true if a unique index */
-	bool			immediate;		/* is uniqueness enforced immediately? */
+	bool		predOK;			/* true if predicate matches query */
+	bool		unique;			/* true if a unique index */
+	bool		immediate;		/* is uniqueness enforced immediately? */
 #if PG_VERSION_NUM >= 90500
-	bool			*canreturn;		/* which index cols can be returned in an index-only scan? */
+	bool	   *canreturn;		/* which index cols can be returned in an
+								 * index-only scan? */
 #else
-	bool			canreturn;		/* can index return IndexTuples? */
+	bool		canreturn;		/* can index return IndexTuples? */
 #endif
-	bool			amcanorderbyop; /* does AM support order by operator result? */
-	bool			amoptionalkey;	/* can query omit key for the first column? */
-	bool			amsearcharray;	/* can AM handle ScalarArrayOpExpr quals? */
-	bool			amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
-	bool			amhasgettuple;	/* does AM have amgettuple interface? */
-	bool			amhasgetbitmap; /* does AM have amgetbitmap interface? */
+	bool		amcanorderbyop; /* does AM support order by operator result? */
+	bool		amoptionalkey;	/* can query omit key for the first column? */
+	bool		amsearcharray;	/* can AM handle ScalarArrayOpExpr quals? */
+	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
+	bool		amhasgettuple;	/* does AM have amgettuple interface? */
+	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
 } hypoEntry;
 
-List *entries = NIL;
+List	   *entries = NIL;
 
 
 /*--- Functions --- */
 
-void	_PG_init(void);
-void	_PG_fini(void);
+void		_PG_init(void);
+void		_PG_fini(void);
 
-Datum	hypopg_reset(PG_FUNCTION_ARGS);
-Datum	hypopg_add_index_internal(PG_FUNCTION_ARGS);
-Datum	hypopg(PG_FUNCTION_ARGS);
-Datum	hypopg_create_index(PG_FUNCTION_ARGS);
-Datum	hypopg_drop_index(PG_FUNCTION_ARGS);
-Datum	hypopg_relation_size(PG_FUNCTION_ARGS);
+Datum		hypopg_reset(PG_FUNCTION_ARGS);
+Datum		hypopg_add_index_internal(PG_FUNCTION_ARGS);
+Datum		hypopg(PG_FUNCTION_ARGS);
+Datum		hypopg_create_index(PG_FUNCTION_ARGS);
+Datum		hypopg_drop_index(PG_FUNCTION_ARGS);
+Datum		hypopg_relation_size(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
 PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
@@ -115,8 +117,8 @@ PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 
-static hypoEntry * newHypoEntry(Oid relid, char *accessMethod, int ncolumns);
-static Oid hypoGetNewOid(Oid relid);
+static hypoEntry *newHypoEntry(Oid relid, char *accessMethod, int ncolumns);
+static Oid	hypoGetNewOid(Oid relid);
 static void addHypoEntry(hypoEntry *entry);
 
 static void entry_reset(void);
@@ -131,25 +133,26 @@ static bool entry_store(Oid relid,
 static bool entry_store_parsetree(IndexStmt *node);
 static bool entry_remove(Oid indexid);
 
-static void hypo_utility_hook(Node *parsetree,
-					   const char *queryString,
+static void
+hypo_utility_hook(Node *parsetree,
+				  const char *queryString,
 #if PG_VERSION_NUM >= 90300
-					   ProcessUtilityContext context,
+				  ProcessUtilityContext context,
 #endif
-					   ParamListInfo params,
+				  ParamListInfo params,
 #if PG_VERSION_NUM < 90300
-					   bool isTopLevel,
+				  bool isTopLevel,
 #endif
-					   DestReceiver *dest,
-					   char *completionTag);
+				  DestReceiver *dest,
+				  char *completionTag);
 static ProcessUtility_hook_type prev_utility_hook = NULL;
 
 
 static void hypo_get_relation_info_hook(PlannerInfo *root,
-						  Oid relationObjectId,
-						  bool inhparent,
-						  RelOptInfo *rel);
-static get_relation_info_hook_type	prev_get_relation_info_hook = NULL;
+							Oid relationObjectId,
+							bool inhparent,
+							RelOptInfo *rel);
+static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
 
 static const char *hypo_explain_get_index_name_hook(Oid indexId);
 static explain_get_index_name_hook_type prev_explain_get_index_name_hook = NULL;
@@ -162,15 +165,15 @@ static void injectHypotheticalIndex(PlannerInfo *root,
 						hypoEntry *entry);
 static bool hypo_query_walker(Node *node);
 
-static void hypo_set_indexname(hypoEntry *entry, char* indexname);
+static void hypo_set_indexname(hypoEntry *entry, char *indexname);
 static void hypo_estimate_index_simple(hypoEntry *entry,
-		BlockNumber *pages, double *tuples);
+						   BlockNumber *pages, double *tuples);
 static void hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel);
 
-static List * build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
-								Relation heapRelation);
+static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
+				  Relation heapRelation);
 static Oid GetIndexOpClass(List *opclass, Oid attrType,
-						   char *accessMethodName, Oid accessMethodId);
+				char *accessMethodName, Oid accessMethodId);
 
 void
 _PG_init(void)
@@ -200,11 +203,11 @@ _PG_fini(void)
 static hypoEntry *
 newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 {
-	hypoEntry *entry;
+	hypoEntry  *entry;
 	MemoryContext oldcontext;
-	HeapTuple tuple;
+	HeapTuple	tuple;
 #if PG_VERSION_NUM >= 90500
-	int i;
+	int			i;
 #endif
 
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
@@ -237,7 +240,7 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("hypopg: access method \"%s\" does not exist",
-					 accessMethod)));
+						accessMethod)));
 	}
 
 	entry->relam = HeapTupleGetOid(tuple);
@@ -251,24 +254,29 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 
 	ReleaseSysCache(tuple);
 
-	/* canreturn should been checked with the amcanreturn proc, but
-	 * this can't be done without a real Relation, so just let force it
+	/*
+	 * canreturn should been checked with the amcanreturn proc, but this can't
+	 * be done without a real Relation, so just let force it
 	 */
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
 			/* btree always support Index-Only scan */
 #if PG_VERSION_NUM >= 90500
-			for(i=0; i<ncolumns; i++)
+			for (i = 0; i < ncolumns; i++)
 				entry->canreturn[i] = true;
 #else
 			entry->canreturn = true;
 #endif
 			break;
 		default:
-			/* do not store hypothetical indexes with access method not supported */
+
+			/*
+			 * do not store hypothetical indexes with access method not
+			 * supported
+			 */
 			elog(ERROR, "hypopg: access method %d is not supported",
-					entry->relam);
+				 entry->relam);
 			break;
 	}
 
@@ -324,11 +332,12 @@ addHypoEntry(hypoEntry *entry)
 static void
 entry_reset(void)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, entries)
 	{
-		hypoEntry *entry = (hypoEntry *) lc;
+		hypoEntry  *entry = (hypoEntry *) lc;
+
 		entry_remove(entry->oid);
 	}
 
@@ -349,7 +358,7 @@ entry_store(Oid relid,
 			Oid opfamily,
 			Oid opcintype)
 {
-	hypoEntry *entry;
+	hypoEntry  *entry;
 
 	entry = newHypoEntry(relid, accessMethod, 1);
 
@@ -373,13 +382,13 @@ entry_store(Oid relid,
 static bool
 entry_store_parsetree(IndexStmt *node)
 {
-	hypoEntry			*entry;
-	HeapTuple			tuple;
-	Form_pg_attribute	attform;
-	Oid					relid;
-	StringInfoData		indexRelationName;
+	hypoEntry  *entry;
+	HeapTuple	tuple;
+	Form_pg_attribute attform;
+	Oid			relid;
+	StringInfoData indexRelationName;
 	int			ncolumns;
-	ListCell	*lc;
+	ListCell   *lc;
 	int			j;
 
 
@@ -412,9 +421,9 @@ entry_store_parsetree(IndexStmt *node)
 	j = 0;
 	foreach(lc, node->indexParams)
 	{
-		IndexElem *indexelem = (IndexElem *) lfirst(lc);
-		Oid		atttype;
-		Oid		opclass;
+		IndexElem  *indexelem = (IndexElem *) lfirst(lc);
+		Oid			atttype;
+		Oid			opclass;
 
 		appendStringInfo(&indexRelationName, "_");
 		appendStringInfo(&indexRelationName, "%s", indexelem->name);
@@ -424,7 +433,7 @@ entry_store_parsetree(IndexStmt *node)
 		if (!HeapTupleIsValid(tuple))
 		{
 			elog(ERROR, "hypopg: column \"%s\" does not exist",
-					indexelem->name);
+				 indexelem->name);
 		}
 		attform = (Form_pg_attribute) GETSTRUCT(tuple);
 
@@ -435,9 +444,9 @@ entry_store_parsetree(IndexStmt *node)
 		atttype = attform->atttypid;
 		/* get the opclass */
 		opclass = GetIndexOpClass(indexelem->opclass,
-				atttype,
-				node->accessMethod,
-				entry->relam);
+								  atttype,
+								  node->accessMethod,
+								  entry->relam);
 		entry->opclass[j] = opclass;
 		/* setup the opfamily */
 		entry->opfamily[j] = get_opclass_family(opclass);
@@ -468,11 +477,11 @@ entry_store_parsetree(IndexStmt *node)
 static bool
 entry_remove(Oid indexid)
 {
-	ListCell *lc;
+	ListCell   *lc;
 
 	foreach(lc, entries)
 	{
-		hypoEntry *entry = (hypoEntry *) lfirst(lc);
+		hypoEntry  *entry = (hypoEntry *) lfirst(lc);
 
 		if (entry->oid == indexid)
 		{
@@ -502,11 +511,11 @@ void
 hypo_utility_hook(Node *parsetree,
 				  const char *queryString,
 #if PG_VERSION_NUM >= 90300
-					   ProcessUtilityContext context,
+				  ProcessUtilityContext context,
 #endif
-					   ParamListInfo params,
+				  ParamListInfo params,
 #if PG_VERSION_NUM < 90300
-					   bool isTopLevel,
+				  bool isTopLevel,
 #endif
 				  DestReceiver *dest,
 				  char *completionTag)
@@ -516,21 +525,21 @@ hypo_utility_hook(Node *parsetree,
 	if (prev_utility_hook)
 		prev_utility_hook(parsetree, queryString,
 #if PG_VERSION_NUM >= 90300
-							context,
+						  context,
 #endif
-							params,
+						  params,
 #if PG_VERSION_NUM < 90300
-							isTopLevel,
+						  isTopLevel,
 #endif
-								dest, completionTag);
+						  dest, completionTag);
 	else
 		standard_ProcessUtility(parsetree, queryString,
 #if PG_VERSION_NUM >= 90300
-							context,
+								context,
 #endif
-							params,
+								params,
 #if PG_VERSION_NUM < 90300
-							isTopLevel,
+								isTopLevel,
 #endif
 								dest, completionTag);
 
@@ -549,7 +558,8 @@ hypo_query_walker(Node *parsetree)
 	{
 		case T_ExplainStmt:
 			{
-				ListCell *lc;
+				ListCell   *lc;
+
 				foreach(lc, ((ExplainStmt *) parsetree)->options)
 				{
 					DefElem    *opt = (DefElem *) lfirst(lc);
@@ -572,15 +582,16 @@ hypo_query_walker(Node *parsetree)
  */
 static void
 injectHypotheticalIndex(PlannerInfo *root,
-					 Oid relationObjectId,
-					 bool inhparent,
-					 RelOptInfo *rel,
-					 Relation relation,
-					 hypoEntry *entry)
+						Oid relationObjectId,
+						bool inhparent,
+						RelOptInfo *rel,
+						Relation relation,
+						hypoEntry *entry)
 {
 	IndexOptInfo *index;
-	int ncolumns, i;
-	int ind_avg_width = 0;
+	int			ncolumns,
+				i;
+	int			ind_avg_width = 0;
 
 
 	/* create a node */
@@ -597,7 +608,8 @@ injectHypotheticalIndex(PlannerInfo *root,
 
 	/* General stuff */
 	index->indexoid = entry->oid;
-	index->reltablespace = rel->reltablespace; /* same tablespace as relation, TODO*/
+	index->reltablespace = rel->reltablespace;	/* same tablespace as
+												 * relation, TODO */
 	index->rel = rel;
 	index->ncolumns = ncolumns = entry->ncolumns;
 
@@ -656,18 +668,18 @@ injectHypotheticalIndex(PlannerInfo *root,
 #endif
 	}
 
-	index->indexprs = NIL; /* not handled for now, WIP */
-	index->indpred = NIL; /* no partial index handled for now, WIP */
+	index->indexprs = NIL;		/* not handled for now, WIP */
+	index->indpred = NIL;		/* no partial index handled for now, WIP */
 
-	/* Build targetlist using the completed indexprs data.
-	 * copied from PostgreSQL
+	/*
+	 * Build targetlist using the completed indexprs data. copied from
+	 * PostgreSQL
 	 */
 	index->indextlist = build_index_tlist(root, index, relation);
 
-	/* estimate most of the hypothyetical index stuff, more exactly
-	 * - tuples
-	 *  - pages
-	 *  - tree_height (9.3+)
+	/*
+	 * estimate most of the hypothyetical index stuff, more exactly: tuples,
+	 * pages and tree_height (9.3+)
 	 */
 	hypo_estimate_index(entry, rel);
 
@@ -677,10 +689,10 @@ injectHypotheticalIndex(PlannerInfo *root,
 	index->tree_height = entry->tree_height;
 #endif
 
-	/* obviously, setup this tag.
-	 * However, it's only checked in selfuncs.c/get_actual_variable_range, so
-	 * we still need to add hypothetical indexes *ONLY* in an
-	 * explain-no-analyze command.
+	/*
+	 * obviously, setup this tag. However, it's only checked in
+	 * selfuncs.c/get_actual_variable_range, so we still need to add
+	 * hypothetical indexes *ONLY* in an explain-no-analyze command.
 	 */
 	index->hypothetical = true;
 
@@ -691,28 +703,31 @@ injectHypotheticalIndex(PlannerInfo *root,
 /* This function will execute the "injectHypotheticalIndex" for every hypothetical
  * index found for each relation if the isExplain flag is setup.
  */
-static void hypo_get_relation_info_hook(PlannerInfo *root,
-						  Oid relationObjectId,
-						  bool inhparent,
-						  RelOptInfo *rel)
+static void
+hypo_get_relation_info_hook(PlannerInfo *root,
+							Oid relationObjectId,
+							bool inhparent,
+							RelOptInfo *rel)
 {
 	if (isExplain)
 	{
-		Relation 	relation;
+		Relation	relation;
 
 		relation = heap_open(relationObjectId, NoLock);
 
 		if (relation->rd_rel->relkind == RELKIND_RELATION)
 		{
-			ListCell *lc;
+			ListCell   *lc;
 
 			foreach(lc, entries)
 			{
-				hypoEntry *entry = (hypoEntry *) lfirst(lc);
+				hypoEntry  *entry = (hypoEntry *) lfirst(lc);
 
-				if (entry->relid == relationObjectId) {
-					/* hypothetical index found,
-					 * add it to the relation's indextlist
+				if (entry->relid == relationObjectId)
+				{
+					/*
+					 * hypothetical index found, add it to the relation's
+					 * indextlist
 					 */
 					injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, entry);
 				}
@@ -732,17 +747,20 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 static const char *
 hypo_explain_get_index_name_hook(Oid indexId)
 {
-	char *ret = NULL;
+	char	   *ret = NULL;
 
 	if (isExplain)
 	{
-		/* we're in an explain-only command. Return the name of the
-		   * hypothetical index name if it's one of ours, otherwise return NULL
+		/*
+		 * we're in an explain-only command. Return the name of the
+		 * hypothetical index name if it's one of ours, otherwise return NULL
 		 */
-		ListCell *lc;
+		ListCell   *lc;
+
 		foreach(lc, entries)
 		{
-			hypoEntry *entry = (hypoEntry *) lfirst(lc);
+			hypoEntry  *entry = (hypoEntry *) lfirst(lc);
+
 			if (entry->oid == indexId)
 			{
 				ret = entry->indexname;
@@ -770,8 +788,8 @@ Datum
 hypopg_add_index_internal(PG_FUNCTION_ARGS)
 {
 	Oid			relid = PG_GETARG_OID(0);
-	char		*indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
-	char		*accessMethod = TextDatumGetCString(PG_GETARG_TEXT_PP(2));
+	char	   *indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
+	char	   *accessMethod = TextDatumGetCString(PG_GETARG_TEXT_PP(2));
 	int			ncolumns = PG_GETARG_INT32(3);
 	short int	indexkeys = PG_GETARG_INT16(4);
 	Oid			indexcollations = PG_GETARG_OID(5);
@@ -787,12 +805,12 @@ hypopg_add_index_internal(PG_FUNCTION_ARGS)
 Datum
 hypopg(PG_FUNCTION_ARGS)
 {
-	ReturnSetInfo	*rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	MemoryContext	per_query_ctx;
-	MemoryContext	oldcontext;
-	TupleDesc		tupdesc;
-	Tuplestorestate	*tupstore;
-	ListCell		*lc;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	ListCell   *lc;
 
 
 	/* check to see if caller supports us returning a tuplestore */
@@ -804,7 +822,7 @@ hypopg(PG_FUNCTION_ARGS)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("materialize mode required, but it is not " \
-							"allowed in this context")));
+						"allowed in this context")));
 
 	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
 	oldcontext = MemoryContextSwitchTo(per_query_ctx);
@@ -822,7 +840,7 @@ hypopg(PG_FUNCTION_ARGS)
 
 	foreach(lc, entries)
 	{
-		hypoEntry *entry = (hypoEntry *) lfirst(lc);
+		hypoEntry  *entry = (hypoEntry *) lfirst(lc);
 		Datum		values[HYPO_NB_COLS];
 		bool		nulls[HYPO_NB_COLS];
 		int			j = 0;
@@ -838,9 +856,9 @@ hypopg(PG_FUNCTION_ARGS)
 		values[j++] = PointerGetDatum(buildint2vector(entry->indexkeys, entry->ncolumns));
 		values[j++] = PointerGetDatum(buildoidvector(entry->indexcollations, entry->ncolumns));
 		values[j++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
-		nulls[j++] = true; /* no indoption for now, TODO */
-		nulls[j++] = true; /* no hypothetical index on expr for now */
-		nulls[j++] = true; /* no hypothetical index on predicate for now */
+		nulls[j++] = true;		/* no indoption for now, TODO */
+		nulls[j++] = true;		/* no hypothetical index on expr for now */
+		nulls[j++] = true;		/* no hypothetical index on predicate for now */
 		values[j++] = ObjectIdGetDatum(entry->relam);
 		Assert(j == HYPO_NB_COLS);
 
@@ -859,9 +877,9 @@ hypopg(PG_FUNCTION_ARGS)
 Datum
 hypopg_create_index(PG_FUNCTION_ARGS)
 {
-	char		*sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
-	List		*parsetree_list;
-	ListCell	*parsetree_item;
+	char	   *sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
+	List	   *parsetree_list;
+	ListCell   *parsetree_item;
 	int			i = 1;
 
 	parsetree_list = pg_parse_query(sql);
@@ -869,11 +887,12 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 	foreach(parsetree_item, parsetree_list)
 	{
 		Node	   *parsetree = (Node *) lfirst(parsetree_item);
+
 		if (nodeTag(parsetree) != T_IndexStmt)
 		{
 			elog(WARNING,
-					"hypopg: SQL order #%d is not a CREATE INDEX statement",
-					i);
+				 "hypopg: SQL order #%d is not a CREATE INDEX statement",
+				 i);
 		}
 		else
 		{
@@ -891,7 +910,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 Datum
 hypopg_drop_index(PG_FUNCTION_ARGS)
 {
-	Oid indexid = PG_GETARG_OID(0);
+	Oid			indexid = PG_GETARG_OID(0);
 
 	PG_RETURN_BOOL(entry_remove(indexid));
 }
@@ -903,15 +922,16 @@ Datum
 hypopg_relation_size(PG_FUNCTION_ARGS)
 {
 	BlockNumber pages;
-	double tuples;
-	Oid indexid = PG_GETARG_OID(0);
-	ListCell *lc;
+	double		tuples;
+	Oid			indexid = PG_GETARG_OID(0);
+	ListCell   *lc;
 
 	pages = 0;
 	tuples = 0;
 	foreach(lc, entries)
 	{
-		hypoEntry *entry = (hypoEntry *) lfirst(lc);
+		hypoEntry  *entry = (hypoEntry *) lfirst(lc);
+
 		if (entry->oid == indexid)
 		{
 			hypo_estimate_index_simple(entry, &pages, &tuples);
@@ -926,10 +946,11 @@ hypopg_relation_size(PG_FUNCTION_ARGS)
  * ending \0
  */
 static void
-hypo_set_indexname(hypoEntry *entry, char* indexname)
+hypo_set_indexname(hypoEntry *entry, char *indexname)
 {
-	char oid[12]; /* store <oid>, oid shouldn't be more than 9999999999 */
-	int totalsize;
+	char		oid[12];		/* store <oid>, oid shouldn't be more than
+								 * 9999999999 */
+	int			totalsize;
 
 	snprintf(oid, sizeof(oid), "<%d>", entry->oid);
 
@@ -941,7 +962,7 @@ hypo_set_indexname(hypoEntry *entry, char* indexname)
 		totalsize = NAMEDATALEN;
 
 	/* eventually truncate the given indexname at NAMEDATALEN-1 if needed */
-	strncpy(entry->indexname, strcat(oid, indexname), totalsize-1);
+	strncpy(entry->indexname, strcat(oid, indexname), totalsize - 1);
 }
 
 /*
@@ -951,9 +972,10 @@ static void
 hypo_estimate_index_simple(hypoEntry *entry, BlockNumber *pages, double *tuples)
 {
 	RelOptInfo *rel;
-	Relation relation;
+	Relation	relation;
 
-	/* retrieve number of tuples and pages of the related relation, adapted
+	/*
+	 * retrieve number of tuples and pages of the related relation, adapted
 	 * from plancat.c/get_relation_info().
 	 */
 
@@ -971,7 +993,7 @@ hypo_estimate_index_simple(hypoEntry *entry, BlockNumber *pages, double *tuples)
 	rel->reltablespace = RelationGetForm(relation)->reltablespace;
 
 	estimate_rel_size(relation, rel->attr_widths - rel->min_attr,
-			&rel->pages, &rel->tuples, &rel->allvisfrac);
+					  &rel->pages, &rel->tuples, &rel->allvisfrac);
 
 	heap_close(relation, NoLock);
 
@@ -988,20 +1010,21 @@ hypo_estimate_index_simple(hypoEntry *entry, BlockNumber *pages, double *tuples)
 static void
 hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 {
-	int i, ind_avg_width = 0;
-	int usable_page_size;
-	int line_size;
-	double bloat_factor;
-	int additional_bloat = 20;
+	int			i,
+				ind_avg_width = 0;
+	int			usable_page_size;
+	int			line_size;
+	double		bloat_factor;
+	int			additional_bloat = 20;
 
-	for (i=0; i< entry->ncolumns; i++)
+	for (i = 0; i < entry->ncolumns; i++)
 	{
 		ind_avg_width += get_attavgwidth(entry->relid, entry->indexkeys[i]);
 	}
 
 	/*
-	 * TODO: handle here when indpred and indexpres will be added, and
-	 * other access methods
+	 * TODO: handle here when indpred and indexpres will be added, and other
+	 * access methods
 	 */
 
 	switch (entry->relam)
@@ -1013,34 +1036,32 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 			/*
 			 * quick estimating of index size:
 			 *
-			 * sizeof(PageHeader) : 24 (1 per page)
-			 * sizeof(BTPageOpaqueData): 16 (1 per page)
-			 * sizeof(IndexTupleData): 8 (1 per tuple, referencing heap)
-			 * sizeof(ItemIdData): 4 (1 per tuple, storing the index item)
-			 * default fillfactor: 90%
-			 * no NULL handling
-			 * fixed additional bloat: 20%
+			 * sizeof(PageHeader) : 24 (1 per page) sizeof(BTPageOpaqueData):
+			 * 16 (1 per page) sizeof(IndexTupleData): 8 (1 per tuple,
+			 * referencing heap) sizeof(ItemIdData): 4 (1 per tuple, storing
+			 * the index item) default fillfactor: 90% no NULL handling fixed
+			 * additional bloat: 20%
 			 *
 			 * I'll also need to read more carefully nbtree code to check is
 			 * this is accurate enough.
 			 *
 			 */
 			line_size = ind_avg_width +
-					+ (sizeof(IndexTupleData) * entry->ncolumns)
-					+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
+				+(sizeof(IndexTupleData) * entry->ncolumns)
+				+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
 
 			usable_page_size = BLCKSZ - sizeof(PageHeaderData) - sizeof(BTPageOpaqueData);
 			bloat_factor = (200.0 - BTREE_DEFAULT_FILLFACTOR + additional_bloat) / 100;
 
 			entry->pages =
-						  entry->tuples * line_size * bloat_factor / usable_page_size;
+				entry->tuples * line_size * bloat_factor / usable_page_size;
 #if PG_VERSION_NUM >= 90300
-			entry->tree_height = -1; /* TODO */
+			entry->tree_height = -1;	/* TODO */
 #endif
-		break;
+			break;
 		default:
 			elog(WARNING, "hypopg: access method %d is not supported",
-					entry->relam);
+				 entry->relam);
 	}
 }
 
@@ -1115,7 +1136,7 @@ build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
  */
 static Oid
 GetIndexOpClass(List *opclass, Oid attrType,
-						char *accessMethodName, Oid accessMethodId)
+				char *accessMethodName, Oid accessMethodId)
 {
 	char	   *schemaname;
 	char	   *opcname;
@@ -1143,11 +1164,11 @@ GetIndexOpClass(List *opclass, Oid attrType,
 		char	   *claname = strVal(linitial(opclass));
 
 		if (strcmp(claname, "network_ops") == 0 ||
-				strcmp(claname, "timespan_ops") == 0 ||
-				strcmp(claname, "datetime_ops") == 0 ||
-				strcmp(claname, "lztext_ops") == 0 ||
-				strcmp(claname, "timestamp_ops") == 0 ||
-				strcmp(claname, "bigbox_ops") == 0)
+			strcmp(claname, "timespan_ops") == 0 ||
+			strcmp(claname, "datetime_ops") == 0 ||
+			strcmp(claname, "lztext_ops") == 0 ||
+			strcmp(claname, "timestamp_ops") == 0 ||
+			strcmp(claname, "bigbox_ops") == 0)
 			opclass = NIL;
 	}
 
@@ -1159,7 +1180,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("data type %s has no default operator class for access method \"%s\"",
-						 format_type_be(attrType), accessMethodName),
+							format_type_be(attrType), accessMethodName),
 					 errhint("You must specify an operator class for the index or define a default operator class for the data type.")));
 		return opClassId;
 	}
@@ -1182,9 +1203,9 @@ GetIndexOpClass(List *opclass, Oid attrType,
 		namespaceId = LookupExplicitNamespace(schemaname);
 #endif
 		tuple = SearchSysCache3(CLAAMNAMENSP,
-				ObjectIdGetDatum(accessMethodId),
-				PointerGetDatum(opcname),
-				ObjectIdGetDatum(namespaceId));
+								ObjectIdGetDatum(accessMethodId),
+								PointerGetDatum(opcname),
+								ObjectIdGetDatum(namespaceId));
 	}
 	else
 	{
@@ -1194,7 +1215,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 			ereport(ERROR,
 					(errcode(ERRCODE_UNDEFINED_OBJECT),
 					 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
-						 opcname, accessMethodName)));
+							opcname, accessMethodName)));
 		tuple = SearchSysCache1(CLAOID, ObjectIdGetDatum(opClassId));
 	}
 
@@ -1203,7 +1224,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
 				 errmsg("operator class \"%s\" does not exist for access method \"%s\"",
-					 NameListToString(opclass), accessMethodName)));
+						NameListToString(opclass), accessMethodName)));
 	}
 
 	/*
@@ -1217,7 +1238,7 @@ GetIndexOpClass(List *opclass, Oid attrType,
 		ereport(ERROR,
 				(errcode(ERRCODE_DATATYPE_MISMATCH),
 				 errmsg("operator class \"%s\" does not accept data type %s",
-					 NameListToString(opclass), format_type_be(attrType))));
+					  NameListToString(opclass), format_type_be(attrType))));
 
 	ReleaseSysCache(tuple);
 
