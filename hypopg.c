@@ -595,9 +595,9 @@ injectHypotheticalIndex(PlannerInfo *root,
 		return;
 	}
 
-	// General stuff
+	/* General stuff */
 	index->indexoid = entry->oid;
-	index->reltablespace = rel->reltablespace; // same tablespace as relation, TODO
+	index->reltablespace = rel->reltablespace; /* same tablespace as relation, TODO*/
 	index->rel = rel;
 	index->ncolumns = ncolumns = entry->ncolumns;
 
@@ -656,10 +656,12 @@ injectHypotheticalIndex(PlannerInfo *root,
 #endif
 	}
 
-	index->indexprs = NIL; // not handled for now, WIP
-	index->indpred = NIL; // no partial index handled for now, WIP
+	index->indexprs = NIL; /* not handled for now, WIP */
+	index->indpred = NIL; /* no partial index handled for now, WIP */
 
-	/* Build targetlist using the completed indexprs data, copied from PostgreSQL */
+	/* Build targetlist using the completed indexprs data.
+	 * copied from PostgreSQL
+	 */
 	index->indextlist = build_index_tlist(root, index, relation);
 
 	/* estimate most of the hypothyetical index stuff, more exactly
@@ -709,7 +711,9 @@ static void hypo_get_relation_info_hook(PlannerInfo *root,
 				hypoEntry *entry = (hypoEntry *) lfirst(lc);
 
 				if (entry->relid == relationObjectId) {
-					// hypothetical index found, add it to the relation's indextlist
+					/* hypothetical index found,
+					 * add it to the relation's indextlist
+					 */
 					injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, entry);
 				}
 			}
@@ -1031,7 +1035,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 			entry->pages =
 						  entry->tuples * line_size * bloat_factor / usable_page_size;
 #if PG_VERSION_NUM >= 90300
-			entry->tree_height = -1; // TODO
+			entry->tree_height = -1; /* TODO */
 #endif
 		break;
 		default:
