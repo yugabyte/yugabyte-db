@@ -4325,14 +4325,14 @@ specified column or columns are not a foreign key.
 
 ### `fk_ok()` ###
 
-    SELECT fk_ok( :fk_schema, :fk_table, :fk_columns, :pk_schema, :pk_table, :pk_columns, :description );
-    SELECT fk_ok( :fk_schema, :fk_table, :fk_columns, :fk_schema, :pk_table, :pk_columns );
-    SELECT fk_ok( :fk_table, :fk_columns, :pk_table, :pk_columns, :description );
-    SELECT fk_ok( :fk_table, :fk_columns, :pk_table, :pk_columns );
-    SELECT fk_ok( :fk_schema, :fk_table, :fk_column, :pk_schema, :pk_table, :pk_column, :description );
-    SELECT fk_ok( :fk_schema, :fk_table, :fk_column, :pk_schema, :pk_table, :pk_column );
-    SELECT fk_ok( :fk_table, :fk_column, :pk_table, :pk_column, :description );
-    SELECT fk_ok( :fk_table, :fk_column, :pk_table, :pk_column );
+    SELECT fk_ok( :fk_schema, :fk_table,   :fk_columns, :pk_schema,  :pk_table, :pk_columns, :description );
+    SELECT fk_ok( :fk_schema, :fk_table,   :fk_columns, :pk_schema,  :pk_table, :pk_columns );
+    SELECT fk_ok( :fk_table,  :fk_columns, :pk_table,   :pk_columns, :description );
+    SELECT fk_ok( :fk_table,  :fk_columns, :pk_table,   :pk_columns );
+    SELECT fk_ok( :fk_schema, :fk_table,   :fk_column,  :pk_schema,  :pk_table, :pk_column,  :description );
+    SELECT fk_ok( :fk_schema, :fk_table,   :fk_column,  :pk_schema,  :pk_table, :pk_column );
+    SELECT fk_ok( :fk_table,  :fk_column,  :pk_table,   :pk_column,  :description );
+    SELECT fk_ok( :fk_table,  :fk_column,  :pk_table,   :pk_column );
 
 **Parameters**
 
