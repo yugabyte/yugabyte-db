@@ -56,7 +56,7 @@ You can check the available hypothetical indexes in your own backend:
 rjuju=# SELECT * FROM hypopg_list_indexes();
  indexrelid |                 indexname                 | nspname | relname | amname
  -----------+-------------------------------------------+---------+---------+--------
-     205101 | idx_hypo_btree_hypo_id                    | public  | hypo    | btree
+     205101 | <41072>btree_hypo_id                    | public  | hypo    | btree
 
 ```
 
@@ -70,7 +70,7 @@ And now, let's see if your previous EXPLAIN statement would use such an index:
 rjuju=# EXPLAIN SELECT * FROM hypo WHERE id = 1;
                                      QUERY PLAN
 ------------------------------------------------------------------------------------
- Index Scan using idx_hypo_btree_hypo_id on hypo  (cost=0.29..8.30 rows=1 width=13)
+ Index Scan using <41072>hypo_btree_hypo_id on hypo  (cost=0.29..8.30 rows=1 width=13)
    Index Cond: (id = 1)
 (2 rows)
 
@@ -88,6 +88,7 @@ rjuju=# EXPLAIN ANALYZE SELECT * FROM hypo WHERE id = 1;
  Planning time: 0.109 ms
  Execution time: 6.113 ms
 (5 rows)
+```
 
 To remove your backend's hypothetical indexes, you can use the function
 **hypopg_drop_index(indexid)** with the OID that **hypopg()** function returns,
