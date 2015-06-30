@@ -313,9 +313,31 @@ orafce_median4_transfn(PG_FUNCTION_ARGS)
 }
 
 int 
-orafce_float4_cmp(const void *a, const void *b)
+orafce_float4_cmp(const void *_a, const void *_b)
 {
-	return (int) (*((float4 *) a) - *((float4*) b));
+	float4 a = *((float4 *) _a);
+	float4 b = *((float4 *) _b);
+
+	if (isnan(a))
+	{
+		if (isnan(b))
+			return 0;
+		else
+			return 1;
+	}
+	else if (isnan(b))
+	{
+		return -1;
+	}
+	else
+	{
+		if (a > b)
+			return 1;
+		else if (a < b)
+			return -1;
+		else
+			return 0;
+	}
 }
 
 Datum
@@ -392,9 +414,31 @@ orafce_median8_transfn(PG_FUNCTION_ARGS)
 }
 
 int 
-orafce_float8_cmp(const void *a, const void *b)
+orafce_float8_cmp(const void *_a, const void *_b)
 {
-	return (int) (*((float8 *) a) - *((float8*) b));
+	float8 a = *((float8 *) _a);
+	float8 b = *((float8 *) _b);
+
+	if (isnan(a))
+	{
+		if (isnan(b))
+			return 0;
+		else
+			return 1;
+	}
+	else if (isnan(b))
+	{
+		return -1;
+	}
+	else
+	{
+		if (a > b)
+			return 1;
+		else if (a < b)
+			return -1;
+		else
+			return 0;
+	}
 }
 
 
