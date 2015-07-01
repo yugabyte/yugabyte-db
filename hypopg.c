@@ -390,7 +390,29 @@ entry_store_parsetree(IndexStmt *node)
 	int			ncolumns;
 	ListCell   *lc;
 	int			j;
+	bool		ok = true;
 
+
+	/* check first if there's an expression.
+	 * the column list will probably be checked twice, but it avoids the need
+	 * to worry about freeing memory later.
+	 */
+	foreach(lc, node->indexParams)
+	{
+		IndexElem  *indexelem = (IndexElem *) lfirst(lc);
+
+		if (indexelem->expr != NULL)
+		{
+			ok = false;
+			break;
+		}
+	}
+
+	if (!ok)
+	{
+		elog(WARNING, "hypopg: hypothetical indexes on expression are not supported yet");
+		return false;
+	}
 
 	ncolumns = list_length(node->indexParams);
 
