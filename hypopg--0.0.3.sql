@@ -27,8 +27,8 @@ hypopg_add_index_internal(IN relid oid,
 AS '$libdir/hypopg', 'hypopg_add_index_internal';
 
 CREATE FUNCTION
-hypopg_create_index(IN sql_order text)
-    RETURNS bool
+hypopg_create_index(IN sql_order text, OUT indexrelid oid, OUT indexname text)
+    RETURNS SETOF record
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_create_index';
 

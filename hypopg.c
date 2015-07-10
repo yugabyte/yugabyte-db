@@ -42,6 +42,7 @@
 PG_MODULE_MAGIC;
 
 #define HYPO_NB_COLS		12	/* # of column hypopg() returns */
+#define HYPO_CREATE_COLS	2	/* # of column hypopg_create_index() returns */
 
 bool		isExplain = false;
 
@@ -130,7 +131,7 @@ static bool entry_store(Oid relid,
 			int indexcollations,
 			Oid opfamily,
 			Oid opcintype);
-static bool entry_store_parsetree(IndexStmt *node);
+static const hypoEntry *entry_store_parsetree(IndexStmt *node);
 static bool entry_remove(Oid indexid);
 
 static void
@@ -379,7 +380,7 @@ entry_store(Oid relid,
 
 /* Create an hypothetical index from its CREATE INDEX parsetree
  */
-static bool
+static const hypoEntry *
 entry_store_parsetree(IndexStmt *node)
 {
 	hypoEntry  *entry;
@@ -490,7 +491,7 @@ entry_store_parsetree(IndexStmt *node)
 
 	addHypoEntry(entry);
 
-	return true;
+	return entry;
 }
 
 /* Remove an hypothetical index from the list of hypothetical indexes.
@@ -902,13 +903,49 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 	char	   *sql = TextDatumGetCString(PG_GETARG_TEXT_PP(0));
 	List	   *parsetree_list;
 	ListCell   *parsetree_item;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
 	int			i = 1;
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
 
 	parsetree_list = pg_parse_query(sql);
 
 	foreach(parsetree_item, parsetree_list)
 	{
 		Node	   *parsetree = (Node *) lfirst(parsetree_item);
+		Datum values[HYPO_CREATE_COLS];
+		bool nulls[HYPO_CREATE_COLS];
+		const hypoEntry *entry;
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
 
 		if (nodeTag(parsetree) != T_IndexStmt)
 		{
@@ -918,12 +955,19 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			entry_store_parsetree((IndexStmt *) parsetree);
+			entry = entry_store_parsetree((IndexStmt *) parsetree);
+			values[0] = ObjectIdGetDatum(entry->oid);
+			values[1] = CStringGetTextDatum(strdup(entry->indexname));
+
+			tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 		}
 		i++;
 	}
 
-	PG_RETURN_BOOL(true);
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
 }
 
 /*
