@@ -523,7 +523,6 @@ CREATE FUNCTION nvl(anyelement, anyelement)
 RETURNS anyelement
 AS 'MODULE_PATHNAME','ora_nvl'
 LANGUAGE C IMMUTABLE;
-COMMENT ON FUNCTION nvl(anyelement, anyelement) IS '';
 
 CREATE FUNCTION nvl2(anyelement, anyelement, anyelement)
 RETURNS anyelement

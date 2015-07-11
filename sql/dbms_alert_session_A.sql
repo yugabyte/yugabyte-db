@@ -1,4 +1,7 @@
 \set ECHO all
+
+SELECT pg_sleep(3);
+
 /* 
  * DBMS_ALERT is used for one-way communication of one session to other.
  *
@@ -31,31 +34,31 @@ SELECT dbms_alert.signal('tds','Begin defered_signal test');
 BEGIN;
 SELECT dbms_alert.signal('tds','Testing defered_signal');
 /* The signal is received while transaction is running */
-SELECT dbms_alert.waitone('b1',30);
+SELECT dbms_alert.waitone('b1',20);
 COMMIT;
 /* The signal is received after transaction completed.
  * After this the tds signal is received in session B indicating that the
  * signal is received only after commit.
  */
-SELECT dbms_alert.waitone('b1',30);
+SELECT dbms_alert.waitone('b1',20);
 
-SELECT dbms_alert.waitone('b2',30);
+SELECT dbms_alert.waitone('b2',20);
 /* This signals a3 which is not registered in Session B */
 SELECT dbms_alert.signal('a3','Msg1 for a3');
 /* alert a4 is signalled soon after a3 */
 SELECT dbms_alert.signal('a4','Test- Register after signal');
 
 /* This signal indicates at remove() is called */
-SELECT dbms_alert.waitone('b3',30);
+SELECT dbms_alert.waitone('b3',20);
 /* Send signal which is removed in session B */
 SELECT dbms_alert.signal('a1','Msg2 for a1');
 
-SELECT dbms_alert.waitone('b4',30);
+SELECT dbms_alert.waitone('b4',20);
 /* Send signal which is registered in B and not removed */
 SELECT dbms_alert.signal('a4','Msg1 for a4');
 
 /* This signal inidcates that removeall() is called */
-SELECT dbms_alert.waitone('b5',30);
+SELECT dbms_alert.waitone('b5',20);
 /* Send a signal to test if session B receives it after removeall() */
 SELECT dbms_alert.signal('a2','Msg2 for a2');
 

@@ -33,7 +33,6 @@ BEGIN
     PERFORM dbms_pipe.pack_message('Druhy '||i);
     RAISE NOTICE 'SEND';
     IF dbms_pipe.send_message('pipe_name',4,10) = 1 THEN
-      RAISE NOTICE 'Timeout';
       PERFORM pg_sleep(5);
       PERFORM dbms_pipe.send_message('pipe_name',4,10);
     END IF;
@@ -45,7 +44,6 @@ CREATE OR REPLACE FUNCTION SessionB() RETURNS void AS $$
 BEGIN
   FOR i IN 1..100000 LOOP
     IF dbms_pipe.receive_message('pipe_name',4) = 1 THEN
-      RAISE NOTICE 'Timeout';
       PERFORM pg_sleep(5);
       CONTINUE;
     END IF;

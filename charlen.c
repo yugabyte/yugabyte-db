@@ -18,9 +18,8 @@
 #include "mb/pg_wchar.h"
 #include "fmgr.h"
 
-#ifndef PG_MODULE_MAGIC
-PG_MODULE_MAGIC;
-#endif
+#include "orafce.h"
+#include "builtins.h"
 
 PG_FUNCTION_INFO_V1(orafce_bpcharlen);
 

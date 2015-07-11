@@ -388,8 +388,8 @@ get_line(FILE *f, int max_linesize, int encoding, bool *iseof)
 Datum
 utl_file_get_line(PG_FUNCTION_ARGS)
 {
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;	/* keep compiler quiet */
+	int		encoding = 0;		/* keep compiler quiet */
 	FILE   *f;
 	text   *result;
 	bool	iseof;
@@ -430,8 +430,8 @@ utl_file_get_line(PG_FUNCTION_ARGS)
 Datum
 utl_file_get_nextline(PG_FUNCTION_ARGS)
 {
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;		/* keep compiler quiet */
+	int		encoding = 0;			/* keep compiler quiet */
 	FILE   *f;
 	text   *result;
 	bool	iseof;
@@ -521,8 +521,8 @@ static FILE *
 do_put(PG_FUNCTION_ARGS)
 {
 	FILE   *f;
-	int		max_linesize;
-	int		encoding;
+	int		max_linesize = 0;		/* keep compiler quiet */
+	int		encoding = 0;			/* keep compiler quiet */
 
 	CHECK_FILE_HANDLE();
 	f = get_stream(PG_GETARG_INT32(0), &max_linesize, &encoding);

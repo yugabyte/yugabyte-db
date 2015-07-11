@@ -35,7 +35,6 @@ DECLARE
         typ INTEGER;
 BEGIN
 	IF dbms_pipe.receive_message('named_pipe_2',2) = 1 THEN
-        	RAISE NOTICE 'Timeout';
         	PERFORM pg_sleep(2);
 		PERFORM dbms_pipe.receive_message('named_pipe_2',2);
         END IF;

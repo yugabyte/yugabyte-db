@@ -1,4 +1,9 @@
 \set ECHO none
+ pg_sleep 
+----------
+ 
+(1 row)
+
  pack_message 
 --------------
  
