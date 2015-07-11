@@ -1,7 +1,4 @@
 \set ECHO none
-
-SELECT pg_sleep(1);
-
 SET client_min_messages = warning;
 DROP TABLE IF EXISTS TEMP;
 CREATE TABLE TEMP(id integer,name text);
@@ -23,6 +20,7 @@ SET SESSION AUTHORIZATION pipe_test_owner;
 CREATE OR REPLACE FUNCTION send(pipename text) RETURNS void AS $$
 BEGIN
         IF dbms_pipe.send_message(pipename,2,10) = 1 THEN
+                RAISE NOTICE 'Timeout';
                 PERFORM pg_sleep(2);
                 PERFORM dbms_pipe.send_message(pipename,2,10);
         END IF;
@@ -136,6 +134,7 @@ CREATE OR REPLACE FUNCTION checkSend2() RETURNS void AS $$
 BEGIN
         PERFORM dbms_pipe.pack_message('checking two-argument send_message()');
 	IF dbms_pipe.send_message('pipe_name_2',2) = 1 THEN
+                RAISE NOTICE 'Timeout';
                 PERFORM pg_sleep(2);
                 PERFORM dbms_pipe.send_message('pipe_name_2',2);
         END IF;
