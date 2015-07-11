@@ -17,15 +17,8 @@
 #include "fmgr.h"
 
 #include "orafce.h"
+#include "builtins.h"
 
-
-/* prototype declarations */
-extern PGDLLEXPORT Datum nvarchar2in(PG_FUNCTION_ARGS);			/* C string to internal
-													   NVARCHAR2 representation */
-extern PGDLLEXPORT Datum nvarchar2out(PG_FUNCTION_ARGS);			/* NVARCHAR2 to C string */
-extern PGDLLEXPORT Datum nvarchar2(PG_FUNCTION_ARGS);			/* NVARCHAR2 length check */
-extern PGDLLEXPORT Datum nvarchar2typmodin(PG_FUNCTION_ARGS);	/* type modifier internal conversion */
-extern PGDLLEXPORT Datum nvarchar2recv(PG_FUNCTION_ARGS);		/* external binary format to NVARCHAR2 */
 
 PG_FUNCTION_INFO_V1(nvarchar2in);
 PG_FUNCTION_INFO_V1(nvarchar2out);
@@ -78,7 +71,6 @@ nvarchar2_input(const char *s, size_t len, int32 atttypmod)
  * Converts a C string to NVARCHAR2 internal representation.  atttypmod
  * is the declared length of the type plus VARHDRSZ.
  */
-PGDLLEXPORT
 Datum
 nvarchar2in(PG_FUNCTION_ARGS)
 {
@@ -100,7 +92,6 @@ nvarchar2in(PG_FUNCTION_ARGS)
  * Uses the text to C string conversion function, which is only appropriate
  * if VarChar and text are equivalent types.
  */
-PGDLLEXPORT
 Datum
 nvarchar2out(PG_FUNCTION_ARGS)
 {
@@ -112,7 +103,6 @@ nvarchar2out(PG_FUNCTION_ARGS)
 /*
  * converts external binary format to nvarchar
  */
-PGDLLEXPORT
 Datum
 nvarchar2recv(PG_FUNCTION_ARGS)
 {
@@ -157,7 +147,6 @@ nvarchar2recv(PG_FUNCTION_ARGS)
  * Truncation rules: for an explicit cast, silently truncate to the given
  * length; for an implicit cast, raise error if length limit is exceeded
  */
-PGDLLEXPORT
 Datum
 nvarchar2(PG_FUNCTION_ARGS)
 {

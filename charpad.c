@@ -12,9 +12,8 @@
 #include "mb/pg_wchar.h"
 #include "fmgr.h"
 
-#ifndef PG_MODULE_MAGIC
-PG_MODULE_MAGIC;
-#endif
+#include "orafce.h"
+#include "builtins.h"
 
 /* flags */
 #define ON	true
@@ -22,10 +21,6 @@ PG_MODULE_MAGIC;
 
 /* Upper limit on total width of the padded output of *pad functions */
 #define PAD_MAX 4000
-
-/* Prototype declarations */
-extern PGDLLEXPORT Datum orafce_lpad(PG_FUNCTION_ARGS);
-extern PGDLLEXPORT Datum orafce_rpad(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(orafce_lpad);
 PG_FUNCTION_INFO_V1(orafce_rpad);
@@ -36,7 +31,6 @@ PG_FUNCTION_INFO_V1(orafce_rpad);
  * Fill up the string to length 'length' by prepending
  * the characters fill (a half-width space by default)
  */
-PGDLLEXPORT
 Datum
 orafce_lpad(PG_FUNCTION_ARGS)
 {
@@ -150,8 +144,8 @@ orafce_lpad(PG_FUNCTION_ARGS)
 		/* remaining part of output_width is composed of string2 */
 		s2_add_width = output_width - s1_width;
 
-	    ptr2 = ptr2start = VARDATA_ANY(string2);
-    	ptr2end = ptr2 + s2blen;
+		ptr2 = ptr2start = VARDATA_ANY(string2);
+		ptr2end = ptr2 + s2blen;
 
 		while (s2_add_width > 0)
 		{
@@ -267,7 +261,6 @@ orafce_lpad(PG_FUNCTION_ARGS)
  * Fill up the string to length 'length' by appending
  * the characters fill (a half-width space by default)
  */
-PGDLLEXPORT
 Datum
 orafce_rpad(PG_FUNCTION_ARGS)
 {
