@@ -40,8 +40,8 @@ orafce_lpad(PG_FUNCTION_ARGS)
 	text	*ret;
 	char	*ptr1,
 			*ptr2,
-			*ptr2start,
-			*ptr2end,
+			*ptr2start = NULL,
+			*ptr2end = NULL,
 			*ptr_ret,
 			*spc = " ";
 	int		mlen,
@@ -270,8 +270,8 @@ orafce_rpad(PG_FUNCTION_ARGS)
 	text	*ret;
 	char	*ptr1,
 			*ptr2,
-			*ptr2start,
-			*ptr2end,
+			*ptr2start = NULL,
+			*ptr2end = NULL,
 			*ptr_ret,
 			*spc = " ";
 	int		mlen,
@@ -374,8 +374,8 @@ orafce_rpad(PG_FUNCTION_ARGS)
 		/* remaining part of output_width is composed of string2 */
 		s2_add_width = output_width - s1_width;
 
-	    ptr2 = ptr2start = VARDATA_ANY(string2);
-    	ptr2end = ptr2 + s2blen;
+		ptr2 = ptr2start = VARDATA_ANY(string2);
+		ptr2end = ptr2 + s2blen;
 
 		while (s2_add_width > 0)
 		{
