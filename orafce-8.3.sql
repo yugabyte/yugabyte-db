@@ -4,12 +4,12 @@ AS $$ SELECT plvstr.rvrs($1,1,NULL);$$
 LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION pg_catalog.reverse(text) IS 'Reverse string or part of string';
 
-CREATE FUNCTION dump(text) 
+CREATE FUNCTION dump(text)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE FUNCTION dump(text, integer) 
+CREATE FUNCTION dump(text, integer)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;

@@ -237,12 +237,12 @@ RETURNS numeric AS
 $$ SELECT CASE WHEN $1 = 'NaN' THEN $2::numeric ELSE $1 END; $$
 LANGUAGE sql IMMUTABLE STRICT;
 
-CREATE FUNCTION dump("any") 
+CREATE FUNCTION dump("any")
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
 
-CREATE FUNCTION dump("any", integer) 
+CREATE FUNCTION dump("any", integer)
 RETURNS varchar
 AS 'MODULE_PATHNAME', 'orafce_dump'
 LANGUAGE C;
@@ -1914,7 +1914,7 @@ COMMENT ON FUNCTION plunit.fail(message varchar) IS 'Immediately fail.';
 CREATE SCHEMA dbms_random;
 
 CREATE FUNCTION dbms_random.initialize(int)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_initialize'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.initialize(int) IS 'Initialize package with a seed value';
@@ -1932,13 +1932,13 @@ LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.random() IS 'Generate Random Numeric Values';
 
 CREATE FUNCTION dbms_random.seed(integer)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_seed_int'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.seed(int) IS 'Reset the seed value';
 
 CREATE FUNCTION dbms_random.seed(text)
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_seed_varchar'
 LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_random.seed(text) IS 'Reset the seed value';
@@ -1950,7 +1950,7 @@ LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_random.string(text,int) IS 'Create Random Strings';
 
 CREATE FUNCTION dbms_random.terminate()
-RETURNS void 
+RETURNS void
 AS 'MODULE_PATHNAME','dbms_random_terminate'
 LANGUAGE C IMMUTABLE;
 COMMENT ON FUNCTION dbms_random.terminate() IS 'Terminate use of the Package';
@@ -1962,7 +1962,7 @@ LANGUAGE C STRICT VOLATILE;
 COMMENT ON FUNCTION dbms_random.value(double precision, double precision) IS 'Generate Random number x, where x is greather or equal to low and less then high';
 
 CREATE FUNCTION dbms_random.value()
-RETURNS double precision 
+RETURNS double precision
 AS 'MODULE_PATHNAME','dbms_random_value'
 LANGUAGE C VOLATILE;
 COMMENT ON FUNCTION dbms_random.value() IS 'Generate Random number x, where x is greather or equal to 0 and less then 1';

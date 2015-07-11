@@ -1,8 +1,12 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2012  Orafce Global Development Group
 
-Version 3.0.14
+Version 3.1 - 2015-07-11
 * remove support for 8.2
+* add support for 9.5
+* change the releasion number system
+* new functions: to_single_byte, to_multi_byte, nanvl, length,
+  ltrim, btrim, rtrim, lpad, rpad
 
 Version 3.0.10 - 1. Jan 2015
 * fix compilation issue in new code for Pg <= 9.1

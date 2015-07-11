@@ -40,11 +40,11 @@ extern Oid	equality_oper_funcid(Oid argtype);
 
 #if PG_VERSION_NUM < 80400
 #define CStringGetTextDatum(c) \
-        DirectFunctionCall1(textin, CStringGetDatum(c))
+	DirectFunctionCall1(textin, CStringGetDatum(c))
 #define text_to_cstring(t) \
-        DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
+	DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
 #define cstring_to_text(c) \
-        DatumGetTextP(CStringGetTextDatum(c))
+	DatumGetTextP(CStringGetTextDatum(c))
 text *cstring_to_text_with_len(const char *c, int n);
 #define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
 #endif

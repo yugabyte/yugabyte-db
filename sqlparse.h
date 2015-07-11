@@ -30,8 +30,8 @@
    This special exception was added by the Free Software Foundation in
    version 2.2 of Bison.  */
 
-#ifndef YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED
-# define YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED
+#ifndef YY_ORAFCE_SQL_YY_Y_TAB_H_INCLUDED
+# define YY_ORAFCE_SQL_YY_Y_TAB_H_INCLUDED
 /* Debug traces.  */
 #ifndef YYDEBUG
 # define YYDEBUG 0
@@ -57,6 +57,17 @@ extern int orafce_sql_yydebug;
     X_TYPECAST = 267
   };
 #endif
+/* Tokens.  */
+#define X_IDENT 258
+#define X_NCONST 259
+#define X_SCONST 260
+#define X_OP 261
+#define X_PARAM 262
+#define X_COMMENT 263
+#define X_WHITESPACE 264
+#define X_KEYWORD 265
+#define X_OTHERS 266
+#define X_TYPECAST 267
 
 /* Value type.  */
 #if ! defined YYSTYPE && ! defined YYSTYPE_IS_DECLARED
@@ -79,7 +90,7 @@ union YYSTYPE
 
 
 
-#line 83 "sqlparse.h" /* yacc.c:1909  */
+#line 94 "y.tab.h" /* yacc.c:1909  */
 };
 # define YYSTYPE_IS_TRIVIAL 1
 # define YYSTYPE_IS_DECLARED 1
@@ -104,4 +115,4 @@ extern YYSTYPE orafce_sql_yylval;
 extern YYLTYPE orafce_sql_yylloc;
 int orafce_sql_yyparse (List **result);
 
-#endif /* !YY_ORAFCE_SQL_YY_SQLPARSE_H_INCLUDED  */
+#endif /* !YY_ORAFCE_SQL_YY_Y_TAB_H_INCLUDED  */
