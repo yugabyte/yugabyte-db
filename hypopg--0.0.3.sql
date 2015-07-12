@@ -19,10 +19,12 @@ hypopg_add_index_internal(IN relid oid,
                            IN accessmethod text,
                            IN ncolumns int,
                            IN indexkeys smallint,
-                           IN indexcollations Oid,
-                           IN opfamily Oid,
-                           IN opcintype Oid)
-    RETURNS bool
+                           IN indexcollations oid,
+                           IN opfamily oid,
+                           IN opcintype oid,
+                           OUT indexrelid oid,
+                           OUT indexname text)
+    RETURNS SETOF record
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_add_index_internal';
 
@@ -38,12 +40,12 @@ hypopg_drop_index(IN indexid oid)
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_drop_index';
 
-CREATE FUNCTION hypopg(OUT indexname text, OUT indexrelid Oid,
-                       OUT indrelid Oid, OUT innatts integer,
+CREATE FUNCTION hypopg(OUT indexname text, OUT indexrelid oid,
+                       OUT indrelid oid, OUT innatts integer,
                        OUT indisunique boolean, OUT indkey int2vector,
                        OUT indcollation oidvector, OUT indclass oidvector,
                        OUT indoption oidvector, OUT indexprs pg_node_tree,
-                       OUT indpred pg_node_tree, OUT amid Oid)
+                       OUT indpred pg_node_tree, OUT amid oid)
     RETURNS SETOF record
     LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg';
@@ -62,8 +64,13 @@ LANGUAGE sql;
 
 
 CREATE FUNCTION
-hypopg_add_index(IN _nspname name, IN _relname name, IN _attname name, IN _amname text)
-    RETURNS bool
+hypopg_add_index(IN _nspname name,
+    IN _relname name,
+    IN _attname name,
+    IN _amname text,
+    OUT indexrelid oid,
+    OUT indexname text)
+    RETURNS SETOF record
 AS
 $_$
     SELECT hypopg_add_index_internal(
@@ -94,7 +101,7 @@ $_$
 LANGUAGE sql;
 
 CREATE FUNCTION
-hypopg_relation_size(IN indexid Oid)
+hypopg_relation_size(IN indexid oid)
     RETURNS bigint
 LANGUAGE c COST 100
 AS '$libdir/hypopg', 'hypopg_relation_size';

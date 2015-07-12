@@ -123,7 +123,7 @@ static Oid	hypoGetNewOid(Oid relid);
 static void addHypoEntry(hypoEntry *entry);
 
 static void entry_reset(void);
-static bool entry_store(Oid relid,
+static const hypoEntry *entry_store(Oid relid,
 			char *indexname,
 			char *accessMethod,
 			int ncolumns,
@@ -349,7 +349,7 @@ entry_reset(void)
 
 /* Simplified function to add an hypotehtical index, with inly 1 column index
  */
-static bool
+static const hypoEntry *
 entry_store(Oid relid,
 			char *indexname,
 			char *accessMethod,
@@ -375,7 +375,7 @@ entry_store(Oid relid,
 
 	addHypoEntry(entry);
 
-	return true;
+	return entry;
 }
 
 /* Create an hypothetical index from its CREATE INDEX parsetree
@@ -818,8 +818,54 @@ hypopg_add_index_internal(PG_FUNCTION_ARGS)
 	Oid			indexcollations = PG_GETARG_OID(5);
 	Oid			opfamily = PG_GETARG_OID(6);
 	Oid			opcintype = PG_GETARG_OID(7);
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	const hypoEntry	*entry;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	Datum		values[HYPO_NB_COLS];
+	bool		nulls[HYPO_NB_COLS];
 
-	return entry_store(relid, indexname, accessMethod, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor for our result type */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		elog(ERROR, "return type must be a row type");
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	memset(values, 0, sizeof(values));
+	memset(nulls, 0, sizeof(nulls));
+
+	entry = entry_store(relid, indexname, accessMethod, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+
+	values[0] = ObjectIdGetDatum(entry->oid);
+	values[1] = CStringGetTextDatum(strdup(entry->indexname));
+
+	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
 }
 
 /*
@@ -834,7 +880,6 @@ hypopg(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
 	ListCell   *lc;
-
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
