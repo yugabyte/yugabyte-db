@@ -148,6 +148,10 @@ hypo_utility_hook(Node *parsetree,
 				  char *completionTag);
 static ProcessUtility_hook_type prev_utility_hook = NULL;
 
+static void
+hypo_executorEnd_hook(QueryDesc *queryDesc);
+static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
+
 
 static void hypo_get_relation_info_hook(PlannerInfo *root,
 							Oid relationObjectId,
@@ -182,6 +186,9 @@ _PG_init(void)
 	/* Install hooks */
 	prev_utility_hook = ProcessUtility_hook;
 	ProcessUtility_hook = hypo_utility_hook;
+
+	prev_ExecutorEnd_hook = ExecutorEnd_hook;
+	ExecutorEnd_hook = hypo_executorEnd_hook;
 
 	prev_get_relation_info_hook = get_relation_info_hook;
 	get_relation_info_hook = hypo_get_relation_info_hook;
@@ -597,6 +604,18 @@ hypo_query_walker(Node *parsetree)
 			return false;
 	}
 	return false;
+}
+
+/* Reset the isExplain flag after each query */
+static void
+hypo_executorEnd_hook(QueryDesc *queryDesc)
+{
+	isExplain = false;
+
+	if (prev_ExecutorEnd_hook)
+		prev_ExecutorEnd_hook(queryDesc);
+	else
+		standard_ExecutorEnd(queryDesc);
 }
 
 /* Add an hypothetical index to the list of indexes.
