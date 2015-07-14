@@ -1,6 +1,13 @@
 Changelog
 =========
 
+WIP version 0.0.3:
+
+  - fix a bug when a regular query could fail after a hypothetical index have
+  been created, and tested with explain
+  - hypopg_create_index() and hypopg_add_index() now returns the oid and index
+  names
+
 2015-07-08 version 0.0.2:
 
   - fix crash when building hypothetical index on expression, thanks to Thom
