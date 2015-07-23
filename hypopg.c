@@ -46,6 +46,9 @@ PG_MODULE_MAGIC;
 
 bool		isExplain = false;
 
+/* GUC for enabling / disabling hypopg during EXPLAIN */
+static bool hypo_is_enabled;
+
 /*
  * Hypothetical index storage, pretty much an IndexOptInfo
  * Some dynamic informations such as pages and lines are not storedn but
@@ -195,6 +198,18 @@ _PG_init(void)
 
 	prev_explain_get_index_name_hook = explain_get_index_name_hook;
 	explain_get_index_name_hook = hypo_explain_get_index_name_hook;
+
+	DefineCustomBoolVariable("hypopg.enabled",
+			"Enable / Disable hypopg",
+			NULL,
+			&hypo_is_enabled,
+			true,
+			PGC_USERSET,
+			0,
+			NULL,
+			NULL,
+			NULL);
+
 }
 
 void
@@ -751,7 +766,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 							bool inhparent,
 							RelOptInfo *rel)
 {
-	if (isExplain)
+	if (isExplain && hypo_is_enabled)
 	{
 		Relation	relation;
 
