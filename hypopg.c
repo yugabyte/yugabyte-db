@@ -152,7 +152,7 @@ hypo_utility_hook(Node *parsetree,
 static ProcessUtility_hook_type prev_utility_hook = NULL;
 
 static void
-hypo_executorEnd_hook(QueryDesc *queryDesc);
+			hypo_executorEnd_hook(QueryDesc *queryDesc);
 static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
 
 
@@ -200,15 +200,15 @@ _PG_init(void)
 	explain_get_index_name_hook = hypo_explain_get_index_name_hook;
 
 	DefineCustomBoolVariable("hypopg.enabled",
-			"Enable / Disable hypopg",
-			NULL,
-			&hypo_is_enabled,
-			true,
-			PGC_USERSET,
-			0,
-			NULL,
-			NULL,
-			NULL);
+							 "Enable / Disable hypopg",
+							 NULL,
+							 &hypo_is_enabled,
+							 true,
+							 PGC_USERSET,
+							 0,
+							 NULL,
+							 NULL,
+							 NULL);
 
 }
 
@@ -854,7 +854,7 @@ hypopg_add_index_internal(PG_FUNCTION_ARGS)
 	Oid			opfamily = PG_GETARG_OID(6);
 	Oid			opcintype = PG_GETARG_OID(7);
 	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	const hypoEntry	*entry;
+	const hypoEntry *entry;
 	MemoryContext per_query_ctx;
 	MemoryContext oldcontext;
 	TupleDesc	tupdesc;
@@ -1020,8 +1020,8 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 	foreach(parsetree_item, parsetree_list)
 	{
 		Node	   *parsetree = (Node *) lfirst(parsetree_item);
-		Datum values[HYPO_CREATE_COLS];
-		bool nulls[HYPO_CREATE_COLS];
+		Datum		values[HYPO_CREATE_COLS];
+		bool		nulls[HYPO_CREATE_COLS];
 		const hypoEntry *entry;
 
 		memset(values, 0, sizeof(values));
