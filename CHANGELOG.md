@@ -7,6 +7,8 @@ WIP version 0.0.3:
   been created, and tested with explain
   - hypopg_create_index() and hypopg_add_index() now returns the oid and index
   names
+  - add hypopg.enabled GUC. It allows disabling HypoPG globally or in a single
+  backend
 
 2015-07-08 version 0.0.2:
 
