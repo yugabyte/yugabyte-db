@@ -416,7 +416,8 @@ entry_store_parsetree(IndexStmt *node)
 	bool		ok = true;
 
 
-	/* check first if there's an expression.
+	/* -------------------------------------
+	 * check first if there's an expression.
 	 * the column list will probably be checked twice, but it avoids the need
 	 * to worry about freeing memory later.
 	 */
@@ -1179,14 +1180,16 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 			/* Will need to change this when handling predicate */
 			entry->tuples = rel->tuples;
 
-			/*
+			/* -------------------------------
 			 * quick estimating of index size:
 			 *
-			 * sizeof(PageHeader) : 24 (1 per page) sizeof(BTPageOpaqueData):
-			 * 16 (1 per page) sizeof(IndexTupleData): 8 (1 per tuple,
-			 * referencing heap) sizeof(ItemIdData): 4 (1 per tuple, storing
-			 * the index item) default fillfactor: 90% no NULL handling fixed
-			 * additional bloat: 20%
+			 * sizeof(PageHeader) : 24 (1 per page)
+			 * sizeof(BTPageOpaqueData): 16 (1 per page)
+			 * sizeof(IndexTupleData): 8 (1 per tuple, referencing heap)
+			 * sizeof(ItemIdData): 4 (1 per tuple, storing the index item)
+			 * default fillfactor: 90%
+			 * no NULL handling
+			 * fixed additional bloat: 20%
 			 *
 			 * I'll also need to read more carefully nbtree code to check is
 			 * this is accurate enough.
