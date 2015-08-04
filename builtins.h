@@ -77,7 +77,7 @@ extern PGDLLEXPORT Datum orafce_to_char_numeric(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_char_timestamp(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_number(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_to_multi_byte(PG_FUNCTION_ARGS);
-extern Datum orafce_to_single_byte(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_to_single_byte(PG_FUNCTION_ARGS);
 
 /* from datefce.c */
 extern PGDLLEXPORT Datum next_day(PG_FUNCTION_ARGS);
