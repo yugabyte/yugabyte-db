@@ -2,7 +2,7 @@
 
 import argparse, collections, psycopg2, os, subprocess, sys, tempfile
 
-partman_version = "1.8.0"
+partman_version = "2.0.0"
 
 parser = argparse.ArgumentParser(description="This script is used to check that all rows in a partition set are unique for the given columns. Since unique constraints are not applied across partition sets, this cannot be enforced within the database. This script can be used as a monitor to ensure uniquness. If any unique violations are found, the values, along with a count of each, are output.")
 parser.add_argument('-p', '--parent',  help="Parent table of the partition set to be checked")
@@ -37,6 +37,22 @@ fh = open(tmp_copy_file.name, 'w')
 conn = psycopg2.connect(args.connection)
 conn.set_session(isolation_level="REPEATABLE READ", readonly=True)
 cur = conn.cursor()
+
+# Get separate object names so they can be properly quoted
+sql = "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"
+cur.execute(sql, [args.parent])
+result = cur.fetchone()
+if result == None:
+    print("Given parent table ("+args.parent+") does not exist")
+    sys.exit(2)
+quoted_parent_table = "\"" + result[0] + "\".\"" + result[1] + "\""
+#print(quoted_parent_table)
+
+# Recreated column list with double quotes around each
+cols_array = args.column_list.split(",")
+quoted_col_list = "\"" + "\",\"".join(cols_array) + "\""
+#print(quoted_col_list)
+
 if args.index_scan == False:
     sql = """set enable_bitmapscan = false;
     set enable_indexonlyscan = false;
@@ -52,7 +68,9 @@ cur.close()
 cur = conn.cursor()
 if not args.quiet:
     print("Dumping out column data to temp file...")
-cur.copy_to(fh, args.parent, sep=",", columns=args.column_list.split(","))
+copy_statement = "COPY (SELECT " + quoted_col_list + " FROM " + quoted_parent_table + ") TO STDOUT WITH DELIMITER ','"
+#print(copy_statement)
+cur.copy_expert(copy_statement, fh)
 conn.rollback()
 conn.close()
 fh.close()

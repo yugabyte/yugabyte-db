@@ -28,7 +28,7 @@ v_move_sql              text;
 v_old_search_path       text;
 v_parent_schema         text;
 v_parent_tablename      text;
-v_partition_interval         bigint;
+v_partition_interval    bigint;
 v_row                   record;
 v_rowcount              bigint;
 v_step_id               bigint;
@@ -63,13 +63,16 @@ END IF;
 -- Need to either lock child tables at all levels or handle the proper removal of triggers on all child tables first 
 --  before multi-level undo can be performed safely.
 FOR v_row IN 
-    SELECT show_partitions AS child_table FROM @extschema@.show_partitions(p_parent_table)
+    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table)
 LOOP
-    SELECT count(*) INTO v_sub_count 
-    FROM pg_catalog.pg_inherits
-    WHERE inhparent::regclass = v_row.child_table::regclass;
+    SELECT count(*) INTO v_sub_count
+    FROM pg_catalog.pg_inherits i
+    JOIN pg_catalog.pg_class c ON i.inhparent = c.oid
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE c.relname = v_row.partition_tablename
+    AND n.nspname = v_row.partition_schemaname;
     IF v_sub_count > 0 THEN
-        RAISE EXCEPTION 'Child table for this parent has child table(s) itself (%). Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent', v_row.child_table;
+        RAISE EXCEPTION 'Child table for this parent has child table(s) itself (%). Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent', v_row.partition_schemaname||'.'||v_row.partition_tablename;
     END IF;
 END LOOP;
 
@@ -77,13 +80,13 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN UNDO PARTITIONING: '||p_parent_table);
-    v_step_id := add_step(v_job_id, 'Undoing partitioning for table '||p_parent_table);
+    v_job_id := add_job(format('PARTMAN UNDO PARTITIONING: %s', p_parent_table));
+    v_step_id := add_step(v_job_id, format('Undoing partitioning for table %s', p_parent_table));
 END IF;
 
 IF p_batch_interval IS NULL THEN
@@ -93,9 +96,9 @@ END IF;
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables and stop new id partitions from being made.
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
-v_function_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, '_part_trig_func', FALSE);
+v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
 SELECT tgname INTO v_trig_name FROM pg_catalog.pg_trigger t WHERE tgname = v_trig_name;
 IF v_trig_name IS NOT NULL THEN
@@ -105,7 +108,7 @@ IF v_trig_name IS NOT NULL THEN
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                EXECUTE 'LOCK TABLE ONLY '||p_parent_table||' IN ACCESS EXCLUSIVE MODE NOWAIT';
+                EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_parent_tablename);
                 v_lock_obtained := TRUE;
             EXCEPTION
                 WHEN lock_not_available THEN
@@ -119,11 +122,11 @@ IF v_trig_name IS NOT NULL THEN
             RETURN -1;
         END IF;
     END IF; -- END p_lock_wait IF
-    EXECUTE 'DROP TRIGGER IF EXISTS '||v_trig_name||' ON '||p_parent_table;
+    EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I.%I', v_trig_name, v_parent_schema, v_parent_tablename);
 END IF; -- END trigger IF
 v_lock_obtained := FALSE; -- reset for reuse later
 
-EXECUTE 'DROP FUNCTION IF EXISTS '||v_function_name||'()';
+EXECUTE format('DROP FUNCTION IF EXISTS %I.%I()', v_parent_schema, v_function_name);
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');
@@ -131,20 +134,27 @@ END IF;
 
 <<outer_child_loop>>
 WHILE v_batch_loop_count < p_batch_count LOOP 
-    SELECT n.nspname||'.'||c.relname INTO v_child_table
-    FROM pg_inherits i 
-    JOIN pg_class c ON i.inhrelid = c.oid 
-    JOIN pg_namespace n ON c.relnamespace = n.oid 
-    WHERE i.inhparent::regclass = p_parent_table::regclass 
+    -- Get ordered list of child table in set. Store in variable one at a time per loop until none are left.
+    WITH parent_info AS (
+        SELECT c1.oid 
+        FROM pg_catalog.pg_class c1 
+        JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+        WHERE c1.relname = v_parent_tablename
+        AND n1.nspname = v_parent_schema
+    )
+    SELECT c.relname INTO v_child_table
+    FROM pg_catalog.pg_inherits i
+    JOIN pg_catalog.pg_class c ON i.inhrelid = c.oid
+    JOIN parent_info p ON i.inhparent = p.oid
     ORDER BY i.inhrelid ASC;
 
     EXIT WHEN v_child_table IS NULL;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        v_step_id := add_step(v_job_id, 'Removing child partition: '||v_child_table);
+        v_step_id := add_step(v_job_id, format('Removing child partition: %s.%s', v_parent_schema, v_child_table));
     END IF;
 
-    EXECUTE 'SELECT min('||v_control||') FROM '||v_child_table INTO v_child_min;
+    EXECUTE format('SELECT min(%I) FROM %I.%I', v_control, v_parent_schema, v_child_table) INTO v_child_min;
     IF v_child_min IS NULL THEN
         -- No rows left in this child table. Remove from partition set.
 
@@ -154,7 +164,7 @@ WHILE v_batch_loop_count < p_batch_count LOOP
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
-                    EXECUTE 'LOCK TABLE ONLY '||v_child_table||' IN ACCESS EXCLUSIVE MODE NOWAIT';
+                    EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN
@@ -170,15 +180,19 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         END IF; -- END p_lock_wait IF
         v_lock_obtained := FALSE; -- reset for reuse later
 
-        EXECUTE 'ALTER TABLE '||v_child_table||' NO INHERIT ' || p_parent_table;
+        EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
+                        , v_parent_schema
+                        , v_child_table
+                        , v_parent_schema
+                        , v_parent_tablename);
         IF p_keep_table = false THEN
-            EXECUTE 'DROP TABLE '||v_child_table;
+            EXECUTE format('DROP TABLE %I.%I', v_parent_schema, v_child_table);
             IF v_jobmon_schema IS NOT NULL THEN
-                PERFORM update_step(v_step_id, 'OK', 'Child table DROPPED. Moved '||v_child_loop_total||' rows to parent');
+                PERFORM update_step(v_step_id, 'OK', format('Child table DROPPED. Moved %s rows to parent', v_child_loop_total));
             END IF;
         ELSE
             IF v_jobmon_schema IS NOT NULL THEN
-                PERFORM update_step(v_step_id, 'OK', 'Child table UNINHERITED, not DROPPED. Moved '||v_child_loop_total||' rows to parent');
+                PERFORM update_step(v_step_id, 'OK', format('Child table UNINHERITED, not DROPPED. Moved %s rows to parent', v_child_loop_total));
             END IF;
         END IF;
         v_undo_count := v_undo_count + 1;
@@ -194,9 +208,11 @@ WHILE v_batch_loop_count < p_batch_count LOOP
             WHILE v_lock_iter <= 5 LOOP
                 v_lock_iter := v_lock_iter + 1;
                 BEGIN
-                    EXECUTE 'SELECT * FROM ' || v_child_table ||
-                    ' WHERE '||v_control||' <= '||quote_literal(v_child_min + (p_batch_interval * v_inner_loop_count))
-                    ||' FOR UPDATE NOWAIT';
+                    EXECUTE format('SELECT * FROM %I.%I WHERE %I <= %s FOR UPDATE NOWAIT'
+                        , v_parent_schema
+                        , v_child_table
+                        , v_control
+                        , v_child_min + (p_batch_interval * v_inner_loop_count));
                     v_lock_obtained := TRUE;
                 EXCEPTION
                     WHEN lock_not_available THEN
@@ -212,15 +228,21 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         END IF;
 
         -- Get everything from the current child minimum up to the multiples of the given interval
-        v_move_sql := 'WITH move_data AS (DELETE FROM '||v_child_table||
-                ' WHERE '||v_control||' <= '||quote_literal(v_child_min + (p_batch_interval * v_inner_loop_count))||' RETURNING *)
-            INSERT INTO '||p_parent_table||' SELECT * FROM move_data';
+        v_move_sql := format('WITH move_data AS (
+                                DELETE FROM %I.%I WHERE %I <= %s RETURNING *)
+                              INSERT INTO %I.%I SELECT * FROM move_data'
+                        , v_parent_schema
+                        , v_child_table
+                        , v_control
+                        , v_child_min + (p_batch_interval * v_inner_loop_count)
+                        , v_parent_schema
+                        , v_parent_tablename);
         EXECUTE v_move_sql;
         GET DIAGNOSTICS v_rowcount = ROW_COUNT;
         v_total := v_total + v_rowcount;
         v_child_loop_total := v_child_loop_total + v_rowcount;
         IF v_jobmon_schema IS NOT NULL THEN
-            PERFORM update_step(v_step_id, 'OK', 'Moved '||v_child_loop_total||' rows to parent.');
+            PERFORM update_step(v_step_id, 'OK', format('Moved %s rows to parent.', v_child_loop_total));
         END IF;
         EXIT inner_child_loop WHEN v_rowcount = 0; -- exit before loop incr if table is empty
         v_inner_loop_count := v_inner_loop_count + 1;
@@ -241,12 +263,12 @@ END IF;
 RAISE NOTICE 'Copied % row(s) to the parent. Removed % partitions.', v_total, v_undo_count;
 IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Final stats');
-    PERFORM update_step(v_step_id, 'OK', 'Copied '||v_total||' row(s) to the parent. Removed '||v_undo_count||' partitions.');
+    PERFORM update_step(v_step_id, 'OK', format('Copied %s row(s) to the parent. Removed %s partitions.', v_total, v_undo_count));
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 RETURN v_total;

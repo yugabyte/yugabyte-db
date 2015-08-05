@@ -13,6 +13,7 @@ CREATE TABLE part_config (
     datetime_string text,
     use_run_maintenance BOOLEAN NOT NULL DEFAULT true,
     jobmon boolean NOT NULL DEFAULT true,
+    sub_partition_set_full boolean NOT NULL DEFAULT false,
     undo_in_progress boolean NOT NULL DEFAULT false,
     CONSTRAINT part_config_parent_table_pkey PRIMARY KEY (parent_table),
     CONSTRAINT positive_premake_check CHECK (premake > 0)
@@ -68,18 +69,25 @@ ALTER TABLE @extschema@.part_config_sub
 ADD CONSTRAINT part_config_sub_type_check
 CHECK (@extschema@.check_partition_type(sub_partition_type));
 
-/* 
+
+/*
  * Ensure that sub-partitioned tables that are themselves sub-partitions have the same configuration options set when they are part of the same inheritance tree
  */
-CREATE FUNCTION @extschema@.check_subpart_sameconfig(text) RETURNS boolean
+CREATE OR REPLACE FUNCTION @extschema@.check_subpart_sameconfig(text) RETURNS boolean
     LANGUAGE sql STABLE
     AS $$
-    WITH child_tables AS (
+    WITH parent_info AS (
+        SELECT c1.oid
+        FROM pg_catalog.pg_class c1 
+        JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+        WHERE n1.nspname||'.'||c1.relname = $1
+    )
+    , child_tables AS (
         SELECT n.nspname||'.'||c.relname AS tablename
         FROM pg_catalog.pg_inherits h
         JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
         JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-        WHERE h.inhparent::regclass = $1::regclass
+        JOIN parent_info pi ON h.inhparent = pi.oid
     )
     SELECT CASE 
         WHEN count(*) <= 1 THEN
@@ -103,6 +111,7 @@ CREATE FUNCTION @extschema@.check_subpart_sameconfig(text) RETURNS boolean
         FROM @extschema@.part_config_sub a
         JOIN child_tables b on a.sub_parent = b.tablename) x;
 $$;
+
 
 ALTER TABLE @extschema@.part_config_sub
 ADD CONSTRAINT subpart_sameconfig_chk

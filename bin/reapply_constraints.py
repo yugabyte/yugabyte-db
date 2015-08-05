@@ -3,7 +3,7 @@
 import argparse, psycopg2, sys, time
 from multiprocessing import Process
 
-partman_version = "1.8.0"
+partman_version = "2.0.0"
 
 parser = argparse.ArgumentParser(description="Script for reapplying additional constraints managed by pg_partman on child tables. See docs for additional info on this special constraint management. Script runs in two distinct modes: 1) Drop all constraints  2) Apply all constraints. Typical usage would be to run the drop mode, edit the data, then run apply mode to re-create all constraints on a partition set.")
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
@@ -59,7 +59,7 @@ def drop_proc(child_table, partman_schema):
 
 def get_children(conn, partman_schema):
     cur = conn.cursor()
-    sql = "SELECT " + partman_schema + ".show_partitions(%s, %s)"
+    sql = "SELECT partition_schemaname||'.'||partition_tablename FROM " + partman_schema + ".show_partitions(%s, %s)"
     cur.execute(sql, [args.parent, 'ASC'])
     child_list = cur.fetchall()
     cur.close()
@@ -70,7 +70,7 @@ def get_partman_schema(conn):
     cur = conn.cursor()
     sql = "SELECT nspname FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_partman' AND e.extnamespace = n.oid"
     cur.execute(sql)
-    partman_schema = cur.fetchone()[0]
+    partman_schema = "\"" + cur.fetchone()[0] + "\""
     cur.close()
     return partman_schema
 
@@ -82,6 +82,19 @@ def get_premake(conn, partman_schema):
     premake = int(cur.fetchone()[0])
     cur.close()
     return premake
+
+
+def get_quoted_parent_table(conn):
+    cur = conn.cursor()
+    sql = "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"
+    cur.execute(sql, [args.parent])
+    if result == None:
+        print("Given parent table ("+args.parent+") does not exist")
+        sys.exit(2)
+    result = cur.fetchone()
+    quoted_parent_table = "\"" + result[0] + "\".\"" + result[1] + "\""
+    cur.close()
+    return quoted_parent_table
 
 
 def print_version():
@@ -112,6 +125,7 @@ if __name__ == "__main__":
 
     main_conn = create_conn()
     partman_schema = get_partman_schema(main_conn)
+    quoted_parent_table = get_quoted_parent_table(main_conn)
     child_list = get_children(main_conn, partman_schema)
     premake = get_premake(main_conn, partman_schema)
 
@@ -149,7 +163,7 @@ if __name__ == "__main__":
             if args.wait > 0:
                 time.sleep(args.wait)
 
-    sql = 'ANALYZE ' + args.parent
+    sql = 'ANALYZE ' + quoted_parent_table
     main_cur = main_conn.cursor()
     if not args.quiet:
         print(main_cur.mogrify(sql))

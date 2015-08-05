@@ -41,7 +41,7 @@ END IF;
 
 FOR v_row IN 
     -- Loop through all current children to turn them into partitioned tables
-    SELECT show_partitions AS child_table FROM @extschema@.show_partitions(p_top_parent)
+    SELECT partition_schemaname||'.'||partition_tablename AS child_table FROM @extschema@.show_partitions(p_top_parent)
 LOOP
     -- Just call existing create_parent() function but add the given parameters to the part_config_sub table as well
     v_sql := format('SELECT @extschema@.create_parent(

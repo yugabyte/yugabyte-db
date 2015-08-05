@@ -1,5 +1,5 @@
 -- ########## ID TESTS ##########
--- Test p_start_partition parameter
+-- Test p_start_partition parameter, mixed case/special char test
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true

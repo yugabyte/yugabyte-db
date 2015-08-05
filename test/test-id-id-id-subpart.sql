@@ -1702,7 +1702,6 @@ SELECT run_maintenance();
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(100101,107500));
 
 -- Stuff likely went into some parent tables. It's diffcult to test a constant stream of input data to regularly run run_maintenence() against.
--- These results are different than static test because a single child table does exist and dynamic trigger function put the first 100 values in that child table
 SELECT results_eq('SELECT parent_table, count::int FROM check_parent() ORDER BY parent_table', $$VALUES 
                                                                                                 ('partman_test.id_taptest_table_p100000_p101000', 900), 
                                                                                                 ('partman_test.id_taptest_table_p100000_p102000', 900), 
@@ -1819,11 +1818,6 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p1000
 SELECT run_maintenance();
 
 -- UNDO ALL THE THINGS!!
-
-/*SELECT throws_ok('SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false)',
-    'P0001',
-    'Child table for this parent has child table(s) itself (partman_test.id_taptest_table_p0). Run undo partitioning on this table or remove inheritance first to ensure all data is properly moved to parent',
-    'Check that undoing partitions is prevented if subpartitions still exist');*/
 
 SELECT throws_ok('SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false)',
 'P0001',

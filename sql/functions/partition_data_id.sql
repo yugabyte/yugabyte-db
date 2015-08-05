@@ -14,7 +14,7 @@ v_max_partition_id          bigint;
 v_min_partition_id          bigint;
 v_parent_schema             text;
 v_parent_tablename          text;
-v_partition_interval             bigint;
+v_partition_interval        bigint;
 v_partition_id              bigint[];
 v_rowcount                  bigint;
 v_sql                       text;
@@ -34,6 +34,8 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+
 IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
 END IF;
@@ -41,7 +43,7 @@ END IF;
 FOR i IN 1..p_batch_count LOOP
 
     IF p_order = 'ASC' THEN
-        EXECUTE 'SELECT min('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
+        EXECUTE format('SELECT min(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
         IF v_start_control IS NULL THEN
             EXIT;
         END IF;
@@ -77,10 +79,13 @@ FOR i IN 1..p_batch_count LOOP
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                v_sql := 'SELECT * FROM ONLY ' || p_parent_table ||
-                ' WHERE '||v_control||' >= '||quote_literal(v_min_partition_id)||
-                ' AND '||v_control||' < '||quote_literal(v_max_partition_id)
-                ||' FOR UPDATE NOWAIT';
+                v_sql := format('SELECT * FROM ONLY %I.%I WHERE %I >= %s AND %I < %s FOR UPDATE NOWAIT'
+                                , v_parent_schema
+                                , v_parent_tablename
+                                , v_control
+                                , v_min_partition_id
+                                , v_control
+                                , v_max_partition_id);
                 EXECUTE v_sql;
                 v_lock_obtained := TRUE;
             EXCEPTION
@@ -96,13 +101,19 @@ FOR i IN 1..p_batch_count LOOP
     END IF;
 
     PERFORM @extschema@.create_partition_id(p_parent_table, v_partition_id);
-    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_parent_table;
-    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_min_partition_id::text, TRUE);
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_min_partition_id::text, TRUE);
 
-    EXECUTE 'WITH partition_data AS (
-        DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||v_min_partition_id||
-            ' AND '||v_control||' < '||v_max_partition_id||' RETURNING *)
-        INSERT INTO '||v_current_partition_name||' SELECT * FROM partition_data';        
+    EXECUTE format('WITH partition_data AS (
+                        DELETE FROM ONLY %I.%I WHERE %I >= %s AND %I < %s RETURNING *)
+                    INSERT INTO %I.%I SELECT * FROM partition_data'
+                , v_parent_schema
+                , v_parent_tablename
+                , v_control
+                , v_min_partition_id
+                , v_control
+                , v_max_partition_id
+                , v_parent_schema
+                , v_current_partition_name);
 
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;
@@ -118,5 +129,4 @@ RETURN v_total_rows;
 
 END
 $$;
-
 

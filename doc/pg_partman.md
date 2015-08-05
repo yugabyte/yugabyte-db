@@ -24,6 +24,8 @@ Keep in mind that for subpartition sets, when a parent table has a child dropped
 
 One of the big advantages of partitioning is a feature called **constraint exclusion** (see docs for explanation of functionality and examples http://www.postgresql.org/docs/current/static/ddl-partitioning.html#DDL-PARTITIONING-CONSTRAINT-EXCLUSION). The problem with most partitioning setups however, is that this will only be used on the partitioning control column. If you use a WHERE condition on any other column in the partition set, a scan across all child tables will occur unless there are also constraints on those columns. And predicting what a columns' values will be to precreate constraints can be very hard or impossible. `pg_partman` has a feature to apply constraints on older tables in a partition set that may no longer have any edits done to them ("old" being defined as older than the `premake` config value). It checks the current min/max values in the given columns and then applies a constraint to that child table. This can allow the constraint exclusion feature to potentially eliminate scanning older child tables when other columns are used in WHERE conditions. Be aware that this limits being able to edit those columns, but for the situations where it is applicable it can have a tremendous affect on query performance for very large partition sets. So if you are only inserting new data this can be very useful, but if data is regularly being inserted throughout the entire partition set, this is of limited use. Functions for easily recreating constraints are also available if data does end up having to be edited in those older partitions. Note that constraints managed by PG Partman SHOULD NOT be renamed in order to allow the extension to manage them properly for you. For a better example of how this works, please see this blog post: http://www.keithf4.com/managing-constraint-exclusion-in-table-partitioning
 
+NOTE: This may not work with sub-partitioning. It will work on the first level of partitioning, but is not guarenteed to work properly on further sub-partition sets depending on the interval combinations and the premake value. Ex: Weekly -> Daily with a daily premake of 7 won't work as expected. Weekly constraints will get created but daily sub-partition ones likely will not. If this is a feature you need, please make an issue on Github and I will see if it can be fixed.
+
 ### Custom Time Interval Considerations
 
 The smallest interval supported is 1 second and the upper limit is bounded by the minimum and maximum timestamp values that PostgreSQL supports (http://www.postgresql.org/docs/current/static/datatype-datetime.html).
@@ -177,6 +179,14 @@ A superuser must be used to run all these functions in order to set privileges &
  * `p_order` - optional parameter to set the order the child tables are returned in. Defaults to ASCending. Set to 'DESC' to return in descending order.
 
 
+*`show_partition_name(p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamp, OUT suffix_id bigint, OUT table_exists boolean)`*
+
+ * Given a parent table managed by pg_partman (p_parent_table) and an appropriate value (time or id but given in text form for p_value), return the name of the child partition that that value would exist in.
+ * Returns a child table name whether the child table actually exists or not
+ * Also returns a raw value (suffix_timestamp or suffix_id) for the partition suffix for the given child table
+ * Also returns a boolean value (table_exists) to say whether that child table actually exists
+
+
 *`check_parent()`*
 
  * Run this function to monitor that the parent tables of the partition sets that `pg_partman` manages do not get rows inserted to them.
@@ -184,7 +194,7 @@ A superuser must be used to run all these functions in order to set privileges &
  * `partition_data_time()` & `partition_data_id()` can be used to move data from these parent tables into the proper children.
 
 
-*`apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)`*
+*`apply_constraints(p_parent_table text, p_child_table text DEFAULT NULL, p_job_id bigint DEFAULT NULL, p_debug BOOLEAN DEFAULT FALSE)`*
 
  * Apply constraints to child tables in a given partition set for the columns that are configured (constraint names are all prefixed with "partmanconstr_"). 
  * Note that this does not need to be called manually to maintain custom constraints. The creation of new partitions automatically manages adding constraints to old child tables.
@@ -192,9 +202,10 @@ A superuser must be used to run all these functions in order to set privileges &
  * If the `pg_partman` constraints already exists on the child table, the function will cleanly skip over the ones that exist and not create duplicates.
  * If the column(s) given contain all NULL values, no constraint will be made.
  * If the child table parameter is given, only that child table will have constraints applied.
- * If child table parameter is not given, constraints are placed on the last child table older than the `premake` value. For example, if the premake value is 4, then constraints will be placed on the child table that is 5 back from the current partition (as long as partition pre-creation has been kept up to date).
+ * If the p_child_table parameter is not given, constraints are placed on the last child table older than the `premake` value. For example, if the premake value is 4, then constraints will be placed on the child table that is 5 back from the current partition (as long as partition pre-creation has been kept up to date).
  * If you need to apply constraints to all older child tables, use the included python script (reapply_constraint.py). This script has options to make constraint application easier with as little impact on performance as possible.
- * The debug parameter will show you the constraint creation statement that was used.
+ * The p_job_id parameter is optional. It's for internal use and allows job logging to be consolidated into the original job that called this function if applicable.
+ * The p_debug parameter will show you the constraint creation statement that was used.
 
 
 *`drop_constraints(p_parent_table text, p_child_table text, p_debug boolean DEFAULT false)`*
@@ -214,11 +225,13 @@ A superuser must be used to run all these functions in order to set privileges &
  * `p_parent_table` - parent table of the partition set. Must be schema qualified and match a parent table name already configured in `pg_partman`.
 
 
-*`apply_foreign_keys(p_parent_table text, p_child_table text DEFAULT NULL, p_debug boolean DEFAULT false)`*
+*`apply_foreign_keys(p_parent_table text, p_child_table text DEFAULT NULL, p_job_id bigint DEFAULT NULL, p_debug boolean DEFAULT false)`*
  * Applies any foreign keys that exist on a parent table in a partition set to all the child tables.
  * This function is automatically called whenever a new child table is created, so there is no need to manually run it unless you need to fix an existing child table.
  * If you need to apply this to an entire partition set, see the **reapply_foreign_keys.py** python script. This will commit after every FK creation to avoid contention.
  * This function can be used on any table inheritance set, not just ones managed by `pg_partman`.
+ * The p_job_id parameter is optional. It's for internal use and allows job logging to be consolidated into the original job that called this function if applicable.
+ * The p_debug parameter will show you the constraint creation statement that was used.
 
 
 ### Destruction Functions
@@ -348,6 +361,8 @@ The rest are managed by the extension itself and should not be changed unless ab
     - Defaults to TRUE for all sub-partition tables
  - `jobmon`
     - Boolean value to determine whether the `pg_jobmon` extension is used to log/monitor partition maintenance. Defaults to true.
+ - `sub_partition_set_full`
+    - Boolean value to denote that the final partition for a sub-partition set has been created. Allows run_maintenance() to run more efficiently when there are large numbers of subpartition sets.
  - `undo_in_progress`
     - Set by the undo_partition functions whenever they are run. If true, this causes all partition creation and retention management by the `run_maintenance()` function to stop. Default is false.
 
@@ -447,18 +462,21 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * `--drop_concurrent`:      Drop indexes concurrently when recreating them (PostgreSQL >= v9.2). Note this does not work on primary keys when --primary is given.
  * `--recreate_all (-R)`:    By default, if an index exists on a child and matches the parent, it will not be touched. Setting this option will force all child 
                            indexes to be dropped & recreated. Will obey the --concurrent & --drop_concurrent options if given. 
-                           Will not recreate primary keys unless --primary option is also given.
+                             Will not recreate primary keys unless --primary option is also given.
  * `--primary`:              By default the primary key is not recreated. Set this option if that is needed. 
-                           Note this will cause an exclusive lock on the child table for the duration of the recreation.
+                             Note this will cause an exclusive lock on the child table for the duration of the recreation.
  * `--jobs (-j)`:            Use the python multiprocessing library to recreate indexes in parallel. Note that this is per table, not per index. 
-                           Be very careful setting this option if load is a concern on your systems.
+                             Be very careful setting this option if load is a concern on your systems.
  * `--wait (-w)`:            Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. 
-                           When used with -j, this will set the pause between the batches of parallel jobs instead.
+                             When used with -j, this will set the pause between the batches of parallel jobs instead.
  * `--dryrun`:               Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
-                           Note that if multiple indexes would get the same default name, the duplicated names will show in the dryrun 
+                             Note that if multiple indexes would get the same default name, the duplicated names will show in the dryrun 
                             (because the index doesn't exist in the catalog to check for it). 
-                           When the real thing is run, the duplicated names will be handled as stated in the NOTE above.
+                             When the real thing is run, the duplicated names will be handled as stated in the NOTE above.
  * `--quiet`:                Turn off all output.
+ * `--nonpartman`            If the partition set you are running this on is not managed by pg_partman, set this flag otherwise this script may not work. 
+                             Note that the pg_partman extension is still required to be installed for this to work since it uses certain internal functions. 
+                             When this is set the order that the tables are reindexed is alphabetical instead of logical.
  * `--version`:              Print out the minimum version of `pg_partman` this script is meant to work with. The version of `pg_partman` installed may be greater than this.
 
 *`reapply_constraints.py`*
@@ -484,7 +502,9 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * `--connection (-c)`:       Connection string for use by psycopg. Defaults to "host=" (local socket).
  * `--quiet (-q)`:            Switch setting to stop all output during and after partitioning undo.
  * `--dryrun`:                Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.
- * `--version`:              Print out the minimum version of `pg_partman` this script is meant to work with. The version of `pg_partman` installed may be greater than this.
+ * `--nonpartman`             If the partition set you are running this on is not managed by pg_partman, set this flag. Otherwise internal pg_partman functions are used and this script may not work. 
+                              When this is set the order that the tables are rekeyed is alphabetical instead of logical.
+ * `--version`:               Print out the minimum version of `pg_partman` this script is meant to work with. The version of `pg_partman` installed may be greater than this.
  * `--debug`:                 Show additional debugging output
 
 *`check_unique_constraints.py`*

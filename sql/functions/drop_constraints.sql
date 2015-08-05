@@ -10,6 +10,8 @@ ex_context                      text;
 ex_detail                       text;
 ex_hint                         text;
 ex_message                      text;
+v_child_schemaname              text;
+v_child_tablename               text;
 v_col                           text;
 v_constraint_cols               text[]; 
 v_existing_constraint_name      text;
@@ -38,12 +40,14 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
+SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_child_table;
+
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN DROP CONSTRAINT: '||p_parent_table);
+    v_job_id := add_job(format('PARTMAN DROP CONSTRAINT: %s', p_parent_table));
     v_step_id := add_step(v_job_id, 'Entering constraint drop loop');
     PERFORM update_step(v_step_id, 'OK', 'Done');
 END IF;
@@ -51,43 +55,45 @@ END IF;
 
 FOREACH v_col IN ARRAY v_constraint_cols
 LOOP
-
-    SELECT c.conname
+    SELECT con.conname
     INTO v_existing_constraint_name
-    FROM pg_catalog.pg_constraint c 
-        JOIN pg_catalog.pg_attribute a ON c.conrelid = a.attrelid 
-    WHERE conrelid = p_child_table::regclass 
-        AND c.conname LIKE 'partmanconstr_%'
-        AND c.contype = 'c' 
+    FROM pg_catalog.pg_constraint con
+    JOIN pg_class c ON c.oid = con.conrelid
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    JOIN pg_catalog.pg_attribute a ON con.conrelid = a.attrelid 
+    WHERE c.relname = v_child_tablename
+        AND n.nspname = v_child_schemaname
+        AND con.conname LIKE 'partmanconstr_%'
+        AND con.contype = 'c' 
         AND a.attname = v_col
-        AND ARRAY[a.attnum] <@ c.conkey 
+        AND ARRAY[a.attnum] <@ con.conkey 
         AND a.attisdropped = false;
 
     IF v_existing_constraint_name IS NOT NULL THEN
         v_exists := TRUE;
         IF v_jobmon_schema IS NOT NULL THEN
-            v_step_id := add_step(v_job_id, 'Dropping constraint on column: '||v_col);
+            v_step_id := add_step(v_job_id, format('Dropping constraint on column: %s', v_col));
         END IF;
-        v_sql := 'ALTER TABLE '||p_child_table||' DROP CONSTRAINT '||v_existing_constraint_name;
+        v_sql := format('ALTER TABLE %I.%I DROP CONSTRAINT %I', v_child_schemaname, v_child_tablename, v_existing_constraint_name);
         IF p_debug THEN
             RAISE NOTICE 'Constraint drop query: %', v_sql;
         END IF;
         EXECUTE v_sql;
         IF v_jobmon_schema IS NOT NULL THEN
-            PERFORM update_step(v_step_id, 'OK', 'Drop constraint query: '||v_sql);
+            PERFORM update_step(v_step_id, 'OK', format('Drop constraint query: %s', v_sql));
         END IF;
     END IF;
 
 END LOOP;
 
 IF v_jobmon_schema IS NOT NULL AND v_exists IS FALSE THEN
-    v_step_id := add_step(v_job_id, 'No constraints found to drop on child table: '||p_child_table);
+    v_step_id := add_step(v_job_id, format('No constraints found to drop on child table: %s', p_child_table));
     PERFORM update_step(v_step_id, 'OK', 'Done');
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 EXCEPTION
@@ -112,4 +118,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

@@ -1,7 +1,7 @@
 /*
  * Apply foreign keys that exist on the given parent to the given child table
  */
-CREATE FUNCTION apply_foreign_keys(p_parent_table text, p_child_table text DEFAULT NULL, p_debug boolean DEFAULT false) RETURNS void
+CREATE FUNCTION apply_foreign_keys(p_parent_table text, p_child_table text, p_job_id bigint DEFAULT NULL, p_debug boolean DEFAULT false) RETURNS void
     LANGUAGE plpgsql
     AS $$
 DECLARE
@@ -10,10 +10,13 @@ ex_context          text;
 ex_detail           text;
 ex_hint             text;
 ex_message          text;
+v_count             int := 0;
 v_job_id            bigint;
 v_jobmon            text;
 v_jobmon_schema     text;
 v_old_search_path   text;
+v_parent_schema     text;
+v_parent_tablename  text;
 v_ref_schema        text;
 v_ref_table         text;
 v_row               record;
@@ -30,17 +33,25 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN APPLYING FOREIGN KEYS: '||p_parent_table);
+    IF p_job_id IS NULL THEN
+        v_job_id := add_job(format('PARTMAN APPLYING FOREIGN KEYS: %s', p_parent_table));
+    ELSE -- Don't create a new job, add steps into given job
+        v_job_id := p_job_id;
+    END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_step_id := add_step(v_job_id, 'Checking if target child table exists');
+    v_step_id := add_step(v_job_id, format('Applying foreign keys to %s if they exist on parent', p_child_table));
 END IF;
+
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname||'.'||tablename = p_parent_table;
 
 SELECT schemaname, tablename INTO v_schemaname, v_tablename 
 FROM pg_catalog.pg_tables 
@@ -48,96 +59,30 @@ WHERE schemaname||'.'||tablename = p_child_table;
 
 IF v_tablename IS NULL THEN
     IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'CRITICAL', 'Target child table ('||v_child_table||') does not exist.');
+        PERFORM update_step(v_step_id, 'CRITICAL', format('Target child table (%s) does not exist.', p_child_table));
         PERFORM fail_job(v_job_id);
-        EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     END IF;
-    RAISE EXCEPTION 'Target child table (%.%) does not exist.', v_schemaname, v_tablename;
+    RAISE EXCEPTION 'Target child table (%) does not exist.', p_child_table;
     RETURN;
-ELSE
-    IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'OK', 'Done');
-    END IF;
 END IF;
 
-FOR v_row IN 
-    SELECT n.nspname||'.'||cl.relname AS ref_table
-        , '"'||string_agg(att.attname, '","')||'"' AS ref_column
-        , '"'||string_agg(att2.attname, '","')||'"' AS child_column
-        , keys.condeferred
-        , keys.condeferrable
-        , keys.confupdtype
-        , keys.confdeltype
-        , keys.confmatchtype
-    FROM
-        ( SELECT unnest(con.conkey) as ref
-                , unnest(con.confkey) as child
-                , con.confrelid
-                , con.conrelid
-                , con.condeferred
-                , con.condeferrable
-                , con.confupdtype
-                , con.confdeltype
-                , con.confmatchtype
-          FROM pg_catalog.pg_class c
-          JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-          JOIN pg_catalog.pg_constraint con ON c.oid = con.conrelid
-          WHERE n.nspname ||'.'|| c.relname = p_parent_table
-          AND con.contype = 'f'
-          ORDER BY con.conkey
-    ) keys
-    JOIN pg_catalog.pg_class cl ON cl.oid = keys.confrelid
-    JOIN pg_catalog.pg_namespace n ON cl.relnamespace = n.oid
-    JOIN pg_catalog.pg_attribute att ON att.attrelid = keys.confrelid AND att.attnum = keys.child
-    JOIN pg_catalog.pg_attribute att2 ON att2.attrelid = keys.conrelid AND att2.attnum = keys.ref
-    GROUP BY n.nspname, cl.relname, keys.condeferred, keys.condeferrable, keys.confupdtype, keys.confdeltype, keys.confmatchtype
+FOR v_row IN
+    SELECT pg_get_constraintdef(con.oid) AS constraint_def 
+    FROM pg_catalog.pg_constraint con
+    JOIN pg_catalog.pg_class c ON con.conrelid = c.oid
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE c.relname = v_parent_tablename
+    AND n.nspname = v_parent_schema
+    AND contype = 'f'
 LOOP
-    SELECT schemaname, tablename INTO v_ref_schema, v_ref_table FROM pg_tables WHERE schemaname||'.'||tablename = v_row.ref_table;
-    v_sql := format('ALTER TABLE %I.%I ADD FOREIGN KEY (%s) REFERENCES %I.%I (%s)', 
-        v_schemaname, v_tablename, v_row.child_column, v_ref_schema, v_ref_table, v_row.ref_column);
-    CASE
-        WHEN v_row.confmatchtype = 'f' THEN
-            v_sql := v_sql || ' MATCH FULL ';
-        WHEN v_row.confmatchtype = 's' THEN
-            v_sql := v_sql || ' MATCH SIMPLE ';
-        WHEN v_row.confmatchtype = 'p' THEN
-            v_sql := v_sql || ' MATCH PARTIAL ';
-    END CASE;
-    CASE 
-        WHEN v_row.confupdtype = 'a' THEN
-            v_sql := v_sql || ' ON UPDATE NO ACTION ';
-        WHEN v_row.confupdtype = 'r' THEN
-            v_sql := v_sql || ' ON UPDATE RESTRICT ';
-        WHEN v_row.confupdtype = 'c' THEN
-            v_sql := v_sql || ' ON UPDATE CASCADE ';
-        WHEN v_row.confupdtype = 'n' THEN
-            v_sql := v_sql || ' ON UPDATE SET NULL ';
-        WHEN v_row.confupdtype = 'd' THEN
-            v_sql := v_sql || ' ON UPDATE SET DEFAULT ';
-    END CASE;
-    CASE
-        WHEN v_row.confdeltype = 'a' THEN
-            v_sql := v_sql || ' ON DELETE NO ACTION ';
-        WHEN v_row.confdeltype = 'r' THEN
-            v_sql := v_sql || ' ON DELETE RESTRICT ';
-         WHEN v_row.confdeltype = 'c' THEN
-            v_sql := v_sql || ' ON DELETE CASCADE ';
-         WHEN v_row.confdeltype = 'n' THEN
-            v_sql := v_sql || ' ON DELETE SET NULL ';
-         WHEN v_row.confdeltype = 'd' THEN
-            v_sql := v_sql || ' ON DELETE SET DEFAULT ';
-    END CASE;
-    CASE
-        WHEN v_row.condeferrable = true AND v_row.condeferred = true THEN
-            v_sql := v_sql || ' DEFERRABLE INITIALLY DEFERRED ';
-        WHEN v_row.condeferrable = false AND v_row.condeferred = false THEN
-            v_sql := v_sql || ' NOT DEFERRABLE ';
-        WHEN v_row.condeferrable = true AND v_row.condeferred = false THEN
-            v_sql := v_sql || ' DEFERRABLE INITIALLY IMMEDIATE ';
-    END CASE;
+    v_sql := format('ALTER TABLE %I.%I ADD %s'
+                    , v_schemaname
+                    , v_tablename
+                    , v_row.constraint_def);
 
-    IF v_jobmon_schema IS NOT NULL THEN
-        v_step_id := add_step(v_job_id, 'Applying FK: '||v_sql);
+    IF p_debug THEN
+        RAISE NOTICE 'Constraint creation query: %', v_sql;
     END IF;
 
     EXECUTE v_sql;
@@ -145,12 +90,18 @@ LOOP
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'FK applied');
     END IF;
+    v_count := v_count + 1;
 
 END LOOP;
 
+IF v_count = 0 AND v_jobmon_schema IS NOT NULL THEN
+    PERFORM update_step(v_step_id, 'OK', 'No FKs found on parent');
+END IF;
+
+
 IF v_jobmon_schema IS NOT NULL THEN
     PERFORM close_job(v_job_id);
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 EXCEPTION

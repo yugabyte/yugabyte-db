@@ -12,7 +12,6 @@ ex_hint             text;
 ex_message          text;
 v_all               text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
 v_child_owner       text;
-v_child_table       text;
 v_child_grant       record;
 v_grant             text;
 v_grantees          text[];
@@ -22,8 +21,12 @@ v_jobmon_schema     text;
 v_match             boolean;
 v_old_search_path   text;
 v_parent_owner      text;
+v_parent_schema     text;
+v_parent_tablename  text;
 v_owner_sql         text;
-v_revoke            text[];
+v_revoke            text;
+v_row               record;
+v_row_revoke        record;
 v_parent_grant      record;
 v_sql               text;
 v_step_id           bigint;
@@ -39,36 +42,40 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN RE-APPLYING PRIVILEGES TO ALL CHILD TABLES OF: '||p_parent_table);
+    v_job_id := add_job(format('PARTMAN RE-APPLYING PRIVILEGES TO ALL CHILD TABLES OF: %s', p_parent_table));
     v_step_id := add_step(v_job_id, 'Setting new child table privileges');
 END IF;
 
-SELECT tableowner INTO v_parent_owner FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename, tableowner INTO v_parent_schema, v_parent_tablename, v_parent_owner FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
-FOR v_child_table IN 
-    SELECT n.nspname||'.'||c.relname FROM pg_inherits i join pg_class c ON i.inhrelid = c.oid join pg_namespace n ON c.relnamespace = n.oid WHERE i.inhparent::regclass = p_parent_table::regclass ORDER BY i.inhrelid ASC
+FOR v_row IN 
+    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC')
 LOOP
     IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'PENDING', 'Currently on child partition in ascending order: '||v_child_table);
+        PERFORM update_step(v_step_id, 'PENDING', format('Currently on child partition in ascending order: %s.%s'
+                                                        , v_row.partition_schemaname
+                                                        , v_row.partition_tablename));
     END IF;
     v_grantees := NULL;
     FOR v_parent_grant IN 
-        SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types, grantee
+        SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types
+                , grantee
         FROM information_schema.table_privileges 
-        WHERE table_schema ||'.'|| table_name = p_parent_table
+        WHERE table_schema = v_parent_schema AND table_name = v_parent_tablename
         GROUP BY grantee 
     LOOP
         -- Compare parent & child grants. Don't re-apply if it already exists
         v_match := false;
         FOR v_child_grant IN 
-            SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types, grantee
+            SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types
+                    , grantee
             FROM information_schema.table_privileges 
-            WHERE table_schema ||'.'|| table_name = v_child_table
+            WHERE table_schema = v_row.partition_schemaname AND table_name = v_row.partition_tablename
             GROUP BY grantee 
         LOOP
             IF v_parent_grant.types = v_child_grant.types AND v_parent_grant.grantee = v_child_grant.grantee THEN
@@ -77,10 +84,18 @@ LOOP
         END LOOP;
 
         IF v_match = false THEN
-            EXECUTE 'GRANT '||array_to_string(v_parent_grant.types, ',')||' ON '||v_child_table||' TO '||v_parent_grant.grantee;
-            SELECT array_agg(r) INTO v_revoke FROM (SELECT unnest(v_all) AS r EXCEPT SELECT unnest(v_parent_grant.types)) x;
+            EXECUTE format('GRANT %s ON %I.%I TO %I'
+                            , array_to_string(v_parent_grant.types, ',')
+                            , v_row.partition_schemaname
+                            , v_row.partition_tablename
+                            , v_parent_grant.grantee);
+            SELECT string_agg(r, ',') INTO v_revoke FROM (SELECT unnest(v_all) AS r EXCEPT SELECT unnest(v_parent_grant.types)) x;
             IF v_revoke IS NOT NULL THEN
-                EXECUTE 'REVOKE '||array_to_string(v_revoke, ',')||' ON '||v_child_table||' FROM '||v_parent_grant.grantee||' CASCADE';
+                EXECUTE format('REVOKE %s ON %I.%I FROM %I CASCADE'
+                            , v_revoke
+                            , v_row.partition_schemaname
+                            , v_row.partition_tablename
+                            , v_parent_grant.grantee);
             END IF;
         END IF;
 
@@ -90,18 +105,28 @@ LOOP
     
     -- Revoke all privileges from roles that have none on the parent
     IF v_grantees IS NOT NULL THEN
-        SELECT array_agg(r) INTO v_revoke FROM (
-            SELECT DISTINCT grantee::text AS r FROM information_schema.table_privileges WHERE table_schema ||'.'|| table_name = v_child_table
-            EXCEPT
-            SELECT unnest(v_grantees)) x;
-        IF v_revoke IS NOT NULL THEN
-            EXECUTE 'REVOKE ALL ON '||v_child_table||' FROM '||array_to_string(v_revoke, ',');
-        END IF;
+        FOR v_row_revoke IN 
+            SELECT role FROM (
+                SELECT DISTINCT grantee::text AS role FROM information_schema.table_privileges WHERE table_schema = v_row.partition_schemaname AND table_name = v_row.partition_tablename
+                EXCEPT
+                SELECT unnest(v_grantees)) x
+        LOOP
+            IF v_row_revoke.role IS NOT NULL THEN
+                EXECUTE format('REVOKE ALL ON %I.%I FROM %I'
+                            , v_row.partition_schemaname
+                            , v_row.partition_tablename
+                            , v_row_revoke.role);
+            END IF;
+        END LOOP;
+
     END IF;
 
-    SELECT tableowner INTO v_child_owner FROM pg_tables WHERE schemaname ||'.'|| tablename = v_child_table;
+    SELECT tableowner INTO v_child_owner FROM pg_tables WHERE schemaname = v_row.partition_schemaname AND tablename = v_row.partition_tablename;
     IF v_parent_owner <> v_child_owner THEN
-        EXECUTE 'ALTER TABLE '||v_child_table||' OWNER TO '||v_parent_owner;
+        EXECUTE format('ALTER TABLE %I.%I OWNER TO %I'
+                    , v_row.partition_schemaname
+                    , v_row.partition_tablename
+                    , v_parent_owner);
     END IF;
 
 END LOOP;
@@ -112,7 +137,7 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 EXCEPTION

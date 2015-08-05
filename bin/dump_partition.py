@@ -2,10 +2,10 @@
 
 import argparse, hashlib, os, os.path, psycopg2, subprocess, sys
 
-partman_version = "1.8.0"
+partman_version = "2.0.0"
 
 parser = argparse.ArgumentParser(description="This script will dump out and then drop all tables contained in the designated schema using pg_dump.  Each table will be in its own separate file along with a SHA-512 hash of the dump file. Tables are not dropped from the database if pg_dump does not return successfully. All dump_* option defaults are the same as they would be for pg_dump if they are not given.", epilog="NOTE: The connection options for psyocpg and pg_dump were separated out due to distinct differences in their requirements depending on your database connection configuration.")
-parser.add_argument('-n','--schema', help="The schema that contains the tables that will be dumped. (Required)")
+parser.add_argument('-n','--schema', help="(Required) The schema that contains the tables that will be dumped.")
 parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Role used must be able to select pg_catalog.pg_tables in the relevant database and drop all tables in the given schema.  Defaults to "host=" (local socket). Note this is distinct from the parameters sent to pg_dump.""")
 parser.add_argument('-o','--output', default=os.getcwd(), help="Path to dump file output location. Default is where the script is run from.")
 parser.add_argument('-d','--dump_database', help="Used for pg_dump, same as its --dbname (-d) option or final database name parameter.")
@@ -49,7 +49,7 @@ def create_hash(table_name):
 def drop_table(table_name):
     conn = psycopg2.connect(args.connection)
     cur = conn.cursor()
-    sql = "DROP TABLE IF EXISTS " + args.schema + "." + table_name;
+    sql = "DROP TABLE IF EXISTS \"" + args.schema + "\".\"" + table_name + "\"";
     print(sql)
     cur.execute(sql)
     conn.commit()
@@ -85,7 +85,7 @@ def perform_dump(result):
         processcmd.append("--format=plain")
     else:
         processcmd.append("--format=custom")
-    processcmd.append("--table=" + args.schema + "." + table_name)
+    processcmd.append("--table=\"" + args.schema + "\".\"" + table_name + "\"")
     output_file = os.path.join(args.output, args.schema + "." + table_name + ".pgdump")
     processcmd.append("--file=" + output_file)
     if args.dump_database != None:

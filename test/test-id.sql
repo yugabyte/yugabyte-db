@@ -146,7 +146,6 @@ SELECT table_owner_is ('partman_test', 'id_taptest_table_p50', 'partman_owner', 
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p60', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p60');
 SELECT table_owner_is ('partman_test', 'id_taptest_table_p70', 'partman_owner', 'Check that ownership change worked for id_taptest_table_p70');
 
--- TODO make these work
 -- Max value is 38 above
 SELECT drop_partition_id('partman_test.id_taptest_table', '20', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 doesn''t exists anymore');

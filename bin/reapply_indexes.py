@@ -3,19 +3,20 @@
 import argparse, psycopg2, re, sys, time
 from multiprocessing import Process
 
-partman_version = "1.8.0"
+partman_version = "2.0.0"
 
 parser = argparse.ArgumentParser(description="Script for reapplying indexes on child tables in a partition set to match the parent table. Any indexes that currently exist on the children and match the definition on the parent will be left as is. There is an option to recreate matching as well indexes if desired, as well as the primary key. Indexes that do not exist on the parent will be dropped. Commits are done after each index is dropped/created to help prevent long running transactions & locks.", epilog="NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.")
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
 parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('--concurrent', action="store_true", help="Create indexes with the CONCURRENTLY option. Note this does not work on primary keys when --primary is given.")
-parser.add_argument('--drop_concurrent', action="store_true", help="If an index is dropped (because it doesn'texist on the parent or because you set them to be recreated), do it concurrently (PostgreSQL >= v9.2 only). Note this does not work on primary keys when --primary is given.")
+parser.add_argument('--drop_concurrent', action="store_true", help="If an index is dropped (because it doesn't exist on the parent or because you set them to be recreated), do it concurrently (PostgreSQL >= v9.2 only). Note this does not work on primary keys when --primary is given.")
 parser.add_argument('-R', '--recreate_all', action="store_true", help="By default, if an index exists on a child and matches the parent, it will not be touched. Setting this option will force all child indexes to be dropped & recreated. Will obey the --concurrent & --drop_concurrent options if given. Will not recreate primary keys unless --primary option is also given.")
 parser.add_argument('--primary', action="store_true", help="By default the primary key is not recreated. Set this option if that is needed. Note this will cause an exclusive lock on the child table.")
 parser.add_argument('-j', '--jobs', type=int, default=0, help="Use the python multiprocessing library to recreate indexes in parallel. Value for -j is number of simultaneous jobs to run. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.")
 parser.add_argument('-w', '--wait', type=float, default=0, help="Wait the given number of seconds after indexes have finished being created on a table before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.")
 parser.add_argument('--dryrun', action="store_true", help="Show what the script will do without actually running it against the database. Highly recommend reviewing this before running. Note that if multiple indexes would get the same default name, the duplicated name will show in the dryrun (because the index doesn't exist in the catalog to check for it). When the real thing is run, the duplicated names will be handled as stated in NOTE at the end of --help.")
 parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all output.")
+parser.add_argument('--nonpartman', action="store_true", help="If the partition set you are running this on is not managed by pg_partman, set this flag otherwise this script may not work. Note that the pg_partman extension is still required to be installed for this to work since it uses certain internal functions. When this is set the order that the tables are reindexed is alphabetical instead of logical.")
 parser.add_argument('--version', action="store_true", help="Print out the minimum version of pg_partman this script is meant to work with. The version of pg_partman installed may be greater than this.")
 args = parser.parse_args()
 
@@ -37,18 +38,15 @@ def create_conn():
     return conn
 
 
-def create_index(conn, partman_schema, child_table, child_index_list, parent_index_list):
+def create_index(conn, partman_schema, child_schemaname, child_tablename, child_index_list, parent_index_list):
     cur = conn.cursor()
     sql = """SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"""
     cur.execute(sql, [args.parent])
     result = cur.fetchone()
     parent_schemaname = result[0]
     parent_tablename = result[1]
-    cur.execute(sql, [child_table])
-    result = cur.fetchone()
-    child_tablename = result[1]
     cur.close()
-    parent_match_regex = re.compile(r" ON %s| ON %s" % (args.parent, parent_tablename))
+    parent_match_regex = re.compile(r" ON \"?%s\"?\.\"?%s\"? | ON \"?%s\"" % (parent_schemaname, parent_tablename, parent_tablename))
     index_match_regex = re.compile(r'(?P<index_def>USING .*)')
     for i in parent_index_list:
         # if there is already a child index that matches the parent index don't try to create it unless --recreate_all set
@@ -71,7 +69,8 @@ def create_index(conn, partman_schema, child_table, child_index_list, parent_ind
             cur.execute(sql)
             index_name = cur.fetchone()[0]
             cur.close()
-            statement = "ALTER TABLE " + child_table + " ADD CONSTRAINT " + index_name + " PRIMARY KEY (" + i[2] + ")"
+            quoted_column_names = "\"" + "\",\"".join(i[2].split(",")) + "\""
+            statement = "ALTER TABLE \"" + child_schemaname + "\".\"" + child_tablename + "\" ADD CONSTRAINT \"" + index_name + "\" PRIMARY KEY (" + quoted_column_names + ")"
         elif i[1] == False:
             index_name = child_tablename
             if i[2] != None:
@@ -104,7 +103,7 @@ def create_index(conn, partman_schema, child_table, child_index_list, parent_ind
             statement = statement.replace(i[3], index_name)  # replace parent index name with child index name
             if args.concurrent:
                 statement = statement.replace("CREATE INDEX ", "CREATE INDEX CONCURRENTLY ")
-            statement = parent_match_regex.sub(" ON " + child_table, statement)  
+            statement = parent_match_regex.sub(" ON \"" + child_schemaname + "\".\"" + child_tablename + "\" ", statement)  
         cur = conn.cursor()
         if statement != None:
             if not args.quiet:
@@ -118,21 +117,21 @@ def close_conn(conn):
     conn.close()
 
 
-def drop_index(conn, child_table, child_index_list, parent_index_list):
+def drop_index(conn, child_schemaname, child_tablename, child_index_list, parent_index_list):
     cur = conn.cursor() 
     drop_list = []
     for d in child_index_list:
         if d[1] == True and args.primary:
-            statement = "ALTER TABLE " + child_table + " DROP CONSTRAINT " + d[3]
+            statement = "ALTER TABLE \"" + child_schemaname + "\".\"" + child_tablename + "\" DROP CONSTRAINT \"" + d[4] + "\""
             if not args.quiet:
                 print(cur.mogrify(statement))
             if not args.dryrun: 
                 cur.execute(statement)
         elif d[1] == False:
             if args.drop_concurrent:
-                statement = "DROP INDEX CONCURRENTLY " + d[2]
+                statement = "DROP INDEX CONCURRENTLY \"" + d[2] + "\".\"" + d[3] + "\""
             else:
-                statement = "DROP INDEX " + d[2]
+                statement = "DROP INDEX \"" + d[2] + "\".\"" + d[3] + "\""
 
             if args.recreate_all != True:
                 pat = re.compile(r'(?P<index_def>USING .*)')
@@ -159,25 +158,47 @@ def drop_index(conn, child_table, child_index_list, parent_index_list):
 
 def get_children(conn, partman_schema):
     cur = conn.cursor()
-    sql = "SELECT " + partman_schema + ".show_partitions(%s, %s)"
-    cur.execute(sql, [args.parent, 'ASC'])
+    if args.nonpartman == False:
+        sql = "SELECT partition_schemaname, partition_tablename FROM " + partman_schema + ".show_partitions(%s)"
+    else:
+        sql = """
+            WITH parent_info AS (
+                SELECT c1.oid FROM pg_catalog.pg_class c1
+                JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+                WHERE n1.nspname ||'.'|| c1.relname = %s
+            )
+            SELECT n.nspname::text, c.relname::text AS partition_name FROM
+            pg_catalog.pg_inherits h
+            JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
+            JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+            JOIN parent_info pi ON h.inhparent = pi.oid
+            ORDER BY 1,2"""
+    cur.execute(sql, [args.parent])
     child_list = cur.fetchall()
     cur.close()
     return child_list
 
 
-def get_child_index_list(conn, child_table):
+def get_child_index_list(conn, child_schemaname, child_tablename):
     cur = conn.cursor() 
-    sql = """SELECT pg_get_indexdef(indexrelid) AS statement
+    sql = """
+            WITH child_info AS (
+                SELECT c1.oid FROM pg_catalog.pg_class c1
+                JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+                WHERE n1.nspname = %s
+                AND c1.relname = %s
+            )
+            SELECT pg_get_indexdef(indexrelid) AS statement
             , i.indisprimary
-            , n.nspname||'.'||c.relname
+            , n.nspname AS index_schemaname
+            , c.relname AS index_name
             , t.conname
             FROM pg_catalog.pg_index i 
             JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
             JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
             LEFT JOIN pg_catalog.pg_constraint t ON c.oid = t.conindid
-            WHERE i.indrelid = %s::regclass"""
-    cur.execute(sql, [child_table])
+            JOIN child_info ci ON i.indrelid = ci.oid """
+    cur.execute(sql, [child_schemaname, child_tablename])
     child_index_list = cur.fetchall()
     cur.close()
     return child_index_list
@@ -185,7 +206,13 @@ def get_child_index_list(conn, child_table):
 
 def get_parent_index_list(conn):
     cur = conn.cursor()
-    sql = """SELECT 
+    sql = """
+            WITH parent_info AS (
+                SELECT c1.oid FROM pg_catalog.pg_class c1
+                JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+                WHERE n1.nspname||'.'||c1.relname = %s
+            )
+            SELECT 
             pg_get_indexdef(indexrelid) AS statement
             , i.indisprimary
             , ( SELECT array_to_string(array_agg( a.attname ORDER by x.r ), ',') 
@@ -194,11 +221,11 @@ def get_parent_index_list(conn):
                         FROM unnest(i.indkey) k ) as x 
                 ON a.attnum = x.k AND a.attrelid = i.indrelid
             ) AS indkey_names
-            , c.relname
+            , c.relname AS index_name
             FROM pg_catalog.pg_index i
             JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
-            WHERE i.indrelid = %s::regclass
-                AND i.indisvalid
+            JOIN parent_info pi ON i.indrelid = pi.oid
+            WHERE i.indisvalid
             ORDER BY 1"""
     cur.execute(sql, [args.parent])
     parent_index_list = cur.fetchall()
@@ -209,9 +236,22 @@ def get_partman_schema(conn):
     cur = conn.cursor()
     sql = "SELECT nspname FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_partman' AND e.extnamespace = n.oid"
     cur.execute(sql)
-    partman_schema = cur.fetchone()[0]
+    partman_schema = "\"" + cur.fetchone()[0] + "\""
     cur.close()
     return partman_schema
+
+
+def get_quoted_parent_table(conn):
+    cur = conn.cursor()
+    sql = "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"
+    cur.execute(sql, [args.parent])
+    result = cur.fetchone()
+    if result == None:
+        print("Given parent table ("+args.parent+") does not exist")
+        sys.exit(2)
+    quoted_parent_table = "\"" + result[0] + "\".\"" + result[1] + "\""
+    cur.close()
+    return quoted_parent_table
 
 
 def print_version():
@@ -219,15 +259,15 @@ def print_version():
     sys.exit()
 
 
-def reindex_proc(child_table, parent_index_list, partman_schema):
+def reindex_proc(child_schemaname, child_tablename, parent_index_list, partman_schema):
     conn = create_conn()
     conn.autocommit = True # must be turned on to support CONCURRENTLY
     cur = conn.cursor()
-    child_index_list = get_child_index_list(conn, child_table)
-    drop_index(conn, child_table, child_index_list, parent_index_list)
-    create_index(conn, partman_schema, child_table, child_index_list, parent_index_list)
+    child_index_list = get_child_index_list(conn, child_schemaname, child_tablename)
+    drop_index(conn, child_schemaname, child_tablename, child_index_list, parent_index_list)
+    create_index(conn, partman_schema, child_schemaname, child_tablename, child_index_list, parent_index_list)
 
-    sql = "ANALYZE " + child_table
+    sql = "ANALYZE \"" + child_schemaname + "\".\"" + child_tablename + "\""
     if not args.quiet:
         print(cur.mogrify(sql))
     if not args.dryrun:
@@ -252,14 +292,16 @@ if __name__ == "__main__":
     conn = create_conn()
     cur = conn.cursor()
     partman_schema = get_partman_schema(conn)
-    check_version(conn, partman_schema)
+    # Script now states it only works for pg_partman 2.x and hence postgres 9.4+. Leaving this here in case future version checks are needed
+    # check_version(conn, partman_schema)
+    quoted_parent_table = get_quoted_parent_table(conn)
     parent_index_list = get_parent_index_list(conn)
     child_list = get_children(conn, partman_schema)
     close_conn(conn)
 
     if args.jobs == 0:
          for c in child_list:
-            reindex_proc(c[0], parent_index_list, partman_schema)
+            reindex_proc(c[0], c[1], parent_index_list, partman_schema)
             if args.wait > 0:
                 time.sleep(args.wait)
     else:
@@ -272,7 +314,7 @@ if __name__ == "__main__":
             processlist = []
             for num in range(0, args.jobs):
                 c = child_list.pop()
-                p = Process(target=reindex_proc, args=(c[0],parent_index_list,partman_schema))
+                p = Process(target=reindex_proc, args=(c[0], c[1],parent_index_list,partman_schema))
                 p.start()
                 processlist.append(p)
             for j in processlist:

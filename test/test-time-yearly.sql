@@ -28,6 +28,7 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.time_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.time_taptest_table TO partman_revoke;
 
 SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'yearly');
+
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||' exists');
@@ -375,19 +376,19 @@ UPDATE part_config SET retention = '2 years'::interval WHERE parent_table = 'par
 SELECT drop_partition_time('partman_test.time_taptest_table', p_retention_schema := 'partman_retention_test');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY')||' does not exist');
-/* This test may fail around the end of the year. If so, swap to the commented out one below */
+-- **** This test may fail around the end of the year. If so, swap to the commented out one below 
 SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY')||' got moved to new schema. This test may fail around the year boundary. See comment in tests for different test to try.');
 
-/* This test may fail around the beginning of the year. If so, swap to the commented out one above */
+-- **** This test may fail around the beginning of the year. If so, swap to the commented out one above 
 --SELECT has_table('partman_retention_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 
 --    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' got moved to new schema. This test may fail around the year boundary. See comment in tests for different test to try.');
 
 SELECT undo_partition_time('partman_test.time_taptest_table', 20, p_keep_table := false);
-/* This test may fail around the end of the year. If so, swap to the commented out one below */
+-- **** This test may fail around the end of the year. If so, swap to the commented out one below 
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[129], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
 
-/* This test may fail around the beginning of the year. If so, swap to the commented out one above */
+-- **** This test may fail around the beginning of the year. If so, swap to the commented out one above 
 --SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[108], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' does not exist');

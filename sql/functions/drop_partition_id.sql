@@ -12,7 +12,6 @@ ex_detail                   text;
 ex_hint                     text;
 ex_message                  text;
 v_adv_lock                  boolean;
-v_child_table               text;
 v_control                   text;
 v_drop_count                int := 0;
 v_id_position               int;
@@ -22,12 +21,15 @@ v_jobmon                    boolean;
 v_jobmon_schema             text;
 v_max                       bigint;
 v_old_search_path           text;
+v_parent_schema             text;
+v_parent_tablename          text;
 v_partition_interval        bigint;
 v_partition_id              bigint;
 v_retention                 bigint;
 v_retention_keep_index      boolean;
 v_retention_keep_table      boolean;
 v_retention_schema          text;
+v_row                       record;
 v_row_max_id                record;
 v_step_id                   bigint;
 
@@ -94,7 +96,7 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
@@ -108,62 +110,79 @@ IF p_retention_schema IS NOT NULL THEN
     v_retention_schema = p_retention_schema;
 END IF;
 
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+
 -- Loop through child tables starting from highest to get current max value in partition set
 -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
 FOR v_row_max_id IN
-    SELECT show_partitions FROM @extschema@.show_partitions(p_parent_table, 'DESC')
+    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'DESC')
 LOOP
-        EXECUTE 'SELECT max('||v_control||') FROM '||v_row_max_id.show_partitions INTO v_max;
+        EXECUTE format('SELECT max(%I) FROM %I.%I', v_control, v_row_max_id.partition_schemaname, v_row_max_id.partition_tablename) INTO v_max;
         IF v_max IS NOT NULL THEN
             EXIT;
         END IF;
 END LOOP;
 
 -- Loop through child tables of the given parent
-FOR v_child_table IN 
-    SELECT n.nspname||'.'||c.relname FROM pg_inherits i join pg_class c ON i.inhrelid = c.oid join pg_namespace n ON c.relnamespace = n.oid WHERE i.inhparent::regclass = p_parent_table::regclass ORDER BY i.inhrelid ASC
+FOR v_row IN 
+    SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'ASC')
 LOOP
-    v_id_position := (length(v_child_table) - position('p_' in reverse(v_child_table))) + 2;
-    v_partition_id := substring(v_child_table from v_id_position)::bigint;
+    v_id_position := (length(v_row.partition_tablename) - position('p_' in reverse(v_row.partition_tablename))) + 2;
+    v_partition_id := substring(v_row.partition_tablename from v_id_position)::bigint;
 
     -- Add one interval since partition names contain the start of the constraint period
     IF v_retention <= (v_max - (v_partition_id + v_partition_interval)) THEN
         -- Only create a jobmon entry if there's actual retention work done
         IF v_jobmon_schema IS NOT NULL AND v_job_id IS NULL THEN
-            v_job_id := add_job('PARTMAN DROP ID PARTITION: '|| p_parent_table);
+            v_job_id := add_job(format('PARTMAN DROP ID PARTITION: %s', p_parent_table));
         END IF;
 
         IF v_jobmon_schema IS NOT NULL THEN
-            v_step_id := add_step(v_job_id, 'Uninherit table '||v_child_table||' from '||p_parent_table);
+            v_step_id := add_step(v_job_id, format('Uninherit table %s.%s from %s', v_row.partition_schemaname, v_row.partition_tablename, p_parent_table));
         END IF;
-        EXECUTE 'ALTER TABLE '||v_child_table||' NO INHERIT ' || p_parent_table;
+        EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I'
+            , v_row.partition_schemaname
+            , v_row.partition_tablename
+            , v_parent_schema
+            , v_parent_tablename);
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'OK', 'Done');
         END IF;
         IF v_retention_schema IS NULL THEN
             IF v_retention_keep_table = false THEN
                 IF v_jobmon_schema IS NOT NULL THEN
-                    v_step_id := add_step(v_job_id, 'Drop table '||v_child_table);
+                    v_step_id := add_step(v_job_id, format('Drop table %s.%s', v_row.partition_schemaname, v_row.partition_tablename));
                 END IF;
-                EXECUTE 'DROP TABLE '||v_child_table||' CASCADE';
+                EXECUTE format('DROP TABLE %I.%I CASCADE', v_row.partition_schemaname, v_row.partition_tablename);
                 IF v_jobmon_schema IS NOT NULL THEN
                     PERFORM update_step(v_step_id, 'OK', 'Done');
                 END IF;
             ELSIF v_retention_keep_index = false THEN
                 FOR v_index IN 
-                    SELECT i.indexrelid::regclass AS name
-                    , c.conname
+                     WITH child_info AS (
+                        SELECT c1.oid
+                        FROM pg_catalog.pg_class c1
+                        JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
+                        WHERE c1.relname = v_row.partition_tablename
+                        AND n1.nspname = v_row.partition_schema
+                    )
+                    SELECT c.relname as name
+                        , con.conname
                     FROM pg_catalog.pg_index i
-                    LEFT JOIN pg_catalog.pg_constraint c ON i.indexrelid = c.conindid 
-                    WHERE i.indrelid = v_child_table::regclass
+                    JOIN pg_catalog.pg_class c ON i.indexrelid = c.oid
+                    LEFT JOIN pg_catalog.pg_constraint con ON i.indexrelid = con.conindid
+                    JOIN child_info ON i.indrelid = child_info.oid
                 LOOP
                     IF v_jobmon_schema IS NOT NULL THEN
-                        v_step_id := add_step(v_job_id, 'Drop index '||v_index.name||' from '||v_child_table);
+                        v_step_id := add_step(v_job_id, format('Drop index %s from %s.%s'
+                            , v_index.name
+                            , v_row.partition_schemaname
+                            , v_row.partition_tablename));
                     END IF;
                     IF v_index.conname IS NOT NULL THEN
-                        EXECUTE 'ALTER TABLE '||v_child_table||' DROP CONSTRAINT '||v_index.conname;
+                        EXECUTE format('ALTER TABLE %I.%I DROP CONSTRAINT %I', v_row.partition_schemaname, v_row.partition_tablename, v_index.conname);
                     ELSE
-                        EXECUTE 'DROP INDEX '||v_index.name;
+                        EXECUTE format('DROP INDEX %I.%I', v_row.partition_schemaname, v_index.name);
                     END IF;
                     IF v_jobmon_schema IS NOT NULL THEN
                         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -172,10 +191,16 @@ LOOP
             END IF;
         ELSE -- Move to new schema
             IF v_jobmon_schema IS NOT NULL THEN
-                v_step_id := add_step(v_job_id, 'Moving table '||v_child_table||' to schema '||v_retention_schema);
+                v_step_id := add_step(v_job_id, format('Moving table %s.%s to schema %s'
+                                                        , v_row.partition_schemaname
+                                                        , v_row.partition_tablename
+                                                        , v_retention_schema));
             END IF;
 
-            EXECUTE 'ALTER TABLE '||v_child_table||' SET SCHEMA '||v_retention_schema; 
+            EXECUTE format('ALTER TABLE %I.%I SET SCHEMA %I'
+                    , v_row.partition_schemaname
+                    , v_row.partition_tablename
+                    , v_retention_schema);
 
             IF v_jobmon_schema IS NOT NULL THEN
                 PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -183,7 +208,7 @@ LOOP
         END IF; -- End retention schema if
 
         -- If child table is a subpartition, remove it from part_config & part_config_sub (should cascade due to FK)
-        DELETE FROM @extschema@.part_config WHERE parent_table = v_child_table;
+        DELETE FROM @extschema@.part_config WHERE parent_table = v_row.partition_schemaname ||'.'||v_row.partition_tablename;
 
         v_drop_count := v_drop_count + 1;
     END IF; -- End retention check IF
@@ -193,10 +218,10 @@ END LOOP; -- End child table loop
 IF v_jobmon_schema IS NOT NULL THEN
     IF v_job_id IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Finished partition drop maintenance');
-        PERFORM update_step(v_step_id, 'OK', v_drop_count||' partitions dropped.');
+        PERFORM update_step(v_step_id, 'OK', format('%s partitions dropped.', v_drop_count));
         PERFORM close_job(v_job_id);
     END IF;
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 RETURN v_drop_count;

@@ -1,3 +1,27 @@
+2.1.0
+-- Object names (tables, roles, etc) with special characters & mixed case are now supported.
+-- Fixed bug in apply_foreign_keys() that was causing it to fail if there were multiple FKs to the same foreign column. Also fixed a bug that allowed the child name parameter to not be passed and didn't handle it if it wasn't. Thanks to Andrew Dunstan for the bug fix and tremendously simplified code. Backpatched to 1.8.8. (Github Issue #64).
+-- Ensure trigger function is recreated if a partition is dropped as part of retention. This makes sure the tables explicitily listed actually exist. Backpatched to 1.8.8 (Github Issue #62).
+-- Fixed bug in check_unique_constraint.py to properly inspect all data from an entire inheritance tree. If you were using this before to check for duplicates across children in an inheritance set, it is highly recommended you run it again as it may not have caught all dupes.
+-- New function 'show_partition_name()' can tell you the child table name that a given value would exist in given a parent table that pg_partman manages. The name will always be returned whether the child table exists or not. Another boolean column is returned that tells you whether the child table actually does exist. It also returns the raw value (timestamp or integer) for the suffix of the returned partition name (used internally, but could be useful elsewhere too). Thanks to Corey Huinker for idea & assistance.
+-- show_partitions() function now returns the schema and table name as two separate fields.
+-- New column in part_config to denote when a sub-partition set has had its final child partition made (sub_partition_set_full). Allows run_maintenance() to skip over it and run more efficiently when managing many sub-partition sets.
+-- Updated all python scripts to handle mixed-case & special characters.
+-- Bumped all minimum pg_partman version requirements for python scripts to 2.0.0. May still work on the older versions, but not officially supported or guaranteed anymore.
+-- New --nonpartman option to the reapply_indexes.py and reapply_foreign_keys.py scripts to allow them to work better with partition sets not managed by pg_partman and to allow those that are to work more efficiently.
+-- Greatly reduced number of individual pg_jobmon jobs generated. Steps such as creating partition functions, applying foreign keys, and applying additional constraints have been combined into the job log entries for creating partitions or general maintenance when applicable.
+-- Internal function check_name_length() no longer takes a schemaname argument, nor returns the schema as part of the modified object name.
+-- Simplified internal code for handling time suffix name generation
+-- Much more extensive pgTAP testing suites to handle more edge cases
+
+-- NOTE: If you are running version 1.8.7 and need to update to 1.8.8 do the following steps:
+    -- Download the latest version as normal.
+    -- Copy the file "updates/pg_partman--1.8.7--1.8.8.sql" to the folder where your extension SQL files are kept (depends on your OS or where you manually installed postgres).
+        -- If you're running from less than 1.8.7, copy whichever prior update files you need to get from your version to 1.8.8. They are all kept in the updates folder.
+    -- While logged into postgres run: ALTER EXTENSION pg_partman UPDATE TO '1.8.8';
+    -- The version number at the end of the above command is important. Otherwise it may try and update you to the latest 2.x version if you copied more update files then necessary or ran "make install".
+
+
 2.0.0
 -- IMPORTANT NOTE: This version, and all future versions of pg_partman >= 2.0.0, are only compatible with PostgreSQL 9.4 and greater.
     -- I do not have any current plans for development on the v1.x.x branch anymore. Reported bugs will be fixed, but all development will only be on the 2.x.x from here on out. Bug fixes will also only be done while versions of PostgreSQL older than 9.4 are themselves officially supported. If a bug only exists in an unsupported version of PostgreSQL, it WILL NOT be fixed. And once PostgreSQL 9.3 goes EOL, the 1.8 series will be deprecated entirely.

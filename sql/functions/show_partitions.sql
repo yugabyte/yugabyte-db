@@ -1,12 +1,14 @@
 /*
  * Function to list all child partitions in a set.
  */
-CREATE FUNCTION show_partitions (p_parent_table text, p_order text DEFAULT 'ASC') RETURNS SETOF text
+CREATE FUNCTION show_partitions (p_parent_table text, p_order text DEFAULT 'ASC') RETURNS TABLE (partition_schemaname text, partition_tablename text)
     LANGUAGE plpgsql STABLE SECURITY DEFINER 
     AS $$
 DECLARE
 
 v_datetime_string       text;
+v_parent_schema         text;
+v_parent_tablename      text;
 v_partition_interval    text;
 v_type                  text;
 
@@ -25,25 +27,33 @@ INTO v_type
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_parent_table;
+
 IF v_type IN ('time', 'time-custom') THEN
 
-    RETURN QUERY EXECUTE '
-    SELECT n.nspname::text ||''.''|| c.relname::text AS partition_name FROM
+    RETURN QUERY EXECUTE 
+    format('SELECT n.nspname::text AS partition_schemaname, c.relname::text AS partition_name FROM
     pg_catalog.pg_inherits h
     JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-    WHERE h.inhparent = '||quote_literal(p_parent_table)||'::regclass
-    ORDER BY to_timestamp(substring(c.relname from ((length(c.relname) - position(''p_'' in reverse(c.relname))) + 2) ), '||quote_literal(v_datetime_string)||') ' || p_order;
+    WHERE h.inhparent = ''%I.%I''::regclass
+    ORDER BY to_timestamp(substring(c.relname from ((length(c.relname) - position(''p_'' in reverse(c.relname))) + 2) ), %L) %s'
+        , v_parent_schema
+        , v_parent_tablename
+        , v_datetime_string
+        , p_order);
 
 ELSIF v_type = 'id' THEN
-
-    RETURN QUERY EXECUTE '
-    SELECT n.nspname::text ||''.''|| c.relname::text AS partition_name FROM
+    RETURN QUERY EXECUTE 
+    format('SELECT n.nspname::text AS partition_schemaname, c.relname::text AS partition_name FROM
     pg_catalog.pg_inherits h
     JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
     JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-    WHERE h.inhparent = '||quote_literal(p_parent_table)||'::regclass
-    ORDER BY substring(c.relname from ((length(c.relname) - position(''p_'' in reverse(c.relname))) + 2) )::bigint ' || p_order;
+    WHERE h.inhparent = ''%I.%I''::regclass
+    ORDER BY substring(c.relname from ((length(c.relname) - position(''p_'' in reverse(c.relname))) + 2) )::bigint %s'
+        , v_parent_schema
+        , v_parent_tablename
+        , p_order);
 
 END IF;
 

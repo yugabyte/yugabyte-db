@@ -16,7 +16,7 @@ v_lock_obtained             boolean := FALSE;
 v_min_partition_timestamp   timestamp;
 v_parent_schema             text;
 v_parent_tablename          text;
-v_partition_interval             interval;
+v_partition_interval        interval;
 v_partition_suffix          text;
 v_partition_timestamp       timestamp[];
 v_quarter                   text;
@@ -49,14 +49,15 @@ IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
 END IF;
 
-SELECT show_partitions INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
+SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 FOR i IN 1..p_batch_count LOOP
 
     IF p_order = 'ASC' THEN
-        EXECUTE 'SELECT min('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
+        EXECUTE format('SELECT min(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
     ELSIF p_order = 'DESC' THEN
-        EXECUTE 'SELECT max('||v_control||') FROM ONLY '||p_parent_table INTO v_start_control;
+        EXECUTE format('SELECT max(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
     ELSE
         RAISE EXCEPTION 'Invalid value for p_order. Must be ASC or DESC';
     END IF;
@@ -131,10 +132,13 @@ FOR i IN 1..p_batch_count LOOP
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                v_sql := 'SELECT * FROM ONLY ' || p_parent_table ||
-                ' WHERE '||v_control||' >= '||quote_literal(v_min_partition_timestamp)||
-                ' AND '||v_control||' < '||quote_literal(v_max_partition_timestamp)
-                ||' FOR UPDATE NOWAIT';
+                v_sql := format('SELECT * FROM ONLY %I.%I WHERE %I >= %L AND %I < %L FOR UPDATE NOWAIT'
+                                    , v_parent_schema
+                                    , v_parent_tablename
+                                    , v_control
+                                    , v_min_partition_timestamp
+                                    , v_control
+                                    , v_max_partition_timestamp);
                 EXECUTE v_sql;
                 v_lock_obtained := TRUE;
             EXCEPTION
@@ -151,37 +155,21 @@ FOR i IN 1..p_batch_count LOOP
 
     PERFORM @extschema@.create_partition_time(p_parent_table, v_partition_timestamp);
     -- This suffix generation code is in create_partition_time() as well
-    v_partition_suffix := to_char(v_min_partition_timestamp, 'YYYY');
-    IF v_partition_interval < '1 year' AND v_partition_interval <> '1 week' THEN 
-        v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_min_partition_timestamp, 'MM');
-        IF v_partition_interval < '1 month' AND v_partition_interval <> '1 week' THEN 
-            v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_min_partition_timestamp, 'DD');
-            IF v_partition_interval < '1 day' THEN
-                v_partition_suffix := v_partition_suffix || '_' || to_char(v_min_partition_timestamp, 'HH24MI');
-                IF v_partition_interval < '1 minute' THEN
-                    v_partition_suffix := v_partition_suffix || to_char(v_min_partition_timestamp, 'SS');
-                END IF; -- end < minute IF
-            END IF; -- end < day IF      
-        END IF; -- end < month IF
-    END IF; -- end < year IF
-    IF v_partition_interval = '1 week' THEN
-        v_partition_suffix := to_char(v_min_partition_timestamp, 'IYYY') || 'w' || to_char(v_min_partition_timestamp, 'IW');
-    END IF;
-    -- "Q" is ignored in to_timestamp, so handle special case
-    IF v_partition_interval = '3 months' AND (v_type = 'time') THEN
-        v_year := to_char(v_min_partition_timestamp, 'YYYY');
-        v_quarter := to_char(v_min_partition_timestamp, 'Q');
-        v_partition_suffix := v_year || 'q' || v_quarter;
-    END IF;
+    v_partition_suffix := to_char(v_min_partition_timestamp, v_datetime_string);
+    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
 
-    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_parent_table;
-    v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_partition_suffix, TRUE);
-
-    EXECUTE 'WITH partition_data AS (
-            DELETE FROM ONLY '||p_parent_table||' WHERE '||v_control||' >= '||quote_literal(v_min_partition_timestamp)||
-                ' AND '||v_control||' < '||quote_literal(v_max_partition_timestamp)||' RETURNING *)
-            INSERT INTO '||v_current_partition_name||' SELECT * FROM partition_data';
-
+    v_sql := format('WITH partition_data AS (
+                        DELETE FROM ONLY %I.%I WHERE %I >= %L AND %I < %L RETURNING *)
+                     INSERT INTO %I.%I SELECT * FROM partition_data'
+                        , v_parent_schema
+                        , v_parent_tablename
+                        , v_control
+                        , v_min_partition_timestamp
+                        , v_control
+                        , v_max_partition_timestamp
+                        , v_parent_schema
+                        , v_current_partition_name);
+    EXECUTE v_sql;
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;
     IF v_rowcount = 0 THEN
@@ -196,5 +184,4 @@ RETURN v_total_rows;
 
 END
 $$;
-
 

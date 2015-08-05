@@ -14,6 +14,8 @@ ex_message                      text;
 v_all                           text[] := ARRAY['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
 v_analyze                       boolean := FALSE;
 v_control                       text;
+v_datetime_string               text;
+v_exists                        text;
 v_grantees                      text[];
 v_hasoids                       boolean;
 v_inherit_fk                    boolean;
@@ -33,14 +35,13 @@ v_partition_interval            interval;
 v_partition_timestamp_end       timestamp;
 v_partition_timestamp_start     timestamp;
 v_quarter                       text;
-v_revoke                        text[];
+v_revoke                        text;
 v_row                           record;
 v_sql                           text;
 v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_sub_timestamp_max             timestamp;
 v_sub_timestamp_min             timestamp;
-v_tablename                     text;
 v_trunc_value                   text;
 v_time                          timestamp;
 v_type                          text;
@@ -60,6 +61,7 @@ INTO v_type
     , v_partition_interval
     , v_inherit_fk
     , v_jobmon
+    , v_datetime_string
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table
 AND partition_type = 'time' OR partition_type = 'time-custom';
@@ -69,20 +71,20 @@ IF NOT FOUND THEN
 END IF;
 
 IF v_jobmon THEN
-    SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
+    SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
 -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
 SELECT sub_min::timestamp, sub_max::timestamp INTO v_sub_timestamp_min, v_sub_timestamp_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'time');
 
-SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN CREATE TABLE: '||p_parent_table);
+    v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
 END IF;
 
 FOREACH v_time IN ARRAY p_partition_times LOOP    
@@ -105,34 +107,10 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     END IF;
 
     -- This suffix generation code is in partition_data_time() as well
-    v_partition_suffix := to_char(v_time, 'YYYY');
-    IF v_partition_interval < '1 year' AND v_partition_interval <> '1 week' THEN 
-        v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_time, 'MM');
-        IF v_partition_interval < '1 month' AND v_partition_interval <> '1 week' THEN 
-            v_partition_suffix := v_partition_suffix ||'_'|| to_char(v_time, 'DD');
-            IF v_partition_interval < '1 day' THEN
-                v_partition_suffix := v_partition_suffix || '_' || to_char(v_time, 'HH24MI');
-                IF v_partition_interval < '1 minute' THEN
-                    v_partition_suffix := v_partition_suffix || to_char(v_time, 'SS');
-                END IF; -- end < minute IF
-            END IF; -- end < day IF      
-        END IF; -- end < month IF
-    END IF; -- end < year IF
-
-    IF v_partition_interval = '1 week' THEN
-        v_partition_suffix := to_char(v_time, 'IYYY') || 'w' || to_char(v_time, 'IW');
-    END IF;
-
-    -- "Q" is ignored in to_timestamp, so handle special case
-    IF v_partition_interval = '3 months' AND v_type = 'time' THEN
-        v_year := to_char(v_time, 'YYYY');
-        v_quarter := to_char(v_time, 'Q');
-        v_partition_suffix := v_year || 'q' || v_quarter;
-    END IF;
-
-    v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_parent_schema, v_partition_suffix, TRUE);
-    SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
-    IF v_tablename IS NOT NULL THEN
+    v_partition_suffix := to_char(v_time, v_datetime_string);
+    v_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
+    SELECT tablename INTO v_exists FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_partition_name;
+    IF v_exists IS NOT NULL THEN
         CONTINUE;
     END IF;
 
@@ -140,32 +118,57 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     v_analyze := TRUE;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        v_step_id := add_step(v_job_id, 'Creating new partition '||v_partition_name||' with interval from '||v_partition_timestamp_start||' to '||(v_partition_timestamp_end-'1sec'::interval));
+        v_step_id := add_step(v_job_id, format('Creating new partition %s.%s with interval from %s to %s'
+                                                , v_parent_schema
+                                                , v_partition_name
+                                                , v_partition_timestamp_start
+                                                , v_partition_timestamp_end-'1sec'::interval));
     END IF;
 
-    SELECT relpersistence INTO v_unlogged FROM pg_catalog.pg_class WHERE oid::regclass = p_parent_table::regclass;
+    SELECT relpersistence INTO v_unlogged 
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE c.relname = v_parent_tablename
+    AND n.nspname = v_parent_schema;
     v_sql := 'CREATE';
     IF v_unlogged = 'u' THEN
         v_sql := v_sql || ' UNLOGGED';
     END IF;
-    v_sql := v_sql || ' TABLE '||v_partition_name||' (LIKE '||p_parent_table||' INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)';
-    SELECT relhasoids INTO v_hasoids FROM pg_catalog.pg_class WHERE oid::regclass = p_parent_table::regclass;
+    v_sql := v_sql || format(' TABLE %I.%I (LIKE %I.%I INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING INDEXES INCLUDING STORAGE INCLUDING COMMENTS)'
+                                , v_parent_schema
+                                , v_partition_name
+                                , v_parent_schema
+                                , v_parent_tablename);
+    SELECT relhasoids INTO v_hasoids 
+    FROM pg_catalog.pg_class c
+    JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+    WHERE c.relname = v_parent_tablename
+    AND n.nspname = v_parent_schema;
     IF v_hasoids IS TRUE THEN
         v_sql := v_sql || ' WITH (OIDS)';
     END IF;
     EXECUTE v_sql;
-    SELECT tablename INTO v_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_partition_name;
     IF v_parent_tablespace IS NOT NULL THEN
-        EXECUTE 'ALTER TABLE '||v_partition_name||' SET TABLESPACE '||v_parent_tablespace;
+        EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
     END IF;
-    EXECUTE 'ALTER TABLE '||v_partition_name||' ADD CONSTRAINT '||v_tablename||'_partition_check
-        CHECK ('||v_control||'>='||quote_literal(v_partition_timestamp_start)||' AND '||v_control||'<'||quote_literal(v_partition_timestamp_end)||')';
-    EXECUTE 'ALTER TABLE '||v_partition_name||' INHERIT '||p_parent_table;
+    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                    , v_parent_schema
+                    , v_partition_name
+                    , v_partition_name||'_partition_check'
+                    , v_control
+                    , v_partition_timestamp_start
+                    , v_control
+                    , v_partition_timestamp_end);
+    EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
+                    , v_parent_schema
+                    , v_partition_name
+                    , v_parent_schema
+                    , v_parent_tablename);
 
     -- If custom time, set extra config options.
     IF v_type = 'time-custom' THEN
         INSERT INTO @extschema@.custom_time_partitions (parent_table, child_table, partition_range)
-        VALUES ( p_parent_table, v_partition_name, tstzrange(v_partition_timestamp_start, v_partition_timestamp_end, '[)') );
+        VALUES ( p_parent_table, v_parent_schema||'.'||v_partition_name, tstzrange(v_partition_timestamp_start, v_partition_timestamp_end, '[)') );
     END IF;
 
     FOR v_parent_grant IN 
@@ -174,28 +177,43 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         WHERE table_schema ||'.'|| table_name = p_parent_table
         GROUP BY grantee 
     LOOP
-        EXECUTE 'GRANT '||array_to_string(v_parent_grant.types, ',')||' ON '||v_partition_name||' TO '||v_parent_grant.grantee;
-        SELECT array_agg(r) INTO v_revoke FROM (SELECT unnest(v_all) AS r EXCEPT SELECT unnest(v_parent_grant.types)) x;
+        EXECUTE format('GRANT %s ON %I.%I TO %I'
+                        , array_to_string(v_parent_grant.types, ',')
+                        , v_parent_schema
+                        , v_partition_name
+                        , v_parent_grant.grantee);
+        SELECT string_agg(r, ',') INTO v_revoke FROM (SELECT unnest(v_all) AS r EXCEPT SELECT unnest(v_parent_grant.types)) x;
         IF v_revoke IS NOT NULL THEN
-            EXECUTE 'REVOKE '||array_to_string(v_revoke, ',')||' ON '||v_partition_name||' FROM '||v_parent_grant.grantee||' CASCADE';
+            EXECUTE format('REVOKE %s ON %I.%I FROM %I CASCADE'
+                            , v_revoke
+                            , v_parent_schema
+                            , v_partition_name
+                            , v_parent_grant.grantee);
         END IF;
         v_grantees := array_append(v_grantees, v_parent_grant.grantee::text);
     END LOOP;
     -- Revoke all privileges from roles that have none on the parent
     IF v_grantees IS NOT NULL THEN
-        SELECT array_agg(r) INTO v_revoke FROM (
-            SELECT DISTINCT grantee::text AS r FROM information_schema.table_privileges WHERE table_schema ||'.'|| table_name = v_partition_name
-            EXCEPT
-            SELECT unnest(v_grantees)) x;
-        IF v_revoke IS NOT NULL THEN
-            EXECUTE 'REVOKE ALL ON '||v_partition_name||' FROM '||array_to_string(v_revoke, ',');
-        END IF;
+        FOR v_row IN 
+            SELECT role FROM (
+                SELECT DISTINCT grantee::text AS role FROM information_schema.table_privileges WHERE table_schema = v_parent_schema AND table_name = v_partition_name
+                EXCEPT
+                SELECT unnest(v_grantees)) x
+        LOOP
+            IF v_row.role IS NOT NULL THEN
+                EXECUTE format('REVOKE ALL ON %I.%I FROM %I'
+                            , v_parent_schema
+                            , v_partition_name
+                            , v_row.role);
+            END IF;
+        END LOOP;
+
     END IF;
 
-    EXECUTE 'ALTER TABLE '||v_partition_name||' OWNER TO '||v_parent_owner;
+    EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', v_parent_schema, v_partition_name, v_parent_owner);
 
     IF v_inherit_fk THEN
-        PERFORM @extschema@.apply_foreign_keys(quote_ident(v_parent_schema)||'.'||quote_ident(v_parent_tablename), v_partition_name);
+        PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
     END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
@@ -222,7 +240,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
         WHERE sub_parent = p_parent_table
     LOOP
         IF v_jobmon_schema IS NOT NULL THEN
-            v_step_id := add_step(v_job_id, 'Subpartitioning '||v_partition_name);
+            v_step_id := add_step(v_job_id, format('Subpartitioning %s.%s', v_parent_schema, v_partition_name));
         END IF;
         v_sql := format('SELECT @extschema@.create_parent(
                  p_parent_table := %L
@@ -234,7 +252,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_use_run_maintenance := %L
                 , p_inherit_fk := %L
                 , p_jobmon := %L )'
-            , v_partition_name
+            , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
             , v_row.sub_partition_type
             , v_row.sub_partition_interval
@@ -261,10 +279,10 @@ END LOOP;
 -- p_analyze is a parameter to say whether to run the analyze at all. Used by create_parent() to avoid long exclusive lock or run_maintenence() to avoid long creation runs.
 IF v_analyze AND p_analyze THEN
     IF v_jobmon_schema IS NOT NULL THEN
-        v_step_id := add_step(v_job_id, 'Analyzing partition set: '||p_parent_table);
+        v_step_id := add_step(v_job_id, format('Analyzing partition set: %s', p_parent_table));
     END IF;
 
-    EXECUTE 'ANALYZE '||p_parent_table;
+    EXECUTE format('ANALYZE %I.%I', v_parent_schema, v_parent_tablename);
 
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -273,7 +291,7 @@ END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     IF v_partition_created = false THEN
-        v_step_id := add_step(v_job_id, 'No partitions created for partition set: '||p_parent_table);
+        v_step_id := add_step(v_job_id, format('No partitions created for partition set: %s. Attempted intervals: %s', p_parent_table, p_partition_times));
         PERFORM update_step(v_step_id, 'OK', 'Done');
     END IF;
 
@@ -285,7 +303,7 @@ IF v_jobmon_schema IS NOT NULL THEN
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 RETURN v_partition_created;
@@ -312,4 +330,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

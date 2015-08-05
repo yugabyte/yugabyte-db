@@ -36,6 +36,8 @@ v_notnull                       boolean;
 v_old_search_path               text;
 v_parent_partition_id           bigint;
 v_parent_partition_timestamp    timestamp;
+v_parent_schema                 text;
+v_parent_tablename              text;
 v_partition_time                timestamp;
 v_partition_time_array          timestamp[];
 v_partition_id_array            bigint[];
@@ -48,11 +50,12 @@ v_step_id                       bigint;
 v_step_overflow_id              bigint;
 v_sub_parent                    text;
 v_success                       boolean := false;
-v_tablename                     text;
 v_time_interval                 interval;
 v_time_position                 int;
 v_top_datetime_string           text;
 v_top_parent                    text := p_parent_table;
+v_top_schemaname                text;
+v_top_tablename                 text;
 
 BEGIN
 
@@ -60,27 +63,33 @@ IF position('.' in p_parent_table) = 0  THEN
     RAISE EXCEPTION 'Parent table must be schema qualified';
 END IF;
 
-SELECT tablename INTO v_tablename FROM pg_tables WHERE schemaname || '.' || tablename = p_parent_table;
-    IF v_tablename IS NULL THEN
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname || '.' || tablename = p_parent_table;
+    IF v_parent_tablename IS NULL THEN
         RAISE EXCEPTION 'Please create given parent table first: %', p_parent_table;
     END IF;
 
-SELECT attnotnull INTO v_notnull FROM pg_attribute WHERE attrelid = p_parent_table::regclass AND attname = p_control;
+SELECT attnotnull INTO v_notnull 
+FROM pg_catalog.pg_attribute a
+JOIN pg_catalog.pg_class c ON a.attrelid = c.oid
+JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+WHERE c.relname = v_parent_tablename
+AND n.nspname = v_parent_schema
+AND a.attname = p_control;
     IF v_notnull = false OR v_notnull IS NULL THEN
-        RAISE EXCEPTION 'Control column (%) for parent table (%) must be NOT NULL', p_control, p_parent_table;
+        RAISE EXCEPTION 'Control column given (%) for parent table (%) does not exist or must be set to NOT NULL', p_control, p_parent_table;
     END IF;
 
 IF NOT @extschema@.check_partition_type(p_type) THEN
     RAISE EXCEPTION '% is not a valid partitioning type', p_type;
 END IF;
 
-EXECUTE 'LOCK TABLE '||p_parent_table||' IN ACCESS EXCLUSIVE MODE';
+EXECUTE format('LOCK TABLE %I.%I IN ACCESS EXCLUSIVE MODE', v_parent_schema, v_parent_tablename);
 
 IF p_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
     IF v_jobmon_schema IS NOT NULL THEN
         SELECT current_setting('search_path') INTO v_old_search_path;
-        EXECUTE 'SELECT set_config(''search_path'',''@extschema@,'||v_jobmon_schema||''',''false'')';
+        EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', '@extschema@,'||v_jobmon_schema, 'false');
     END IF;
 END IF;
 
@@ -98,21 +107,24 @@ ELSE
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job('PARTMAN SETUP PARENT: '||p_parent_table);
-    v_step_id := add_step(v_job_id, 'Creating initial partitions on new parent table: '||p_parent_table);
+    v_job_id := add_job(format('PARTMAN SETUP PARENT: %s', p_parent_table));
+    v_step_id := add_step(v_job_id, format('Creating initial partitions on new parent table: %s', p_parent_table));
 END IF;
 
 -- If this parent table has siblings that are also partitioned (subpartitions), ensure this parent gets added to part_config_sub table so future maintenance will subpartition it
 -- Just doing in a loop to avoid having to assign a bunch of variables (should only run once, if at all; constraint should enforce only one value.)
 FOR v_row IN 
     WITH parent_table AS (
-        SELECT h.inhparent as parent_oid
-        from pg_inherits h
-        where h.inhrelid::regclass = p_parent_table::regclass
-    ), sibling_children as (
-        select i.inhrelid::regclass::text as tablename 
-        from pg_inherits i
-        join parent_table p on i.inhparent = p.parent_oid
+        SELECT h.inhparent AS parent_oid
+        FROM pg_catalog.pg_inherits h
+        JOIN pg_catalog.pg_class c ON h.inhrelid = c.oid
+        JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
+        WHERE c.relname = v_parent_tablename
+        AND n.nspname = v_parent_schema
+    ), sibling_children AS (
+        SELECT i.inhrelid::regclass::text AS tablename 
+        FROM pg_inherits i
+        JOIN parent_table p ON i.inhparent = p.parent_oid
     )
     SELECT DISTINCT sub_partition_type
         , sub_control
@@ -284,7 +296,8 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
             FROM pg_catalog.pg_inherits i
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname||'.'||c.relname = p_parent_table 
+            WHERE c.relname = v_parent_tablename
+            AND n.nspname = v_parent_schema
         ) SELECT n.nspname||'.'||c.relname, p.datetime_string
         INTO v_top_parent, v_top_datetime_string
         FROM pg_catalog.pg_class c
@@ -316,7 +329,7 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
     END IF;
 
     IF v_jobmon_schema IS NOT NULL THEN
-        PERFORM update_step(v_step_id, 'OK', 'Time partitions premade: '||p_premake);
+        PERFORM update_step(v_step_id, 'OK', format('Time partitions premade: %s', p_premake));
     END IF;
 END IF;
 
@@ -350,7 +363,12 @@ IF p_type = 'id' THEN
 
     -- If custom start partition is set, use that.
     -- If custom start is not set and there is already data, start partitioning with the highest current value and ensure it's grabbed from highest top parent table
-    v_sql := 'SELECT COALESCE('||quote_nullable(p_start_partition::bigint)||', max('||p_control||')::bigint, 0) FROM '||v_top_parent||' LIMIT 1';
+    SELECT schemaname, tablename INTO v_top_schemaname, v_top_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = v_top_parent;
+    v_sql := format('SELECT COALESCE(%L, max(%I)::bigint, 0) FROM %I.%I LIMIT 1'
+                , p_start_partition::bigint
+                , p_control
+                , v_top_schemaname
+                , v_top_tablename);
     EXECUTE v_sql INTO v_max;
     v_starting_partition_id := v_max - (v_max % v_id_interval);
     FOR i IN 0..p_premake LOOP
@@ -393,7 +411,8 @@ IF p_type = 'id' THEN
             FROM pg_catalog.pg_inherits i
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname||'.'||c.relname = p_parent_table 
+            WHERE c.relname = v_parent_tablename
+            AND n.nspname = v_parent_schema
         ) SELECT n.nspname||'.'||c.relname
         INTO v_top_parent
         FROM pg_catalog.pg_class c
@@ -430,12 +449,12 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, 'Creating partition function');
 END IF;
 IF p_type = 'time' OR p_type = 'time-custom' THEN
-    PERFORM @extschema@.create_function_time(p_parent_table);
+    PERFORM @extschema@.create_function_time(p_parent_table, v_job_id);
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'Time function created');
     END IF;
 ELSIF p_type = 'id' THEN
-    PERFORM @extschema@.create_function_id(p_parent_table);  
+    PERFORM @extschema@.create_function_id(p_parent_table, v_job_id);  
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'OK', 'ID function created');
     END IF;
@@ -453,7 +472,7 @@ IF v_jobmon_schema IS NOT NULL THEN
     ELSE
         PERFORM close_job(v_job_id);
     END IF;
-    EXECUTE 'SELECT set_config(''search_path'','''||v_old_search_path||''',''false'')';
+    EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
 END IF;
 
 v_success := true;
