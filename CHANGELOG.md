@@ -1,7 +1,7 @@
 Changelog
 =========
 
-WIP version 0.0.3:
+2015-08-08 version 0.0.3:
 
   - fix a bug when a regular query could fail after a hypothetical index have
   been created, and tested with explain.
