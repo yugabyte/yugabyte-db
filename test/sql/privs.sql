@@ -178,7 +178,7 @@ SELECT * FROM check_test(
     true,
     'database_privs_are(db, role, privs, desc)',
     'Role ' || current_user || ' should be granted '
-         || array_to_string(_db_privs(), ', ') || ' on database ' || current_database(),
+         || array_to_string(_db_privs(), ', ') || ' on database ' || quote_ident( current_database() ),
     ''
 );
 
@@ -229,7 +229,7 @@ SELECT * FROM check_test(
     database_privs_are( current_database(), '__noone', '{}'::text[] ),
     false,
     'database_privs_are(db, non-role, no privs)',
-    'Role __noone should be granted no privileges on database ' || current_database(),
+    'Role __noone should be granted no privileges on database ' || quote_ident( current_database() ),
     '    Role __noone does not exist'
 );
 

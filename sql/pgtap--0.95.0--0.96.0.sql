@@ -58,3 +58,22 @@ RETURNS SETOF TEXT AS $$
         findfuncs( $1, '^(startup|shutdown|setup|teardown)' )
     );
 $$ LANGUAGE sql;
+
+-- database_privs_are ( db, user, privileges[], description )
+CREATE OR REPLACE FUNCTION database_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_db_privs( $2, $1::TEXT );
+BEGIN
+    IF grants[1] = 'invalid_catalog_name' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Database ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
