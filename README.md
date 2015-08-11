@@ -70,7 +70,7 @@ git clone https://github.com/pgaudit/pgaudit.git
 ```
 Change to `pgaudit` directory:
 ```
-cd paudit
+cd pgaudit
 ```
 Build ``pgaudit`` and run regression tests:
 ```
