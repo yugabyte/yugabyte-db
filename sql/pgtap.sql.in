@@ -8831,7 +8831,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION schema_privs_are ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    grants TEXT[] := _get_schema_privs( $2, quote_ident($1) );
+    grants TEXT[] := _get_schema_privs( $2, $1::TEXT );
 BEGIN
     IF grants[1] = 'invalid_schema_name' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
@@ -8879,7 +8879,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION tablespace_privs_are ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    grants TEXT[] := _get_tablespaceprivs( $2, quote_ident($1) );
+    grants TEXT[] := _get_tablespaceprivs( $2, $1::TEXT );
 BEGIN
     IF grants[1] = 'undefined_tablespace' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
@@ -9075,6 +9075,7 @@ RETURNS TEXT AS $$
     );
 $$ LANGUAGE SQL;
 
+-- _get_col_privs(user, table, column)
 CREATE OR REPLACE FUNCTION _get_col_privs(NAME, TEXT, NAME)
 RETURNS TEXT[] AS $$
 DECLARE
@@ -9188,7 +9189,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION fdw_privs_are ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    grants TEXT[] := _get_fdw_privs( $2, quote_ident($1) );
+    grants TEXT[] := _get_fdw_privs( $2, $1::TEXT );
 BEGIN
     IF grants[1] = 'undefined_fdw' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(
@@ -9256,7 +9257,7 @@ $$ LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION server_privs_are ( NAME, NAME, NAME[], TEXT )
 RETURNS TEXT AS $$
 DECLARE
-    grants TEXT[] := _get_server_privs( $2, quote_ident($1) );
+    grants TEXT[] := _get_server_privs( $2, $1::TEXT );
 BEGIN
     IF grants[1] = 'undefined_server' THEN
         RETURN ok(FALSE, $4) || E'\n' || diag(

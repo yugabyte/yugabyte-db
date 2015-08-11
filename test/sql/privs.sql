@@ -1,23 +1,26 @@
 \unset ECHO
 \i test/setup.sql
 
-SELECT plan(308);
+SELECT plan(372);
 --SELECT * FROM no_plan();
 
 SET client_min_messages = warning;
 CREATE SCHEMA ha;
 CREATE TABLE ha.sometab(id INT);
 CREATE SEQUENCE ha.someseq;
--- Include the new schema in the path.
+CREATE SCHEMA "LOL";
+CREATE TABLE "LOL"."ATable"("AColumn" INT);
+CREATE SEQUENCE "LOL"."ASeq";
+-- Include the new schemas in the path.
 CREATE OR REPLACE FUNCTION set_search_path() returns setof text as $$
 BEGIN
     IF pg_version_num() < 80200 THEN
-        EXECUTE 'SET search_path = ha, '
+        EXECUTE 'SET search_path = ha, "LOL", '
              || regexp_replace(current_setting('search_path'), '[$][^,]+,', '')
              || ', pg_catalog';
         RETURN;
     ELSE
-        EXECUTE 'SET search_path = ha, ' || current_setting('search_path') || ', pg_catalog';
+        EXECUTE 'SET search_path = ha, "LOL", ' || current_setting('search_path') || ', pg_catalog';
     END IF;
 
 END;
@@ -37,11 +40,28 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    table_privs_are( 'LOL', 'ATable', current_user, _table_privs(), 'whatever' ),
+    true,
+    'table_privs_are(LOL, ATable, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
     table_privs_are( 'ha', 'sometab', current_user, _table_privs() ),
     true,
     'table_privs_are(sch, tab, role, privs)',
     'Role ' || current_user || ' should be granted '
          || array_to_string(_table_privs(), ', ') || ' on table ha.sometab' ,
+    ''
+);
+
+SELECT * FROM check_test(
+    table_privs_are( 'LOL', 'ATable', current_user, _table_privs() ),
+    true,
+    'table_privs_are(LOL, ATable, role, privs)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(_table_privs(), ', ') || ' on table "LOL"."ATable"' ,
     ''
 );
 
@@ -54,11 +74,28 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    table_privs_are( 'ATable', current_user, _table_privs(), 'whatever' ),
+    true,
+    'table_privs_are(ATable, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
     table_privs_are( 'sometab', current_user, _table_privs() ),
     true,
     'table_privs_are(tab, role, privs)',
     'Role ' || current_user || ' should be granted '
          || array_to_string(_table_privs(), ', ') || ' on table sometab' ,
+    ''
+);
+
+SELECT * FROM check_test(
+    table_privs_are( 'ATable', current_user, _table_privs() ),
+    true,
+    'table_privs_are(ATable, role, privs)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(_table_privs(), ', ') || ' on table "ATable"' ,
     ''
 );
 
@@ -236,6 +273,7 @@ SELECT * FROM check_test(
 /****************************************************************************/
 -- Test function_privs_are().
 CREATE OR REPLACE FUNCTION public.foo(int, text) RETURNS VOID LANGUAGE SQL AS '';
+CREATE OR REPLACE FUNCTION "LOL"."DoIt"(int, text) RETURNS VOID LANGUAGE SQL AS '';
 
 SELECT * FROM check_test(
     function_privs_are(
@@ -244,6 +282,17 @@ SELECT * FROM check_test(
     ),
     true,
     'function_privs_are(sch, func, args, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'LOL', 'DoIt', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'function_privs_are(LOL, DoIt, role, privs, desc)',
     'whatever',
     ''
 );
@@ -261,11 +310,33 @@ SELECT * FROM check_test(
 
 SELECT * FROM check_test(
     function_privs_are(
+        'LOL', 'DoIt', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE']
+    ),
+    true,
+    'function_privs_are(LOL, DoIt, args, role, privs)',
+    'Role ' || current_user || ' should be granted EXECUTE on function "LOL"."DoIt"(integer, text)'
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
         'foo', ARRAY['integer', 'text'],
         current_user, ARRAY['EXECUTE'], 'whatever'
     ),
     true,
     'function_privs_are(func, args, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'DoIt', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE'], 'whatever'
+    ),
+    true,
+    'function_privs_are(DoIt, args, role, privs, desc)',
     'whatever',
     ''
 );
@@ -278,6 +349,17 @@ SELECT * FROM check_test(
     true,
     'function_privs_are(func, args, role, privs)',
     'Role ' || current_user || ' should be granted EXECUTE on function foo(integer, text)'
+    ''
+);
+
+SELECT * FROM check_test(
+    function_privs_are(
+        'DoIt', ARRAY['integer', 'text'],
+        current_user, ARRAY['EXECUTE']
+    ),
+    true,
+    'function_privs_are(DoIt, args, role, privs)',
+    'Role ' || current_user || ' should be granted EXECUTE on function "DoIt"(integer, text)'
     ''
 );
 
@@ -522,11 +604,28 @@ SELECT * FROM check_test(
 );
 
 SELECT * FROM check_test(
+    schema_privs_are( 'LOL', current_user, ARRAY['CREATE', 'USAGE'], 'whatever' ),
+    true,
+    'schema_privs_are(LOL, role, privs, desc)',
+    'whatever',
+    ''
+);
+
+SELECT * FROM check_test(
     schema_privs_are( current_schema(), current_user, ARRAY['CREATE', 'USAGE'] ),
     true,
     'schema_privs_are(schema, role, privs, desc)',
     'Role ' || current_user || ' should be granted '
          || array_to_string(ARRAY['CREATE', 'USAGE'], ', ') || ' on schema ' || current_schema(),
+    ''
+);
+
+SELECT * FROM check_test(
+    schema_privs_are( 'LOL', current_user, ARRAY['CREATE', 'USAGE'] ),
+    true,
+    'schema_privs_are(LOL, role, privs, desc)',
+    'Role ' || current_user || ' should be granted '
+         || array_to_string(ARRAY['CREATE', 'USAGE'], ', ') || ' on schema "LOL"',
     ''
 );
 
@@ -661,12 +760,32 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'LOL', 'ASeq', current_user, ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'sequence_privs_are(LOL, ASeq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
             sequence_privs_are( 'ha', 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
             true,
             'sequence_privs_are(sch, seq, role, privs)',
             'Role ' || current_user || ' should be granted '
                 || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
                 || ' on sequence ha.someseq' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'LOL', 'ASeq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
+            true,
+            'sequence_privs_are(sch, seq, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
+                || ' on sequence "LOL"."ASeq"' ,
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -681,12 +800,32 @@ BEGIN
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ASeq', current_user, ARRAY[
+                'USAGE', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'sequence_privs_are(ASeq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
             sequence_privs_are( 'someseq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
             true,
             'sequence_privs_are(seq, role, privs)',
             'Role ' || current_user || ' should be granted '
                 || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
                 || ' on sequence someseq' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            sequence_privs_are( 'ASeq', current_user, ARRAY['USAGE', 'SELECT', 'UPDATE'] ),
+            true,
+            'sequence_privs_are(seq, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['USAGE', 'SELECT', 'UPDATE'], ', ')
+                || ' on sequence "ASeq"' ,
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -793,7 +932,23 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
+            'sequence_privs_are(LOL, ASeq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
             'sequence_privs_are(sch, seq, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(LOL, ASeq, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -809,7 +964,23 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
+            'sequence_privs_are(ASeq, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
             'sequence_privs_are(seq, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'sequence_privs_are(ASeq, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1153,7 +1324,17 @@ BEGIN
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
             ], 'whatever' ),
             true,
-            'column_privs_are(sch, tab, role, privs, desc)',
+            'column_privs_are(sch, tab, col, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            column_privs_are( 'LOL', 'ATable', 'AColumn', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'column_privs_are(LOL, ATable, AColumn role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1163,10 +1344,22 @@ BEGIN
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
             ] ),
             true,
-            'column_privs_are(sch, tab, role, privs)',
+            'column_privs_are(sch, tab, col, role, privs)',
             'Role ' || current_user || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on column ha.sometab.id' ,
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            column_privs_are( 'LOL', 'ATable', 'AColumn', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ] ),
+            true,
+            'column_privs_are(LOL, ATable, AColumn, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
+                || ' on column "LOL"."ATable"."AColumn"' ,
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1175,7 +1368,17 @@ BEGIN
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
             ], 'whatever' ),
             true,
-            'column_privs_are(tab, role, privs, desc)',
+            'column_privs_are(tab, col, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            column_privs_are( 'ATable', 'AColumn', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ], 'whatever' ),
+            true,
+            'column_privs_are(tab, col, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1185,10 +1388,22 @@ BEGIN
                 'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
             ] ),
             true,
-            'column_privs_are(tab, role, privs)',
+            'column_privs_are(tab, col, role, privs)',
             'Role ' || current_user || ' should be granted '
                 || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
                 || ' on column sometab.id' ,
+                ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            column_privs_are( 'ATable', 'AColumn', current_user, ARRAY[
+                'INSERT', 'REFERENCES', 'SELECT', 'UPDATE'
+            ] ),
+            true,
+            'column_privs_are(tab, col, role, privs)',
+            'Role ' || current_user || ' should be granted '
+                || array_to_string(ARRAY['INSERT', 'REFERENCES', 'SELECT', 'UPDATE'], ', ')
+                || ' on column "ATable"."AColumn"' ,
                 ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
@@ -1288,7 +1503,15 @@ BEGIN
        FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'column_privs_are(sch, tab, role, privs, desc)',
+            'column_privs_are(sch, tab, col, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+       FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(LOL, ATable, AColumn, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1296,7 +1519,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'column_privs_are(sch, tab, role, privs)',
+            'column_privs_are(sch, tab, col, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1304,7 +1527,7 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'column_privs_are(tab, role, privs, desc)',
+            'column_privs_are(LOL, ATable, AColumn, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1312,7 +1535,31 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
-            'column_privs_are(tab, role, privs)',
+            'column_privs_are(tab, col, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(LOL, ATable, AColumn, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(tab, col, role, privs)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'column_privs_are(LOL, ATable, AColumn, role, privs)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1399,11 +1646,20 @@ DECLARE
 BEGIN
     IF pg_version_num() >= 80400 THEN
         EXECUTE 'CREATE FOREIGN DATA WRAPPER dummy;';
+        EXECUTE 'CREATE FOREIGN DATA WRAPPER "SomeFDW";';
 
         FOR tap IN SELECT * FROM check_test(
             fdw_privs_are( 'dummy', current_user, '{USAGE}', 'whatever' ),
             true,
             'fdw_privs_are(fdw, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'SomeFDW', current_user, '{USAGE}', 'whatever' ),
+            true,
+            'fdw_privs_are(SomeFDW, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1416,6 +1672,13 @@ BEGIN
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
+        FOR tap IN SELECT * FROM check_test(
+            fdw_privs_are( 'SomeFDW', current_user, '{USAGE}' ),
+            true,
+            'fdw_privs_are(SomeFDW, role, privs, desc)',
+            'Role ' || current_user || ' should be granted USAGE on FDW "SomeFDW"',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Try nonexistent fdw.
         FOR tap IN SELECT * FROM check_test(
@@ -1469,11 +1732,26 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
+            'fdw_privs_are(SomeFDW, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
             'fdw_privs_are(fdw, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'fdw_privs_are(SomeFDW, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Try nonexistent fdw.
         FOR tap IN SELECT * FROM check_test(
@@ -1526,11 +1804,20 @@ DECLARE
 BEGIN
     IF pg_version_num() >= 80400 THEN
         EXECUTE 'CREATE SERVER foo FOREIGN DATA WRAPPER dummy;';
+        EXECUTE 'CREATE SERVER "SomeServer" FOREIGN DATA WRAPPER "SomeFDW";';
 
         FOR tap IN SELECT * FROM check_test(
             server_privs_are( 'foo', current_user, '{USAGE}', 'whatever' ),
             true,
             'server_privs_are(server, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'SomeServer', current_user, '{USAGE}', 'whatever' ),
+            true,
+            'server_privs_are(SomeServer, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
@@ -1543,6 +1830,13 @@ BEGIN
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
+        FOR tap IN SELECT * FROM check_test(
+            server_privs_are( 'SomeServer', current_user, '{USAGE}' ),
+            true,
+            'server_privs_are(SomeSrver, role, privs, desc)',
+            'Role ' || current_user || ' should be granted USAGE on server "SomeServer"',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Try nonexistent server.
         FOR tap IN SELECT * FROM check_test(
@@ -1596,11 +1890,26 @@ BEGIN
         FOR tap IN SELECT * FROM check_test(
             pass('whatever'),
             true,
+            'server_privs_are(SomeServer, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
+
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
             'server_privs_are(server, role, privs, desc)',
             'whatever',
             ''
         ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
+        FOR tap IN SELECT * FROM check_test(
+            pass('whatever'),
+            true,
+            'server_privs_are(SomeServer, role, privs, desc)',
+            'whatever',
+            ''
+        ) AS b LOOP RETURN NEXT tap.b; END LOOP;
 
         -- Try nonexistent server.
         FOR tap IN SELECT * FROM check_test(

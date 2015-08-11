@@ -9,8 +9,9 @@ Revision history for pgTAP
 * Changed `runtests()` to use the new `:exclude_pattern` to prevent the
   running of startup/setup/teardown/shutdown functions as test functions.
   Patch from Jim Nasby.
-* Fixed a bug where database_privs_are() did not work with a case-sensitive
-  database name. Thanks to Ingo for the report!
+* Fixed `database_privs_are()`, `schema_privs_are()`, `tablespace_privs_are()`
+  `fdw_privs_are()`, and `fdw_privs_are()` to properly handle case-sensitive
+  object names. Thanks to Ingo for the report!
 
 0.95.0 2015-03-20T20:31:41Z
 ---------------------------

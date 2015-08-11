@@ -77,3 +77,78 @@ BEGIN
     RETURN _assets_are('privileges', grants, $3, $4);
 END;
 $$ LANGUAGE plpgsql;
+
+-- schema_privs_are ( schema, user, privileges[], description )
+CREATE OR REPLACE FUNCTION schema_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_schema_privs( $2, $1::TEXT );
+BEGIN
+    IF grants[1] = 'invalid_schema_name' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Schema ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- tablespace_privs_are ( tablespace, user, privileges[], description )
+CREATE OR REPLACE FUNCTION tablespace_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_tablespaceprivs( $2, $1::TEXT );
+BEGIN
+    IF grants[1] = 'undefined_tablespace' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Tablespace ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION fdw_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_fdw_privs( $2, $1::TEXT );
+BEGIN
+    IF grants[1] = 'undefined_fdw' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    FDW ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
+
+-- server_privs_are ( server, user, privileges[], description )
+CREATE OR REPLACE FUNCTION server_privs_are ( NAME, NAME, NAME[], TEXT )
+RETURNS TEXT AS $$
+DECLARE
+    grants TEXT[] := _get_server_privs( $2, $1::TEXT );
+BEGIN
+    IF grants[1] = 'undefined_server' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Server ' || quote_ident($1) || ' does not exist'
+        );
+    ELSIF grants[1] = 'undefined_role' THEN
+        RETURN ok(FALSE, $4) || E'\n' || diag(
+            '    Role ' || quote_ident($2) || ' does not exist'
+        );
+    END IF;
+    RETURN _assets_are('privileges', grants, $3, $4);
+END;
+$$ LANGUAGE plpgsql;
