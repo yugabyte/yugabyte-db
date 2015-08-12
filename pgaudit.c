@@ -1746,6 +1746,11 @@ assign_pgaudit_log_level(const char *newVal, void *extra)
 void
 _PG_init(void)
 {
+    /* Must be loaded with shared_preload_libaries */
+    if (IsUnderPostmaster)
+        ereport(ERROR, (errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+                errmsg("pgaudit must be loaded via shared_preload_libraries")));
+
     /* Define pgaudit.log */
     DefineCustomStringVariable(
         "pgaudit.log",
@@ -1880,4 +1885,7 @@ _PG_init(void)
 
     next_object_access_hook = object_access_hook;
     object_access_hook = pgaudit_object_access_hook;
+
+    /* Log that the extension has completed initialization */
+    ereport(LOG, (errmsg("pgaudit extension initialized")));
 }

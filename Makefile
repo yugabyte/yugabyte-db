@@ -8,6 +8,7 @@ DATA = pgaudit--1.0.sql
 PGFILEDESC = "pgAudit - An audit logging extension for PostgreSQL"
 
 REGRESS = pgaudit
+REGRESS_OPTS = --temp-config=$(top_srcdir)/contrib/pgaudit/pgaudit.conf
 
 ifdef USE_PGXS
 PG_CONFIG = pg_config

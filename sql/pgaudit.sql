@@ -23,20 +23,11 @@ SELECT current_user \gset
 ALTER ROLE :current_user SET pgaudit.log = 'Role';
 ALTER ROLE :current_user SET pgaudit.log_level = 'notice';
 
---
--- Create a function to do module loads since unprivileged
--- users cannot call LOAD.
-CREATE FUNCTION load_pgaudit( ) RETURNS VOID AS $$
-BEGIN
-	LOAD 'pgaudit';
-END $$ LANGUAGE plpgsql SECURITY DEFINER;
-
 -- After each connect, we need to load pgaudit, as if it was
 -- being loaded from shared_preload_libraries.  Otherwise, the hooks
 -- won't be set up and called correctly, leading to lots of ugly
 -- errors.
 \connect - :current_user;
-SELECT load_pgaudit();
 
 --
 -- Create auditor role
@@ -51,7 +42,6 @@ ALTER ROLE user1 SET pgaudit.log_level = 'notice';
 --
 -- Create, select, drop (select will not be audited)
 \connect - user1
-SELECT load_pgaudit();
 
 CREATE TABLE public.test
 (
@@ -66,7 +56,6 @@ DROP TABLE test;
 --
 -- Create second test user
 \connect - :current_user
-SELECT load_pgaudit();
 
 CREATE USER user2;
 ALTER ROLE user2 SET pgaudit.log = 'Read, writE';
@@ -138,7 +127,6 @@ GRANT SELECT
    TO auditor;
 
 \connect - user2
-SELECT load_pgaudit();
 
 --
 -- Role-based tests
@@ -224,11 +212,9 @@ SELECT *
 --
 -- Change permissions of user 2 so that only object logging will be done
 \connect - :current_user
-SELECT load_pgaudit();
 ALTER ROLE user2 SET pgaudit.log = 'NONE';
 
 \connect - user2
-SELECT load_pgaudit();
 
 --
 -- Create test4 and add permissions
@@ -292,7 +278,6 @@ update public.test4 set name = 'foo' where name = 'bar';
 --
 -- Change permissions of user 1 so that session logging will be done
 \connect - :current_user
-SELECT load_pgaudit();
 
 --
 -- Drop test tables
@@ -305,7 +290,6 @@ DROP FUNCTION test2_change(int);
 
 ALTER ROLE user1 SET pgaudit.log = 'DDL, READ';
 \connect - user1
-SELECT load_pgaudit();
 
 --
 -- Create table is session logged
@@ -330,11 +314,9 @@ INSERT INTO account (id, name, password, description)
 --
 -- Change permissions of user 1 so that only object logging will be done
 \connect - :current_user
-SELECT load_pgaudit();
 ALTER ROLE user1 SET pgaudit.log = 'none';
 ALTER ROLE user1 SET pgaudit.role = 'auditor';
 \connect - user1
-SELECT load_pgaudit();
 
 --
 -- ROLE class not set, so auditor grants not logged
@@ -369,11 +351,9 @@ UPDATE account
 --
 -- Change permissions of user 1 so that session relation logging will be done
 \connect - :current_user
-SELECT load_pgaudit();
 ALTER ROLE user1 SET pgaudit.log_relation = on;
 ALTER ROLE user1 SET pgaudit.log = 'read, WRITE';
 \connect - user1
-SELECT load_pgaudit();
 
 --
 -- Not logged
@@ -431,7 +411,6 @@ UPDATE account
 --
 -- Change back to superuser to do exhaustive tests
 \connect - :current_user
-SELECT load_pgaudit();
 SET pgaudit.log = 'ALL';
 SET pgaudit.log_level = 'notice';
 SET pgaudit.log_relation = ON;
