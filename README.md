@@ -51,7 +51,7 @@ You can check the available hypothetical indexes in your own backend:
     rjuju=# SELECT * FROM hypopg_list_indexes();
      indexrelid |                 indexname                 | nspname | relname | amname
      -----------+-------------------------------------------+---------+---------+--------
-         205101 | <41072>btree_hypo_id                    | public  | hypo    | btree
+         205101 | <41072>btree_hypo_id                      | public  | hypo    | btree
 
 
 If you need more technical informations on the hypothetical indexes, the
