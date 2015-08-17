@@ -4276,7 +4276,12 @@ SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)             
 	 ORDER BY t_1.c1 LIMIT 1"
 PL/pgSQL function nested_planner(integer) line 12 at SQL statement
 LOG:  pg_hint_plan:
-no hint
+used hint:
+IndexScan(t_1)
+not used hint:
+duplication hint:
+error hint:
+
 CONTEXT:  SQL statement "SELECT /*+ IndexScan(t_1) */ nested_planner(cnt - 1)                 FROM s1.t1 t_1
 	  JOIN s1.t2 t_2 ON (t_1.c1 = t_2.c1)
 	 ORDER BY t_1.c1 LIMIT 1"

@@ -3763,17 +3763,14 @@ error hint:
 ----
 -- No. J-2-4-1
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
-                   QUERY PLAN                    
--------------------------------------------------
+             QUERY PLAN             
+------------------------------------
  Nested Loop
-   ->  Hash Join
-         Hash Cond: (t2.c1 = "*VALUES*".column1)
-         ->  Seq Scan on t2
-         ->  Hash
-               ->  Values Scan on "*VALUES*"
    ->  Index Scan using t1_i1 on t1
-         Index Cond: (c1 = t2.c1)
-(8 rows)
+         Index Cond: (c1 = 1)
+   ->  Seq Scan on t2
+         Filter: (c1 = 1)
+(5 rows)
 
 /*+ Leading(t3 t1 t2) HashJoin(t3 t1)NestLoop(t3 t1 t2)*/
 EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
@@ -3786,20 +3783,17 @@ Leading(t3 t1 t2)
 duplication hint:
 error hint:
 
-                   QUERY PLAN                    
--------------------------------------------------
+             QUERY PLAN             
+------------------------------------
  Nested Loop
-   ->  Hash Join
-         Hash Cond: (t2.c1 = "*VALUES*".column1)
-         ->  Seq Scan on t2
-         ->  Hash
-               ->  Values Scan on "*VALUES*"
    ->  Index Scan using t1_i1 on t1
-         Index Cond: (c1 = t2.c1)
-(8 rows)
+         Index Cond: (c1 = 1)
+   ->  Seq Scan on t2
+         Filter: (c1 = 1)
+(5 rows)
 
 /*+ Leading(*VALUES* t1 t2) HashJoin(*VALUES* t1)NestLoop(*VALUES* t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t3 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1;
 LOG:  pg_hint_plan:
 used hint:
 HashJoin(*VALUES* t1)
@@ -3822,24 +3816,25 @@ error hint:
 (8 rows)
 
 -- No. J-2-4-2
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
+         Join Filter: (t2.c1 = "*VALUES*_1".column1)
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
                ->  Seq Scan on t2
                ->  Hash
                      ->  Values Scan on "*VALUES*"
-         ->  Index Scan using t1_i1 on t1
-               Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*_1"
-(11 rows)
+         ->  Materialize
+               ->  Values Scan on "*VALUES*_1"
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(12 rows)
 
 /*+ Leading(t4 t3 t2 t1) NestLoop(t4 t3)HashJoin(t4 t3 t2)MergeJoin(t4 t3 t2 t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -3853,20 +3848,21 @@ error hint:
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
+         Join Filter: (t2.c1 = "*VALUES*_1".column1)
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
                ->  Seq Scan on t2
                ->  Hash
                      ->  Values Scan on "*VALUES*"
-         ->  Index Scan using t1_i1 on t1
-               Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*_1"
-(11 rows)
+         ->  Materialize
+               ->  Values Scan on "*VALUES*_1"
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(12 rows)
 
 /*+ Leading(*VALUES* t3 t2 t1) NestLoop(t4 t3)HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)*/
-EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
+EXPLAIN (COSTS false) SELECT * FROM s1.t1, s1.t2, (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t3 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t4 (c1, c2, c3, c4) WHERE t1.c1 = t2.c1 AND t1.c1 = t3.c1 AND t1.c1 = t4.c1;
 INFO:  pg_hint_plan: hint syntax error at or near "HashJoin(*VALUES* t3 t2)MergeJoin(*VALUES* t3 t2 t1)"
 DETAIL:  Relation name "*VALUES*" is ambiguous.
 INFO:  pg_hint_plan: hint syntax error at or near "MergeJoin(*VALUES* t3 t2 t1)"
@@ -3886,17 +3882,18 @@ Leading(*VALUES* t3 t2 t1)
                       QUERY PLAN                       
 -------------------------------------------------------
  Nested Loop
-   Join Filter: (t1.c1 = "*VALUES*_1".column1)
    ->  Nested Loop
+         Join Filter: (t2.c1 = "*VALUES*_1".column1)
          ->  Hash Join
                Hash Cond: (t2.c1 = "*VALUES*".column1)
                ->  Seq Scan on t2
                ->  Hash
                      ->  Values Scan on "*VALUES*"
-         ->  Index Scan using t1_i1 on t1
-               Index Cond: (c1 = t2.c1)
-   ->  Values Scan on "*VALUES*_1"
-(11 rows)
+         ->  Materialize
+               ->  Values Scan on "*VALUES*_1"
+   ->  Index Scan using t1_i1 on t1
+         Index Cond: (c1 = t2.c1)
+(12 rows)
 
 ----
 ---- No. J-3-1 join method hint

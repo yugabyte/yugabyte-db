@@ -451,7 +451,7 @@ EXPLAIN (COSTS false) SELECT * FROM pg_catalog.pg_class WHERE oid = 1;
                    QUERY PLAN                    
 -------------------------------------------------
  Index Scan using pg_class_oid_index on pg_class
-   Index Cond: (oid = 1::oid)
+   Index Cond: (oid = '1'::oid)
 (2 rows)
 
 /*+SeqScan(pg_class)*/
@@ -463,10 +463,10 @@ not used hint:
 duplication hint:
 error hint:
 
-        QUERY PLAN        
---------------------------
+         QUERY PLAN         
+----------------------------
  Seq Scan on pg_class
-   Filter: (oid = 1::oid)
+   Filter: (oid = '1'::oid)
 (2 rows)
 
 -- No. S-1-5-6
@@ -2995,11 +2995,10 @@ error hint:
 ----
 -- No. S-2-4-1
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1) WHERE t1.c1 = 1;
-        QUERY PLAN         
----------------------------
- Values Scan on "*VALUES*"
-   Filter: (column1 = 1)
-(2 rows)
+ QUERY PLAN 
+------------
+ Result
+(1 row)
 
 /*+SeqScan(t1)*/
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1) WHERE t1.c1 = 1;
@@ -3010,11 +3009,10 @@ SeqScan(t1)
 duplication hint:
 error hint:
 
-        QUERY PLAN         
----------------------------
- Values Scan on "*VALUES*"
-   Filter: (column1 = 1)
-(2 rows)
+ QUERY PLAN 
+------------
+ Result
+(1 row)
 
 /*+SeqScan(*VALUES*)*/
 EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1) WHERE t1.c1 = 1;
@@ -3025,24 +3023,24 @@ SeqScan(*VALUES*)
 duplication hint:
 error hint:
 
-        QUERY PLAN         
----------------------------
- Values Scan on "*VALUES*"
-   Filter: (column1 = 1)
-(2 rows)
+ QUERY PLAN 
+------------
+ Result
+(1 row)
 
 -- No. S-2-4-2
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
-                         QUERY PLAN                         
-------------------------------------------------------------
- Nested Loop
-   Join Filter: ("*VALUES*".column1 = "*VALUES*_1".column1)
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Hash Join
+   Hash Cond: ("*VALUES*".column1 = "*VALUES*_1".column1)
    ->  Values Scan on "*VALUES*"
-   ->  Values Scan on "*VALUES*_1"
-(4 rows)
+   ->  Hash
+         ->  Values Scan on "*VALUES*_1"
+(5 rows)
 
 /*+SeqScan(t1 t2)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
 INFO:  pg_hint_plan: hint syntax error at or near ""
 DETAIL:  SeqScan hint accepts only one relation.
 LOG:  pg_hint_plan:
@@ -3052,16 +3050,17 @@ duplication hint:
 error hint:
 SeqScan(t1 t2)
 
-                         QUERY PLAN                         
-------------------------------------------------------------
- Nested Loop
-   Join Filter: ("*VALUES*".column1 = "*VALUES*_1".column1)
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Hash Join
+   Hash Cond: ("*VALUES*".column1 = "*VALUES*_1".column1)
    ->  Values Scan on "*VALUES*"
-   ->  Values Scan on "*VALUES*_1"
-(4 rows)
+   ->  Hash
+         ->  Values Scan on "*VALUES*_1"
+(5 rows)
 
 /*+SeqScan(*VALUES*)*/
-EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
+EXPLAIN (COSTS false) SELECT * FROM (VALUES(1,1,1,'1'), (3,3,3,'3')) AS t1 (c1, c2, c3, c4), (VALUES(1,1,1,'1'), (2,2,2,'2')) AS t2 (c1, c2) WHERE t1.c1 = t2.c1;
 LOG:  pg_hint_plan:
 used hint:
 not used hint:
@@ -3069,13 +3068,14 @@ SeqScan(*VALUES*)
 duplication hint:
 error hint:
 
-                         QUERY PLAN                         
-------------------------------------------------------------
- Nested Loop
-   Join Filter: ("*VALUES*".column1 = "*VALUES*_1".column1)
+                        QUERY PLAN                        
+----------------------------------------------------------
+ Hash Join
+   Hash Cond: ("*VALUES*".column1 = "*VALUES*_1".column1)
    ->  Values Scan on "*VALUES*"
-   ->  Values Scan on "*VALUES*_1"
-(4 rows)
+   ->  Hash
+         ->  Values Scan on "*VALUES*_1"
+(5 rows)
 
 ----
 ---- No. S-3-1 scan method hint
@@ -3794,7 +3794,7 @@ EXPLAIN (COSTS false) SELECT * FROM s1.ti1 WHERE c1 < 100 AND c2 = 1 AND lower(c
 -----------------------------------------------------------------------------------------------------------------------------------------
  Tid Scan on ti1
    TID Cond: (ctid = '(1,1)'::tid)
-   Filter: ((c1 < 100) AND (c2 = 1) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (c2 = 1) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-1
@@ -3812,7 +3812,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_btree on ti1
    Index Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-2
@@ -3830,7 +3830,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_hash on ti1
    Index Cond: (c1 = 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-3
@@ -3848,7 +3848,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_gist on ti1
    Index Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-4
@@ -3866,7 +3866,7 @@ error hint:
 -----------------------------------------------------------------------------------------------------------------------------------------
  Tid Scan on ti1
    TID Cond: (ctid = '(1,1)'::tid)
-   Filter: ((c1 < 100) AND (c2 = 1) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (c2 = 1) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-5
@@ -3884,7 +3884,7 @@ error hint:
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_expr on ti1
    Index Cond: ((c1 < 100) = true)
-   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-6
@@ -3920,7 +3920,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_uniq on ti1
    Index Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-8
@@ -3938,7 +3938,7 @@ error hint:
 ---------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_multi on ti1
    Index Cond: ((c1 < 100) AND (c2 = 1))
-   Filter: ((ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-9
@@ -3956,7 +3956,7 @@ error hint:
 -----------------------------------------------------------------------------------------------------------------------------------------
  Tid Scan on ti1
    TID Cond: (ctid = '(1,1)'::tid)
-   Filter: ((c1 < 100) AND (c2 = 1) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (c2 = 1) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-10
@@ -3974,7 +3974,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_pkey on ti1
    Index Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-11
@@ -3992,7 +3992,7 @@ error hint:
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Index Scan using ti1_c2_key on ti1
    Index Cond: (c2 = 1)
-   Filter: ((c1 < 100) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
 (3 rows)
 
 -- No. S-3-4-12
@@ -4010,7 +4010,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_btree
          Index Cond: (c1 < 100)
 (5 rows)
@@ -4030,7 +4030,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c1 = 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_hash
          Index Cond: (c1 = 100)
 (5 rows)
@@ -4050,7 +4050,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_gist
          Index Cond: (c1 < 100)
 (5 rows)
@@ -4070,7 +4070,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_gin
          Index Cond: (c1 < 100)
 (5 rows)
@@ -4089,7 +4089,7 @@ error hint:
                                                                             QUERY PLAN                                                                             
 -------------------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
-   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_expr
          Index Cond: ((c1 < 100) = true)
 (4 rows)
@@ -4129,7 +4129,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_uniq
          Index Cond: (c1 < 100)
 (5 rows)
@@ -4149,7 +4149,7 @@ error hint:
 ---------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: ((c1 < 100) AND (c2 = 1))
-   Filter: ((ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_multi
          Index Cond: ((c1 < 100) AND (c2 = 1))
 (5 rows)
@@ -4189,7 +4189,7 @@ error hint:
 ----------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c1 < 100)
-   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c2 = 1) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_pkey
          Index Cond: (c1 < 100)
 (5 rows)
@@ -4209,7 +4209,7 @@ error hint:
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  Bitmap Heap Scan on ti1
    Recheck Cond: (c2 = 1)
-   Filter: ((c1 < 100) AND (ctid = '(1,1)'::tid) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery) AND (lower(c4) = '1'::text))
+   Filter: ((c1 < 100) AND (ctid = '(1,1)'::tid) AND (lower(c4) = '1'::text) AND (to_tsvector('english'::regconfig, c4) @@ '''a'' & ''b'''::tsquery))
    ->  Bitmap Index Scan on ti1_c2_key
          Index Cond: (c2 = 1)
 (5 rows)
@@ -4280,9 +4280,9 @@ not used hint:
 duplication hint:
 error hint:
 
-            QUERY PLAN            
-----------------------------------
- Index Scan using ti1_gist on ti1
+              QUERY PLAN               
+---------------------------------------
+ Index Only Scan using ti1_gist on ti1
    Index Cond: (c1 < 1)
 (2 rows)
 
@@ -5066,11 +5066,13 @@ EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
         QUERY PLAN        
 --------------------------
  Update on p1
+   Update on p1
+   Update on p1c1
    ->  Seq Scan on p1
          Filter: (c1 = 1)
    ->  Seq Scan on p1c1
          Filter: (c1 = 1)
-(5 rows)
+(7 rows)
 
 /*+IndexScan(p1)*/
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
@@ -5084,11 +5086,13 @@ error hint:
               QUERY PLAN               
 ---------------------------------------
  Update on p1
+   Update on p1
+   Update on p1c1
    ->  Index Scan using p1_i on p1
          Index Cond: (c1 = 1)
    ->  Index Scan using p1c1_i on p1c1
          Index Cond: (c1 = 1)
-(5 rows)
+(7 rows)
 
 /*+IndexScan(p1 p1_pkey)*/
 EXPLAIN (COSTS false) UPDATE s1.p1 SET c4 = c4 WHERE c1 = 1;
@@ -5106,11 +5110,13 @@ error hint:
                 QUERY PLAN                
 ------------------------------------------
  Update on p1
+   Update on p1
+   Update on p1c1
    ->  Index Scan using p1_pkey on p1
          Index Cond: (c1 = 1)
    ->  Index Scan using p1c1_pkey on p1c1
          Index Cond: (c1 = 1)
-(5 rows)
+(7 rows)
 
 ----
 ---- No. S-3-9 inheritance table number
