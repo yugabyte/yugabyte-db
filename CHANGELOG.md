@@ -1,6 +1,11 @@
 Changelog
 =========
 
+WIP version 0.0.4:
+
+  - handle index on predicate
+  - safer handling of locks
+
 2015-08-08 version 0.0.3:
 
   - fix a bug when a regular query could fail after a hypothetical index have
