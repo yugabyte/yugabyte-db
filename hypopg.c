@@ -28,9 +28,14 @@
 #include "miscadmin.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/clauses.h"
+#include "optimizer/cost.h"
+#include "optimizer/pathnode.h"
 #include "optimizer/plancat.h"
+#include "optimizer/planner.h"
 #include "parser/parser.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_utilcmd.h"
 #include "storage/bufmgr.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -81,6 +86,8 @@ typedef struct hypoEntry
 	Oid			relam;			/* OID of the access method (in pg_am) */
 
 	RegProcedure amcostestimate;	/* OID of the access method's cost fcn */
+
+	List	   *indpred;		/* predicate if a partial index, else NIL */
 
 	bool		predOK;			/* true if predicate matches query */
 	bool		unique;			/* true if a unique index */
@@ -134,7 +141,8 @@ static const hypoEntry *entry_store(Oid relid,
 			int indexcollations,
 			Oid opfamily,
 			Oid opcintype);
-static const hypoEntry *entry_store_parsetree(IndexStmt *node);
+static const hypoEntry *entry_store_parsetree(IndexStmt *node,
+			const char *queryString);
 static bool entry_remove(Oid indexid);
 
 static void
@@ -151,8 +159,7 @@ hypo_utility_hook(Node *parsetree,
 				  char *completionTag);
 static ProcessUtility_hook_type prev_utility_hook = NULL;
 
-static void
-			hypo_executorEnd_hook(QueryDesc *queryDesc);
+static void hypo_executorEnd_hook(QueryDesc *queryDesc);
 static ExecutorEnd_hook_type prev_ExecutorEnd_hook = NULL;
 
 
@@ -182,6 +189,9 @@ static List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
 static Oid GetIndexOpClass(List *opclass, Oid attrType,
 				char *accessMethodName, Oid accessMethodId);
+
+static void CheckPredicate(Expr *predicate);
+static bool CheckMutability(Expr *expr);
 
 void
 _PG_init(void)
@@ -249,6 +259,7 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 #if PG_VERSION_NUM >= 90500
 	entry->canreturn = palloc0(sizeof(bool) * ncolumns);
 #endif
+	entry->indpred = NIL;
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -408,7 +419,7 @@ entry_store(Oid relid,
 /* Create an hypothetical index from its CREATE INDEX parsetree
  */
 static const hypoEntry *
-entry_store_parsetree(IndexStmt *node)
+entry_store_parsetree(IndexStmt *node, const char *queryString)
 {
 	hypoEntry  *entry;
 	HeapTuple	tuple;
@@ -443,6 +454,12 @@ entry_store_parsetree(IndexStmt *node)
 		return false;
 	}
 
+	relid =
+		RangeVarGetRelid(node->relation, AccessShareLock, false);
+
+	/* Run parse analysis ... */
+	node = transformIndexStmt(relid, node, queryString);
+
 	ncolumns = list_length(node->indexParams);
 
 	initStringInfo(&indexRelationName);
@@ -457,9 +474,6 @@ entry_store_parsetree(IndexStmt *node)
 
 	appendStringInfo(&indexRelationName, "%s", node->relation->relname);
 
-	relid =
-		RangeVarGetRelid(node->relation, AccessShareLock, false);
-
 	/* now create the hypothetical index entry */
 	ncolumns = list_length(node->indexParams);
 
@@ -467,6 +481,25 @@ entry_store_parsetree(IndexStmt *node)
 
 	entry->unique = node->unique;
 	entry->ncolumns = ncolumns;
+
+	/* handle predicate if present */
+	if (node->whereClause)
+	{
+		MemoryContext oldcontext;
+		List	   *pred;
+
+		CheckPredicate((Expr *) node->whereClause);
+
+		pred = make_ands_implicit((Expr *) node->whereClause);
+		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+		entry->indpred = (List *) copyObject(pred);
+		MemoryContextSwitchTo(oldcontext);
+	}
+	else
+	{
+		entry->indpred = NIL;
+	}
 
 	/* iterate through columns */
 	j = 0;
@@ -545,6 +578,7 @@ entry_remove(Oid indexid)
 			pfree(entry->sortopfamily);
 			pfree(entry->reverse_sort);
 			pfree(entry->nulls_first);
+			pfree(entry->indpred);
 #if PG_VERSION_NUM >= 90500
 			pfree(entry->canreturn);
 #endif
@@ -732,7 +766,8 @@ injectHypotheticalIndex(PlannerInfo *root,
 	}
 
 	index->indexprs = NIL;		/* not handled for now, WIP */
-	index->indpred = NIL;		/* no partial index handled for now, WIP */
+	index->indpred = list_copy(entry->indpred);
+	index->predOK = false;		/* will be set later in indxpath.c */
 
 	/*
 	 * Build targetlist using the completed indexprs data. copied from
@@ -922,6 +957,7 @@ hypopg(PG_FUNCTION_ARGS)
 	TupleDesc	tupdesc;
 	Tuplestorestate *tupstore;
 	ListCell   *lc;
+	Datum		predDatum;
 
 	/* check to see if caller supports us returning a tuplestore */
 	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
@@ -958,6 +994,22 @@ hypopg(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
+		/*
+		 * Convert the index predicate (if any) to a text datum.  Note we convert
+		 * implicit-AND format to normal explicit-AND for storage.
+		 */
+		if (entry->indpred != NIL)
+		{
+			char	   *predString;
+
+			predString = nodeToString(make_ands_explicit(entry->indpred));
+			predDatum = CStringGetTextDatum(predString);
+			pfree(predString);
+		}
+		else
+			predDatum = (Datum) 0;
+
+
 		values[j++] = CStringGetTextDatum(strdup(entry->indexname));
 		values[j++] = ObjectIdGetDatum(entry->oid);
 		values[j++] = ObjectIdGetDatum(entry->relid);
@@ -968,7 +1020,7 @@ hypopg(PG_FUNCTION_ARGS)
 		values[j++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
 		nulls[j++] = true;		/* no indoption for now, TODO */
 		nulls[j++] = true;		/* no hypothetical index on expr for now */
-		nulls[j++] = true;		/* no hypothetical index on predicate for now */
+		values[j++] = predDatum;
 		values[j++] = ObjectIdGetDatum(entry->relam);
 		Assert(j == HYPO_NB_COLS);
 
@@ -1042,7 +1094,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			entry = entry_store_parsetree((IndexStmt *) parsetree);
+			entry = entry_store_parsetree((IndexStmt *) parsetree, sql);
 			values[0] = ObjectIdGetDatum(entry->oid);
 			values[1] = CStringGetTextDatum(strdup(entry->indexname));
 
@@ -1183,11 +1235,62 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	 * access methods
 	 */
 
+	if (entry->indpred == NIL)
+	{
+		/* No predicate, as much tuples as estmated on its relation */
+		entry->tuples = rel->tuples;
+	}
+	else
+	{
+		/* We have a predicate. Find it's selectivity and setup the estimated
+		 * number of line according to it
+		 */
+		Selectivity selectivity;
+		PlannerInfo *root;
+		PlannerGlobal *glob;
+		Query *parse;
+		List *rtable = NIL;
+		RangeTblEntry *rte;
+
+		/* create a fake minimal PlannerInfo */
+		root = makeNode(PlannerInfo);
+
+		glob = makeNode(PlannerGlobal);
+		glob->boundParams = NULL;
+		root->glob = glob;
+
+		/* only 1 table: the one related to this hypothetical index */
+		rte = makeNode(RangeTblEntry);
+		rte->relkind = RTE_RELATION;
+		rte->relid = entry->relid;
+		rte->inh = false; /* don't include inherited children */
+		rtable = lappend(rtable, rte);
+
+		parse = makeNode(Query);
+		parse->rtable = rtable;
+		root->parse = parse;
+
+		/* allocate simple_rel_arrays and simple_rte_arrays. This function will
+		 * also setup simple_rte_arrays with the previous rte. */
+		setup_simple_rel_arrays(root);
+		/* also add our table info */
+		root->simple_rel_array[1] = rel;
+
+		/* per comment on clause_selectivity(), JOIN_INNER must be passed if
+		 * the clause isn't a join clause, which is our case, and passing 0 to
+		 * varRelid is appropriate for restriction clause.
+		 */
+		selectivity = clauselist_selectivity(root, entry->indpred, 0,
+											 JOIN_INNER, NULL);
+
+		elog(DEBUG1, "hypopg: selectivity for index \"%s\": %lf", entry->indexname, selectivity);
+
+		entry->tuples = selectivity * rel->tuples;
+	}
+
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
-			/* Will need to change this when handling predicate */
-			entry->tuples = rel->tuples;
 
 			/* -------------------------------
 			 * quick estimating of index size:
@@ -1221,6 +1324,10 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 			elog(WARNING, "hypopg: access method %d is not supported",
 				 entry->relam);
 	}
+
+	/* make sure the index size is at least one block */
+	if (entry->pages <= 0)
+		entry->pages = 1;
 }
 
 
@@ -1401,4 +1508,61 @@ GetIndexOpClass(List *opclass, Oid attrType,
 	ReleaseSysCache(tuple);
 
 	return opClassId;
+}
+
+/*
+ * Copied from src/backend/commands/indexcmds.c, not exported.
+ * CheckPredicate
+ *		Checks that the given partial-index predicate is valid.
+ *
+ * This used to also constrain the form of the predicate to forms that
+ * indxpath.c could do something with.  However, that seems overly
+ * restrictive.  One useful application of partial indexes is to apply
+ * a UNIQUE constraint across a subset of a table, and in that scenario
+ * any evaluatable predicate will work.  So accept any predicate here
+ * (except ones requiring a plan), and let indxpath.c fend for itself.
+ */
+static void
+CheckPredicate(Expr *predicate)
+{
+	/*
+	 * transformExpr() should have already rejected subqueries, aggregates,
+	 * and window functions, based on the EXPR_KIND_ for a predicate.
+	 */
+
+	/*
+	 * A predicate using mutable functions is probably wrong, for the same
+	 * reasons that we don't allow an index expression to use one.
+	 */
+	if (CheckMutability(predicate))
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+		   errmsg("functions in index predicate must be marked IMMUTABLE")));
+}
+
+/*
+ * Copied from src/backend/commands/indexcmds.c, not exported.
+ * CheckMutability
+ *		Test whether given expression is mutable
+ */
+static bool
+CheckMutability(Expr *expr)
+{
+	/*
+	 * First run the expression through the planner.  This has a couple of
+	 * important consequences.  First, function default arguments will get
+	 * inserted, which may affect volatility (consider "default now()").
+	 * Second, inline-able functions will get inlined, which may allow us to
+	 * conclude that the function is really less volatile than it's marked. As
+	 * an example, polymorphic functions must be marked with the most volatile
+	 * behavior that they have for any input type, but once we inline the
+	 * function we may be able to conclude that it's not so volatile for the
+	 * particular input type we're dealing with.
+	 *
+	 * We assume here that expression_planner() won't scribble on its input.
+	 */
+	expr = expression_planner(expr);
+
+	/* Now we can search for non-immutable functions */
+	return contain_mutable_functions((Node *) expr);
 }
