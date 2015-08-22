@@ -8,7 +8,7 @@ DOCS         = $(wildcard README.md)
 PG_CONFIG = pg_config
 
 MODULE_big = hypopg
-OBJS = hypopg.o
+OBJS = hypopg.o hypopg_import.o
 
 all:
 
