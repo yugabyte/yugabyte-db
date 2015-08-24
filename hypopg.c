@@ -130,12 +130,12 @@ PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 
-static hypoEntry *newHypoEntry(Oid relid, char *accessMethod, int ncolumns);
-static Oid	hypoGetNewOid(Oid relid);
-static void addHypoEntry(hypoEntry *entry);
+static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int ncolumns);
+static Oid	hypo_getNewOid(Oid relid);
+static void hypo_addEntry(hypoEntry *entry);
 
-static void entry_reset(void);
-static const hypoEntry *entry_store(Oid relid,
+static void hypo_entry_reset(void);
+static const hypoEntry *hypo_entry_store(Oid relid,
 			char *indexname,
 			char *accessMethod,
 			int ncolumns,
@@ -143,9 +143,9 @@ static const hypoEntry *entry_store(Oid relid,
 			int indexcollations,
 			Oid opfamily,
 			Oid opcintype);
-static const hypoEntry *entry_store_parsetree(IndexStmt *node,
+static const hypoEntry *hypo_entry_store_parsetree(IndexStmt *node,
 			const char *queryString);
-static bool entry_remove(Oid indexid);
+static bool hypo_entry_remove(Oid indexid);
 
 static void
 hypo_utility_hook(Node *parsetree,
@@ -174,7 +174,7 @@ static get_relation_info_hook_type prev_get_relation_info_hook = NULL;
 static const char *hypo_explain_get_index_name_hook(Oid indexId);
 static explain_get_index_name_hook_type prev_explain_get_index_name_hook = NULL;
 
-static void injectHypotheticalIndex(PlannerInfo *root,
+static void hypo_injectHypotheticalIndex(PlannerInfo *root,
 						Oid relationObjectId,
 						bool inhparent,
 						RelOptInfo *rel,
@@ -229,7 +229,7 @@ _PG_fini(void)
 
 /* palloc a new hypoEntry, and give it a new OID, and some other global stuff */
 static hypoEntry *
-newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
+hypo_newEntry(Oid relid, char *accessMethod, int ncolumns)
 {
 	hypoEntry  *entry;
 	MemoryContext oldcontext;
@@ -258,7 +258,7 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	entry->oid = hypoGetNewOid(relid);
+	entry->oid = hypo_getNewOid(relid);
 	entry->relid = relid;
 	entry->immediate = true;
 
@@ -316,7 +316,7 @@ newHypoEntry(Oid relid, char *accessMethod, int ncolumns)
  * Return a new OID for an hypothetical index.
  */
 static Oid
-hypoGetNewOid(Oid relid)
+hypo_getNewOid(Oid relid)
 {
 	Relation	pg_class;
 	Relation	relation;
@@ -348,7 +348,7 @@ hypoGetNewOid(Oid relid)
 /* Add an hypoEntry to hypoEntries */
 
 static void
-addHypoEntry(hypoEntry *entry)
+hypo_addEntry(hypoEntry *entry)
 {
 	MemoryContext oldcontext;
 
@@ -359,12 +359,12 @@ addHypoEntry(hypoEntry *entry)
 	MemoryContextSwitchTo(oldcontext);
 }
 
-/* Remove cleanly all hypothetical indexes by calling entry_remove on each
- * entry.
- * hypo_remove function pfree all allocated memory
+/*
+ * Remove cleanly all hypothetical indexes by calling hypo_entry_remove() on
+ * each entry. hypo_entry_remove() function pfree all allocated memory
  */
 static void
-entry_reset(void)
+hypo_entry_reset(void)
 {
 	ListCell   *lc;
 
@@ -372,7 +372,7 @@ entry_reset(void)
 	{
 		hypoEntry  *entry = (hypoEntry *) lc;
 
-		entry_remove(entry->oid);
+		hypo_entry_remove(entry->oid);
 	}
 
 	list_free(entries);
@@ -383,7 +383,7 @@ entry_reset(void)
 /* Simplified function to add an hypotehtical index, with inly 1 column index
  */
 static const hypoEntry *
-entry_store(Oid relid,
+hypo_entry_store(Oid relid,
 			char *indexname,
 			char *accessMethod,
 			int ncolumns,
@@ -394,7 +394,7 @@ entry_store(Oid relid,
 {
 	hypoEntry  *entry;
 
-	entry = newHypoEntry(relid, accessMethod, 1);
+	entry = hypo_newEntry(relid, accessMethod, 1);
 
 	hypo_set_indexname(entry, indexname);
 	entry->unique = false;
@@ -406,7 +406,7 @@ entry_store(Oid relid,
 	entry->reverse_sort[0] = false;
 	entry->nulls_first[0] = false;
 
-	addHypoEntry(entry);
+	hypo_addEntry(entry);
 
 	return entry;
 }
@@ -414,7 +414,7 @@ entry_store(Oid relid,
 /* Create an hypothetical index from its CREATE INDEX parsetree
  */
 static const hypoEntry *
-entry_store_parsetree(IndexStmt *node, const char *queryString)
+hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 {
 	hypoEntry  *entry;
 	HeapTuple	tuple;
@@ -472,7 +472,7 @@ entry_store_parsetree(IndexStmt *node, const char *queryString)
 	/* now create the hypothetical index entry */
 	ncolumns = list_length(node->indexParams);
 
-	entry = newHypoEntry(relid, node->accessMethod, ncolumns);
+	entry = hypo_newEntry(relid, node->accessMethod, ncolumns);
 
 	entry->unique = node->unique;
 	entry->ncolumns = ncolumns;
@@ -545,7 +545,7 @@ entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 	hypo_set_indexname(entry, indexRelationName.data);
 
-	addHypoEntry(entry);
+	hypo_addEntry(entry);
 
 	return entry;
 }
@@ -554,7 +554,7 @@ entry_store_parsetree(IndexStmt *node, const char *queryString)
  * pfree all memory that has been allocated.
  */
 static bool
-entry_remove(Oid indexid)
+hypo_entry_remove(Oid indexid)
 {
 	ListCell   *lc;
 
@@ -871,7 +871,7 @@ hypo_explain_get_index_name_hook(Oid indexId)
 Datum
 hypopg_reset(PG_FUNCTION_ARGS)
 {
-	entry_reset();
+	hypo_entry_reset();
 	PG_RETURN_VOID();
 }
 
@@ -927,7 +927,7 @@ hypopg_add_index_internal(PG_FUNCTION_ARGS)
 	memset(values, 0, sizeof(values));
 	memset(nulls, 0, sizeof(nulls));
 
-	entry = entry_store(relid, indexname, accessMethod, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
+	entry = hypo_entry_store(relid, indexname, accessMethod, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
 
 	values[0] = ObjectIdGetDatum(entry->oid);
 	values[1] = CStringGetTextDatum(strdup(entry->indexname));
@@ -1089,7 +1089,7 @@ hypopg_create_index(PG_FUNCTION_ARGS)
 		}
 		else
 		{
-			entry = entry_store_parsetree((IndexStmt *) parsetree, sql);
+			entry = hypo_entry_store_parsetree((IndexStmt *) parsetree, sql);
 			values[0] = ObjectIdGetDatum(entry->oid);
 			values[1] = CStringGetTextDatum(strdup(entry->indexname));
 
@@ -1112,7 +1112,7 @@ hypopg_drop_index(PG_FUNCTION_ARGS)
 {
 	Oid			indexid = PG_GETARG_OID(0);
 
-	PG_RETURN_BOOL(entry_remove(indexid));
+	PG_RETURN_BOOL(hypo_entry_remove(indexid));
 }
 
 /*
