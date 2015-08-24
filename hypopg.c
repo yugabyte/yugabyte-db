@@ -673,7 +673,7 @@ hypo_executorEnd_hook(QueryDesc *queryDesc)
  * specified relation
  */
 static void
-injectHypotheticalIndex(PlannerInfo *root,
+hypo_injectHypotheticalIndex(PlannerInfo *root,
 						Oid relationObjectId,
 						bool inhparent,
 						RelOptInfo *rel,
@@ -793,7 +793,7 @@ injectHypotheticalIndex(PlannerInfo *root,
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
-/* This function will execute the "injectHypotheticalIndex" for every hypothetical
+/* This function will execute the "hypo_injectHypotheticalIndex" for every hypothetical
  * index found for each relation if the isExplain flag is setup.
  */
 static void
@@ -823,7 +823,7 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 					 * hypothetical index found, add it to the relation's
 					 * indextlist
 					 */
-					injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, entry);
+					hypo_injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, entry);
 				}
 			}
 		}
