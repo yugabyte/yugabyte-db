@@ -989,21 +989,6 @@ hypopg(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		/*
-		 * Convert the index predicate (if any) to a text datum.  Note we convert
-		 * implicit-AND format to normal explicit-AND for storage.
-		 */
-		if (entry->indpred != NIL)
-		{
-			char	   *predString;
-
-			predString = nodeToString(make_ands_explicit(entry->indpred));
-			predDatum = CStringGetTextDatum(predString);
-			pfree(predString);
-		}
-		else
-			predDatum = (Datum) 0;
-
 
 		values[j++] = CStringGetTextDatum(strdup(entry->indexname));
 		values[j++] = ObjectIdGetDatum(entry->oid);
@@ -1015,7 +1000,23 @@ hypopg(PG_FUNCTION_ARGS)
 		values[j++] = PointerGetDatum(buildoidvector(entry->opclass, entry->ncolumns));
 		nulls[j++] = true;		/* no indoption for now, TODO */
 		nulls[j++] = true;		/* no hypothetical index on expr for now */
-		values[j++] = predDatum;
+
+		/*
+		 * Convert the index predicate (if any) to a text datum.  Note we convert
+		 * implicit-AND format to normal explicit-AND for storage.
+		 */
+		if (entry->indpred != NIL)
+		{
+			char	   *predString;
+
+			predString = nodeToString(make_ands_explicit(entry->indpred));
+			predDatum = CStringGetTextDatum(predString);
+			pfree(predString);
+			values[j++] = predDatum;
+		}
+		else
+			nulls[j++] = true;
+
 		values[j++] = ObjectIdGetDatum(entry->relam);
 		Assert(j == HYPO_NB_COLS);
 
