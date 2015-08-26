@@ -46,6 +46,7 @@ typedef struct
 	bool		include_types;		/* include data types */
 
 	bool		pretty_print;		/* pretty-print JSON? */
+	bool		write_in_chunks;	/* write in chunks? */
 
 	/*
 	 * LSN pointing to the end of commit record + 1 (txn->end_lsn)
@@ -104,6 +105,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_schemas = true;
 	data->include_types = true;
 	data->pretty_print = false;
+	data->write_in_chunks = true;
 	data->include_lsn = false;
 
 	data->nr_changes = 0;
@@ -179,6 +181,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 				data->pretty_print = true;
 			}
 			else if (!parse_bool(strVal(elem->arg), &data->pretty_print))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
+		else if (strcmp(elem->defname, "write-in-chunks") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "write-in-chunks argument is null");
+				data->write_in_chunks = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->write_in_chunks))
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
@@ -264,7 +279,8 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	else
 		appendStringInfoString(ctx->out, "\"change\":[");
 
-	OutputPluginWrite(ctx, true);
+	if (data->write_in_chunks)
+		OutputPluginWrite(ctx, true);
 }
 
 /* COMMIT callback */
@@ -282,12 +298,21 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	elog(DEBUG1, "# of subxacts: %d", txn->nsubtxns);
 
 	/* Transaction ends */
-	OutputPluginPrepareWrite(ctx, true);
+	if (data->write_in_chunks)
+		OutputPluginPrepareWrite(ctx, true);
 
 	if (data->pretty_print)
+	{
+		/* if we don't write in chunks, we need a newline here */
+		if (!data->write_in_chunks)
+			appendStringInfoChar(ctx->out, '\n');
+
 		appendStringInfoString(ctx->out, "\t]\n}");
+	}
 	else
+	{
 		appendStringInfoString(ctx->out, "]}");
+	}
 
 	OutputPluginWrite(ctx, true);
 }
@@ -634,7 +659,8 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	/* Avoid leaking memory by using and resetting our own context */
 	old = MemoryContextSwitchTo(data->context);
 
-	OutputPluginPrepareWrite(ctx, true);
+	if (data->write_in_chunks)
+		OutputPluginPrepareWrite(ctx, true);
 
 	/* Make sure rd_replidindex is set */
 	RelationGetIndexList(relation);
@@ -697,10 +723,16 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	/* Change starts */
 	if (data->pretty_print)
 	{
+		/* if we don't write in chunks, we need a newline here */
+		if (!data->write_in_chunks)
+			appendStringInfoChar(ctx->out, '\n');
+
+		appendStringInfoString(ctx->out, "\t\t");
+
 		if (data->nr_changes > 1)
-			appendStringInfoString(ctx->out, "\t\t,{\n");
-		else
-			appendStringInfoString(ctx->out, "\t\t{\n");
+			appendStringInfoChar(ctx->out, ',');
+
+		appendStringInfoString(ctx->out, "{\n");
 	}
 	else
 	{
@@ -821,5 +853,6 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	MemoryContextSwitchTo(old);
 	MemoryContextReset(data->context);
 
-	OutputPluginWrite(ctx, true);
+	if (data->write_in_chunks)
+		OutputPluginWrite(ctx, true);
 }
