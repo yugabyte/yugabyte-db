@@ -20,12 +20,14 @@
 #include "access/htup_details.h"
 #endif
 #include "access/nbtree.h"
+#include "access/reloptions.h"
 #include "access/sysattr.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_type.h"
+#include "commands/defrem.h"
 #include "commands/explain.h"
 #include "funcapi.h"
 #include "miscadmin.h"
@@ -106,6 +108,9 @@ typedef struct hypoEntry
 	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
 	bool		amhasgettuple;	/* does AM have amgettuple interface? */
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
+	/* store some informations usually saved in catalogs */
+	List		*options;		/* WITH clause options: a list of DefElem */
+
 } hypoEntry;
 
 List	   *entries = NIL;
@@ -130,7 +135,8 @@ PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 
-static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int ncolumns);
+static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int ncolumns,
+		List *options);
 static Oid	hypo_getNewOid(Oid relid);
 static void hypo_addEntry(hypoEntry *entry);
 
@@ -229,11 +235,12 @@ _PG_fini(void)
 
 /* palloc a new hypoEntry, and give it a new OID, and some other global stuff */
 static hypoEntry *
-hypo_newEntry(Oid relid, char *accessMethod, int ncolumns)
+hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 {
 	hypoEntry  *entry;
 	MemoryContext oldcontext;
 	HeapTuple	tuple;
+	RegProcedure	amoptions;
 #if PG_VERSION_NUM >= 90500
 	int			i;
 #endif
@@ -255,6 +262,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns)
 	entry->canreturn = palloc0(sizeof(bool) * ncolumns);
 #endif
 	entry->indpred = NIL;
+	entry->options = (List *) copyObject(options);
 
 	MemoryContextSwitchTo(oldcontext);
 
@@ -280,8 +288,22 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns)
 	entry->amsearchnulls = ((Form_pg_am) GETSTRUCT(tuple))->amsearchnulls;
 	entry->amhasgettuple = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgettuple);
 	entry->amhasgetbitmap = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgetbitmap);
+	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
 
 	ReleaseSysCache(tuple);
+
+	if (options != NIL)
+	{
+		Datum	reloptions;
+
+		/*
+		 * Parse AM-specific options, convert to text array form, validate.
+		 */
+		reloptions = transformRelOptions((Datum) 0, options,
+										 NULL, NULL, false, false);
+
+		(void) index_reloptions(amoptions, reloptions, true);
+	}
 
 	/*
 	 * canreturn should been checked with the amcanreturn proc, but this can't
@@ -394,7 +416,7 @@ hypo_entry_store(Oid relid,
 {
 	hypoEntry  *entry;
 
-	entry = hypo_newEntry(relid, accessMethod, 1);
+	entry = hypo_newEntry(relid, accessMethod, 1, NIL);
 
 	hypo_set_indexname(entry, indexname);
 	entry->unique = false;
@@ -472,7 +494,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	/* now create the hypothetical index entry */
 	ncolumns = list_length(node->indexParams);
 
-	entry = hypo_newEntry(relid, node->accessMethod, ncolumns);
+	entry = hypo_newEntry(relid, node->accessMethod, ncolumns, node->options);
 
 	entry->unique = node->unique;
 	entry->ncolumns = ncolumns;
@@ -1219,7 +1241,9 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	int			usable_page_size;
 	int			line_size;
 	double		bloat_factor;
+	int			fillfactor = 0; /* for B-tree, hash, GiST and SP-Gist */
 	int			additional_bloat = 20;
+	ListCell   *lc;
 
 	for (i = 0; i < entry->ncolumns; i++)
 	{
@@ -1284,6 +1308,14 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		entry->tuples = selectivity * rel->tuples;
 	}
 
+	foreach(lc, entry->options)
+	{
+		DefElem *elem = (DefElem *) lfirst(lc);
+
+		if (strcmp(elem->defname, "fillfactor") == 0)
+			fillfactor = defGetInt32(elem);
+	}
+
 	switch (entry->relam)
 	{
 		case BTREE_AM_OID:
@@ -1308,7 +1340,9 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 				+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
 
 			usable_page_size = BLCKSZ - sizeof(PageHeaderData) - sizeof(BTPageOpaqueData);
-			bloat_factor = (200.0 - BTREE_DEFAULT_FILLFACTOR + additional_bloat) / 100;
+			bloat_factor = (200.0
+					- (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
+					+ additional_bloat) / 100;
 
 			entry->pages =
 				entry->tuples * line_size * bloat_factor / usable_page_size;
