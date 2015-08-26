@@ -233,7 +233,11 @@ _PG_fini(void)
 
 }
 
-/* palloc a new hypoEntry, and give it a new OID, and some other global stuff */
+/*
+ * palloc a new hypoEntry, and give it a new OID, and some other global stuff.
+ * This function also parse index storage options (if any) to check if they're
+ * valid.
+ */
 static hypoEntry *
 hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 {
