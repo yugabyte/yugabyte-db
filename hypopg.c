@@ -1331,7 +1331,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 			 * no NULL handling
 			 * fixed additional bloat: 20%
 			 *
-			 * I'll also need to read more carefully nbtree code to check is
+			 * I'll also need to read more carefully nbtree code to check if
 			 * this is accurate enough.
 			 *
 			 */
