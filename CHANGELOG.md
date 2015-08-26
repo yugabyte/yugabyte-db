@@ -3,6 +3,7 @@ Changelog
 
 WIP version 0.0.4:
 
+  - handle "fillfactor" index storage parmeter
   - handle index on predicate
   - safer handling of locks
 
