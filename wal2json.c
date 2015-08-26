@@ -45,6 +45,8 @@ typedef struct
 	bool		include_schemas;	/* qualify tables */
 	bool		include_types;		/* include data types */
 
+	bool		pretty_print;		/* pretty-print JSON? */
+
 	/*
 	 * LSN pointing to the end of commit record + 1 (txn->end_lsn)
 	 * It is useful for tools that wants a position to restart from.
@@ -101,6 +103,7 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 	data->include_timestamp = false;
 	data->include_schemas = true;
 	data->include_types = true;
+	data->pretty_print = false;
 	data->include_lsn = false;
 
 	data->nr_changes = 0;
@@ -168,6 +171,19 @@ pg_decode_startup(LogicalDecodingContext *ctx, OutputPluginOptions *opt, bool is
 						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
 							 strVal(elem->arg), elem->defname)));
 		}
+		else if (strcmp(elem->defname, "pretty-print") == 0)
+		{
+			if (elem->arg == NULL)
+			{
+				elog(LOG, "pretty-print argument is null");
+				data->pretty_print = true;
+			}
+			else if (!parse_bool(strVal(elem->arg), &data->pretty_print))
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						 errmsg("could not parse value \"%s\" for parameter \"%s\"",
+							 strVal(elem->arg), elem->defname)));
+		}
 		else if (strcmp(elem->defname, "include-lsn") == 0)
 		{
 			if (elem->arg == NULL)
@@ -210,24 +226,43 @@ pg_decode_begin_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn)
 	/* Transaction starts */
 	OutputPluginPrepareWrite(ctx, true);
 
-	appendStringInfoString(ctx->out, "{\n");
+	if (data->pretty_print)
+		appendStringInfoString(ctx->out, "{\n");
+	else
+		appendStringInfoChar(ctx->out, '{');
 
 	if (data->include_xids)
-		appendStringInfo(ctx->out, "\t\"xid\": %u,\n", txn->xid);
+	{
+		if (data->pretty_print)
+			appendStringInfo(ctx->out, "\t\"xid\": %u,\n", txn->xid);
+		else
+			appendStringInfo(ctx->out, "\"xid\":%u,", txn->xid);
+	}
 
 	if (data->include_lsn)
 	{
 		char *lsn_str = DatumGetCString(DirectFunctionCall1(pg_lsn_out, txn->end_lsn));
 
-		appendStringInfo(ctx->out, "\t\"nextlsn\": \"%s\",\n", lsn_str);
+		if (data->pretty_print)
+			appendStringInfo(ctx->out, "\t\"nextlsn\": \"%s\",\n", lsn_str);
+		else
+			appendStringInfo(ctx->out, "\"nextlsn\":\"%s\",", lsn_str);
 
 		pfree(lsn_str);
 	}
 
 	if (data->include_timestamp)
-		appendStringInfo(ctx->out, "\t\"timestamp\": \"%s\",\n", timestamptz_to_str(txn->commit_time));
+	{
+		if (data->pretty_print)
+			appendStringInfo(ctx->out, "\t\"timestamp\": \"%s\",\n", timestamptz_to_str(txn->commit_time));
+		else
+			appendStringInfo(ctx->out, "\"timestamp\":\"%s\",", timestamptz_to_str(txn->commit_time));
+	}
 
-	appendStringInfoString(ctx->out, "\t\"change\": [");
+	if (data->pretty_print)
+		appendStringInfoString(ctx->out, "\t\"change\": [");
+	else
+		appendStringInfoString(ctx->out, "\"change\":[");
 
 	OutputPluginWrite(ctx, true);
 }
@@ -249,7 +284,10 @@ pg_decode_commit_txn(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	/* Transaction ends */
 	OutputPluginPrepareWrite(ctx, true);
 
-	appendStringInfoString(ctx->out, "\t]\n}");
+	if (data->pretty_print)
+		appendStringInfoString(ctx->out, "\t]\n}");
+	else
+		appendStringInfoString(ctx->out, "]}");
 
 	OutputPluginWrite(ctx, true);
 }
@@ -336,16 +374,35 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 	 */
 	if (replident)
 	{
-		appendStringInfoString(&colnames, "\t\t\t\"oldkeys\": {\n");
-		appendStringInfoString(&colnames, "\t\t\t\t\"keynames\": [");
-		appendStringInfoString(&coltypes, "\t\t\t\t\"keytypes\": [");
-		appendStringInfoString(&colvalues, "\t\t\t\t\"keyvalues\": [");
+		if (data->pretty_print)
+		{
+			appendStringInfoString(&colnames, "\t\t\t\"oldkeys\": {\n");
+			appendStringInfoString(&colnames, "\t\t\t\t\"keynames\": [");
+			appendStringInfoString(&coltypes, "\t\t\t\t\"keytypes\": [");
+			appendStringInfoString(&colvalues, "\t\t\t\t\"keyvalues\": [");
+		}
+		else
+		{
+			appendStringInfoString(&colnames, "\"oldkeys\":{");
+			appendStringInfoString(&colnames, "\"keynames\":[");
+			appendStringInfoString(&coltypes, "\"keytypes\":[");
+			appendStringInfoString(&colvalues, "\"keyvalues\":[");
+		}
 	}
 	else
 	{
-		appendStringInfoString(&colnames, "\t\t\t\"columnnames\": [");
-		appendStringInfoString(&coltypes, "\t\t\t\"columntypes\": [");
-		appendStringInfoString(&colvalues, "\t\t\t\"columnvalues\": [");
+		if (data->pretty_print)
+		{
+			appendStringInfoString(&colnames, "\t\t\t\"columnnames\": [");
+			appendStringInfoString(&coltypes, "\t\t\t\"columntypes\": [");
+			appendStringInfoString(&colvalues, "\t\t\t\"columnvalues\": [");
+		}
+		else
+		{
+			appendStringInfoString(&colnames, "\"columnnames\":[");
+			appendStringInfoString(&coltypes, "\"columntypes\":[");
+			appendStringInfoString(&colvalues, "\"columnvalues\":[");
+		}
 	}
 
 	/* Print column information (name, type, value) */
@@ -477,27 +534,56 @@ tuple_to_stringinfo(LogicalDecodingContext *ctx, TupleDesc tupdesc, HeapTuple tu
 
 		/* The first column does not have comma */
 		if (strcmp(comma, "") == 0)
-			comma = ", ";
+		{
+			if (data->pretty_print)
+				comma = ", ";
+			else
+				comma = ",";
+		}
 	}
 
 	/* Column info ends */
 	if (replident)
 	{
-		appendStringInfoString(&colnames, "],\n");
-		if (data->include_types)
-			appendStringInfoString(&coltypes, "],\n");
-		appendStringInfoString(&colvalues, "]\n");
-		appendStringInfoString(&colvalues, "\t\t\t}\n");
+		if (data->pretty_print)
+		{
+			appendStringInfoString(&colnames, "],\n");
+			if (data->include_types)
+				appendStringInfoString(&coltypes, "],\n");
+			appendStringInfoString(&colvalues, "]\n");
+			appendStringInfoString(&colvalues, "\t\t\t}\n");
+		}
+		else
+		{
+			appendStringInfoString(&colnames, "],");
+			if (data->include_types)
+				appendStringInfoString(&coltypes, "],");
+			appendStringInfoChar(&colvalues, ']');
+			appendStringInfoChar(&colvalues, '}');
+		}
 	}
 	else
 	{
-		appendStringInfoString(&colnames, "],\n");
-		if (data->include_types)
-			appendStringInfoString(&coltypes, "],\n");
-		if (hasreplident)
-			appendStringInfoString(&colvalues, "],\n");
+		if (data->pretty_print)
+		{
+			appendStringInfoString(&colnames, "],\n");
+			if (data->include_types)
+				appendStringInfoString(&coltypes, "],\n");
+			if (hasreplident)
+				appendStringInfoString(&colvalues, "],\n");
+			else
+				appendStringInfoString(&colvalues, "]\n");
+		}
 		else
-			appendStringInfoString(&colvalues, "]\n");
+		{
+			appendStringInfoString(&colnames, "],");
+			if (data->include_types)
+				appendStringInfoString(&coltypes, "],");
+			if (hasreplident)
+				appendStringInfoString(&colvalues, "],");
+			else
+				appendStringInfoChar(&colvalues, ']');
+		}
 	}
 
 	/* Print data */
@@ -609,31 +695,59 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 	data->nr_changes++;
 
 	/* Change starts */
-	if (data->nr_changes > 1)
-		appendStringInfoString(ctx->out, "\t\t,{\n");
+	if (data->pretty_print)
+	{
+		if (data->nr_changes > 1)
+			appendStringInfoString(ctx->out, "\t\t,{\n");
+		else
+			appendStringInfoString(ctx->out, "\t\t{\n");
+	}
 	else
-		appendStringInfoString(ctx->out, "\t\t{\n");
+	{
+		if (data->nr_changes > 1)
+			appendStringInfoString(ctx->out, ",{");
+		else
+			appendStringInfoChar(ctx->out, '{');
+	}
 
 	/* Print change kind */
 	switch (change->action)
 	{
 		case REORDER_BUFFER_CHANGE_INSERT:
-			appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"insert\",\n");
+			if (data->pretty_print)
+				appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"insert\",\n");
+			else
+				appendStringInfoString(ctx->out, "\"kind\":\"insert\",");
 			break;
 		case REORDER_BUFFER_CHANGE_UPDATE:
-			appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"update\",\n");
+			if(data->pretty_print)
+				appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"update\",\n");
+			else
+				appendStringInfoString(ctx->out, "\"kind\":\"update\",");
 			break;
 		case REORDER_BUFFER_CHANGE_DELETE:
-			appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"delete\",\n");
+			if (data->pretty_print)
+				appendStringInfoString(ctx->out, "\t\t\t\"kind\": \"delete\",\n");
+			else
+				appendStringInfoString(ctx->out, "\"kind\":\"delete\",");
 			break;
 		default:
 			Assert(false);
 	}
 
 	/* Print table name (possibly) qualified */
-	if (data->include_schemas)
-		appendStringInfo(ctx->out, "\t\t\t\"schema\": \"%s\",\n", get_namespace_name(class_form->relnamespace));
-	appendStringInfo(ctx->out, "\t\t\t\"table\": \"%s\",\n", NameStr(class_form->relname));
+	if (data->pretty_print)
+	{
+		if (data->include_schemas)
+			appendStringInfo(ctx->out, "\t\t\t\"schema\": \"%s\",\n", get_namespace_name(class_form->relnamespace));
+		appendStringInfo(ctx->out, "\t\t\t\"table\": \"%s\",\n", NameStr(class_form->relname));
+	}
+	else
+	{
+		if (data->include_schemas)
+			appendStringInfo(ctx->out, "\"schema\":\"%s\",", get_namespace_name(class_form->relnamespace));
+		appendStringInfo(ctx->out, "\"table\":\"%s\",", NameStr(class_form->relname));
+	}
 
 	switch (change->action)
 	{
@@ -699,7 +813,10 @@ pg_decode_change(LogicalDecodingContext *ctx, ReorderBufferTXN *txn,
 			Assert(false);
 	}
 
-	appendStringInfoString(ctx->out, "\t\t}");
+	if (data->pretty_print)
+		appendStringInfoString(ctx->out, "\t\t}");
+	else
+		appendStringInfoChar(ctx->out, '}');
 
 	MemoryContextSwitchTo(old);
 	MemoryContextReset(data->context);
