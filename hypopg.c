@@ -16,6 +16,11 @@
 #include "postgres.h"
 #include "fmgr.h"
 
+#if PG_VERSION_NUM >= 90500
+#include "access/brin.h"
+#include "access/brin_page.h"
+#include "access/brin_tuple.h"
+#endif
 #if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
 #endif
@@ -26,6 +31,7 @@
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_class.h"
+#include "catalog/pg_opclass.h"
 #include "catalog/pg_type.h"
 #include "commands/defrem.h"
 #include "commands/explain.h"
@@ -324,6 +330,13 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 			entry->canreturn = true;
 #endif
 			break;
+#if PG_VERSION_NUM >= 90500
+		case BRIN_AM_OID:
+			/* BRIN never support Index-Only scan */
+			for (i = 0; i < ncolumns; i++)
+				entry->canreturn[i] = false;
+			break;
+#endif
 		default:
 
 			/*
@@ -717,10 +730,20 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	index->relam = entry->relam;
 
-	if (index->relam != BTREE_AM_OID)
+	if ((index->relam != BTREE_AM_OID)
+#if PG_VERSION_NUM >= 90500
+		&& (index->relam != BRIN_AM_OID)
+#endif
+	   )
 	{
 		/* skip this index if access method is not handled */
-		elog(WARNING, "hypopg: Only btree indexes are supported for now!");
+		elog(WARNING,
+#if PG_VERSION_NUM >= 90500
+				"hypopg: Only btree and BRIN indexes are supported for now!"
+#else
+				"hypopg: Only btree indexes are supported for now!"
+#endif
+			);
 		return;
 	}
 
@@ -738,18 +761,24 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 #if PG_VERSION_NUM >= 90300
 #endif
 
+	index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
+	index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+#if PG_VERSION_NUM >= 90500
+	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
+#endif
+
 	for (i = 0; i < ncolumns; i++)
 	{
 		index->indexkeys[i] = entry->indexkeys[i];
 		ind_avg_width += get_attavgwidth(relation->rd_id, index->indexkeys[i]);
-		switch (index->relam)
-		{
-			case BTREE_AM_OID:
-				index->indexcollations[i] = entry->indexcollations[i];
-				index->opfamily[i] = entry->opfamily[i];
-				index->opcintype[i] = entry->opcintype[i];
-				break;
-		}
+		index->indexcollations[i] = entry->indexcollations[i];
+		index->opfamily[i] = entry->opfamily[i];
+		index->opcintype[i] = entry->opcintype[i];
+		index->reverse_sort[i] = entry->reverse_sort[i];
+		index->nulls_first[i] = entry->nulls_first[i];
+#if PG_VERSION_NUM >= 90500
+		index->canreturn[i] = entry->canreturn[i];
+#endif
 	}
 
 	index->unique = entry->unique;
@@ -769,21 +798,6 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	if (index->relam == BTREE_AM_OID)
 	{
 		index->sortopfamily = index->opfamily;
-	}
-
-	index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-	index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
-#if PG_VERSION_NUM >= 90500
-	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
-#endif
-
-	for (i = 0; i < ncolumns; i++)
-	{
-		index->reverse_sort[i] = entry->reverse_sort[i];
-		index->nulls_first[i] = entry->nulls_first[i];
-#if PG_VERSION_NUM >= 90500
-		index->canreturn[i] = entry->canreturn[i];
-#endif
 	}
 
 	index->indexprs = NIL;		/* not handled for now, WIP */
@@ -1246,6 +1260,9 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	int			line_size;
 	double		bloat_factor;
 	int			fillfactor = 0; /* for B-tree, hash, GiST and SP-Gist */
+#if PG_VERSION_NUM >= 90500
+	int			pages_per_range = BRIN_DEFAULT_PAGES_PER_RANGE;
+#endif
 	int			additional_bloat = 20;
 	ListCell   *lc;
 
@@ -1312,12 +1329,18 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		entry->tuples = selectivity * rel->tuples;
 	}
 
+	/* handle index storage parameters */
 	foreach(lc, entry->options)
 	{
 		DefElem *elem = (DefElem *) lfirst(lc);
 
 		if (strcmp(elem->defname, "fillfactor") == 0)
 			fillfactor = defGetInt32(elem);
+
+#if PG_VERSION_NUM >= 90500
+		if (strcmp(elem->defname, "pages_per_range") == 0)
+			pages_per_range = defGetInt32(elem);
+#endif
 	}
 
 	switch (entry->relam)
@@ -1354,6 +1377,62 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 			entry->tree_height = -1;	/* TODO */
 #endif
 			break;
+#if PG_VERSION_NUM >= 90500
+		case BRIN_AM_OID:
+			{
+				HeapTuple		ht_opc;
+				Form_pg_opclass	opcrec;
+				char 			*opcname;
+				int 			ranges = rel->pages / pages_per_range +1;
+				bool			is_minmax = true;
+				int				data_size;
+
+				/* -------------------------------
+				 * quick estimation of index size. A BRIN index contains
+				 * - a root page
+				 * - a range map: REVMAP_PAGE_MAXITEMS items (one per range
+				 *   block) per revmap block
+				 * - regular type: sizeof(BrinTuple) per range, plus depending
+				 *   on opclass:
+				 *   - *_minmax_ops: 2 Datums (min & max obviously)
+				 *   - *_inclusion_ops: 3 datumes (inclusion and 2 bool)
+				 *
+				 * I assume same minmax VS. inclusion opclass for all columns.
+				 * BRIN access method does not bloat, don't add any additional.
+				 */
+
+				entry->pages = 1 /* root page */
+							+ (ranges / REVMAP_PAGE_MAXITEMS) + 1; /* revmap */
+
+				/* get the operator class name */
+				ht_opc = SearchSysCache1(CLAOID,
+						ObjectIdGetDatum(entry->opclass[0]));
+				if (!HeapTupleIsValid(ht_opc))
+					elog(ERROR, "hypopg: cache lookup failed for opclass %u",
+							entry->opclass[0]);
+				opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
+
+				opcname = NameStr(opcrec->opcname);
+				ReleaseSysCache(ht_opc);
+
+				/* is it a minmax or an inclusion operator class ? */
+				if (!strstr(opcname, "minmax_ops"))
+					is_minmax = false;
+
+				/* compute data_size according to opclass kind */
+				if (is_minmax)
+					data_size = sizeof(BrinTuple) + 2 * ind_avg_width;
+				else
+					data_size = sizeof(BrinTuple) + ind_avg_width
+						+ 2* sizeof(bool);
+
+				data_size = data_size * ranges
+					/ (BLCKSZ - MAXALIGN(SizeOfPageHeaderData)) + 1;
+
+				entry->pages += data_size;
+			}
+			break;
+#endif
 		default:
 			elog(WARNING, "hypopg: access method %d is not supported",
 				 entry->relam);

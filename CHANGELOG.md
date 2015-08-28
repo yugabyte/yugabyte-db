@@ -3,7 +3,8 @@ Changelog
 
 WIP version 0.0.4:
 
-  - handle "fillfactor" index storage parmeter
+  - handle BRIN indexes
+  - handle index storage parameters for supported index methods
   - handle index on predicate
   - safer handling of locks
 
