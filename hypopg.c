@@ -1335,11 +1335,11 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		DefElem *elem = (DefElem *) lfirst(lc);
 
 		if (strcmp(elem->defname, "fillfactor") == 0)
-			fillfactor = defGetInt32(elem);
+			fillfactor = (int32) intVal(elem->arg);
 
 #if PG_VERSION_NUM >= 90500
 		if (strcmp(elem->defname, "pages_per_range") == 0)
-			pages_per_range = defGetInt32(elem);
+			pages_per_range = (int32) intVal(elem->arg);
 #endif
 	}
 

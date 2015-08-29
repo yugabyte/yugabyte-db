@@ -21,7 +21,9 @@
 
 #include "postgres.h"
 
+#if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
+#endif
 #include "catalog/heap.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_opclass.h"
