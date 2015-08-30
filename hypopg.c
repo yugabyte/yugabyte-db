@@ -116,6 +116,7 @@ typedef struct hypoEntry
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
 	/* store some informations usually saved in catalogs */
 	List		*options;		/* WITH clause options: a list of DefElem */
+	bool		amcanorder; /* does AM support order by column value? */
 
 } hypoEntry;
 
@@ -255,9 +256,32 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	int			i;
 #endif
 
+	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethod));
+
+	if (!HeapTupleIsValid(tuple))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_UNDEFINED_OBJECT),
+				 errmsg("hypopg: access method \"%s\" does not exist",
+						accessMethod)));
+	}
+
 	oldcontext = MemoryContextSwitchTo(TopMemoryContext);
 
 	entry = palloc0(sizeof(hypoEntry));
+
+	entry->relam = HeapTupleGetOid(tuple);
+	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
+	entry->amcanorderbyop = ((Form_pg_am) GETSTRUCT(tuple))->amcanorderbyop;
+	entry->amoptionalkey = ((Form_pg_am) GETSTRUCT(tuple))->amoptionalkey;
+	entry->amsearcharray = ((Form_pg_am) GETSTRUCT(tuple))->amsearcharray;
+	entry->amsearchnulls = ((Form_pg_am) GETSTRUCT(tuple))->amsearchnulls;
+	entry->amhasgettuple = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgettuple);
+	entry->amhasgetbitmap = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgetbitmap);
+	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
+	entry->amcanorder = ((Form_pg_am) GETSTRUCT(tuple))->amcanorder;
+
+	ReleaseSysCache(tuple);
 	entry->indexname = palloc0(NAMEDATALEN);
 	/* palloc all arrays */
 	entry->indexkeys = palloc0(sizeof(short int) * ncolumns);
@@ -265,9 +289,20 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->opfamily = palloc0(sizeof(Oid) * ncolumns);
 	entry->opclass = palloc0(sizeof(Oid) * ncolumns);
 	entry->opcintype = palloc0(sizeof(Oid) * ncolumns);
-	entry->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
-	entry->reverse_sort = palloc0(sizeof(bool) * ncolumns);
-	entry->nulls_first = palloc0(sizeof(bool) * ncolumns);
+	/* only palloc sort related fields if needed */
+	if ((entry->relam == BTREE_AM_OID) || (entry->amcanorder))
+	{
+		if (entry->relam != BTREE_AM_OID)
+			entry->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+		entry->reverse_sort = palloc0(sizeof(bool) * ncolumns);
+		entry->nulls_first = palloc0(sizeof(bool) * ncolumns);
+	}
+	else
+	{
+		entry->sortopfamily = NULL;
+		entry->reverse_sort = NULL;
+		entry->nulls_first = NULL;
+	}
 #if PG_VERSION_NUM >= 90500
 	entry->canreturn = palloc0(sizeof(bool) * ncolumns);
 #endif
@@ -279,28 +314,6 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->oid = hypo_getNewOid(relid);
 	entry->relid = relid;
 	entry->immediate = true;
-
-	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethod));
-
-	if (!HeapTupleIsValid(tuple))
-	{
-		ereport(ERROR,
-				(errcode(ERRCODE_UNDEFINED_OBJECT),
-				 errmsg("hypopg: access method \"%s\" does not exist",
-						accessMethod)));
-	}
-
-	entry->relam = HeapTupleGetOid(tuple);
-	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
-	entry->amcanorderbyop = ((Form_pg_am) GETSTRUCT(tuple))->amcanorderbyop;
-	entry->amoptionalkey = ((Form_pg_am) GETSTRUCT(tuple))->amoptionalkey;
-	entry->amsearcharray = ((Form_pg_am) GETSTRUCT(tuple))->amsearcharray;
-	entry->amsearchnulls = ((Form_pg_am) GETSTRUCT(tuple))->amsearchnulls;
-	entry->amhasgettuple = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgettuple);
-	entry->amhasgetbitmap = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgetbitmap);
-	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
-
-	ReleaseSysCache(tuple);
 
 	if (options != NIL)
 	{
@@ -442,8 +455,11 @@ hypo_entry_store(Oid relid,
 	entry->indexcollations[0] = indexcollations;
 	entry->opfamily[0] = opfamily;
 	entry->opcintype[0] = opcintype;
-	entry->reverse_sort[0] = false;
-	entry->nulls_first[0] = false;
+	if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+	{
+		entry->reverse_sort[0] = false;
+		entry->nulls_first[0] = false;
+	}
 
 	hypo_addEntry(entry);
 
@@ -575,12 +591,74 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 		entry->opcintype[j] = get_opclass_input_type(opclass);
 
-		entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC ? true : false);
-		entry->nulls_first[j] = (indexelem->nulls_ordering == SORTBY_NULLS_FIRST ? true : false);
+		if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+		{
+			entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC);
+			entry->nulls_first[j] = (indexelem->nulls_ordering == SORTBY_NULLS_FIRST);
+		}
 
 		j++;
 	}
 	Assert(j == ncolumns);
+
+	/*
+	 * Fetch the ordering information for the index, if any. Adapted from
+	 * plancat.c - get_relation_info().
+	 */
+	if ((entry->relam != BTREE_AM_OID) && entry->amcanorder)
+	{
+		/*
+		 * Otherwise, identify the corresponding btree opfamilies by
+		 * trying to map this index's "<" operators into btree.  Since
+		 * "<" uniquely defines the behavior of a sort order, this is
+		 * a sufficient test.
+		 *
+		 * XXX This method is rather slow and also requires the
+		 * undesirable assumption that the other index AM numbers its
+		 * strategies the same as btree.  It'd be better to have a way
+		 * to explicitly declare the corresponding btree opfamily for
+		 * each opfamily of the other index type.  But given the lack
+		 * of current or foreseeable amcanorder index types, it's not
+		 * worth expending more effort on now.
+		 */
+		for (j = 0; j < ncolumns; j++)
+		{
+			Oid		ltopr;
+			Oid		btopfamily;
+			Oid		btopcintype;
+			int16	btstrategy;
+
+			ltopr =  get_opfamily_member(entry->opfamily[j],
+										 entry->opcintype[j],
+										 entry->opcintype[j],
+										 BTLessStrategyNumber);
+			if (OidIsValid(ltopr) &&
+				get_ordering_op_properties(ltopr,
+										   &btopfamily,
+										   &btopcintype,
+										   &btstrategy) &&
+				btopcintype == entry->opcintype[j] &&
+				btstrategy == BTLessStrategyNumber)
+			{
+				/* Successful mapping */
+				entry->sortopfamily[j] = btopfamily;
+			}
+			else
+			{
+				/* Fail ... quietly treat index as unordered */
+				/* also pfree allocated memory */
+				pfree(entry->sortopfamily);
+				pfree(entry->reverse_sort);
+				pfree(entry->nulls_first);
+
+				entry->sortopfamily = NULL;
+				entry->reverse_sort = NULL;
+				entry->nulls_first = NULL;
+
+				break;
+			}
+		}
+	}
 
 	hypo_set_indexname(entry, indexRelationName.data);
 
@@ -609,10 +687,17 @@ hypo_entry_remove(Oid indexid)
 			pfree(entry->opfamily);
 			pfree(entry->opclass);
 			pfree(entry->opcintype);
-			pfree(entry->sortopfamily);
-			pfree(entry->reverse_sort);
-			pfree(entry->nulls_first);
-			pfree(entry->indpred);
+			if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+			{
+				if ((entry->relam != BTREE_AM_OID) && entry->sortopfamily)
+					pfree(entry->sortopfamily);
+				if (entry->reverse_sort)
+					pfree(entry->reverse_sort);
+				if (entry->nulls_first)
+					pfree(entry->nulls_first);
+			}
+			if (entry->indpred)
+				pfree(entry->indpred);
 #if PG_VERSION_NUM >= 90500
 			pfree(entry->canreturn);
 #endif
@@ -761,11 +846,24 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 #if PG_VERSION_NUM >= 90300
 #endif
 
-	index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
-	index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
 #if PG_VERSION_NUM >= 90500
 	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
 #endif
+
+	if ((index->relam == BTREE_AM_OID) || entry->amcanorder)
+	{
+		if (index->relam != BTREE_AM_OID)
+			index->sortopfamily = palloc0(sizeof(Oid) * ncolumns);
+
+		index->reverse_sort = (bool *) palloc(sizeof(bool) * ncolumns);
+		index->nulls_first = (bool *) palloc(sizeof(bool) * ncolumns);
+	}
+	else
+	{
+		index->sortopfamily = NULL;
+		index->reverse_sort = NULL;
+		index->nulls_first = NULL;
+	}
 
 	for (i = 0; i < ncolumns; i++)
 	{
@@ -774,11 +872,47 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 		index->indexcollations[i] = entry->indexcollations[i];
 		index->opfamily[i] = entry->opfamily[i];
 		index->opcintype[i] = entry->opcintype[i];
-		index->reverse_sort[i] = entry->reverse_sort[i];
-		index->nulls_first[i] = entry->nulls_first[i];
 #if PG_VERSION_NUM >= 90500
 		index->canreturn[i] = entry->canreturn[i];
 #endif
+	}
+
+	/*
+	 * Fetch the ordering information for the index, if any. This is handled in
+	 * hypo_entry_store_parsetree(). Again, adapted from plancat.c -
+	 * get_relation_info()
+	 */
+	if (entry->relam == BTREE_AM_OID)
+	{
+		/*
+		 * If it's a btree index, we can use its opfamily OIDs
+		 * directly as the sort ordering opfamily OIDs.
+		 */
+		index->sortopfamily = index->opfamily;
+
+		for (i = 0; i < ncolumns; i++)
+		{
+			index->reverse_sort[i] = entry->reverse_sort[i];
+			index->nulls_first[i] = entry->nulls_first[i];
+		}
+	}
+	else if (entry->amcanorder)
+	{
+		if (entry->sortopfamily)
+		{
+			for (i = 0; i < ncolumns; i++)
+			{
+				index->sortopfamily[i] = entry->sortopfamily[i];
+				index->reverse_sort[i] = entry->reverse_sort[i];
+				index->nulls_first[i] = entry->nulls_first[i];
+			}
+		}
+		else
+		{
+			index->sortopfamily = NULL;
+			index->reverse_sort = NULL;
+			index->nulls_first = NULL;
+		}
 	}
 
 	index->unique = entry->unique;
@@ -795,12 +929,8 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	index->amhasgettuple = entry->amhasgettuple;
 	index->amhasgetbitmap = entry->amhasgetbitmap;
 
-	if (index->relam == BTREE_AM_OID)
-	{
-		index->sortopfamily = index->opfamily;
-	}
-
 	index->indexprs = NIL;		/* not handled for now, WIP */
+	/* this has already been handled in hypo_entry_store_parsetree() if any */
 	index->indpred = list_copy(entry->indpred);
 	index->predOK = false;		/* will be set later in indxpath.c */
 
