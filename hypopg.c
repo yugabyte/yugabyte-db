@@ -64,10 +64,10 @@ bool		isExplain = false;
 /* GUC for enabling / disabling hypopg during EXPLAIN */
 static bool hypo_is_enabled;
 
-/*
+/*--------------------------------------------------------
  * Hypothetical index storage, pretty much an IndexOptInfo
- * Some dynamic informations such as pages and lines are not storedn but
- * computed when the hypothetical index is added.
+ * Some dynamic informations such as pages and lines are not stored but
+ * computed when the hypothetical index is used.
  */
 typedef struct hypoEntry
 {
@@ -114,12 +114,14 @@ typedef struct hypoEntry
 	bool		amsearchnulls;	/* can AM search for NULL/NOT NULL entries? */
 	bool		amhasgettuple;	/* does AM have amgettuple interface? */
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
+
 	/* store some informations usually saved in catalogs */
 	List		*options;		/* WITH clause options: a list of DefElem */
 	bool		amcanorder; /* does AM support order by column value? */
 
 } hypoEntry;
 
+/* List of hypothetic indexes for current backend */
 List	   *entries = NIL;
 
 
@@ -364,7 +366,8 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	return entry;
 }
 
-/* Wrapper around GetNewRelFileNode
+/*---------------------------------
+ * Wrapper around GetNewRelFileNode
  * Return a new OID for an hypothetical index.
  */
 static Oid
@@ -466,7 +469,10 @@ hypo_entry_store(Oid relid,
 	return entry;
 }
 
-/* Create an hypothetical index from its CREATE INDEX parsetree
+/*
+ * Create an hypothetical index from its CREATE INDEX parsetree.  This function
+ * is where all the hypothetic index creation is done, except the index size
+ * estimation.
  */
 static const hypoEntry *
 hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
@@ -792,9 +798,14 @@ hypo_executorEnd_hook(QueryDesc *queryDesc)
 		standard_ExecutorEnd(queryDesc);
 }
 
-/* Add an hypothetical index to the list of indexes.
+/*--------------------------------------------------
+ * Add an hypothetical index to the list of indexes.
  * Caller should have check that the specified hypoEntry does belong to the
- * specified relation
+ * specified relation.  This function also assume that the specified entry
+ * already contains every needed information, so we just basically need to copy
+ * it from the hypoEntry to the new IndexOptInfo.  Every specific handling is
+ * done at store time (ie.  hypo_entry_store_parsetree).  The only exception is
+ * the size estimation, recomputed verytime, as it needs up to date statistics.
  */
 static void
 hypo_injectHypotheticalIndex(PlannerInfo *root,
