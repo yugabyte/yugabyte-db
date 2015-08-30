@@ -82,4 +82,4 @@ Of course, only EXPLAIN without analyze will use hypothetical indexes:
 
 To remove your backend's hypothetical indexes, you can use the function
 **hypopg_drop_index(indexid)** with the OID that **hypopg()** function returns,
-call hypopg_reset() to remove all at once or just close your current connection.
+call **hypopg_reset()** to remove all at once or just close your current connection.
