@@ -16,20 +16,20 @@ Synopsis
     -- Various ways to say "ok"
     SELECT ok( :have = :want, :test_description );
 
-    SELECT is(   :have, :want, $test_description );
-    SELECT isnt( :have, :want, $test_description );
+    SELECT is(   :have, :want, :test_description );
+    SELECT isnt( :have, :want, :test_description );
 
     -- Rather than \echo # here's what went wrong
     SELECT diag( 'here''s what went wrong' );
 
     -- Compare values with LIKE or regular expressions.
-    SELECT alike(   :have, :like_expression, $test_description );
-    SELECT unalike( :have, :like_expression, $test_description );
+    SELECT alike(   :have, :like_expression, :test_description );
+    SELECT unalike( :have, :like_expression, :test_description );
 
-    SELECT matches(      :have, :regex, $test_description );
-    SELECT doesnt_match( :have, :regex, $test_description );
+    SELECT matches(      :have, :regex, :test_description );
+    SELECT doesnt_match( :have, :regex, :test_description );
 
-    SELECT cmp_ok(:have, '=', :want, $test_description );
+    SELECT cmp_ok(:have, '=', :want, :test_description );
 
     -- Skip tests based on runtime conditions.
     SELECT CASE WHEN :some_feature THEN collect_tap(
