@@ -24,5 +24,5 @@ Less important
 - [ ] handle unique index, still need to see if there is an impact somewhere...
 - [X] handle reverse and nulls first
 - [ ] handle index on expression
-- [ ] handle index on predicate
+- [X] handle index on predicate
 - [ ] specify a bloat factor
