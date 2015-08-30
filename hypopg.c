@@ -843,8 +843,6 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	index->indexcollations = (Oid *) palloc(sizeof(int) * ncolumns);
 	index->opfamily = (Oid *) palloc(sizeof(int) * ncolumns);
 	index->opcintype = (Oid *) palloc(sizeof(int) * ncolumns);
-#if PG_VERSION_NUM >= 90300
-#endif
 
 #if PG_VERSION_NUM >= 90500
 	index->canreturn = (bool *) palloc(sizeof(bool) * ncolumns);
