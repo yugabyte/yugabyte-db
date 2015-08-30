@@ -7,7 +7,10 @@ Important
 - [X] Choose a better naming convention, including the index oid
 - [X] handle multiple columns
 - [X] handle collation
-- [ ] handle other am other than btree
+- [ ] handle GIN access method
+- [ ] handle GiST access method
+- [ ] handle SP-GiST access method
+- [X] handle BRIN access method
 - [X] better formula for number of pages in index
 - [ ] handle tree height
 - [ ] Add check for btree: total column size must not exceed BTMaxItemSize (maybe less, just in case?)
