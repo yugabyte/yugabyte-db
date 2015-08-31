@@ -423,9 +423,13 @@ hypo_entry_reset(void)
 {
 	ListCell   *lc;
 
-	foreach(lc, entries)
+	/*
+	 * The cell is removed in hypo_entry_remove(), so we can't iterate using
+	 * standard foreach / lnext macros.
+	 */
+	while ((lc = list_head(entries)) != NULL)
 	{
-		hypoEntry  *entry = (hypoEntry *) lc;
+		hypoEntry  *entry = (hypoEntry *) lfirst(lc);
 
 		hypo_entry_remove(entry->oid);
 	}
