@@ -1509,7 +1509,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 				+(sizeof(IndexTupleData) * entry->ncolumns)
 				+ MAXALIGN(sizeof(ItemIdData) * entry->ncolumns);
 
-			usable_page_size = BLCKSZ - sizeof(PageHeaderData) - sizeof(BTPageOpaqueData);
+			usable_page_size = BLCKSZ - SizeOfPageHeaderData - sizeof(BTPageOpaqueData);
 			bloat_factor = (200.0
 					- (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
 					+ additional_bloat) / 100;
