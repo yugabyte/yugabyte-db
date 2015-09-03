@@ -1,4 +1,16 @@
 -- SETUP
+CREATE OR REPLACE FUNCTION do_explain(stmt text) RETURNS table(a text) AS
+$_$
+DECLARE
+    ret text;
+BEGIN
+    FOR ret IN EXECUTE format('EXPLAIN (FORMAT text) %s', stmt) LOOP
+        a := ret;
+        RETURN next ;
+    END LOOP;
+END;
+$_$
+LANGUAGE plpgsql;
 CREATE EXTENSION hypopg;
 CREATE TABLE hypo (id integer, val text);
 INSERT INTO hypo SELECT i, 'line ' || i
@@ -18,5 +30,92 @@ SELECT nspname, relname, amname FROM public.hypopg_list_indexes();
  nspname | relname | amname 
 ---------+---------+--------
  public  | hypo    | btree
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+-- Should use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo ORDER BY id') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     1
+(1 row)
+
+-- Should not use hypothetical index
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+ count 
+-------
+     0
+(1 row)
+
+-- Add predicate index
+SELECT COUNT(*) AS nb
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WHERE id < 5');
+ nb 
+----
+  1
+(1 row)
+
+-- This specific index should be used
+WITH ind AS (
+    SELECT indexrelid, row_number() OVER (ORDER BY indexrelid) AS num
+    FROM public.hypopg()
+),
+regexp AS (
+    SELECT regexp_replace(e, '.*<(\d+)>.*', E'\\1', 'g') AS r
+    FROM do_explain('SELECT * FROM hypo WHERE id < 3') AS e
+)
+SELECT num
+FROM ind
+JOIN regexp ON ind.indexrelid::text = regexp.r;
+ num 
+-----
+   2
+(1 row)
+
+-- Specify fillfactor
+SELECT COUNT(*) AS NB
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WITH (fillfactor = 10)');
+ nb 
+----
+  1
+(1 row)
+
+-- Specify an incorrect fillfactor
+SELECT COUNT(*) AS NB
+FROM public.hypopg_create_index('CREATE INDEX ON hypo(id) WITH (fillfactor = 1)');
+ERROR:  value 1 out of bounds for option "fillfactor"
+DETAIL:  Valid values are between "10" and "100".
+-- Index size estimation
+SELECT pg_size_pretty(hypopg_relation_size(indexrelid))
+FROM hypopg()
+ORDER BY indexrelid;
+ pg_size_pretty 
+----------------
+ 2544 kB
+ 8192 bytes
+ 4120 kB
+(3 rows)
+
+-- Remove one hypothetical index
+SELECT hypopg_drop_index(indexrelid) FROM hypopg() ORDER BY indexrelid LIMIT 1;
+ hypopg_drop_index 
+-------------------
+ t
+(1 row)
+
+-- Remove all the hypothetical indexes
+SELECT hypopg_reset();
+ hypopg_reset 
+--------------
+ 
 (1 row)
 
