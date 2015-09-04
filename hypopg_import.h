@@ -9,6 +9,12 @@
  */
 
 
+/* adapted from nbtinsert.h */
+#define HYPO_BTMaxItemSize \
+    MAXALIGN_DOWN((BLCKSZ - \
+                MAXALIGN(SizeOfPageHeaderData + 3*sizeof(ItemIdData)) - \
+                MAXALIGN(sizeof(BTPageOpaqueData))) / 3)
+
 extern List *build_index_tlist(PlannerInfo *root, IndexOptInfo *index,
 				  Relation heapRelation);
 extern Oid GetIndexOpClass(List *opclass, Oid attrType,

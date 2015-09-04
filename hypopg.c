@@ -487,6 +487,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	Oid			relid;
 	StringInfoData indexRelationName;
 	int			ncolumns;
+	int			ind_avg_width = 0;
 	ListCell   *lc;
 	int			j;
 	bool		ok = true;
@@ -584,6 +585,8 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 		/* setup the attnum */
 		entry->indexkeys[j] = attform->attnum;
 
+		ind_avg_width += get_attavgwidth(relid, entry->indexkeys[j]);
+
 		/* get the atttype */
 		atttype = attform->atttypid;
 		/* get the opclass */
@@ -610,6 +613,32 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 		j++;
 	}
 	Assert(j == ncolumns);
+
+	/* Check if the average size fits in a btree index */
+	if (entry->relam == BTREE_AM_OID)
+	{
+		if (ind_avg_width >= HYPO_BTMaxItemSize)
+			ereport(ERROR,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("hypopg: estimated index row size %d "
+						"exceeds maximum %ld",
+					 ind_avg_width, HYPO_BTMaxItemSize),
+					 errhint("Values larger than 1/3 of a buffer page cannot "
+						"be indexed.\nConsider a function index of an MD5 "
+						"hash of the value, or use full text indexing\n"
+						"(which is not yet supported by hypopg).")));
+		/* Warn about posssible error with a 80% avg size */
+		else if (ind_avg_width >= HYPO_BTMaxItemSize * .8)
+			ereport(WARNING,
+					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+					 errmsg("hypopg: estimated index row size %d "
+						"is close to maximum %ld",
+					 ind_avg_width, HYPO_BTMaxItemSize),
+					 errhint("Values larger than 1/3 of a buffer page cannot "
+						"be indexed.\nConsider a function index of an MD5 "
+						"hash of the value, or use full text indexing\n"
+						"(which is not yet supported by hypopg).")));
+	}
 
 	/*
 	 * Fetch the ordering information for the index, if any. Adapted from

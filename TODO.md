@@ -13,7 +13,7 @@ Important
 - [X] handle BRIN access method
 - [X] better formula for number of pages in index
 - [ ] handle tree height
-- [ ] Add check for btree: total column size must not exceed BTMaxItemSize (maybe less, just in case?)
+- [X] Add check for btree: total column size must not exceed BTMaxItemSize (maybe less, just in case?)
 - Add some more (or enhance) function. Following are interesting:
 - [X] estimated index size
 - [ ] estimated number of lines
