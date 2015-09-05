@@ -161,6 +161,7 @@ static const hypoEntry *hypo_entry_store(Oid relid,
 static const hypoEntry *hypo_entry_store_parsetree(IndexStmt *node,
 			const char *queryString);
 static bool hypo_entry_remove(Oid indexid);
+static void hypo_entry_pfree(hypoEntry *entry);
 
 static void
 hypo_utility_hook(Node *parsetree,
@@ -481,7 +482,8 @@ hypo_entry_store(Oid relid,
 static const hypoEntry *
 hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 {
-	hypoEntry  *entry;
+	/* must be declared "volatile", because used in a PG_TRY()/PG_CATCH */
+	hypoEntry  *volatile entry;
 	HeapTuple	tuple;
 	Form_pg_attribute attform;
 	Oid			relid;
@@ -538,107 +540,124 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	/* now create the hypothetical index entry */
 	ncolumns = list_length(node->indexParams);
 
-	entry = hypo_newEntry(relid, node->accessMethod, ncolumns, node->options);
-
-	entry->unique = node->unique;
-	entry->ncolumns = ncolumns;
-
-	/* handle predicate if present */
-	if (node->whereClause)
+	PG_TRY();
 	{
-		MemoryContext oldcontext;
-		List	   *pred;
+		entry = hypo_newEntry(relid, node->accessMethod, ncolumns,
+				node->options);
 
-		CheckPredicate((Expr *) node->whereClause);
+		entry->unique = node->unique;
+		entry->ncolumns = ncolumns;
 
-		pred = make_ands_implicit((Expr *) node->whereClause);
-		oldcontext = MemoryContextSwitchTo(TopMemoryContext);
-
-		entry->indpred = (List *) copyObject(pred);
-		MemoryContextSwitchTo(oldcontext);
-	}
-	else
-	{
-		entry->indpred = NIL;
-	}
-
-	/* iterate through columns */
-	j = 0;
-	foreach(lc, node->indexParams)
-	{
-		IndexElem  *indexelem = (IndexElem *) lfirst(lc);
-		Oid			atttype;
-		Oid			opclass;
-
-		appendStringInfo(&indexRelationName, "_");
-		appendStringInfo(&indexRelationName, "%s", indexelem->name);
-		/* get the attribute catalog info */
-		tuple = SearchSysCacheAttName(relid, indexelem->name);
-
-		if (!HeapTupleIsValid(tuple))
+		/* handle predicate if present */
+		if (node->whereClause)
 		{
-			elog(ERROR, "hypopg: column \"%s\" does not exist",
-				 indexelem->name);
+			MemoryContext oldcontext;
+			List	   *pred;
+
+			CheckPredicate((Expr *) node->whereClause);
+
+			pred = make_ands_implicit((Expr *) node->whereClause);
+			oldcontext = MemoryContextSwitchTo(TopMemoryContext);
+
+			entry->indpred = (List *) copyObject(pred);
+			MemoryContextSwitchTo(oldcontext);
 		}
-		attform = (Form_pg_attribute) GETSTRUCT(tuple);
-
-		/* setup the attnum */
-		entry->indexkeys[j] = attform->attnum;
-
-		ind_avg_width += get_attavgwidth(relid, entry->indexkeys[j]);
-
-		/* get the atttype */
-		atttype = attform->atttypid;
-		/* get the opclass */
-		opclass = GetIndexOpClass(indexelem->opclass,
-								  atttype,
-								  node->accessMethod,
-								  entry->relam);
-		entry->opclass[j] = opclass;
-		/* setup the opfamily */
-		entry->opfamily[j] = get_opclass_family(opclass);
-		/* setup the collation */
-		entry->indexcollations[j] = attform->attcollation;
-
-		ReleaseSysCache(tuple);
-
-		entry->opcintype[j] = get_opclass_input_type(opclass);
-
-		if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+		else
 		{
-			entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC);
-			entry->nulls_first[j] = (indexelem->nulls_ordering == SORTBY_NULLS_FIRST);
+			entry->indpred = NIL;
 		}
 
-		j++;
-	}
-	Assert(j == ncolumns);
+		/* iterate through columns */
+		j = 0;
+		foreach(lc, node->indexParams)
+		{
+			IndexElem  *indexelem = (IndexElem *) lfirst(lc);
+			Oid			atttype;
+			Oid			opclass;
 
-	/* Check if the average size fits in a btree index */
-	if (entry->relam == BTREE_AM_OID)
-	{
-		if (ind_avg_width >= HYPO_BTMaxItemSize)
-			ereport(ERROR,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("hypopg: estimated index row size %d "
-						"exceeds maximum %ld",
-					 ind_avg_width, HYPO_BTMaxItemSize),
-					 errhint("Values larger than 1/3 of a buffer page cannot "
-						"be indexed.\nConsider a function index of an MD5 "
-						"hash of the value, or use full text indexing\n"
-						"(which is not yet supported by hypopg).")));
-		/* Warn about posssible error with a 80% avg size */
-		else if (ind_avg_width >= HYPO_BTMaxItemSize * .8)
-			ereport(WARNING,
-					(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
-					 errmsg("hypopg: estimated index row size %d "
-						"is close to maximum %ld",
-					 ind_avg_width, HYPO_BTMaxItemSize),
-					 errhint("Values larger than 1/3 of a buffer page cannot "
-						"be indexed.\nConsider a function index of an MD5 "
-						"hash of the value, or use full text indexing\n"
-						"(which is not yet supported by hypopg).")));
+			appendStringInfo(&indexRelationName, "_");
+			appendStringInfo(&indexRelationName, "%s", indexelem->name);
+			/* get the attribute catalog info */
+			tuple = SearchSysCacheAttName(relid, indexelem->name);
+
+			if (!HeapTupleIsValid(tuple))
+			{
+				elog(ERROR, "hypopg: column \"%s\" does not exist",
+					 indexelem->name);
+			}
+			attform = (Form_pg_attribute) GETSTRUCT(tuple);
+
+			/* setup the attnum */
+			entry->indexkeys[j] = attform->attnum;
+
+			ind_avg_width += get_attavgwidth(relid, entry->indexkeys[j]);
+
+			/* get the atttype */
+			atttype = attform->atttypid;
+			/* get the opclass */
+			opclass = GetIndexOpClass(indexelem->opclass,
+									  atttype,
+									  node->accessMethod,
+									  entry->relam);
+			entry->opclass[j] = opclass;
+			/* setup the opfamily */
+			entry->opfamily[j] = get_opclass_family(opclass);
+			/* setup the collation */
+			entry->indexcollations[j] = attform->attcollation;
+
+			ReleaseSysCache(tuple);
+
+			entry->opcintype[j] = get_opclass_input_type(opclass);
+
+			if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+			{
+				entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC);
+				entry->nulls_first[j] = (indexelem->nulls_ordering ==
+						SORTBY_NULLS_FIRST);
+			}
+
+			j++;
+		}
+		Assert(j == ncolumns);
+
+		/* Check if the average size fits in a btree index */
+		if (entry->relam == BTREE_AM_OID)
+		{
+			if (ind_avg_width >= HYPO_BTMaxItemSize)
+				ereport(ERROR,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("hypopg: estimated index row size %d "
+							"exceeds maximum %ld",
+						 ind_avg_width, HYPO_BTMaxItemSize),
+						 errhint("Values larger than 1/3 of a buffer page "
+							 "cannot be indexed.\nConsider a function index "
+							 " of an MD5 hash of the value, or use full text "
+							 "indexing\n(which is not yet supported by hypopg)."
+				)));
+			/* Warn about posssible error with a 80% avg size */
+			else if (ind_avg_width >= HYPO_BTMaxItemSize * .8)
+				ereport(WARNING,
+						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+						 errmsg("hypopg: estimated index row size %d "
+							"is close to maximum %ld",
+						 ind_avg_width, HYPO_BTMaxItemSize),
+						 errhint("Values larger than 1/3 of a buffer page "
+							 "cannot be indexed.\nConsider a function index "
+							 " of an MD5 hash of the value, or use full text "
+							 "indexing\n(which is not yet supported by hypopg)."
+				)));
+		}
+
+		/* No more elog beyond this point. */
 	}
+	PG_CATCH();
+	{
+		/* Free what was palloc'd in TopMemoryContext */
+		hypo_entry_pfree(entry);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	/*
 	 * Fetch the ordering information for the index, if any. Adapted from
@@ -706,8 +725,9 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	return entry;
 }
 
-/* Remove an hypothetical index from the list of hypothetical indexes.
- * pfree all memory that has been allocated.
+/*
+ * Remove an hypothetical index from the list of hypothetical indexes.
+ * pfree (by calling hypo_entry_pfree) all memory that has been allocated.
  */
 static bool
 hypo_entry_remove(Oid indexid)
@@ -720,31 +740,40 @@ hypo_entry_remove(Oid indexid)
 
 		if (entry->oid == indexid)
 		{
-			pfree(entry->indexname);
-			pfree(entry->indexkeys);
-			pfree(entry->indexcollations);
-			pfree(entry->opfamily);
-			pfree(entry->opclass);
-			pfree(entry->opcintype);
-			if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
-			{
-				if ((entry->relam != BTREE_AM_OID) && entry->sortopfamily)
-					pfree(entry->sortopfamily);
-				if (entry->reverse_sort)
-					pfree(entry->reverse_sort);
-				if (entry->nulls_first)
-					pfree(entry->nulls_first);
-			}
-			if (entry->indpred)
-				pfree(entry->indpred);
-#if PG_VERSION_NUM >= 90500
-			pfree(entry->canreturn);
-#endif
 			entries = list_delete_ptr(entries, entry);
+			hypo_entry_pfree(entry);
 			return true;
 		}
 	}
 	return false;
+}
+
+/* pfree all allocated memory for within an hypoEntry and the entry itself. */
+static void hypo_entry_pfree(hypoEntry *entry)
+{
+	/* pfree all memory that has been allocated */
+	pfree(entry->indexname);
+	pfree(entry->indexkeys);
+	pfree(entry->indexcollations);
+	pfree(entry->opfamily);
+	pfree(entry->opclass);
+	pfree(entry->opcintype);
+	if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
+	{
+		if ((entry->relam != BTREE_AM_OID) && entry->sortopfamily)
+			pfree(entry->sortopfamily);
+		if (entry->reverse_sort)
+			pfree(entry->reverse_sort);
+		if (entry->nulls_first)
+			pfree(entry->nulls_first);
+	}
+	if (entry->indpred)
+		pfree(entry->indpred);
+#if PG_VERSION_NUM >= 90500
+	pfree(entry->canreturn);
+#endif
+	/* finally pfree the entry */
+	pfree(entry);
 }
 
 /* This function setup the "isExplain" flag for next hooks.
