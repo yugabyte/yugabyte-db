@@ -326,43 +326,57 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 		 * Parse AM-specific options, convert to text array form, validate.
 		 */
 		reloptions = transformRelOptions((Datum) 0, options,
-										 NULL, NULL, false, false);
+				NULL, NULL, false, false);
 
 		(void) index_reloptions(amoptions, reloptions, true);
 	}
 
-	/*
-	 * canreturn should been checked with the amcanreturn proc, but this can't
-	 * be done without a real Relation, so just let force it
-	 */
-	switch (entry->relam)
+	PG_TRY();
 	{
-		case BTREE_AM_OID:
-			/* btree always support Index-Only scan */
-#if PG_VERSION_NUM >= 90500
-			for (i = 0; i < ncolumns; i++)
-				entry->canreturn[i] = true;
-#else
-			entry->canreturn = true;
-#endif
-			break;
-#if PG_VERSION_NUM >= 90500
-		case BRIN_AM_OID:
-			/* BRIN never support Index-Only scan */
-			for (i = 0; i < ncolumns; i++)
-				entry->canreturn[i] = false;
-			break;
-#endif
-		default:
 
-			/*
-			 * do not store hypothetical indexes with access method not
-			 * supported
-			 */
-			elog(ERROR, "hypopg: access method %d is not supported",
-				 entry->relam);
-			break;
+		/*
+		 * canreturn should been checked with the amcanreturn proc, but this
+		 * can't be done without a real Relation, so just let force it
+		 */
+		switch (entry->relam)
+		{
+			case BTREE_AM_OID:
+				/* btree always support Index-Only scan */
+#if PG_VERSION_NUM >= 90500
+				for (i = 0; i < ncolumns; i++)
+					entry->canreturn[i] = true;
+#else
+				entry->canreturn = true;
+#endif
+				break;
+#if PG_VERSION_NUM >= 90500
+			case BRIN_AM_OID:
+				/* BRIN never support Index-Only scan */
+				for (i = 0; i < ncolumns; i++)
+					entry->canreturn[i] = false;
+				break;
+#endif
+			default:
+
+				/*
+				 * do not store hypothetical indexes with access method not
+				 * supported
+				 */
+				elog(ERROR, "hypopg: access method %d is not supported",
+						entry->relam);
+				break;
+		}
+
+		/* No more elog beyond this point. */
 	}
+	PG_CATCH();
+	{
+		/* Free what was palloc'd in TopMemoryContext */
+		hypo_entry_pfree(entry);
+
+		PG_RE_THROW();
+	}
+	PG_END_TRY();
 
 	return entry;
 }
@@ -540,11 +554,11 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	/* now create the hypothetical index entry */
 	ncolumns = list_length(node->indexParams);
 
+	entry = hypo_newEntry(relid, node->accessMethod, ncolumns,
+			node->options);
+
 	PG_TRY();
 	{
-		entry = hypo_newEntry(relid, node->accessMethod, ncolumns,
-				node->options);
-
 		entry->unique = node->unique;
 		entry->ncolumns = ncolumns;
 
