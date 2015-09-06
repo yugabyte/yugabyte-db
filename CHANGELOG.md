@@ -3,10 +3,12 @@ Changelog
 
 WIP version 0.0.4:
 
-  - handle BRIN indexes
-  - handle index storage parameters for supported index methods
-  - handle index on predicate
-  - safer handling of locks
+  - for btree indexes, check that the estimated average row size is small
+    enough to allow a real index creation.
+  - handle BRIN indexes.
+  - handle index storage parameters for supported index methods.
+  - handle index on predicate.
+  - safer handling of locks.
 
 2015-08-08 version 0.0.3:
 
@@ -24,4 +26,4 @@ WIP version 0.0.4:
 
 2015-06-24 version 0.0.1:
 
-  - First version of HypoPG
+  - First version of HypoPG.
