@@ -251,7 +251,8 @@ _PG_fini(void)
 static hypoEntry *
 hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 {
-	hypoEntry  *entry;
+	/* must be declared "volatile", because used in a PG_CATCH() */
+	hypoEntry  *volatile entry;
 	MemoryContext oldcontext;
 	HeapTuple	tuple;
 	RegProcedure	amoptions;
@@ -496,14 +497,12 @@ hypo_entry_store(Oid relid,
 static const hypoEntry *
 hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 {
-	/* must be declared "volatile", because used in a PG_TRY()/PG_CATCH */
+	/* must be declared "volatile", because used in a PG_CATCH() */
 	hypoEntry  *volatile entry;
-	HeapTuple	tuple;
 	Form_pg_attribute attform;
 	Oid			relid;
 	StringInfoData indexRelationName;
 	int			ncolumns;
-	int			ind_avg_width = 0;
 	ListCell   *lc;
 	int			j;
 	bool		ok = true;
@@ -559,6 +558,8 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 	PG_TRY();
 	{
+		HeapTuple	tuple;
+		int			ind_avg_width = 0;
 		entry->unique = node->unique;
 		entry->ncolumns = ncolumns;
 
