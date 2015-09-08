@@ -363,8 +363,8 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 				 * do not store hypothetical indexes with access method not
 				 * supported
 				 */
-				elog(ERROR, "hypopg: access method %d is not supported",
-						entry->relam);
+				elog(ERROR, "hypopg: access method \"%s\" is not supported",
+						accessMethod);
 				break;
 		}
 
