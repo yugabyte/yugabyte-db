@@ -895,7 +895,6 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	IndexOptInfo *index;
 	int			ncolumns,
 				i;
-	int			ind_avg_width = 0;
 
 
 	/* create a node */
@@ -954,7 +953,6 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	for (i = 0; i < ncolumns; i++)
 	{
 		index->indexkeys[i] = entry->indexkeys[i];
-		ind_avg_width += get_attavgwidth(relation->rd_id, index->indexkeys[i]);
 		index->indexcollations[i] = entry->indexcollations[i];
 		index->opfamily[i] = entry->opfamily[i];
 		index->opcintype[i] = entry->opcintype[i];
