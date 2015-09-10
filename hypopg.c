@@ -131,14 +131,12 @@ void		_PG_init(void);
 void		_PG_fini(void);
 
 Datum		hypopg_reset(PG_FUNCTION_ARGS);
-Datum		hypopg_add_index_internal(PG_FUNCTION_ARGS);
 Datum		hypopg(PG_FUNCTION_ARGS);
 Datum		hypopg_create_index(PG_FUNCTION_ARGS);
 Datum		hypopg_drop_index(PG_FUNCTION_ARGS);
 Datum		hypopg_relation_size(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(hypopg_reset);
-PG_FUNCTION_INFO_V1(hypopg_add_index_internal);
 PG_FUNCTION_INFO_V1(hypopg);
 PG_FUNCTION_INFO_V1(hypopg_create_index);
 PG_FUNCTION_INFO_V1(hypopg_drop_index);
@@ -150,14 +148,6 @@ static Oid	hypo_getNewOid(Oid relid);
 static void hypo_addEntry(hypoEntry *entry);
 
 static void hypo_entry_reset(void);
-static const hypoEntry *hypo_entry_store(Oid relid,
-			char *indexname,
-			char *accessMethod,
-			int ncolumns,
-			short int indexkeys,
-			int indexcollations,
-			Oid opfamily,
-			Oid opcintype);
 static const hypoEntry *hypo_entry_store_parsetree(IndexStmt *node,
 			const char *queryString);
 static bool hypo_entry_remove(Oid indexid);
@@ -453,40 +443,6 @@ hypo_entry_reset(void)
 	list_free(entries);
 	entries = NIL;
 	return;
-}
-
-/* Simplified function to add an hypotehtical index, with inly 1 column index
- */
-static const hypoEntry *
-hypo_entry_store(Oid relid,
-			char *indexname,
-			char *accessMethod,
-			int ncolumns,
-			short int indexkeys,
-			int indexcollations,
-			Oid opfamily,
-			Oid opcintype)
-{
-	hypoEntry  *entry;
-
-	entry = hypo_newEntry(relid, accessMethod, 1, NIL);
-
-	hypo_set_indexname(entry, indexname);
-	entry->unique = false;
-	entry->ncolumns = ncolumns;
-	entry->indexkeys[0] = indexkeys;
-	entry->indexcollations[0] = indexcollations;
-	entry->opfamily[0] = opfamily;
-	entry->opcintype[0] = opcintype;
-	if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
-	{
-		entry->reverse_sort[0] = false;
-		entry->nulls_first[0] = false;
-	}
-
-	hypo_addEntry(entry);
-
-	return entry;
 }
 
 /*
@@ -1127,71 +1083,6 @@ hypopg_reset(PG_FUNCTION_ARGS)
 {
 	hypo_entry_reset();
 	PG_RETURN_VOID();
-}
-
-/*
- * Add an hypothetical index in the array, with all needed informations
- * it supposed to be called from the provided sql function.
- */
-Datum
-hypopg_add_index_internal(PG_FUNCTION_ARGS)
-{
-	Oid			relid = PG_GETARG_OID(0);
-	char	   *indexname = TextDatumGetCString(PG_GETARG_TEXT_PP(1));
-	char	   *accessMethod = TextDatumGetCString(PG_GETARG_TEXT_PP(2));
-	int			ncolumns = PG_GETARG_INT32(3);
-	short int	indexkeys = PG_GETARG_INT16(4);
-	Oid			indexcollations = PG_GETARG_OID(5);
-	Oid			opfamily = PG_GETARG_OID(6);
-	Oid			opcintype = PG_GETARG_OID(7);
-	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
-	const hypoEntry *entry;
-	MemoryContext per_query_ctx;
-	MemoryContext oldcontext;
-	TupleDesc	tupdesc;
-	Tuplestorestate *tupstore;
-	Datum		values[HYPO_NB_COLS];
-	bool		nulls[HYPO_NB_COLS];
-
-	/* check to see if caller supports us returning a tuplestore */
-	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("set-valued function called in context that cannot accept a set")));
-	if (!(rsinfo->allowedModes & SFRM_Materialize))
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("materialize mode required, but it is not " \
-						"allowed in this context")));
-
-	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
-	oldcontext = MemoryContextSwitchTo(per_query_ctx);
-
-	/* Build a tuple descriptor for our result type */
-	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
-		elog(ERROR, "return type must be a row type");
-
-	tupstore = tuplestore_begin_heap(true, false, work_mem);
-	rsinfo->returnMode = SFRM_Materialize;
-	rsinfo->setResult = tupstore;
-	rsinfo->setDesc = tupdesc;
-
-	MemoryContextSwitchTo(oldcontext);
-
-	memset(values, 0, sizeof(values));
-	memset(nulls, 0, sizeof(nulls));
-
-	entry = hypo_entry_store(relid, indexname, accessMethod, ncolumns, indexkeys, indexcollations, opfamily, opcintype);
-
-	values[0] = ObjectIdGetDatum(entry->oid);
-	values[1] = CStringGetTextDatum(strdup(entry->indexname));
-
-	tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-
-	/* clean up and return the tuplestore */
-	tuplestore_donestoring(tupstore);
-
-	return (Datum) 0;
 }
 
 /*
