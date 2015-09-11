@@ -858,23 +858,6 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 
 	index->relam = entry->relam;
 
-	if ((index->relam != BTREE_AM_OID)
-#if PG_VERSION_NUM >= 90500
-		&& (index->relam != BRIN_AM_OID)
-#endif
-	   )
-	{
-		/* skip this index if access method is not handled */
-		elog(WARNING,
-#if PG_VERSION_NUM >= 90500
-				"hypopg: Only btree and BRIN indexes are supported for now!"
-#else
-				"hypopg: Only btree indexes are supported for now!"
-#endif
-			);
-		return;
-	}
-
 	/* General stuff */
 	index->indexoid = entry->oid;
 	index->reltablespace = rel->reltablespace;	/* same tablespace as
