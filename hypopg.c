@@ -507,8 +507,6 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	appendStringInfo(&indexRelationName, "%s", node->relation->relname);
 
 	/* now create the hypothetical index entry */
-	ncolumns = list_length(node->indexParams);
-
 	entry = hypo_newEntry(relid, node->accessMethod, ncolumns,
 			node->options);
 
