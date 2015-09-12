@@ -494,6 +494,10 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 	ncolumns = list_length(node->indexParams);
 
+	if (ncolumns > INDEX_MAX_KEYS)
+		elog(ERROR, "hypopg: cannot use more thant %d columns in an index",
+				INDEX_MAX_KEYS);
+
 	initStringInfo(&indexRelationName);
 	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
 	appendStringInfo(&indexRelationName, "_");
