@@ -3,6 +3,9 @@ Changelog
 
 WIP version 0.0.4:
 
+  - remove the simplified "hypopg_add_index()" function
+  - free memory when hypothetical index creation fails
+  - check that number of column is suitable for a real index
   - for btree indexes, check that the estimated average row size is small
     enough to allow a real index creation.
   - handle BRIN indexes.
