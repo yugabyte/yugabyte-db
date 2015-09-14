@@ -70,6 +70,20 @@ SELECT pg_size_pretty(hypopg_relation_size(indexrelid))
 FROM hypopg()
 ORDER BY indexrelid;
 
+-- locally disable hypoopg
+SET hypopg.enabled to false;
+
+-- no hypothetical index should be used
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+
+-- locally re-enable hypoopg
+SET hypopg.enabled to true;
+
+-- hypothetical index should be used
+SELECT COUNT(*) FROM do_explain('SELECT * FROM hypo WHERE id = 1') e
+WHERE e ~ 'Index.*<\d+>btree_hypo.*';
+
 -- Remove one hypothetical index
 SELECT hypopg_drop_index(indexrelid) FROM hypopg() ORDER BY indexrelid LIMIT 1;
 
