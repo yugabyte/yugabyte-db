@@ -350,8 +350,8 @@ ltqnorm(double p)
 	else
 	{
 		/* Rational approximation for central region */
-    		q = p - 0.5;
-    		r = q*q;
+		q = p - 0.5;
+		r = q*q;
 		return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q /
 			(((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1);
 	}

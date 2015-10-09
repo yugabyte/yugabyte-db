@@ -166,7 +166,7 @@ nvarchar2(PG_FUNCTION_ARGS)
 	if (maxlen < 0 || len <= maxlen)
 		PG_RETURN_VARCHAR_P(source);
 
-    /* only reach here if string is too long... */
+	/* only reach here if string is too long... */
 
 	/* truncate multibyte string preserving multibyte boundary */
 	maxmblen = pg_mbcharcliplen(s_data, len, maxlen);

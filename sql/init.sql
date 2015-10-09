@@ -1,4 +1,4 @@
 \set ECHO none
 set client_min_messages TO error;
-\i orafce.sql
+CREATE EXTENSION IF NOT EXISTS orafce;
 set client_min_messages TO default;

@@ -320,7 +320,7 @@ dbms_output_get_lines(PG_FUNCTION_ARGS)
 
 	int32		max_lines = PG_GETARG_INT32(0);
 	int32		n;
-    ArrayBuildState *astate = NULL;
+	ArrayBuildState *astate = NULL;
 
 	/* Build a tuple descriptor for our result type */
 	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)

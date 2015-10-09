@@ -19,9 +19,9 @@ To install Orafce functions in the database, either run the orafce.sql script
 using the pgAdmin SQL tool (and then close and reopen the connection to the 
 freshly instrumented server), or run the script using psql, eg:
 
-psql -U postgres postgres < orafunc.sql
+CREATE EXTENSION orafce;
 
 Other administration tools that use this module may have different requirements,
 please consult the tool's documentation for further details.
 
-This package requires PostgreSQL 8.3 or later.
+This package requires PostgreSQL 9.1 or later.

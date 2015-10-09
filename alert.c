@@ -123,10 +123,10 @@ find_lock(int sid, bool create)
 		}
 		else
 			ereport(ERROR,
-    				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
-        			 errmsg("lock request error"),
+				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
+				 errmsg("lock request error"),
 					 errdetail("Failed to create session lock."),
-        			 errhint("There are too many collaborating sessions. Increase MAX_LOCKS in 'pipe.h'.")));
+				 errhint("There are too many collaborating sessions. Increase MAX_LOCKS in 'pipe.h'.")));
 	}
 
 	return NULL;
@@ -206,10 +206,10 @@ register_event(text *event_name)
 	{
 		if (ev->max_receivers + 16 > MAX_LOCKS)
 			ereport(ERROR,
-    				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
-        			 errmsg("lock request error"),
+				(errcode(ERRCODE_ORA_PACKAGES_LOCK_REQUEST_ERROR),
+				 errmsg("lock request error"),
 					 errdetail("Failed to create session lock."),
-        			 errhint("There are too many collaborating sessions. Increase MAX_LOCKS in 'pipe.h'.")));
+				 errhint("There are too many collaborating sessions. Increase MAX_LOCKS in 'pipe.h'.")));
 
 		/* increase receiver's array */
 
@@ -310,7 +310,6 @@ remove_receiver(message_item *msg, int sid)
  * all others messages than message_id.
  *
  */
-
 
 static char*
 find_and_remove_message_item(int message_id, int sid,
@@ -443,7 +442,6 @@ create_message(text *event_name, text *message)
 
 			msg_item->receivers = salloc( ev->receivers_number*sizeof(int));
 			msg_item->receivers_number = ev->receivers_number;
-
 
 			if (message != NULL)
 				msg_item->message = ora_scstring(message);
@@ -948,8 +946,8 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0))
 		ereport(ERROR,
-    			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
-        		 errmsg("event name is NULL"),
+			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+			 errmsg("event name is NULL"),
 			 errdetail("Eventname may not be NULL.")));
 
 	if (PG_ARGISNULL(1))
@@ -957,7 +955,6 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 
 	values[0] = PG_GETARG_DATUM(0);
 	values[1] = PG_GETARG_DATUM(1);
-
 
 	if (SPI_connect() < 0)
 		ereport(ERROR,
@@ -972,9 +969,8 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 		SPI_EXEC("CREATE TEMP TABLE ora_alerts(event text, message text)", UTILITY);
 		SPI_EXEC("REVOKE ALL ON TABLE ora_alerts FROM PUBLIC", UTILITY);
 		SPI_EXEC("CREATE CONSTRAINT TRIGGER ora_alert_signal AFTER INSERT ON ora_alerts "
-    		    "INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()", UTILITY);
+		"INITIALLY DEFERRED FOR EACH ROW EXECUTE PROCEDURE dbms_alert.defered_signal()", UTILITY);
 	}
-
 
 	if (!(plan = SPI_prepare(
 			"INSERT INTO ora_alerts(event,message) VALUES($1, $2)",
@@ -988,7 +984,6 @@ dbms_alert_signal(PG_FUNCTION_ARGS)
 			ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
 				errmsg("can't execute sql")));
-
 
 	SPI_finish();
 	PG_RETURN_VOID();

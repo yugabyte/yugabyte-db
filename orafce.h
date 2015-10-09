@@ -38,15 +38,4 @@ int ora_mb_strlen1(text *str);
 extern Oid	equality_oper_funcid(Oid argtype);
 #endif
 
-#if PG_VERSION_NUM < 80400
-#define CStringGetTextDatum(c) \
-	DirectFunctionCall1(textin, CStringGetDatum(c))
-#define text_to_cstring(t) \
-	DatumGetCString(DirectFunctionCall1(textout, PointerGetDatum(t)))
-#define cstring_to_text(c) \
-	DatumGetTextP(CStringGetTextDatum(c))
-text *cstring_to_text_with_len(const char *c, int n);
-#define TextDatumGetCString(d) text_to_cstring((text *) DatumGetPointer(d))
-#endif
-
 #endif
