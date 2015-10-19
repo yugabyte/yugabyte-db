@@ -5,3 +5,4 @@ regression.diffs
 regression.out
 *.o
 *.so
+.vagrant

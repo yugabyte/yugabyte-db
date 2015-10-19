@@ -1,7 +1,7 @@
 \set VERBOSITY terse
 
--- Load pgaudit module
-CREATE EXTENSION pgaudit;
+-- Create pgaudit extension
+CREATE EXTENSION IF NOT EXISTS pgaudit;
 
 --
 -- Audit log fields are:
