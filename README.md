@@ -59,11 +59,13 @@ First create a parent table with an appropriate column type for the partitioning
     CREATE schema test;
     CREATE TABLE test.part_test (col1 serial, col2 text, col3 timestamptz NOT NULL DEFAULT now());
 
-If you're looking to do time-based partitioning, and will only be inserting new data, time-static is an appropriate choice. Just run the create_parent() function with the appropriate parameters
+Then just run the create_parent() function with the appropriate parameters
 
     SELECT partman.create_parent('test.part_test', 'col3', 'time', 'daily');
+    or
+    SELECT partman.create_parent('test.part_test', 'col1', 'id', '100000');
 
-This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data.
+This will turn your table into a parent table and premake 4 future partitions and also make 4 past partitions. To make new partitions for time-based partitioning, use the run_maintenance() function. Ideally, you'd run this as a cronjob to keep new partitions premade in preparation of new data. Serial based partitioning does not always require run_maintenance() (see doc file below).
 
 This should be enough to get you started. Please see the [pg_partman.md file](doc/pg_partman.md) in the doc folder for more information on the types of partitioning supported and what the parameters in the create_parent() function mean. 
 

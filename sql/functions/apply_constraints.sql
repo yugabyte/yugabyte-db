@@ -17,7 +17,9 @@ v_constraint_cols               text[];
 v_constraint_col_type           text;
 v_constraint_name               text;
 v_constraint_values             record;
+v_control                       text;
 v_datetime_string               text;
+v_epoch                         boolean;
 v_existing_constraint_name      text;
 v_job_id                        bigint;
 v_jobmon                        boolean;
@@ -25,12 +27,15 @@ v_jobmon_schema                 text;
 v_last_partition                text;
 v_last_partition_id             int; 
 v_last_partition_timestamp      timestamp;
+v_max_id                        bigint;
+v_max_timestamp                 timestamp;
 v_old_search_path               text;
+v_optimize_constraint           int;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_partition_interval            text;
 v_partition_suffix              text;
-v_premake                       int;
+v_row_max                       record;
 v_sql                           text;
 v_step_id                       bigint;
 v_suffix_position               int;
@@ -39,19 +44,24 @@ v_type                          text;
 BEGIN
 
 SELECT partition_type
+    , control
+    , epoch
     , partition_interval
-    , premake
+    , optimize_constraint
     , datetime_string
     , constraint_cols
     , jobmon
 INTO v_type
+    , v_control
+    , v_epoch
     , v_partition_interval
-    , v_premake
+    , v_optimize_constraint
     , v_datetime_string
     , v_constraint_cols
     , v_jobmon
 FROM @extschema@.part_config
-WHERE parent_table = p_parent_table;
+WHERE parent_table = p_parent_table
+AND constraint_cols IS NOT NULL;
 
 IF v_constraint_cols IS NULL THEN
     IF p_debug THEN
@@ -61,7 +71,7 @@ IF v_constraint_cols IS NULL THEN
     RETURN;
 END IF;
 
-SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_catalog.pg_namespace n, pg_catalog.pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
@@ -79,23 +89,61 @@ IF v_jobmon_schema IS NOT NULL THEN
     END IF;
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
-
--- If p_child_table is null, figure out the partition that is the one right before the premake value backwards.
+-- If p_child_table is null, figure out the partition that is the one right before the optimize_constraint value backwards.
 IF p_child_table IS NULL THEN
-    
+    -- Loop through child tables starting from highest to get current max value in partition set
+    -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.
+    FOR v_row_max IN
+        SELECT partition_schemaname, partition_tablename FROM @extschema@.show_partitions(p_parent_table, 'DESC')
+    LOOP
+        IF (v_type = 'time' OR v_type = 'time-custom') THEN
+            IF v_epoch = false THEN
+                EXECUTE format('SELECT max(%I) FROM %I.%I', v_control, v_row_max.partition_schemaname, v_row_max.partition_tablename) INTO v_max_timestamp;
+            ELSE
+                EXECUTE format('SELECT to_timestamp(max(%I)) FROM %I.%I', v_control, v_row_max.partition_schemaname, v_row_max.partition_tablename) INTO v_max_timestamp;
+            END IF;
+            IF v_max_timestamp IS NOT NULL THEN
+                SELECT suffix_timestamp FROM @extschema@.show_partition_name(p_parent_table, v_max_timestamp::text) INTO v_last_partition_timestamp;
+                v_partition_suffix := to_char(v_last_partition_timestamp - (v_partition_interval::interval * (v_optimize_constraint + 1) ), v_datetime_string);
+                EXIT;
+            END IF;
+        ELSIF v_type = 'id' THEN
+            EXECUTE format('SELECT max(%I) FROM %I.%I', v_control, v_row_max.partition_schemaname, v_row_max.partition_tablename) INTO v_max_id;
+            IF v_max_id IS NOT NULL THEN
+                SELECT suffix_id FROM @extschema@.show_partition_name(p_parent_table, v_max_id::text) INTO v_last_partition_id;
+                v_last_partition_id := v_last_partition_id - (v_partition_interval::int * (v_optimize_constraint + 1) );
+                IF v_last_partition_id < 0 THEN
+                    v_last_partition_id := 0;
+                END IF;
+                v_partition_suffix := v_last_partition_id::text; 
+                EXIT;
+            END IF;
+        ELSE
+            RAISE EXCEPTION 'Unknown type encountered in apply_constraints()';
+        END IF;
+        IF p_debug THEN
+            RAISE NOTICE 'apply_constraint: p_parent_table: %, partition_schemaname: %, partition_tablename: %', p_parent_table , v_row_max.partition_schemaname, v_row_max.partition_tablename;
+        END IF;
+    END LOOP;
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Applying additional constraints: Automatically determining most recent child on which to apply constraints');
     END IF;
-
-    v_suffix_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
-
-    IF v_type IN ('time', 'time-custom') THEN
-        v_last_partition_timestamp := to_timestamp(substring(v_last_partition from v_suffix_position), v_datetime_string);
-        v_partition_suffix := to_char(v_last_partition_timestamp - (v_partition_interval::interval * ((v_premake * 2)+1) ), v_datetime_string);
-    ELSIF v_type = 'id' THEN
-        v_last_partition_id := substring(v_last_partition from v_suffix_position)::int;
-        v_partition_suffix := (v_last_partition_id - (v_partition_interval::int * ((v_premake * 2)+1) ))::text; 
+    IF p_debug THEN
+        RAISE NOTICE 'apply_constraint: v_parent_tablename: % , v_partition_suffix: %', v_parent_tablename, v_partition_suffix;
+    END IF;
+    IF v_partition_suffix IS NULL THEN
+        IF p_debug THEN
+            RAISE NOTICE 'No values for control column found in any child table. Unable to automatically determine which child table to apply additional constraints to';
+        END IF;
+        IF v_jobmon_schema IS NOT NULL THEN
+            PERFORM update_step(v_step_id, 'WARNING', 'No values for control column found in any child table. Unable to automatically determine which child table to apply additional constraints to');
+            IF p_job_id IS NULL THEN
+                -- If not part of a sub-job, fail this one with a warning
+                PERFORM fail_job(v_job_id, 2);
+            END IF;
+        END IF;
+        -- Return cleanly so that if maintenance calls under this condition it produces no errors that will interfere with other partition sets.
+        RETURN;
     END IF;
 
     v_child_table := v_parent_schema ||'.'|| @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
@@ -115,7 +163,9 @@ SELECT tablename INTO v_child_tablename FROM pg_catalog.pg_tables WHERE schemana
 IF v_child_tablename IS NULL THEN
     IF v_jobmon_schema IS NOT NULL THEN
         PERFORM update_step(v_step_id, 'NOTICE', format('Target child table (%s) does not exist. Skipping constraint creation.', v_child_table));
-        PERFORM close_job(v_job_id);
+        IF p_job_id IS NULL THEN
+            PERFORM close_job(v_job_id);
+        END IF;
         EXECUTE format('SELECT set_config(%L, %L, %L)', 'search_path', v_old_search_path, 'false');
     END IF;
     IF p_debug THEN
@@ -152,7 +202,9 @@ LOOP
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'NOTICE', format('Partman managed constraint already exists on this table (%s) and column (%s). Skipping creation.', v_child_table, v_col));
         END IF;
-        RAISE WARNING 'Partman managed constraint already exists on this table (%) and column (%). Skipping creation.', v_child_table, v_col ;
+        IF p_debug THEN
+            RAISE NOTICE 'Partman managed constraint already exists on this table (%) and column (%). Skipping creation.', v_child_table, v_col ;
+        END IF;
         CONTINUE;
     END IF;
 
@@ -231,4 +283,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

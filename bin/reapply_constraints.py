@@ -3,13 +3,13 @@
 import argparse, psycopg2, sys, time
 from multiprocessing import Process
 
-partman_version = "2.0.0"
+partman_version = "2.2.0"
 
 parser = argparse.ArgumentParser(description="Script for reapplying additional constraints managed by pg_partman on child tables. See docs for additional info on this special constraint management. Script runs in two distinct modes: 1) Drop all constraints  2) Apply all constraints. Typical usage would be to run the drop mode, edit the data, then run apply mode to re-create all constraints on a partition set.")
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")
 parser.add_argument('-c','--connection', default="host=", help="""Connection string for use by psycopg. Defaults to "host=" (local socket).""")
 parser.add_argument('-d', '--drop_constraints', action="store_true", help="Drop all constraints managed by pg_partman. Drops constraints on all child tables including current & future.")
-parser.add_argument('-a', '--add_constraints', action="store_true", help="Apply configured constraints to all child tables older than the premake value.")
+parser.add_argument('-a', '--add_constraints', action="store_true", help="Apply configured constraints to all child tables older than the optimize_constraint value.")
 parser.add_argument('-j', '--jobs', type=int, default=0, help="Use the python multiprocessing library to recreate indexes in parallel. Value for -j is number of simultaneous jobs to run. Note that this is per table, not per index. Be very careful setting this option if load is a concern on your systems.")
 parser.add_argument('-w', '--wait', type=float, default=0, help="Wait the given number of seconds after a table has had its constraints dropped or applied before moving on to the next. When used with -j, this will set the pause between the batches of parallel jobs instead.")
 parser.add_argument('--dryrun', action="store_true", help="Show what the script will do without actually running it against the database. Highly recommend reviewing this before running.")
@@ -22,13 +22,13 @@ def apply_proc(child_table, partman_schema):
     conn = create_conn()
     conn.autocommit = True
     cur = conn.cursor()
-    sql = "SELECT " + partman_schema + ".apply_constraints(%s, %s, %s, %s)"
+    sql = "SELECT " + partman_schema + ".apply_constraints(%s, %s, %s, %s, %s)"
     debug = False;
     if not args.quiet:
         debug = True
-        print(cur.mogrify(sql, [args.parent, child_table, False, debug]))
+        print(cur.mogrify(sql, [args.parent, child_table, False, None, debug]))
     if not args.dryrun:
-        cur.execute(sql, [args.parent, child_table, False, debug])
+        cur.execute(sql, [args.parent, child_table, False, None, debug])
     cur.close()
     close_conn(conn)
 
@@ -75,23 +75,23 @@ def get_partman_schema(conn):
     return partman_schema
 
 
-def get_premake(conn, partman_schema):
+def get_optimize_value(conn, partman_schema):
     cur = conn.cursor()
-    sql = "SELECT premake FROM " + partman_schema + ".part_config WHERE parent_table = %s"
+    sql = "SELECT optimize_constraint FROM " + partman_schema + ".part_config WHERE parent_table = %s"
     cur.execute(sql, [args.parent])
-    premake = int(cur.fetchone()[0])
+    optimize_constraint = int(cur.fetchone()[0])
     cur.close()
-    return premake
+    return optimize_constraint
 
 
 def get_quoted_parent_table(conn):
     cur = conn.cursor()
     sql = "SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s"
     cur.execute(sql, [args.parent])
+    result = cur.fetchone()
     if result == None:
         print("Given parent table ("+args.parent+") does not exist")
         sys.exit(2)
-    result = cur.fetchone()
     quoted_parent_table = "\"" + result[0] + "\".\"" + result[1] + "\""
     cur.close()
     return quoted_parent_table
@@ -127,11 +127,11 @@ if __name__ == "__main__":
     partman_schema = get_partman_schema(main_conn)
     quoted_parent_table = get_quoted_parent_table(main_conn)
     child_list = get_children(main_conn, partman_schema)
-    premake = get_premake(main_conn, partman_schema)
+    optimize_constraint = get_optimize_value(main_conn, partman_schema)
 
     if args.add_constraints:
         # Remove tables from the list of child tables that shouldn't have constraints yet 
-        for x in range((premake * 2) + 1):
+        for x in range((optimize_constraint * 2) + 1):
             child_list.pop()
 
     if args.jobs == 0:

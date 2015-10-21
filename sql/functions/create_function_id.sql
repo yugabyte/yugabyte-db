@@ -38,17 +38,20 @@ v_run_maint                     boolean;
 v_step_id                       bigint;
 v_top_parent                    text := p_parent_table;
 v_trig_func                     text;
+v_optimize_trigger              int;
 
 BEGIN
 
 SELECT partition_interval::bigint
     , control
     , premake
+    , optimize_trigger
     , use_run_maintenance
     , jobmon
 INTO v_partition_interval
     , v_control
     , v_premake
+    , v_optimize_trigger
     , v_run_maint
     , v_jobmon
 FROM @extschema@.part_config 
@@ -152,7 +155,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             RETURN NEW;';
         END IF;
 
-    FOR i IN 1..v_premake LOOP
+    FOR i IN 1..v_optimize_trigger LOOP
         v_prev_partition_id := v_current_partition_id - (v_partition_interval * i);
         v_next_partition_id := v_current_partition_id + (v_partition_interval * i);
         v_final_partition_id := v_next_partition_id + v_partition_interval;
@@ -160,7 +163,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
         v_next_partition_name := @extschema@.check_name_length(v_parent_tablename, v_next_partition_id::text, TRUE);
 
         -- Check that child table exist before making a rule to insert to them.
-        -- Handles edge case of changing premake immediately after running create_parent(). 
+        -- Handles optimize_trigger being larger than premake (to go back in time further) and edge case of changing optimize_trigger immediately after running create_parent().
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_prev_partition_name;
         IF v_count > 0 THEN
             -- Only handle previous partitions if they're starting above zero

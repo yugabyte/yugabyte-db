@@ -1,4 +1,4 @@
--- ########## TIME PARENT / TIME SUBPARENT / TIME SUB-SUB-PARENT DYNAMIC ##########
+-- ########## TIME EPOCH PARENT / TIME EPOCH SUBPARENT / TIME EPOCH SUB-SUB-PARENT DYNAMIC ##########
 -- Currently tests 23, 39, 47 & 67 may fail around new years boundaries
 
 \set ON_ERROR_ROLLBACK 1
@@ -10,11 +10,11 @@ SELECT set_config('search_path','partman, public',false);
 SELECT plan(72);
 CREATE SCHEMA partman_test;
 
-CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 timestamptz NOT NULL DEFAULT now());
-INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), CURRENT_TIMESTAMP);
+CREATE TABLE partman_test.time_taptest_table (col1 int primary key, col2 text, col3 bigint NOT NULL DEFAULT extract('epoch' from now()));
+INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(1,10), extract('epoch' from CURRENT_TIMESTAMP));
 
 -- yearly
-SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'yearly', p_premake := 2);
+SELECT create_parent('partman_test.time_taptest_table', 'col3', 'time', 'yearly', p_premake := 2, p_epoch := true);
 -- Make sure optimize values can be different
 UPDATE part_config SET optimize_trigger = 5, optimize_constraint = 10 WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' exists');
@@ -40,7 +40,7 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 
 
 -- monthly
-SELECT create_sub_parent('partman_test.time_taptest_table', 'col3', 'time', 'monthly', p_premake := 2);
+SELECT create_sub_parent('partman_test.time_taptest_table', 'col3', 'time', 'monthly', p_premake := 2, p_epoch := true);
 -- Make sure optimize values can be different
 UPDATE part_config_sub SET sub_optimize_trigger = 5, sub_optimize_constraint = 10, sub_retention_keep_table = false WHERE sub_parent = 'partman_test.time_taptest_table';
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM'),
@@ -49,7 +49,7 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTA
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'1 month'::interval, 'YYYY_MM')||' exists');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 months'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'2 months'::interval, 'YYYY_MM'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 months'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'2 months'::interval, 'YYYY_MM')||' exists');
--- Next test starts failing in Oct since the next year's partition was made and must contain one child table (january)
+-- Near end of year (Oct) following may fail since next hear's minimum month table will be created
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM'), 
     'Check time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY_MM')||' does not exist (this test may fail around year boundary. See comment in test code)');
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 month'::interval, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP-'1 month'::interval, 'YYYY_MM'), 
@@ -87,16 +87,16 @@ SELECT results_eq('SELECT sub_parent FROM part_config_sub ORDER BY sub_parent',
     'Check that part_config_sub has all tables configured as needed');
 
 -- daily
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2, p_epoch := true)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' should return true');
 
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''1 year''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''1 year''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2, p_epoch := true)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||' should return true');
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''2 years''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP+''2 years''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2, p_epoch := true)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY')||' should return true');
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''1 year''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''1 year''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2, p_epoch := true)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY')||' should return true');
-SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''2 years''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2)',
+SELECT results_eq('SELECT create_sub_parent(''partman_test.time_taptest_table_p''||to_char(CURRENT_TIMESTAMP-''2 years''::interval, ''YYYY''), ''col3'', ''time'', ''daily'', p_premake := 2, p_epoch := true)',
     ARRAY[true], 'Subpartitioning partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' should return true');
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP, 'YYYY_MM_DD'),
@@ -149,7 +149,7 @@ SELECT results_eq('SELECT sub_parent FROM part_config_sub ORDER BY sub_parent',
         'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY')],
     'Check that part_config_sub has all tables configured as needed');
 
-INSERT INTO partman_test.time_taptest_table (col1, col2, col3) VALUES (generate_series(11,20), 'stuff', CURRENT_TIMESTAMP+'1 day'::interval);
+INSERT INTO partman_test.time_taptest_table (col1, col2, col3) VALUES (generate_series(11,20), 'stuff', extract('epoch' from CURRENT_TIMESTAMP+'1 day'::interval));
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check new data did not go into parent time_taptest_table');
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY'), 
     'Check new data did not go into subparent time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY'));
@@ -158,7 +158,8 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_p'||to_char(
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM_DD'), 
     ARRAY[10], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM')||'_p'||to_char(CURRENT_TIMESTAMP+'1 day', 'YYYY_MM_DD'));
 
-UPDATE part_config SET premake = 3 WHERE parent_table LIKE 'partman_test.time_taptest_table%' AND partition_type = 'time';
+UPDATE part_config SET premake = 3, optimize_trigger = 3 WHERE parent_table LIKE 'partman_test.time_taptest_table%' AND partition_type = 'time';
+
 SELECT run_maintenance();
 
 
@@ -185,7 +186,7 @@ SELECT results_eq('SELECT sub_parent FROM part_config_sub ORDER BY sub_parent',
         'partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY')],
    'Check that part_config_sub has all tables configured as needed');
 
-INSERT INTO partman_test.time_taptest_table (col1, col2, col3) VALUES (generate_series(21,30), 'stuff', CURRENT_TIMESTAMP+'3 years'::interval);
+INSERT INTO partman_test.time_taptest_table (col1, col2, col3) VALUES (generate_series(21,30), 'stuff', extract('epoch' from CURRENT_TIMESTAMP+'3 years'::interval));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check new data did not go into parent time_taptest_table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 years', 'YYYY'),

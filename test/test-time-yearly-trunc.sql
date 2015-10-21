@@ -1,4 +1,5 @@
--- ########## TIME STATIC TESTS ##########
+-- ########## TIME YEARLY TESTS ##########
+-- Other tests: Ensure name truncation works, make sure dynamic trigger is working
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,7 +7,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(129);
+SELECT plan(156);
 CREATE SCHEMA partman_test;
 CREATE SCHEMA partman_retention_test;
 CREATE ROLE partman_basic;
@@ -152,106 +153,106 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_123
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 
     ARRAY[15], 'Check count from time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
 
-UPDATE part_config SET premake = 5 WHERE parent_table = 'partman_test.time_taptest_table_123456789012345678901234567890123456780';
+UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table = 'partman_test.time_taptest_table_123456789012345678901234567890123456780';
 SELECT run_maintenance();
 INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123456780 (col1, col3) VALUES (generate_series(101,122), CURRENT_TIMESTAMP + '5 years'::interval);
 
 SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||' exists');
-SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
+SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY')||' exists');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY')||' does not exist');
 SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123456780', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 
     ARRAY[22], 'Check count from time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
 
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_basic', 
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'), 'partman_basic', 
-ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_basic', 
-ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'));
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 'partman_revoke', 
     ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'));
 
 GRANT DELETE ON partman_test.time_taptest_table_123456789012345678901234567890123456780 TO partman_basic;
 REVOKE ALL ON partman_test.time_taptest_table_123456789012345678901234567890123456780 FROM partman_revoke;
 ALTER TABLE partman_test.time_taptest_table_123456789012345678901234567890123456780 OWNER TO partman_owner;
 
-UPDATE part_config SET premake = 6 WHERE parent_table = 'partman_test.time_taptest_table_123456789012345678901234567890123456780';
+UPDATE part_config SET premake = 6, optimize_trigger = 6 WHERE parent_table = 'partman_test.time_taptest_table_123456789012345678901234567890123456780';
 SELECT run_maintenance();
-INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123456780 (col1, col3) VALUES (generate_series(123,150), CURRENT_TIMESTAMP + '6 years'::interval);
+-- Data for dynamic trigger
+INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123456780 (col1, col3) VALUES (generate_series(123,150), CURRENT_TIMESTAMP + '11 years'::interval);
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123456780', 'Check that parent table has had no data inserted to it');
+-- Check dynamic trigger worked
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_123456789012345678901234567890123456780', ARRAY[148], 'Check count from parent table');
-SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
-    ARRAY[28], 'Check count from time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 
+    ARRAY[28], 'Check count from time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
 
-SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
-    'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' exists');
-SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 
-    'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY')||' exists');
-SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), ARRAY['col1'], 
-    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'3 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'4 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'), 'partman_revoke', 
-    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_revoke', 
-    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY')||' exists');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'12 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'12 years'::interval, 'YYYY')||' does not exist');
+SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
 
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_basic', 
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
-SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_owner', 
-    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
+
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
+
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
 
 INSERT INTO partman_test.time_taptest_table_123456789012345678901234567890123456780 (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '20 years'::interval);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123456780', ARRAY[11], 'Check that data outside trigger scope goes to parent');
@@ -260,6 +261,18 @@ SELECT reapply_privileges('partman_test.time_taptest_table_123456789012345678901
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'));
@@ -278,21 +291,32 @@ SELECT table_privs_are('partman_test', 'time_taptest_table_123456789012345678901
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_basic', 
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_revoke', 
     '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_revoke', 
     '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'), 'partman_revoke', 
@@ -305,9 +329,27 @@ SELECT table_privs_are('partman_test', 'time_taptest_table_123456789012345678901
     '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_revoke', 
     '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
 
 SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
 SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'));
 SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'), 'partman_owner', 
@@ -320,14 +362,16 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_123456789012345678901
     'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY'));
 SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'));
-SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 'partman_owner', 
-    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'));
-SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 'partman_owner', 
-    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'));
-SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'), 'partman_owner', 
-    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'3 years'::interval, 'YYYY'));
-SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 'partman_owner', 
-    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'));
 
 SELECT drop_partition_time('partman_test.time_taptest_table_123456789012345678901234567890123456780', '3 years', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'4 years'::interval, 'YYYY'), 
@@ -353,6 +397,10 @@ SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_tabl
 --SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table_123456789012345678901234567890123456780', ARRAY[108], 'Check count from parent table after undo. This test may fail around the year boundary. See comment in tests for different test to try.');
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'1 year'::interval, 'YYYY')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'2 years'::interval, 'YYYY'), 
@@ -365,10 +413,16 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_1234567890123456789012345
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'5 years'::interval, 'YYYY')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'6 years'::interval, 'YYYY')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'1 year'::interval, 'YYYY')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'2 years'::interval, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'7 years'::interval, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'8 years'::interval, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'9 years'::interval, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'10 years'::interval, 'YYYY')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_12345678901234567890123456789012345678_p'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'11 years'::interval, 'YYYY')||' does not exist');
 
 SELECT * FROM finish();
 ROLLBACK;

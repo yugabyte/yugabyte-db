@@ -51,6 +51,7 @@ SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p50000', ARRAY['col2', 'col4'
 SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p60000', ARRAY['col2', 'col4'], 'Check for inherited foreign key in ID-taptest_Table_p60000');
 SELECT col_is_fk('Partman_test', 'ID-taptest_Table_p70000', ARRAY['col2', 'col4'], 'Check for inherited foreign key in ID-taptest_Table_p70000');
 
+
 -- Insert remaining rows to check that 50% trigger is working before enabling sub-partitioning
 INSERT INTO "Partman_test"."ID-taptest_Table" ("COL1") VALUES (generate_series(50001, 100000));
 
@@ -60,7 +61,6 @@ SELECT has_table('Partman_test', 'ID-taptest_Table_p100000', 'Check "ID-taptest_
 SELECT has_table('Partman_test', 'ID-taptest_Table_p110000', 'Check "ID-taptest_Table_p110000 exists');
 -- Won't get created by 50% rule unless 100000 row table gets half full. run_maintenance() call below after subpart will create it
 SELECT hasnt_table('Partman_test', 'ID-taptest_Table_p120000', 'Check "ID-taptest_Table_p120000 does not exist');
-
 SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."ID-taptest_Table_p50000"', ARRAY[10000], 'Check count from ID-taptest_Table_p50000');
 SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."ID-taptest_Table_p60000"', ARRAY[10000], 'Check count from ID-taptest_Table_p60000');
 SELECT results_eq('SELECT count(*)::int FROM "Partman_test"."ID-taptest_Table_p70000"', ARRAY[10000], 'Check count from ID-taptest_Table_p70000');

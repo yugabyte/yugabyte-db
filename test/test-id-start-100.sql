@@ -17,7 +17,8 @@ INSERT INTO partman_test.id_taptest_table (col1, col2) VALUES (generate_series(1
 GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic;
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10');
-UPDATE partman.part_config SET constraint_cols = '{"col2", "col3"}' WHERE parent_table = 'partman_test.id_taptest_table';
+-- Default optimize_constraint is 30, so set it equal to premake for when this test was originally written
+UPDATE partman.part_config SET constraint_cols = '{"col2", "col3"}', optimize_constraint = 4 WHERE parent_table = 'partman_test.id_taptest_table';
 SELECT has_table('partman_test', 'id_taptest_table_p100', 'Check id_taptest_table_p100 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p110', 'Check id_taptest_table_p110 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p120', 'Check id_taptest_table_p120 exists');

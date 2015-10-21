@@ -16,6 +16,7 @@ v_child_min             timestamptz;
 v_child_loop_total      bigint := 0;
 v_child_table           text;
 v_control               text;
+v_epoch                 boolean;
 v_function_name         text;
 v_inner_loop_count      int;
 v_lock_iter             int := 1;
@@ -49,10 +50,12 @@ SELECT partition_type
     , partition_interval::interval
     , control
     , jobmon
+    , epoch
 INTO v_type
     , v_partition_interval
     , v_control
     , v_jobmon
+    , v_epoch
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table 
 AND (partition_type = 'time' OR partition_type = 'time-custom');
@@ -137,18 +140,7 @@ END IF;
 <<outer_child_loop>>
 WHILE v_batch_loop_count < p_batch_count LOOP 
     -- Get ordered list of child table in set. Store in variable one at a time per loop until none are left.
-    WITH parent_info AS (
-        SELECT c1.oid 
-        FROM pg_catalog.pg_class c1 
-        JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
-        WHERE c1.relname = v_parent_tablename
-        AND n1.nspname = v_parent_schema
-    )
-    SELECT c.relname INTO v_child_table
-    FROM pg_catalog.pg_inherits i
-    JOIN pg_catalog.pg_class c ON i.inhrelid = c.oid
-    JOIN parent_info p ON i.inhparent = p.oid
-    ORDER BY i.inhrelid ASC;
+    SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC');
 
     EXIT WHEN v_child_table IS NULL;
 
@@ -156,7 +148,11 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         v_step_id := add_step(v_job_id, format('Removing child partition: %s.%s', v_parent_schema, v_child_table));
     END IF;
 
-    EXECUTE format('SELECT min(%I) FROM %I.%I', v_control, v_parent_schema, v_child_table) INTO v_child_min;
+    IF v_epoch = false THEN
+        EXECUTE format('SELECT min(%I) FROM %I.%I', v_control, v_parent_schema, v_child_table) INTO v_child_min;
+    ELSE 
+        EXECUTE format('SELECT to_timestamp(min(%I)) FROM %I.%I', v_control, v_parent_schema, v_child_table) INTO v_child_min;
+    END IF;
     IF v_child_min IS NULL THEN
         -- No rows left in this child table. Remove from partition set.
 
@@ -233,15 +229,27 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         END IF;
 
         -- Get everything from the current child minimum up to the multiples of the given interval
-        v_move_sql := format('WITH move_data AS (
-                                DELETE FROM %I.%I WHERE %I <= %L RETURNING *)
-                              INSERT INTO %I.%I SELECT * FROM move_data'
-                                , v_parent_schema
-                                , v_child_table
-                                , v_control
-                                , v_child_min + (p_batch_interval * v_inner_loop_count)
-                                , v_parent_schema
-                                , v_parent_tablename);
+        IF v_epoch = false THEN
+            v_move_sql := format('WITH move_data AS (
+                                    DELETE FROM %I.%I WHERE %I <= %L RETURNING *)
+                                  INSERT INTO %I.%I SELECT * FROM move_data'
+                                    , v_parent_schema
+                                    , v_child_table
+                                    , v_control
+                                    , v_child_min + (p_batch_interval * v_inner_loop_count)
+                                    , v_parent_schema
+                                    , v_parent_tablename);
+        ELSE
+            v_move_sql := format('WITH move_data AS (
+                                    DELETE FROM %I.%I WHERE to_timestamp(%I) <= %L RETURNING *)
+                                  INSERT INTO %I.%I SELECT * FROM move_data'
+                                    , v_parent_schema
+                                    , v_child_table
+                                    , v_control
+                                    , v_child_min + (p_batch_interval * v_inner_loop_count)
+                                    , v_parent_schema
+                                    , v_parent_tablename);
+        END IF;
         EXECUTE v_move_sql;
         GET DIAGNOSTICS v_rowcount = ROW_COUNT;
         v_total := v_total + v_rowcount;

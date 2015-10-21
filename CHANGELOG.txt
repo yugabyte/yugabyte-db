@@ -1,3 +1,40 @@
+2.2.0
+-- Added new optimization & constraint configuration options to part_config & part_config_sub (optimize_trigger, optimize_constraint) (Github Issue #62)
+    -- The premake config value now only controls what its name suggests (the number of future partitions to premake)
+    -- For existing partition sets, the values for these columns will be set equal to the current premake value
+    -- Default value for optimize_trigger is same as default for premake (4)
+    -- Default value for optimize_constraint is 30 (30 days, 30 months, etc)
+    -- Not added as parameters to create_parent() or create_sub_parent()
+        --These can be changed later and normal maintenance will take care of updating the current partition set to match.
+
+-- Time epoch partitioning is now possible (Github Issue #44)
+    -- Control column can be an integer type but trigger, partition constraints and partition names will be based on a time interval.
+    -- New boolean parameter to the create_parent()/create_sub_parent() functions. Ensure all of your current calls to this function account for it!
+
+-- Fixed bug introduced in v2.1.0 that caused run_maintenance() to not catch up if partition creation fell behind. (Github Issue #67)
+    -- The fix for this issue also introduces new (improved) behavior for time-based partition maintenance.
+        -- Previously, the premade tables were determined by the current time at the time maintenance ran.
+        -- It is now instead based off of the maximum value in the partition set.
+        -- This is essentially the same behavior that serial partitioning has always had.
+        -- This means that if no new data is being inserted, once the premake value is met, no new partitions will be made. Previously they would be created no matter what, indefinitely.
+        -- Resumption of data insertion after a large gap in data and maintenance runs may cause data to go into the parent until run_maintenance() is called again. 
+            -- New data should then go to new children, but data will then have to be cleaned out of the parent.
+        -- This also means partitioning should work more predictably if data with a future timestamp is inserted. Previously this was not accounted for and could cause maintenance to work inconsistently.
+    -- KNOWN BUGS: If you insert "future" data in a time-based, sub-partitioned set, maintenance may skip child tables in some partition sets depending how that data relates to the subpartition interval. 
+        -- Working on a fix for this, but didn't want to hold this release up anymore. To work around this, 
+            -- Increase the premake and/or optimize_trigger values appropriately to account for your normal data insertion window.
+            -- Monitor for data going into parent tables and fix that as documented.
+
+-- Fixed bug in show_partitions() when used against a quarterly partitioned set. Wouldn't return all tables in expected order.
+-- Fixed bugs in reapply_constraints.py instroduced in v2.1.0 that prevented it from running. Increased minimum version requirement of pg_partman to 2.2.0.
+-- Made creation of additional column constraints more efficient (if used) and less spammy in the run_maintenance() jobmon logs.
+-- Added debug option to run_maintenance().
+
+-- Fixed bug introduced in 2.1.0 that wasn't setting the retention config columns in part_config properly for multi-level subpartitions
+    -- You may encounter an error during maintenance or during the upgrade related to inconsistent data in the part_config_sub table. There was a constraint in place before that tried to prevent this happening, but it was not doing it properly. There is now a new function in place that is part of routine maintenance that checks for this consistency. This checks to ensure that all sub-partition parents in part_config_sub that are themselves part of a sub-partition set have the same configuration values. You can run the function "check_subpart_sameconfig('parent_table')" for all sub-partitioned table sets to see which ones have inconsistent data. The function should only return a single row. If more than one row is returned then just update the config entries that are mismatched and this should clear the error. If you're still having problems, please open an Issue on Github with the error you receive and the full contents of your part_config & part_config_sub tables.
+-- If you encounter the error during the upgrade, run the query found in the 2.1.0 -> 2.2.0 upgrade file comments at the top using the parent table returned in the error for <<<schema.table>>> and setting <<<partman_schema>>> to the schema you installed pg_partman to. Only a single row should be returned. If not then fix the mismatched data.
+
+
 2.1.0
 -- Object names (tables, roles, etc) with special characters & mixed case are now supported.
 -- Fixed bug in apply_foreign_keys() that was causing it to fail if there were multiple FKs to the same foreign column. Also fixed a bug that allowed the child name parameter to not be passed and didn't handle it if it wasn't. Thanks to Andrew Dunstan for the bug fix and tremendously simplified code. Backpatched to 1.8.8. (Github Issue #64).

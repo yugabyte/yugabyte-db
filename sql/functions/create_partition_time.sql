@@ -16,6 +16,7 @@ v_analyze                       boolean := FALSE;
 v_control                       text;
 v_datetime_string               text;
 v_exists                        text;
+v_epoch                         boolean;
 v_grantees                      text[];
 v_hasoids                       boolean;
 v_inherit_fk                    boolean;
@@ -53,12 +54,14 @@ BEGIN
 SELECT partition_type
     , control
     , partition_interval
+    , epoch
     , inherit_fk
     , jobmon
     , datetime_string
 INTO v_type
     , v_control
     , v_partition_interval
+    , v_epoch
     , v_inherit_fk
     , v_jobmon
     , v_datetime_string
@@ -151,14 +154,26 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
     IF v_parent_tablespace IS NOT NULL THEN
         EXECUTE format('ALTER TABLE %I.%I SET TABLESPACE %I', v_parent_schema, v_partition_name, v_parent_tablespace);
     END IF;
-    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
-                    , v_parent_schema
-                    , v_partition_name
-                    , v_partition_name||'_partition_check'
-                    , v_control
-                    , v_partition_timestamp_start
-                    , v_control
-                    , v_partition_timestamp_end);
+    IF v_epoch = false THEN
+        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (%I >= %L AND %I < %L)'
+                        , v_parent_schema
+                        , v_partition_name
+                        , v_partition_name||'_partition_check'
+                        , v_control
+                        , v_partition_timestamp_start
+                        , v_control
+                        , v_partition_timestamp_end);
+    ELSE
+        EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I CHECK (to_timestamp(%I) >= %L AND to_timestamp(%I) < %L)'
+                        , v_parent_schema
+                        , v_partition_name
+                        , v_partition_name||'_partition_check'
+                        , v_control
+                        , v_partition_timestamp_start
+                        , v_control
+                        , v_partition_timestamp_end);
+    END IF;
+
     EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I'
                     , v_parent_schema
                     , v_partition_name
@@ -235,6 +250,9 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , sub_retention_keep_table
             , sub_retention_keep_index
             , sub_use_run_maintenance
+            , sub_epoch
+            , sub_optimize_trigger
+            , sub_optimize_constraint
             , sub_jobmon
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
@@ -251,6 +269,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
                 , p_premake := %L
                 , p_use_run_maintenance := %L
                 , p_inherit_fk := %L
+                , p_epoch := %L
                 , p_jobmon := %L )'
             , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
@@ -260,6 +279,7 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             , v_row.sub_premake
             , v_row.sub_use_run_maintenance
             , v_row.sub_inherit_fk
+            , v_row.sub_epoch
             , v_row.sub_jobmon);
         EXECUTE v_sql;
 
@@ -267,7 +287,9 @@ FOREACH v_time IN ARRAY p_partition_times LOOP
             retention_schema = v_row.sub_retention_schema
             , retention_keep_table = v_row.sub_retention_keep_table
             , retention_keep_index = v_row.sub_retention_keep_index
-        WHERE parent_table = v_partition_name;
+            , optimize_trigger = v_row.sub_optimize_trigger
+            , optimize_constraint = v_row.sub_optimize_constraint
+        WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
     END LOOP; -- end sub partitioning LOOP
 
@@ -330,5 +352,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

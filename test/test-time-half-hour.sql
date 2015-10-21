@@ -1,4 +1,4 @@
--- ########## TIME DYNAMIC TESTS ##########
+-- ########## TIME HALF-HOUR TESTS ##########
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(83);
+SELECT plan(94);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -42,7 +42,7 @@ SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hou
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
@@ -137,20 +137,36 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
     ARRAY[5], 'Check count from time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'60 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
-UPDATE part_config SET premake = 5 WHERE parent_table = 'partman_test.time_taptest_table';
+UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT run_maintenance();
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI')||' does not exist');
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
@@ -179,66 +195,60 @@ SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trun
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
     ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
 GRANT DELETE ON partman_test.time_taptest_table TO partman_basic;
 REVOKE ALL ON partman_test.time_taptest_table FROM partman_revoke;
 ALTER TABLE partman_test.time_taptest_table OWNER TO partman_owner;
 
-UPDATE part_config SET premake = 6 WHERE parent_table = 'partman_test.time_taptest_table';
+UPDATE part_config SET premake = 6, optimize_trigger = 6 WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT run_maintenance();
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'300 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI')||' exists');
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'300 mins'::interval, 'YYYY_MM_DD_HH24MI')||' does not exists');
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'30 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'30 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'60 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'60 mins'::interval, 'YYYY_MM_DD_HH24MI'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'90 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'90 mins'::interval, 'YYYY_MM_DD_HH24MI'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'120 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'120 mins'::interval, 'YYYY_MM_DD_HH24MI'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
     ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'150 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
-    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
-                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '600 mins'::interval);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
@@ -274,6 +284,16 @@ SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trun
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
@@ -303,6 +323,14 @@ SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trun
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
     '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
 SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0), 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
@@ -332,6 +360,14 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trun
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'));
 
 SELECT undo_partition_time('partman_test.time_taptest_table', 20);
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
@@ -382,7 +418,14 @@ SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_p'||to_char(date_
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
     'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
                 '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'180 mins'::interval, 'YYYY_MM_DD_HH24MI')||' is empty');
-
+SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'210 mins'::interval, 'YYYY_MM_DD_HH24MI')||' is empty');
+SELECT is_empty('SELECT * FROM partman_test.time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI'), 
+    'Check time_taptest_table_p'||to_char(date_trunc('hour', CURRENT_TIMESTAMP) + 
+                '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0)+'240 mins'::interval, 'YYYY_MM_DD_HH24MI')||' is empty');
 
 SELECT * FROM finish();
 ROLLBACK;

@@ -11,6 +11,7 @@ CREATE FUNCTION create_parent(
     , p_use_run_maintenance boolean DEFAULT NULL
     , p_start_partition text DEFAULT NULL
     , p_inherit_fk boolean DEFAULT true
+    , p_epoch boolean DEFAULT false
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean 
@@ -79,6 +80,10 @@ AND a.attname = p_control;
         RAISE EXCEPTION 'Control column given (%) for parent table (%) does not exist or must be set to NOT NULL', p_control, p_parent_table;
     END IF;
 
+IF p_type = 'id' AND p_epoch = true THEN
+    RAISE EXCEPTION 'p_epoch can only be used with time-based partitioning';
+END IF;
+
 IF NOT @extschema@.check_partition_type(p_type) THEN
     RAISE EXCEPTION '% is not a valid partitioning type', p_type;
 END IF;
@@ -137,6 +142,9 @@ FOR v_row IN
         , sub_retention_keep_table
         , sub_retention_keep_index
         , sub_use_run_maintenance
+        , sub_epoch
+        , sub_optimize_trigger
+        , sub_optimize_constraint
         , sub_jobmon
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
@@ -154,6 +162,9 @@ LOOP
         , sub_retention_keep_table
         , sub_retention_keep_index
         , sub_use_run_maintenance
+        , sub_epoch
+        , sub_optimize_trigger
+        , sub_optimize_constraint
         , sub_jobmon)
     VALUES (
         p_parent_table
@@ -168,6 +179,9 @@ LOOP
         , v_row.sub_retention_keep_table
         , v_row.sub_retention_keep_index
         , v_row.sub_use_run_maintenance
+        , v_row.sub_epoch
+        , v_row.sub_optimize_trigger
+        , v_row.sub_optimize_constraint
         , v_row.sub_jobmon);
 END LOOP;
 
@@ -268,6 +282,7 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
         parent_table
         , partition_type
         , partition_interval
+        , epoch
         , control
         , premake
         , constraint_cols
@@ -279,6 +294,7 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
         p_parent_table
         , p_type
         , v_time_interval
+        , p_epoch
         , p_control
         , p_premake
         , p_constraint_cols
@@ -501,5 +517,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

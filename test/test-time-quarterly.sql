@@ -6,7 +6,7 @@
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(128);
+SELECT plan(141);
 CREATE SCHEMA partman_test;
 CREATE ROLE partman_basic;
 CREATE ROLE partman_revoke;
@@ -151,56 +151,69 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'|
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 
     ARRAY[15], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
 
-UPDATE part_config SET premake = 5 WHERE parent_table = 'partman_test.time_taptest_table';
+UPDATE part_config SET premake = 5, optimize_trigger = 5 WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT run_maintenance();
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(101,122), CURRENT_TIMESTAMP + '15 months'::interval);
 
 SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q')||' exists');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q')||' exists');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q')||' does not exists');
 SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
     'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.time_taptest_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'), 
     ARRAY[22], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'));
 
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
 ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
 ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+ARRAY['SELECT','INSERT','UPDATE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+ARRAY['SELECT','INSERT','UPDATE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+ARRAY['SELECT','INSERT','UPDATE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'));
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
     ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
+    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'));
 
 GRANT DELETE ON partman_test.time_taptest_table TO partman_basic;
 REVOKE ALL ON partman_test.time_taptest_table FROM partman_revoke;
 ALTER TABLE partman_test.time_taptest_table OWNER TO partman_owner;
 
-UPDATE part_config SET premake = 6 WHERE parent_table = 'partman_test.time_taptest_table';
+UPDATE part_config SET premake = 6, optimize_trigger = 6 WHERE parent_table = 'partman_test.time_taptest_table';
 SELECT run_maintenance();
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(123,150), CURRENT_TIMESTAMP + '18 months'::interval);
 
@@ -209,48 +222,33 @@ SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table', A
 SELECT results_eq('SELECT count(*)::int FROM partman_test.time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 
     ARRAY[28], 'Check count from time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
 
-SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q')||' exists');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q')||' exists');
-SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
-    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 'partman_basic', ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'9 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'12 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
-    ARRAY['SELECT','INSERT','UPDATE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
-    ARRAY['SELECT'], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
-    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q')||' exists');
+SELECT has_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q')||' exists');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'36 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'36 months'::interval, 'YYYY"q"Q')||' does not exists');
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'));
+SELECT col_is_pk('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), ARRAY['col1'], 
+    'Check for primary key in time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'));
 
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
-SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 'partman_owner', 
-    'Check that ownership change worked for time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'));
+
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), 'partman_revoke', 
+    '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'));
+
+SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'));
+SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), 'partman_owner', 
+    'Check that ownership change worked for time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'));
 
 INSERT INTO partman_test.time_taptest_table (col1, col3) VALUES (generate_series(200,210), CURRENT_TIMESTAMP + '60 months'::interval);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[11], 'Check that data outside trigger scope goes to parent');
@@ -259,6 +257,18 @@ SELECT reapply_privileges('partman_test.time_taptest_table');
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'));
@@ -277,18 +287,21 @@ SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_T
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
     'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'));
-SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
     ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
-    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'));
+SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), 'partman_basic', 
+    ARRAY['SELECT','INSERT','UPDATE', 'DELETE'], 
+    'Check partman_basic privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'));
 
 SELECT table_privs_are('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 'partman_revoke', 
     '{}'::text[], 'Check partman_revoke privileges of time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'));
@@ -328,11 +341,19 @@ SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_T
 SELECT table_owner_is ('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 'partman_owner', 
     'Check that ownership change worked for time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'));
 
--- Currently unable to do drop_partition test reliably for monthly due to differing month lengths (sometimes drops 2 partitions instead of 1)
+-- Currently unable to do drop_partition test reliably for quarterly due to differing month lengths (sometimes drops 2 partitions instead of 1)
 SELECT undo_partition_time('partman_test.time_taptest_table', 20, p_keep_table := false);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.time_taptest_table', ARRAY[159], 'Check count from parent table after undo');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'3 months'::interval, 'YYYY"q"Q')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'6 months'::interval, 'YYYY"q"Q'), 
@@ -345,14 +366,16 @@ SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMES
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'15 months'::interval, 'YYYY"q"Q')||' does not exist');
 SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q'), 
     'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'18 months'::interval, 'YYYY"q"Q')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'3 months'::interval, 'YYYY"q"Q')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'6 months'::interval, 'YYYY"q"Q')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'9 months'::interval, 'YYYY"q"Q')||' does not exist');
-SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q'), 
-    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP-'12 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'21 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'24 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'27 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'30 months'::interval, 'YYYY"q"Q')||' does not exist');
+SELECT hasnt_table('partman_test', 'time_taptest_table_p'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q'), 
+    'Check time_taptest_table_'||to_char(CURRENT_TIMESTAMP+'33 months'::interval, 'YYYY"q"Q')||' does not exist');
 
 SELECT * FROM finish();
 ROLLBACK;

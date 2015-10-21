@@ -15,6 +15,7 @@ CREATE FUNCTION create_sub_parent(
     , p_premake int DEFAULT 4
     , p_start_partition text DEFAULT NULL
     , p_inherit_fk boolean DEFAULT true
+    , p_epoch boolean DEFAULT false
     , p_jobmon boolean DEFAULT true
     , p_debug boolean DEFAULT false) 
 RETURNS boolean
@@ -54,6 +55,7 @@ LOOP
             , p_use_run_maintenance := %L
             , p_start_partition := %L
             , p_inherit_fk := %L
+            , p_epoch := %L
             , p_jobmon := %L
             , p_debug := %L )'
         , v_row.child_table
@@ -65,6 +67,7 @@ LOOP
         , true
         , p_start_partition
         , p_inherit_fk
+        , p_epoch
         , p_jobmon
         , p_debug);
     EXECUTE v_sql;
@@ -80,6 +83,7 @@ INSERT INTO @extschema@.part_config_sub (
     , sub_premake
     , sub_inherit_fk
     , sub_use_run_maintenance
+    , sub_epoch
     , sub_jobmon)
 VALUES (
     p_top_parent
@@ -90,6 +94,7 @@ VALUES (
     , p_premake
     , p_inherit_fk
     , true
+    , p_epoch
     , p_jobmon);
 
 v_success := true;

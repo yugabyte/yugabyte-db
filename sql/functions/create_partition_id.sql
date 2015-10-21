@@ -194,6 +194,9 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , sub_retention_keep_table
             , sub_retention_keep_index
             , sub_use_run_maintenance
+            , sub_epoch
+            , sub_optimize_trigger
+            , sub_optimize_constraint
             , sub_jobmon
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
@@ -210,6 +213,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
                 , p_premake := %L
                 , p_use_run_maintenance := %L
                 , p_inherit_fk := %L
+                , p_epoch := %L
                 , p_jobmon := %L )'
             , v_parent_schema||'.'||v_partition_name
             , v_row.sub_control
@@ -219,6 +223,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , v_row.sub_premake
             , v_row.sub_use_run_maintenance
             , v_row.sub_inherit_fk
+            , v_row.sub_epoch
             , v_row.sub_jobmon);
         EXECUTE v_sql;
 
@@ -226,7 +231,9 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             retention_schema = v_row.sub_retention_schema
             , retention_keep_table = v_row.sub_retention_keep_table
             , retention_keep_index = v_row.sub_retention_keep_index
-        WHERE parent_table = v_partition_name;
+            , optimize_trigger = v_row.sub_optimize_trigger
+            , optimize_constraint = v_row.sub_optimize_constraint
+        WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
         IF v_jobmon_schema IS NOT NULL THEN
             PERFORM update_step(v_step_id, 'OK', 'Done');
@@ -289,4 +296,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

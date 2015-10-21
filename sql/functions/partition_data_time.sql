@@ -9,10 +9,11 @@ DECLARE
 v_control                   text;
 v_datetime_string           text;
 v_current_partition_name    text;
-v_max_partition_timestamp   timestamp;
+v_epoch                     boolean;
 v_last_partition            text;
 v_lock_iter                 int := 1;
 v_lock_obtained             boolean := FALSE;
+v_max_partition_timestamp   timestamp;
 v_min_partition_timestamp   timestamp;
 v_parent_schema             text;
 v_parent_tablename          text;
@@ -34,10 +35,12 @@ SELECT partition_type
     , partition_interval::interval
     , control
     , datetime_string
+    , epoch
 INTO v_type
     , v_partition_interval
     , v_control
     , v_datetime_string
+    , v_epoch
 FROM @extschema@.part_config 
 WHERE parent_table = p_parent_table
 AND (partition_type = 'time' OR partition_type = 'time-custom');
@@ -54,12 +57,22 @@ SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_ca
 
 FOR i IN 1..p_batch_count LOOP
 
-    IF p_order = 'ASC' THEN
-        EXECUTE format('SELECT min(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
-    ELSIF p_order = 'DESC' THEN
-        EXECUTE format('SELECT max(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
+    IF v_epoch = false THEN
+        IF p_order = 'ASC' THEN
+            EXECUTE format('SELECT min(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
+        ELSIF p_order = 'DESC' THEN
+            EXECUTE format('SELECT max(%I) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
+        ELSE
+            RAISE EXCEPTION 'Invalid value for p_order. Must be ASC or DESC';
+        END IF;
     ELSE
-        RAISE EXCEPTION 'Invalid value for p_order. Must be ASC or DESC';
+        IF p_order = 'ASC' THEN
+            EXECUTE format('SELECT to_timestamp(min(%I)) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
+        ELSIF p_order = 'DESC' THEN
+            EXECUTE format('SELECT to_timestamp(max(%I)) FROM ONLY %I.%I', v_control, v_parent_schema, v_parent_tablename) INTO v_start_control;
+        ELSE
+            RAISE EXCEPTION 'Invalid value for p_order. Must be ASC or DESC';
+        END IF;
     END IF;
 
     IF v_start_control IS NULL THEN
@@ -132,13 +145,23 @@ FOR i IN 1..p_batch_count LOOP
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                v_sql := format('SELECT * FROM ONLY %I.%I WHERE %I >= %L AND %I < %L FOR UPDATE NOWAIT'
-                                    , v_parent_schema
-                                    , v_parent_tablename
-                                    , v_control
-                                    , v_min_partition_timestamp
-                                    , v_control
-                                    , v_max_partition_timestamp);
+                IF v_epoch = false THEN
+                    v_sql := format('SELECT * FROM ONLY %I.%I WHERE %I >= %L AND %I < %L FOR UPDATE NOWAIT'
+                                        , v_parent_schema
+                                        , v_parent_tablename
+                                        , v_control
+                                        , v_min_partition_timestamp
+                                        , v_control
+                                        , v_max_partition_timestamp);
+                ELSE
+                    v_sql := format('SELECT * FROM ONLY %I.%I WHERE to_timestamp(%I) >= %L AND to_timestamp(%I) < %L FOR UPDATE NOWAIT'
+                                        , v_parent_schema
+                                        , v_parent_tablename
+                                        , v_control
+                                        , v_min_partition_timestamp
+                                        , v_control
+                                        , v_max_partition_timestamp);
+                END IF;
                 EXECUTE v_sql;
                 v_lock_obtained := TRUE;
             EXCEPTION
@@ -158,17 +181,31 @@ FOR i IN 1..p_batch_count LOOP
     v_partition_suffix := to_char(v_min_partition_timestamp, v_datetime_string);
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, v_partition_suffix, TRUE);
 
-    v_sql := format('WITH partition_data AS (
-                        DELETE FROM ONLY %I.%I WHERE %I >= %L AND %I < %L RETURNING *)
-                     INSERT INTO %I.%I SELECT * FROM partition_data'
-                        , v_parent_schema
-                        , v_parent_tablename
-                        , v_control
-                        , v_min_partition_timestamp
-                        , v_control
-                        , v_max_partition_timestamp
-                        , v_parent_schema
-                        , v_current_partition_name);
+    IF v_epoch = false THEN
+        v_sql := format('WITH partition_data AS (
+                            DELETE FROM ONLY %I.%I WHERE %I >= %L AND %I < %L RETURNING *)
+                         INSERT INTO %I.%I SELECT * FROM partition_data'
+                            , v_parent_schema
+                            , v_parent_tablename
+                            , v_control
+                            , v_min_partition_timestamp
+                            , v_control
+                            , v_max_partition_timestamp
+                            , v_parent_schema
+                            , v_current_partition_name);
+    ELSE
+        v_sql := format('WITH partition_data AS (
+                            DELETE FROM ONLY %I.%I WHERE to_timestamp(%I) >= %L AND to_timestamp(%I) < %L RETURNING *)
+                         INSERT INTO %I.%I SELECT * FROM partition_data'
+                            , v_parent_schema
+                            , v_parent_tablename
+                            , v_control
+                            , v_min_partition_timestamp
+                            , v_control
+                            , v_max_partition_timestamp
+                            , v_parent_schema
+                            , v_current_partition_name);
+    END IF;
     EXECUTE v_sql;
     GET DIAGNOSTICS v_rowcount = ROW_COUNT;
     v_total_rows := v_total_rows + v_rowcount;

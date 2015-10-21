@@ -42,7 +42,7 @@ This HowTo guide will show you some examples of how to set up both simple, singl
                   partman_test.time_taptest_table_p2015_05_16,
                   partman_test.time_taptest_table_p2015_05_17
 ```
-The trigger function most efficiently covers a specific period of time for 4 days before and 4 days after today. Outside of that, a dynamic statement tries to find the appropriate child table to put the data into. Note this dynamic statement is less efficient since a catalog lookup is required and the statement plan cannot be cached. If the child table does not exist at all for the time value given, the data goes to the parent:
+The trigger function most efficiently covers a specific period of time for 4 days before and 4 days after today. This can be adjusted with the `optimize_trigger` config option in the `part_config` table. Outside of that, a dynamic statement tries to find the appropriate child table to put the data into. Note this dynamic statement is far less efficient since a catalog lookup is required and the statement plan cannot be cached as well as looking up the that the child table exists. If the child table does not exist at all for the time value given, the data goes to the parent:
 ```
 keith=# \sf partman_test.time_taptest_table_part_trig_func 
 CREATE OR REPLACE FUNCTION partman_test.time_taptest_table_part_trig_func()
@@ -230,7 +230,7 @@ Now tell pg_partman to partition all yearly child tables by month. Do this by gi
      time_taptest_table_p2017_p2017_01
     (15 rows)
 ```
-The day this tutorial was written is 2015-05-13. You now see that the years are covered 2 ahead and 2 behind. And for the monthly partitions, they have been created to cover 2 months ahead and 2 months behind. A parent table ALWAYS has at least one child, so for the time period that is outside of what the trigger covers, just a single table has been made for the lowest possible month in that yearly time period (January). Now tell pg_partman to partition every monthly table that currently exists by day. Do this by giving it the parent table of each monthly partition set (the parent with the just the year suffix since it's children are the monthly partitions).
+The day this tutorial was written is 2015-05-13. You now see that this causes only 2 new future partitions to be created. And for the monthly partitions, they have been created to cover 2 months ahead as well. Note that the trigger will still cover 4 ahead and 4 behind for both partition levels unless you change the `optimize_trigger` option in the config table. A parent table ALWAYS has at least one child, so for the time period that is outside of what the premake covers, just a single table has been made for the lowest possible month in that yearly time period (January). Now tell pg_partman to partition every monthly table that currently exists by day. Do this by giving it the parent table of each monthly partition set (the parent with the just the year suffix since its children are the monthly partitions).
 ```
     SELECT create_sub_parent('partman_test.time_taptest_table_p2013', 'col3', 'time', 'daily', p_premake := 2);
     SELECT create_sub_parent('partman_test.time_taptest_table_p2014', 'col3', 'time', 'daily', p_premake := 2);
@@ -271,7 +271,7 @@ The day this tutorial was written is 2015-05-13. You now see that the years are 
      time_taptest_table_p2017_p2017_01_p2017_01_01
     (28 rows)
 ```
-Again, assuming today's date is 2015-05-13, it has created the sub-partitions to cover 2 days in the past and 2 days in the future. All other parent tables outside of the current time period have the lowest possible day created for them.
+Again, assuming today's date is 2015-05-13, it has created the sub-partitions to cover 2 days in the future. All other parent tables outside of the current time period have the lowest possible day created for them.
 
 
 ### Sub-partition ID->ID->ID: 10,000 -> 1,000 -> 100
@@ -299,7 +299,7 @@ This partition set has existing data already in it. We will partition it out usi
        1 | 100000
     (1 row)
 ```
-Since there is already data in the table, the child tables initially created will be based around the max value, two before it and two after it
+Since there is already data in the table, the child tables initially created will be based around the max value, two before it and two after it. As stated above for time, the trigger still coveres for 4 partitions before & after most efficiently, so if you need to adjust that as well, see the `part_config` table.
 ```
     keith=# SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10000', p_use_run_maintenance := true, p_jobmon := false, p_premake := 2);
      create_parent 

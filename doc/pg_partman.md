@@ -5,7 +5,9 @@ About
 -----
 PostgreSQL Partition Manager is an extension to help make managing time or serial id based table partitioning easier. It has many options, but usually only a few are needed, so it's much easier to use than it may seem (and definitely easier than implementing it yourself). Currenly the trigger functions only handle inserts to the parent table. Updates that would move a value from one partition to another are not yet supported. Some features of this extension have been expanded upon in the author's blog - http://www.keithf4.com/tag/pg_partman 
 
-If you attempt to insert data into a partition set that contains data for a partition that does not exist, or is not covered by the partitioning trigger, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The `check_parent()` function provides monitoring for any data getting inserted into parents and the `partition_data_`* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
+If you attempt to insert data into a partition set that contains data for a partition that does not exist, that data will be placed into the set's parent table. This is preferred over automatically creating new partitions to match that data since a mistake that is causing non-partitioned data to be inserted could cause a lot of unwanted child tables to be made. The `check_parent()` function provides monitoring for any data getting inserted into parents and the `partition_data_`* set of functions can easily partition that data for you if it is valid data. That is much easier than having to clean up potentially hundreds or thousands of unwanted partitions. And also better than throwing an error and losing the data!
+
+Note that future child table creation is based on the data currently in the partition set for both time & serial partitioning. This means that if you put "future" data into a partition set, newly created tables will be based off that value. This may cause intervening data to go to the parent as stated above if no child table exists. It is recommended that you set the `premake` value high enough to encompass your expected data range being inserted and the `optimize_trigger` value to efficiently handle your most frequent data range. See below for further explanations on these configuration values.
 
 ### Child Table Property Inheritance
 
@@ -22,9 +24,9 @@ Keep in mind that for subpartition sets, when a parent table has a child dropped
 
 ### Constraint Exclusion
 
-One of the big advantages of partitioning is a feature called **constraint exclusion** (see docs for explanation of functionality and examples http://www.postgresql.org/docs/current/static/ddl-partitioning.html#DDL-PARTITIONING-CONSTRAINT-EXCLUSION). The problem with most partitioning setups however, is that this will only be used on the partitioning control column. If you use a WHERE condition on any other column in the partition set, a scan across all child tables will occur unless there are also constraints on those columns. And predicting what a columns' values will be to precreate constraints can be very hard or impossible. `pg_partman` has a feature to apply constraints on older tables in a partition set that may no longer have any edits done to them ("old" being defined as older than the `premake` config value). It checks the current min/max values in the given columns and then applies a constraint to that child table. This can allow the constraint exclusion feature to potentially eliminate scanning older child tables when other columns are used in WHERE conditions. Be aware that this limits being able to edit those columns, but for the situations where it is applicable it can have a tremendous affect on query performance for very large partition sets. So if you are only inserting new data this can be very useful, but if data is regularly being inserted throughout the entire partition set, this is of limited use. Functions for easily recreating constraints are also available if data does end up having to be edited in those older partitions. Note that constraints managed by PG Partman SHOULD NOT be renamed in order to allow the extension to manage them properly for you. For a better example of how this works, please see this blog post: http://www.keithf4.com/managing-constraint-exclusion-in-table-partitioning
+One of the big advantages of partitioning is a feature called **constraint exclusion** (see docs for explanation of functionality and examples http://www.postgresql.org/docs/current/static/ddl-partitioning.html#DDL-PARTITIONING-CONSTRAINT-EXCLUSION). The problem with most partitioning setups however, is that this will only be used on the partitioning control column. If you use a WHERE condition on any other column in the partition set, a scan across all child tables will occur unless there are also constraints on those columns. And predicting what a column's values will be to precreate constraints can be very hard or impossible. `pg_partman` has a feature to apply constraints on older tables in a partition set that may no longer have any edits done to them ("old" being defined as older than the `optimize_constraint` config value). It checks the current min/max values in the given columns and then applies a constraint to that child table. This can allow the constraint exclusion feature to potentially eliminate scanning older child tables when other columns are used in WHERE conditions. Be aware that this limits being able to edit those columns, but for the situations where it is applicable it can have a tremendous affect on query performance for very large partition sets. So if you are only inserting new data this can be very useful, but if data is regularly being inserted throughout the entire partition set, this is of limited use. Functions for easily recreating constraints are also available if data does end up having to be edited in those older partitions. Note that constraints managed by PG Partman SHOULD NOT be renamed in order to allow the extension to manage them properly for you. For a better example of how this works, please see this blog post: http://www.keithf4.com/managing-constraint-exclusion-in-table-partitioning
 
-NOTE: This may not work with sub-partitioning. It will work on the first level of partitioning, but is not guarenteed to work properly on further sub-partition sets depending on the interval combinations and the premake value. Ex: Weekly -> Daily with a daily premake of 7 won't work as expected. Weekly constraints will get created but daily sub-partition ones likely will not. If this is a feature you need, please make an issue on Github and I will see if it can be fixed.
+NOTE: This may not work with sub-partitioning. It will work on the first level of partitioning, but is not guarenteed to work properly on further sub-partition sets depending on the interval combinations and the optimize_constraint value. Ex: Weekly -> Daily with a daily optimize_constraint of 7 won't work as expected. Weekly constraints will get created but daily sub-partition ones likely will not.
 
 ### Custom Time Interval Considerations
 
@@ -36,7 +38,7 @@ Keep in mind that for intervals equal to or greater than 100 years, the extensio
 
 ### Naming Length Limits
 
-PostgreSQL has an object naming length limit of 63 characters. If you try and create an object with a longer name, it truncates off any characters at the end to fit that limit. This can cause obvious issues with partition names that rely on having a specifically named suffix. PG Partman automatically handles this for all child tables, trigger functions and triggers. It will truncate off the existing parent table name to fit the required suffix. Be aware that if you have tables with very long, similar names, you may run into naming conflicts if they are part of separate partition sets. With serial based partitioning, be aware that over time the table name will be truncated more an more to fit a longer partition suffix. So while the extention will try and handle this edge case for you, it is recommended to keep table names that will be partitioned as short as possible.
+PostgreSQL has an object naming length limit of 63 characters. If you try and create an object with a longer name, it truncates off any characters at the end to fit that limit. This can cause obvious issues with partition names that rely on having a specifically named suffix. PG Partman automatically handles this for all child tables, trigger functions and triggers. It will truncate off the existing parent table name to fit the required suffix. Be aware that if you have tables with very long, similar names, you may run into naming conflicts if they are part of separate partition sets. With serial based partitioning, be aware that over time the table name will be truncated more and more to fit a longer partition suffix. So while the extention will try and handle this edge case for you, it is recommended to keep table names that will be partitioned as short as possible.
 
 ### Unique Constraints
 
@@ -68,11 +70,13 @@ The following configuration options are available to add into postgresql.conf to
 
 Extension Objects
 -----------------
-A superuser must be used to run all these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner.
+A superuser must be used to run all these functions in order to set privileges & ownership properly in all cases. All are set with SECURITY DEFINER, so if you cannot have a superuser running them just assign a superuser role as the owner. 
+
+As a note for people that were not aware, you can name arguments in function calls to make calling them easier and avoid confusion when there are many possible arguments. If a value has a default listed, it is not required to pass a value to that argument. As an example: `SELECT create_parent('schema.table', 'col1', 'time', 'daily', p_start_partition := '2015-10-20');`
 
 ### Creation Functions
 
-*`create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_dynamic boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
+*`create_parent(p_parent_table text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_use_run_maintenance boolean DEFAULT NULL, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT false, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
 
  * Main function to create a partition set with one parent table and inherited children. Parent table must already exist. Please apply all defaults, indexes, constraints, privileges & ownership to parent table so they will propagate to children.
  * An ACCESS EXCLUSIVE lock is taken on the parent table during the running of this function. No data is moved when running this function, so lock should be brief.
@@ -81,9 +85,9 @@ A superuser must be used to run all these functions in order to set privileges &
  * p_type - one of the following values to set the partitioning type that will be used:
     + **time**
         - Create a time-based partition set using a predefined interval below. 
-        - The number of partitions most efficiently managed behind and ahead of the current one is determined by the **premake** config value (default of 4 means data for 4 previous and 4 future partitions are handled best).
-        - *Beware setting the premake value too high as that will lessen the efficiency boost*.
-        - Inserts to the parent table outside the premake window will go to the proper child table if it exists, but performance may be degraded due to the higher overhead of handling that condition.
+        - The number of partitions most efficiently managed behind and ahead of the current one is determined by the **optimize_trigger** config value in the part_config table (default of 4 means data for 4 previous and 4 future partitions are handled best).
+        - *Beware setting the optimize_trigger value too high as that will lessen the efficiency boost*.
+        - Inserts to the parent table outside the optimize_trigger window will go to the proper child table if it exists, but performance will be degraded due to the higher overhead of handling that condition.
         - If the child table does not exist for that time value, the row will go to the parent. 
         - Child table creation & trigger function is kept up to date by `run_maintenance()` function.
     + **time-custom**
@@ -91,7 +95,7 @@ A superuser must be used to run all these functions in order to set privileges &
         - Note this method uses a lookup table as well as a dynamic insert statement, so performance will not be as good as the predefined intervals. So, while it is more flexible, it sacrifices speed.
         - Child table creation is kept up to date by `run_maintenance()` function.
     + **id**
-        - Create a serial/id-based partition set. Same functionality & use of premake value as the "time" method.
+        - Create a serial/id-based partition set. Same functionality & use of optimize_trigger value as the "time" method.
         - By default, when the id value reaches 50% of the max value for that partition, it will automatically create the next partition in sequence if it doesn't yet exist. This can be changed to use `run_maintenance()` instead. See the notes for this function below.
         - Note that the 50% rule is NOT true if the id set is sub-partitioned. Then `run_maintenance()` must be used.
         - Only supports id values greater than or equal to zero.
@@ -107,15 +111,16 @@ A superuser must be used to run all these functions in order to set privileges &
     + *\<interval\>*      - For the time-custom partitioning type, this can be any interval value that is valid for the PostgreSQL interval data type. Do not type cast the parameter value, just leave as text.
     + *\<integer\>*       - For ID based partitions, the integer value range of the ID that should be set per partition. Enter this as an integer in text format ('100' not 100). Must be greater than or equal to 10.
  * `p_constraint_cols` - an optional array parameter to set the columns that will have additional constraints set. See the **About** section above for more information on how this works and the **apply_constraints()** function for how this is used.
- * `p_premake` - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6th, and `premake` was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. As stated above, this value also determines how many partitions outside of the current one the partitioning trigger function will handle most efficiently (behind & ahead) and also influences which old partitions get additional constraints applied. Note some intervals may occasionally cause an extra partition to be premade or one to be missed due to leap years, differing month lengths, daylight savings (on non-UTC systems), etc. This won't hurt anything and will self-correct. If partitioning ever falls behind the `premake` value, normal running of `run_maintenance()` and data insertion to id-based tables should automatically catch things up.
+ * `p_premake` - is how many additional partitions to always stay ahead of the current partition. Default value is 4. This will keep at minimum 5 partitions made, including the current one. For example, if today was Sept 6th, and `premake` was set to 4 for a daily partition, then partitions would be made for the 6th as well as the 7th, 8th, 9th and 10th. Note some intervals may occasionally cause an extra partition to be premade or one to be missed due to leap years, differing month lengths, daylight savings (on non-UTC systems), etc. This won't hurt anything and will self-correct. If partitioning ever falls behind the `premake` value, normal running of `run_maintenance()` and data insertion to id-based tables should automatically catch things up.
  * `p_use_run_maintenance` - Used to tell partman whether you'd like to override the default way that child partitions are created. Set this value to TRUE to allow you to use the `run_maintenance()` function, without any table paramter, to create new child tables for serial partitioning instead of using 50% method mentioned above. Time based partitining MUST use `run_maintenance()`, so either leave this value true or call the `run_maintenance()` function directly on a partition set by passing the parent table as a parameter. See **run_mainteanance** in Maintenance Functions section below for more info.
  * `p_start_partition` - allows the first partition of a set to be specified instead of it being automatically determined. Must be a valid timestamp (for time-based) or positive integer (for id-based) value. Be aware, though, the actual paramater data type is text. For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus `premake`) will be created. For id-based partitioning, only the partition starting at the given value (plus `premake`) will be made. 
  * `p_inherit_fk` - allows `pg_partman` to automatically manage inheriting any foreign keys that exist on the parent table to all its children. Defaults to TRUE.
+ * `p_epoch` - tells `pg_partman` that the control column is an integer type, but actually represents and epoch time value. All triggers, constraints & table names will be time-based.
  * `p_jobmon` - allow `pg_partman` to use the `pg_jobmon` extension to monitor that partitioning is working correctly. Defaults to TRUE.
  * `p_debug` - turns on additional debugging information.
 
 
-*`create_sub_parent(p_top_parent text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean`*
+*`create_sub_parent(p_top_parent text, p_control text, p_type text, p_interval text, p_constraint_cols text[] DEFAULT NULL, p_premake int DEFAULT 4, p_start_partition text DEFAULT NULL, p_inherit_fk boolean DEFAULT true, p_epoch boolean DEFAULT false, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS boolean;`*
 
  * Create a subpartition set of an already existing partitioned set.
  * `p_top_parent` - This parameter is the parent table of an already existing partition set. It tells `pg_partman` to turn all child tables of the given partition set into their own parent tables of their own partition sets using the rest of the parameters for this function. 
@@ -156,7 +161,7 @@ A superuser must be used to run all these functions in order to set privileges &
 
 ### Maintenance Functions
 
-*`run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true)`*
+*`run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS void`*
 
  * Run this function as a scheduled job (cron, etc) to automatically create child tables for partition sets configured to use it.
  * You can also use the included background worker (BGW) to have this automatically run for you by PostgreSQL itself. Note that the `p_parent_table` parameter is not available with this method, so if you need to run it for a specific partition set, you must do that manually or scheduled as noted above. The other parameters have postgresql.conf values that can be set. See BGW section above.
@@ -170,6 +175,7 @@ A superuser must be used to run all these functions in order to set privileges &
  * `p_parent_table` - an optional parameter that if passed will cause `run_maintenance()` to be run for ONLY that given table. This occurs no matter what `use_run_maintenance` in part_config is set to. High transcation rate tables can cause contention when maintenance is being run for many tables at the same time, so this allows finer control of when partition maintenance is run for specific tables. Note that this will also cause the retention system to only be run for the given table as well.
  * `p_analyze` - By default when a new child table is created, an analyze is run on the parent to ensure statistics are updated for constraint exclusion. However, for large partition sets, this analyze can take a while and if `run_maintenance()` is managing several partitions in a single run, this can cause contention while the analyze finishes. Set this to false to disable the analyze run and avoid this contention. Please note that you must then schedule an analyze of the parent table at some point for constraint exclusion to work properly on all child tables.
  * `p_jobmon` - an optional paramter to control whether `run_maintenance()` itself uses the `pg_jobmon` extension to log what it does. Whether the maintenance of a particular table uses `pg_jobmon` is controlled by the setting in the **part_config** table and this setting will have no affect on that. Defaults to true if not set.
+ * `p_debug` - Output additional notices to help with debugging problems or to more closely examine what is being done during the run.
 
 
 *`show_partitions (p_parent_table text, p_order text DEFAULT 'ASC')`*
@@ -182,6 +188,7 @@ A superuser must be used to run all these functions in order to set privileges &
 *`show_partition_name(p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamp, OUT suffix_id bigint, OUT table_exists boolean)`*
 
  * Given a parent table managed by pg_partman (p_parent_table) and an appropriate value (time or id but given in text form for p_value), return the name of the child partition that that value would exist in.
+ * If using epoch time partitioning, give the timestamp value, NOT the integer epoch value (use to_timestamp() to convert an epoch value).
  * Returns a child table name whether the child table actually exists or not
  * Also returns a raw value (suffix_timestamp or suffix_id) for the partition suffix for the given child table
  * Also returns a boolean value (table_exists) to say whether that child table actually exists
@@ -202,7 +209,7 @@ A superuser must be used to run all these functions in order to set privileges &
  * If the `pg_partman` constraints already exists on the child table, the function will cleanly skip over the ones that exist and not create duplicates.
  * If the column(s) given contain all NULL values, no constraint will be made.
  * If the child table parameter is given, only that child table will have constraints applied.
- * If the p_child_table parameter is not given, constraints are placed on the last child table older than the `premake` value. For example, if the premake value is 4, then constraints will be placed on the child table that is 5 back from the current partition (as long as partition pre-creation has been kept up to date).
+ * If the p_child_table parameter is not given, constraints are placed on the last child table older than the `optimize_constraint` value. For example, if the optimize_constraint value is 30, then constraints will be placed on the child table that is 31 back from the current partition (as long as partition pre-creation has been kept up to date).
  * If you need to apply constraints to all older child tables, use the included python script (reapply_constraint.py). This script has options to make constraint application easier with as little impact on performance as possible.
  * The p_job_id parameter is optional. It's for internal use and allows job logging to be consolidated into the original job that called this function if applicable.
  * The p_debug parameter will show you the constraint creation statement that was used.
@@ -315,8 +322,8 @@ A superuser must be used to run all these functions in order to set privileges &
 Stores all configuration data for partition sets mananged by the extension. The only columns in this table that should ever need to be manually changed are:
 
  1. **`retention`**, **`retention_schema`**, **`retention_keep_table`** & **`retention_keep_index`** to configure the partition set's retention policy 
- 2. **`constraint_cols`** to have partman manage additional constraints 
- 3. **`premake`**, **`inherit_fk`**, **`use_run_maintenance`** & **`jobmon`** to change the default behavior.
+ 2. **`constraint_cols`** to have partman manage additional constraints and **`optimize_constraint`** to control when they're added
+ 3. **`premake`**, **`optimize_trigger`**, **`inherit_fk`**, **`use_run_maintenance`** & **`jobmon`** to change the default behavior.
 
 The rest are managed by the extension itself and should not be changed unless absolutely necessary.
 
@@ -333,8 +340,12 @@ The rest are managed by the extension itself and should not be changed unless ab
     - Array column that lists columns to have additional constraints applied. See **About** section for more information on how this feature works.
  - `premake`
     - How many partitions to keep pre-made ahead of the current partition. Default is 4.
-    - Manages number of partitions which are handled most efficiently by trigger. See `create_parent()` function for more info.
-    - Manages which old tables get additional constraints set if configured to do so. See **About** section for more info.
+ - `optimize_trigger`
+    - Manages number of partitions which are handled most efficiently by trigger. See `create_parent()` function for more info. Default 4.
+ - `optimize_constraint`
+    - Manages which old tables get additional constraints set if configured to do so. See **About** section for more info. Default 30.
+ - `epoch`
+    - Flag the table to be partitioned by time by an integer epoch value instead of a timestamp. See `create_parent()` function for more info. Default false.
  - `inherit_fk`
     - Set whether `pg_partman` manages inheriting foreign keys from the parent table to all children.
     - Defaults to TRUE. Can be set with the `create_parent()` function at creation time as well.

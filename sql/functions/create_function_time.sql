@@ -15,6 +15,7 @@ v_count                         int;
 v_current_partition_name        text;
 v_current_partition_timestamp   timestamptz;
 v_datetime_string               text;
+v_epoch                         boolean;
 v_final_partition_timestamp     timestamptz;
 v_function_name                 text;
 v_job_id                        bigint;
@@ -27,25 +28,27 @@ v_next_partition_timestamp      timestamptz;
 v_parent_schema                 text;
 v_parent_tablename              text;
 v_partition_interval            interval;
-v_premake                       int;
 v_prev_partition_name           text;
 v_prev_partition_timestamp      timestamptz;
 v_step_id                       bigint;
 v_trig_func                     text;
+v_optimize_trigger              int;
 v_type                          text;
 
 BEGIN
 
 SELECT partition_type
     , partition_interval::interval
+    , epoch
     , control
-    , premake
+    , optimize_trigger
     , datetime_string
     , jobmon
 INTO v_type
     , v_partition_interval
+    , v_epoch
     , v_control
-    , v_premake
+    , v_optimize_trigger
     , v_datetime_string
     , v_jobmon
 FROM @extschema@.part_config 
@@ -88,6 +91,8 @@ IF v_type = 'time' THEN
             '
     , v_parent_schema
     , v_function_name);
+
+    IF v_epoch = false THEN
         CASE
             WHEN v_partition_interval = '15 mins' THEN 
                 v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', NEW.%I) + 
@@ -118,16 +123,57 @@ IF v_type = 'time' THEN
                 v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''year'', NEW.%I);', v_control);
                 v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
         END CASE;
+    ELSE -- epoch is true
+        CASE
+            WHEN v_partition_interval = '15 mins' THEN 
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', to_timestamp(NEW.%I)) + 
+                    ''15min''::interval * floor(date_part(''minute'', NEW.%I) / 15.0);' , v_control , v_control);
+                v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
+                    '15min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 15.0);
+            WHEN v_partition_interval = '30 mins' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', to_timestamp(NEW.%I)) + 
+                    ''30min''::interval * floor(date_part(''minute'', NEW.%I) / 30.0);' , v_control , v_control);
+                v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP) + 
+                    '30min'::interval * floor(date_part('minute', CURRENT_TIMESTAMP) / 30.0);
+            WHEN v_partition_interval = '1 hour' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''hour'', to_timestamp(NEW.%I));', v_control);
+                v_current_partition_timestamp := date_trunc('hour', CURRENT_TIMESTAMP);
+             WHEN v_partition_interval = '1 day' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''day'', to_timestamp(NEW.%I));', v_control);
+                v_current_partition_timestamp := date_trunc('day', CURRENT_TIMESTAMP);
+            WHEN v_partition_interval = '1 week' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''week'', to_timestamp(NEW.%I));', v_control);
+                v_current_partition_timestamp := date_trunc('week', CURRENT_TIMESTAMP);
+            WHEN v_partition_interval = '1 month' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''month'', to_timestamp(NEW.%I));', v_control);
+                v_current_partition_timestamp := date_trunc('month', CURRENT_TIMESTAMP);
+            WHEN v_partition_interval = '3 months' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''quarter'', to_timestamp(NEW.%I));', v_control);
+                v_current_partition_timestamp := date_trunc('quarter', CURRENT_TIMESTAMP);
+            WHEN v_partition_interval = '1 year' THEN
+                v_trig_func := v_trig_func||format('v_partition_timestamp := date_trunc(''year'', to_timestamp(NEW.%I));', v_control);
+                v_current_partition_timestamp := date_trunc('year', CURRENT_TIMESTAMP);
+        END CASE;
+    END IF;
 
     v_current_partition_name := @extschema@.check_name_length(v_parent_tablename, to_char(v_current_partition_timestamp, v_datetime_string), TRUE); 
     v_next_partition_timestamp := v_current_partition_timestamp + v_partition_interval::interval;
 
-    v_trig_func := v_trig_func ||format('
+    IF v_epoch = false THEN
+        v_trig_func := v_trig_func ||format('
             IF NEW.%I >= %L AND NEW.%I < %L THEN '
                 , v_control
                 , v_current_partition_timestamp
                 , v_control
                 , v_next_partition_timestamp);
+    ELSE
+        v_trig_func := v_trig_func ||format('
+            IF to_timestamp(NEW.%I) >= %L AND to_timestamp(NEW.%I) < %L THEN '
+                , v_control
+                , v_current_partition_timestamp
+                , v_control
+                , v_next_partition_timestamp);
+    END IF;
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_current_partition_name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func || format('
@@ -137,7 +183,7 @@ IF v_type = 'time' THEN
                 -- Child table for current values does not exist in this partition set, so write to parent
                 RETURN NEW;';
         END IF;
-    FOR i IN 1..v_premake LOOP
+    FOR i IN 1..v_optimize_trigger LOOP
         v_prev_partition_timestamp := v_current_partition_timestamp - (v_partition_interval::interval * i);
         v_next_partition_timestamp := v_current_partition_timestamp + (v_partition_interval::interval * i);
         v_final_partition_timestamp := v_next_partition_timestamp + (v_partition_interval::interval);
@@ -145,30 +191,56 @@ IF v_type = 'time' THEN
         v_next_partition_name := @extschema@.check_name_length(v_parent_tablename, to_char(v_next_partition_timestamp, v_datetime_string), TRUE);
 
         -- Check that child table exist before making a rule to insert to them.
-        -- Handles edge case of changing premake immediately after running create_parent(). 
+        -- Handles optimize_trigger being larger than premake (to go back in time further) and edge case of changing optimize_trigger immediately after running create_parent().
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_prev_partition_name;
         IF v_count > 0 THEN
-            v_trig_func := v_trig_func ||format('
+            IF v_epoch = false THEN
+                v_trig_func := v_trig_func ||format('
             ELSIF NEW.%I >= %L AND NEW.%I < %L THEN 
                 INSERT INTO %I.%I VALUES (NEW.*);'
-                , v_control
-                , v_prev_partition_timestamp
-                , v_control
-                , v_prev_partition_timestamp + v_partition_interval::interval
-                , v_parent_schema
-                , v_prev_partition_name);
+                    , v_control
+                    , v_prev_partition_timestamp
+                    , v_control
+                    , v_prev_partition_timestamp + v_partition_interval::interval
+                    , v_parent_schema
+                    , v_prev_partition_name);
+            ELSE
+                v_trig_func := v_trig_func ||format('
+            ELSIF to_timestamp(NEW.%I) >= %L AND to_timestamp(NEW.%I) < %L THEN 
+                INSERT INTO %I.%I VALUES (NEW.*);'
+                    , v_control
+                    , v_prev_partition_timestamp
+                    , v_control
+                    , v_prev_partition_timestamp + v_partition_interval::interval
+                    , v_parent_schema
+                    , v_prev_partition_name);
+
+            END IF;
         END IF;
         SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_next_partition_name;
         IF v_count > 0 THEN
-            v_trig_func := v_trig_func ||format(' 
+            IF v_epoch = false THEN
+                v_trig_func := v_trig_func ||format(' 
             ELSIF NEW.%I >= %L AND NEW.%I < %L THEN 
                 INSERT INTO %I.%I VALUES (NEW.*);'
-                , v_control
-                , v_next_partition_timestamp
-                , v_control
-                , v_final_partition_timestamp
-                , v_parent_schema
-                , v_next_partition_name);
+                    , v_control
+                    , v_next_partition_timestamp
+                    , v_control
+                    , v_final_partition_timestamp
+                    , v_parent_schema
+                    , v_next_partition_name);
+            ELSE
+                v_trig_func := v_trig_func ||format(' 
+            ELSIF to_timestamp(NEW.%I) >= %L AND to_timestamp(NEW.%I) < %L THEN 
+                INSERT INTO %I.%I VALUES (NEW.*);'
+                    , v_control
+                    , v_next_partition_timestamp
+                    , v_control
+                    , v_final_partition_timestamp
+                    , v_parent_schema
+                    , v_next_partition_name);
+
+            END IF;
         END IF;
 
     END LOOP;
@@ -208,26 +280,44 @@ ELSIF v_type = 'time-custom' THEN
             v_child_schemaname  text;
             v_child_table       text;
             v_child_tablename   text;
-        BEGIN 
+        BEGIN
+            '
+        , v_parent_schema
+        , v_function_name);
+
+    IF v_epoch = false THEN
+        v_trig_func := v_trig_func || format(' 
 
         SELECT child_table INTO v_child_table
         FROM @extschema@.custom_time_partitions 
         WHERE partition_range @> NEW.%I 
-        AND parent_table = %L;
+        AND parent_table = %L;'
+        , v_control
+        , v_parent_schema||'.'||v_parent_tablename);
+
+    ELSE -- epoch true
+        v_trig_func := v_trig_func || format(' 
+
+        SELECT child_table INTO v_child_table
+        FROM @extschema@.custom_time_partitions 
+        WHERE partition_range @> to_timestamp(NEW.%I)
+        AND parent_table = %L;'
+        , v_control
+        , v_parent_schema||'.'||v_parent_tablename);
+
+    END IF;
+
+    v_trig_func := v_trig_func || '
 
         SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename FROM pg_catalog.pg_tables WHERE schemaname ||''.''|| tablename = v_child_table;
         IF v_child_schemaname IS NOT NULL AND v_child_tablename IS NOT NULL THEN
-            EXECUTE format(''INSERT INTO %%I.%%I VALUES ($1.*)'', v_child_schemaname, v_child_tablename) USING NEW;
+            EXECUTE format(''INSERT INTO %I.%I VALUES ($1.*)'', v_child_schemaname, v_child_tablename) USING NEW;
         ELSE
             RETURN NEW;
         END IF;
 
         RETURN NULL; 
-        END $t$;'
-        , v_parent_schema
-        , v_function_name
-        , v_control
-        , v_parent_schema||'.'||v_parent_tablename);
+        END $t$;';
 
     EXECUTE v_trig_func;
 
@@ -266,4 +356,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

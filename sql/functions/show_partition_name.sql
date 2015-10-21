@@ -1,5 +1,6 @@
 /*
  * Given a parent table and partition value, return the name of the child partition it would go in.
+ * If using epoch time partitioning, give the text representation of the timestamp NOT the epoch integer value (use to_timestamp() to convert epoch values).
  * Also returns just the suffix value and true if the child table exists or false if it does not
  */
 CREATE FUNCTION show_partition_name(p_parent_table text, p_value text, OUT partition_table text, OUT suffix_timestamp timestamp, OUT suffix_id bigint, OUT table_exists boolean) RETURNS record
