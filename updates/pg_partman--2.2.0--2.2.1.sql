@@ -1,3 +1,6 @@
+-- Fixed search path bug with run_maintenance() introduced in v2.2.0. Was causing errors if the pg_partman schema was not in the search path of the role calling it. (Github Issue #71)
+
+
 /*
  * Function to manage pre-creation of the next partitions in a set.
  * Also manages dropping old partitions if the retention option is set.
@@ -6,7 +9,7 @@
  * For large partition sets, running analyze can cause maintenance to take longer than expected. Can set p_analyze to false to avoid a forced analyze run.
  * Be aware that constraint exclusion may not work properly until an analyze on the partition set is run. 
  */
-CREATE FUNCTION run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS void 
+CREATE OR REPLACE FUNCTION run_maintenance(p_parent_table text DEFAULT NULL, p_analyze boolean DEFAULT true, p_jobmon boolean DEFAULT true, p_debug boolean DEFAULT false) RETURNS void 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE

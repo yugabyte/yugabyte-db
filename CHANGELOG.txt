@@ -1,3 +1,7 @@
+2.2.1
+-- Fixed search path bug with run_maintenance() introduced in v2.2.0. Was causing errors if the pg_partman schema was not in the search path of the role calling it. (Github Issue #71)
+
+
 2.2.0
 -- Added new optimization & constraint configuration options to part_config & part_config_sub (optimize_trigger, optimize_constraint) (Github Issue #62)
     -- The premake config value now only controls what its name suggests (the number of future partitions to premake)
