@@ -161,7 +161,7 @@ set pgaudit.log_relation = on;
 Enable session logging for all commands except `MISC` and raise audit log messages as `NOTICE`:
 ```
 set pgaudit.log = 'all, -misc';
-set pgaudit.log_notice = on;
+set pgaudit.log_level = notice;
 ```
 
 ### Example
