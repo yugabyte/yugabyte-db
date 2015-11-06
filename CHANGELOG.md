@@ -1,7 +1,7 @@
 Changelog
 =========
 
-WIP version 0.0.4:
+2015-11-06 version 0.0.4:
 
   - remove the simplified "hypopg_add_index()" function
   - free memory when hypothetical index creation fails
