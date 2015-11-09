@@ -12,6 +12,8 @@ Revision history for pgTAP
 * Fixed `database_privs_are()`, `schema_privs_are()`, `tablespace_privs_are()`
   `fdw_privs_are()`, and `server_privs_are()` to properly handle
   case-sensitive object names. Thanks to Ingo for the report!
+* Updated the Makefile to handle the case when PGXS sets the PERL variable to
+  `missing perl`.
 
 0.95.0 2015-03-20T20:31:41Z
 ---------------------------

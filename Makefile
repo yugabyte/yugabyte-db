@@ -41,8 +41,12 @@ include $(PGXS)
 endif
 
 # We need Perl.
+ifneq (,$(findstring missing,$(PERL)))
+PERL := $(shell which perl)
+else
 ifndef PERL
 PERL := $(shell which perl)
+endif
 endif
 
 # Is TAP::Parser::SourceHandler::pgTAP installed?
