@@ -8,7 +8,7 @@ The PostgreSQL Audit extension (`pgaudit`) provides detailed session and/or obje
 
 * Update the log settings in postgresql.conf as follows:
 ```
-log_destination = csvlog
+log_destination = 'csvlog'
 logging_collector = on
 log_connections = on
 ```
