@@ -46,7 +46,7 @@ def create_index(conn, partman_schema, child_schemaname, child_tablename, child_
     parent_schemaname = result[0]
     parent_tablename = result[1]
     cur.close()
-    parent_match_regex = re.compile(r" ON \"?%s\"?\.\"?%s\"? | ON \"?%s\"" % (parent_schemaname, parent_tablename, parent_tablename))
+    parent_match_regex = re.compile(r" ON \"?%s\"?\.\"?%s\"? | ON \"?%s\"?" % (parent_schemaname, parent_tablename, parent_tablename))
     index_match_regex = re.compile(r'(?P<index_def>USING .*)')
     for i in parent_index_list:
         # if there is already a child index that matches the parent index don't try to create it unless --recreate_all set
@@ -96,6 +96,7 @@ def create_index(conn, partman_schema, child_schemaname, child_tablename, child_
                     cur = conn.cursor()
                     cur.execute(sql)
                     index_name = cur.fetchone()[0]
+                    name_counter += 1
                 else:
                     break
             cur.close()

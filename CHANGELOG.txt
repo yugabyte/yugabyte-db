@@ -1,3 +1,8 @@
+2.2.2
+-- Fixed infinite loop in reapply_indexes.py if the same index name would have been used more than once. Thanks to bougyman for tha bug report.
+-- Fixed indexes being applied to the parent table instead of the children in reapply_indexes.py (Github Push Request #73).
+
+
 2.2.1
 -- Fixed search path bug with run_maintenance() introduced in v2.2.0. Was causing errors if the pg_partman schema was not in the search path of the role calling it. (Github Issue #71)
 

@@ -8,6 +8,8 @@ A background worker (BGW) process is included to automatically run partition mai
 
 All bug reports, feature requests and general questions can be directed to the Issues section on Github. Please feel free to post here no matter how minor you may feel your issue or question may be. - https://github.com/keithf4/pg_partman/issues
 
+If you're looking for a partitioning system that handles any range type beyond just time & serial, check out https://github.com/moat/range_partitioning. Note that if you are doing time/serial, the methods used in pg_partman are much more efficient and will provide better performance. But if you need greater flexibility, the range_partitioning extension should well work for you.
+
 INSTALLATION
 ------------
 Requirement: PostgreSQL 9.4 or greater
