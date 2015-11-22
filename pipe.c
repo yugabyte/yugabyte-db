@@ -1082,11 +1082,17 @@ dbms_pipe_create_pipe (PG_FUNCTION_ARGS)
 				char *user;
 
 				p->uid = GetUserId();
-				user = (char*)DirectFunctionCall1(namein, CStringGetDatum(GetUserNameFromId(p->uid
+
 #if PG_VERSION_NUM >= 90500
-													    , false
+
+				user = (char*)DirectFunctionCall1(namein,
+					    CStringGetDatum(GetUserNameFromId(p->uid, false)));
+
+#else
+
+				user = (char*)DirectFunctionCall1(namein, CStringGetDatum(GetUserNameFromId(p->uid)));
 #endif
-												  )));
+
 				p->creator = ora_sstrcpy(user);
 				pfree(user);
 			}
