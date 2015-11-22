@@ -25,20 +25,6 @@
 #include "orafce.h"
 #include "builtins.h"
 
-
-/*
- * External (defined in PgSQL datetime.c (timestamp utils))
- */
-#if PG_VERSION_NUM >= 90400
-#define STRING_PTR_FIELD_TYPE const char *const
-#else
-#define STRING_PTR_FIELD_TYPE char *
-#endif
-
-extern PGDLLIMPORT STRING_PTR_FIELD_TYPE days[];
-
-extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
-
 PG_FUNCTION_INFO_V1(plvdate_add_bizdays);
 PG_FUNCTION_INFO_V1(plvdate_nearest_bizday);
 PG_FUNCTION_INFO_V1(plvdate_next_bizday);
@@ -493,7 +479,7 @@ plvdate_set_nonbizday_dow (PG_FUNCTION_ARGS)
 
 	text *day_txt = PG_GETARG_TEXT_PP(0);
 
-	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
+	int d = ora_seq_search(VARDATA_ANY(day_txt), ora_days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
 	check = nonbizdays | (1 << d);
@@ -525,7 +511,7 @@ plvdate_unset_nonbizday_dow (PG_FUNCTION_ARGS)
 {
 	text *day_txt = PG_GETARG_TEXT_PP(0);
 
-	int d = ora_seq_search(VARDATA_ANY(day_txt), days, VARSIZE_ANY_EXHDR(day_txt));
+	int d = ora_seq_search(VARDATA_ANY(day_txt), ora_days, VARSIZE_ANY_EXHDR(day_txt));
 	CHECK_SEQ_SEARCH(d, "DAY/Day/day");
 
 	nonbizdays = (nonbizdays | (1 << d)) ^ (1 << d);

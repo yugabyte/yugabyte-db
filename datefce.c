@@ -52,19 +52,6 @@ weekday_search(const WeekDays *weekdays, const char *str, int len)
 
 #endif	/* ENABLE_INTERNATIONALIZED_WEEKDAY */
 
-/*
- * External (defined in PgSQL datetime.c (timestamp utils))
- */
-
-#if PG_VERSION_NUM >= 90400
-#define STRING_PTR_FIELD_TYPE const char *const
-#else
-#define STRING_PTR_FIELD_TYPE char *
-#endif
-
-extern PGDLLIMPORT STRING_PTR_FIELD_TYPE days[];
-extern PGDLLIMPORT pg_tz *session_timezone;
-
 #define CASE_fmt_YYYY	case 0: case 1: case 2: case 3: case 4: case 5: case 6:
 #define CASE_fmt_IYYY	case 7: case 8: case 9: case 10:
 #define	CASE_fmt_Q	case 11:
@@ -77,8 +64,6 @@ extern PGDLLIMPORT pg_tz *session_timezone;
 #define CASE_fmt_DDD	case 24: case 25: case 26:
 #define CASE_fmt_HH	case 27: case 28: case 29:
 #define CASE_fmt_MI	case 30:
-
-
 
 STRING_PTR_FIELD_TYPE date_fmt[] =
 {
@@ -93,6 +78,9 @@ STRING_PTR_FIELD_TYPE date_fmt[] =
 	"Mi",
 	NULL
 };
+
+STRING_PTR_FIELD_TYPE ora_days[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
+"Thursday", "Friday", "Saturday", NULL};
 
 #define CHECK_SEQ_SEARCH(_l, _s) \
 do { \
@@ -118,8 +106,6 @@ PG_FUNCTION_INFO_V1(ora_timestamptz_round);
  * Search const value in char array
  *
  */
-
-extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 int
 ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max)
@@ -194,7 +180,7 @@ next_day(PG_FUNCTION_ARGS)
 	 * Oracle uses only 3 heading characters of the input.
 	 * Ignore all trailing characters.
 	 */
-	if (len >= 3 && (d = ora_seq_prefix_search(str, days, 3)) >= 0)
+	if (len >= 3 && (d = ora_seq_prefix_search(str, ora_days, 3)) >= 0)
 		goto found;
 
 #ifdef ENABLE_INTERNATIONALIZED_WEEKDAY

@@ -26,9 +26,9 @@ typedef union vardata
 	void   *p;
 } vardata;
 
-int ora_instr(text *txt, text *pattern, int start, int nth);
-int ora_mb_strlen(text *str, char **sizes, int **positions);
-int ora_mb_strlen1(text *str);
+extern int ora_instr(text *txt, text *pattern, int start, int nth);
+extern int ora_mb_strlen(text *str, char **sizes, int **positions);
+extern int ora_mb_strlen1(text *str);
 
 /*
  * Version compatibility
@@ -37,5 +37,18 @@ int ora_mb_strlen1(text *str);
 #if PG_VERSION_NUM >= 80400
 extern Oid	equality_oper_funcid(Oid argtype);
 #endif
+
+/*
+ * Date utils
+ */
+#if PG_VERSION_NUM >= 90400
+#define STRING_PTR_FIELD_TYPE const char *const
+#else
+#define STRING_PTR_FIELD_TYPE char *
+#endif
+
+extern STRING_PTR_FIELD_TYPE ora_days[];
+
+extern int ora_seq_search(const char *name, STRING_PTR_FIELD_TYPE array[], int max);
 
 #endif
