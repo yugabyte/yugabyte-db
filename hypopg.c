@@ -582,6 +582,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 			entry->opcintype[j] = get_opclass_input_type(opclass);
 
+			/* setup the sort info if am handles it */
 			if ((entry->relam == BTREE_AM_OID) || entry->amcanorder)
 			{
 				entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC);
