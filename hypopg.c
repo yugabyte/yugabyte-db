@@ -24,12 +24,16 @@
 #if PG_VERSION_NUM >= 90300
 #include "access/htup_details.h"
 #endif
+#include "access/gist.h"
 #include "access/nbtree.h"
 #include "access/reloptions.h"
+#include "access/spgist.h"
+#include "access/spgist_private.h"
 #include "access/sysattr.h"
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#include "catalog/pg_amproc.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_opclass.h"
 #include "catalog/pg_type.h"
@@ -96,6 +100,7 @@ typedef struct hypoEntry
 	Oid			relam;			/* OID of the access method (in pg_am) */
 
 	RegProcedure amcostestimate;	/* OID of the access method's cost fcn */
+	RegProcedure amcanreturn;		/* OID of the access method's canreturn fcn */
 
 	List	   *indpred;		/* predicate if a partial index, else NIL */
 
@@ -192,6 +197,7 @@ static void hypo_set_indexname(hypoEntry *entry, char *indexname);
 static void hypo_estimate_index_simple(hypoEntry *entry,
 						   BlockNumber *pages, double *tuples);
 static void hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel);
+static bool hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname);
 
 void
 _PG_init(void)
@@ -246,9 +252,6 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	MemoryContext oldcontext;
 	HeapTuple	tuple;
 	RegProcedure	amoptions;
-#if PG_VERSION_NUM >= 90500
-	int			i;
-#endif
 
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethod));
 
@@ -266,6 +269,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 
 	entry->relam = HeapTupleGetOid(tuple);
 	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
+	entry->amcanreturn = ((Form_pg_am) GETSTRUCT(tuple))->amcanreturn;
 	entry->amcanorderbyop = ((Form_pg_am) GETSTRUCT(tuple))->amcanorderbyop;
 	entry->amoptionalkey = ((Form_pg_am) GETSTRUCT(tuple))->amoptionalkey;
 	entry->amsearcharray = ((Form_pg_am) GETSTRUCT(tuple))->amsearcharray;
@@ -326,27 +330,14 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	{
 
 		/*
-		 * canreturn should been checked with the amcanreturn proc, but this
-		 * can't be done without a real Relation, so just let force it
+		 * reject unsupported am. It could be done earlier but it's simpler (and
+		 * was previously done) here.
 		 */
 		switch (entry->relam)
 		{
 			case BTREE_AM_OID:
-				/* btree always support Index-Only scan */
-#if PG_VERSION_NUM >= 90500
-				for (i = 0; i < ncolumns; i++)
-					entry->canreturn[i] = true;
-#else
-				entry->canreturn = true;
-#endif
-				break;
-#if PG_VERSION_NUM >= 90500
 			case BRIN_AM_OID:
-				/* BRIN never support Index-Only scan */
-				for (i = 0; i < ncolumns; i++)
-					entry->canreturn[i] = false;
 				break;
-#endif
 			default:
 
 				/*
@@ -589,6 +580,27 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 				entry->nulls_first[j] = (indexelem->nulls_ordering ==
 						SORTBY_NULLS_FIRST);
 			}
+
+			/* handle index-only scan info */
+#if PG_VERSION_NUM < 90500
+			/*
+			 * OIS info is global for the index before 9.5, so look for the
+			 * information only once in that case.
+			 */
+			if (j == 0)
+			{
+				/*
+				 * specify first column, but it doesn't matter as this will only
+				 * be used with GiST am, which cannot do IOS prior pg 9.5
+				 */
+				entry->canreturn = hypo_can_return(entry, atttype, 0,
+						node->accessMethod);
+			}
+#else
+			/* per-column IOS information */
+			entry->canreturn[j] = hypo_can_return(entry, atttype, j,
+					node->accessMethod);
+#endif
 
 			j++;
 		}
@@ -1532,4 +1544,88 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	/* make sure the index size is at least one block */
 	if (entry->pages <= 0)
 		entry->pages = 1;
+}
+
+/*
+ * canreturn should been checked with the amcanreturn proc, but this
+ * can't be done without a real Relation, so try to find it out
+ */
+static bool
+hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
+{
+	/* no amcanreturn entry, am does not handle IOS */
+	if (!OidIsValid(entry->amcanreturn))
+		return false;
+
+	switch (entry->relam)
+	{
+		case BTREE_AM_OID:
+			/* btree always support Index-Only scan */
+			return true;
+			break;
+		case GIST_AM_OID:
+			{
+				HeapTuple tuple;
+
+				/*
+				 * since 9.5, GiST can do IOS if the opclass define a
+				 * GIST_FETCH_PROC support function.
+				 */
+				tuple = SearchSysCache4(AMPROCNUM,
+						ObjectIdGetDatum(entry->opfamily[i]),
+						ObjectIdGetDatum(entry->opcintype[i]),
+						ObjectIdGetDatum(entry->opcintype[i]),
+						Int8GetDatum(GIST_FETCH_PROC));
+
+				if (!HeapTupleIsValid(tuple))
+					return false;
+
+				ReleaseSysCache(tuple);
+				return true;
+			}
+			break;
+		case SPGIST_AM_OID:
+			{
+				SpGistCache	   *cache;
+				spgConfigIn		in;
+				HeapTuple		tuple;
+				Oid				funcid;
+				bool			res = false;
+
+				/* support function 1 tells us if IOS is supported */
+				tuple = SearchSysCache4(AMPROCNUM,
+						ObjectIdGetDatum(entry->opfamily[i]),
+						ObjectIdGetDatum(entry->opcintype[i]),
+						ObjectIdGetDatum(entry->opcintype[i]),
+						Int8GetDatum(SPGIST_CONFIG_PROC));
+
+				/* just in case */
+				if (!HeapTupleIsValid(tuple))
+					return false;
+
+				funcid = ((Form_pg_amproc) GETSTRUCT(tuple))->amproc;
+				ReleaseSysCache(tuple);
+
+				in.attType = atttype;
+				cache = palloc0(sizeof(SpGistCache));
+
+				OidFunctionCall2Coll(funcid, entry->indexcollations[i],
+						PointerGetDatum(&in),
+						PointerGetDatum(&cache->config));
+
+				res = cache->config.canReturnData;
+				pfree(cache);
+
+				return res;
+			}
+			break;
+		default:
+			/* all specific case should have been handled */
+			elog(WARNING, "hypopg: access method \"%s\" looks like it can\n"
+					"support Index-Only Scan, but it's unexpected.\n"
+					"Feel free to warn developper.",
+					amname);
+			return false;
+			break;
+	}
 }
