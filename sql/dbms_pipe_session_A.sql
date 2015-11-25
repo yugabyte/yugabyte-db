@@ -5,7 +5,8 @@ CREATE TABLE TEMP(id integer,name text);
 INSERT INTO TEMP VALUES (1,'bob'),(2,'rob'),(3,'john');
 
 DROP USER IF EXISTS pipe_test_owner;
-CREATE USER pipe_test_owner WITH CREATEUSER;
+CREATE ROLE pipe_test_owner WITH CREATEROLE;
+ALTER TABLE TEMP OWNER TO pipe_test_owner;
 SET client_min_messages = notice;
 
 -- Notify session B of 'pipe_test_owner' having been created.
