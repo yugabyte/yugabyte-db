@@ -21,7 +21,7 @@ REGRESS_OPTS = --load-language=plpgsql --schedule=parallel_schedule --encoding=u
 
 EXTRA_CLEAN = sqlparse.c sqlparse.h sqlscan.c y.tab.c y.tab.h
 
-override CFLAGS += -pedantic
+#override CFLAGS += -pedantic
 
 ifdef NO_PGXS
 subdir = contrib/$(MODULE_big)

@@ -1,4 +1,5 @@
 #include "postgres.h"
+#include "commands/variable.h"
 #include "mb/pg_wchar.h"
 #include "utils/date.h"
 #include "utils/builtins.h"
@@ -626,6 +627,42 @@ Datum ora_date_trunc(PG_FUNCTION_ARGS)
 	PG_RETURN_DATEADT(result);
 }
 
+/*
+ * Workaround for access to session_timezone on WIN32,
+ * 
+ * session timezone isn't accessed directly, but taken by show_timezone,
+ * and reparsed. For better performance, the result is cached in fn_extra.
+ *
+ */
+static pg_tz *
+get_session_timezone(FunctionCallInfo fcinfo)
+{
+#if defined(WIN32)
+
+	pg_tz *result = (pg_tz *) fcinfo->flinfo->fn_extra;
+
+	if (result == NULL)
+	{
+		const char *tzn = show_timezone();
+		void *extra;
+
+		if (!check_timezone(((char **) &tzn), &extra, PGC_S_CLIENT))
+			elog(ERROR, "cannot to parse timezone \"%s\"", tzn);
+
+		result = *((pg_tz **) extra);
+		fcinfo->flinfo->fn_extra = result;
+
+		free(extra);
+	}
+
+	return result;
+#else
+
+	return session_timezone;
+
+#endif
+}
+
 Datum
 ora_timestamptz_trunc(PG_FUNCTION_ARGS)
 {
@@ -687,7 +724,7 @@ ora_timestamptz_trunc(PG_FUNCTION_ARGS)
 	}
 
 	if (redotz)
-		tz = DetermineTimeZoneOffset(tm, session_timezone);
+		tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
 
 	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 		ereport(ERROR,
@@ -845,7 +882,7 @@ ora_timestamptz_round(PG_FUNCTION_ARGS)
 	tm->tm_sec = 0;
 
 	if (redotz)
-	tz = DetermineTimeZoneOffset(tm, session_timezone);
+	tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
 
 	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
 	ereport(ERROR,
