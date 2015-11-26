@@ -1,6 +1,8 @@
 Changelog
 =========
 
+WIP version 0.0.5:
+
 2015-11-06 version 0.0.4:
 
   - remove the simplified "hypopg_add_index()" function
