@@ -205,7 +205,7 @@ easter_sunday(int year, int* dd, int* mm)
 	}
 }
 
-static Datum
+static DateADT
 ora_add_bizdays(DateADT day, int days)
 {
 	int d, dx;
