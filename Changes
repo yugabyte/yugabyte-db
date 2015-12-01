@@ -14,6 +14,7 @@ Revision history for pgTAP
   case-sensitive object names. Thanks to Ingo for the report!
 * Updated the Makefile to handle the case when PGXS sets the PERL variable to
   `missing perl`.
+* Fixed a test failure due to the use of a hash index on PostgresSQL 9.5.
 
 0.95.0 2015-03-20T20:31:41Z
 ---------------------------
