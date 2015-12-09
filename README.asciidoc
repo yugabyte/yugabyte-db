@@ -141,6 +141,21 @@ Example:
 ----
 	oracle.to_date('02/16/09 04:12:12') -> 2009-02-16 04:12:12
 ----
+* oracle.sysdate() - Returns statement timestamp at server timezone (orafce.timezone)
++
+-----
+	oracle.sysdate() -> 2015-12-09 17:47:56
+-----
+* oracle.dbtimezone - Returns server time zone - emulated via orafce.timezone
++
+-----
+	oracle.dbtimezone() -> GMT
+-----
+* oracle.sessiontimezone() - Returns session timezone - current PostgreSQL timezone
++
+-----
+	oracle.sessiontimezone() -> Europe/Prague
+-----
 * oracle.to_char(timestamp) - Returns timestamp in nls_date_format.
 +
 ----
@@ -158,6 +173,8 @@ Example:
 ----
 	oracle.to_char(oracle.to_date('21052014 12:13:44+05:30','DDMMYYYY HH24:MI:SS')) -> 14-May21 12:13:44
 ----
+
+
 
 == oracle.date Operators
 

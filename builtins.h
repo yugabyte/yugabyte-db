@@ -38,8 +38,6 @@ extern int no_such_variable
 #endif
 #endif
 
-extern char *nls_date_format;
-
 /* from aggregate.c */
 extern PGDLLEXPORT Datum orafce_listagg1_transfn(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum orafce_listagg2_transfn(PG_FUNCTION_ARGS);
@@ -90,6 +88,9 @@ extern PGDLLEXPORT Datum ora_date_trunc(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_date_round(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_timestamptz_trunc(PG_FUNCTION_ARGS);
 extern PGDLLEXPORT Datum ora_timestamptz_round(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_sysdate(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_sessiontimezone(PG_FUNCTION_ARGS);
+extern PGDLLEXPORT Datum orafce_dbtimezone(PG_FUNCTION_ARGS);
 
 /* from file.c */
 extern PGDLLEXPORT Datum utl_file_fopen(PG_FUNCTION_ARGS);
