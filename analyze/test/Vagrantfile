@@ -29,7 +29,7 @@ Vagrant.configure(2) do |config|
             make -s install
 
             cd contrib
-            sudo -u vagrant git clone https://github.com/pgaudit/pgaudit.git -b feature-log-analyze pgaudit
+            sudo -u vagrant git clone https://github.com/pgaudit/pgaudit.git pgaudit
 
             cd pgaudit
             sudo -u vagrant make -s check

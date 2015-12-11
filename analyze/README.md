@@ -2,7 +2,7 @@
 
 The PostgreSQL Audit extension (`pgaudit`) provides detailed session and/or object audit logging via the standard PostgreSQL logging facility.  However, logs are not the ideal place to store audit information.  The PostgreSQL Audit Log Analyzer (`pgaudit_analyze`) reads audit entries from the PostgreSQL logs and loads them into a database schema to aid in analysis and auditing.
 
-## Install
+## Installing
 
 * Install pgaudit following the instructions included with the extension.
 

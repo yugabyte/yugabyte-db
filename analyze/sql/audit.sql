@@ -126,7 +126,7 @@ create table pgaudit.log_event
     error_severity text,
     sql_state_code text,
     virtual_transaction_id text,
-    transaction_id int,
+    transaction_id bigint,
     message text,
     detail text,
     hint text,
@@ -139,8 +139,6 @@ create table pgaudit.log_event
 
     constraint logevent_pk
         primary key (session_id, session_line_num)
-    -- constraint logevent_sessionid_sessionlinenum_unq
-    --     unique (session_id, session_line_num)
 );
 
 grant select,
@@ -157,10 +155,14 @@ create table pgaudit.audit_statement
     statement_id numeric not null,
     state text not null default 'ok'
         constraint auditstatement_state_ck check (state in ('ok', 'error')),
-    error_session_line_num bigint,
+    error_session_line_num numeric,
 
     constraint auditstatement_pk
-        primary key (session_id, statement_id)
+        primary key (session_id, statement_id),
+    constraint auditstatement_sessionid_sessionlinenum_fk
+        foreign key (session_id, error_session_line_num)
+        references pgaudit.log_event (session_id, session_line_num)
+        deferrable initially deferred
 );
 
 grant select,
