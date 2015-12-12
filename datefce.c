@@ -1,4 +1,5 @@
 #include "postgres.h"
+#include "access/xact.h"
 #include "commands/variable.h"
 #include "mb/pg_wchar.h"
 #include "utils/date.h"
@@ -572,7 +573,8 @@ _ora_date_round(DateADT day, int f)
  *
  ********************************************************************/
 
-Datum ora_to_date(PG_FUNCTION_ARGS)
+Datum
+ora_to_date(PG_FUNCTION_ARGS)
 {
 	text *date_txt = PG_GETARG_TEXT_P(0);
 	Timestamp result;
@@ -613,7 +615,8 @@ Datum ora_to_date(PG_FUNCTION_ARGS)
  *
  ********************************************************************/
 
-Datum ora_date_trunc(PG_FUNCTION_ARGS)
+Datum
+ora_date_trunc(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	text *fmt = PG_GETARG_TEXT_PP(1);
@@ -750,7 +753,8 @@ ora_timestamptz_trunc(PG_FUNCTION_ARGS)
  ********************************************************************/
 
 
-Datum ora_date_round(PG_FUNCTION_ARGS)
+Datum
+ora_date_round(PG_FUNCTION_ARGS)
 {
 	DateADT day = PG_GETARG_DATEADT(0);
 	text *fmt = PG_GETARG_TEXT_PP(1);
@@ -882,12 +886,87 @@ ora_timestamptz_round(PG_FUNCTION_ARGS)
 	tm->tm_sec = 0;
 
 	if (redotz)
-	tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
+		tz = DetermineTimeZoneOffset(tm, get_session_timezone(fcinfo));
 
 	if (tm2timestamp(tm, fsec, &tz, &result) != 0)
-	ereport(ERROR,
-			(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
-			 errmsg("timestamp out of range")));
+		ereport(ERROR,
+				(errcode(ERRCODE_DATETIME_VALUE_OUT_OF_RANGE),
+				 errmsg("timestamp out of range")));
 
 	PG_RETURN_TIMESTAMPTZ(result);
+}
+
+/********************************************************************
+ *
+ * ora_sysdate - sysdate
+ *
+ * Syntax:
+ *
+ * timestamp sysdate()
+ *
+ * Purpose:
+ *
+ * Returns statement_timestamp in server time zone 
+ *   Note - server time zone doesn't exists on PostgreSQL - emulated
+ *   by orafce_timezone
+ *
+ ********************************************************************/
+
+Datum
+orafce_sysdate(PG_FUNCTION_ARGS)
+{
+	Datum sysdate;
+	Datum sysdate_scaled;
+
+
+	sysdate = DirectFunctionCall2(timestamptz_zone,
+					CStringGetTextDatum(orafce_timezone),
+					TimestampTzGetDatum(GetCurrentStatementStartTimestamp()));
+
+	/* necessary to cast to timestamp(0) to emulate Oracle's date */
+	sysdate_scaled = DirectFunctionCall2(timestamp_scale,
+						sysdate,
+						Int32GetDatum(0));
+
+	PG_RETURN_DATUM(sysdate_scaled);
+}
+
+/********************************************************************
+ *
+ * ora_systemtimezone
+ *
+ * Syntax:
+ *
+ * text sessiontimezone()
+ *
+ * Purpose:
+ *
+ * Returns session time zone
+ *
+ ********************************************************************/
+
+Datum
+orafce_sessiontimezone(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(show_timezone()));
+}
+
+/********************************************************************
+ *
+ * ora_dbtimezone
+ *
+ * Syntax:
+ *
+ * text dbtimezone()
+ *
+ * Purpose:
+ *
+ * Returns server time zone - emulated by orafce_timezone
+ *
+ ********************************************************************/
+
+Datum
+orafce_dbtimezone(PG_FUNCTION_ARGS)
+{
+	PG_RETURN_TEXT_P(cstring_to_text(orafce_timezone));
 }

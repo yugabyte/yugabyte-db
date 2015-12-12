@@ -453,6 +453,24 @@ AS 'MODULE_PATHNAME','orafce_to_char_timestamp'
 LANGUAGE C STABLE STRICT;
 COMMENT ON FUNCTION oracle.to_char(timestamp) IS 'Convert timestamp to string';
 
+CREATE FUNCTION oracle.sysdate()
+RETURNS oracle.date
+AS 'MODULE_PATHNAME','orafce_sysdate'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.sysdate() IS 'Ruturns statement timestamp at server time zone';
+
+CREATE FUNCTION oracle.sessiontimezone()
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_sessiontimezone'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns session time zone';
+
+CREATE FUNCTION oracle.dbtimezone()
+RETURNS text
+AS 'MODULE_PATHNAME','orafce_dbtimezone'
+LANGUAGE C STABLE STRICT;
+COMMENT ON FUNCTION oracle.sessiontimezone() IS 'Ruturns server time zone (orafce.timezone)';
+
 -- emulation of dual table
 CREATE VIEW public.dual AS SELECT 'X'::varchar AS dummy;
 REVOKE ALL ON public.dual FROM PUBLIC;
