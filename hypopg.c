@@ -336,7 +336,9 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 		switch (entry->relam)
 		{
 			case BTREE_AM_OID:
+#if PG_VERSION_NUM >= 90500
 			case BRIN_AM_OID:
+#endif
 				break;
 			default:
 
@@ -1564,6 +1566,7 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 			return true;
 			break;
 		case GIST_AM_OID:
+#if PG_VERSION_NUM >= 90500
 			{
 				HeapTuple tuple;
 
@@ -1583,6 +1586,9 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 				ReleaseSysCache(tuple);
 				return true;
 			}
+#else
+			return false;
+#endif
 			break;
 		case SPGIST_AM_OID:
 			{
