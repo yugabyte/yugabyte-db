@@ -100,7 +100,7 @@ typedef struct hypoEntry
 	Oid			relam;			/* OID of the access method (in pg_am) */
 
 	RegProcedure amcostestimate;	/* OID of the access method's cost fcn */
-	RegProcedure amcanreturn;		/* OID of the access method's canreturn fcn */
+	RegProcedure amcanreturn;	/* OID of the access method's canreturn fcn */
 
 	List	   *indpred;		/* predicate if a partial index, else NIL */
 
@@ -121,8 +121,8 @@ typedef struct hypoEntry
 	bool		amhasgetbitmap; /* does AM have amgetbitmap interface? */
 
 	/* store some informations usually saved in catalogs */
-	List		*options;		/* WITH clause options: a list of DefElem */
-	bool		amcanorder; /* does AM support order by column value? */
+	List	   *options;		/* WITH clause options: a list of DefElem */
+	bool		amcanorder;		/* does AM support order by column value? */
 
 } hypoEntry;
 
@@ -148,13 +148,13 @@ PG_FUNCTION_INFO_V1(hypopg_drop_index);
 PG_FUNCTION_INFO_V1(hypopg_relation_size);
 
 static hypoEntry *hypo_newEntry(Oid relid, char *accessMethod, int ncolumns,
-		List *options);
+			  List *options);
 static Oid	hypo_getNewOid(Oid relid);
 static void hypo_addEntry(hypoEntry *entry);
 
 static void hypo_entry_reset(void);
 static const hypoEntry *hypo_entry_store_parsetree(IndexStmt *node,
-			const char *queryString);
+						   const char *queryString);
 static bool hypo_entry_remove(Oid indexid);
 static void hypo_entry_pfree(hypoEntry *entry);
 
@@ -186,11 +186,11 @@ static const char *hypo_explain_get_index_name_hook(Oid indexId);
 static explain_get_index_name_hook_type prev_explain_get_index_name_hook = NULL;
 
 static void hypo_injectHypotheticalIndex(PlannerInfo *root,
-						Oid relationObjectId,
-						bool inhparent,
-						RelOptInfo *rel,
-						Relation relation,
-						hypoEntry *entry);
+							 Oid relationObjectId,
+							 bool inhparent,
+							 RelOptInfo *rel,
+							 Relation relation,
+							 hypoEntry *entry);
 static bool hypo_query_walker(Node *node);
 
 static void hypo_set_indexname(hypoEntry *entry, char *indexname);
@@ -251,7 +251,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	hypoEntry  *volatile entry;
 	MemoryContext oldcontext;
 	HeapTuple	tuple;
-	RegProcedure	amoptions;
+	RegProcedure amoptions;
 
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethod));
 
@@ -315,23 +315,22 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 
 	if (options != NIL)
 	{
-		Datum	reloptions;
+		Datum		reloptions;
 
 		/*
 		 * Parse AM-specific options, convert to text array form, validate.
 		 */
 		reloptions = transformRelOptions((Datum) 0, options,
-				NULL, NULL, false, false);
+										 NULL, NULL, false, false);
 
 		(void) index_reloptions(amoptions, reloptions, true);
 	}
 
 	PG_TRY();
 	{
-
 		/*
-		 * reject unsupported am. It could be done earlier but it's simpler (and
-		 * was previously done) here.
+		 * reject unsupported am. It could be done earlier but it's simpler
+		 * (and was previously done) here.
 		 */
 		switch (entry->relam)
 		{
@@ -347,7 +346,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 				 * supported
 				 */
 				elog(ERROR, "hypopg: access method \"%s\" is not supported",
-						accessMethod);
+					 accessMethod);
 				break;
 		}
 
@@ -489,7 +488,7 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 	if (ncolumns > INDEX_MAX_KEYS)
 		elog(ERROR, "hypopg: cannot use more thant %d columns in an index",
-				INDEX_MAX_KEYS);
+			 INDEX_MAX_KEYS);
 
 	initStringInfo(&indexRelationName);
 	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
@@ -505,12 +504,13 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 	/* now create the hypothetical index entry */
 	entry = hypo_newEntry(relid, node->accessMethod, ncolumns,
-			node->options);
+						  node->options);
 
 	PG_TRY();
 	{
 		HeapTuple	tuple;
 		int			ind_avg_width = 0;
+
 		entry->unique = node->unique;
 		entry->ncolumns = ncolumns;
 
@@ -580,11 +580,12 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			{
 				entry->reverse_sort[j] = (indexelem->ordering == SORTBY_DESC);
 				entry->nulls_first[j] = (indexelem->nulls_ordering ==
-						SORTBY_NULLS_FIRST);
+										 SORTBY_NULLS_FIRST);
 			}
 
 			/* handle index-only scan info */
 #if PG_VERSION_NUM < 90500
+
 			/*
 			 * OIS info is global for the index before 9.5, so look for the
 			 * information only once in that case.
@@ -592,16 +593,16 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 			if (j == 0)
 			{
 				/*
-				 * specify first column, but it doesn't matter as this will only
-				 * be used with GiST am, which cannot do IOS prior pg 9.5
+				 * specify first column, but it doesn't matter as this will
+				 * only be used with GiST am, which cannot do IOS prior pg 9.5
 				 */
 				entry->canreturn = hypo_can_return(entry, atttype, 0,
-						node->accessMethod);
+												   node->accessMethod);
 			}
 #else
 			/* per-column IOS information */
 			entry->canreturn[j] = hypo_can_return(entry, atttype, j,
-					node->accessMethod);
+												  node->accessMethod);
 #endif
 
 			j++;
@@ -615,25 +616,25 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 				ereport(ERROR,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("hypopg: estimated index row size %d "
-							"exceeds maximum %ld",
-						 ind_avg_width, HYPO_BTMaxItemSize),
+								"exceeds maximum %ld",
+								ind_avg_width, HYPO_BTMaxItemSize),
 						 errhint("Values larger than 1/3 of a buffer page "
 							 "cannot be indexed.\nConsider a function index "
-							 " of an MD5 hash of the value, or use full text "
-							 "indexing\n(which is not yet supported by hypopg)."
-				)));
+							" of an MD5 hash of the value, or use full text "
+						  "indexing\n(which is not yet supported by hypopg)."
+								 )));
 			/* Warn about posssible error with a 80% avg size */
 			else if (ind_avg_width >= HYPO_BTMaxItemSize * .8)
 				ereport(WARNING,
 						(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
 						 errmsg("hypopg: estimated index row size %d "
-							"is close to maximum %ld",
-						 ind_avg_width, HYPO_BTMaxItemSize),
+								"is close to maximum %ld",
+								ind_avg_width, HYPO_BTMaxItemSize),
 						 errhint("Values larger than 1/3 of a buffer page "
 							 "cannot be indexed.\nConsider a function index "
-							 " of an MD5 hash of the value, or use full text "
-							 "indexing\n(which is not yet supported by hypopg)."
-				)));
+							" of an MD5 hash of the value, or use full text "
+						  "indexing\n(which is not yet supported by hypopg)."
+								 )));
 		}
 
 		/* No more elog beyond this point. */
@@ -654,30 +655,28 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	if ((entry->relam != BTREE_AM_OID) && entry->amcanorder)
 	{
 		/*
-		 * Otherwise, identify the corresponding btree opfamilies by
-		 * trying to map this index's "<" operators into btree.  Since
-		 * "<" uniquely defines the behavior of a sort order, this is
-		 * a sufficient test.
+		 * Otherwise, identify the corresponding btree opfamilies by trying to
+		 * map this index's "<" operators into btree.  Since "<" uniquely
+		 * defines the behavior of a sort order, this is a sufficient test.
 		 *
-		 * XXX This method is rather slow and also requires the
-		 * undesirable assumption that the other index AM numbers its
-		 * strategies the same as btree.  It'd be better to have a way
-		 * to explicitly declare the corresponding btree opfamily for
-		 * each opfamily of the other index type.  But given the lack
-		 * of current or foreseeable amcanorder index types, it's not
-		 * worth expending more effort on now.
+		 * XXX This method is rather slow and also requires the undesirable
+		 * assumption that the other index AM numbers its strategies the same
+		 * as btree.  It'd be better to have a way to explicitly declare the
+		 * corresponding btree opfamily for each opfamily of the other index
+		 * type.  But given the lack of current or foreseeable amcanorder
+		 * index types, it's not worth expending more effort on now.
 		 */
 		for (j = 0; j < ncolumns; j++)
 		{
-			Oid		ltopr;
-			Oid		btopfamily;
-			Oid		btopcintype;
-			int16	btstrategy;
+			Oid			ltopr;
+			Oid			btopfamily;
+			Oid			btopcintype;
+			int16		btstrategy;
 
-			ltopr =  get_opfamily_member(entry->opfamily[j],
-										 entry->opcintype[j],
-										 entry->opcintype[j],
-										 BTLessStrategyNumber);
+			ltopr = get_opfamily_member(entry->opfamily[j],
+										entry->opcintype[j],
+										entry->opcintype[j],
+										BTLessStrategyNumber);
 			if (OidIsValid(ltopr) &&
 				get_ordering_op_properties(ltopr,
 										   &btopfamily,
@@ -737,7 +736,8 @@ hypo_entry_remove(Oid indexid)
 }
 
 /* pfree all allocated memory for within an hypoEntry and the entry itself. */
-static void hypo_entry_pfree(hypoEntry *entry)
+static void
+hypo_entry_pfree(hypoEntry *entry)
 {
 	/* pfree all memory that has been allocated */
 	pfree(entry->indexname);
@@ -859,11 +859,11 @@ hypo_executorEnd_hook(QueryDesc *queryDesc)
  */
 static void
 hypo_injectHypotheticalIndex(PlannerInfo *root,
-						Oid relationObjectId,
-						bool inhparent,
-						RelOptInfo *rel,
-						Relation relation,
-						hypoEntry *entry)
+							 Oid relationObjectId,
+							 bool inhparent,
+							 RelOptInfo *rel,
+							 Relation relation,
+							 hypoEntry *entry)
 {
 	IndexOptInfo *index;
 	int			ncolumns,
@@ -918,15 +918,15 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	}
 
 	/*
-	 * Fetch the ordering information for the index, if any. This is handled in
-	 * hypo_entry_store_parsetree(). Again, adapted from plancat.c -
+	 * Fetch the ordering information for the index, if any. This is handled
+	 * in hypo_entry_store_parsetree(). Again, adapted from plancat.c -
 	 * get_relation_info()
 	 */
 	if (entry->relam == BTREE_AM_OID)
 	{
 		/*
-		 * If it's a btree index, we can use its opfamily OIDs
-		 * directly as the sort ordering opfamily OIDs.
+		 * If it's a btree index, we can use its opfamily OIDs directly as the
+		 * sort ordering opfamily OIDs.
 		 */
 		index->sortopfamily = index->opfamily;
 
@@ -1147,8 +1147,8 @@ hypopg(PG_FUNCTION_ARGS)
 		nulls[j++] = true;		/* no hypothetical index on expr for now */
 
 		/*
-		 * Convert the index predicate (if any) to a text datum.  Note we convert
-		 * implicit-AND format to normal explicit-AND for storage.
+		 * Convert the index predicate (if any) to a text datum.  Note we
+		 * convert implicit-AND format to normal explicit-AND for storage.
 		 */
 		if (entry->indpred != NIL)
 		{
@@ -1388,14 +1388,15 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	}
 	else
 	{
-		/* We have a predicate. Find it's selectivity and setup the estimated
+		/*
+		 * We have a predicate. Find it's selectivity and setup the estimated
 		 * number of line according to it
 		 */
 		Selectivity selectivity;
 		PlannerInfo *root;
 		PlannerGlobal *glob;
-		Query *parse;
-		List *rtable = NIL;
+		Query	   *parse;
+		List	   *rtable = NIL;
 		RangeTblEntry *rte;
 
 		/* create a fake minimal PlannerInfo */
@@ -1409,20 +1410,23 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 		rte = makeNode(RangeTblEntry);
 		rte->relkind = RTE_RELATION;
 		rte->relid = entry->relid;
-		rte->inh = false; /* don't include inherited children */
+		rte->inh = false;		/* don't include inherited children */
 		rtable = lappend(rtable, rte);
 
 		parse = makeNode(Query);
 		parse->rtable = rtable;
 		root->parse = parse;
 
-		/* allocate simple_rel_arrays and simple_rte_arrays. This function will
-		 * also setup simple_rte_arrays with the previous rte. */
+		/*
+		 * allocate simple_rel_arrays and simple_rte_arrays. This function
+		 * will also setup simple_rte_arrays with the previous rte.
+		 */
 		setup_simple_rel_arrays(root);
 		/* also add our table info */
 		root->simple_rel_array[1] = rel;
 
-		/* per comment on clause_selectivity(), JOIN_INNER must be passed if
+		/*
+		 * per comment on clause_selectivity(), JOIN_INNER must be passed if
 		 * the clause isn't a join clause, which is our case, and passing 0 to
 		 * varRelid is appropriate for restriction clause.
 		 */
@@ -1437,7 +1441,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 	/* handle index storage parameters */
 	foreach(lc, entry->options)
 	{
-		DefElem *elem = (DefElem *) lfirst(lc);
+		DefElem    *elem = (DefElem *) lfirst(lc);
 
 		if (strcmp(elem->defname, "fillfactor") == 0)
 			fillfactor = (int32) intVal(elem->arg);
@@ -1473,8 +1477,8 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 
 			usable_page_size = BLCKSZ - SizeOfPageHeaderData - sizeof(BTPageOpaqueData);
 			bloat_factor = (200.0
-					- (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
-					+ additional_bloat) / 100;
+				  - (fillfactor == 0 ? BTREE_DEFAULT_FILLFACTOR : fillfactor)
+							+ additional_bloat) / 100;
 
 			entry->pages =
 				entry->tuples * line_size * bloat_factor / usable_page_size;
@@ -1485,36 +1489,36 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 #if PG_VERSION_NUM >= 90500
 		case BRIN_AM_OID:
 			{
-				HeapTuple		ht_opc;
-				Form_pg_opclass	opcrec;
-				char 			*opcname;
-				int 			ranges = rel->pages / pages_per_range +1;
-				bool			is_minmax = true;
-				int				data_size;
+				HeapTuple	ht_opc;
+				Form_pg_opclass opcrec;
+				char	   *opcname;
+				int			ranges = rel->pages / pages_per_range + 1;
+				bool		is_minmax = true;
+				int			data_size;
 
 				/* -------------------------------
 				 * quick estimation of index size. A BRIN index contains
 				 * - a root page
 				 * - a range map: REVMAP_PAGE_MAXITEMS items (one per range
-				 *   block) per revmap block
+				 *	 block) per revmap block
 				 * - regular type: sizeof(BrinTuple) per range, plus depending
-				 *   on opclass:
-				 *   - *_minmax_ops: 2 Datums (min & max obviously)
-				 *   - *_inclusion_ops: 3 datumes (inclusion and 2 bool)
+				 *	 on opclass:
+				 *	 - *_minmax_ops: 2 Datums (min & max obviously)
+				 *	 - *_inclusion_ops: 3 datumes (inclusion and 2 bool)
 				 *
 				 * I assume same minmax VS. inclusion opclass for all columns.
 				 * BRIN access method does not bloat, don't add any additional.
 				 */
 
-				entry->pages = 1 /* root page */
-							+ (ranges / REVMAP_PAGE_MAXITEMS) + 1; /* revmap */
+				entry->pages = 1	/* root page */
+					+ (ranges / REVMAP_PAGE_MAXITEMS) + 1;		/* revmap */
 
 				/* get the operator class name */
 				ht_opc = SearchSysCache1(CLAOID,
-						ObjectIdGetDatum(entry->opclass[0]));
+										 ObjectIdGetDatum(entry->opclass[0]));
 				if (!HeapTupleIsValid(ht_opc))
 					elog(ERROR, "hypopg: cache lookup failed for opclass %u",
-							entry->opclass[0]);
+						 entry->opclass[0]);
 				opcrec = (Form_pg_opclass) GETSTRUCT(ht_opc);
 
 				opcname = NameStr(opcrec->opcname);
@@ -1529,7 +1533,7 @@ hypo_estimate_index(hypoEntry *entry, RelOptInfo *rel)
 					data_size = sizeof(BrinTuple) + 2 * ind_avg_width;
 				else
 					data_size = sizeof(BrinTuple) + ind_avg_width
-						+ 2* sizeof(bool);
+						+ 2 * sizeof(bool);
 
 				data_size = data_size * ranges
 					/ (BLCKSZ - MAXALIGN(SizeOfPageHeaderData)) + 1;
@@ -1568,17 +1572,17 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 		case GIST_AM_OID:
 #if PG_VERSION_NUM >= 90500
 			{
-				HeapTuple tuple;
+				HeapTuple	tuple;
 
 				/*
 				 * since 9.5, GiST can do IOS if the opclass define a
 				 * GIST_FETCH_PROC support function.
 				 */
 				tuple = SearchSysCache4(AMPROCNUM,
-						ObjectIdGetDatum(entry->opfamily[i]),
-						ObjectIdGetDatum(entry->opcintype[i]),
-						ObjectIdGetDatum(entry->opcintype[i]),
-						Int8GetDatum(GIST_FETCH_PROC));
+										ObjectIdGetDatum(entry->opfamily[i]),
+										ObjectIdGetDatum(entry->opcintype[i]),
+										ObjectIdGetDatum(entry->opcintype[i]),
+										Int8GetDatum(GIST_FETCH_PROC));
 
 				if (!HeapTupleIsValid(tuple))
 					return false;
@@ -1592,18 +1596,18 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 			break;
 		case SPGIST_AM_OID:
 			{
-				SpGistCache	   *cache;
-				spgConfigIn		in;
-				HeapTuple		tuple;
-				Oid				funcid;
-				bool			res = false;
+				SpGistCache *cache;
+				spgConfigIn in;
+				HeapTuple	tuple;
+				Oid			funcid;
+				bool		res = false;
 
 				/* support function 1 tells us if IOS is supported */
 				tuple = SearchSysCache4(AMPROCNUM,
-						ObjectIdGetDatum(entry->opfamily[i]),
-						ObjectIdGetDatum(entry->opcintype[i]),
-						ObjectIdGetDatum(entry->opcintype[i]),
-						Int8GetDatum(SPGIST_CONFIG_PROC));
+										ObjectIdGetDatum(entry->opfamily[i]),
+										ObjectIdGetDatum(entry->opcintype[i]),
+										ObjectIdGetDatum(entry->opcintype[i]),
+										Int8GetDatum(SPGIST_CONFIG_PROC));
 
 				/* just in case */
 				if (!HeapTupleIsValid(tuple))
@@ -1616,8 +1620,8 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 				cache = palloc0(sizeof(SpGistCache));
 
 				OidFunctionCall2Coll(funcid, entry->indexcollations[i],
-						PointerGetDatum(&in),
-						PointerGetDatum(&cache->config));
+									 PointerGetDatum(&in),
+									 PointerGetDatum(&cache->config));
 
 				res = cache->config.canReturnData;
 				pfree(cache);
@@ -1627,10 +1631,10 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 			break;
 		default:
 			/* all specific case should have been handled */
-			elog(WARNING, "hypopg: access method \"%s\" looks like it can\n"
-					"support Index-Only Scan, but it's unexpected.\n"
-					"Feel free to warn developper.",
-					amname);
+			elog(WARNING, "hypopg: access method \"%s\" looks like it may\n"
+				 "support Index-Only Scan, but it's unexpected.\n"
+				 "Feel free to warn developper.",
+				 amname);
 			return false;
 			break;
 	}
