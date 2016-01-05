@@ -474,7 +474,8 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 
 	if (!ok)
 	{
-		elog(WARNING, "hypopg: hypothetical indexes on expression are not supported yet");
+		elog(WARNING, "hypopg: hypothetical indexes on expression are"
+			 " not supported yet");
 		return false;
 	}
 
@@ -494,7 +495,8 @@ hypo_entry_store_parsetree(IndexStmt *node, const char *queryString)
 	appendStringInfo(&indexRelationName, "%s", node->accessMethod);
 	appendStringInfo(&indexRelationName, "_");
 
-	if (node->relation->schemaname != NULL && (strcmp(node->relation->schemaname, "public") != 0))
+	if (node->relation->schemaname != NULL &&
+		(strcmp(node->relation->schemaname, "public") != 0))
 	{
 		appendStringInfo(&indexRelationName, "%s", node->relation->schemaname);
 		appendStringInfo(&indexRelationName, "_");
@@ -780,7 +782,8 @@ hypo_utility_hook(Node *parsetree,
 				  DestReceiver *dest,
 				  char *completionTag)
 {
-	isExplain = query_or_expression_tree_walker(parsetree, hypo_query_walker, NULL, 0);
+	isExplain = query_or_expression_tree_walker(parsetree, hypo_query_walker,
+												NULL, 0);
 
 	if (prev_utility_hook)
 		prev_utility_hook(parsetree, queryString,
@@ -1003,8 +1006,9 @@ hypo_injectHypotheticalIndex(PlannerInfo *root,
 	rel->indexlist = lcons(index, rel->indexlist);
 }
 
-/* This function will execute the "hypo_injectHypotheticalIndex" for every hypothetical
- * index found for each relation if the isExplain flag is setup.
+/*
+ * This function will execute the "hypo_injectHypotheticalIndex" for every
+ * hypothetical index found for each relation if the isExplain flag is setup.
  */
 static void
 hypo_get_relation_info_hook(PlannerInfo *root,
@@ -1033,7 +1037,8 @@ hypo_get_relation_info_hook(PlannerInfo *root,
 					 * hypothetical index found, add it to the relation's
 					 * indextlist
 					 */
-					hypo_injectHypotheticalIndex(root, relationObjectId, inhparent, rel, relation, entry);
+					hypo_injectHypotheticalIndex(root, relationObjectId,
+											inhparent, rel, relation, entry);
 				}
 			}
 		}
@@ -1631,8 +1636,8 @@ hypo_can_return(hypoEntry *entry, Oid atttype, int i, char *amname)
 			break;
 		default:
 			/* all specific case should have been handled */
-			elog(WARNING, "hypopg: access method \"%s\" looks like it may\n"
-				 "support Index-Only Scan, but it's unexpected.\n"
+			elog(WARNING, "hypopg: access method \"%s\" looks like it may"
+				 " support Index-Only Scan, but it's unexpected.\n"
 				 "Feel free to warn developper.",
 				 amname);
 			return false;
