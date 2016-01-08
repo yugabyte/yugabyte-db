@@ -1,4 +1,4 @@
-/* contrib/orafce--3.1.sql */
+/* contrib/orafce--3.2.sql */
 
 -- complain if script is sourced in psql, rather than via CREATE EXTENSION
 \echo Use "CREATE EXTENSION orafce" to load this file. \quit

@@ -1,15 +1,11 @@
 #include "postgres.h"
 #include "funcapi.h"
-#include "orafce.h"
+#include "builtins.h"
 
-#if PG_VERSION_NUM >= 80400
-
+#include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#endif
-
-#include "builtins.h"
-#include "lib/stringinfo.h"
+#include "orafce.h"
 
 PG_FUNCTION_INFO_V1(orafce_listagg1_transfn);
 PG_FUNCTION_INFO_V1(orafce_listagg2_transfn);
@@ -47,7 +43,6 @@ int orafce_float8_cmp(const void *a, const void *b);
  * Note: any NULL value is ignored.
  *
  ****************************************************************/
-#if PG_VERSION_NUM >= 80400
 /* subroutine to initialize state */
 static StringInfo
 makeStringAggState(FunctionCallInfo fcinfo)
@@ -78,7 +73,6 @@ appendStringInfoText(StringInfo str, const text *t)
 {
 	appendBinaryStringInfo(str, VARDATA_ANY(t), VARSIZE_ANY_EXHDR(t));
 }
-#endif
 
 Datum
 orafce_listagg1_transfn(PG_FUNCTION_ARGS)
@@ -113,8 +107,6 @@ orafce_listagg_finalfn(PG_FUNCTION_ARGS)
 {
 	return string_agg_finalfn(fcinfo);
 }
-
-#if PG_VERSION_NUM >= 80400
 
 static MedianState *
 accumFloat4(MedianState *mstate, float4 value, MemoryContext aggcontext)
@@ -189,8 +181,6 @@ accumFloat8(MedianState *mstate, float8 value, MemoryContext aggcontext)
 
 	return mstate;
 }
-
-#endif
 
 Datum
 orafce_median4_transfn(PG_FUNCTION_ARGS)

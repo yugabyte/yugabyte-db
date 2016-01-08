@@ -1,6 +1,10 @@
 Orafce News - History of user-visible changes
 Copyright (C) 2008-2012  Orafce Global Development Group
 
+Version 3.2.0 - 2016-01-xx
+* remove support for 8.3, 8.4, 9.0
+* new functions: sysdate, sessiontimezone, dbtimezone
+
 Version 3.1 - 2015-07-11
 * remove support for 8.2
 * add support for 9.5

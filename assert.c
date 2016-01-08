@@ -287,7 +287,7 @@ static bool
 check_sql_name(char *cp, int len)
 {
 	if (*cp == '"')
-    	{
+	{
 		for (cp++, len -= 2; len-- > 0; cp++)
 		{
 			/* all double quotes have to be paired */

@@ -3,7 +3,7 @@ OBJS= convert.o file.o datefce.o magic.o others.o plvstr.o plvdate.o shmmc.o plv
 
 EXTENSION = orafce
 
-DATA = orafce--3.1.sql orafce--unpackaged--3.1.sql
+DATA = orafce--3.2.sql
 DOCS = README.asciidoc COPYRIGHT.orafce INSTALL.orafce
 
 PG_CONFIG ?= pg_config

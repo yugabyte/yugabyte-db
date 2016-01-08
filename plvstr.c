@@ -112,8 +112,6 @@ cstring_to_text_with_len(const char *c, int n)
  * Make substring, can handle negative start
  *
  */
-
-
 int
 ora_mb_strlen(text *str, char **sizes, int **positions)
 {

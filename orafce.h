@@ -33,13 +33,14 @@ extern int ora_mb_strlen1(text *str);
 extern char *nls_date_format;
 extern char *orafce_timezone;
 
+extern char *nls_date_format;
+extern char *orafce_timezone;
+
 /*
  * Version compatibility
  */
 
-#if PG_VERSION_NUM >= 80400
 extern Oid	equality_oper_funcid(Oid argtype);
-#endif
 
 /*
  * Date utils
