@@ -371,11 +371,7 @@ dbms_assert_object_name(PG_FUNCTION_ARGS)
 
 	names = stringToQualifiedNameList(object_name);
 
-#if PG_VERSION_NUM >= 90200
 	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), NoLock, true);
-#else
-	classId = RangeVarGetRelid(makeRangeVarFromNameList(names), true);
-#endif
 	if (!OidIsValid(classId))
 		INVALID_OBJECT_NAME_EXCEPTION();
 

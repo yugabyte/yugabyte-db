@@ -675,12 +675,7 @@ ora_timestamptz_trunc(PG_FUNCTION_ARGS)
 	int tz;
 	fsec_t fsec;
 	struct pg_tm tt, *tm = &tt;
-
-#if PG_VERSION_NUM >= 90200
 	const char *tzn;
-#else
-	char *tzn;
-#endif
 	bool redotz = false;
 	int f;
 
@@ -783,13 +778,7 @@ ora_timestamptz_round(PG_FUNCTION_ARGS)
 	int tz;
 	fsec_t fsec;
 	struct pg_tm tt, *tm = &tt;
-
-#if PG_VERSION_NUM >= 90200
 	const char *tzn;
-#else
-	char *tzn;
-#endif
-
 	bool redotz = false;
 	bool rounded = true;
 	int f;
