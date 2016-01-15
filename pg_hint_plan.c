@@ -3785,6 +3785,8 @@ rebuild_scan_path(HintState *hstate, PlannerInfo *root, int level,
 		{
 			set_plain_rel_pathlist(root, rel, rte);
 		}
+
+		set_cheapest(rel);
 	}
 
 	/*
