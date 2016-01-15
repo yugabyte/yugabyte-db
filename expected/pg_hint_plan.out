@@ -3016,7 +3016,7 @@ error hint:
          ->  Seq Scan on t2
 (5 rows)
 
--- inherite table test
+-- inheritance tables test
 SET constraint_exclusion TO off;
 EXPLAIN (COSTS false) SELECT * FROM p1 WHERE id >= 50 AND id <= 51 AND p1.ctid = '(1,1)';
                               QUERY PLAN                               
@@ -7983,7 +7983,7 @@ duplication hint:
 error hint:
 
 CONTEXT:  SQL statement "/*+ SeqScan(t1) */ SELECT * FROM t1"
-PL/pgSQL function testfunc() line 3 at EXECUTE statement
+PL/pgSQL function testfunc() line 3 at EXECUTE
  testfunc 
 ----------
  
