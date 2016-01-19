@@ -33,6 +33,10 @@
 #include "access/xlog.h"
 #include "catalog/catalog.h"
 #include "catalog/namespace.h"
+#if PG_VERSION_NUM >= 90600
+#include "access/amapi.h"
+#include "catalog/pg_am.h"
+#endif
 #include "catalog/pg_amproc.h"
 #include "catalog/pg_class.h"
 #include "catalog/pg_opclass.h"
@@ -99,8 +103,13 @@ typedef struct hypoEntry
 	bool	   *nulls_first;	/* do NULLs come first in the sort order? */
 	Oid			relam;			/* OID of the access method (in pg_am) */
 
+#if PG_VERSION_NUM >= 90600
+	amcostestimate_function amcostestimate;
+	amcanreturn_function amcanreturn;
+#else
 	RegProcedure amcostestimate;	/* OID of the access method's cost fcn */
 	RegProcedure amcanreturn;	/* OID of the access method's canreturn fcn */
+#endif
 
 	List	   *indpred;		/* predicate if a partial index, else NIL */
 
@@ -251,7 +260,13 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	hypoEntry  *volatile entry;
 	MemoryContext oldcontext;
 	HeapTuple	tuple;
+
+#if PG_VERSION_NUM >= 90600
+	IndexAmRoutine *amroutine;
+	amoptions_function amoptions;
+#else
 	RegProcedure amoptions;
+#endif
 
 	tuple = SearchSysCache1(AMNAME, PointerGetDatum(accessMethod));
 
@@ -268,6 +283,25 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry = palloc0(sizeof(hypoEntry));
 
 	entry->relam = HeapTupleGetOid(tuple);
+
+#if PG_VERSION_NUM >= 90600
+	/*
+	 * Since 9.6, AM informations are available through an amhandler function,
+	 * returning an IndexAmRoutine containing what's needed.
+	 */
+	amroutine = GetIndexAmRoutine(((Form_pg_am) GETSTRUCT(tuple))->amhandler);
+	entry->amcostestimate = amroutine->amcostestimate;
+	entry->amcanreturn = amroutine->amcanreturn;
+	entry->amcanorderbyop = amroutine->amcanorderbyop;
+	entry->amoptionalkey = amroutine->amoptionalkey;
+	entry->amsearcharray = amroutine->amsearcharray;
+	entry->amsearchnulls = amroutine->amsearchnulls;
+	entry->amhasgettuple = OidIsValid(amroutine->amgettuple);
+	entry->amhasgetbitmap = OidIsValid(amroutine->amgetbitmap);
+	amoptions = amroutine->amoptions;
+	entry->amcanorder = amroutine->amcanorder;
+#else
+	/* Up to 9.5, all information is available in the pg_am tuple */
 	entry->amcostestimate = ((Form_pg_am) GETSTRUCT(tuple))->amcostestimate;
 	entry->amcanreturn = ((Form_pg_am) GETSTRUCT(tuple))->amcanreturn;
 	entry->amcanorderbyop = ((Form_pg_am) GETSTRUCT(tuple))->amcanorderbyop;
@@ -278,6 +312,7 @@ hypo_newEntry(Oid relid, char *accessMethod, int ncolumns, List *options)
 	entry->amhasgetbitmap = OidIsValid(((Form_pg_am) GETSTRUCT(tuple))->amgetbitmap);
 	amoptions = ((Form_pg_am) GETSTRUCT(tuple))->amoptions;
 	entry->amcanorder = ((Form_pg_am) GETSTRUCT(tuple))->amcanorder;
+#endif
 
 	ReleaseSysCache(tuple);
 	entry->indexname = palloc0(NAMEDATALEN);
