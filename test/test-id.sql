@@ -1,5 +1,5 @@
 -- ########## ID DYNAMIC TESTS ##########
--- Additional tests: turn off pg_jobmon logging, UNLOGGED, Make sure option to not inherit foreign keys works, larger than necessary p_batch_count to partition_data_id(), retention
+-- Additional tests: turn off pg_jobmon logging, UNLOGGED, Make sure option to not inherit foreign keys works, larger than necessary p_batch_count to partition_data_id(), retention, PUBLIC role
 
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
@@ -22,7 +22,7 @@ CREATE UNLOGGED TABLE partman_test.id_taptest_table (
     , col2 text not null default 'stuff' references partman_test.fk_test_reference (col2)
     , col3 timestamptz DEFAULT now());
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,9));
-GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic;
+GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic, PUBLIC;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 
 SELECT results_eq('SELECT create_parent(''partman_test.id_taptest_table'', ''col1'', ''id'', ''10'', p_inherit_fk := false, p_jobmon := false)::text', ARRAY['true'], 'Check that create_parent() returns true');
@@ -64,7 +64,7 @@ SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that 
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[9], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p0', ARRAY[9], 'Check count from id_taptest_table_p0');
 
-REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON partman_test.id_taptest_table FROM partman_revoke;
+REVOKE INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER ON partman_test.id_taptest_table FROM partman_revoke, PUBLIC;
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(10,25));
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had no data inserted to it');
@@ -85,7 +85,7 @@ SELECT table_privs_are('partman_test', 'id_taptest_table_p50', 'partman_basic', 
 SELECT table_privs_are('partman_test', 'id_taptest_table_p50', 'partman_revoke', ARRAY['SELECT'], 'Check partman_revoke privileges of id_taptest_table_p50');
 
 GRANT DELETE ON partman_test.id_taptest_table TO partman_basic;
-REVOKE ALL ON partman_test.id_taptest_table FROM partman_revoke;
+REVOKE ALL ON partman_test.id_taptest_table FROM partman_revoke, PUBLIC;
 ALTER TABLE partman_test.id_taptest_table OWNER TO partman_owner;
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(26,38));
 
@@ -154,12 +154,11 @@ UPDATE part_config SET retention = '10' WHERE parent_table = 'partman_test.id_ta
 SELECT drop_partition_id('partman_test.id_taptest_table', p_retention_schema := 'partman_retention_test');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 doesn''t exists anymore');
 SELECT has_table('partman_retention_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 got moved to new schema');
--- Make above work
 
--- Has to run twice because second time around is when it sees the partition is empty & drops it
-SELECT undo_partition_id('partman_test.id_taptest_table', 2, p_keep_table := false);
+SELECT undo_partition_id('partman_test.id_taptest_table', p_keep_table := false);
 SELECT hasnt_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 does not exist');
 
+-- Test keeping the reset of the tables
 SELECT undo_partition_id('partman_test.id_taptest_table', 10);
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[30], 'Check count from parent table after undo');
 SELECT has_table('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p30 still exists');

@@ -29,6 +29,7 @@ v_rowcount              bigint;
 v_step_id               bigint;
 v_total                 bigint := 0;
 v_trig_name             text;
+v_type                  text;
 v_undo_count            int := 0;
 
 BEGIN
@@ -48,8 +49,8 @@ IF p_jobmon THEN
 END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    v_job_id := add_job(format('PARTMAN UNDO PARTITIONING: ', p_parent_table));
-    v_step_id := add_step(v_job_id, format('Undoing partitioning for table ', p_parent_table));
+    v_job_id := add_job(format('PARTMAN UNDO PARTITIONING: %s', p_parent_table));
+    v_step_id := add_step(v_job_id, format('Undoing partitioning for table %s', p_parent_table));
 END IF;
 
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
@@ -59,7 +60,14 @@ SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_ca
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
-SELECT tgname INTO v_trig_name FROM pg_catalog.pg_trigger t WHERE tgname = v_trig_name;
+SELECT tgname INTO v_trig_name 
+FROM pg_catalog.pg_trigger t
+JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid
+WHERE tgname = v_trig_name 
+AND c.relname = v_parent_tablename;
+
+SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema AND proname = v_function_name;
+
 IF v_trig_name IS NOT NULL THEN
     -- lockwait for trigger drop
     IF p_lock_wait > 0  THEN
@@ -85,14 +93,21 @@ IF v_trig_name IS NOT NULL THEN
 END IF; -- END trigger IF
 v_lock_obtained := FALSE; -- reset for reuse later
 
-EXECUTE format('DROP FUNCTION IF EXISTS %I.%I()', v_parent_schema, v_function_name);
+IF v_function_name IS NOT NULL THEN
+    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I()', v_parent_schema, v_function_name);
+END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');
+    IF (v_trig_name IS NOT NULL OR v_function_name IS NOT NULL) THEN
+        PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');
+    ELSE
+        PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process.');
+    END IF;
 END IF;
 
 WHILE v_batch_loop_count < p_batch_count LOOP 
     -- Get ordered list of child table in set. Store in variable one at a time per loop until none are left.
+    -- Not using show_partitions() so it can work on non-pg_partman partition sets
     WITH parent_info AS (
         SELECT c1.oid 
         FROM pg_catalog.pg_class c1 
@@ -108,58 +123,18 @@ WHILE v_batch_loop_count < p_batch_count LOOP
 
     EXIT WHEN v_child_table IS NULL;
 
-    EXECUTE format('SELECT count(*) FROM %I.%I', v_parent_schema, v_child_table) INTO v_child_count;
-    IF v_child_count = 0 THEN
-        -- No rows left in this child table. Remove from partition set.
-
-        -- lockwait timeout for table drop
-        IF p_lock_wait > 0  THEN
-            v_lock_iter := 0;
-            WHILE v_lock_iter <= 5 LOOP
-                v_lock_iter := v_lock_iter + 1;
-                BEGIN
-                    EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
-                    v_lock_obtained := TRUE;
-                EXCEPTION
-                    WHEN lock_not_available THEN
-                        PERFORM pg_sleep( p_lock_wait / 5.0 );
-                        CONTINUE;
-                END;
-                EXIT WHEN v_lock_obtained;
-            END LOOP;
-            IF NOT v_lock_obtained THEN
-                RAISE NOTICE 'Unable to obtain lock on child table for removal from partition set';
-                RETURN -1;
-            END IF;
-        END IF; -- END p_lock_wait IF
-        v_lock_obtained := FALSE; -- reset for reuse later
-
-        EXECUTE format('ALTER TABLE %I.%I NO INHERIT %I.%I', v_parent_schema, v_child_table, v_parent_schema, v_parent_tablename);
-        IF p_keep_table = false THEN
-            EXECUTE format('DROP TABLE %I.%I', v_parent_schema, v_child_table);
-            IF v_jobmon_schema IS NOT NULL THEN
-                PERFORM update_step(v_step_id, 'OK', format('Child table DROPPED. Moved %s rows to parent', COALESCE(v_rowcount, 0)));
-            END IF;
-        ELSE
-            IF v_jobmon_schema IS NOT NULL THEN
-                PERFORM update_step(v_step_id, 'OK', format('Child table UNINHERITED, not DROPPED. Copied %s rows to parent', COALESCE(v_rowcount, 0)));
-            END IF;
-        END IF;
-        v_undo_count := v_undo_count + 1;
-        CONTINUE;
-    END IF;
-
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, format('Removing child partition: %s.%s', v_parent_schema, v_child_table));
     END IF;
-   
-    -- do some locking with timeout, if required
+
+    -- lockwait timeout for table drop
+    v_lock_obtained := FALSE; -- reset for reuse in loop
     IF p_lock_wait > 0  THEN
         v_lock_iter := 0;
         WHILE v_lock_iter <= 5 LOOP
             v_lock_iter := v_lock_iter + 1;
             BEGIN
-                EXECUTE format('SELECT * FROM %I.%I FOR UPDATE NOWAIT', v_parent_schema,  v_child_table);
+                EXECUTE format('LOCK TABLE ONLY %I.%I IN ACCESS EXCLUSIVE MODE NOWAIT', v_parent_schema, v_child_table);
                 v_lock_obtained := TRUE;
             EXCEPTION
                 WHEN lock_not_available THEN
@@ -169,10 +144,10 @@ WHILE v_batch_loop_count < p_batch_count LOOP
             EXIT WHEN v_lock_obtained;
         END LOOP;
         IF NOT v_lock_obtained THEN
-           RAISE NOTICE 'Unable to obtain lock on batch of rows to move';
-           RETURN -1;
+            RAISE NOTICE 'Unable to obtain lock on child table for removal from partition set';
+            RETURN -1;
         END IF;
-    END IF;
+    END IF; -- END p_lock_wait IF
 
     v_copy_sql := format('INSERT INTO %I.%I SELECT * FROM %I.%I'
                             , v_parent_schema
@@ -198,9 +173,15 @@ WHILE v_batch_loop_count < p_batch_count LOOP
             PERFORM update_step(v_step_id, 'OK', format('Child table UNINHERITED, not DROPPED. Copied %s rows to parent', v_rowcount));
         END IF;
     END IF;
+
+    SELECT partition_type INTO v_type FROM @extschema@.part_config WHERE parent_table = p_parent_table;
+    IF v_type = 'time-custom' THEN
+        DELETE FROM @extschema@.custom_time_partitions WHERE parent_table = p_parent_table AND child_table = v_parent_schema||'.'||v_child_table;
+    END IF;
+
     v_batch_loop_count := v_batch_loop_count + 1;
-    v_undo_count := v_undo_count + 1;         
-END LOOP;
+    v_undo_count := v_undo_count + 1;
+END LOOP; -- v_batch_loop_count
 
 IF v_undo_count = 0 THEN
     -- FOR loop never ran, so there's no child tables left.
@@ -246,5 +227,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

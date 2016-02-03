@@ -1,7 +1,7 @@
 /*
  * Function to undo time-based partitioning created by this extension
  */
-CREATE FUNCTION undo_partition_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint
+CREATE FUNCTION undo_partition_time(p_parent_table text, p_batch_count int DEFAULT 1, p_batch_interval interval DEFAULT NULL, p_keep_table boolean DEFAULT true, p_lock_wait numeric DEFAULT 0) RETURNS bigint 
     LANGUAGE plpgsql SECURITY DEFINER
     AS $$
 DECLARE
@@ -105,7 +105,14 @@ SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_ta
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
-SELECT tgname INTO v_trig_name FROM pg_catalog.pg_trigger t WHERE tgname = v_trig_name;
+SELECT tgname INTO v_trig_name 
+FROM pg_catalog.pg_trigger t
+JOIN pg_catalog.pg_class c ON t.tgrelid = c.oid
+WHERE tgname = v_trig_name 
+AND c.relname = v_parent_tablename;
+
+SELECT proname INTO v_function_name FROM pg_catalog.pg_proc p JOIN pg_catalog.pg_namespace n ON p.pronamespace = n.oid WHERE n.nspname = v_parent_schema AND proname = v_function_name;
+
 IF v_trig_name IS NOT NULL THEN
     -- lockwait for trigger drop
     IF p_lock_wait > 0  THEN
@@ -131,18 +138,23 @@ IF v_trig_name IS NOT NULL THEN
 END IF; -- END trigger IF
 v_lock_obtained := FALSE; -- reset for reuse later
 
-EXECUTE format('DROP FUNCTION IF EXISTS %I.%I()', v_parent_schema, v_function_name);
+IF v_function_name IS NOT NULL THEN
+    EXECUTE format('DROP FUNCTION IF EXISTS %I.%I()', v_parent_schema, v_function_name);
+END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
-    PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');
+    IF (v_trig_name IS NOT NULL OR v_function_name IS NOT NULL) THEN
+        PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process. Removed trigger & trigger function');
+    ELSE
+        PERFORM update_step(v_step_id, 'OK', 'Stopped partition creation process.');
+    END IF;
 END IF;
 
 <<outer_child_loop>>
-WHILE v_batch_loop_count < p_batch_count LOOP 
-    -- Get ordered list of child table in set. Store in variable one at a time per loop until none are left.
+LOOP
     SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC');
 
-    EXIT WHEN v_child_table IS NULL;
+    EXIT outer_child_loop WHEN v_child_table IS NULL;
 
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, format('Removing child partition: %s.%s', v_parent_schema, v_child_table));
@@ -197,7 +209,8 @@ WHILE v_batch_loop_count < p_batch_count LOOP
             DELETE FROM @extschema@.custom_time_partitions WHERE parent_table = p_parent_table AND child_table = v_parent_schema||'.'||v_child_table;
         END IF;
         v_undo_count := v_undo_count + 1;
-        CONTINUE outer_child_loop;
+        EXIT outer_child_loop WHEN v_batch_loop_count >= p_batch_count; -- Exit outer FOR loop if p_batch_count is reached
+        CONTINUE outer_child_loop; -- skip data moving steps below
     END IF;
     v_inner_loop_count := 1;
     v_child_loop_total := 0;
@@ -260,12 +273,21 @@ WHILE v_batch_loop_count < p_batch_count LOOP
         EXIT inner_child_loop WHEN v_rowcount = 0; -- exit before loop incr if table is empty
         v_inner_loop_count := v_inner_loop_count + 1;
         v_batch_loop_count := v_batch_loop_count + 1;
+
+        -- Check again if table is empty and go to outer loop again to drop it if so
+        IF v_epoch = false THEN
+            EXECUTE format('SELECT min(%I) FROM %I.%I', v_control, v_parent_schema, v_child_table) INTO v_child_min;
+        ELSE 
+            EXECUTE format('SELECT to_timestamp(min(%I)) FROM %I.%I', v_control, v_parent_schema, v_child_table) INTO v_child_min;
+        END IF;
+        CONTINUE outer_child_loop WHEN v_child_min IS NULL;
+
         EXIT outer_child_loop WHEN v_batch_loop_count >= p_batch_count; -- Exit outer FOR loop if p_batch_count is reached
     END LOOP inner_child_loop;
 END LOOP outer_child_loop;
 
-IF v_batch_loop_count < p_batch_count THEN
-    -- FOR loop never ran, so there's no child tables left.
+SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC') LIMIT 1;
+IF v_child_table IS NULL THEN
     DELETE FROM @extschema@.part_config WHERE parent_table = p_parent_table;
     IF v_jobmon_schema IS NOT NULL THEN
         v_step_id := add_step(v_job_id, 'Removing config from pg_partman');

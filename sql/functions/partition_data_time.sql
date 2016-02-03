@@ -101,7 +101,6 @@ FOR i IN 1..p_batch_count LOOP
                 v_min_partition_timestamp := date_trunc('year', v_start_control);
         END CASE;
     ELSIF v_type = 'time-custom' THEN
-        -- Keep going backwards, checking if the time interval encompases the current v_start_control value
         v_time_position := (length(v_last_partition) - position('p_' in reverse(v_last_partition))) + 2;
         v_min_partition_timestamp := to_timestamp(substring(v_last_partition from v_time_position), v_datetime_string);
         v_max_partition_timestamp := v_min_partition_timestamp + v_partition_interval;
@@ -109,9 +108,17 @@ FOR i IN 1..p_batch_count LOOP
             IF v_start_control >= v_min_partition_timestamp AND v_start_control < v_max_partition_timestamp THEN
                 EXIT;
             ELSE
-                v_max_partition_timestamp := v_min_partition_timestamp;
                 BEGIN
-                    v_min_partition_timestamp := v_min_partition_timestamp - v_partition_interval;
+                    IF v_start_control > v_max_partition_timestamp THEN
+                        -- Keep going forward in time, checking if child partition time interval encompasses the current v_start_control value
+                        v_min_partition_timestamp := v_max_partition_timestamp;
+                        v_max_partition_timestamp := v_max_partition_timestamp + v_partition_interval;
+
+                    ELSE
+                        -- Keep going backwards in time, checking if child partition time interval encompasses the current v_start_control value
+                        v_max_partition_timestamp := v_min_partition_timestamp;
+                        v_min_partition_timestamp := v_min_partition_timestamp - v_partition_interval;
+                    END IF;
                 EXCEPTION WHEN datetime_field_overflow THEN
                     RAISE EXCEPTION 'Attempted partition time interval is outside PostgreSQL''s supported time range. 
                         Unable to create partition with interval before timestamp % ', v_min_partition_interval;
@@ -123,6 +130,7 @@ FOR i IN 1..p_batch_count LOOP
 
     v_partition_timestamp := ARRAY[v_min_partition_timestamp];
     IF p_order = 'ASC' THEN
+        -- Ensure batch interval given as parameter doesn't cause maximum to overflow the current partition maximum
         IF (v_start_control + p_batch_interval) >= (v_min_partition_timestamp + v_partition_interval) THEN
             v_max_partition_timestamp := v_min_partition_timestamp + v_partition_interval;
         ELSE
@@ -131,7 +139,7 @@ FOR i IN 1..p_batch_count LOOP
     ELSIF p_order = 'DESC' THEN
         -- Must be greater than max value still in parent table since query below grabs < max
         v_max_partition_timestamp := v_min_partition_timestamp + v_partition_interval;
-        -- Make sure minimum doesn't underflow current partition minimum
+        -- Ensure batch interval given as parameter doesn't cause minimum to underflow current partition minimum
         IF (v_start_control - p_batch_interval) >= v_min_partition_timestamp THEN
             v_min_partition_timestamp = v_start_control - p_batch_interval;
         END IF;

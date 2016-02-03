@@ -675,6 +675,7 @@ UPDATE part_config SET retention = '7 days', retention_keep_table = false WHERE 
 UPDATE part_config SET retention = NULL, retention_keep_table = false WHERE parent_table LIKE 'Partman_test.Time-taptest-Table_p%';
 
 SELECT run_maintenance();
+
 SELECT hasnt_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'6 weeks'::interval, 'IYYY"w"IW'), 
     'After retention Check Time-taptest-Table_'||to_char(CURRENT_TIMESTAMP-'6 weeks'::interval, 'IYYY"w"IW')||' does not exist');
 SELECT hasnt_table('Partman_test', 'Time-taptest-Table_p'||to_char(CURRENT_TIMESTAMP-'5 weeks'::interval, 'IYYY"w"IW'), 

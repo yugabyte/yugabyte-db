@@ -14,7 +14,7 @@ INSTALLATION
 ------------
 Requirement: PostgreSQL 9.4 or greater
 
-Recommended: pg_jobmon (>=v1.3.0). PG Job Monitor will automatically be used if it is installed and setup properly.
+Recommended: pg_jobmon (>=v1.3.2). PG Job Monitor will automatically be used if it is installed and setup properly.
 https://github.com/omniti-labs/pg_jobmon
 
 In the directory where you downloaded pg_partman, run
@@ -83,7 +83,7 @@ LICENSE AND COPYRIGHT
 
 PG Partition Manager (pg_partman) is released under the PostgreSQL License, a liberal Open Source license, similar to the BSD or MIT licenses.
 
-Copyright (c) 2015 OmniTI, Inc.
+Copyright (c) 2016 OmniTI, Inc.
 
 Permission to use, copy, modify, and distribute this software and its documentation for any purpose, without fee, and without a written agreement is hereby granted, provided that the above copyright notice and this paragraph and the following two paragraphs appear in all copies.
 

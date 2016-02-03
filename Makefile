@@ -15,7 +15,7 @@ ifneq ($(NO_BGW),)
 endif
 all: sql/$(EXTENSION)--$(EXTVERSION).sql
 
-sql/$(EXTENSION)--$(EXTVERSION).sql: sql/types/*.sql sql/tables/*.sql sql/functions/*.sql
+sql/$(EXTENSION)--$(EXTVERSION).sql: $(sort $(wildcard sql/types/*.sql)) $(sort $(wildcard sql/tables/*.sql)) $(sort $(wildcard sql/functions/*.sql))
 	cat $^ > $@
 
 DATA = $(wildcard updates/*--*.sql) sql/$(EXTENSION)--$(EXTVERSION).sql

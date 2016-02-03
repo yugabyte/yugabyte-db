@@ -131,45 +131,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
         , v_id + v_partition_interval);
     EXECUTE format('ALTER TABLE %I.%I INHERIT %I.%I', v_parent_schema, v_partition_name, v_parent_schema, v_parent_tablename);
 
-    FOR v_parent_grant IN 
-        SELECT array_agg(DISTINCT privilege_type::text ORDER BY privilege_type::text) AS types, grantee
-        FROM information_schema.table_privileges 
-        WHERE table_schema ||'.'|| table_name = p_parent_table
-        GROUP BY grantee 
-    LOOP
-        EXECUTE format('GRANT %s ON %I.%I TO %I'
-            , array_to_string(v_parent_grant.types, ',')
-            , v_parent_schema
-            , v_partition_name
-            , v_parent_grant.grantee);
-        SELECT string_agg(r, ',') INTO v_revoke FROM (SELECT unnest(v_all) AS r EXCEPT SELECT unnest(v_parent_grant.types)) x;
-        IF v_revoke IS NOT NULL THEN
-            EXECUTE format('REVOKE %s ON %I.%I FROM %I CASCADE'
-                , v_revoke
-                , v_parent_schema
-                , v_partition_name
-                , v_parent_grant.grantee);
-        END IF;
-        v_grantees := array_append(v_grantees, v_parent_grant.grantee::text);
-    END LOOP;
-    -- Revoke all privileges from roles that have none on the parent
-    IF v_grantees IS NOT NULL THEN
-        FOR v_row IN 
-            SELECT role FROM (
-                SELECT DISTINCT grantee::text AS role FROM information_schema.table_privileges WHERE table_schema = v_parent_schema AND table_name = v_partition_name
-                EXCEPT
-                SELECT unnest(v_grantees)) x
-        LOOP
-            IF v_row.role IS NOT NULL THEN
-                EXECUTE format('REVOKE ALL ON %I.%I FROM %I'
-                            , v_parent_schema
-                            , v_partition_name
-                            , v_row.role);
-            END IF;
-        END LOOP;
-    END IF;
-
-    EXECUTE format('ALTER TABLE %I.%I OWNER TO %I', v_parent_schema, v_partition_name, v_parent_owner);
+    PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
 
     IF v_inherit_fk THEN
         PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
@@ -296,5 +258,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

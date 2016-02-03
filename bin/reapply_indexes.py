@@ -139,6 +139,7 @@ def drop_index(conn, child_schemaname, child_tablename, child_index_list, parent
                 # if there is a parent index that matches the child index
                 # don't try to drop it - we'd just have to recreate it
                 chinddef = pat.search(d[0])
+                parent_found = False
                 for p in parent_index_list:
                     parent_found = False
                     parinddef = pat.search(p[0])

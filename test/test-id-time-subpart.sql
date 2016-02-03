@@ -536,22 +536,22 @@ SELECT is_empty('SELECT parent_table from part_config where parent_table = ''par
 -- Check top parent is still empty
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that top parent table has not had any data moved to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p10', ARRAY[10], 'Check count from subparent table');
-
+-- TODO Not returning result that pgtap can test. Unsure why.
+--SELECT results_eq('SELECT undo_partition_id(''partman_test.id_taptest_table'', 20, p_keep_table := false);', ARRAY[11], 'Check undo partition_id returns correct number of rows');
 SELECT undo_partition_id('partman_test.id_taptest_table', 20, p_keep_table := false);
 
-SELECT hasnt_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p60 does not exist');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p60 does not exist');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p60 does not exist');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p60 does not exist');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p40', 'Check id_taptest_table_p60 does not exist');
-SELECT hasnt_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p60 does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p30', 'Check id_taptest_table_p30 does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p40', 'Check id_taptest_table_p40 does not exist');
+SELECT hasnt_table('partman_test', 'id_taptest_table_p50', 'Check id_taptest_table_p50 does not exist');
 SELECT hasnt_table('partman_test', 'id_taptest_table_p60', 'Check id_taptest_table_p60 does not exist');
 
 SELECT is_empty('SELECT parent_table from part_config where parent_table = ''partman_test.id_taptest_table''', 
     'Check that partman_test.id_taptest_table was removed from part_config');
 
 SELECT results_eq('SELECT count(*)::int FROM ONLY partman_test.id_taptest_table', ARRAY[11], 'Check count from final unpartitioned table');
-
 SELECT * FROM finish();
 ROLLBACK;
 

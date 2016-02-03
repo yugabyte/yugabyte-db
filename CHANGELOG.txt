@@ -1,3 +1,15 @@
+2.2.3
+-- Fixed bug in partition_data_time() that would cause an infinite loop when moving data would require creating a new partition newer than the newest one. This would only occur when using a custom time interval. Infinite loop would also occur when using the partition_data.py python script (Github Issue #83).
+-- Properly handle the special PUBLIC role when granting/revoking privileges on child tables (Github Issue #66).
+-- Fixed python exception in reapply_indexes.py if the parent table has no indexes (Github Issue #86).
+-- Fixed all undo_partition functions to remove the child table in the same batch session when its rowcount reaches zero. Previously an extra batch may have been required to remove all child tables and remove config information after the last row was moved to the parent.
+-- Fixed undo_partition functions to be more strict on the triggers they drop and ensure they only drop the trigger on the target parent table.
+-- Fixed undo_partition() to properly remove entries from the custom_time_partitions config table if necessary. Also greatly simplified code in this function.
+-- Consolidated privilege management into new apply_privileges() internal function.
+-- Improved performance when applying parent privileges to child tables. Most noticable on larger partition sets with many grants. (Github Issue #78)
+-- Added a sort to the Makefile when creating the sql extension file. Allows more predictable output between builds (Github Push Request #16 from Mimeo extension).
+
+
 2.2.2
 -- Fixed infinite loop in reapply_indexes.py if the same index name would have been used more than once. Thanks to bougyman for tha bug report.
 -- Fixed indexes being applied to the parent table instead of the children in reapply_indexes.py (Github Push Request #73).
