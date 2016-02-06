@@ -9,5 +9,6 @@ packages=(
   liboauth-dev
   libsasl2-dev
   libtool
+  ntp
 )
 sudo apt-get install -y ${packages[@]}
