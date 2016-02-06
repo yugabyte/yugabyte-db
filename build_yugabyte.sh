@@ -2,10 +2,11 @@
 
 set -euxo pipefail
 
-build_dir=$( cd `dirname $0` && pwd )/build
+project_dir=$( cd `dirname $0` && pwd )
+build_dir="$project_dir/build/debug"
 
 mkdir -p "$build_dir"
 cd "$build_dir"
 
-cmake ..
+cmake "$project_dir"
 make
