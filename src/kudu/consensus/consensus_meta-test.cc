@@ -62,7 +62,7 @@ class ConsensusMetadataTest : public KuduTest {
  protected:
   // Assert that the given cmeta has a single configuration with the given metadata values.
   void AssertValuesEqual(const ConsensusMetadata& cmeta,
-                         int64_t opid_index, const string& permanant_uuid, int64_t term);
+                         int64_t opid_index, const string& permanent_uuid, int64_t term);
 
   FsManager fs_manager_;
   RaftConfigPB config_;
@@ -70,7 +70,7 @@ class ConsensusMetadataTest : public KuduTest {
 
 void ConsensusMetadataTest::AssertValuesEqual(const ConsensusMetadata& cmeta,
                                               int64_t opid_index,
-                                              const string& permanant_uuid,
+                                              const string& permanent_uuid,
                                               int64_t term) {
   // Sanity checks.
   ASSERT_TRUE(cmeta.committed_config().local());
@@ -78,7 +78,7 @@ void ConsensusMetadataTest::AssertValuesEqual(const ConsensusMetadata& cmeta,
 
   // Value checks.
   ASSERT_EQ(opid_index, cmeta.committed_config().opid_index());
-  ASSERT_EQ(permanant_uuid, cmeta.committed_config().peers().begin()->permanent_uuid());
+  ASSERT_EQ(permanent_uuid, cmeta.committed_config().peers().begin()->permanent_uuid());
   ASSERT_EQ(term, cmeta.current_term());
 }
 
@@ -89,6 +89,7 @@ TEST_F(ConsensusMetadataTest, TestCreateLoad) {
     gscoped_ptr<ConsensusMetadata> cmeta;
     ASSERT_OK(ConsensusMetadata::Create(&fs_manager_, kTabletId, fs_manager_.uuid(),
                                         config_, kInitialTerm, &cmeta));
+    ASSERT_VALUES_EQUAL(*cmeta, kInvalidOpIdIndex, fs_manager_.uuid(), kInitialTerm);
   }
 
   // Load the file.
