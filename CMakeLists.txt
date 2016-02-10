@@ -987,3 +987,5 @@ add_subdirectory(src/kudu/benchmarks)
 add_subdirectory(src/kudu/twitter-demo)
 add_subdirectory(src/kudu/tools)
 add_subdirectory(src/kudu/codegen)
+
+add_subdirectory(src/yugabyte)

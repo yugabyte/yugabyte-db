@@ -53,4 +53,10 @@ endif()
 
 # Tests
 set(KUDU_TEST_LINK_LIBS tpch ${KUDU_TEST_LINK_LIBS})
+
 ADD_KUDU_TEST(tpch/rpc_line_item_dao-test)
+
+add_executable(yb_load_test_tool yb_load_test_tool.cc)
+target_link_libraries(
+    yb_load_test_tool
+    ${KUDU_TEST_LINK_LIBS})
