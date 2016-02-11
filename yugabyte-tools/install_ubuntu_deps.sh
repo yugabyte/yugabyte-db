@@ -14,6 +14,7 @@ packages=(
   libsasl2-dev
   libtool
   ntp
+  pkg-config
   unzip
 )
 sudo apt-get install -y ${packages[@]}
