@@ -4,6 +4,7 @@ packages=(
   automake
   autotools-dev
   cmake
+  curl
   g++
   git
   libboost-dev
