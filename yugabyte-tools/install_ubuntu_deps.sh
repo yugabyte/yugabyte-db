@@ -5,6 +5,7 @@ packages=(
   autotools-dev
   cmake
   g++
+  git
   libboost-dev
   libboost-system-dev
   libboost-thread-dev
