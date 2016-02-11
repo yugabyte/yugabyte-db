@@ -3,6 +3,8 @@
 packages=(
   automake
   autotools-dev
+  cmake
+  g++
   libboost-dev
   libboost-system-dev
   libboost-thread-dev
