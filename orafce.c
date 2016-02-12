@@ -17,8 +17,17 @@ _PG_init(void)
 {
 	EmitWarningsOnPlaceholders("orafce");
 
-	RequestAddinShmemSpace(SHMEMMSGSZ);
+#if PG_VERSION_NUM >= 90600
+
+	RequestNamedLWLockTranche("orafce", 1);
+
+#else
+
 	RequestAddinLWLocks(1);
+
+#endif
+
+	RequestAddinShmemSpace(SHMEMMSGSZ);
 
 	/* Define custom GUC variables. */
 	DefineCustomStringVariable("orafce.nls_date_format",

@@ -235,7 +235,17 @@ ora_lock_shmem(size_t size, int max_pipes, int max_events, int max_locks, bool r
 
 		if (!found)
 		{
+
+#if PG_VERSION_NUM >= 90600
+
+			shmem_lock = sh_mem->shmem_lock = &(GetNamedLWLockTranche("orafce"))->lock;
+
+#else
+
 			shmem_lock = sh_mem->shmem_lock = LWLockAssign();
+
+#endif
+
 			LWLockAcquire(sh_mem->shmem_lock, LW_EXCLUSIVE);
 			sh_mem->size = size - sh_memory_size;
 			ora_sinit(sh_mem->data, size, true);
