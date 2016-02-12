@@ -16,10 +16,10 @@ thirdparty_built_flag_file="$PWD/built_thirdparty"
 
 if [ -f "$thirdparty_built_flag_file" ]; then
   export NO_REBUILT_THIRDPARTY=1
-  cmake "${cmake_args[@]}"
 fi
 
 cmake -DKUDU_LINK=dynamic "$project_dir"
+make -j8
 
 touch "$thirdparty_built_flag_file"
 
