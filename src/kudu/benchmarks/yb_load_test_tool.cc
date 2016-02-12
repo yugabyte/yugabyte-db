@@ -49,7 +49,7 @@ int main(int argc, char* argv[]) {
 
   KuduSchemaBuilder schemaBuilder;
   schemaBuilder.AddColumn("k")->PrimaryKey()->Type(KuduColumnSchema::STRING);
-  schemaBuilder.AddColumn("v")->PrimaryKey()->Type(KuduColumnSchema::STRING);
+  schemaBuilder.AddColumn("v")->Type(KuduColumnSchema::STRING);
   KuduSchema schema;
   CHECK_OK(schemaBuilder.Build(&schema));
 
