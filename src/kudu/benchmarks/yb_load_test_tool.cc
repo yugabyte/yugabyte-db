@@ -46,6 +46,16 @@ int main(int argc, char* argv[]) {
      .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
      .Build(&client));
   shared_ptr<KuduSession> session(client->NewSession());
+
+  KuduSchemaBuilder schemaBuilder;
+  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(KuduColumnSchema::STRING);
+  schemaBuilder.AddColumn("v")->PrimaryKey()->Type(KuduColumnSchema::STRING);
+  KuduSchema schema;
+  CHECK_OK(schemaBuilder.Build(&schema));
+
+  gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
+  CHECK_OK(table_creator->table_name("yb_test").schema(&schema).Create());
+
   CHECK_OK(session->Close());
   LOG(INFO) << "Test completed";
   return 0;
