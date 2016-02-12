@@ -19,6 +19,7 @@ if [ -f "$thirdparty_built_flag_file" ]; then
 fi
 
 cmake -DKUDU_LINK=dynamic "$project_dir"
+make -j8
 
 touch "$thirdparty_built_flag_file"
 
