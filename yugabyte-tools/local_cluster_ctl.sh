@@ -33,7 +33,15 @@ validate_daemon_type() {
   if [[ ! "$daemon_type" =~ ^(master|tserver)$ ]]; then
     echo "Internal error: expected daemon type to be 'master' or 'tserver', got '$daemon_type'" >&2
     exit 1
-  fi  
+  fi
+}
+
+validate_daemon_index() {
+  local daemon_index=$1
+  if [[ ! "$daemon_index" =~ ^[0-9]+ ]]; then
+    echo "Internal error: invalid daemon index '$daemon_index'" >&2
+    exit 1
+  fi
 }
 
 create_directories() {
@@ -71,10 +79,7 @@ find_daemon_pid() {
   local daemon_type="$1"
   validate_daemon_type "$daemon_type"
   local daemon_index="$2"
-  if [[ ! "$daemon_index" =~ ^[0-9]+ ]]; then
-    echo "Internal error: invalid daemon index '$daemon_index'" >&2
-    exit 1
-  fi
+  validate_daemon_index "$daemon_index"
   local rpc_port_base
   case "$daemon_type" in
     master) rpc_port_base=$master_rpc_port_base ;;
@@ -90,6 +95,33 @@ find_daemon_pid() {
   )
   set -e
   echo "$daemon_pid"
+}
+
+stop_daemon() {
+  local daemon_type=$1
+  validate_daemon_type "$daemon_type"
+  local daemon_index=$2
+  validate_daemon_index "$daemon_index"
+  local daemon_pid=$( find_daemon_pid "$daemon_type" "$daemon_index" )
+  if [ -n "$daemon_pid" ]; then
+    echo "Killing $daemon_type $i (pid $daemon_pid)"
+    ( set -x; kill $daemon_pid )
+  else
+    echo "$daemon_type $i already stopped"
+  fi
+}
+
+show_daemon_status() {
+  local daemon_type=$1
+  validate_daemon_type "$daemon_type"
+  local daemon_index=$2
+  validate_daemon_index "$i"
+  local daemon_pid=$( find_daemon_pid "$daemon_type" "$daemon_index" )
+  if [ -n "$daemon_pid" ]; then
+    echo "$daemon_type $daemon_index is running as pid $daemon_pid"
+  else
+    echo "$daemon_type $daemon_index is not running"
+  fi
 }
 
 cmd=""
@@ -237,25 +269,21 @@ if [ "$cmd" == "start" ]; then
   done
 elif [ "$cmd" == "stop" ]; then
   for i in $master_indexes; do
-    master_pid=$( find_daemon_pid master $i )
-    if [ -n "$master_pid" ]; then
-      echo "Killing master $i (pid $master_pid)"
-      ( set -x; kill $master_pid )
-    else
-      echo "Master $i already stopped"
-    fi
+    stop_daemon "master" $i
   done
 
   for i in $tserver_indexes; do
-    tserver_pid=$( find_daemon_pid tserver $i )
-    if [ -n "$tserver_pid" ]; then
-      echo "Killing tablet server $i (pid $tserver_pid)"
-      ( set -x; kill $tserver_pid )
-    else
-      echo "Tablet server $i already stopped"
-    fi
+    stop_daemon "tserver" $i
+  done
+elif [ "$cmd" == "status" ]; then
+  for i in $master_indexes; do
+    show_daemon_status "master" $i
+  done
+
+  for i in $tserver_indexes; do
+    show_daemon_status "tserver" $i
   done
 else
-  echo "The '$cmd' command has not been implemented yet" >&2
+  echo "Command $cmd has not been implemented yet" >&2
   exit 1
 fi
