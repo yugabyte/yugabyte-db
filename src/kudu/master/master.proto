@@ -109,7 +109,7 @@ message SysTabletsEntryPB {
   // Tablet partition.
   optional PartitionPB partition = 7;
 
-  // The latest committed consensus configuration consensus configuration reported to the Master.
+  // The latest committed consensus configuration reported to the Master.
   optional consensus.ConsensusStatePB committed_consensus_state = 3;
 
   // Debug state for the tablet.
