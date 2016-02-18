@@ -1,16 +1,20 @@
 -- ########## ID PARENT / ID SUBPARENT / ID SUB-SUB-PARENT ##########
 -- May have to increase max_locks_per_transaction above the default 64 for this test to run properly
+-- Additional tests: Cluster index
 \set ON_ERROR_ROLLBACK 1
 \set ON_ERROR_STOP true
 
 BEGIN;
 SELECT set_config('search_path','partman, public',false);
 
-SELECT plan(3086);
+SELECT plan(3096);
 CREATE SCHEMA partman_test;
 
 CREATE TABLE partman_test.id_taptest_table (col1 int primary key, col2 text default 'stuff', col3 timestamptz NOT NULL DEFAULT now());
+ALTER TABLE partman_test.id_taptest_table CLUSTER ON id_taptest_table_pkey;
 INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(1,100000));
+-- larger insert for testing partition/undo scripts
+--INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(100001,2000000));
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10000', p_use_run_maintenance := true, p_jobmon := false, p_premake := 2);
 
 SELECT has_table('partman_test', 'id_taptest_table_p100000', 'Check id_taptest_table_p100000 exists');
@@ -19,7 +23,19 @@ SELECT has_table('partman_test', 'id_taptest_table_p120000', 'Check id_taptest_t
 SELECT has_table('partman_test', 'id_taptest_table_p90000', 'Check id_taptest_table_p90000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p80000', 'Check id_taptest_table_p80000 exists');
 
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p100000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p100000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p110000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p110000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p120000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p120000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p90000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p90000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p80000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p80000_pkey is clustered');
+
 SELECT results_eq('SELECT partition_data_id(''partman_test.id_taptest_table'', p_batch_count := 20)::int', ARRAY[100000], 'Check that partitioning function returns correct count of rows moved');
+
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had data moved to partition');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[100000], 'Check count from parent table');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table_p0', ARRAY[9999], 'Check count from id_taptest_table_p0');
@@ -46,6 +62,18 @@ SELECT has_table('partman_test', 'id_taptest_table_p100000_p100000', 'Check id_t
 SELECT has_table('partman_test', 'id_taptest_table_p100000_p101000', 'Check id_taptest_table_p100000_p101000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p100000_p102000', 'Check id_taptest_table_p100000_p102000 exists');
 
+-- This should be enough cluster testing. If it worked above and here, should work for remaining subpartitioning
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p90000_p98000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p90000_p98000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p90000_p99000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p90000_p99000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p100000_p100000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p100000_p100000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p100000_p101000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p100000_p101000_pkey is clustered');
+SELECT results_eq('SELECT i.indisclustered::text FROM pg_class c JOIN pg_index i ON c.oid = i.indexrelid WHERE c.relname = ''id_taptest_table_p100000_p102000_pkey''', ARRAY['true'],
+    'Check that id_taptest_table_p100000_p102000_pkey is clustered');
+
 -- Tests that ensure minimal partition was made in all sets
 SELECT has_table('partman_test', 'id_taptest_table_p0_p0', 'Check id_taptest_table_p0_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10000_p10000', 'Check id_taptest_table_p10000_p10000 exists');
@@ -58,7 +86,6 @@ SELECT has_table('partman_test', 'id_taptest_table_p70000_p70000', 'Check id_tap
 SELECT has_table('partman_test', 'id_taptest_table_p80000_p80000', 'Check id_taptest_table_p80000_p80000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p110000_p110000', 'Check id_taptest_table_p110000_p110000 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p120000_p120000', 'Check id_taptest_table_p120000_p120000 exists');
-
 
 -- Partition all data again
 SELECT results_eq('SELECT partition_data_id(''partman_test.id_taptest_table_p0'', p_batch_count := 20)::int', ARRAY[9999], 'Check that partitioning function returns correct count of rows moved for id_taptest_table_p0');

@@ -67,7 +67,11 @@ END IF;
 -- Determine if this table is a child of a subpartition parent. If so, get limits of what child tables can be created based on parent suffix
 SELECT sub_min::bigint, sub_max::bigint INTO v_sub_id_min, v_sub_id_max FROM @extschema@.check_subpartition_limits(p_parent_table, 'id');
 
-SELECT tableowner, schemaname, tablename, tablespace INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT tableowner, schemaname, tablename, tablespace 
+INTO v_parent_owner, v_parent_schema, v_parent_tablename, v_parent_tablespace 
+FROM pg_catalog.pg_tables 
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN CREATE TABLE: %s', p_parent_table));
@@ -133,6 +137,8 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
 
     PERFORM @extschema@.apply_privileges(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name, v_job_id);
 
+    PERFORM @extschema@.apply_cluster(v_parent_schema, v_parent_tablename, v_parent_schema, v_partition_name);
+
     IF v_inherit_fk THEN
         PERFORM @extschema@.apply_foreign_keys(p_parent_table, v_parent_schema||'.'||v_partition_name, v_job_id);
     END IF;
@@ -145,20 +151,21 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
     -- This seemed easier than assigning a bunch of variables then doing an IF condition
     FOR v_row IN 
         SELECT sub_parent
-            , sub_control
             , sub_partition_type
+            , sub_control
             , sub_partition_interval
             , sub_constraint_cols
             , sub_premake
+            , sub_optimize_trigger
+            , sub_optimize_constraint
+            , sub_epoch
             , sub_inherit_fk
             , sub_retention
             , sub_retention_schema
             , sub_retention_keep_table
             , sub_retention_keep_index
             , sub_use_run_maintenance
-            , sub_epoch
-            , sub_optimize_trigger
-            , sub_optimize_constraint
+            , sub_infinite_time_partitions
             , sub_jobmon
         FROM @extschema@.part_config_sub
         WHERE sub_parent = p_parent_table
@@ -195,6 +202,7 @@ FOREACH v_id IN ARRAY p_partition_ids LOOP
             , retention_keep_index = v_row.sub_retention_keep_index
             , optimize_trigger = v_row.sub_optimize_trigger
             , optimize_constraint = v_row.sub_optimize_constraint
+            , infinite_time_partitions = v_row.sub_infinite_time_partitions
         WHERE parent_table = v_parent_schema||'.'||v_partition_name;
 
         IF v_jobmon_schema IS NOT NULL THEN

@@ -9,9 +9,11 @@ If you attempt to insert data into a partition set that contains data for a part
 
 Note that future child table creation is based on the data currently in the partition set for both time & serial partitioning. This means that if you put "future" data into a partition set, newly created tables will be based off that value. This may cause intervening data to go to the parent as stated above if no child table exists. It is recommended that you set the `premake` value high enough to encompass your expected data range being inserted and the `optimize_trigger` value to efficiently handle your most frequent data range. See below for further explanations on these configuration values.
 
+If you have an existing partition set and you'd like to migrate it to pg_partman, please see the migration.md file in the doc folder.
+
 ### Child Table Property Inheritance
 
-For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, etc), foreign keys (optional), tablespace, constraints, privileges & ownership. This also includes the OID and UNLOGGED table properties. For managing privileges, whenever a new partition is created it will obtain its privilege & ownership information from what the parent has at that time. Previous partition privileges are not changed. If previous partitions require that their privileges be updated, a separate function is available. This is kept as a separate process due to being an expensive operation when the partition set grows larger. The defaults, indexes, tablespace & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
+For this extension, most of the attributes of the child partitions are all obtained from the original parent. This includes defaults, indexes (primary keys, unique, clustering, etc), foreign keys (optional), tablespace, constraints, privileges & ownership. This also includes the OID and UNLOGGED table properties. For managing privileges, whenever a new partition is created it will obtain its privilege & ownership information from what the parent has at that time. Previous partition privileges are not changed. If previous partitions require that their privileges be updated, a separate function is available. This is kept as a separate process due to being an expensive operation when the partition set grows larger. The defaults, indexes, tablespace & constraints on the parent are only applied to newly created partitions and are not retroactively set on ones that already existed. While you would not normally create indexes on the parent of a partition set, doing so makes it much easier to manage in this case. There will be no data in the parent table (if everything is working right), so they will not take up any space or have any impact on system performance. Using the parent table as a control to the details of the child tables like this gives a better place to manage things that's a little more natural than a configuration table or using setup functions.
 
 ### Sub-partitioning
 
@@ -115,7 +117,7 @@ As a note for people that were not aware, you can name arguments in function cal
  * `p_use_run_maintenance` - Used to tell partman whether you'd like to override the default way that child partitions are created. Set this value to TRUE to allow you to use the `run_maintenance()` function, without any table paramter, to create new child tables for serial partitioning instead of using 50% method mentioned above. Time based partitining MUST use `run_maintenance()`, so either leave this value true or call the `run_maintenance()` function directly on a partition set by passing the parent table as a parameter. See **run_mainteanance** in Maintenance Functions section below for more info.
  * `p_start_partition` - allows the first partition of a set to be specified instead of it being automatically determined. Must be a valid timestamp (for time-based) or positive integer (for id-based) value. Be aware, though, the actual paramater data type is text. For time-based partitioning, all partitions starting with the given timestamp up to CURRENT_TIMESTAMP (plus `premake`) will be created. For id-based partitioning, only the partition starting at the given value (plus `premake`) will be made. 
  * `p_inherit_fk` - allows `pg_partman` to automatically manage inheriting any foreign keys that exist on the parent table to all its children. Defaults to TRUE.
- * `p_epoch` - tells `pg_partman` that the control column is an integer type, but actually represents and epoch time value. All triggers, constraints & table names will be time-based.
+ * `p_epoch` - tells `pg_partman` that the control column is an integer type, but actually represents and epoch time value. All triggers, constraints & table names will be time-based. Be sure you create a functional, time-based index on the control column (to_timestamp(controlcolumn)) so this works efficiently.
  * `p_jobmon` - allow `pg_partman` to use the `pg_jobmon` extension to monitor that partitioning is working correctly. Defaults to TRUE.
  * `p_debug` - turns on additional debugging information.
 
@@ -329,13 +331,13 @@ The rest are managed by the extension itself and should not be changed unless ab
 
  - `parent_table`
     - Parent table of the partition set
+ - `control`
+    - Column used as the control for partition constraints. Must be a time or integer based column.
  - `partition_type`
     - Type of partitioning. Must be one of the types mentioned above in the `create_parent()` info.
  - `partition_interval`
     - Text type value that determines the interval for each partition. 
     - Must be a value that can either be cast to the interval or bigint data types.
- - `control`
-    - Column used as the control for partition constraints. Must be a time or integer based column.
  - `constraint_cols`
     - Array column that lists columns to have additional constraints applied. See **About** section for more information on how this feature works.
  - `premake`
@@ -361,6 +363,10 @@ The rest are managed by the extension itself and should not be changed unless ab
  - `retention_keep_index`
     - Boolean value to determine whether indexes are dropped for child tables that are uninherited. 
     - Default is TRUE. Set to FALSE to have the child table's indexes dropped when it is uninherited.
+ - `infinite_time_partitions`
+    - By default, new partitions in a time-based set will not be created if new data is not inserted to keep an infinte amount of empty tables from being created.
+    - If you'd still like new partitions to be made despite there being no new data, set this to TRUE. 
+    - Defaults to FALSE.
  - `datetime_string`
     - For time-based partitioning, this is the datetime format string used when naming child partitions. 
  - `use_run_maintenance`

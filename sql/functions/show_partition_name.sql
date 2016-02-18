@@ -33,7 +33,10 @@ IF v_type IS NULL THEN
     RAISE EXCEPTION 'Parent table given is not managed by pg_partman (%)', p_parent_table;
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 IF v_parent_tablename IS NULL THEN
     RAISE EXCEPTION 'Parent table given does not exist (%)', p_parent_table;
 END IF;
@@ -100,7 +103,10 @@ ELSIF v_type = 'time-custom' THEN
     END IF;
 END IF;
 
-SELECT schemaname, tablename INTO v_child_exists FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = partition_table;
+SELECT tablename INTO v_child_exists
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(partition_table, '.', 1)
+AND tablename = split_part(partition_table, '.', 2);
 
 IF v_child_exists IS NOT NULL THEN
     table_exists := true;
@@ -112,5 +118,4 @@ RETURN;
 
 END
 $$;
-
 

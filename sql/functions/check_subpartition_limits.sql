@@ -9,6 +9,8 @@ DECLARE
 
 v_datetime_string       text;
 v_id_position           int;
+v_parent_schema         text;
+v_parent_tablename      text;
 v_partition_interval    interval;
 v_quarter               text;
 v_sub_id_max            bigint;
@@ -24,6 +26,11 @@ v_year                  text;
 
 BEGIN
 
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
+
 -- CTE query is done individually for each type (time, id) because it should return NULL if the top parent is not the same type in a subpartition set (id->time or time->id)
 
 IF p_type = 'id' THEN
@@ -33,7 +40,8 @@ IF p_type = 'id' THEN
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname||'.'||c.relname = p_parent_table
+        WHERE n.nspname = v_parent_schema
+        AND c.relname = v_parent_tablename
     ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.partition_interval, p.partition_type
       INTO v_top_parent, v_top_datetime_string, v_top_interval, v_top_type
       FROM pg_catalog.pg_class c
@@ -58,7 +66,8 @@ ELSIF p_type = 'time' THEN
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_inherits i ON c.oid = i.inhrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname||'.'||c.relname = p_parent_table
+        WHERE n.nspname = v_parent_schema
+        AND c.relname = v_parent_tablename
     ) SELECT n.nspname||'.'||c.relname, p.datetime_string, p.partition_interval, p.partition_type
       INTO v_top_parent, v_top_datetime_string, v_top_interval, v_top_type
       FROM pg_catalog.pg_class c
@@ -101,3 +110,4 @@ RETURN;
 
 END
 $$;
+

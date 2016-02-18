@@ -25,6 +25,7 @@ GRANT SELECT,INSERT,UPDATE ON partman_test.id_taptest_table TO partman_basic;
 GRANT ALL ON partman_test.id_taptest_table TO partman_revoke;
 
 SELECT create_parent('partman_test.id_taptest_table', 'col1', 'id', '10', '{"col3"}', p_use_run_maintenance := true);
+UPDATE part_config SET optimize_constraint = 4 WHERE parent_table = 'partman_test.id_taptest_table';
 SELECT has_table('partman_test', 'id_taptest_table_p0', 'Check id_taptest_table_p0 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p10', 'Check id_taptest_table_p10 exists');
 SELECT has_table('partman_test', 'id_taptest_table_p20', 'Check id_taptest_table_p20 exists');
@@ -91,7 +92,7 @@ INSERT INTO partman_test.id_taptest_table (col1) VALUES (generate_series(30,60))
 SELECT run_maintenance();
 
 -- Check for additional constraint on date column
-SELECT col_has_check('partman_test', 'id_taptest_table_p0', 'col3', 'Check for additional constraint on col3 on id_taptest_table_p0');
+SELECT col_has_check('partman_test', 'id_taptest_table_p10', 'col3', 'Check for additional constraint on col3 on id_taptest_table_p10');
 
 SELECT is_empty('SELECT * FROM ONLY partman_test.id_taptest_table', 'Check that parent table has had no data inserted to it');
 SELECT results_eq('SELECT count(*)::int FROM partman_test.id_taptest_table', ARRAY[56], 'Check count from id_taptest_table');

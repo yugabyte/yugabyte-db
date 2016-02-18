@@ -76,7 +76,10 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, format('Creating partition function for table %s', p_parent_table));
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
@@ -309,7 +312,10 @@ ELSIF v_type = 'time-custom' THEN
 
     v_trig_func := v_trig_func || '
 
-        SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename FROM pg_catalog.pg_tables WHERE schemaname ||''.''|| tablename = v_child_table;
+        SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename 
+        FROM pg_catalog.pg_tables 
+        WHERE schemaname = split_part(v_child_table, ''.'', 1)
+        AND tablename = split_part(v_child_table, ''.'', 2);
         IF v_child_schemaname IS NOT NULL AND v_child_tablename IS NOT NULL THEN
             EXECUTE format(''INSERT INTO %I.%I VALUES ($1.*)'', v_child_schemaname, v_child_tablename) USING NEW;
         ELSE
@@ -356,5 +362,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

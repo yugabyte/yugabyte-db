@@ -19,6 +19,7 @@ RETURNS TABLE (sub_partition_type text
         , sub_epoch boolean
         , sub_optimize_trigger int
         , sub_optimize_constraint int
+        , sub_infinite_time_partitions boolean
         , sub_jobmon boolean)
 LANGUAGE sql STABLE SECURITY DEFINER
 AS $$
@@ -27,7 +28,8 @@ AS $$
         SELECT c1.oid
         FROM pg_catalog.pg_class c1 
         JOIN pg_catalog.pg_namespace n1 ON c1.relnamespace = n1.oid
-        WHERE n1.nspname||'.'||c1.relname = p_parent_table
+        WHERE n1.nspname = split_part(p_parent_table, '.', 1)
+        AND c1.relname = split_part(p_parent_table, '.', 2)
     )
     , child_tables AS (
         SELECT n.nspname||'.'||c.relname AS tablename
@@ -51,6 +53,7 @@ AS $$
         , a.sub_epoch
         , a.sub_optimize_trigger
         , a.sub_optimize_constraint
+        , a.sub_infinite_time_partitions
         , a.sub_jobmon
     FROM @extschema@.part_config_sub a
     JOIN child_tables b on a.sub_parent = b.tablename;

@@ -75,13 +75,14 @@ def get_partman_schema(conn):
     return partman_schema
 
 
-def get_optimize_value(conn, partman_schema):
+def get_config_values(conn, partman_schema):
+    # [0] = premake, [1] = optimize_constraint
     cur = conn.cursor()
-    sql = "SELECT optimize_constraint FROM " + partman_schema + ".part_config WHERE parent_table = %s"
+    sql = "SELECT premake, optimize_constraint FROM " + partman_schema + ".part_config WHERE parent_table = %s"
     cur.execute(sql, [args.parent])
-    optimize_constraint = int(cur.fetchone()[0])
+    config_values = cur.fetchone()
     cur.close()
-    return optimize_constraint
+    return config_values 
 
 
 def get_quoted_parent_table(conn):
@@ -127,11 +128,12 @@ if __name__ == "__main__":
     partman_schema = get_partman_schema(main_conn)
     quoted_parent_table = get_quoted_parent_table(main_conn)
     child_list = get_children(main_conn, partman_schema)
-    optimize_constraint = get_optimize_value(main_conn, partman_schema)
-
+    config_values = get_config_values(main_conn, partman_schema)
+    premake = int(config_values[0])
+    optimize_constraint = int(config_values[1])
     if args.add_constraints:
         # Remove tables from the list of child tables that shouldn't have constraints yet 
-        for x in range((optimize_constraint * 2) + 1):
+        for x in range(optimize_constraint + premake + 1):
             child_list.pop()
 
     if args.jobs == 0:

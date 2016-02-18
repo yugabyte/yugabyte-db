@@ -29,7 +29,10 @@ IF v_jobmon THEN
     SELECT nspname INTO v_jobmon_schema FROM pg_namespace n, pg_extension e WHERE e.extname = 'pg_jobmon' AND e.extnamespace = n.oid;
 END IF;
 
-SELECT schemaname, tablename  INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 IF v_parent_tablename IS NULL THEN
     RAISE EXCEPTION 'Given parent table does not exist: %', p_parent_table;
 END IF;

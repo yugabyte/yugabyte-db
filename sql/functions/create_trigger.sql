@@ -12,7 +12,10 @@ v_trig_sql              text;
 
 BEGIN
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
 -- Ensure function name matches the naming pattern
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
@@ -27,5 +30,4 @@ EXECUTE v_trig_sql;
 
 END
 $$;
-
 

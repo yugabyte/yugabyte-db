@@ -52,8 +52,12 @@ IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
 END IF;
 
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
+
 SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(p_parent_table, 'DESC') LIMIT 1;
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 
 FOR i IN 1..p_batch_count LOOP
 

@@ -98,10 +98,15 @@ IF p_batch_interval IS NULL THEN
     p_batch_interval := v_partition_interval;
 END IF;
 
+SELECT schemaname, tablename 
+INTO v_parent_schema, v_parent_tablename 
+FROM pg_catalog.pg_tables 
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
+
 -- Stops new time partitons from being made as well as stopping child tables from being dropped if they were configured with a retention period.
 UPDATE @extschema@.part_config SET undo_in_progress = true WHERE parent_table = p_parent_table;
 -- Stop data going into child tables.
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
 v_trig_name := @extschema@.check_name_length(p_object_name := v_parent_tablename, p_suffix := '_part_trig'); 
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
@@ -152,7 +157,9 @@ END IF;
 
 <<outer_child_loop>>
 LOOP
-    SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC');
+    -- Get ordered list of child table in set. Store in variable one at a time per loop until none are left or batch count is reached.
+    -- This easily allows it to loop over same child table until empty or move onto next child table after it's dropped
+    SELECT partition_tablename INTO v_child_table FROM @extschema@.show_partitions(p_parent_table, 'ASC') LIMIT 1;
 
     EXIT outer_child_loop WHEN v_child_table IS NULL;
 

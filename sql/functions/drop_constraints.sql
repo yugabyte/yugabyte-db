@@ -44,7 +44,13 @@ IF v_jobmon THEN
     END IF;
 END IF;
 
-SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_child_table;
+SELECT schemaname, tablename INTO v_child_schemaname, v_child_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_child_table, '.', 1)
+AND tablename = split_part(p_child_table, '.', 2);
+IF v_child_tablename IS NULL THEN
+    RAISE EXCEPTION 'Unable to find given child table in system catalogs: %', p_child_table;
+END IF;
 
 IF v_jobmon_schema IS NOT NULL THEN
     v_job_id := add_job(format('PARTMAN DROP CONSTRAINT: %s', p_parent_table));
@@ -66,7 +72,7 @@ LOOP
         AND con.conname LIKE 'partmanconstr_%'
         AND con.contype = 'c' 
         AND a.attname = v_col
-        AND ARRAY[a.attnum] <@ con.conkey 
+        AND ARRAY[a.attnum] OPERATOR(pg_catalog.<@) con.conkey
         AND a.attisdropped = false;
 
     IF v_existing_constraint_name IS NOT NULL THEN
@@ -118,5 +124,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

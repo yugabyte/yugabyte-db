@@ -1,3 +1,36 @@
+2.3.0
+-- New migration documentation (doc/migration.md) to provide assistance changing an existing partition set to be used by pg_partman. Note that pg_partman does not support having child table names that do not comply with its naming convention.
+
+-- Added new configuration option to configuration table for time-based partitioning: infinite_time_partitions (Github Pull Request 84)
+    -- By default, if no new data is being inserted, no new partitions are created. This keeps pg_partman from creating new, empty tables infinitely when data insertion has stopped.
+    -- Setting this value to true in part_config or part_config_sub will tell pg_partman to continue making partitions forever with time-based partitioning, even if there's no new data
+    -- Note that serial/id partition is not affected by this and will only make new partitions if new data is being inserted.
+
+-- Implemented the clustering work done in fork by https://github.com/dturon/pg_partman
+    -- If a parent table is set to cluster on a specific index, that clustering property will be inherited to all children. 
+    -- This does NOT actually cluster the table data, it only inherits the cluster property so that if/when CLUSTER is run on the partition set, it will use a default. 
+    -- Note that FILLFACTOR is not inherited at this time, so adjust your re-cluster schedule accordingly.
+
+-- Optimized catalog lookups throughout many functions to improve performance on databases with many tables (Github Issue 87). 
+    -- For custom time partition sets, their trigger function has had this optimization applied (normal time & id did not have this issue). The next time a child partition is created, the new function will be put in place. If you need it immediately, run: create_function_time('parent_table').
+
+-- Changed the "optimize_constraints" config option to calculate the "old" partition based on what the current partition is instead of the data contained in the partition set. For time series with the new infinite option above set, this means the "current" partition is always moving forward despite no new data. This returns it to the behaviour it had before v2.2.0. The reapply_constraints.py script had not been updated properly to account for the new config option and was not calculating the "old" tables properly at all (it was looking for tables much further in the past than intended) (Github Issue #89).
+
+-- New python script to provide additional VACUUM maintenance to help avoid needless vacuums and transaction id wraparound issues: vacuum_maintenance.py
+    -- The script checks the age(relfrozenid) value of all tables in a partition set (parent & children) and runs a VACUUM on them if they are higher than vacuum_freeze_min_age.
+    -- Passing the --freeze option will run a VACUUM FREEZE on all tables in a set that match the above criteria. 
+    -- Passing the --full option does the same as above, but runs VACUUM FULL instead. Note this will lock all tables it is vacuuming, possibly even the parent, so review the --dryrun list before running it. 
+    -- An explanation for the necessity of using this script is far beyond what can be written in a CHANGELOG or the script help itself. Google is your friend. Basically if you have old, static child tables that will never be dropped, it is highly recommend you run this occasionally with the --freeze option to avoid future database maintenance issues.
+
+-- Pulled in bugfix for using the intarray contrib extension in conjunction with constraint management (Github Pull Request #88).
+-- Pulled in bugfix for using bigint instead of int type for variable in apply_constraints() (Github Pull Request #90).
+-- Fixed bug that may have caused serial trigger function to not contain all optimized child table conditions. No write failures would have occurred, just slower than expected performance.
+
+-- Fixed bug in partition_data.py & undo_partition.py that would cause either to throw an error and then not reset autovacuum if script was interrupted (Ctrl+C) (Github Issue #92).
+    -- They also now properly handle SIGTERM to reset autovac as well.
+    -- Note that disabling/enabling autovac now requires an extra available connection to the database.
+
+
 2.2.3
 -- Fixed bug in partition_data_time() that would cause an infinite loop when moving data would require creating a new partition newer than the newest one. This would only occur when using a custom time interval. Infinite loop would also occur when using the partition_data.py python script (Github Issue #83).
 -- Properly handle the special PUBLIC role when granting/revoking privileges on child tables (Github Issue #66).

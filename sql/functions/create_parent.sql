@@ -1,7 +1,7 @@
 /*
  * Function to turn a table into the parent of a partition set
  */
-CREATE FUNCTION create_parent(
+CREATE REPLACE FUNCTION create_parent(
     p_parent_table text
     , p_control text
     , p_type text
@@ -26,7 +26,8 @@ ex_message                      text;
 v_base_timestamp                timestamp;
 v_count                         int := 1;
 v_datetime_string               text;
-v_higher_parent                 text := p_parent_table;
+v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
+v_higher_parent_table           text := split_part(p_parent_table, '.', 2);
 v_id_interval                   bigint;
 v_id_position                   int;
 v_job_id                        bigint;
@@ -54,9 +55,8 @@ v_success                       boolean := false;
 v_time_interval                 interval;
 v_time_position                 int;
 v_top_datetime_string           text;
-v_top_parent                    text := p_parent_table;
-v_top_schemaname                text;
-v_top_tablename                 text;
+v_top_parent_schema             text := split_part(p_parent_table, '.', 1);
+v_top_parent_table              text := split_part(p_parent_table, '.', 2);
 
 BEGIN
 
@@ -64,9 +64,12 @@ IF position('.' in p_parent_table) = 0  THEN
     RAISE EXCEPTION 'Parent table must be schema qualified';
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname || '.' || tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
     IF v_parent_tablename IS NULL THEN
-        RAISE EXCEPTION 'Please create given parent table first: %', p_parent_table;
+        RAISE EXCEPTION 'Unable to find given parent table in system catalogs. Please create parent table first: %', p_parent_table;
     END IF;
 
 SELECT attnotnull INTO v_notnull 
@@ -145,6 +148,7 @@ FOR v_row IN
         , sub_epoch
         , sub_optimize_trigger
         , sub_optimize_constraint
+        , sub_infinite_time_partitions
         , sub_jobmon
     FROM @extschema@.part_config_sub a
     JOIN sibling_children b on a.sub_parent = b.tablename LIMIT 1
@@ -165,6 +169,7 @@ LOOP
         , sub_epoch
         , sub_optimize_trigger
         , sub_optimize_constraint
+        , sub_infinite_time_partitions
         , sub_jobmon)
     VALUES (
         p_parent_table
@@ -182,6 +187,7 @@ LOOP
         , v_row.sub_epoch
         , v_row.sub_optimize_trigger
         , v_row.sub_optimize_constraint
+        , v_row.sub_infinite_time_partitions
         , v_row.sub_jobmon);
 END LOOP;
 
@@ -314,13 +320,13 @@ IF p_type = 'time' OR p_type = 'time-custom' THEN
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = v_parent_tablename
             AND n.nspname = v_parent_schema
-        ) SELECT n.nspname||'.'||c.relname, p.datetime_string
-        INTO v_top_parent, v_top_datetime_string
+        ) SELECT n.nspname, c.relname, p.datetime_string
+        INTO v_top_parent_schema, v_top_parent_table, v_top_datetime_string
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
         JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname;
-        IF v_top_parent IS NOT NULL THEN
+        IF v_top_parent_table IS NOT NULL THEN
             -- If so create the lowest possible partition that is within the boundary of the parent
             v_time_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
             v_parent_partition_timestamp := to_timestamp(substring(p_parent_table from v_time_position), v_top_datetime_string);
@@ -356,35 +362,36 @@ IF p_type = 'id' THEN
     END IF;
 
     -- Check if parent table is a subpartition of an already existing id partition set managed by pg_partman. 
-    WHILE v_higher_parent IS NOT NULL LOOP -- initially set in DECLARE
+    WHILE v_higher_parent_table IS NOT NULL LOOP -- initially set in DECLARE
         WITH top_oid AS (
             SELECT i.inhparent AS top_parent_oid
             FROM pg_catalog.pg_inherits i
             JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname||'.'||c.relname = v_higher_parent
-        ) SELECT n.nspname||'.'||c.relname
-        INTO v_higher_parent
+            WHERE n.nspname = v_higher_parent_schema
+            AND c.relname = v_higher_parent_table
+        ) SELECT n.nspname, c.relname
+        INTO v_higher_parent_schema, v_higher_parent_table
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
         JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
         WHERE p.partition_type = 'id';
 
-        IF v_higher_parent IS NOT NULL THEN
+        IF v_higher_parent_table IS NOT NULL THEN
             -- v_top_parent initially set in DECLARE
-            v_top_parent := v_higher_parent;
+            v_top_parent_schema := v_higher_parent_schema;
+            v_top_parent_table := v_higher_parent_table;
         END IF;
     END LOOP;
 
     -- If custom start partition is set, use that.
     -- If custom start is not set and there is already data, start partitioning with the highest current value and ensure it's grabbed from highest top parent table
-    SELECT schemaname, tablename INTO v_top_schemaname, v_top_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = v_top_parent;
     v_sql := format('SELECT COALESCE(%L, max(%I)::bigint, 0) FROM %I.%I LIMIT 1'
                 , p_start_partition::bigint
                 , p_control
-                , v_top_schemaname
-                , v_top_tablename);
+                , v_top_parent_schema
+                , v_top_parent_table);
     EXECUTE v_sql INTO v_max;
     v_starting_partition_id := v_max - (v_max % v_id_interval);
     FOR i IN 0..p_premake LOOP
@@ -429,14 +436,14 @@ IF p_type = 'id' THEN
             JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
             WHERE c.relname = v_parent_tablename
             AND n.nspname = v_parent_schema
-        ) SELECT n.nspname||'.'||c.relname
-        INTO v_top_parent
+        ) SELECT c.relname
+        INTO v_top_parent_table
         FROM pg_catalog.pg_class c
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
         JOIN top_oid t ON c.oid = t.top_parent_oid
         JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
         WHERE p.partition_type = 'id';
-        IF v_top_parent IS NOT NULL THEN
+        IF v_top_parent_table IS NOT NULL THEN
             -- Create the lowest possible partition that is within the boundary of the parent
             v_id_position := (length(p_parent_table) - position('p_' in reverse(p_parent_table))) + 2;
             v_parent_partition_id = substring(p_parent_table from v_id_position)::bigint;
@@ -517,4 +524,5 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
+
 

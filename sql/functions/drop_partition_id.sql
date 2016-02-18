@@ -110,7 +110,10 @@ IF p_retention_schema IS NOT NULL THEN
     v_retention_schema = p_retention_schema;
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 
 -- Loop through child tables starting from highest to get current max value in partition set
 -- Avoids doing a scan on entire partition set and/or getting any values accidentally in parent.

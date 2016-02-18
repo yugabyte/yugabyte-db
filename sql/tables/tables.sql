@@ -13,6 +13,7 @@ CREATE TABLE part_config (
     , retention_schema text
     , retention_keep_table boolean NOT NULL DEFAULT true
     , retention_keep_index boolean NOT NULL DEFAULT true
+    , infinite_time_partitions boolean NOT NULL DEFAULT false
     , datetime_string text
     , use_run_maintenance BOOLEAN NOT NULL DEFAULT true
     , jobmon boolean NOT NULL DEFAULT true
@@ -41,6 +42,7 @@ CREATE TABLE part_config_sub (
     , sub_retention_schema text
     , sub_retention_keep_table boolean NOT NULL DEFAULT true
     , sub_retention_keep_index boolean NOT NULL DEFAULT true
+    , sub_infinite_time_partitions boolean NOT NULL DEFAULT false
     , sub_use_run_maintenance BOOLEAN NOT NULL DEFAULT true
     , sub_jobmon boolean NOT NULL DEFAULT true
 );

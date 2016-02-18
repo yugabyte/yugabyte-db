@@ -97,7 +97,6 @@ END LOOP;
 
 v_row := NULL; -- Ensure it's reset
 
-
 v_tables_list_sql := 'SELECT parent_table
                 , partition_type
                 , partition_interval
@@ -107,6 +106,7 @@ v_tables_list_sql := 'SELECT parent_table
                 , undo_in_progress
                 , sub_partition_set_full
                 , epoch
+                , infinite_time_partitions
             FROM @extschema@.part_config
             WHERE sub_partition_set_full = false';
 
@@ -122,7 +122,11 @@ LOOP
     CONTINUE WHEN v_row.undo_in_progress;
     v_skip_maint := true; -- reset every loop
 
-    SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = v_row.parent_table;
+    SELECT schemaname, tablename 
+    INTO v_parent_schema, v_parent_tablename 
+    FROM pg_catalog.pg_tables 
+    WHERE schemaname = split_part(v_row.parent_table, '.', 1)
+    AND tablename = split_part(v_row.parent_table, '.', 2);
 
     SELECT partition_tablename INTO v_last_partition FROM @extschema@.show_partitions(v_row.parent_table, 'DESC') LIMIT 1;
     IF p_debug THEN
@@ -186,9 +190,14 @@ LOOP
         IF v_max_time_parent > v_current_partition_timestamp THEN
             SELECT suffix_timestamp INTO v_current_partition_timestamp FROM @extschema@.show_partition_name(v_row.parent_table, v_max_time_parent::text);
         END IF;
-        IF v_current_partition_timestamp IS NULL THEN
-            -- Partition set is completely empty. Nothing to do
-            CONTINUE;
+        IF v_current_partition_timestamp IS NULL THEN -- Partition set is completely empty
+            IF v_row.infinite_time_partitions IS TRUE THEN
+                -- Set it to now so new partitions continue to be created
+                v_current_partition_timestamp = CURRENT_TIMESTAMP;
+            ELSE
+                -- Nothing to do
+                CONTINUE;
+            END IF;
         END IF;
 
         -- If this is a subpartition, determine if the last child table has been made. If so, mark it as full so future maintenance runs can skip it

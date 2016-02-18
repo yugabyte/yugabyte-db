@@ -3,7 +3,7 @@
 import argparse, psycopg2, re, sys, time
 from multiprocessing import Process
 
-partman_version = "2.0.0"
+partman_version = "2.3.0"
 
 parser = argparse.ArgumentParser(description="Script for reapplying indexes on child tables in a partition set to match the parent table. Any indexes that currently exist on the children and match the definition on the parent will be left as is. There is an option to recreate matching as well indexes if desired, as well as the primary key. Indexes that do not exist on the parent will be dropped. Commits are done after each index is dropped/created to help prevent long running transactions & locks.", epilog="NOTE: New index names are made based off the child table name & columns used, so their naming may differ from the name given on the parent. This is done to allow the tool to account for long or duplicate index names. If an index name would be duplicated, an incremental counter is added on to the end of the index name to allow it to be created. Use the --dryrun option first to see what it will do and which names may cause dupes to be handled like this.")
 parser.add_argument('-p', '--parent', help="Parent table of an already created partition set. (Required)")

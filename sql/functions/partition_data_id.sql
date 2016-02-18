@@ -34,7 +34,10 @@ IF NOT FOUND THEN
     RAISE EXCEPTION 'ERROR: no config found for %', p_parent_table;
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 
 IF p_batch_interval IS NULL OR p_batch_interval > v_partition_interval THEN
     p_batch_interval := v_partition_interval;
@@ -129,4 +132,5 @@ RETURN v_total_rows;
 
 END
 $$;
+
 

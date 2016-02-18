@@ -17,7 +17,8 @@ v_current_partition_id          bigint;
 v_datetime_string               text;
 v_final_partition_id            bigint;
 v_function_name                 text;
-v_higher_parent                 text := p_parent_table;
+v_higher_parent_schema          text := split_part(p_parent_table, '.', 1);
+v_higher_parent_table           text := split_part(p_parent_table, '.', 2);
 v_id_position                   int;
 v_job_id                        bigint;
 v_jobmon                        text;
@@ -81,28 +82,32 @@ IF v_jobmon_schema IS NOT NULL THEN
     v_step_id := add_step(v_job_id, format('Creating partition function for table %s', p_parent_table));
 END IF;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname ||'.'|| tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 v_function_name := @extschema@.check_name_length(v_parent_tablename, '_part_trig_func', FALSE);
 
 -- Get the highest level top parent if multi-level partitioned in order to get proper max() value below
-WHILE v_higher_parent IS NOT NULL LOOP -- initially set in DECLARE
+WHILE v_higher_parent_table IS NOT NULL LOOP -- initially set in DECLARE
     WITH top_oid AS (
         SELECT i.inhparent AS top_parent_oid
         FROM pg_catalog.pg_inherits i
         JOIN pg_catalog.pg_class c ON c.oid = i.inhrelid
         JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-        WHERE n.nspname||'.'||c.relname = v_higher_parent
-    ) SELECT n.nspname||'.'||c.relname
-    INTO v_higher_parent
+        WHERE n.nspname = v_higher_parent_schema
+        AND c.relname = v_higher_parent_table
+    ) SELECT n.nspname, c.relname
+    INTO v_higher_parent_schema, v_higher_parent_table
     FROM pg_catalog.pg_class c
     JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
     JOIN top_oid t ON c.oid = t.top_parent_oid
     JOIN @extschema@.part_config p ON p.parent_table = n.nspname||'.'||c.relname
     WHERE p.partition_type = 'id';
 
-    IF v_higher_parent IS NOT NULL THEN
+    IF v_higher_parent_table IS NOT NULL THEN
         -- initially set in DECLARE
-        v_top_parent := v_higher_parent;
+        v_top_parent := v_higher_parent_schema||'.'||v_higher_parent_table;
     END IF;
 
 END LOOP;
@@ -181,7 +186,7 @@ v_trig_func := format('CREATE OR REPLACE FUNCTION %I.%I() RETURNS trigger LANGUA
             END IF;
         END IF;
 
-        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname ||'.'||tablename = v_next_partition_name;
+        SELECT count(*) INTO v_count FROM pg_catalog.pg_tables WHERE schemaname = v_parent_schema AND tablename = v_next_partition_name;
         IF v_count > 0 THEN
             v_trig_func := v_trig_func ||format('
         ELSIF NEW.%I >= %s AND NEW.%I < %s THEN 
@@ -283,5 +288,4 @@ DETAIL: %
 HINT: %', ex_message, ex_context, ex_detail, ex_hint;
 END
 $$;
-
 

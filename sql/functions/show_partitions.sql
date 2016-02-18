@@ -29,7 +29,10 @@ INTO v_type
 FROM @extschema@.part_config
 WHERE parent_table = p_parent_table;
 
-SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = p_parent_table;
+SELECT schemaname, tablename INTO v_parent_schema, v_parent_tablename
+FROM pg_catalog.pg_tables
+WHERE schemaname = split_part(p_parent_table, '.', 1)
+AND tablename = split_part(p_parent_table, '.', 2);
 
 IF v_type IN ('time', 'time-custom') THEN
 
