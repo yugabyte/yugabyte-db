@@ -1,3 +1,9 @@
+2.3.1
+-- Fixed typo in standalone create_parent.sql file that caused a brand new installation of v2.3.0 to fail (Github Issue #94).
+-- Added --noparent option to new vacuum_maintenance.py script to allow parent table to be excluded from the maintenance run.
+-- Added vacuum_maintenance.py script to documentation.
+
+
 2.3.0
 -- New migration documentation (doc/migration.md) to provide assistance changing an existing partition set to be used by pg_partman. Note that pg_partman does not support having child table names that do not comply with its naming convention.
 
