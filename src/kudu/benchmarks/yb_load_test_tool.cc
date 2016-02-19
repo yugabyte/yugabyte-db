@@ -3,12 +3,13 @@
 #include <glog/logging.h>
 
 #include <boost/bind.hpp>
+#include <boost/thread/mutex.hpp>
+#include <queue>
 
 #include <glog/logging.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
 #include "kudu/benchmarks/tpch/line_item_tsv_importer.h"
 #include "kudu/benchmarks/tpch/rpc_line_item_dao.h"
 #include "kudu/benchmarks/tpch/tpch-schemas.h"
@@ -42,9 +43,75 @@ DEFINE_int64(
   yb_load_test_progress_report_frequency, 10000,
   "Report progress once per this number of rows");
 
+DEFINE_int64(
+  yb_load_test_num_writer_threads, 4,
+  "Number of writer threads");
+
+using strings::Substitute;
+
 using namespace kudu::client;
 using kudu::client::sp::shared_ptr;
 using kudu::Status;
+using kudu::AtomicInt;
+using kudu::Thread;
+using kudu::MonoDelta;
+
+// ------------------------------------------------------------------------------------------------
+// MultiThreadedWriter
+// ------------------------------------------------------------------------------------------------
+
+class MultiThreadedWriter {
+public:
+  MultiThreadedWriter(int64 start_key, int64 end_key, int num_threads)
+    : current_key_(0),
+      start_key_(start_key),
+      end_key_(end_key),
+      num_threads_(num_threads) {
+  }
+
+  void start();
+
+private:
+  void RunWriterThread(int writerIndex);
+
+  // This is the current key to be inserted by any thread. Each thread does an atomic get and
+  // increment operation and inserts the current value.
+  AtomicInt<int64> current_key_;
+
+  const int64 start_key_, end_key_;
+
+  const int num_threads_;
+
+  std::queue<int64> inserted_keys_;
+  boost::mutex inserted_keys_lock_;
+
+  std::queue<int64> failed_keys_;
+  boost::mutex failed_keys_lock_;
+
+  vector<Thread*> writer_threads_;
+};
+
+void MultiThreadedWriter::start() {
+  for (int i = 0; i < num_threads_; i++) {
+    scoped_refptr<Thread> thread_ptr;
+    CHECK_OK(Thread::Create(
+      "Load test writers",
+      Substitute("writer thread #$0", i),
+      &MultiThreadedWriter::RunWriterThread,
+      this,
+      i,
+      &thread_ptr
+    ));
+    writer_threads_.push_back(thread_ptr.get());
+  }
+}
+
+void MultiThreadedWriter::RunWriterThread(int writerIndex) {
+  LOG(INFO) << "Writer thread " << writerIndex << " started";
+  LOG(INFO) << "Writer thread " << writerIndex << " finished";
+}
+
+// ------------------------------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
   gflags::SetUsageMessage(
@@ -55,8 +122,9 @@ int main(int argc, char* argv[]) {
 
   shared_ptr<KuduClient> client;
   CHECK_OK(KuduClientBuilder()
-     .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
-     .Build(&client));
+    .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
+    .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
+    .Build(&client));
   shared_ptr<KuduSession> session(client->NewSession());
   session->SetFlushMode(KuduSession::FlushMode::MANUAL_FLUSH);
   session->SetTimeoutMillis(60000);
@@ -98,18 +166,24 @@ int main(int argc, char* argv[]) {
   CHECK_OK(client->OpenTable(table_name, &table));
 
   LOG(INFO) << "Starting load test";
-  for (int64 i = 0; i < FLAGS_yb_load_test_num_rows; ++i) {
-    gscoped_ptr<KuduInsert> insert(table->NewInsert());
-    string key(strings::Substitute("key$0", i));
-    string value(strings::Substitute("value$0", i));
-    insert->mutable_row()->SetString("k", key.c_str());
-    insert->mutable_row()->SetString("v", value.c_str());
-    VLOG(1) << "Insertion: " + insert->ToString();
-    CHECK_OK(session->Apply(insert.release()));
-    VLOG(1) << "Flushing pending writes at i = " << i;
-    CHECK_OK(session->Flush());
-    if (i % FLAGS_yb_load_test_progress_report_frequency == 0) {
-      LOG(INFO) << "i = " << i;
+  MultiThreadedWriter writer(0, FLAGS_yb_load_test_num_rows - 1,
+                             FLAGS_yb_load_test_num_writer_threads);
+  writer.start();
+
+  if (false) {
+    for (int64 i = 0; i < FLAGS_yb_load_test_num_rows; ++i) {
+      gscoped_ptr<KuduInsert> insert(table->NewInsert());
+      string key(strings::Substitute("key$0", i));
+      string value(strings::Substitute("value$0", i));
+      insert->mutable_row()->SetString("k", key.c_str());
+      insert->mutable_row()->SetString("v", value.c_str());
+      VLOG(1) << "Insertion: " + insert->ToString();
+      CHECK_OK(session->Apply(insert.release()));
+      VLOG(1) << "Flushing pending writes at i = " << i;
+      CHECK_OK(session->Flush());
+      if (i % FLAGS_yb_load_test_progress_report_frequency == 0) {
+        LOG(INFO) << "i = " << i;
+      }
     }
   }
 
