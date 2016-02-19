@@ -10,6 +10,7 @@ parser.add_argument('-c', '--connection', default="host=", help="""Connection st
 parser.add_argument('-z', '--freeze', action="store_true", help="Sets the FREEZE option to the VACUUM command.")
 parser.add_argument('-f', '--full', action="store_true", help="Sets the FULL option to the VACUUM command. Note that --freeze is not necessary if you set this. Recommend reviewing --dryrun before running this since it will lock all tables it runs against, possibly including the parent.")
 parser.add_argument('-a', '--vacuum_freeze_min_age', type=int, help="By default the script obtains this value from the system catalogs. By setting this, you can override the value obtained from the database. Note this does not change the value in the database, only the value this script uses.")
+parser.add_argument('--noparent', action="store_true", help="Normally the parent table is included in the list of tables to vacuum if its age(relfrozenxid) is higher than vacuum_freeze_min_age. Set this to force exclusion of the parent table, even if it meets that criteria.")
 parser.add_argument('--dryrun', action="store_true", help="Show what the script will do without actually running it against the database. Highly recommend reviewing this before running for the first time.")
 parser.add_argument('-q', '--quiet', action="store_true", help="Turn off all output.")
 parser.add_argument('--debug', action="store_true", help="Show additional debugging output")
@@ -40,13 +41,24 @@ def get_partition_list(conn):
         pg_catalog.pg_inherits h
         JOIN pg_catalog.pg_class c ON c.oid = h.inhrelid
         JOIN pg_catalog.pg_namespace n ON c.relnamespace = n.oid
-        JOIN parent_info pi ON h.inhparent = pi.oid
+        JOIN parent_info pi ON h.inhparent = pi.oid"""
+    if args.noparent == False:
+        sql += """
         UNION
         SELECT schemaname, tablename FROM pg_catalog.pg_tables WHERE schemaname||'.'||tablename = %s
         ORDER BY 1,2"""
+
     if args.debug:
-        print(cur.mogrify(sql, [args.parent, args.parent]))
-    cur.execute(sql, [args.parent, args.parent])
+        if args.noparent == False:
+            print(cur.mogrify(sql, [args.parent, args.parent]))
+        else:
+            print(cur.mogrify(sql, [args.parent]))
+
+    if args.noparent == False:
+        cur.execute(sql, [args.parent, args.parent])
+    else:
+        cur.execute(sql, [args.parent])
+
     child_list = cur.fetchall()
     cur.close()
     return child_list

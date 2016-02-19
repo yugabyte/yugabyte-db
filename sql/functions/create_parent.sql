@@ -1,7 +1,7 @@
 /*
  * Function to turn a table into the parent of a partition set
  */
-CREATE REPLACE FUNCTION create_parent(
+CREATE FUNCTION create_parent(
     p_parent_table text
     , p_control text
     , p_type text

@@ -466,6 +466,23 @@ Partition by time in smaller intervals for at most 10 partitions in a single run
  * `--verbose (-v)`:         Provide more verbose output.
  * `--version`:              Print out the minimum version of `pg_partman` this script is meant to work with. The version of `pg_partman` installed may be greater than this.
 
+
+*`vacuum_maintenance.py`*
+
+ * A python script to perform additional VACUUM maintenance on a given partition set. The main purpose of this is to provide an easier means of freezing tuples in older partitions that are no longer written to. This allows autovacuum to skip over them safely without causing transaction id wraparound issues. See the PostgreSQL documentation for more information on this maintenance isssue: http://www.postgresql.org/docs/current/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND. 
+ * Vacuums all child tables in a given partition set who's age(relfrozenxid) is greater than vacuum_freeze_min_age, including the parent table.
+ * Highly recommend scheduled runs of this script with the --freeze option if you have child tables that never have writes after a certain period of time.
+ * --parent (-p):               Parent table of an already created partition set.  (Required)
+ * --connection (-c):           Connection string for use by psycopg. Defaults to "host=" (local socket).
+ * --freeze (-z):               Sets the FREEZE option to the VACUUM command.
+ * --full (-f):                 Sets the FULL option to the VACUUM command. Note that --freeze is not necessary if you set this. Recommend reviewing --dryrun before running this since it will lock all tables it runs against, possibly including the parent.
+ * --vacuum_freeze_min_age (-a): By default the script obtains this value from the system catalogs. By setting this, you can override the value obtained from the database. Note this does not change the value in the database, only the value this script uses.
+ * --noparent:                  Normally the parent table is included in the list of tables to vacuum if its age(relfrozenxid) is higher than vacuum_freeze_min_age. Set this to force exclusion of the parent table, even if it meets that criteria.
+ * --dryrun:                    Show what the script will do without actually running it against the database. Highly recommend reviewing this before running for the first time.
+ * --quiet (-q):                Turn off all output.
+ * --debug:                     Show additional debugging output.
+
+
 *`reapply_indexes.py`*
 
  * A python script for reapplying indexes on child tables in a partition set after they are changed on the parent table. 
