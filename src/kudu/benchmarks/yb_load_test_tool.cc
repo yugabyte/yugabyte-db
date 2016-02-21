@@ -26,6 +26,7 @@
 #include "kudu/util/stopwatch.h"
 #include "kudu/util/subprocess.h"
 #include "kudu/util/thread.h"
+#include "kudu/util/threadpool.h"
 
 DEFINE_string(
   yb_load_test_master_addresses, "localhost",
@@ -53,7 +54,8 @@ using namespace kudu::client;
 using kudu::client::sp::shared_ptr;
 using kudu::Status;
 using kudu::AtomicInt;
-using kudu::Thread;
+using kudu::ThreadPool;
+using kudu::ThreadPoolBuilder;
 using kudu::MonoDelta;
 
 // ------------------------------------------------------------------------------------------------
@@ -62,14 +64,9 @@ using kudu::MonoDelta;
 
 class MultiThreadedWriter {
 public:
-  MultiThreadedWriter(int64 start_key, int64 end_key, int num_threads)
-    : current_key_(0),
-      start_key_(start_key),
-      end_key_(end_key),
-      num_threads_(num_threads) {
-  }
-
-  void start();
+  MultiThreadedWriter(int64 start_key, int64 end_key, int num_threads);
+  void Start();
+  void WaitForCompletion();
 
 private:
   void RunWriterThread(int writerIndex);
@@ -88,27 +85,40 @@ private:
   std::queue<int64> failed_keys_;
   boost::mutex failed_keys_lock_;
 
-  vector<Thread*> writer_threads_;
+  gscoped_ptr<ThreadPool> thread_pool_;
 };
 
-void MultiThreadedWriter::start() {
+MultiThreadedWriter::MultiThreadedWriter(int64 start_key, int64 end_key, int num_threads)
+  : current_key_(0),
+    start_key_(start_key),
+    end_key_(end_key),
+    num_threads_(num_threads) {
+  ThreadPoolBuilder("writers").set_max_threads(num_threads_).Build(&thread_pool_);
+}
+
+void MultiThreadedWriter::Start() {
   for (int i = 0; i < num_threads_; i++) {
-    scoped_refptr<Thread> thread_ptr;
-    CHECK_OK(Thread::Create(
-      "Load test writers",
-      Substitute("writer thread #$0", i),
-      &MultiThreadedWriter::RunWriterThread,
-      this,
-      i,
-      &thread_ptr
-    ));
-    writer_threads_.push_back(thread_ptr.get());
+//    scoped_refptr<Thread> thread_ptr;
+//    CHECK_OK(Thread::Create(
+//      "Load test writers",
+//      Substitute("writer thread #$0", i),
+//      &MultiThreadedWriter::RunWriterThread,
+//      this,
+//      i,
+//      &thread_ptr
+//    ));
+//    writer_threads_.push_back(thread_ptr.get());
+    thread_pool_->SubmitFunc(boost::bind(&MultiThreadedWriter::RunWriterThread, this, i));
   }
 }
 
 void MultiThreadedWriter::RunWriterThread(int writerIndex) {
   LOG(INFO) << "Writer thread " << writerIndex << " started";
   LOG(INFO) << "Writer thread " << writerIndex << " finished";
+}
+
+void MultiThreadedWriter::WaitForCompletion() {
+  thread_pool_->Wait();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -168,7 +178,8 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Starting load test";
   MultiThreadedWriter writer(0, FLAGS_yb_load_test_num_rows - 1,
                              FLAGS_yb_load_test_num_writer_threads);
-  writer.start();
+  writer.Start();
+  writer.WaitForCompletion();
 
   if (false) {
     for (int64 i = 0; i < FLAGS_yb_load_test_num_rows; ++i) {
