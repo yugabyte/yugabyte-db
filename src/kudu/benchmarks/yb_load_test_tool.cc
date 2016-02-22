@@ -57,6 +57,7 @@ using kudu::AtomicInt;
 using kudu::ThreadPool;
 using kudu::ThreadPoolBuilder;
 using kudu::MonoDelta;
+using kudu::MemoryOrder;
 
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedWriter
@@ -64,7 +65,9 @@ using kudu::MonoDelta;
 
 class MultiThreadedWriter {
 public:
-  MultiThreadedWriter(int64 start_key, int64 end_key, int num_threads);
+  // client and table are managed by the caller and their lifetime should be a superset of this
+  // object's lifetime.
+  MultiThreadedWriter(int64 num_keys, int num_threads, KuduClient* client, KuduTable* table);
   void Start();
   void WaitForCompletion();
 
@@ -75,7 +78,7 @@ private:
   // increment operation and inserts the current value.
   AtomicInt<int64> current_key_;
 
-  const int64 start_key_, end_key_;
+  const int64 num_keys_;
 
   const int num_threads_;
 
@@ -86,13 +89,20 @@ private:
   boost::mutex failed_keys_lock_;
 
   gscoped_ptr<ThreadPool> thread_pool_;
+  KuduClient* client_;
+  KuduTable* table_;
 };
 
-MultiThreadedWriter::MultiThreadedWriter(int64 start_key, int64 end_key, int num_threads)
+MultiThreadedWriter::MultiThreadedWriter(
+    int64 num_keys,
+    int num_threads,
+    KuduClient* client,
+    KuduTable* table)
   : current_key_(0),
-    start_key_(start_key),
-    end_key_(end_key),
-    num_threads_(num_threads) {
+    num_keys_(num_keys),
+    num_threads_(num_threads),
+    client_(client),
+    table_(table) {
   ThreadPoolBuilder("writers").set_max_threads(num_threads_).Build(&thread_pool_);
 }
 
@@ -108,12 +118,28 @@ void MultiThreadedWriter::Start() {
 //      &thread_ptr
 //    ));
 //    writer_threads_.push_back(thread_ptr.get());
+
     thread_pool_->SubmitFunc(boost::bind(&MultiThreadedWriter::RunWriterThread, this, i));
   }
 }
 
 void MultiThreadedWriter::RunWriterThread(int writerIndex) {
   LOG(INFO) << "Writer thread " << writerIndex << " started";
+  shared_ptr<KuduSession> session(client_->NewSession());
+  while (true) {
+    int64 key_index = current_key_.Increment(MemoryOrder::kMemOrderBarrier);
+    if (key_index > num_keys_) {
+      break;
+    }
+
+    gscoped_ptr<KuduInsert> insert(table_->NewInsert());
+    string key(strings::Substitute("key$0", key_index));
+    string value(strings::Substitute("value$0", key_index));
+    insert->mutable_row()->SetString("k", key.c_str());
+    insert->mutable_row()->SetString("v", value.c_str());
+    // This should auto-flush.
+    session->Apply(insert.release());
+  }
   LOG(INFO) << "Writer thread " << writerIndex << " finished";
 }
 
@@ -136,7 +162,7 @@ int main(int argc, char* argv[]) {
     .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
     .Build(&client));
   shared_ptr<KuduSession> session(client->NewSession());
-  session->SetFlushMode(KuduSession::FlushMode::MANUAL_FLUSH);
+  session->SetFlushMode(KuduSession::FlushMode::AUTO_FLUSH_SYNC);
   session->SetTimeoutMillis(60000);
 
   const string table_name(FLAGS_yb_load_test_table_name);
@@ -176,9 +202,14 @@ int main(int argc, char* argv[]) {
   CHECK_OK(client->OpenTable(table_name, &table));
 
   LOG(INFO) << "Starting load test";
-  MultiThreadedWriter writer(0, FLAGS_yb_load_test_num_rows - 1,
-                             FLAGS_yb_load_test_num_writer_threads);
+  MultiThreadedWriter writer(
+    FLAGS_yb_load_test_num_rows,
+    FLAGS_yb_load_test_num_writer_threads,
+    client.get(),
+    table.get());
+
   writer.Start();
+
   writer.WaitForCompletion();
 
   if (false) {
