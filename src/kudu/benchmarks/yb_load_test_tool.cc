@@ -102,7 +102,7 @@ class KeyIndexSet {
  private:
   set<int64> set_;
   Mutex mutex_;
-}
+};
 
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedAction
