@@ -185,15 +185,10 @@ class MultiThreadedWriter : public MultiThreadedAction {
   // This is the current key to be inserted by any thread. Each thread does an atomic get and
   // increment operation and inserts the current value.
   AtomicInt<int64> current_key_;
+  AtomicInt<int64> inserted_up_to_inclusive_;
 
   KeyIndexSet inserted_keys_;
   KeyIndexSet failed_keys_;
-
-//  Mutex failed_keys_lock_;
-//  set<int64> failed_keys_;
-//
-//  Mutex inserted_keys_lock_;
-//  set<int64> inserted_keys_;
 
   Mutex insertion_progress_lock_;
   ConditionVariable insertion_progress_condition_;
@@ -206,6 +201,7 @@ MultiThreadedWriter::MultiThreadedWriter(
     KuduTable* table)
   : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table),
     current_key_(0),
+    inserted_up_to_inclusive_(0),
     insertion_progress_condition_(&insertion_progress_lock_) {
 }
 
@@ -267,7 +263,7 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
   while (running_threads_latch_.count() > 0) {
     insertion_progress_condition_.Wait();
     if (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
-
+      inserted_up_to_inclusive_.Store(current_key, MemoryOrder::kMemOrderRelease);
       current_key++;
     }
   }
