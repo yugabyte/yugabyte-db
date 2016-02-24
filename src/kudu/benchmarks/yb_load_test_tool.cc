@@ -270,6 +270,46 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
 }
 
 // ------------------------------------------------------------------------------------------------
+// MultiThreadedReader
+// ------------------------------------------------------------------------------------------------
+
+class MultiThreadedReader : public MultiThreadedAction {
+ public:
+  MultiThreadedReader(
+    int64 num_keys,
+    int num_reader_threads,
+    KuduClient* client,
+    KuduTable* table,
+    AtomicInt<int64>* insertion_point);
+ protected:
+  virtual void RunActionThread(int readerIndex) OVERRIDE;
+
+ private:
+  AtomicInt<int64>* insertion_point_;
+};
+
+MultiThreadedReader::MultiThreadedReader(
+    int64 num_keys,
+    int num_reader_threads,
+    KuduClient* client,
+    KuduTable* table,
+    AtomicInt<int64>* insertion_point)
+  : MultiThreadedAction("readers", num_keys, num_reader_threads, 1, client, table),
+    insertion_point_(insertion_point) {
+
+}
+
+void MultiThreadedReader::RunActionThread(int readerIndex) {
+  LOG(INFO) << "Reader thread " << readerIndex << " started";
+  shared_ptr<KuduSession> session(client_->NewSession());
+  ConfigureSession(session.get());
+
+  session->Close();
+  LOG(INFO) << "Reader thread " << readerIndex << " finished";
+  running_threads_latch_.CountDown();
+}
+
+// ------------------------------------------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
   gflags::SetUsageMessage(
