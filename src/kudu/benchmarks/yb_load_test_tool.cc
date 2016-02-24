@@ -5,6 +5,7 @@
 #include <boost/bind.hpp>
 #include <boost/thread/mutex.hpp>
 #include <queue>
+#include <set>
 
 #include <glog/logging.h>
 #include <stdlib.h>
@@ -27,6 +28,9 @@
 #include "kudu/util/subprocess.h"
 #include "kudu/util/thread.h"
 #include "kudu/util/threadpool.h"
+#include "kudu/util/condition_variable.h"
+#include "kudu/util/mutex.h"
+#include "kudu/util/countdown_latch.h"
 
 DEFINE_string(
   yb_load_test_master_addresses, "localhost",
@@ -58,74 +62,162 @@ using kudu::ThreadPool;
 using kudu::ThreadPoolBuilder;
 using kudu::MonoDelta;
 using kudu::MemoryOrder;
+using kudu::ConditionVariable;
+using kudu::Mutex;
+using kudu::MutexLock;
+using kudu::CountDownLatch;
+
+void ConfigureSession(KuduSession* session) {
+  session->SetFlushMode(KuduSession::FlushMode::MANUAL_FLUSH);
+  session->SetTimeoutMillis(60000);
+}
+
+class KeyIndexSet {
+ public:
+  int NumElements() {
+    MutexLock l(mutex_);
+    return set_.size();
+  }
+
+  void Insert(int64 key) {
+    MutexLock l(mutex_);
+    set_.insert(key);
+  }
+
+  bool Contains(int64 key) {
+    MutexLock l(mutex_);
+    return set_.find(key) != set_.end();
+  }
+
+  bool RemoveIfContains(int64 key) {
+    MutexLock l(mutex_);
+    set<int64>::iterator it = set_.find(key);
+    if (it == set_.end()) {
+      return false;
+    } else {
+      set_.erase(it);
+      return true;
+    }
+  }
+ private:
+  set<int64> set_;
+  Mutex mutex_;
+}
+
+// ------------------------------------------------------------------------------------------------
+// MultiThreadedAction
+// ------------------------------------------------------------------------------------------------
+
+class MultiThreadedAction {
+public:
+  MultiThreadedAction(
+    const string& description,
+    int64 num_keys,
+    int num_action_threads,
+    int num_extra_threads,
+    KuduClient* client,
+    KuduTable* table);
+
+  virtual void Start();
+  void WaitForCompletion();
+
+protected:
+  virtual void RunActionThread(int actionIndex) = 0;
+  virtual void RunStatsThread() = 0;
+
+  string description_;
+  const int64 num_keys_;
+  const int num_action_threads_;
+  KuduClient* client_;
+  KuduTable* table_;
+
+  gscoped_ptr<ThreadPool> thread_pool_;
+  CountDownLatch running_threads_latch_;
+};
+
+MultiThreadedAction::MultiThreadedAction(
+    const string& description,
+    int64 num_keys,
+    int num_action_threads,
+    int num_extra_threads,
+    KuduClient* client,
+    KuduTable* table)
+  : description_(description),
+    num_keys_(num_keys),
+    num_action_threads_(num_action_threads),
+    client_(client),
+    table_(table),
+    running_threads_latch_(num_action_threads) {
+  ThreadPoolBuilder(description).set_max_threads(
+    num_action_threads_ + num_extra_threads).Build(&thread_pool_);
+}
+
+void MultiThreadedAction::WaitForCompletion() {
+  thread_pool_->Wait();
+}
+
+void MultiThreadedAction::Start() {
+  LOG(INFO) << "Starting " << num_action_threads_ << " " << description_ << " threads, num_keys = "
+  << num_keys_;
+  thread_pool_->SubmitFunc(boost::bind(&MultiThreadedAction::RunStatsThread, this));
+  for (int i = 0; i < num_action_threads_; i++) {
+    thread_pool_->SubmitFunc(boost::bind(&MultiThreadedAction::RunActionThread, this, i));
+  }
+}
 
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedWriter
 // ------------------------------------------------------------------------------------------------
 
-class MultiThreadedWriter {
-public:
+class MultiThreadedWriter : public MultiThreadedAction {
+ public:
   // client and table are managed by the caller and their lifetime should be a superset of this
   // object's lifetime.
-  MultiThreadedWriter(int64 num_keys, int num_threads, KuduClient* client, KuduTable* table);
-  void Start();
-  void WaitForCompletion();
+  MultiThreadedWriter(int64 num_keys, int num_writer_threads, KuduClient* client, KuduTable* table);
 
-private:
-  void RunWriterThread(int writerIndex);
+  virtual void Start() OVERRIDE;
+
+ private:
+  virtual void RunActionThread(int writerIndex);
+  virtual void RunStatsThread();
+  void RunInsertionTrackerThread();
 
   // This is the current key to be inserted by any thread. Each thread does an atomic get and
   // increment operation and inserts the current value.
   AtomicInt<int64> current_key_;
 
-  const int64 num_keys_;
+  KeyIndexSet inserted_keys_;
+  KeyIndexSet failed_keys_;
 
-  const int num_threads_;
+//  Mutex failed_keys_lock_;
+//  set<int64> failed_keys_;
+//
+//  Mutex inserted_keys_lock_;
+//  set<int64> inserted_keys_;
 
-  std::queue<int64> inserted_keys_;
-  boost::mutex inserted_keys_lock_;
-
-  std::queue<int64> failed_keys_;
-  boost::mutex failed_keys_lock_;
-
-  gscoped_ptr<ThreadPool> thread_pool_;
-  KuduClient* client_;
-  KuduTable* table_;
+  Mutex insertion_progress_lock_;
+  ConditionVariable insertion_progress_condition_;
 };
 
 MultiThreadedWriter::MultiThreadedWriter(
     int64 num_keys,
-    int num_threads,
+    int num_writer_threads,
     KuduClient* client,
     KuduTable* table)
-  : current_key_(0),
-    num_keys_(num_keys),
-    num_threads_(num_threads),
-    client_(client),
-    table_(table) {
-  ThreadPoolBuilder("writers").set_max_threads(num_threads_).Build(&thread_pool_);
+  : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table),
+    current_key_(0),
+    insertion_progress_condition_(&insertion_progress_lock_) {
 }
 
 void MultiThreadedWriter::Start() {
-  for (int i = 0; i < num_threads_; i++) {
-//    scoped_refptr<Thread> thread_ptr;
-//    CHECK_OK(Thread::Create(
-//      "Load test writers",
-//      Substitute("writer thread #$0", i),
-//      &MultiThreadedWriter::RunWriterThread,
-//      this,
-//      i,
-//      &thread_ptr
-//    ));
-//    writer_threads_.push_back(thread_ptr.get());
-
-    thread_pool_->SubmitFunc(boost::bind(&MultiThreadedWriter::RunWriterThread, this, i));
-  }
+  MultiThreadedAction::Start();
+  thread_pool_->SubmitFunc(boost::bind(&MultiThreadedWriter::RunInsertionTrackerThread, this));
 }
 
-void MultiThreadedWriter::RunWriterThread(int writerIndex) {
+void MultiThreadedWriter::RunActionThread(int writerIndex) {
   LOG(INFO) << "Writer thread " << writerIndex << " started";
   shared_ptr<KuduSession> session(client_->NewSession());
+  ConfigureSession(session.get());
   while (true) {
     int64 key_index = current_key_.Increment(MemoryOrder::kMemOrderBarrier);
     if (key_index > num_keys_) {
@@ -137,14 +229,48 @@ void MultiThreadedWriter::RunWriterThread(int writerIndex) {
     string value(strings::Substitute("value$0", key_index));
     insert->mutable_row()->SetString("k", key.c_str());
     insert->mutable_row()->SetString("v", value.c_str());
-    // This should auto-flush.
-    session->Apply(insert.release());
+    Status apply_status = session->Apply(insert.release());
+    if (apply_status.ok()) {
+      Status flush_status = session->Flush();
+      if (flush_status.ok()) {
+        inserted_keys_.Insert(key_index);
+      } else {
+        LOG(WARNING) << "Error inserting key '" << key << "': Flush() failed";
+        failed_keys_.Insert(key_index);
+      }
+    } else {
+      LOG(WARNING) << "Error inserting key '" << key << "': Apply() failed";
+      failed_keys_.Insert(key_index);
+    }
+
+    insertion_progress_condition_.Signal();
   }
+  session->Close();
   LOG(INFO) << "Writer thread " << writerIndex << " finished";
+  running_threads_latch_.CountDown();
 }
 
-void MultiThreadedWriter::WaitForCompletion() {
-  thread_pool_->Wait();
+void MultiThreadedWriter::RunStatsThread() {
+  MicrosecondsInt64 start_time = GetMonoTimeMicros();
+  while (running_threads_latch_.count() > 0) {
+    running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
+    int64 current_key = current_key_.Load(MemoryOrder::kMemOrderAcquire);
+    MicrosecondsInt64 current_time = GetMonoTimeMicros();
+    LOG(INFO) << "Wrote " << current_key << " rows (" <<
+      current_key * 1000000.0 / (current_time - start_time) << " rows/sec)";
+  }
+}
+
+void MultiThreadedWriter::RunInsertionTrackerThread() {
+  MutexLock l(insertion_progress_lock_);
+  int64 current_key = 0;
+  while (running_threads_latch_.count() > 0) {
+    insertion_progress_condition_.Wait();
+    if (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
+
+      current_key++;
+    }
+  }
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -161,9 +287,6 @@ int main(int argc, char* argv[]) {
     .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
     .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
     .Build(&client));
-  shared_ptr<KuduSession> session(client->NewSession());
-  session->SetFlushMode(KuduSession::FlushMode::AUTO_FLUSH_SYNC);
-  session->SetTimeoutMillis(60000);
 
   const string table_name(FLAGS_yb_load_test_table_name);
 
@@ -212,24 +335,6 @@ int main(int argc, char* argv[]) {
 
   writer.WaitForCompletion();
 
-  if (false) {
-    for (int64 i = 0; i < FLAGS_yb_load_test_num_rows; ++i) {
-      gscoped_ptr<KuduInsert> insert(table->NewInsert());
-      string key(strings::Substitute("key$0", i));
-      string value(strings::Substitute("value$0", i));
-      insert->mutable_row()->SetString("k", key.c_str());
-      insert->mutable_row()->SetString("v", value.c_str());
-      VLOG(1) << "Insertion: " + insert->ToString();
-      CHECK_OK(session->Apply(insert.release()));
-      VLOG(1) << "Flushing pending writes at i = " << i;
-      CHECK_OK(session->Flush());
-      if (i % FLAGS_yb_load_test_progress_report_frequency == 0) {
-        LOG(INFO) << "i = " << i;
-      }
-    }
-  }
-
-  CHECK_OK(session->Close());
   LOG(INFO) << "Test completed";
   return 0;
 }
