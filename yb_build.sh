@@ -18,7 +18,10 @@ if [ -f "$thirdparty_built_flag_file" ]; then
   export NO_REBUILT_THIRDPARTY=1
 fi
 
-cmake -DKUDU_LINK=dynamic "$project_dir"
+if [ ! -f Makefile ]; then
+  cmake -DKUDU_LINK=dynamic "$project_dir"
+fi
+
 make -j8
 
 touch "$thirdparty_built_flag_file"

@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+
 #include "kudu/benchmarks/tpch/line_item_tsv_importer.h"
 #include "kudu/benchmarks/tpch/rpc_line_item_dao.h"
 #include "kudu/benchmarks/tpch/tpch-schemas.h"
@@ -31,6 +32,10 @@
 #include "kudu/util/condition_variable.h"
 #include "kudu/util/mutex.h"
 #include "kudu/util/countdown_latch.h"
+
+#define LOG_EXPR(expr) do { \
+  LOG(INFO) << #expr << " = " << (expr); \
+} while (0)
 
 DEFINE_string(
   yb_load_test_master_addresses, "localhost",
@@ -58,6 +63,7 @@ using namespace kudu::client;
 using kudu::client::sp::shared_ptr;
 using kudu::Status;
 using kudu::AtomicInt;
+using kudu::AtomicBool;
 using kudu::ThreadPool;
 using kudu::ThreadPoolBuilder;
 using kudu::MonoDelta;
@@ -74,7 +80,7 @@ void ConfigureSession(KuduSession* session) {
 
 class KeyIndexSet {
  public:
-  int NumElements() {
+  int NumElements() const {
     MutexLock l(mutex_);
     return set_.size();
   }
@@ -84,7 +90,7 @@ class KeyIndexSet {
     set_.insert(key);
   }
 
-  bool Contains(int64 key) {
+  bool Contains(int64 key) const {
     MutexLock l(mutex_);
     return set_.find(key) != set_.end();
   }
@@ -99,10 +105,28 @@ class KeyIndexSet {
       return true;
     }
   }
+
  private:
   set<int64> set_;
-  Mutex mutex_;
+  mutable Mutex mutex_;
+
+  friend ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set);
 };
+
+ostream& operator <<(ostream& out, const KeyIndexSet &key_index_set) {
+  MutexLock l(key_index_set.mutex_);
+  out << "[";
+  bool first = true;
+  for (auto key : key_index_set.set_) {
+    if (!first) {
+      out << ", ";
+    }
+    first = false;
+    out << key;
+  }
+  out << "]";
+  return out;
+}
 
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedAction
@@ -119,9 +143,18 @@ public:
     KuduTable* table);
 
   virtual void Start();
-  void WaitForCompletion();
+  virtual void WaitForCompletion();
 
 protected:
+
+  inline static string GetKeyByIndex(int64 key_index) {
+    return strings::Substitute("key$0", key_index);
+  }
+
+  inline static string GetValueByIndex(int64 key_index) {
+    return strings::Substitute("value$0", key_index);
+  }
+
   virtual void RunActionThread(int actionIndex) = 0;
   virtual void RunStatsThread() = 0;
 
@@ -152,10 +185,6 @@ MultiThreadedAction::MultiThreadedAction(
     num_action_threads_ + num_extra_threads).Build(&thread_pool_);
 }
 
-void MultiThreadedAction::WaitForCompletion() {
-  thread_pool_->Wait();
-}
-
 void MultiThreadedAction::Start() {
   LOG(INFO) << "Starting " << num_action_threads_ << " " << description_ << " threads, num_keys = "
   << num_keys_;
@@ -165,17 +194,24 @@ void MultiThreadedAction::Start() {
   }
 }
 
+void MultiThreadedAction::WaitForCompletion() {
+  thread_pool_->Wait();
+}
+
 // ------------------------------------------------------------------------------------------------
 // MultiThreadedWriter
 // ------------------------------------------------------------------------------------------------
 
 class MultiThreadedWriter : public MultiThreadedAction {
  public:
-  // client and table are managed by the caller and their lifetime should be a superset of this
+  virtual void WaitForCompletion() override;
+
+// client and table are managed by the caller and their lifetime should be a superset of this
   // object's lifetime.
   MultiThreadedWriter(int64 num_keys, int num_writer_threads, KuduClient* client, KuduTable* table);
 
   virtual void Start() OVERRIDE;
+  AtomicInt<int64>* InsertionPoint() { return &inserted_up_to_inclusive_; }
 
  private:
   virtual void RunActionThread(int writerIndex);
@@ -189,9 +225,6 @@ class MultiThreadedWriter : public MultiThreadedAction {
 
   KeyIndexSet inserted_keys_;
   KeyIndexSet failed_keys_;
-
-  Mutex insertion_progress_lock_;
-  ConditionVariable insertion_progress_condition_;
 };
 
 MultiThreadedWriter::MultiThreadedWriter(
@@ -201,13 +234,18 @@ MultiThreadedWriter::MultiThreadedWriter(
     KuduTable* table)
   : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table),
     current_key_(0),
-    inserted_up_to_inclusive_(0),
-    insertion_progress_condition_(&insertion_progress_lock_) {
+    inserted_up_to_inclusive_(0) {
 }
 
 void MultiThreadedWriter::Start() {
   MultiThreadedAction::Start();
   thread_pool_->SubmitFunc(boost::bind(&MultiThreadedWriter::RunInsertionTrackerThread, this));
+}
+
+void MultiThreadedWriter::WaitForCompletion() {
+  MultiThreadedAction::WaitForCompletion();
+  LOG(INFO) << "Inserted up to and including " <<
+    inserted_up_to_inclusive_.Load(MemoryOrder::kMemOrderAcquire);
 }
 
 void MultiThreadedWriter::RunActionThread(int writerIndex) {
@@ -221,7 +259,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
     }
 
     gscoped_ptr<KuduInsert> insert(table_->NewInsert());
-    string key(strings::Substitute("key$0", key_index));
+    string key(GetKeyByIndex(key_index));
     string value(strings::Substitute("value$0", key_index));
     insert->mutable_row()->SetString("k", key.c_str());
     insert->mutable_row()->SetString("v", value.c_str());
@@ -238,8 +276,6 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
       LOG(WARNING) << "Error inserting key '" << key << "': Apply() failed";
       failed_keys_.Insert(key_index);
     }
-
-    insertion_progress_condition_.Signal();
   }
   session->Close();
   LOG(INFO) << "Writer thread " << writerIndex << " finished";
@@ -252,21 +288,31 @@ void MultiThreadedWriter::RunStatsThread() {
     running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
     int64 current_key = current_key_.Load(MemoryOrder::kMemOrderAcquire);
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
-    LOG(INFO) << "Wrote " << current_key << " rows (" <<
-      current_key * 1000000.0 / (current_time - start_time) << " rows/sec)";
+    LOG(INFO) << "Wrote " << current_key << " rows ("
+      << current_key * 1000000.0 / (current_time - start_time) << " rows/sec)"
+      << ", contiguous insertion point: " <<
+        inserted_up_to_inclusive_.Load(MemoryOrder::kMemOrderAcquire);
   }
 }
 
 void MultiThreadedWriter::RunInsertionTrackerThread() {
-  MutexLock l(insertion_progress_lock_);
-  int64 current_key = 0;
+  LOG(INFO) << "Insertion tracker thread started";
+  int64 current_key = 1;  // the first key to be inserted
   while (running_threads_latch_.count() > 0) {
-    insertion_progress_condition_.Wait();
-    if (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
+//    LOG_EXPR(current_key);
+//    LOG_EXPR(inserted_keys_);
+//    LOG_EXPR(failed_keys_);
+//    LOG_EXPR(failed_keys_.Contains(current_key));
+//    LOG_EXPR(inserted_keys_.Contains(current_key));
+
+    while (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
       inserted_up_to_inclusive_.Store(current_key, MemoryOrder::kMemOrderRelease);
       current_key++;
     }
+    SleepFor(MonoDelta::FromMilliseconds(10));
+//    LOG(INFO) << "Insertion tracker: current_key=" << current_key;
   }
+  LOG(INFO) << "Insertion tracker thread stopped";
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -281,11 +327,15 @@ class MultiThreadedReader : public MultiThreadedAction {
     KuduClient* client,
     KuduTable* table,
     AtomicInt<int64>* insertion_point);
+  void Stop();
+
  protected:
   virtual void RunActionThread(int readerIndex) OVERRIDE;
+  virtual void RunStatsThread() OVERRIDE;
 
  private:
   AtomicInt<int64>* insertion_point_;
+  AtomicBool stopped_;
 };
 
 MultiThreadedReader::MultiThreadedReader(
@@ -295,8 +345,13 @@ MultiThreadedReader::MultiThreadedReader(
     KuduTable* table,
     AtomicInt<int64>* insertion_point)
   : MultiThreadedAction("readers", num_keys, num_reader_threads, 1, client, table),
-    insertion_point_(insertion_point) {
+    insertion_point_(insertion_point),
+    stopped_(false) {
+}
 
+void MultiThreadedReader::Stop() {
+  stopped_.Store(true, MemoryOrder::kMemOrderRelease);
+  WaitForCompletion();
 }
 
 void MultiThreadedReader::RunActionThread(int readerIndex) {
@@ -304,9 +359,43 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
   shared_ptr<KuduSession> session(client_->NewSession());
   ConfigureSession(session.get());
 
+  // Wait until at least one row has been inserted (keys are numbered starting from 1).
+  while (!stopped_.Load(MemoryOrder::kMemOrderAcquire) &&
+         insertion_point_->Load(MemoryOrder::kMemOrderAcquire) <= 0) {
+    SleepFor(MonoDelta::FromMilliseconds(10));
+  }
+
+  while (!stopped_.Load(MemoryOrder::kMemOrderAcquire)) {
+    int64 key_index;
+    if (rand() % 2 == 0) {
+      // Read the latest value written.
+      key_index = insertion_point_->Load(MemoryOrder::kMemOrderAcquire);
+    } else {
+      int64 written_up_to = insertion_point_->Load(MemoryOrder::kMemOrderAcquire);
+      key_index = abs(((int64) rand() << 32L | rand()) % (written_up_to + 1) );
+    }
+
+    KuduScanner scanner(table_);
+    CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
+    CHECK_OK(
+      scanner.AddConjunctPredicate(
+        table_->NewComparisonPredicate(
+          "k", KuduPredicate::EQUAL,
+          KuduValue::CopyString(GetKeyByIndex(key_index)))));
+    CHECK_OK(scanner.Open());
+    if (!scanner.HasMoreRows()) {
+      LOG(ERROR) << "Failed to read row with key #" << key_index;
+      continue;
+    }
+
+  }
+
   session->Close();
   LOG(INFO) << "Reader thread " << readerIndex << " finished";
   running_threads_latch_.CountDown();
+}
+
+void MultiThreadedReader::RunStatsThread() {
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -369,8 +458,20 @@ int main(int argc, char* argv[]) {
 
   writer.Start();
 
+  MultiThreadedReader reader(
+    FLAGS_yb_load_test_num_rows,
+    FLAGS_yb_load_test_num_writer_threads,
+    client.get(),
+    table.get(),
+    writer.InsertionPoint());
+  reader.Start();
+
   writer.WaitForCompletion();
+
+  // The reader will run as long as the writer is running.
+  reader.Stop();
 
   LOG(INFO) << "Test completed";
   return 0;
 }
+
