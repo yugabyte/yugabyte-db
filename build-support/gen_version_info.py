@@ -46,7 +46,10 @@ def output_up_to_date(path, id_hash):
   return m.group(1) == id_hash
 
 def main():
-  logging.basicConfig(level=logging.INFO)
+  logging.basicConfig(
+    level=logging.INFO,
+    format="[%(asctime)s] [" + os.path.basename(__file__) + "] %(levelname)s: %(message)s")
+
   parser = optparse.OptionParser(
       usage="usage: %prog --version=<version> <output path>")
   parser.add_option("-v", "--version", help="Set version number", type="string",
@@ -139,8 +142,18 @@ def main():
   # Do not overwrite the file if it already contains the same code we are going to write.
   # We do not want to update the modified timestamp on this file unnecessarily, as this may trigger
   # additional recompilation.
-  if (not os.path.exists(output_path) or
-      open(output_path).read().strip() != new_defines.strip()):
+  should_write = False
+  if not os.path.exists(output_path):
+    logging.info("File '%s' does not exist, will create" % output_path)
+    should_write = True
+  elif open(output_path).read().strip() != new_defines.strip():
+    logging.info("File '%s' has different contents from what what is needed, will overwrite" %
+      output_path)
+    should_write = True
+  else:
+    logging.info("Not rewriting '%s' (no changes)" % output_path)
+
+  if should_write:
     with file(output_path, "w") as f:
       print >>f, new_defines
 

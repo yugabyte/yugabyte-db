@@ -8,31 +8,19 @@
 #include <set>
 #include <atomic>
 
-#include <glog/logging.h>
-#include <stdlib.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-
 #include "kudu/benchmarks/tpch/line_item_tsv_importer.h"
 #include "kudu/benchmarks/tpch/rpc_line_item_dao.h"
-#include "kudu/benchmarks/tpch/tpch-schemas.h"
 #include "kudu/gutil/stl_util.h"
 #include "kudu/gutil/strings/join.h"
 #include "kudu/gutil/strings/substitute.h"
 #include "kudu/integration-tests/external_mini_cluster.h"
 #include "kudu/util/atomic.h"
 #include "kudu/util/env.h"
-#include "kudu/util/errno.h"
 #include "kudu/util/flags.h"
 #include "kudu/util/logging.h"
-#include "kudu/util/monotime.h"
 #include "kudu/util/stopwatch.h"
 #include "kudu/util/subprocess.h"
-#include "kudu/util/thread.h"
 #include "kudu/util/threadpool.h"
-#include "kudu/util/condition_variable.h"
-#include "kudu/util/mutex.h"
-#include "kudu/util/countdown_latch.h"
 
 #define LOG_EXPR(expr) do { \
   LOG(INFO) << #expr << " = " << (expr); \
@@ -493,6 +481,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
 }
 
 void MultiThreadedReader::RunStatsThread() {
+
 }
 
 void MultiThreadedReader::IncrementReadErrorCount() {
