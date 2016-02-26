@@ -48,7 +48,7 @@ def output_up_to_date(path, id_hash):
 def main():
   logging.basicConfig(
     level=logging.INFO,
-    format="[%(asctime)s] [" + os.path.basename(__file__) + "] %(levelname)s: %(message)s")
+    format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
 
   parser = optparse.OptionParser(
       usage="usage: %prog --version=<version> <output path>")
@@ -110,9 +110,16 @@ def main():
   d = os.path.dirname(output_path)
   if not os.path.exists(d):
     os.makedirs(d)
+  log_file_path = os.path.join(d, os.path.splitext(os.path.basename(__file__))[0] + '.log')
+  file_log_handler = logging.FileHandler(log_file_path)
+  file_log_handler.setFormatter(
+    logging.Formatter(
+      "%(asctime)s %(levelname)s: %(message)s"))
+  logging.getLogger('').addHandler(file_log_handler)
+
   if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:
     logging.info(
-      'Removing git hash, host name, build timestamp, and user name from version_defines.h' +
+      'Removing git hash, host name, build timestamp, and user name from version_defines.h ' +
       'as requested by YB_MINIMIZE_VERSION_DEFINES_CHANGES to reduce unnecessary rebuilds.')
     identifying_hash = '0' * 40
     git_hash = '0' * 40
