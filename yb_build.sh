@@ -15,7 +15,7 @@ cd "$build_dir"
 thirdparty_built_flag_file="$PWD/built_thirdparty"
 
 if [ -f "$thirdparty_built_flag_file" ]; then
-  export NO_REBUILT_THIRDPARTY=1
+  export NO_REBUILD_THIRDPARTY=1
 fi
 
 if [ ! -f Makefile ]; then
