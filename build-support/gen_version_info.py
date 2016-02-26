@@ -127,7 +127,7 @@ def main():
     build_time = 'N/A'
     username = 'N/A'
 
-  new_defines = \
+  new_contents = \
 """
 // THIS FILE IS AUTO-GENERATED! DO NOT EDIT!
 //
@@ -150,19 +150,23 @@ def main():
   # We do not want to update the modified timestamp on this file unnecessarily, as this may trigger
   # additional recompilation.
   should_write = False
-  if not os.path.exists(output_path):
+  output_exists = os.path.exists(output_path)
+  old_contents = open(output_path).read() if output_exists else ''
+  if not output_exists:
     logging.info("File '%s' does not exist, will create" % output_path)
     should_write = True
-  elif open(output_path).read().strip() != new_defines.strip():
+  elif old_contents.strip() != new_contents.strip():
     logging.info("File '%s' has different contents from what what is needed, will overwrite" %
       output_path)
+    logging.info("Old contents:\n" + old_contents.strip())
+    logging.info("New contents:\n" + new_contents.strip())
     should_write = True
   else:
     logging.info("Not rewriting '%s' (no changes)" % output_path)
 
   if should_write:
     with file(output_path, "w") as f:
-      print >>f, new_defines
+      print >>f, new_contents
 
   return 0
 
