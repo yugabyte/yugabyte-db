@@ -6,6 +6,7 @@
 #include <boost/thread/mutex.hpp>
 #include <queue>
 #include <set>
+#include <atomic>
 
 #include <glog/logging.h>
 #include <stdlib.h>
@@ -61,13 +62,17 @@ DEFINE_int64(
   yb_load_test_max_num_read_errors, 1000,
   "Maximum number of read errors. The test is aborted after this number of errors.");
 
+DEFINE_bool(
+  yb_load_test_verbose, false,
+  "Custom verbose log messages for debugging the load test tool");
+
 using strings::Substitute;
+using std::atomic_long;
+using std::atomic_bool;
 
 using namespace kudu::client;
 using kudu::client::sp::shared_ptr;
 using kudu::Status;
-using kudu::AtomicInt;
-using kudu::AtomicBool;
 using kudu::ThreadPool;
 using kudu::ThreadPoolBuilder;
 using kudu::MonoDelta;
@@ -230,7 +235,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
   MultiThreadedWriter(int64 num_keys, int num_writer_threads, KuduClient* client, KuduTable* table);
 
   virtual void Start() OVERRIDE;
-  AtomicInt<int64>* InsertionPoint() { return &inserted_up_to_inclusive_; }
+  atomic_long* InsertionPoint() { return &inserted_up_to_inclusive_; }
   const KeyIndexSet* InsertedKeys() const { return &inserted_keys_; }
   const KeyIndexSet* FailedKeys() const { return &failed_keys_; }
 
@@ -241,8 +246,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
 
   // This is the current key to be inserted by any thread. Each thread does an atomic get and
   // increment operation and inserts the current value.
-  AtomicInt<int64> current_key_;
-  AtomicInt<int64> inserted_up_to_inclusive_;
+  atomic_long next_key_;
+  atomic_long inserted_up_to_inclusive_;
 
   KeyIndexSet inserted_keys_;
   KeyIndexSet failed_keys_;
@@ -254,8 +259,8 @@ MultiThreadedWriter::MultiThreadedWriter(
     KuduClient* client,
     KuduTable* table)
   : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table),
-    current_key_(-1),
-    inserted_up_to_inclusive_(0) {
+    next_key_(0),
+    inserted_up_to_inclusive_(-1) {
 }
 
 void MultiThreadedWriter::Start() {
@@ -265,8 +270,7 @@ void MultiThreadedWriter::Start() {
 
 void MultiThreadedWriter::WaitForCompletion() {
   MultiThreadedAction::WaitForCompletion();
-  LOG(INFO) << "Inserted up to and including " <<
-    inserted_up_to_inclusive_.Load(MemoryOrder::kMemOrderAcquire);
+  LOG(INFO) << "Inserted up to and including " << inserted_up_to_inclusive_.load();
 }
 
 void MultiThreadedWriter::RunActionThread(int writerIndex) {
@@ -274,8 +278,8 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
   shared_ptr<KuduSession> session(client_->NewSession());
   ConfigureSession(session.get());
   while (true) {
-    int64 key_index = current_key_.Increment(MemoryOrder::kMemOrderBarrier);
-    if (key_index > num_keys_) {
+    int64 key_index = next_key_++;
+    if (key_index >= num_keys_) {
       break;
     }
 
@@ -289,8 +293,10 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
       Status flush_status = session->Flush();
       if (flush_status.ok()) {
         inserted_keys_.Insert(key_index);
-        LOG(INFO) << "Successfully inserted key #" << key_index << " at timestamp "
-          << client_->GetLatestObservedTimestamp();
+        if (FLAGS_yb_load_test_verbose) {
+          LOG(INFO) << "Successfully inserted key #" << key_index << " at timestamp "
+            << client_->GetLatestObservedTimestamp() << " or earlier";
+        }
       } else {
         LOG(WARNING) << "Error inserting key '" << key_str << "': Flush() failed";
         failed_keys_.Insert(key_index);
@@ -309,12 +315,12 @@ void MultiThreadedWriter::RunStatsThread() {
   MicrosecondsInt64 start_time = GetMonoTimeMicros();
   while (running_threads_latch_.count() > 0) {
     running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
-    int64 current_key = current_key_.Load(MemoryOrder::kMemOrderAcquire);
+    int64 current_key = next_key_.load();
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
     LOG(INFO) << "Wrote " << current_key << " rows ("
       << current_key * 1000000.0 / (current_time - start_time) << " writes/sec)"
       << ", contiguous insertion point: " <<
-        inserted_up_to_inclusive_.Load(MemoryOrder::kMemOrderAcquire);
+        inserted_up_to_inclusive_.load();
   }
 }
 
@@ -322,18 +328,14 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
   LOG(INFO) << "Insertion tracker thread started";
   int64 current_key = 0;  // the first key to be inserted
   while (running_threads_latch_.count() > 0) {
-//    LOG_EXPR(current_key);
-//    LOG_EXPR(inserted_keys_);
-//    LOG_EXPR(failed_keys_);
-//    LOG_EXPR(failed_keys_.Contains(current_key));
-//    LOG_EXPR(inserted_keys_.Contains(current_key));
-
     while (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
-      inserted_up_to_inclusive_.Store(current_key, MemoryOrder::kMemOrderRelease);
+      if (FLAGS_yb_load_test_verbose) {
+        LOG(INFO) << "Advancing insertion tracker to key #" << current_key;
+      }
+      inserted_up_to_inclusive_.store(current_key);
       current_key++;
     }
     SleepFor(MonoDelta::FromMilliseconds(10));
-//    LOG(INFO) << "Insertion tracker: current_key=" << current_key;
   }
   LOG(INFO) << "Insertion tracker thread stopped";
 }
@@ -349,7 +351,7 @@ class MultiThreadedReader : public MultiThreadedAction {
     int num_reader_threads,
     KuduClient* client,
     KuduTable* table,
-    AtomicInt<int64>* insertion_point,
+    atomic_long* insertion_point,
     const KeyIndexSet* inserted_keys,
     const KeyIndexSet* failed_keys);
   void Stop();
@@ -360,11 +362,11 @@ class MultiThreadedReader : public MultiThreadedAction {
   virtual void RunStatsThread() OVERRIDE;
 
  private:
-  const AtomicInt<int64>* insertion_point_;
+  const atomic_long* insertion_point_;
   const KeyIndexSet* inserted_keys_;
   const KeyIndexSet* failed_keys_;
-  AtomicBool stopped_;
-  AtomicInt<int64> num_read_errors_;
+  atomic_bool stopped_;
+  atomic_long num_read_errors_;
 };
 
 MultiThreadedReader::MultiThreadedReader(
@@ -372,7 +374,7 @@ MultiThreadedReader::MultiThreadedReader(
     int num_reader_threads,
     KuduClient* client,
     KuduTable* table,
-    AtomicInt<int64>* insertion_point,
+    atomic_long* insertion_point,
     const KeyIndexSet* inserted_keys,
     const KeyIndexSet* failed_keys)
   : MultiThreadedAction("readers", num_keys, num_reader_threads, 1, client, table),
@@ -384,7 +386,7 @@ MultiThreadedReader::MultiThreadedReader(
 }
 
 void MultiThreadedReader::Stop() {
-  stopped_.Store(true, MemoryOrder::kMemOrderRelease);
+  stopped_.store(true);
   WaitForCompletion();
 }
 
@@ -394,14 +396,13 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
   ConfigureSession(session.get());
 
   // Wait until at least one row has been inserted (keys are numbered starting from 1).
-  while (!stopped_.Load(MemoryOrder::kMemOrderAcquire) &&
-         insertion_point_->Load(MemoryOrder::kMemOrderAcquire) < 0) {
+  while (!stopped_.load() && insertion_point_->load() < 0) {
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  while (!stopped_.Load(MemoryOrder::kMemOrderAcquire)) {
+  while (!stopped_.load()) {
     int64 key_index;
-    int64 written_up_to = insertion_point_->Load(MemoryOrder::kMemOrderAcquire);
+    int64 written_up_to = insertion_point_->load();
     do {
       switch (rand() % 3) {
         case 0:
@@ -425,6 +426,10 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
       }
       // Ensure we don't try to read a key for which a write failed.
     } while (failed_keys_->Contains(key_index));
+    if (FLAGS_yb_load_test_verbose) {
+      LOG(INFO) << "Reader thread " << readerIndex << " saw written_up_to="
+        << written_up_to << " and picked key #" << key_index;
+    }
 
     uint64_t read_ts = client_->GetLatestObservedTimestamp();
     KuduScanner scanner(table_);
@@ -481,8 +486,7 @@ void MultiThreadedReader::RunStatsThread() {
 }
 
 void MultiThreadedReader::IncrementReadErrorCount() {
-  if (num_read_errors_.Increment(MemoryOrder::kMemOrderBarrier) >=
-      FLAGS_yb_load_test_max_num_read_errors) {
+  if (++num_read_errors_ >= FLAGS_yb_load_test_max_num_read_errors) {
     LOG(FATAL) << "Reached the maximum number of read errors!";
   }
 }
