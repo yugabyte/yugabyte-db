@@ -544,6 +544,19 @@ select dbms_assert.simple_sql_name('ajajaj -- ajaj');
 select dbms_assert.object_name('pg_catalog.pg_class');
 select dbms_assert.object_name('dbms_assert.fooo');
 
+select dbms_assert.enquote_literal(NULL);
+select dbms_assert.enquote_name(NULL);
+select dbms_assert.enquote_name(NULL, false);
+select dbms_assert.noop(NULL);
+select dbms_assert.qualified_sql_name(NULL);
+select dbms_assert.qualified_sql_name(NULL);
+select dbms_assert.schema_name(NULL);
+select dbms_assert.schema_name(NULL);
+select dbms_assert.simple_sql_name(NULL);
+select dbms_assert.simple_sql_name(NULL);
+select dbms_assert.object_name(NULL);
+select dbms_assert.object_name(NULL);
+
 select plunit.assert_true(NULL);
 select plunit.assert_true(1 = 2);
 select plunit.assert_true(1 = 2, 'one is not two');

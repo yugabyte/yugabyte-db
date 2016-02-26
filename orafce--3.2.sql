@@ -1778,19 +1778,19 @@ COMMENT ON FUNCTION dbms_assert.enquote_literal(varchar) IS 'Add leading and tra
 CREATE FUNCTION dbms_assert.enquote_name(str varchar, loweralize boolean)
 RETURNS varchar
 AS 'MODULE_PATHNAME','dbms_assert_enquote_name'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_assert.enquote_name(varchar, boolean) IS 'Enclose name in double quotes';
 
 CREATE FUNCTION dbms_assert.enquote_name(str varchar)
 RETURNS varchar
 AS 'SELECT dbms_assert.enquote_name($1, true)'
-LANGUAGE SQL IMMUTABLE;
+LANGUAGE SQL IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_assert.enquote_name(varchar) IS 'Enclose name in double quotes';
 
 CREATE FUNCTION dbms_assert.noop(str varchar)
 RETURNS varchar
 AS 'MODULE_PATHNAME','dbms_assert_noop'
-LANGUAGE C IMMUTABLE;
+LANGUAGE C IMMUTABLE STRICT;
 COMMENT ON FUNCTION dbms_assert.noop(varchar) IS 'Returns value without any checking.';
 
 CREATE FUNCTION dbms_assert.schema_name(str varchar)

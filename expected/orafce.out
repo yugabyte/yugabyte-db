@@ -2635,6 +2635,46 @@ select dbms_assert.object_name('pg_catalog.pg_class');
 
 select dbms_assert.object_name('dbms_assert.fooo');
 ERROR:  invalid object name
+select dbms_assert.enquote_literal(NULL);
+ enquote_literal 
+-----------------
+ 
+(1 row)
+
+select dbms_assert.enquote_name(NULL);
+ enquote_name 
+--------------
+ 
+(1 row)
+
+select dbms_assert.enquote_name(NULL, false);
+ enquote_name 
+--------------
+ 
+(1 row)
+
+select dbms_assert.noop(NULL);
+ noop 
+------
+ 
+(1 row)
+
+select dbms_assert.qualified_sql_name(NULL);
+ERROR:  string is not qualified SQL name
+select dbms_assert.qualified_sql_name(NULL);
+ERROR:  string is not qualified SQL name
+select dbms_assert.schema_name(NULL);
+ERROR:  invalid schema name
+select dbms_assert.schema_name(NULL);
+ERROR:  invalid schema name
+select dbms_assert.simple_sql_name(NULL);
+ERROR:  string is not simple SQL name
+select dbms_assert.simple_sql_name(NULL);
+ERROR:  string is not simple SQL name
+select dbms_assert.object_name(NULL);
+ERROR:  invalid object name
+select dbms_assert.object_name(NULL);
+ERROR:  invalid object name
 select plunit.assert_true(NULL);
 ERROR:  plunit.assert_true exception
 DETAIL:  Plunit.assertation fails (assert_true).
