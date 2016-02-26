@@ -107,8 +107,18 @@ def main():
   d = os.path.dirname(output_path)
   if not os.path.exists(d):
     os.makedirs(d)
-  with file(output_path, "w") as f:
-    print >>f, """
+  if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:
+    logging.info(
+      'Removing git hash, host name, build timestamp, and user name from version_defines.h' +
+      'as requested by YB_MINIMIZE_VERSION_DEFINES_CHANGES to reduce unnecessary rebuilds.')
+    identifying_hash = '0' * 40
+    git_hash = '0' * 40
+    hostname = 'localhost'
+    build_time = 'N/A'
+    username = 'N/A'
+
+  new_defines = \
+"""
 // THIS FILE IS AUTO-GENERATED! DO NOT EDIT!
 //
 // id_hash=%(identifying_hash)s
@@ -125,6 +135,15 @@ def main():
 #define KUDU_VERSION_STRING "%(version_string)s"
 #endif
 """ % locals()
+
+  # Do not overwrite the file if it already contains the same code we are going to write.
+  # We do not want to update the modified timestamp on this file unnecessarily, as this may trigger
+  # additional recompilation.
+  if (not os.path.exists(output_path) or
+      open(output_path).read().strip() != new_defines.strip()):
+    with file(output_path, "w") as f:
+      print >>f, new_defines
+
   return 0
 
 if __name__ == "__main__":

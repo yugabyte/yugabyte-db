@@ -15,6 +15,8 @@ cd "$build_dir"
 thirdparty_built_flag_file="$PWD/built_thirdparty"
 makefile_builds_third_party_flag_file="$PWD/makefile_builds_third_party"
 
+export YB_MINIMIZE_VERSION_DEFINES_CHANGES=1
+
 if [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
   if [ -f "$thirdparty_built_flag_file" ]; then
     echo "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
@@ -22,7 +24,7 @@ if [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
     export NO_REBUILD_THIRDPARTY=1
   fi
   echo "Running cmake in $PWD"
-  ( set -x; echo cmake -DKUDU_LINK=dynamic "$project_dir" )
+  ( set -x; cmake -DKUDU_LINK=dynamic "$project_dir" )
 fi
 
 echo Running make in $PWD
