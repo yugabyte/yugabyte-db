@@ -46,7 +46,10 @@ def output_up_to_date(path, id_hash):
   return m.group(1) == id_hash
 
 def main():
-  logging.basicConfig(level=logging.INFO)
+  logging.basicConfig(
+    level=logging.INFO,
+    format="[" + os.path.basename(__file__) + "] %(asctime)s %(levelname)s: %(message)s")
+
   parser = optparse.OptionParser(
       usage="usage: %prog --version=<version> <output path>")
   parser.add_option("-v", "--version", help="Set version number", type="string",
@@ -107,8 +110,25 @@ def main():
   d = os.path.dirname(output_path)
   if not os.path.exists(d):
     os.makedirs(d)
-  with file(output_path, "w") as f:
-    print >>f, """
+  log_file_path = os.path.join(d, os.path.splitext(os.path.basename(__file__))[0] + '.log')
+  file_log_handler = logging.FileHandler(log_file_path)
+  file_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
+  logging.getLogger('').addHandler(file_log_handler)
+
+  if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:
+    logging.info(
+      'Removing git hash, host name, build timestamp, user name, and clean repo flag ' +
+      '(defaulting to false) from "version_defines.h" as requested by ' +
+      'YB_MINIMIZE_VERSION_DEFINES_CHANGES to reduce unnecessary rebuilds.')
+    identifying_hash = '0' * 40
+    git_hash = '0' * 40
+    hostname = 'localhost'
+    build_time = 'N/A'
+    username = 'N/A'
+    clean_repo = 'false'
+
+  new_contents = \
+"""
 // THIS FILE IS AUTO-GENERATED! DO NOT EDIT!
 //
 // id_hash=%(identifying_hash)s
@@ -125,6 +145,29 @@ def main():
 #define KUDU_VERSION_STRING "%(version_string)s"
 #endif
 """ % locals()
+
+  # Do not overwrite the file if it already contains the same code we are going to write.
+  # We do not want to update the modified timestamp on this file unnecessarily, as this may trigger
+  # additional recompilation.
+  should_write = False
+  output_exists = os.path.exists(output_path)
+  old_contents = open(output_path).read() if output_exists else ''
+  if not output_exists:
+    logging.info("File '%s' does not exist, will create" % output_path)
+    should_write = True
+  elif old_contents.strip() != new_contents.strip():
+    logging.info("File '%s' has different contents from what what is needed, will overwrite" %
+      output_path)
+    logging.info("Old contents:\n" + old_contents.strip())
+    logging.info("New contents:\n" + new_contents.strip())
+    should_write = True
+  else:
+    logging.info("Not rewriting '%s' (no changes)" % output_path)
+
+  if should_write:
+    with file(output_path, "w") as f:
+      print >>f, new_contents
+
   return 0
 
 if __name__ == "__main__":

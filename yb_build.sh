@@ -1,6 +1,6 @@
 #!/bin/bash 
 
-set -euxo pipefail
+set -euo pipefail
 
 project_dir=$( cd `dirname $0` && pwd )
 build_dir="$project_dir/build/debug"
@@ -13,13 +13,22 @@ cd "$build_dir"
 # never rebuild it.
 
 thirdparty_built_flag_file="$PWD/built_thirdparty"
+makefile_builds_third_party_flag_file="$PWD/makefile_builds_third_party"
 
-if [ -f "$thirdparty_built_flag_file" ]; then
-  export NO_REBUILT_THIRDPARTY=1
+export YB_MINIMIZE_VERSION_DEFINES_CHANGES=1
+
+if [ ! -f Makefile ] || [ ! -f "$thirdparty_built_flag_file" ]; then
+  if [ -f "$thirdparty_built_flag_file" ]; then
+    echo "$thirdparty_built_flag_file is present, setting NO_REBUILD_THIRDPARTY=1" \
+      "before running cmake"
+    export NO_REBUILD_THIRDPARTY=1
+  fi
+  echo "Running cmake in $PWD"
+  ( set -x; cmake -DKUDU_LINK=dynamic "$project_dir" )
 fi
 
-cmake -DKUDU_LINK=dynamic "$project_dir"
-make -j8
+echo Running make in $PWD
+( set -x; make -j8 )
 
 touch "$thirdparty_built_flag_file"
 

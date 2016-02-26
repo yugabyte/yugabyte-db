@@ -799,11 +799,10 @@ void KuduClient::Data::SetMasterServerProxyAsync(KuduClient* client,
                                                 master_server_addr)));
       return;
     }
-    if (addrs.size() > 1) {
-      LOG(WARNING) << "Specified master server address '" << master_server_addr << "' "
-                   << "resolved to multiple IPs. Using " << addrs[0].ToString();
+
+    for (auto addr : addrs) {
+      master_sockaddrs.push_back(addr);
     }
-    master_sockaddrs.push_back(addrs[0]);
   }
 
   // Finding a new master involves a fan-out RPC to each master. A single
