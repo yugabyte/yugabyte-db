@@ -215,9 +215,6 @@ Status KuduClientBuilder::Build(shared_ptr<KuduClient>* client) {
   // time around.
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(c->default_admin_operation_timeout());
-  LOG(WARNING) << "DEBUG(mbautin): " <<
-    "admin operation timeout=" << c->default_admin_operation_timeout().ToString() << ", " <<
-    "deadline=" << deadline.ToString();
 
   RETURN_NOT_OK_PREPEND(c->data_->SetMasterServerProxy(c.get(), deadline),
                         "Could not locate the leader master");
