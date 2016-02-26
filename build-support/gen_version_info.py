@@ -112,9 +112,7 @@ def main():
     os.makedirs(d)
   log_file_path = os.path.join(d, os.path.splitext(os.path.basename(__file__))[0] + '.log')
   file_log_handler = logging.FileHandler(log_file_path)
-  file_log_handler.setFormatter(
-    logging.Formatter(
-      "%(asctime)s %(levelname)s: %(message)s"))
+  file_log_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s: %(message)s"))
   logging.getLogger('').addHandler(file_log_handler)
 
   if 'YB_MINIMIZE_VERSION_DEFINES_CHANGES' in os.environ:

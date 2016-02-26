@@ -99,11 +99,9 @@ struct CompileAssert {
 // TODO(user): Remove "&& !defined(__clang_)" when =delete is
 // gcc-4.7 before =delete is allowed, go back to the C++98 definition.
 #if LANG_CXX11 && !defined(__clang__)
-#if !defined(DISALLOW_COPY_AND_ASSIGN)
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
   TypeName(const TypeName&) = delete;      \
   void operator=(const TypeName&) = delete
-#endif
 #else
 #define DISALLOW_COPY_AND_ASSIGN(TypeName) \
   TypeName(const TypeName&);               \
