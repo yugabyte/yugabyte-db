@@ -2311,6 +2311,36 @@ select PLVstr.rvrs ('Jumping Jack Flash', 4, 6) = 'nip';
  t
 (1 row)
 
+select PLVstr.rvrs (NULL, 10, 20);
+ rvrs 
+------
+ 
+(1 row)
+
+select PLVstr.rvrs ('alphabet', -2, -5);
+ rvrs 
+------
+ ebah
+(1 row)
+
+select PLVstr.rvrs ('alphabet', -2);
+  rvrs   
+---------
+ ebahpla
+(1 row)
+
+select PLVstr.rvrs ('alphabet', 2, 200);
+  rvrs   
+---------
+ tebahpl
+(1 row)
+
+select PLVstr.rvrs ('alphabet', 20, 200);
+ rvrs 
+------
+ 
+(1 row)
+
 select PLVstr.lstrip ('*val1|val2|val3|*', '*') = 'val1|val2|val3|*';
  ?column? 
 ----------

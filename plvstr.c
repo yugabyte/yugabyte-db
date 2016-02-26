@@ -564,9 +564,9 @@ plvstr_is_prefix_int64 (PG_FUNCTION_ARGS)
 Datum
 plvstr_rvrs(PG_FUNCTION_ARGS)
 {
-	text *str = PG_GETARG_TEXT_PP(0);
-	int start = PG_GETARG_INT32(1);
-	int end = PG_GETARG_INT32(2);
+	text *str;
+	int start;
+	int end;
 	int len;
 	int i;
 	int new_len;
@@ -579,6 +579,8 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 	if (PG_ARGISNULL(0))
 		PG_RETURN_NULL();
 
+	str = PG_GETARG_TEXT_PP(0);
+
 	mb_encode = pg_database_encoding_max_length() > 1;
 
 	if (!mb_encode)
@@ -586,21 +588,27 @@ plvstr_rvrs(PG_FUNCTION_ARGS)
 	else
 		len = ora_mb_strlen(str, &sizes, &positions);
 
-
-
-	start = PG_ARGISNULL(1) ? 1 : start;
-	end = PG_ARGISNULL(2) ? (start < 0 ? -len : len) : end;
+	start = PG_ARGISNULL(1) ? 1 : PG_GETARG_INT32(1);
+	end = PG_ARGISNULL(2) ? (start < 0 ? -len : len) : PG_GETARG_INT32(2);
 
 	if ((start > end && start > 0) || (start < end && start < 0))
 		PARAMETER_ERROR("Second parameter is bigger than third.");
 
 	if (start < 0)
 	{
-		end = len + start + 1;
-		start = end;
+		int new_start, new_end;
+
+		new_start = len + start + 1;
+		new_end = len + end + 1;
+		start = new_end;
+		end = new_start;
 	}
 
+	start = start != 0 ? start : 1;
+	end = end < len ? end : len;
+
 	new_len = end - start + 1;
+	new_len = new_len >= 0 ? new_len : 0;
 
 	if (mb_encode)
 	{
