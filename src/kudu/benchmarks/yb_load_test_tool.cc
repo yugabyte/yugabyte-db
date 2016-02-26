@@ -575,5 +575,3 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "Test completed";
   return 0;
 }
-
-
