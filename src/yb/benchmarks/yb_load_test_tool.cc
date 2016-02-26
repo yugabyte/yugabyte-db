@@ -27,39 +27,43 @@
 } while (0)
 
 DEFINE_int32(
-  yb_load_test_num_iter, 1,
+  load_test_num_iter, 1,
   "Run the entire test this number of times");
 
 DEFINE_string(
-  yb_load_test_master_addresses, "localhost",
+  load_test_master_addresses, "localhost",
   "Addresses of masters for the cluster to operate on");
 
 DEFINE_string(
-  yb_load_test_table_name, "yb_load_test",
+  load_test_table_name, "yb_load_test",
   "Table name to use for YugaByte load testing");
 
 DEFINE_int64(
-  yb_load_test_num_rows, 1000000,
+  load_test_num_rows, 1000000,
   "Number of rows to insert");
 
 DEFINE_int64(
-  yb_load_test_progress_report_frequency, 10000,
+  load_test_progress_report_frequency, 10000,
   "Report progress once per this number of rows");
 
 DEFINE_int64(
-  yb_load_test_num_writer_threads, 4,
+  load_test_num_writer_threads, 4,
   "Number of writer threads");
 
 DEFINE_int64(
-  yb_load_test_max_num_read_errors, 1000,
+  load_test_max_num_write_errors, 1000,
+  "Maximum number of write errors. The test is aborted after this number of errors.");
+
+DEFINE_int64(
+  load_test_max_num_read_errors, 1000,
   "Maximum number of read errors. The test is aborted after this number of errors.");
 
 DEFINE_bool(
-  yb_load_test_verbose, false,
+  load_test_verbose, false,
   "Custom verbose log messages for debugging the load test tool");
 
 DEFINE_int32(
-  yb_load_test_table_num_replicas, 3,
+  load_test_table_num_replicas, 3,
   "Replication factor for the load test table");
 
 
@@ -161,10 +165,14 @@ public:
     int num_action_threads,
     int num_extra_threads,
     YBClient* client,
-    YBTable* table);
+    YBTable* table,
+    atomic_bool* stop_flag);
 
   virtual void Start();
   virtual void WaitForCompletion();
+
+  void Stop() { stop_flag_->store(true) }
+  bool IsStopped() { return stop_flag_->load(); }
 
 protected:
 
@@ -187,6 +195,8 @@ protected:
 
   gscoped_ptr<ThreadPool> thread_pool_;
   CountDownLatch running_threads_latch_;
+
+  atomic_bool* stop_flag_;
 };
 
 MultiThreadedAction::MultiThreadedAction(
@@ -195,13 +205,15 @@ MultiThreadedAction::MultiThreadedAction(
     int num_action_threads,
     int num_extra_threads,
     YBClient* client,
-    YBTable* table)
+    YBTable* table,
+    atomic_bool* stop_flag)
   : description_(description),
     num_keys_(num_keys),
     num_action_threads_(num_action_threads),
     client_(client),
     table_(table),
-    running_threads_latch_(num_action_threads) {
+    running_threads_latch_(num_action_threads),
+    stop_flag_(stop_flag) {
   ThreadPoolBuilder(description).set_max_threads(
     num_action_threads_ + num_extra_threads).Build(&thread_pool_);
 }
@@ -229,7 +241,12 @@ class MultiThreadedWriter : public MultiThreadedAction {
 
 // client and table are managed by the caller and their lifetime should be a superset of this
   // object's lifetime.
-  MultiThreadedWriter(int64 num_keys, int num_writer_threads, YBClient* client, YBTable* table);
+  MultiThreadedWriter(
+    int64 num_keys,
+    int num_writer_threads,
+    YBClient* client,
+    YBTable* table,
+    atomic_bool* stop_flag);
 
   virtual void Start() OVERRIDE;
   atomic_long* InsertionPoint() { return &inserted_up_to_inclusive_; }
@@ -254,8 +271,9 @@ MultiThreadedWriter::MultiThreadedWriter(
     int64 num_keys,
     int num_writer_threads,
     YBClient* client,
-    YBTable* table)
-  : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table),
+    YBTable* table,
+    atomic_bool* stop_flag)
+  : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table, stop_flag),
     next_key_(0),
     inserted_up_to_inclusive_(-1) {
 }
@@ -274,7 +292,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
   LOG(INFO) << "Writer thread " << writerIndex << " started";
   shared_ptr<YBSession> session(client_->NewSession());
   ConfigureSession(session.get());
-  while (true) {
+  while (!IsStopped()) {
     int64 key_index = next_key_++;
     if (key_index >= num_keys_) {
       break;
@@ -290,13 +308,20 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
       Status flush_status = session->Flush();
       if (flush_status.ok()) {
         inserted_keys_.Insert(key_index);
-        if (FLAGS_yb_load_test_verbose) {
+        if (FLAGS_load_test_verbose) {
           LOG(INFO) << "Successfully inserted key #" << key_index << " at timestamp "
             << client_->GetLatestObservedTimestamp() << " or earlier";
         }
       } else {
         LOG(WARNING) << "Error inserting key '" << key_str << "': Flush() failed";
         failed_keys_.Insert(key_index);
+        if (failed_keys_.NumElements() >= FLAGS_load_test_max_num_write_errors) {
+          LOG(ERROR) <<
+            "Reached the maximum number of write errors " <<
+            FLAGS_load_test_max_num_write_errors << ", stopping the test.";
+          Stop();
+          break;
+        }
       }
     } else {
       LOG(WARNING) << "Error inserting key '" << key_str << "': Apply() failed";
@@ -316,8 +341,8 @@ void MultiThreadedWriter::RunStatsThread() {
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
     LOG(INFO) << "Wrote " << current_key << " rows ("
       << current_key * 1000000.0 / (current_time - start_time) << " writes/sec)"
-      << ", contiguous insertion point: " <<
-        inserted_up_to_inclusive_.load();
+      << ", contiguous insertion point: " << inserted_up_to_inclusive_.load()
+      << ", insertion failures: " << failed_keys_.NumElements();
   }
 }
 
@@ -326,7 +351,7 @@ void MultiThreadedWriter::RunInsertionTrackerThread() {
   int64 current_key = 0;  // the first key to be inserted
   while (running_threads_latch_.count() > 0) {
     while (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
-      if (FLAGS_yb_load_test_verbose) {
+      if (FLAGS_load_test_verbose) {
         LOG(INFO) << "Advancing insertion tracker to key #" << current_key;
       }
       inserted_up_to_inclusive_.store(current_key);
@@ -350,8 +375,8 @@ class MultiThreadedReader : public MultiThreadedAction {
     YBTable* table,
     atomic_long* insertion_point,
     const KeyIndexSet* inserted_keys,
-    const KeyIndexSet* failed_keys);
-  void Stop();
+    const KeyIndexSet* failed_keys,
+    atomic_bool* stop_flag);
   void IncrementReadErrorCount();
 
  protected:
@@ -362,7 +387,6 @@ class MultiThreadedReader : public MultiThreadedAction {
   const atomic_long* insertion_point_;
   const KeyIndexSet* inserted_keys_;
   const KeyIndexSet* failed_keys_;
-  atomic_bool stopped_;
   atomic_long num_read_errors_;
 };
 
@@ -373,18 +397,13 @@ MultiThreadedReader::MultiThreadedReader(
     YBTable* table,
     atomic_long* insertion_point,
     const KeyIndexSet* inserted_keys,
-    const KeyIndexSet* failed_keys)
-  : MultiThreadedAction("readers", num_keys, num_reader_threads, 1, client, table),
+    const KeyIndexSet* failed_keys,
+    atomic_bool* stop_flag)
+  : MultiThreadedAction("readers", num_keys, num_reader_threads, 1, client, table, stop_flag),
     insertion_point_(insertion_point),
     inserted_keys_(inserted_keys),
     failed_keys_(failed_keys),
-    stopped_(false),
     num_read_errors_(0) {
-}
-
-void MultiThreadedReader::Stop() {
-  stopped_.store(true);
-  WaitForCompletion();
 }
 
 void MultiThreadedReader::RunActionThread(int readerIndex) {
@@ -393,11 +412,11 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
   ConfigureSession(session.get());
 
   // Wait until at least one row has been inserted (keys are numbered starting from 1).
-  while (!stopped_.load() && insertion_point_->load() < 0) {
+  while (!IsStopped() && insertion_point_->load() < 0) {
     SleepFor(MonoDelta::FromMilliseconds(10));
   }
 
-  while (!stopped_.load()) {
+  while (!IsStopped()) {
     int64 key_index;
     int64 written_up_to = insertion_point_->load();
     do {
@@ -423,7 +442,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
       }
       // Ensure we don't try to read a key for which a write failed.
     } while (failed_keys_->Contains(key_index));
-    if (FLAGS_yb_load_test_verbose) {
+    if (FLAGS_load_test_verbose) {
       LOG(INFO) << "Reader thread " << readerIndex << " saw written_up_to="
         << written_up_to << " and picked key #" << key_index;
     }
@@ -485,8 +504,9 @@ void MultiThreadedReader::RunStatsThread() {
 }
 
 void MultiThreadedReader::IncrementReadErrorCount() {
-  if (++num_read_errors_ >= FLAGS_yb_load_test_max_num_read_errors) {
-    LOG(FATAL) << "Reached the maximum number of read errors!";
+  if (++num_read_errors_ >= FLAGS_load_test_max_num_read_errors) {
+    LOG(ERROR) << "Reached the maximum number of read errors!";
+    Stop();
   }
 }
 
@@ -494,19 +514,19 @@ void MultiThreadedReader::IncrementReadErrorCount() {
 
 int main(int argc, char* argv[]) {
   gflags::SetUsageMessage(
-    "Usage: yb_load_test_tool --yb_load_test_master_addresses master1:port1,...,masterN:portN"
+    "Usage: load_test_tool --load_test_master_addresses master1:port1,...,masterN:portN"
   );
   yb::ParseCommandLineFlags(&argc, &argv, true);
   yb::InitGoogleLoggingSafe(argv[0]);
 
-  for (int i = 0; i < FLAGS_yb_load_test_num_iter; ++i) {
+  for (int i = 0; i < FLAGS_load_test_num_iter; ++i) {
     shared_ptr<YBClient> client;
     CHECK_OK(YBClientBuilder()
-      .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
+      .add_master_server_addr(FLAGS_load_test_master_addresses)
       .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
       .Build(&client));
 
-    const string table_name(FLAGS_yb_load_test_table_name);
+    const string table_name(FLAGS_load_test_table_name);
 
     LOG(INFO) << "Checking if table '" << table_name << "' already exists";
     {
@@ -530,7 +550,7 @@ int main(int argc, char* argv[]) {
     LOG(INFO) << "Creating table";
     gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
-      .num_replicas(FLAGS_yb_load_test_table_num_replicas).Create();
+      .num_replicas(FLAGS_load_test_table_num_replicas).Create();
     if (!table_creation_status.ok()) {
       LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
     }
@@ -544,22 +564,25 @@ int main(int argc, char* argv[]) {
     CHECK_OK(client->OpenTable(table_name, &table));
 
     LOG(INFO) << "Starting load test";
+    atomic_bool stop_flag(false);
     MultiThreadedWriter writer(
-      FLAGS_yb_load_test_num_rows,
-      FLAGS_yb_load_test_num_writer_threads,
+      FLAGS_load_test_num_rows,
+      FLAGS_load_test_num_writer_threads,
       client.get(),
-      table.get());
+      table.get(),
+      &stop_flag);
 
     writer.Start();
 
     MultiThreadedReader reader(
-      FLAGS_yb_load_test_num_rows,
-      FLAGS_yb_load_test_num_writer_threads,
+      FLAGS_load_test_num_rows,
+      FLAGS_load_test_num_writer_threads,
       client.get(),
       table.get(),
       writer.InsertionPoint(),
       writer.InsertedKeys(),
-      writer.FailedKeys());
+      writer.FailedKeys(),
+      &stop_flag);
     reader.Start();
 
     writer.WaitForCompletion();
@@ -568,7 +591,7 @@ int main(int argc, char* argv[]) {
     reader.Stop();
 
     LOG(INFO) << "Test completed (iteration: " << i + 1 << " out of " <<
-      FLAGS_yb_load_test_num_iter << ")";
+      FLAGS_load_test_num_iter << ")";
     LOG(INFO) << string(80, '-');
     LOG(INFO) << "";
   }
