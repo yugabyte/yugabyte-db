@@ -66,6 +66,11 @@ DEFINE_bool(
   yb_load_test_verbose, false,
   "Custom verbose log messages for debugging the load test tool");
 
+DEFINE_bool(
+  yb_load_test_table_num_replicas, 3,
+  "Replication factor for the load test table");
+
+
 using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
@@ -529,7 +534,8 @@ int main(int argc, char* argv[]) {
 
   LOG(INFO) << "Creating table";
   gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
-  Status table_creation_status = table_creator->table_name(table_name).schema(&schema).Create();
+  Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
+    .num_replicas(FLAGS_yb_load_test_table_num_replicas).Create();
   if (!table_creation_status.ok()) {
     LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
   }
