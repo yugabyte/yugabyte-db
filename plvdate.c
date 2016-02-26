@@ -255,7 +255,7 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 	int y, m, auxd;
 	holiday_desc hd;
 
-	int cycle_c = 0;
+	int loops = 0;
 	bool start_is_bizday = false;
 
 	DateADT aux_day;
@@ -266,15 +266,16 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 	}
 
 
-	d = j2day(day1+POSTGRES_EPOCH_JDATE);
+	/* d is incremented on start of cycle, so now I have to decrease one */
+	d = j2day(day1+POSTGRES_EPOCH_JDATE-1);
 	days = 0;
 
 	while (day1 <= day2)
 	{
-		++ cycle_c;
-		d = (d+1) % 7;
-		d = (d < 0) ? 6:d;
+		loops++;
 		day1 += 1;
+		d = (d+1) % 7;
+
 		if ((1 << d) & nonbizdays)
 			continue;
 
@@ -296,11 +297,18 @@ ora_diff_bizdays(DateADT day1, DateADT day2)
 							sizeof(holiday_desc), holiday_desc_comp))
 			continue;
 
-		days += 1;
-		if (cycle_c == 1)
+		/* now the day have to be bizday, remember if first day was bizday */
+		if (loops == 1)
 			start_is_bizday = true;
+
+		days += 1;
 	}
-	if (include_start && start_is_bizday && days >= 1)
+
+	/*
+	 * decrease result when first day was bizday, but we don't want
+	 * calculate first day.
+	 */
+	if ( start_is_bizday && !include_start && days > 0)
 		days -= 1;
 
 	return days;

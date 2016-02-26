@@ -964,3 +964,14 @@ SELECT '|' || oracle.btrim(' abcd  '::nvarchar2(10),'d'::char(3)) || '|' as LTRI
 /* test that trailing blanks are not ignored */
 SELECT oracle.length('あbb'::char(6));
 SELECT oracle.length(''::char(6));
+
+
+--
+-- test plvdate.bizdays_between
+--
+SELECT plvdate.including_start();
+SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
+SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
+SELECT plvdate.include_start(false);
+SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
+SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');

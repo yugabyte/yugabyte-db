@@ -4259,3 +4259,42 @@ SELECT oracle.length(''::char(6));
       6
 (1 row)
 
+--
+-- test plvdate.bizdays_between
+--
+SELECT plvdate.including_start();
+ including_start 
+-----------------
+ t
+(1 row)
+
+SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
+ bizdays_between 
+-----------------
+               3
+(1 row)
+
+SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
+ bizdays_between 
+-----------------
+               5
+(1 row)
+
+SELECT plvdate.include_start(false);
+ include_start 
+---------------
+ 
+(1 row)
+
+SELECT plvdate.bizdays_between('2016-02-24','2016-02-26');
+ bizdays_between 
+-----------------
+               2
+(1 row)
+
+SELECT plvdate.bizdays_between('2016-02-21','2016-02-27');
+ bizdays_between 
+-----------------
+               5
+(1 row)
+
