@@ -134,7 +134,7 @@ while [ $# -gt 0 ]; do
       num_masters="$2"
       shift
     ;;
-    --num_tservers)
+    --num-tservers|--num-tablet-servers|--num_tservers)
       num_tservers="$2"
       shift
     ;;

@@ -442,6 +442,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
 
     uint64_t read_ts = client_->GetLatestObservedTimestamp();
     KuduScanner scanner(table_);
+    scanner.SetSelection(KuduClient::ReplicaSelection::LEADER_ONLY);
     string key_str(GetKeyByIndex(key_index));
     CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
     CHECK_OK(
