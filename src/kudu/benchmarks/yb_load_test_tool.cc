@@ -38,6 +38,10 @@
   LOG(INFO) << #expr << " = " << (expr); \
 } while (0)
 
+DEFINE_int32(
+  yb_load_test_num_iter, 1,
+  "Run the entire test this number of times");
+
 DEFINE_string(
   yb_load_test_master_addresses, "localhost",
   "Addresses of masters for the cluster to operate on");
@@ -505,73 +509,78 @@ int main(int argc, char* argv[]) {
   kudu::ParseCommandLineFlags(&argc, &argv, true);
   kudu::InitGoogleLoggingSafe(argv[0]);
 
-  shared_ptr<KuduClient> client;
-  CHECK_OK(KuduClientBuilder()
-    .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
-    .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
-    .Build(&client));
+  for (int i = 0; i < FLAGS_yb_load_test_num_iter; ++i) {
+    shared_ptr<KuduClient> client;
+    CHECK_OK(KuduClientBuilder()
+      .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
+      .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
+      .Build(&client));
 
-  const string table_name(FLAGS_yb_load_test_table_name);
+    const string table_name(FLAGS_yb_load_test_table_name);
 
-  LOG(INFO) << "Checking if table '" << table_name << "' already exists";
-  {
-    KuduSchema existing_schema;
-    if (client->GetTableSchema(table_name, &existing_schema).ok()) {
-      LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
-      // Table with the same name already exists, drop it.
-      CHECK_OK(client->DeleteTable(table_name));
-    } else {
-      LOG(INFO) << "Table '" << table_name << "' does not exist yet";
+    LOG(INFO) << "Checking if table '" << table_name << "' already exists";
+    {
+      KuduSchema existing_schema;
+      if (client->GetTableSchema(table_name, &existing_schema).ok()) {
+        LOG(INFO) << "Table '" << table_name << "' already exists, deleting";
+        // Table with the same name already exists, drop it.
+        CHECK_OK(client->DeleteTable(table_name));
+      } else {
+        LOG(INFO) << "Table '" << table_name << "' does not exist yet";
+      }
     }
+
+    LOG(INFO) << "Building schema";
+    KuduSchemaBuilder schemaBuilder;
+    schemaBuilder.AddColumn("k")->PrimaryKey()->Type(KuduColumnSchema::STRING)->NotNull();
+    schemaBuilder.AddColumn("v")->Type(KuduColumnSchema::STRING)->NotNull();
+    KuduSchema schema;
+    CHECK_OK(schemaBuilder.Build(&schema));
+
+    LOG(INFO) << "Creating table";
+    gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
+    Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
+      .num_replicas(FLAGS_yb_load_test_table_num_replicas).Create();
+    if (!table_creation_status.ok()) {
+      LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
+    }
+
+    if (table_creation_status.message().ToString().find("Table already exists") ==
+        std::string::npos) {
+      CHECK_OK(table_creation_status);
+    }
+
+    shared_ptr<KuduTable> table;
+    CHECK_OK(client->OpenTable(table_name, &table));
+
+    LOG(INFO) << "Starting load test";
+    MultiThreadedWriter writer(
+      FLAGS_yb_load_test_num_rows,
+      FLAGS_yb_load_test_num_writer_threads,
+      client.get(),
+      table.get());
+
+    writer.Start();
+
+    MultiThreadedReader reader(
+      FLAGS_yb_load_test_num_rows,
+      FLAGS_yb_load_test_num_writer_threads,
+      client.get(),
+      table.get(),
+      writer.InsertionPoint(),
+      writer.InsertedKeys(),
+      writer.FailedKeys());
+    reader.Start();
+
+    writer.WaitForCompletion();
+
+    // The reader will run as long as the writer is running.
+    reader.Stop();
+
+    LOG(INFO) << "Test completed (iteration: " << i + 1 << " out of " <<
+      FLAGS_yb_load_test_num_iter << ")";
+    LOG(INFO) << string(80, '-');
+    LOG(INFO) << "";
   }
-
-  LOG(INFO) << "Building schema";
-  KuduSchemaBuilder schemaBuilder;
-  schemaBuilder.AddColumn("k")->PrimaryKey()->Type(KuduColumnSchema::STRING)->NotNull();
-  schemaBuilder.AddColumn("v")->Type(KuduColumnSchema::STRING)->NotNull();
-  KuduSchema schema;
-  CHECK_OK(schemaBuilder.Build(&schema));
-
-  LOG(INFO) << "Creating table";
-  gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
-  Status table_creation_status = table_creator->table_name(table_name).schema(&schema)
-    .num_replicas(FLAGS_yb_load_test_table_num_replicas).Create();
-  if (!table_creation_status.ok()) {
-    LOG(INFO) << "Table creation status message: " << table_creation_status.message().ToString();
-  }
-
-  if (table_creation_status.message().ToString().find("Table already exists") ==
-      std::string::npos) {
-    CHECK_OK(table_creation_status);
-  }
-
-  shared_ptr<KuduTable> table;
-  CHECK_OK(client->OpenTable(table_name, &table));
-
-  LOG(INFO) << "Starting load test";
-  MultiThreadedWriter writer(
-    FLAGS_yb_load_test_num_rows,
-    FLAGS_yb_load_test_num_writer_threads,
-    client.get(),
-    table.get());
-
-  writer.Start();
-
-  MultiThreadedReader reader(
-    FLAGS_yb_load_test_num_rows,
-    FLAGS_yb_load_test_num_writer_threads,
-    client.get(),
-    table.get(),
-    writer.InsertionPoint(),
-    writer.InsertedKeys(),
-    writer.FailedKeys());
-  reader.Start();
-
-  writer.WaitForCompletion();
-
-  // The reader will run as long as the writer is running.
-  reader.Stop();
-
-  LOG(INFO) << "Test completed";
   return 0;
 }
