@@ -66,7 +66,7 @@ DEFINE_bool(
   yb_load_test_verbose, false,
   "Custom verbose log messages for debugging the load test tool");
 
-DEFINE_bool(
+DEFINE_int32(
   yb_load_test_table_num_replicas, 3,
   "Replication factor for the load test table");
 
