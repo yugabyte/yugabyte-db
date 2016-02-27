@@ -57,15 +57,15 @@ target_link_libraries(cfile
   zlib)
 
 # Tests
-set(KUDU_TEST_LINK_LIBS cfile ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(index-test)
-ADD_KUDU_TEST(cfile-test)
-ADD_KUDU_TEST(encoding-test LABELS no_tsan)
-ADD_KUDU_TEST(bloomfile-test)
-ADD_KUDU_TEST(mt-bloomfile-test)
-ADD_KUDU_TEST(block_cache-test)
-ADD_KUDU_TEST(compression-test)
+set(YB_TEST_LINK_LIBS cfile ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(index-test)
+ADD_YB_TEST(cfile-test)
+ADD_YB_TEST(encoding-test LABELS no_tsan)
+ADD_YB_TEST(bloomfile-test)
+ADD_YB_TEST(mt-bloomfile-test)
+ADD_YB_TEST(block_cache-test)
+ADD_YB_TEST(compression-test)
 
 # Tools
 add_executable(cfile-dump cfile-dump.cc)
-target_link_libraries(cfile-dump cfile ${KUDU_BASE_LIBS})
+target_link_libraries(cfile-dump cfile ${YB_BASE_LIBS})

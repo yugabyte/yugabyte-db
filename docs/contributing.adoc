@@ -291,7 +291,7 @@ message(STATUS "message goes here")
 ----
 - *custom commands or macros* in uppercase
 ----
-ADD_KUDU_TEST(some-test)
+ADD_YB_TEST(some-test)
 ----
 
 === GFlags

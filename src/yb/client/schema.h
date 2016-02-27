@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "yb/client/value.h"
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 namespace kudu {
 
@@ -49,7 +49,7 @@ class KuduSchema;
 class KuduSchemaBuilder;
 class KuduWriteOperation;
 
-class KUDU_EXPORT KuduColumnStorageAttributes {
+class YB_EXPORT KuduColumnStorageAttributes {
  public:
   enum EncodingType {
     AUTO_ENCODING = 0,
@@ -96,7 +96,7 @@ class KUDU_EXPORT KuduColumnStorageAttributes {
   int32_t block_size_;
 };
 
-class KUDU_EXPORT KuduColumnSchema {
+class YB_EXPORT KuduColumnSchema {
  public:
   enum DataType {
     INT8 = 0,
@@ -156,7 +156,7 @@ class KUDU_EXPORT KuduColumnSchema {
 // KuduSchemaBuilder::AddColumn() to specify a column within a Schema.
 //
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
-class KUDU_EXPORT KuduColumnSpec {
+class YB_EXPORT KuduColumnSpec {
  public:
   // Set the default value for this column.
   //
@@ -229,7 +229,7 @@ class KUDU_EXPORT KuduColumnSpec {
   KuduColumnSpec* RenameTo(const std::string& new_name);
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
   friend class KuduSchemaBuilder;
   friend class KuduTableAlterer;
 
@@ -263,7 +263,7 @@ class KUDU_EXPORT KuduColumnSpec {
 //   KuduSchema schema;
 //   t.Build(&schema);
 //
-class KUDU_EXPORT KuduSchemaBuilder {
+class YB_EXPORT KuduSchemaBuilder {
  public:
   KuduSchemaBuilder();
   ~KuduSchemaBuilder();
@@ -283,12 +283,12 @@ class KUDU_EXPORT KuduSchemaBuilder {
   Status Build(KuduSchema* schema);
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
   // Owned.
   Data* data_;
 };
 
-class KUDU_EXPORT KuduSchema {
+class YB_EXPORT KuduSchema {
  public:
   KuduSchema();
 

@@ -40,8 +40,8 @@ target_link_libraries(kudu_fs
   gutil)
 
 # Tests
-set(KUDU_TEST_LINK_LIBS kudu_fs ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(block_manager-test)
-ADD_KUDU_TEST(block_manager_util-test)
-ADD_KUDU_TEST(block_manager-stress-test RUN_SERIAL true)
-ADD_KUDU_TEST(fs_manager-test)
+set(YB_TEST_LINK_LIBS kudu_fs ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(block_manager-test)
+ADD_YB_TEST(block_manager_util-test)
+ADD_YB_TEST(block_manager-stress-test RUN_SERIAL true)
+ADD_YB_TEST(fs_manager-test)

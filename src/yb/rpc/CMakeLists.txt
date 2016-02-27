@@ -81,7 +81,7 @@ ADD_EXPORTABLE_LIBRARY(krpc
 ### RPC generator tool
 add_executable(protoc-gen-krpc protoc-gen-krpc.cc)
 target_link_libraries(protoc-gen-krpc
-    ${KUDU_BASE_LIBS}
+    ${YB_BASE_LIBS}
     protoc
     protobuf
     gutil
@@ -108,10 +108,10 @@ target_link_libraries(rtest_krpc
   rtest_diff_package_proto)
 
 # Tests
-set(KUDU_TEST_LINK_LIBS rtest_krpc krpc ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(mt-rpc-test RUN_SERIAL true)
-ADD_KUDU_TEST(reactor-test)
-ADD_KUDU_TEST(rpc-bench RUN_SERIAL true)
-ADD_KUDU_TEST(rpc-test)
-ADD_KUDU_TEST(rpc_stub-test)
-ADD_KUDU_TEST(sasl_rpc-test)
+set(YB_TEST_LINK_LIBS rtest_krpc krpc ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(mt-rpc-test RUN_SERIAL true)
+ADD_YB_TEST(reactor-test)
+ADD_YB_TEST(rpc-bench RUN_SERIAL true)
+ADD_YB_TEST(rpc-test)
+ADD_YB_TEST(rpc_stub-test)
+ADD_YB_TEST(sasl_rpc-test)

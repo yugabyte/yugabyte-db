@@ -19,14 +19,14 @@
 
 #include <string>
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
 
 namespace kudu {
@@ -60,7 +60,7 @@ class KuduSchema;
 //
 // Note that, in the above example, NumRows() is only called once at the
 // beginning of the loop to avoid extra calls to the non-inlined method.
-class KUDU_EXPORT KuduScanBatch {
+class YB_EXPORT KuduScanBatch {
  public:
   class RowPtr;
   class const_iterator;
@@ -84,7 +84,7 @@ class KUDU_EXPORT KuduScanBatch {
   const KuduSchema* projection_schema() const;
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
   friend class KuduScanner;
   friend class kudu::tools::TsAdminClient;
 
@@ -95,7 +95,7 @@ class KUDU_EXPORT KuduScanBatch {
 // A single row result from a scan. Note that this object acts as a pointer into
 // a KuduScanBatch, and therefore is valid only as long as the batch it was constructed
 // from.
-class KUDU_EXPORT KuduScanBatch::RowPtr {
+class YB_EXPORT KuduScanBatch::RowPtr {
  public:
   // Construct an invalid RowPtr. Before use, you must assign
   // a properly-initialized value.
@@ -177,7 +177,7 @@ class KUDU_EXPORT KuduScanBatch::RowPtr {
 // This iterator yields KuduScanBatch::RowPtr objects which point inside the row batch
 // itself. Thus, the iterator and any objects obtained from it are invalidated if the
 // KuduScanBatch is destroyed or used for a new NextBatch() call.
-class KUDU_EXPORT KuduScanBatch::const_iterator
+class YB_EXPORT KuduScanBatch::const_iterator
     : public std::iterator<std::forward_iterator_tag, KuduScanBatch::RowPtr> {
  public:
   ~const_iterator() {}

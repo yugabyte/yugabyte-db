@@ -48,7 +48,7 @@ find_library(GTEST_LIBRARY
   DOC   "Google's framework for writing C++ tests (gtest)"
 )
 
-# Kudu does not use the gtest_main library (we have kudu_test_main).
+# Kudu does not use the gtest_main library (we have yb_test_main).
 #find_library(GTEST_MAIN_LIBRARY_PATH
 #  NAMES gtest_main
 #  PATHS GTEST_SEARCH_PATH

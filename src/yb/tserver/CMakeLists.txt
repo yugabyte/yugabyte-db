@@ -141,7 +141,7 @@ target_link_libraries(tserver
 add_executable(kudu-tserver tablet_server_main.cc)
 target_link_libraries(kudu-tserver
   tserver
-  ${KUDU_BASE_LIBS})
+  ${YB_BASE_LIBS})
 
 #########################################
 # tserver_test_util
@@ -159,14 +159,14 @@ target_link_libraries(tserver_test_util
 # tserver tests
 #########################################
 
-set(KUDU_TEST_LINK_LIBS
+set(YB_TEST_LINK_LIBS
   tserver
   tserver_test_util
-  ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(remote_bootstrap_client-test)
-ADD_KUDU_TEST(remote_bootstrap_session-test)
-ADD_KUDU_TEST(remote_bootstrap_service-test)
-ADD_KUDU_TEST(tablet_server-test)
-ADD_KUDU_TEST(tablet_server-stress-test RUN_SERIAL true)
-ADD_KUDU_TEST(scanners-test)
-ADD_KUDU_TEST(ts_tablet_manager-test)
+  ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(remote_bootstrap_client-test)
+ADD_YB_TEST(remote_bootstrap_session-test)
+ADD_YB_TEST(remote_bootstrap_service-test)
+ADD_YB_TEST(tablet_server-test)
+ADD_YB_TEST(tablet_server-stress-test RUN_SERIAL true)
+ADD_YB_TEST(scanners-test)
+ADD_YB_TEST(ts_tablet_manager-test)

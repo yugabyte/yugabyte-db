@@ -121,7 +121,7 @@ $ mkdir -p build/asan
 $ cd build/asan
 $ CC=../../thirdparty/clang-toolchain/bin/clang \
   CXX=../../thirdparty/clang-toolchain/bin/clang++ \
-  cmake -DKUDU_USE_ASAN=1 ../..
+  cmake -DYB_USE_ASAN=1 ../..
 $ make -j8
 $ ctest -j8
 ----
@@ -149,7 +149,7 @@ Similar to the above, you can use a special set of clang flags to enable the Und
 Behavior Sanitizer. This will generate errors on certain pieces of code which may
 not themselves crash but rely on behavior which isn't defined by the C++ standard
 (and thus are likely bugs). To enable UBSAN, follow the same directions as for
-ASAN above, but pass the `-DKUDU_USE_UBSAN=1` flag to the `cmake` invocation.
+ASAN above, but pass the `-DYB_USE_UBSAN=1` flag to the `cmake` invocation.
 
 In order to get a stack trace from UBSan, you can use gdb on the failing test, and
 set a breakpoint as follows:
@@ -164,7 +164,7 @@ Then, when the breakpoint fires, gather a backtrace as usual using the `bt` comm
 
 ThreadSanitizer (TSAN) is a feature of recent Clang and GCC compilers which can
 detect improperly synchronized access to data along with many other threading
-bugs. To enable TSAN, pass `-DKUDU_USE_TSAN=1` to the `cmake` invocation,
+bugs. To enable TSAN, pass `-DYB_USE_TSAN=1` to the `cmake` invocation,
 recompile, and run tests. For example:
 
 [source,bash]
@@ -173,7 +173,7 @@ $ mkdir -p build/tsan
 $ cd build/tsan
 $ CC=../../thirdparty/clang-toolchain/bin/clang \
     CXX=../../thirdparty/clang-toolchain/bin/clang++ \
-    cmake -DKUDU_USE_TSAN=1 .
+    cmake -DYB_USE_TSAN=1 .
 $ make -j8
 $ ctest -j8
 ----
@@ -225,7 +225,7 @@ and use the following flags:
 ----
 $ mkdir -p build/coverage
 $ cd build/coverage
-$ cmake -DKUDU_GENERATE_COVERAGE=1 ../..
+$ cmake -DYB_GENERATE_COVERAGE=1 ../..
 $ make -j4
 $ ctest -j4
 ----
@@ -333,11 +333,11 @@ dynamic linking explicitly, run:
 
 [source,bash]
 ----
-$ cmake -DKUDU_LINK=dynamic ../..
+$ cmake -DYB_LINK=dynamic ../..
 ----
 
 Subsequent builds will create shared objects instead of archives and use them when
-linking the kudu binaries and unit tests. The full range of options for `KUDU_LINK` are
+linking the kudu binaries and unit tests. The full range of options for `YB_LINK` are
 `static`, `dynamic`, and `auto`. The default is `auto` and only the first letter
 matters for the purpose of matching.
 

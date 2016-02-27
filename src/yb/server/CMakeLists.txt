@@ -37,9 +37,9 @@ target_link_libraries(server_common
 # server_common tests
 #########################################
 
-set(KUDU_TEST_LINK_LIBS server_common ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(hybrid_clock-test)
-ADD_KUDU_TEST(logical_clock-test)
+set(YB_TEST_LINK_LIBS server_common ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(hybrid_clock-test)
+ADD_YB_TEST(logical_clock-test)
 
 #########################################
 # server_base_proto
@@ -93,7 +93,7 @@ target_link_libraries(server_process
 
 # This module depends on tcmalloc and profiler directly, so need to make
 # sure that they get linked in the right order.
-if(${KUDU_TCMALLOC_AVAILABLE})
+if(${YB_TCMALLOC_AVAILABLE})
   target_link_libraries(server_process tcmalloc profiler)
 endif()
 
@@ -101,5 +101,5 @@ endif()
 # server_process tests
 #########################################
 
-set(KUDU_TEST_LINK_LIBS server_process ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(webserver-test)
+set(YB_TEST_LINK_LIBS server_process ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(webserver-test)

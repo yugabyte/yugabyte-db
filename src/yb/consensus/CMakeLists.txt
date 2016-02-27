@@ -115,32 +115,32 @@ target_link_libraries(consensus
   log
   protobuf)
 
-set(KUDU_TEST_LINK_LIBS
+set(YB_TEST_LINK_LIBS
   log
   consensus
   tserver
   cfile
   tablet
   kudu_util
-  ${KUDU_MIN_TEST_LIBS}
+  ${YB_MIN_TEST_LIBS}
 )
 
-ADD_KUDU_TEST(consensus_meta-test)
-ADD_KUDU_TEST(consensus_peers-test)
-ADD_KUDU_TEST(consensus_queue-test)
-ADD_KUDU_TEST(leader_election-test)
-ADD_KUDU_TEST(log-test)
-ADD_KUDU_TEST(log_anchor_registry-test)
-ADD_KUDU_TEST(log_cache-test)
-ADD_KUDU_TEST(log_index-test)
-ADD_KUDU_TEST(mt-log-test)
-ADD_KUDU_TEST(quorum_util-test)
-ADD_KUDU_TEST(raft_consensus_quorum-test)
-ADD_KUDU_TEST(raft_consensus_state-test)
-ADD_KUDU_TEST(raft_consensus-test)
+ADD_YB_TEST(consensus_meta-test)
+ADD_YB_TEST(consensus_peers-test)
+ADD_YB_TEST(consensus_queue-test)
+ADD_YB_TEST(leader_election-test)
+ADD_YB_TEST(log-test)
+ADD_YB_TEST(log_anchor_registry-test)
+ADD_YB_TEST(log_cache-test)
+ADD_YB_TEST(log_index-test)
+ADD_YB_TEST(mt-log-test)
+ADD_YB_TEST(quorum_util-test)
+ADD_YB_TEST(raft_consensus_quorum-test)
+ADD_YB_TEST(raft_consensus_state-test)
+ADD_YB_TEST(raft_consensus-test)
 
 #Tools
 add_executable(log-dump log-dump.cc)
 target_link_libraries(log-dump
   log
-  ${KUDU_BASE_LIBS})
+  ${YB_BASE_LIBS})

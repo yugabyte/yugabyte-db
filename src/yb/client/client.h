@@ -26,7 +26,7 @@
 #include "yb/client/scan_predicate.h"
 #include "yb/client/schema.h"
 #include "yb/client/shared_ptr.h"
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
@@ -34,7 +34,7 @@
 #include "yb/client/stubs.h"
 #endif
 #include "yb/client/write_op.h"
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
@@ -74,7 +74,7 @@ class WriteRpc;
 //
 // Before a callback is registered, all internal client log events are
 // logged to stderr.
-void KUDU_EXPORT InstallLoggingCallback(KuduLoggingCallback* cb);
+void YB_EXPORT InstallLoggingCallback(KuduLoggingCallback* cb);
 
 // Removes a callback installed via InstallLoggingCallback().
 //
@@ -82,7 +82,7 @@ void KUDU_EXPORT InstallLoggingCallback(KuduLoggingCallback* cb);
 // a no-op.
 //
 // Should be called before unloading the client library.
-void KUDU_EXPORT UninstallLoggingCallback();
+void YB_EXPORT UninstallLoggingCallback();
 
 // Set the logging verbosity of the client library. By default, this is 0. Logs become
 // progressively more verbose as the level is increased. Empirically, the highest
@@ -93,18 +93,18 @@ void KUDU_EXPORT UninstallLoggingCallback();
 // Logs are emitted to stderr, or to the configured log callback at SEVERITY_INFO.
 //
 // This may be called safely at any point during usage of the library.
-void KUDU_EXPORT SetVerboseLogLevel(int level);
+void YB_EXPORT SetVerboseLogLevel(int level);
 
 // The Kudu client library uses signals internally in some cases. By default, it uses
 // SIGUSR2. If your application makes use of SIGUSR2, this advanced API can help
 // workaround conflicts.
-Status KUDU_EXPORT SetInternalSignalNumber(int signum);
+Status YB_EXPORT SetInternalSignalNumber(int signum);
 
 // Creates a new KuduClient with the desired options.
 //
 // Note that KuduClients are shared amongst multiple threads and, as such,
 // are stored in shared pointers.
-class KUDU_EXPORT KuduClientBuilder {
+class YB_EXPORT KuduClientBuilder {
  public:
   KuduClientBuilder();
   ~KuduClientBuilder();
@@ -135,7 +135,7 @@ class KUDU_EXPORT KuduClientBuilder {
   // returned.
   Status Build(sp::shared_ptr<KuduClient>* client);
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   // Owned.
   Data* data_;
@@ -167,7 +167,7 @@ class KUDU_EXPORT KuduClientBuilder {
 // as well.
 //
 // This class is thread-safe.
-class KUDU_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
+class YB_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
  public:
   ~KuduClient();
 
@@ -254,7 +254,7 @@ class KUDU_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
   void SetLatestObservedTimestamp(uint64_t ht_timestamp);
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   friend class KuduClientBuilder;
   friend class KuduScanner;
@@ -288,7 +288,7 @@ class KUDU_EXPORT KuduClient : public sp::enable_shared_from_this<KuduClient> {
 };
 
 // Creates a new table with the desired options.
-class KUDU_EXPORT KuduTableCreator {
+class YB_EXPORT KuduTableCreator {
  public:
   ~KuduTableCreator();
 
@@ -365,7 +365,7 @@ class KUDU_EXPORT KuduTableCreator {
   // returned.
   Status Create();
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   friend class KuduClient;
 
@@ -385,7 +385,7 @@ class KUDU_EXPORT KuduTableCreator {
 // and the schema fetched for introspection.
 //
 // This class is thread-safe.
-class KUDU_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
+class YB_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
  public:
   ~KuduTable();
 
@@ -428,7 +428,7 @@ class KUDU_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
   const PartitionSchema& partition_schema() const;
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   friend class KuduClient;
 
@@ -452,7 +452,7 @@ class KUDU_EXPORT KuduTable : public sp::enable_shared_from_this<KuduTable> {
 //   alterer->AlterColumn("bar")->Compression(KuduColumnStorageAttributes::LZ4);
 //   Status s = alterer->Alter();
 //   delete alterer;
-class KUDU_EXPORT KuduTableAlterer {
+class YB_EXPORT KuduTableAlterer {
  public:
   ~KuduTableAlterer();
 
@@ -490,7 +490,7 @@ class KUDU_EXPORT KuduTableAlterer {
   Status Alter();
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
   friend class KuduClient;
 
   KuduTableAlterer(KuduClient* client,
@@ -504,7 +504,7 @@ class KUDU_EXPORT KuduTableAlterer {
 
 // An error which occurred in a given operation. This tracks the operation
 // which caused the error, along with whatever the actual error was.
-class KUDU_EXPORT KuduError {
+class YB_EXPORT KuduError {
  public:
   ~KuduError();
 
@@ -529,7 +529,7 @@ class KUDU_EXPORT KuduError {
   bool was_possibly_successful() const;
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   friend class internal::Batcher;
   friend class KuduSession;
@@ -599,7 +599,7 @@ class KUDU_EXPORT KuduError {
 // concept of a Session familiar.
 //
 // This class is not thread-safe except where otherwise specified.
-class KUDU_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
+class YB_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> {
  public:
   ~KuduSession();
 
@@ -798,7 +798,7 @@ class KUDU_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> 
   KuduClient* client() const;
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   friend class KuduClient;
   friend class internal::Batcher;
@@ -813,7 +813,7 @@ class KUDU_EXPORT KuduSession : public sp::enable_shared_from_this<KuduSession> 
 
 // A single scanner. This class is not thread-safe, though different
 // scanners on different threads may share a single KuduTable object.
-class KUDU_EXPORT KuduScanner {
+class YB_EXPORT KuduScanner {
  public:
   // The possible read modes for scanners.
   enum ReadMode {
@@ -1031,7 +1031,7 @@ class KUDU_EXPORT KuduScanner {
   // Returns a string representation of this scan.
   std::string ToString() const;
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   FRIEND_TEST(ClientTest, TestScanCloseProxy);
   FRIEND_TEST(ClientTest, TestScanFaultTolerance);
@@ -1045,7 +1045,7 @@ class KUDU_EXPORT KuduScanner {
 };
 
 // In-memory representation of a remote tablet server.
-class KUDU_EXPORT KuduTabletServer {
+class YB_EXPORT KuduTabletServer {
  public:
   ~KuduTabletServer();
 
@@ -1058,7 +1058,7 @@ class KUDU_EXPORT KuduTabletServer {
   const std::string& hostname() const;
 
  private:
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
 
   friend class KuduClient;
   friend class KuduScanner;
