@@ -15,7 +15,7 @@
 // Slices can be built around faststrings and StringPieces using constructors
 // with implicit casts. Both StringPieces and faststrings depend on a great
 // deal of gutil code, so these constructors are conditionalized on
-// KUDU_HEADERS_USE_RICH_SLICE. Likewise, KUDU_HEADERS_USE_RICH_SLICE controls
+// YB_HEADERS_USE_RICH_SLICE. Likewise, YB_HEADERS_USE_RICH_SLICE controls
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
 // will fall back to standard memcmp.
 
@@ -29,18 +29,18 @@
 #include <string.h>
 #include <string>
 
-#ifdef KUDU_HEADERS_USE_RICH_SLICE
+#ifdef YB_HEADERS_USE_RICH_SLICE
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/faststring.h"
 #endif
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 namespace kudu {
 
 class Status;
 
-class KUDU_EXPORT Slice {
+class YB_EXPORT Slice {
  public:
   // Create an empty slice.
   Slice() : data_(reinterpret_cast<const uint8_t *>("")),
@@ -64,7 +64,7 @@ class KUDU_EXPORT Slice {
     data_(reinterpret_cast<const uint8_t *>(s)),
     size_(strlen(s)) { }
 
-#ifdef KUDU_HEADERS_USE_RICH_SLICE
+#ifdef YB_HEADERS_USE_RICH_SLICE
   // Create a slice that refers to the contents of the faststring.
   // Note that further appends to the faststring may invalidate this slice.
   Slice(const faststring &s) // NOLINT(runtime/explicit)
@@ -157,7 +157,7 @@ class KUDU_EXPORT Slice {
   friend bool operator==(const Slice& x, const Slice& y);
 
   static bool MemEqual(const void* a, const void* b, size_t n) {
-#ifdef KUDU_HEADERS_USE_RICH_SLICE
+#ifdef YB_HEADERS_USE_RICH_SLICE
     return strings::memeq(a, b, n);
 #else
     return memcmp(a, b, n) == 0;
@@ -165,7 +165,7 @@ class KUDU_EXPORT Slice {
   }
 
   static int MemCompare(const void* a, const void* b, size_t n) {
-#ifdef KUDU_HEADERS_USE_RICH_SLICE
+#ifdef YB_HEADERS_USE_RICH_SLICE
     return strings::fastmemcmp_inlined(a, b, n);
 #else
     return memcmp(a, b, n);

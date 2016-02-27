@@ -29,13 +29,13 @@ else()
   target_link_libraries(twitter_demo
     gutil
     kudu_util
-    kudu_test_util)
+    yb_test_util)
 
   target_link_libraries(twitter_demo
     kudu_client
     ${LIBOAUTH_LIBRARY}
     ${CURL_LIBRARIES}
-    ${KUDU_BASE_LIBS})
+    ${YB_BASE_LIBS})
 
   # Require that the tserver protobuf code is generated first
   add_dependencies(twitter_demo
@@ -46,10 +46,10 @@ else()
     twitter_demo)
 
   # Tests
-  ADD_KUDU_TEST(oauth-test)
+  ADD_YB_TEST(oauth-test)
   # parser-test relies on symlinked data files which we can't currently copy correctly
   # to the cluster.
-  ADD_KUDU_TEST(parser-test LABELS no_dist_test)
+  ADD_YB_TEST(parser-test LABELS no_dist_test)
   if(NOT "${NO_TESTS}")
     target_link_libraries(oauth-test
       twitter_demo)

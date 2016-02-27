@@ -72,13 +72,13 @@ ADD_EXPORTABLE_LIBRARY(master_rpc
   DEPS ${MASTER_RPC_LIBS})
 
 # Tests
-set(KUDU_TEST_LINK_LIBS master master_proto kudu_client ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(catalog_manager-test)
-ADD_KUDU_TEST(master-test RESOURCE_LOCK "master-web-port")
-ADD_KUDU_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")
+set(YB_TEST_LINK_LIBS master master_proto kudu_client ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(catalog_manager-test)
+ADD_YB_TEST(master-test RESOURCE_LOCK "master-web-port")
+ADD_YB_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")
 
 # Actual master executable
 add_executable(kudu-master master_main.cc)
 target_link_libraries(kudu-master
   master
-  ${KUDU_BASE_LIBS})
+  ${YB_BASE_LIBS})

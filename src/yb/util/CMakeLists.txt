@@ -66,7 +66,7 @@ ADD_EXPORTABLE_LIBRARY(version_info_proto
 set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/src/yb/generated/version_defines.h)
 
 list(APPEND GEN_VERSION_INFO_COMMAND "${BUILD_SUPPORT_DIR}/gen_version_info.py")
-list(APPEND GEN_VERSION_INFO_COMMAND "--version=${KUDU_VERSION_NUMBER}")
+list(APPEND GEN_VERSION_INFO_COMMAND "--version=${YB_VERSION_NUMBER}")
 list(APPEND GEN_VERSION_INFO_COMMAND "--build-type=${CMAKE_BUILD_TYPE}")
 if(KUDU_GIT_HASH)
   message(STATUS "Provided git hash: ${KUDU_GIT_HASH}")
@@ -188,7 +188,7 @@ endif()
 
 # We use MallocExtension, but not in the exported version of the library.
 set(EXPORTED_UTIL_LIBS ${UTIL_LIBS})
-if(${KUDU_TCMALLOC_AVAILABLE})
+if(${YB_TCMALLOC_AVAILABLE})
   list(APPEND UTIL_LIBS tcmalloc)
 endif()
 
@@ -200,13 +200,13 @@ ADD_EXPORTABLE_LIBRARY(kudu_util
 add_dependencies(kudu_util gen_version_info)
 
 #######################################
-# kudu_test_util
+# yb_test_util
 #######################################
 
-add_library(kudu_test_util
+add_library(yb_test_util
   test_util.cc
   curl_util.cc)
-target_link_libraries(kudu_test_util
+target_link_libraries(yb_test_util
   ${CURL_LIBRARIES}
   gflags
   glog
@@ -214,26 +214,26 @@ target_link_libraries(kudu_test_util
   kudu_util)
 
 if(NOT APPLE)
-target_link_libraries(kudu_test_util
+target_link_libraries(yb_test_util
   vmem)
 endif()
 
 #######################################
-# kudu_test_main
+# yb_test_main
 #######################################
 
-add_library(kudu_test_main
+add_library(yb_test_main
   test_main.cc)
-target_link_libraries(kudu_test_main
+target_link_libraries(yb_test_main
   gflags
   glog
   gmock
   kudu_util
-  kudu_test_util
+  yb_test_util
   dl)
 
 if(NOT APPLE)
-  target_link_libraries(kudu_test_main
+  target_link_libraries(yb_test_main
     rt)
 endif()
 
@@ -242,73 +242,73 @@ endif()
 #######################################
 
 add_executable(protoc-gen-insertions protoc-gen-insertions.cc)
-target_link_libraries(protoc-gen-insertions gutil protobuf protoc ${KUDU_BASE_LIBS})
+target_link_libraries(protoc-gen-insertions gutil protobuf protoc ${YB_BASE_LIBS})
 
 #######################################
 # Unit tests
 #######################################
 
-set(KUDU_TEST_LINK_LIBS kudu_util gutil ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(atomic-test)
-ADD_KUDU_TEST(bit-util-test)
-ADD_KUDU_TEST(bitmap-test)
-ADD_KUDU_TEST(blocking_queue-test)
-ADD_KUDU_TEST(bloom_filter-test)
-ADD_KUDU_TEST(cache-test)
-ADD_KUDU_TEST(callback_bind-test)
-ADD_KUDU_TEST(countdown_latch-test)
-ADD_KUDU_TEST(crc-test RUN_SERIAL true) # has a benchmark
-ADD_KUDU_TEST(debug-util-test)
-ADD_KUDU_TEST(env-test LABELS no_tsan)
-ADD_KUDU_TEST(errno-test)
-ADD_KUDU_TEST(failure_detector-test)
-ADD_KUDU_TEST(flag_tags-test)
-ADD_KUDU_TEST(group_varint-test)
-ADD_KUDU_TEST(hash_util-test)
-ADD_KUDU_TEST(hdr_histogram-test)
-ADD_KUDU_TEST(inline_slice-test)
-ADD_KUDU_TEST(interval_tree-test)
-ADD_KUDU_TEST(jsonreader-test)
-ADD_KUDU_TEST(knapsack_solver-test)
-ADD_KUDU_TEST(logging-test)
-ADD_KUDU_TEST(map-util-test)
-ADD_KUDU_TEST(memcmpable_varint-test LABELS no_tsan)
-ADD_KUDU_TEST(memenv/memenv-test)
-ADD_KUDU_TEST(memory/arena-test)
-ADD_KUDU_TEST(mem_tracker-test)
-ADD_KUDU_TEST(metrics-test)
-ADD_KUDU_TEST(monotime-test)
-ADD_KUDU_TEST(mt-hdr_histogram-test RUN_SERIAL true)
-ADD_KUDU_TEST(mt-metrics-test RUN_SERIAL true)
-ADD_KUDU_TEST(mt-threadlocal-test RUN_SERIAL true)
-ADD_KUDU_TEST(net/dns_resolver-test)
-ADD_KUDU_TEST(net/net_util-test)
-ADD_KUDU_TEST(object_pool-test)
-ADD_KUDU_TEST(once-test)
-ADD_KUDU_TEST(os-util-test)
-ADD_KUDU_TEST(path_util-test)
-ADD_KUDU_TEST(pstack_watcher-test)
-ADD_KUDU_TEST(random-test)
-ADD_KUDU_TEST(random_util-test)
-ADD_KUDU_TEST(resettable_heartbeater-test)
-ADD_KUDU_TEST(rle-test)
-ADD_KUDU_TEST(rolling_log-test)
-ADD_KUDU_TEST(rw_semaphore-test)
-ADD_KUDU_TEST(rwc_lock-test)
-ADD_KUDU_TEST(safe_math-test)
-ADD_KUDU_TEST(slice-test)
-ADD_KUDU_TEST(spinlock_profiling-test)
-ADD_KUDU_TEST(stack_watchdog-test)
-ADD_KUDU_TEST(status-test)
-ADD_KUDU_TEST(string_case-test)
-ADD_KUDU_TEST(striped64-test)
-ADD_KUDU_TEST(subprocess-test)
-ADD_KUDU_TEST(sync_point-test)
-ADD_KUDU_TEST(thread-test)
-ADD_KUDU_TEST(threadpool-test)
-ADD_KUDU_TEST(trace-test)
-ADD_KUDU_TEST(url-coding-test)
-ADD_KUDU_TEST(user-test)
+set(YB_TEST_LINK_LIBS kudu_util gutil ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(atomic-test)
+ADD_YB_TEST(bit-util-test)
+ADD_YB_TEST(bitmap-test)
+ADD_YB_TEST(blocking_queue-test)
+ADD_YB_TEST(bloom_filter-test)
+ADD_YB_TEST(cache-test)
+ADD_YB_TEST(callback_bind-test)
+ADD_YB_TEST(countdown_latch-test)
+ADD_YB_TEST(crc-test RUN_SERIAL true) # has a benchmark
+ADD_YB_TEST(debug-util-test)
+ADD_YB_TEST(env-test LABELS no_tsan)
+ADD_YB_TEST(errno-test)
+ADD_YB_TEST(failure_detector-test)
+ADD_YB_TEST(flag_tags-test)
+ADD_YB_TEST(group_varint-test)
+ADD_YB_TEST(hash_util-test)
+ADD_YB_TEST(hdr_histogram-test)
+ADD_YB_TEST(inline_slice-test)
+ADD_YB_TEST(interval_tree-test)
+ADD_YB_TEST(jsonreader-test)
+ADD_YB_TEST(knapsack_solver-test)
+ADD_YB_TEST(logging-test)
+ADD_YB_TEST(map-util-test)
+ADD_YB_TEST(memcmpable_varint-test LABELS no_tsan)
+ADD_YB_TEST(memenv/memenv-test)
+ADD_YB_TEST(memory/arena-test)
+ADD_YB_TEST(mem_tracker-test)
+ADD_YB_TEST(metrics-test)
+ADD_YB_TEST(monotime-test)
+ADD_YB_TEST(mt-hdr_histogram-test RUN_SERIAL true)
+ADD_YB_TEST(mt-metrics-test RUN_SERIAL true)
+ADD_YB_TEST(mt-threadlocal-test RUN_SERIAL true)
+ADD_YB_TEST(net/dns_resolver-test)
+ADD_YB_TEST(net/net_util-test)
+ADD_YB_TEST(object_pool-test)
+ADD_YB_TEST(once-test)
+ADD_YB_TEST(os-util-test)
+ADD_YB_TEST(path_util-test)
+ADD_YB_TEST(pstack_watcher-test)
+ADD_YB_TEST(random-test)
+ADD_YB_TEST(random_util-test)
+ADD_YB_TEST(resettable_heartbeater-test)
+ADD_YB_TEST(rle-test)
+ADD_YB_TEST(rolling_log-test)
+ADD_YB_TEST(rw_semaphore-test)
+ADD_YB_TEST(rwc_lock-test)
+ADD_YB_TEST(safe_math-test)
+ADD_YB_TEST(slice-test)
+ADD_YB_TEST(spinlock_profiling-test)
+ADD_YB_TEST(stack_watchdog-test)
+ADD_YB_TEST(status-test)
+ADD_YB_TEST(string_case-test)
+ADD_YB_TEST(striped64-test)
+ADD_YB_TEST(subprocess-test)
+ADD_YB_TEST(sync_point-test)
+ADD_YB_TEST(thread-test)
+ADD_YB_TEST(threadpool-test)
+ADD_YB_TEST(trace-test)
+ADD_YB_TEST(url-coding-test)
+ADD_YB_TEST(user-test)
 
 #######################################
 # jsonwriter_test_proto
@@ -327,7 +327,7 @@ target_link_libraries(jsonwriter_test_proto
 # jsonwriter-test
 #######################################
 
-ADD_KUDU_TEST(jsonwriter-test)
+ADD_YB_TEST(jsonwriter-test)
 if(NOT "${NO_TESTS}")
   target_link_libraries(jsonwriter-test
     jsonwriter_test_proto)
@@ -355,7 +355,7 @@ target_link_libraries(proto_container_test_proto
 # pb_util-test
 #######################################
 
-ADD_KUDU_TEST(pb_util-test)
+ADD_YB_TEST(pb_util-test)
 if(NOT "${NO_TESTS}")
   target_link_libraries(pb_util-test
     proto_container_test_proto)

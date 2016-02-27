@@ -17,20 +17,20 @@
 #ifndef KUDU_CLIENT_VALUE_H
 #define KUDU_CLIENT_VALUE_H
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
 #include "yb/client/stubs.h"
 #endif
 #include "yb/util/slice.h"
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 namespace kudu {
 namespace client {
 
 // A constant cell value with a specific type.
-class KUDU_EXPORT KuduValue {
+class YB_EXPORT KuduValue {
  public:
   // Return a new identical KuduValue object.
   KuduValue* Clone() const;
@@ -55,7 +55,7 @@ class KUDU_EXPORT KuduValue {
   friend class ComparisonPredicateData;
   friend class KuduColumnSpec;
 
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
   explicit KuduValue(Data* d);
 
   // Owned.

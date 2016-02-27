@@ -21,7 +21,7 @@
 #include <string>
 #include <vector>
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
@@ -30,7 +30,7 @@
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
 
 namespace kudu {
@@ -48,7 +48,7 @@ class PartialRowPB;
 // This type contains a normal contiguous row, plus a bitfield indicating
 // which columns have been set. Additionally, this type may optionally own
 // copies of indirect data for variable length columns.
-class KUDU_EXPORT KuduPartialRow {
+class YB_EXPORT KuduPartialRow {
  public:
   // The given Schema object must remain valid for the lifetime of this
   // row.

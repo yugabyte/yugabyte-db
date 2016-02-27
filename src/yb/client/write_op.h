@@ -21,7 +21,7 @@
 
 #include "yb/client/shared_ptr.h"
 #include "yb/common/partial_row.h"
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 namespace kudu {
 
@@ -45,7 +45,7 @@ class KuduTable;
 //
 // KuduWriteOperation also holds shared ownership of its KuduTable to allow client's
 // scope to end while the KuduWriteOperation is still alive.
-class KUDU_EXPORT KuduWriteOperation {
+class YB_EXPORT KuduWriteOperation {
  public:
   enum Type {
     INSERT = 1,
@@ -88,7 +88,7 @@ class KUDU_EXPORT KuduWriteOperation {
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being inserted
 // An insert requires all key columns from the table schema to be defined.
-class KUDU_EXPORT KuduInsert : public KuduWriteOperation {
+class YB_EXPORT KuduInsert : public KuduWriteOperation {
  public:
   virtual ~KuduInsert();
 
@@ -110,7 +110,7 @@ class KUDU_EXPORT KuduInsert : public KuduWriteOperation {
 // Use mutable_row() to change the row being updated.
 // An update requires the key columns and at least one other column
 // in the schema to be defined.
-class KUDU_EXPORT KuduUpdate : public KuduWriteOperation {
+class YB_EXPORT KuduUpdate : public KuduWriteOperation {
  public:
   virtual ~KuduUpdate();
 
@@ -131,7 +131,7 @@ class KUDU_EXPORT KuduUpdate : public KuduWriteOperation {
 // Row operation is defined by what's in the PartialRow instance here.
 // Use mutable_row() to change the row being deleted
 // A delete requires just the key columns to be defined.
-class KUDU_EXPORT KuduDelete : public KuduWriteOperation {
+class YB_EXPORT KuduDelete : public KuduWriteOperation {
  public:
   virtual ~KuduDelete();
 

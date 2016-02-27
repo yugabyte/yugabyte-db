@@ -21,10 +21,10 @@ if(NOT APPLE)
   add_executable(rwlock-perf rwlock-perf.cc)
   target_link_libraries(rwlock-perf
     kudu_util
-    ${KUDU_MIN_TEST_LIBS})
+    ${YB_MIN_TEST_LIBS})
 endif()
 
 add_executable(merge-test merge-test.cc)
 target_link_libraries(merge-test
   kudu_util
-  ${KUDU_MIN_TEST_LIBS})
+  ${YB_MIN_TEST_LIBS})

@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include <string>
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include <gtest/gtest_prod.h>
 #else
 // This is a poor module interdependency, but the stubs are header-only and
@@ -28,7 +28,7 @@
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 struct timeval;
 struct timespec;
@@ -41,7 +41,7 @@ class MonoTime;
 //
 // A MonoDelta built with the default constructor is "uninitialized" and
 // may not be used for any operation.
-class KUDU_EXPORT MonoDelta {
+class YB_EXPORT MonoDelta {
  public:
   static MonoDelta FromSeconds(double seconds);
   static MonoDelta FromMilliseconds(int64_t ms);
@@ -83,7 +83,7 @@ class KUDU_EXPORT MonoDelta {
 //
 // This time is monotonic, meaning that if the user changes his or her system
 // clock, the monotime does not change.
-class KUDU_EXPORT MonoTime {
+class YB_EXPORT MonoTime {
  public:
   enum Granularity {
     COARSE,
@@ -134,7 +134,7 @@ class KUDU_EXPORT MonoTime {
 // This is preferred over sleep(3), usleep(3), and nanosleep(3). It's less prone to mixups with
 // units since it uses a MonoDelta. It also ignores EINTR, so will reliably sleep at least the
 // MonoDelta duration.
-void KUDU_EXPORT SleepFor(const MonoDelta& delta);
+void YB_EXPORT SleepFor(const MonoDelta& delta);
 
 } // namespace kudu
 

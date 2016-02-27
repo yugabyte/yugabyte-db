@@ -17,7 +17,7 @@
 #ifndef KUDU_CLIENT_SCAN_PREDICATE_H
 #define KUDU_CLIENT_SCAN_PREDICATE_H
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
@@ -25,12 +25,12 @@
 #endif
 
 #include "yb/client/schema.h"
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 namespace kudu {
 namespace client {
 
-class KUDU_EXPORT KuduPredicate {
+class YB_EXPORT KuduPredicate {
  public:
   enum ComparisonOp {
     LESS_EQUAL,
@@ -45,7 +45,7 @@ class KUDU_EXPORT KuduPredicate {
 
   // The PIMPL class has to be public since it's actually just an interface,
   // and gcc gives an error trying to derive from a private nested class.
-  class KUDU_NO_EXPORT Data;
+  class YB_NO_EXPORT Data;
  private:
   friend class KuduScanner;
   friend class KuduTable;

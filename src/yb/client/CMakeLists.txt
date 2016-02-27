@@ -50,7 +50,7 @@ set(CLIENT_LIBS
 # code to use the linking application's malloc implementation.
 set(EXPORTED_CLIENT_LIBS
   ${CLIENT_LIBS}
-  ${KUDU_BASE_LIBS})
+  ${YB_BASE_LIBS})
 list(REMOVE_ITEM EXPORTED_CLIENT_LIBS tcmalloc profiler)
 
 # We customize the output name/directory of the exported library so that we can
@@ -133,10 +133,10 @@ set_target_properties(kudu_client_exported
   # symlink to the actual library file libkudu_client.so.1.2.3.
   SOVERSION "${CLIENT_VERSION_MAJOR}")
 
-# Generate kudu_export.h.
+# Generate yb_export.h.
 generate_export_header(kudu_client_exported
-  BASE_NAME kudu
-  EXPORT_FILE_NAME ${CMAKE_BINARY_DIR}/src/yb/util/kudu_export.h)
+  BASE_NAME yb
+  EXPORT_FILE_NAME ${CMAKE_BINARY_DIR}/src/yb/util/yb_export.h)
 
 # "make install" invocations to generate a directory tree containing the
 # exported client library and all of its headers.
@@ -170,7 +170,7 @@ install(FILES
 
 # Headers: util
 install(FILES
-  ${CMAKE_CURRENT_BINARY_DIR}/../util/kudu_export.h
+  ${CMAKE_CURRENT_BINARY_DIR}/../util/yb_export.h
   ../util/monotime.h
   ../util/slice.h
   ../util/status.h
@@ -225,14 +225,14 @@ target_link_libraries(kudu_client_test_util
 #
 # Coverage builds insert gcov-related symbols into the client library. We
 # don't ship such builds, so there's no point in checking symbol visibility.
-if (NOT APPLE AND NOT "${KUDU_GENERATE_COVERAGE}")
-  ADD_KUDU_TEST(client_symbol-test.sh LABELS no_dist_test)
+if (NOT APPLE AND NOT "${YB_GENERATE_COVERAGE}")
+  ADD_YB_TEST(client_symbol-test.sh LABELS no_dist_test)
 endif()
 
 # The samples are never built with ASAN/TSAN.
-if(NOT "${KUDU_USE_ASAN}" AND NOT "${KUDU_USE_TSAN}")
-  ADD_KUDU_TEST(client_samples-test.sh RUN_SERIAL true LABELS no_dist_test)
+if(NOT "${YB_USE_ASAN}" AND NOT "${YB_USE_TSAN}")
+  ADD_YB_TEST(client_samples-test.sh RUN_SERIAL true LABELS no_dist_test)
 endif()
-set(KUDU_TEST_LINK_LIBS kudu_client integration-tests ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(client-test)
-ADD_KUDU_TEST(client-unittest)
+set(YB_TEST_LINK_LIBS kudu_client integration-tests ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(client-test)
+ADD_YB_TEST(client-unittest)

@@ -17,13 +17,13 @@
 #ifndef KUDU_CLIENT_CALLBACKS_H
 #define KUDU_CLIENT_CALLBACKS_H
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
 #include "yb/client/stubs.h"
 #endif
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 
 namespace kudu {
 
@@ -40,7 +40,7 @@ enum KuduLogSeverity {
 };
 
 // Interface for all logging callbacks.
-class KUDU_EXPORT KuduLoggingCallback {
+class YB_EXPORT KuduLoggingCallback {
  public:
   KuduLoggingCallback() {
   }
@@ -62,7 +62,7 @@ class KUDU_EXPORT KuduLoggingCallback {
 
 // Logging callback that invokes a member function pointer.
 template <typename T>
-class KUDU_EXPORT KuduLoggingMemberCallback : public KuduLoggingCallback {
+class YB_EXPORT KuduLoggingMemberCallback : public KuduLoggingCallback {
  public:
   typedef void (T::*MemberType)(
       KuduLogSeverity severity,
@@ -94,7 +94,7 @@ class KUDU_EXPORT KuduLoggingMemberCallback : public KuduLoggingCallback {
 
 // Logging callback that invokes a function pointer with a single argument.
 template <typename T>
-class KUDU_EXPORT KuduLoggingFunctionCallback : public KuduLoggingCallback {
+class YB_EXPORT KuduLoggingFunctionCallback : public KuduLoggingCallback {
  public:
   typedef void (*FunctionType)(T arg,
       KuduLogSeverity severity,
@@ -125,7 +125,7 @@ class KUDU_EXPORT KuduLoggingFunctionCallback : public KuduLoggingCallback {
 };
 
 // Interface for all status callbacks.
-class KUDU_EXPORT KuduStatusCallback {
+class YB_EXPORT KuduStatusCallback {
  public:
   KuduStatusCallback() {
   }
@@ -141,7 +141,7 @@ class KUDU_EXPORT KuduStatusCallback {
 
 // Status callback that invokes a member function pointer.
 template <typename T>
-class KUDU_EXPORT KuduStatusMemberCallback : public KuduStatusCallback {
+class YB_EXPORT KuduStatusMemberCallback : public KuduStatusCallback {
  public:
   typedef void (T::*MemberType)(const Status& s);
 
@@ -161,7 +161,7 @@ class KUDU_EXPORT KuduStatusMemberCallback : public KuduStatusCallback {
 
 // Status callback that invokes a function pointer with a single argument.
 template <typename T>
-class KUDU_EXPORT KuduStatusFunctionCallback : public KuduStatusCallback {
+class YB_EXPORT KuduStatusFunctionCallback : public KuduStatusCallback {
  public:
   typedef void (*FunctionType)(T arg, const Status& s);
 

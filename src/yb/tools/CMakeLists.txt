@@ -26,7 +26,7 @@ set(LINK_LIBS
   gutil
   cfile
   tablet
-  ${KUDU_BASE_LIBS}
+  ${YB_BASE_LIBS}
 )
 
 add_library(kudu_tools_util
@@ -78,7 +78,7 @@ target_link_libraries(ksck
   server_base_proto
   tserver_proto
   tserver_service_proto
-  ${KUDU_BASE_LIBS}
+  ${YB_BASE_LIBS}
 )
 
 add_executable(kudu-ksck kudu-ksck.cc)
@@ -91,17 +91,17 @@ target_link_libraries(kudu-pbc-dump
   ${LINK_LIBS}
 )
 
-set(KUDU_TEST_LINK_LIBS
+set(YB_TEST_LINK_LIBS
   ksck
   kudu_tools_util
   integration-tests
-  ${KUDU_MIN_TEST_LIBS})
-ADD_KUDU_TEST(ksck-test)
-ADD_KUDU_TEST(ksck_remote-test)
-ADD_KUDU_TEST(kudu-admin-test)
-ADD_KUDU_TEST_DEPENDENCIES(kudu-admin-test
+  ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(ksck-test)
+ADD_YB_TEST(ksck_remote-test)
+ADD_YB_TEST(kudu-admin-test)
+ADD_YB_TEST_DEPENDENCIES(kudu-admin-test
   kudu-admin)
-ADD_KUDU_TEST(kudu-ts-cli-test)
-ADD_KUDU_TEST_DEPENDENCIES(kudu-ts-cli-test
+ADD_YB_TEST(kudu-ts-cli-test)
+ADD_YB_TEST_DEPENDENCIES(kudu-ts-cli-test
   kudu-ts-cli)
 

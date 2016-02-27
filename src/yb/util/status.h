@@ -16,14 +16,14 @@
 #include <stdint.h>
 #include <string>
 
-#ifdef KUDU_HEADERS_NO_STUBS
+#ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 #else
 #include "yb/client/stubs.h"
 #endif
 
-#include "yb/util/kudu_export.h"
+#include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
 
 // Return the given status if it is not OK.
@@ -78,13 +78,13 @@
 // careful to "namespace" our macros, to avoid colliding or overriding with
 // similarly named macros belonging to the application.
 //
-// KUDU_HEADERS_USE_SHORT_STATUS_MACROS handles this behavioral change. When
+// YB_HEADERS_USE_SHORT_STATUS_MACROS handles this behavioral change. When
 // defined, we're building Kudu and:
 // 1. Non-namespaced macros are allowed and mapped to the namespaced versions
 //    defined above.
 // 2. Namespaced versions of glog macros are mapped to the real glog macros
 //    (otherwise the macros are defined in the C++ client stubs).
-#ifdef KUDU_HEADERS_USE_SHORT_STATUS_MACROS
+#ifdef YB_HEADERS_USE_SHORT_STATUS_MACROS
 #define RETURN_NOT_OK         KUDU_RETURN_NOT_OK
 #define RETURN_NOT_OK_PREPEND KUDU_RETURN_NOT_OK_PREPEND
 #define RETURN_NOT_OK_RET     KUDU_RETURN_NOT_OK_RET
@@ -100,7 +100,7 @@
 
 namespace kudu {
 
-class KUDU_EXPORT Status {
+class YB_EXPORT Status {
  public:
   // Create a success status.
   Status() : state_(NULL) { }

@@ -68,4 +68,4 @@ ADD_EXPORTABLE_LIBRARY(gutil
   # Disable warnings which trigger a lot in the Google code:
   COMPILE_FLAGS "-funsigned-char -Wno-deprecated -Wno-char-subscripts")
 
-add_kudu_test(strings/string_util-test)
+add_yb_test(strings/string_util-test)

@@ -128,7 +128,7 @@ list(REMOVE_ITEM IR_FLAGS "-O3" "-O2" "-O1" "-Os")
 # See: http://www.cmake.org/Bug/bug_relationship_graph.php?bug_id=13234
 add_library(ir_fake_target ${IR_SOURCE})
 # The IR uses protobufs from kudu_common, so we have to generate that code first.
-target_link_libraries(ir_fake_target kudu_common_proto kudu_util ${KUDU_BASE_LIBS})
+target_link_libraries(ir_fake_target kudu_common_proto kudu_util ${YB_BASE_LIBS})
 
 add_custom_command(
   OUTPUT ${IR_OUTPUT}
@@ -169,6 +169,6 @@ target_link_libraries(codegen
 # Unit tests
 #######################################
 
-set(KUDU_TEST_LINK_LIBS codegen ${KUDU_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS codegen ${YB_MIN_TEST_LIBS})
 
-ADD_KUDU_TEST(codegen-test)
+ADD_YB_TEST(codegen-test)
