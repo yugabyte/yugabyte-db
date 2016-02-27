@@ -335,7 +335,7 @@ void MultiThreadedWriter::RunActionThread(int writerIndex) {
 
 void MultiThreadedWriter::RunStatsThread() {
   MicrosecondsInt64 start_time = GetMonoTimeMicros();
-  while (running_threads_latch_.count() > 0) {
+  while (!IsStopped() && running_threads_latch_.count() > 0) {
     running_threads_latch_.WaitFor(MonoDelta::FromSeconds(1));
     int64 current_key = next_key_.load();
     MicrosecondsInt64 current_time = GetMonoTimeMicros();
@@ -349,7 +349,7 @@ void MultiThreadedWriter::RunStatsThread() {
 void MultiThreadedWriter::RunInsertionTrackerThread() {
   LOG(INFO) << "Insertion tracker thread started";
   int64 current_key = 0;  // the first key to be inserted
-  while (running_threads_latch_.count() > 0) {
+  while (!IsStopped() && running_threads_latch_.count() > 0) {
     while (failed_keys_.Contains(current_key) || inserted_keys_.RemoveIfContains(current_key)) {
       if (FLAGS_load_test_verbose) {
         LOG(INFO) << "Advancing insertion tracker to key #" << current_key;
@@ -587,8 +587,9 @@ int main(int argc, char* argv[]) {
 
     writer.WaitForCompletion();
 
-    // The reader will run as long as the writer is running.
+    // The reader will not stop on its own, so we stop it as soon as the writer stops.
     reader.Stop();
+    reader.WaitForCompletion();
 
     LOG(INFO) << "Test completed (iteration: " << i + 1 << " out of " <<
       FLAGS_load_test_num_iter << ")";
