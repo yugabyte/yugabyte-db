@@ -13,12 +13,12 @@ limitations under the License.
 
 Overview
 ===============
-kudu-lint is a Clang-based tool for looking for kudu-specific coding errors.
+yb-lint is a Clang-based tool for looking for yb-specific coding errors.
 
 Currently, it only looks for cases where a function returning Status is called,
 and then that Status is ignored.
 
-Over time we can add more AST matchers for other Kudu-specific lint checks we'd
+Over time we can add more AST matchers for other YB-specific lint checks we'd
 like to implement.
 
 
@@ -39,8 +39,8 @@ Run 'cmake .', followed by 'make', in this directory.
 Running
 =========
 
-In the top-level kudu source directory, run:
+In the top-level yb source directory, run:
 
 $ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON .
-$ find src -name \*.cc | xargs -n1 -P8 ./build-support/tools/kudu-lint/kudu-lint \
+$ find src -name \*.cc | xargs -n1 -P8 ./build-support/tools/yb-lint/yb-lint \
     -p . -extra-arg=-I$CLANG_ROOT/lib/clang/3.4/include

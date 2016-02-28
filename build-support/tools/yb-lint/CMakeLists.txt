@@ -53,8 +53,8 @@ link_directories(${LLVM_LIBRARY_DIRS})
 set(START_GROUP "-Wl,--start-group")
 set(END_GROUP "-Wl,--end-group")
 
-add_executable(kudu-lint kudu-lint.cc)
-target_link_libraries(kudu-lint
+add_executable(yb-lint yb-lint.cc)
+target_link_libraries(yb-lint
   ${START_GROUP}
   ${CLANG_LIBS}
   ${LLVM_LIBS}
@@ -64,5 +64,5 @@ target_link_libraries(kudu-lint
 
 # Disable RTTI since we have to inherit from Clang-provided classes,
 # and Clang does not enable RTTI.
-set_target_properties(kudu-lint PROPERTIES
+set_target_properties(yb-lint PROPERTIES
     COMPILE_FLAGS "${LLVM_CFLAGS} -fno-rtti -g")
