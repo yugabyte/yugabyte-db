@@ -135,7 +135,7 @@ def main():
 #ifndef VERSION_INFO_H_
 #define VERSION_INFO_H_
 
-#define KUDU_GIT_HASH "%(git_hash)s"
+#define YB_GIT_HASH "%(git_hash)s"
 #define KUDU_BUILD_HOSTNAME "%(hostname)s"
 #define KUDU_BUILD_TIMESTAMP "%(build_time)s"
 #define KUDU_BUILD_USERNAME "%(username)s"

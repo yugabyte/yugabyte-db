@@ -34,7 +34,7 @@ elif [[ "$OSTYPE" == "darwin"* ]]; then
   DYLIB_SUFFIX="dylib"
 fi
 
-LIB=$(dirname "$BASH_SOURCE")/../lib/exported/libkudu_client.$DYLIB_SUFFIX
+LIB=$(dirname "$BASH_SOURCE")/../lib/exported/libyb_client.$DYLIB_SUFFIX
 if [ -r $LIB ]; then
   echo "Found kudu client library: $LIB"
 else

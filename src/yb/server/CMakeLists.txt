@@ -26,11 +26,11 @@ set(SERVER_COMMON_SRCS
 
 add_library(server_common ${SERVER_COMMON_SRCS})
 target_link_libraries(server_common
-  kudu_common
+  yb_common
   codegen
   gutil
-  kudu_fs
-  kudu_util
+  yb_fs
+  yb_util
   consensus_metadata_proto)
 
 #########################################
@@ -54,7 +54,7 @@ KRPC_GENERATE(
 add_library(server_base_proto ${SERVER_BASE_PROTO_SRCS} ${SERVER_BASE_PROTO_HDRS})
 target_link_libraries(server_base_proto
   krpc
-  kudu_common_proto
+  yb_common_proto
   protobuf
   rpc_header_proto
   version_info_proto
@@ -84,11 +84,11 @@ add_library(server_process ${SERVER_PROCESS_SRCS})
 target_link_libraries(server_process
   server_base_proto
   server_common
-  kudu_common
-  kudu_fs
+  yb_common
+  yb_fs
   gutil
   krpc
-  kudu_util
+  yb_util
   squeasel)
 
 # This module depends on tcmalloc and profiler directly, so need to make

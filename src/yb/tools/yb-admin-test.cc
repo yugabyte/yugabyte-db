@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Tests for the kudu-admin command-line tool.
+// Tests for the yb-admin command-line tool.
 
 #include <gtest/gtest.h>
 
@@ -37,7 +37,7 @@ using itest::TabletServerMap;
 using itest::TServerDetails;
 using strings::Substitute;
 
-static const char* const kAdminToolName = "kudu-admin";
+static const char* const kAdminToolName = "yb-admin";
 
 class AdminCliTest : public tserver::TabletServerIntegrationTestBase {
  protected:
@@ -50,14 +50,14 @@ string AdminCliTest::GetAdminToolPath() const {
   CHECK_OK(Env::Default()->GetExecutablePath(&exe));
   string binroot = DirName(exe);
   string tool_path = JoinPathSegments(binroot, kAdminToolName);
-  CHECK(Env::Default()->FileExists(tool_path)) << "kudu-admin tool not found at " << tool_path;
+  CHECK(Env::Default()->FileExists(tool_path)) << "yb-admin tool not found at " << tool_path;
   return tool_path;
 }
 
-// Test kudu-admin config change while running a workload.
+// Test yb-admin config change while running a workload.
 // 1. Instantiate external mini cluster with 3 TS.
 // 2. Create table with 2 replicas.
-// 3. Invoke kudu-admin CLI to invoke a config change.
+// 3. Invoke yb-admin CLI to invoke a config change.
 // 4. Wait until the new server bootstraps.
 // 5. Profit!
 TEST_F(AdminCliTest, TestChangeConfig) {

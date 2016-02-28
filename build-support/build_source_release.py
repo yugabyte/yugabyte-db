@@ -23,7 +23,7 @@ import os
 import subprocess
 import sys
 
-from kudu_util import check_output, confirm_prompt, Colors, get_my_email
+from yb_util import check_output, confirm_prompt, Colors, get_my_email
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 GET_UPSTREAM_COMMIT_SCRIPT = os.path.join(ROOT, "build-support", "get-upstream-commit.sh")

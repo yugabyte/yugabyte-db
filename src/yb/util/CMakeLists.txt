@@ -68,9 +68,9 @@ set(VERSION_STAMP_FILE ${CMAKE_BINARY_DIR}/src/yb/generated/version_defines.h)
 list(APPEND GEN_VERSION_INFO_COMMAND "${BUILD_SUPPORT_DIR}/gen_version_info.py")
 list(APPEND GEN_VERSION_INFO_COMMAND "--version=${YB_VERSION_NUMBER}")
 list(APPEND GEN_VERSION_INFO_COMMAND "--build-type=${CMAKE_BUILD_TYPE}")
-if(KUDU_GIT_HASH)
-  message(STATUS "Provided git hash: ${KUDU_GIT_HASH}")
-  list(APPEND GEN_VERSION_INFO_COMMAND "--git-hash=${KUDU_GIT_HASH}")
+if(YB_GIT_HASH)
+  message(STATUS "Provided git hash: ${YB_GIT_HASH}")
+  list(APPEND GEN_VERSION_INFO_COMMAND "--git-hash=${YB_GIT_HASH}")
 endif()
 list(APPEND GEN_VERSION_INFO_COMMAND "${VERSION_STAMP_FILE}")
 add_custom_target(gen_version_info
@@ -78,7 +78,7 @@ add_custom_target(gen_version_info
     BYPRODUCTS "${VERSION_STAMP_FILE}")
 
 #######################################
-# kudu_util
+# yb_util
 #######################################
 
 if (APPLE)
@@ -192,12 +192,12 @@ if(${YB_TCMALLOC_AVAILABLE})
   list(APPEND UTIL_LIBS tcmalloc)
 endif()
 
-ADD_EXPORTABLE_LIBRARY(kudu_util
+ADD_EXPORTABLE_LIBRARY(yb_util
   SRCS ${UTIL_SRCS}
   DEPS ${UTIL_LIBS}
   EXPORTED_DEPS ${EXPORTED_UTIL_LIBS})
 
-add_dependencies(kudu_util gen_version_info)
+add_dependencies(yb_util gen_version_info)
 
 #######################################
 # yb_test_util
@@ -211,7 +211,7 @@ target_link_libraries(yb_test_util
   gflags
   glog
   gmock
-  kudu_util)
+  yb_util)
 
 if(NOT APPLE)
 target_link_libraries(yb_test_util
@@ -228,7 +228,7 @@ target_link_libraries(yb_test_main
   gflags
   glog
   gmock
-  kudu_util
+  yb_util
   yb_test_util
   dl)
 
@@ -248,7 +248,7 @@ target_link_libraries(protoc-gen-insertions gutil protobuf protoc ${YB_BASE_LIBS
 # Unit tests
 #######################################
 
-set(YB_TEST_LINK_LIBS kudu_util gutil ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_util gutil ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(atomic-test)
 ADD_YB_TEST(bit-util-test)
 ADD_YB_TEST(bitmap-test)

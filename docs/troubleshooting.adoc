@@ -120,7 +120,7 @@ mentioned flag. For example to increase the possible maximum error to
 [[kudu_tracing]]
 === Kudu Tracing
 
-The `kudu-master` and `kudu-tserver` daemons include built-in tracing support
+The `yb-master` and `yb-tserver` daemons include built-in tracing support
 based on the open source
 link:https://www.chromium.org/developers/how-tos/trace-event-profiling-tool[Chromium Tracing]
 framework. You can use tracing to help diagnose latency issues or other problems

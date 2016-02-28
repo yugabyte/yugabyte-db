@@ -60,8 +60,8 @@ typedef ListTabletsResponsePB::StatusAndSchemaPB StatusAndSchemaPB;
 
 namespace kudu {
 
-static const char* const kMasterBinaryName = "kudu-master";
-static const char* const kTabletServerBinaryName = "kudu-tserver";
+static const char* const kMasterBinaryName = "yb-master";
+static const char* const kTabletServerBinaryName = "yb-tserver";
 static double kProcessStartTimeoutSeconds = 30.0;
 static double kTabletServerRegistrationTimeoutSeconds = 10.0;
 

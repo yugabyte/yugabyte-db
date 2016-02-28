@@ -21,7 +21,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES cfile.proto)
 set(CFILE_PROTO_LIBS
-  kudu_common_proto
+  yb_common_proto
   protobuf)
 ADD_EXPORTABLE_LIBRARY(cfile_proto
   SRCS ${CFILE_PROTO_SRCS}
@@ -46,9 +46,9 @@ add_library(cfile
   type_encodings.cc)
 
 target_link_libraries(cfile
-  kudu_common
-  kudu_fs
-  kudu_util
+  yb_common
+  yb_fs
+  yb_util
   gutil
   cfile_proto
   lz4

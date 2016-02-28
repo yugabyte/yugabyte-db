@@ -35,7 +35,7 @@ import os
 import subprocess
 import sys
 
-BINARIES=["kudu-master", "kudu-tserver"]
+BINARIES=["yb-master", "yb-tserver"]
 
 RELATIVE_BUILD_DIR="../../build/latest/bin"
 

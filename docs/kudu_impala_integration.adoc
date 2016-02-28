@@ -344,7 +344,7 @@ See link:http://www.cloudera.com/content/cloudera/en/documentation/core/latest/t
 for more information about internal and external tables.
 
 === Querying an Existing Kudu Table In Impala
-. Go to http://kudu-master.example.com:8051/tables/, where _kudu-master.example.com_
+. Go to http://yb-master.example.com:8051/tables/, where _yb-master.example.com_
 is the address of your Kudu master.
 . Click the table ID for the relevant table.
 . Scroll to the bottom of the page, or search for `Impala CREATE TABLE statement`.
@@ -375,7 +375,7 @@ DISTRIBUTE BY HASH (id) INTO 16 BUCKETS
 TBLPROPERTIES(
   'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
   'kudu.table_name' = 'my_first_table',
-  'kudu.master_addresses' = 'kudu-master.example.com:7051',
+  'kudu.master_addresses' = 'yb-master.example.com:7051',
   'kudu.key_columns' = 'id'
 );
 ----
@@ -406,7 +406,7 @@ CREATE TABLE new_table
 TBLPROPERTIES(
   'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
   'kudu.table_name' = 'new_table',
-  'kudu.master_addresses' = 'kudu-master.example.com:7051',
+  'kudu.master_addresses' = 'yb-master.example.com:7051',
   'kudu.key_columns' = 'ts, name'
 ) AS SELECT * FROM old_table;
 ----
@@ -493,7 +493,7 @@ name STRING
 TBLPROPERTIES(
   'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
   'kudu.table_name' = 'my_first_table',
-  'kudu.master_addresses' = 'kudu-master.example.com:7051',
+  'kudu.master_addresses' = 'yb-master.example.com:7051',
   'kudu.key_columns' = 'id'
 );
 ----
@@ -602,7 +602,7 @@ SPLIT ROWS(('al'), ('ak'), ('ar'), .., ('wv'), ('wy'))
 TBLPROPERTIES(
 'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
 'kudu.table_name' = 'customers',
-'kudu.master_addresses' = 'kudu-master.example.com:7051',
+'kudu.master_addresses' = 'yb-master.example.com:7051',
 'kudu.key_columns' = 'state, name'
 );
 ----
@@ -657,7 +657,7 @@ DISTRIBUTE BY HASH (id) INTO 16 BUCKETS
 TBLPROPERTIES(
 'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
 'kudu.table_name' = 'cust_behavior',
-'kudu.master_addresses' = 'kudu-master.example.com:7051',
+'kudu.master_addresses' = 'yb-master.example.com:7051',
 'kudu.key_columns' = 'id, sku'
 );
 ----
@@ -692,7 +692,7 @@ SPLIT ROWS(('al', ''), ('al', 'm'), ('ak', ''), ('ak', 'm'), .., ('wy', ''), ('w
 TBLPROPERTIES(
 'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
 'kudu.table_name' = 'customers',
-'kudu.master_addresses' = 'kudu-master.example.com:7051',
+'kudu.master_addresses' = 'yb-master.example.com:7051',
 'kudu.key_columns' = 'state, name'
 );
 ----
@@ -730,7 +730,7 @@ RANGE (sku) SPLIT ROWS(('g'), ('o'), ('u'))
 TBLPROPERTIES(
 'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
 'kudu.table_name' = 'cust_behavior',
-'kudu.master_addresses' = 'kudu-master.example.com:7051',
+'kudu.master_addresses' = 'yb-master.example.com:7051',
 'kudu.key_columns' = 'id, sku'
 );
 ----
@@ -762,7 +762,7 @@ DISTRIBUTE BY HASH (id) INTO 4 BUCKETS, HASH (sku) INTO 4 BUCKETS
 TBLPROPERTIES(
 'storage_handler' = 'com.cloudera.kudu.hive.KuduStorageHandler',
 'kudu.table_name' = 'cust_behavior',
-'kudu.master_addresses' = 'kudu-master.example.com:7051',
+'kudu.master_addresses' = 'yb-master.example.com:7051',
 'kudu.key_columns' = 'id, sku'
 );
 ----

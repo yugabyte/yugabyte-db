@@ -46,13 +46,13 @@ set(MASTER_SRCS
 
 add_library(master ${MASTER_SRCS})
 target_link_libraries(master
-  kudu_common
+  yb_common
   tablet
   server_common
   server_process
   krpc
   gutil
-  kudu_util
+  yb_util
   tserver
   tserver_service_proto
   master_proto
@@ -61,10 +61,10 @@ target_link_libraries(master
 set(MASTER_RPC_SRCS
   master_rpc.cc)
 set(MASTER_RPC_LIBS
-  kudu_common
+  yb_common
   krpc
   gutil
-  kudu_util
+  yb_util
   master_proto
   rpc_header_proto)
 ADD_EXPORTABLE_LIBRARY(master_rpc
@@ -72,13 +72,13 @@ ADD_EXPORTABLE_LIBRARY(master_rpc
   DEPS ${MASTER_RPC_LIBS})
 
 # Tests
-set(YB_TEST_LINK_LIBS master master_proto kudu_client ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS master master_proto yb_client ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_manager-test)
 ADD_YB_TEST(master-test RESOURCE_LOCK "master-web-port")
 ADD_YB_TEST(sys_catalog-test RESOURCE_LOCK "master-web-port")
 
 # Actual master executable
-add_executable(kudu-master master_main.cc)
-target_link_libraries(kudu-master
+add_executable(yb-master master_main.cc)
+target_link_libraries(yb-master
   master
   ${YB_BASE_LIBS})

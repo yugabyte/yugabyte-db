@@ -27,7 +27,7 @@ PROTOBUF_GENERATE_CPP(
     metadata.proto
     opid.proto)
 set(METADATA_PROTO_LIBS
-  kudu_common_proto
+  yb_common_proto
   fs_proto
   protobuf)
 ADD_EXPORTABLE_LIBRARY(consensus_metadata_proto
@@ -49,7 +49,7 @@ set(CONSENSUS_KRPC_LIBS
   cfile_proto
   consensus_metadata_proto
   krpc
-  kudu_common_proto
+  yb_common_proto
   rpc_header_proto
   protobuf
   tablet_proto
@@ -88,8 +88,8 @@ add_library(log ${LOG_SRCS})
 target_link_libraries(log
   server_common
   gutil
-  kudu_common
-  kudu_fs
+  yb_common
+  yb_fs
   consensus_proto
   log_proto
   consensus_metadata_proto)
@@ -111,7 +111,7 @@ set(CONSENSUS_SRCS
 add_library(consensus ${CONSENSUS_SRCS})
 target_link_libraries(consensus
   consensus_proto
-  kudu_common
+  yb_common
   log
   protobuf)
 
@@ -121,7 +121,7 @@ set(YB_TEST_LINK_LIBS
   tserver
   cfile
   tablet
-  kudu_util
+  yb_util
   ${YB_MIN_TEST_LIBS}
 )
 

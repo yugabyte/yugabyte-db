@@ -125,8 +125,8 @@ done
 mkdir -p "$OUTPUT_DIR" "$GEN_DOC_DIR"
 
 # Create config flag references for each of the binaries below
-binaries=("kudu-master" \
-          "kudu-tserver")
+binaries=("yb-master" \
+          "yb-tserver")
 
 for binary in ${binaries[@]}; do
   echo "Running $binary --helpxml"

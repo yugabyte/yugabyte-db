@@ -29,7 +29,7 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
 
   var sc: SparkContext = null
   var miniCluster: MiniKuduCluster = null
-  var kuduClient: KuduClient = null
+  var ybClient: KuduClient = null
   var table: KuduTable = null
   var kuduContext: KuduContext = null
 
@@ -52,23 +52,23 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
 
     sc = new SparkContext("local[2]", "test", null, Nil, envMap)
 
-    kuduClient = new KuduClientBuilder(miniCluster.getMasterAddresses).build()
+    ybClient = new KuduClientBuilder(miniCluster.getMasterAddresses).build()
     assert(miniCluster.waitForTabletServers(1))
 
     kuduContext = new KuduContext(miniCluster.getMasterAddresses)
 
     val tableOptions = new CreateTableOptions().setNumReplicas(1)
-    table = kuduClient.createTable(tableName, schema, tableOptions)
+    table = ybClient.createTable(tableName, schema, tableOptions)
   }
 
   override def afterAll() {
-    if (kuduClient != null) kuduClient.shutdown()
+    if (ybClient != null) ybClient.shutdown()
     if (miniCluster != null) miniCluster.shutdown()
     if (sc != null) sc.stop()
   }
 
   def insertRows(rowCount: Integer) {
-    val kuduSession = kuduClient.newSession()
+    val kuduSession = ybClient.newSession()
 
     for (i <- 1 to rowCount) {
       val insert = table.newInsert

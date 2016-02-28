@@ -131,7 +131,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
   private final ConcurrentHashMap<Integer, KuduRpc<?>> rpcs_inflight =
       new ConcurrentHashMap<Integer, KuduRpc<?>>();
 
-  private final AsyncKuduClient kuduClient;
+  private final AsyncKuduClient ybClient;
 
   private final String uuid;
 
@@ -140,7 +140,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
   private SecureRpcHelper secureRpcHelper;
 
   public TabletClient(AsyncKuduClient client, String uuid) {
-    this.kuduClient = client;
+    this.ybClient = client;
     this.uuid = uuid;
     this.socketReadTimeoutMs = client.getDefaultSocketReadTimeoutMs();
   }
@@ -399,7 +399,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
 
     // This check is specifically for the ERROR_SERVER_TOO_BUSY case above.
     if (retryableHeaderException != null) {
-      kuduClient.handleRetryableError(rpc, retryableHeaderException);
+      ybClient.handleRetryableError(rpc, retryableHeaderException);
       return null;
     }
 
@@ -460,14 +460,14 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
     TabletServerErrorException ex = new TabletServerErrorException(uuid, error.getStatus());
     if (error.getCode() == Tserver.TabletServerErrorPB.Code.TABLET_NOT_FOUND) {
-      kuduClient.handleTabletNotFound(rpc, ex, this);
+      ybClient.handleTabletNotFound(rpc, ex, this);
       // we're not calling rpc.callback() so we rely on the client to retry that RPC
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE) {
-      kuduClient.handleRetryableError(rpc, ex);
+      ybClient.handleRetryableError(rpc, ex);
       // The following two error codes are an indication that the tablet isn't a leader.
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.ILLEGAL_STATE ||
         code == WireProtocol.AppStatusPB.ErrorCode.ABORTED) {
-      kuduClient.handleNotLeader(rpc, ex, this);
+      ybClient.handleNotLeader(rpc, ex, this);
     } else {
       return ex;
     }
@@ -486,12 +486,12 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     WireProtocol.AppStatusPB.ErrorCode code = error.getStatus().getCode();
     MasterErrorException ex = new MasterErrorException(uuid, error);
     if (error.getCode() == Master.MasterErrorPB.Code.NOT_THE_LEADER) {
-      kuduClient.handleNotLeader(rpc, ex, this);
+      ybClient.handleNotLeader(rpc, ex, this);
     } else if (code == WireProtocol.AppStatusPB.ErrorCode.SERVICE_UNAVAILABLE &&
         (!(rpc instanceof GetMasterRegistrationRequest))) {
       // TODO: This is a crutch until we either don't have to retry RPCs going to the
       // same server or use retry policies.
-      kuduClient.handleRetryableError(rpc, ex);
+      ybClient.handleRetryableError(rpc, ex);
     } else {
       return ex;
     }
@@ -661,7 +661,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
     if (tablet == null) {  // Can't retry, dunno where this RPC should go.
       rpc.errback(exception);
     } else {
-      kuduClient.handleTabletNotFound(rpc, exception, this);
+      ybClient.handleTabletNotFound(rpc, exception, this);
     }
   }
 

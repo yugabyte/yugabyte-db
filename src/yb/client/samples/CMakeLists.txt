@@ -19,11 +19,11 @@
 
 cmake_minimum_required(VERSION 2.8)
 
-find_package(kuduClient REQUIRED)
-include_directories(${KUDU_CLIENT_INCLUDE_DIR})
+find_package(ybClient REQUIRED)
+include_directories(${YB_CLIENT_INCLUDE_DIR})
 
-# The Kudu client library always uses the old gcc ABI.
+# The YB client library always uses the old gcc ABI.
 add_definitions(-D_GLIBCXX_USE_CXX11_ABI=0)
 
 add_executable(sample sample.cc)
-target_link_libraries(sample kudu_client)
+target_link_libraries(sample yb_client)

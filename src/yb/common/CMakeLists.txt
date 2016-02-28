@@ -20,7 +20,7 @@ PROTOBUF_GENERATE_CPP(
   SOURCE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../..
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES common.proto)
-ADD_EXPORTABLE_LIBRARY(kudu_common_proto
+ADD_EXPORTABLE_LIBRARY(yb_common_proto
   SRCS ${COMMON_PROTO_SRCS}
   DEPS protobuf
   NONLINK_DEPS ${COMMON_PROTO_TGTS})
@@ -31,7 +31,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES wire_protocol.proto)
 set(WIRE_PROTOCOL_PROTO_LIBS
-  kudu_common_proto
+  yb_common_proto
   consensus_metadata_proto
   protobuf)
 ADD_EXPORTABLE_LIBRARY(wire_protocol_proto
@@ -66,17 +66,17 @@ if ("${COMPILER_FAMILY}" STREQUAL "clang")
 endif()
 
 set(COMMON_LIBS
-  kudu_common_proto
+  yb_common_proto
   consensus_metadata_proto
   wire_protocol_proto
-  kudu_util
+  yb_util
   gutil)
 
-ADD_EXPORTABLE_LIBRARY(kudu_common
+ADD_EXPORTABLE_LIBRARY(yb_common
   SRCS ${COMMON_SRCS}
   DEPS ${COMMON_LIBS})
 
-set(YB_TEST_LINK_LIBS kudu_common ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_common ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(encoded_key-test)
 ADD_YB_TEST(generic_iterators-test)
 ADD_YB_TEST(id_mapping-test)

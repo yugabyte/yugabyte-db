@@ -33,7 +33,7 @@ import urllib
 import urllib2
 import urlparse
 
-from kudu_util import check_output
+from yb_util import check_output
 
 GERRIT_HOST = "gerrit.cloudera.org"
 JENKINS_URL = "http://sandbox.jenkins.cloudera.com/"

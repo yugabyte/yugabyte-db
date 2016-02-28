@@ -46,7 +46,7 @@ OUTPUT_DIR=$(cd $(dirname "$BASH_SOURCE"); pwd)
 # Try to detect whether we're building using Ninja or Make.
 LIBRARY_DIR=$(mktemp -d -t kudu-samples-test.XXXXXXXXXXXXX)
 PREFIX_DIR=$LIBRARY_DIR/usr/local
-SAMPLES_DIR=$PREFIX_DIR/share/doc/kuduClient/samples
+SAMPLES_DIR=$PREFIX_DIR/share/doc/ybClient/samples
 pushd $OUTPUT_DIR/..
 NINJA=$(which ninja 2>/dev/null) || NINJA=""
 if [ -r build.ninja -a -n "$NINJA" ]; then
@@ -101,7 +101,7 @@ export TMPDIR=${TMPDIR:-/tmp}
 export TEST_TMPDIR=${TEST_TMPDIR:-$TMPDIR/kudutest-$UID}
 mkdir -p $TEST_TMPDIR
 BASE_DIR=$(mktemp -d $TEST_TMPDIR/client_samples-test.XXXXXXXX)
-$OUTPUT_DIR/kudu-master \
+$OUTPUT_DIR/yb-master \
   --default_num_replicas=1 \
   --log_dir=$BASE_DIR \
   --fs_wal_dir=$BASE_DIR/master \
@@ -110,7 +110,7 @@ $OUTPUT_DIR/kudu-master \
   --webserver_port=0 \
   --rpc_bind_addresses=$LOCALHOST_IP &
 MASTER_PID=$!
-$OUTPUT_DIR/kudu-tserver \
+$OUTPUT_DIR/yb-tserver \
   --log_dir=$BASE_DIR \
   --fs_wal_dir=$BASE_DIR/ts \
   --fs_data_dirs=$BASE_DIR/ts \

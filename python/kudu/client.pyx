@@ -24,7 +24,7 @@ from libcpp cimport bool as c_bool
 cimport cpython
 from cython.operator cimport dereference as deref
 
-from libkudu_client cimport *
+from libyb_client cimport *
 
 from kudu.compat import tobytes, frombytes
 from kudu.schema cimport Schema, ColumnSchema

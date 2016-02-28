@@ -58,10 +58,10 @@ configuration has been tested, and undocumented options are not guaranteed to be
 maintained in future releases.
 
 === Configuring the Kudu Master
-To see all available configuration options for the `kudu-master` executable, run it
+To see all available configuration options for the `yb-master` executable, run it
 with the `--help` option:
 ----
-$ kudu-master --help
+$ yb-master --help
 ----
 
 [cols="m,d,m,d"]
@@ -83,10 +83,10 @@ For the full list of flags for masters, see the
 link:configuration_reference.html#master_configuration_reference[Kudu Master Configuration Reference].
 
 === Configuring Tablet Servers
-To see all available configuration options for the `kudu-tserver` executable,
+To see all available configuration options for the `yb-tserver` executable,
 run it with the `--help` option:
 ----
-$ kudu-tserver --help
+$ yb-tserver --help
 ----
 
 .Supported Configuration Flags for Kudu Tablet Servers

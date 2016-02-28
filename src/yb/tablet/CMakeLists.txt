@@ -66,7 +66,7 @@ set(TABLET_PROTO_LIBS
   protobuf
   fs_proto
   consensus_metadata_proto
-  kudu_common)
+  yb_common)
 ADD_EXPORTABLE_LIBRARY(tablet_proto
   SRCS ${TABLET_PROTO_SRCS}
   DEPS ${TABLET_PROTO_LIBS}
@@ -76,12 +76,12 @@ add_library(tablet ${TABLET_SRCS})
 target_link_libraries(tablet
   tablet_proto
   codegen
-  kudu_common
+  yb_common
   cfile
   gutil
   server_common
-  kudu_fs
-  kudu_util
+  yb_fs
+  yb_util
   consensus)
 
 set(YB_TEST_LINK_LIBS tablet ${YB_MIN_TEST_LIBS})
@@ -114,5 +114,5 @@ ADD_YB_TEST(tablet_random_access-test)
 ADD_YB_TEST(tablet_mm_ops-test)
 
 # Some tests don't have dependencies on other tablet stuff
-set(YB_TEST_LINK_LIBS kudu_util gutil ${YB_MIN_TEST_LIBS})
+set(YB_TEST_LINK_LIBS yb_util gutil ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(cbtree-test RUN_SERIAL true)

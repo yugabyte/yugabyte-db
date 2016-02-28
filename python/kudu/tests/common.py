@@ -52,7 +52,7 @@ class KuduTestBase(object):
         os.makedirs("{0}/master/logs".format(local_path))
 
         path = [
-            "{0}/kudu-master".format(bin_path),
+            "{0}/yb-master".format(bin_path),
             "-rpc_server_allow_ephemeral_ports",
             "-rpc_bind_addresses=0.0.0.0:0",
             "-fs_wal_dir={0}/master/data".format(local_path),
@@ -67,7 +67,7 @@ class KuduTestBase(object):
         ]
 
         p = subprocess.Popen(path, shell=False)
-        fid = open("{0}/master/kudu-master.pid".format(local_path), "w+")
+        fid = open("{0}/master/yb-master.pid".format(local_path), "w+")
         fid.write("{0}".format(p.pid))
         fid.close()
 
@@ -79,7 +79,7 @@ class KuduTestBase(object):
                 break
             time.sleep(0.1 * (i + 1))
         else:
-            raise Exception("Could not find kudu-master config file")
+            raise Exception("Could not find yb-master config file")
 
         # If the server was started get the bind port from the config dump
         master_config = json.load(open("{0}/master/config.json"
@@ -92,7 +92,7 @@ class KuduTestBase(object):
             os.makedirs("{0}/ts/{1}/logs".format(local_path, m))
 
             path = [
-                "{0}/kudu-tserver".format(bin_path),
+                "{0}/yb-tserver".format(bin_path),
                 "-rpc_server_allow_ephemeral_ports",
                 "-rpc_bind_addresses=0.0.0.0:0",
                 "-tserver_master_addrs=127.0.0.1:{0}".format(master_port),
@@ -103,7 +103,7 @@ class KuduTestBase(object):
                 "-fs_wal_dir={0}/ts/{1}/data".format(local_path, m),
             ]
             p = subprocess.Popen(path, shell=False)
-            tserver_pid = "{0}/ts/{1}/kudu-tserver.pid".format(local_path, m)
+            tserver_pid = "{0}/ts/{1}/yb-tserver.pid".format(local_path, m)
             fid = open(tserver_pid, "w+")
             fid.write("{0}".format(p.pid))
             fid.close()

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Tests for the kudu-admin command-line tool.
+// Tests for the yb-admin command-line tool.
 
 #include <boost/assign/list_of.hpp>
 #include <gtest/gtest.h>
@@ -39,7 +39,7 @@ using strings::Substitute;
 namespace kudu {
 namespace tools {
 
-static const char* const kTsCliToolName = "kudu-ts-cli";
+static const char* const kTsCliToolName = "yb-ts-cli";
 
 class KuduTsCliTest : public ExternalMiniClusterITestBase {
  protected:
@@ -52,7 +52,7 @@ string KuduTsCliTest::GetTsCliToolPath() const {
   CHECK_OK(Env::Default()->GetExecutablePath(&exe));
   string binroot = DirName(exe);
   string tool_path = JoinPathSegments(binroot, kTsCliToolName);
-  CHECK(Env::Default()->FileExists(tool_path)) << "kudu-admin tool not found at " << tool_path;
+  CHECK(Env::Default()->FileExists(tool_path)) << "yb-admin tool not found at " << tool_path;
   return tool_path;
 }
 
@@ -86,7 +86,7 @@ TEST_F(KuduTsCliTest, TestDeleteTablet) {
   argv.push_back(cluster_->tablet_server(0)->bound_rpc_addr().ToString());
   argv.push_back("delete_tablet");
   argv.push_back(tablet_id);
-  argv.push_back("Deleting for kudu-ts-cli-test");
+  argv.push_back("Deleting for yb-ts-cli-test");
   ASSERT_OK(Subprocess::Call(argv));
 
   ASSERT_OK(inspect_->WaitForTabletDataStateOnTS(0, tablet_id, tablet::TABLET_DATA_TOMBSTONED));

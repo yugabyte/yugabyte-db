@@ -211,10 +211,10 @@ export KUDU_HOME="$yugabyte_root"
 
 if [ "$cmd" == "start" ]; then
 
-  master_binary="$build_root/bin/kudu-master"
+  master_binary="$build_root/bin/yb-master"
   ensure_binary_exists "$master_binary"
 
-  tserver_binary="$build_root/bin/kudu-tserver"
+  tserver_binary="$build_root/bin/yb-tserver"
   ensure_binary_exists "$tserver_binary"
 
   for i in $master_indexes; do

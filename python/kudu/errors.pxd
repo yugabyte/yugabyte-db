@@ -15,6 +15,6 @@
 # specific language governing permissions and limitations
 # under the License.
 
-from libkudu_client cimport *
+from libyb_client cimport *
 
 cdef check_status(const Status& status)

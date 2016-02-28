@@ -70,7 +70,7 @@
       },
       "logging" : {
         "dir" : "/var/log/kudu",
-        "filename" : "kudu-master.INFO",
+        "filename" : "yb-master.INFO",
         "modifiable" : true,
         "loggingType" : "glog"
       },
@@ -186,7 +186,7 @@
       },
       "logging" : {
         "dir" : "/var/log/kudu",
-        "filename" : "kudu-tserver.INFO",
+        "filename" : "yb-tserver.INFO",
         "modifiable" : true,
         "loggingType" : "glog"
       },

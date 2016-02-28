@@ -31,7 +31,7 @@ import shutil
 import subprocess
 import sys
 
-from kudu_util import check_output
+from yb_util import check_output
 
 JAVA_ACC_GIT_URL = "https://github.com/lvc/japi-compliance-checker.git"
 
