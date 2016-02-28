@@ -55,19 +55,19 @@ using std::string;
 
 static cl::extrahelp CommonHelp(CommonOptionsParser::HelpMessage);
 static cl::extrahelp MoreHelp(
-    "\tFor example, to run kudu-lint on all files in a subtree of the\n"
+    "\tFor example, to run yb-lint on all files in a subtree of the\n"
     "\tsource tree, use:\n"
     "\n"
-    "\t  find path/in/subtree -name '*.cc'|xargs kudu-lint\n"
+    "\t  find path/in/subtree -name '*.cc'|xargs yb-lint\n"
     "\n"
     "\tor using a specific build path:\n"
     "\n"
-    "\t  find path/in/subtree -name '*.cc'|xargs kudu-lint -p build/path\n"
+    "\t  find path/in/subtree -name '*.cc'|xargs yb-lint -p build/path\n"
     "\n"
     "\tNote, that path/in/subtree and current directory should follow the\n"
     "\trules described above.\n"
     "\n"
-    "\t Sometimes kudu-lint can't figure out the proper line number for an\n"
+    "\t Sometimes yb-lint can't figure out the proper line number for an\n"
     "\t error, and reports it inside some standard library. the -ast-dump\n"
     "\t option can be useful for these circumstances.\n"
     "\n"
