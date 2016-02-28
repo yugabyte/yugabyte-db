@@ -28,11 +28,11 @@ else()
 
   target_link_libraries(twitter_demo
     gutil
-    kudu_util
+    yb_util
     yb_test_util)
 
   target_link_libraries(twitter_demo
-    kudu_client
+    yb_client
     ${LIBOAUTH_LIBRARY}
     ${CURL_LIBRARIES}
     ${YB_BASE_LIBS})

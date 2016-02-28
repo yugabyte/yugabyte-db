@@ -38,7 +38,7 @@ import re
 import subprocess
 import sys
 
-from kudu_util import check_output, confirm_prompt, Colors, get_my_email
+from yb_util import check_output, confirm_prompt, Colors, get_my_email
 
 APACHE_REPO = "https://git-wip-us.apache.org/repos/asf/incubator-kudu.git"
 GERRIT_URL_RE = re.compile(r"ssh://.+@gerrit.cloudera.org:29418/kudu")

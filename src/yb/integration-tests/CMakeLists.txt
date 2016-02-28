@@ -30,13 +30,13 @@ target_link_libraries(integration-tests
   tserver_test_util
   master
   ksck
-  kudu_client
-  kudu_client_test_util
-  kudu_fs
+  yb_client
+  yb_client_test_util
+  yb_fs
   yb_test_util)
 add_dependencies(integration-tests
-  kudu-tserver
-  kudu-master)
+  yb-tserver
+  yb-master)
 
 # Tests
 set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
@@ -62,7 +62,7 @@ ADD_YB_TEST(tablet_replacement-itest)
 ADD_YB_TEST(create-table-itest)
 
 # Some tests have additional dependencies
-set(YB_TEST_LINK_LIBS kudu_client kudu_tools_util ${YB_TEST_LINK_LIBS})
+set(YB_TEST_LINK_LIBS yb_client yb_tools_util ${YB_TEST_LINK_LIBS})
 ADD_YB_TEST(full_stack-insert-scan-test RUN_SERIAL true)
 ADD_YB_TEST(update_scan_delta_compact-test RUN_SERIAL true)
 ADD_YB_TEST(flex_partitioning-itest)

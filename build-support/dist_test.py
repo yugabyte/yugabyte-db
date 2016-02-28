@@ -67,9 +67,9 @@ DEPS_FOR_ALL = \
 
      # Tests that use the external minicluster require these.
      # TODO: declare these dependencies per-test.
-     "build/latest/bin/kudu-tserver",
-     "build/latest/bin/kudu-master",
-     "build/latest/bin/kudu-ts-cli",
+     "build/latest/bin/yb-tserver",
+     "build/latest/bin/yb-master",
+     "build/latest/bin/yb-ts-cli",
 
      # parser-test requires these data files.
      # TODO: again, we should do this with some per-test metadata file.
@@ -78,7 +78,7 @@ DEPS_FOR_ALL = \
      #".../example-tweets.txt",
 
      # Tests that require tooling require these.
-     "build/latest/bin/kudu-admin",
+     "build/latest/bin/yb-admin",
      ]
 
 

@@ -105,7 +105,7 @@ public class TestUtils {
   }
 
   /**
-   * @param binName the binary to look for (eg 'kudu-tserver')
+   * @param binName the binary to look for (eg 'yb-tserver')
    * @return the absolute path of that binary
    * @throws FileNotFoundException if no such binary is found
    */

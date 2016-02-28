@@ -18,7 +18,7 @@
 
 from libcpp.map cimport map
 
-from libkudu_client cimport *
+from libyb_client cimport *
 
 
 cdef class KuduType(object):

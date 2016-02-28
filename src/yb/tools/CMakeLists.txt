@@ -16,22 +16,22 @@
 # under the License.
 
 set(LINK_LIBS
-  kudu_client
+  yb_client
   log
   consensus
   tserver
-  kudu_common
-  kudu_fs
-  kudu_util
+  yb_common
+  yb_fs
+  yb_util
   gutil
   cfile
   tablet
   ${YB_BASE_LIBS}
 )
 
-add_library(kudu_tools_util
+add_library(yb_tools_util
   data_gen_util.cc)
-target_link_libraries(kudu_tools_util
+target_link_libraries(yb_tools_util
   ${LINK_LIBS})
 
 add_executable(create-demo-table create-demo-table.cc)
@@ -40,32 +40,32 @@ target_link_libraries(create-demo-table
 
 add_executable(insert-generated-rows insert-generated-rows.cc)
 target_link_libraries(insert-generated-rows
-  kudu_tools_util
+  yb_tools_util
   ${LINK_LIBS})
 
-add_executable(kudu-admin kudu-admin.cc)
-target_link_libraries(kudu-admin
+add_executable(yb-admin yb-admin.cc)
+target_link_libraries(yb-admin
   ${LINK_LIBS})
 
-add_executable(kudu-ts-cli ts-cli.cc)
-target_link_libraries(kudu-ts-cli
+add_executable(yb-ts-cli ts-cli.cc)
+target_link_libraries(yb-ts-cli
   ${LINK_LIBS})
 
 add_library(fs_tool fs_tool.cc)
 target_link_libraries(fs_tool
   gutil
-  kudu_common
+  yb_common
   server_common
   consensus
   tablet)
 
-add_executable(kudu-fs_list fs_list-tool.cc)
-target_link_libraries(kudu-fs_list
+add_executable(yb-fs_list fs_list-tool.cc)
+target_link_libraries(yb-fs_list
   ${LINK_LIBS}
   fs_tool)
 
-add_executable(kudu-fs_dump fs_dump-tool.cc)
-target_link_libraries(kudu-fs_dump
+add_executable(yb-fs_dump fs_dump-tool.cc)
+target_link_libraries(yb-fs_dump
   ${LINK_LIBS}
   fs_tool)
 
@@ -81,27 +81,27 @@ target_link_libraries(ksck
   ${YB_BASE_LIBS}
 )
 
-add_executable(kudu-ksck kudu-ksck.cc)
-target_link_libraries(kudu-ksck
+add_executable(yb-ksck yb-ksck.cc)
+target_link_libraries(yb-ksck
   ksck
 )
 
-add_executable(kudu-pbc-dump pbc-dump.cc)
-target_link_libraries(kudu-pbc-dump
+add_executable(yb-pbc-dump pbc-dump.cc)
+target_link_libraries(yb-pbc-dump
   ${LINK_LIBS}
 )
 
 set(YB_TEST_LINK_LIBS
   ksck
-  kudu_tools_util
+  yb_tools_util
   integration-tests
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(ksck-test)
 ADD_YB_TEST(ksck_remote-test)
-ADD_YB_TEST(kudu-admin-test)
-ADD_YB_TEST_DEPENDENCIES(kudu-admin-test
-  kudu-admin)
-ADD_YB_TEST(kudu-ts-cli-test)
-ADD_YB_TEST_DEPENDENCIES(kudu-ts-cli-test
-  kudu-ts-cli)
+ADD_YB_TEST(yb-admin-test)
+ADD_YB_TEST_DEPENDENCIES(yb-admin-test
+  yb-admin)
+ADD_YB_TEST(yb-ts-cli-test)
+ADD_YB_TEST_DEPENDENCIES(yb-ts-cli-test
+  yb-ts-cli)
 

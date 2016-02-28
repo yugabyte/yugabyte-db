@@ -94,15 +94,15 @@ each host.
 +
 ----
 sudo yum install kudu                         # Base Kudu files
-sudo yum install kudu-master                  # Kudu master init.d service script and default configuration
-sudo yum install kudu-tserver                 # Kudu tablet server init.d service script and default configuration
+sudo yum install yb-master                  # Kudu master init.d service script and default configuration
+sudo yum install yb-tserver                 # Kudu tablet server init.d service script and default configuration
 sudo yum install kudu-client0                 # Kudu C++ client shared library
 sudo yum install kudu-client-devel            # Kudu C++ client SDK
 ----
 
 . To manually install the Kudu RPMs, first download them, then use the command
 `sudo rpm -ivh <RPM to install>` and install the
-`kudu-master` and `kudu-tserver` packages on the appropriate hosts. These packages
+`yb-master` and `yb-tserver` packages on the appropriate hosts. These packages
 provide the operating system commands to start and stop Kudu.
 
 === Install On Ubuntu or Debian Hosts
@@ -112,8 +112,8 @@ packages on each host.
 +
 ----
 sudo apt-get install kudu                     # Base Kudu files
-sudo apt-get install kudu-master              # Service scripts for managing kudu-master
-sudo apt-get install kudu-tserver             # Service scripts for managing kudu-tserver
+sudo apt-get install yb-master              # Service scripts for managing yb-master
+sudo apt-get install yb-tserver             # Service scripts for managing yb-tserver
 sudo apt-get install libkuduclient0           # Kudu C++ client shared library
 sudo apt-get install libkuduclient-dev        # Kudu C++ client SDK
 ----
@@ -125,8 +125,8 @@ sudo apt-get install libkuduclient-dev        # Kudu C++ client SDK
 
 // tag::verify_install[]
 . Verify that services are running using one of the following methods:
-  - Examine the output of the `ps` command on servers to verify one or both of `kudu-master`
-  or `kudu-tserver` processes is running.
+  - Examine the output of the `ps` command on servers to verify one or both of `yb-master`
+  or `yb-tserver` processes is running.
   - Access the Master or Tablet Server web UI by opening `\http://<_host_name_>:8051/`
   for masters
   or `\http://<_host_name_>:8050/` for tablet servers.
@@ -152,7 +152,7 @@ and they ship the built-in `conf.dist` alternative. To adjust your configuration
 you can either edit the files in `/etc/kudu/conf/` directly, or create a new alternative
 using the operating system utilities, make sure it is the link pointed to by `/etc/kudu/conf/`,
 and create custom configuration files there. Some parts of the configuration are configured
-in `/etc/default/kudu-master` and `/etc/default/kudu-tserver` files as well. You
+in `/etc/default/yb-master` and `/etc/default/yb-tserver` files as well. You
 should include or duplicate these configuration options if you create custom configuration files.
 +
 Review the configuration, including the default WAL and data directory locations,
@@ -163,16 +163,16 @@ and adjust them according to your requirements.
 +
 [source,bash]
 ----
-$ sudo service kudu-master start
-$ sudo service kudu-tserver start
+$ sudo service yb-master start
+$ sudo service yb-tserver start
 ----
 
 . To stop Kudu services, use the following commands:
 +
 [source,bash]
 ----
-$ sudo service kudu-master stop
-$ sudo service kudu-tserver stop
+$ sudo service yb-master stop
+$ sudo service yb-tserver stop
 ----
 // end::start_stop[]
 
@@ -181,11 +181,11 @@ them to the default runlevel.
 +
 [source,bash]
 ----
-$ sudo chkconfig kudu-master on                # RHEL / CentOS
-$ sudo chkconfig kudu-tserver on               # RHEL / CentOS
+$ sudo chkconfig yb-master on                # RHEL / CentOS
+$ sudo chkconfig yb-tserver on               # RHEL / CentOS
 
-$ sudo update-rc.d kudu-master defaults        # Debian / Ubuntu
-$ sudo update-rc.d kudu-tserver defaults       # Debian / Ubuntu
+$ sudo update-rc.d yb-master defaults        # Debian / Ubuntu
+$ sudo update-rc.d yb-tserver defaults       # Debian / Ubuntu
 ----
 
 . For additional configuration of Kudu services, see link:configuration.html[Configuring
@@ -565,7 +565,7 @@ If you need access to the Kudu client libraries for development,
 install the `kudu-client` and `kudu-client-devel` package for your platform.
 See <<install_packages>>.
 
-WARNING: Only build against the client libraries and headers (`kudu_client.so` and `client.h`).
+WARNING: Only build against the client libraries and headers (`yb_client.so` and `client.h`).
 Other libraries and headers are internal to Kudu and have no stability guarantees.
 
 [[build_java_client]]
@@ -656,8 +656,8 @@ link:release_notes.html#0.6.0[Kudu 0.6.0 release notes] for details.
 +
 [source,bash]
 ----
-$ sudo service kudu-master stop
-$ sudo service kudu-tserver stop
+$ sudo service yb-master stop
+$ sudo service yb-tserver stop
 ----
 
 . Upgrade the packages.
@@ -680,8 +680,8 @@ sudo apt-get install kudu
 +
 [source,bash]
 ----
-$ sudo service kudu-master start
-$ sudo service kudu-tserver start
+$ sudo service yb-master start
+$ sudo service yb-tserver start
 ----
 
 [[next_steps]]

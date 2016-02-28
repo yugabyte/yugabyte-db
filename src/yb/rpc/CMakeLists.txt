@@ -69,7 +69,7 @@ set(KRPC_SRCS
 set(KRPC_LIBS
   rpc_header_proto
   rpc_introspection_proto
-  kudu_util
+  yb_util
   gutil
   libev
   cyrus_sasl)
@@ -85,7 +85,7 @@ target_link_libraries(protoc-gen-krpc
     protoc
     protobuf
     gutil
-    kudu_util)
+    yb_util)
 
 #### RPC test
 PROTOBUF_GENERATE_CPP(

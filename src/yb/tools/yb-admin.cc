@@ -129,7 +129,7 @@ class ClusterAdminClient {
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
-  client::sp::shared_ptr<KuduClient> kudu_client_;
+  client::sp::shared_ptr<KuduClient> yb_client_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
@@ -154,7 +154,7 @@ Status ClusterAdminClient::Init() {
   HostPort master_hostport;
   RETURN_NOT_OK(master_hostport.ParseString(master_addr_strings[0],
                                             master::Master::kDefaultPort));
-  MessengerBuilder builder("kudu-admin");
+  MessengerBuilder builder("yb-admin");
   RETURN_NOT_OK(builder.Build(&messenger_));
   vector<Sockaddr> master_addrs;
   RETURN_NOT_OK(master_hostport.ResolveAddresses(&master_addrs));
@@ -165,7 +165,7 @@ Status ClusterAdminClient::Init() {
   CHECK_OK(KuduClientBuilder()
       .add_master_server_addr(master_addr_list_)
       .default_admin_operation_timeout(timeout_)
-      .Build(&kudu_client_));
+      .Build(&yb_client_));
 
   initted_ = true;
   return Status::OK();
@@ -325,7 +325,7 @@ Status ClusterAdminClient::GetFirstRpcAddressForTS(const std::string& uuid, Host
 
 Status ClusterAdminClient::ListTables() {
   vector<string> tables;
-  RETURN_NOT_OK(kudu_client_->ListTables(&tables));
+  RETURN_NOT_OK(yb_client_->ListTables(&tables));
   for (const string& table : tables) {
     std::cout << table << std::endl;
   }
@@ -334,7 +334,7 @@ Status ClusterAdminClient::ListTables() {
 
 Status ClusterAdminClient::DeleteTable(const string& table_name) {
   vector<Sockaddr> tables;
-  RETURN_NOT_OK(kudu_client_->DeleteTable(table_name));
+  RETURN_NOT_OK(yb_client_->DeleteTable(table_name));
   std::cout << "Deleted table " << table_name << std::endl;
   return Status::OK();
 }

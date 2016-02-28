@@ -21,7 +21,7 @@ set(TPCH_SRCS
 
 add_library(tpch ${TPCH_SRCS})
 target_link_libraries(tpch
-  kudu_client
+  yb_client
   integration-tests)
 
 # tpch1
@@ -39,7 +39,7 @@ target_link_libraries(tpch_real_world
 # rle
 add_executable(rle rle.cc)
 target_link_libraries(rle
-  kudu_util
+  yb_util
   ${YB_TEST_LINK_LIBS})
 
 # wal_hiccup
@@ -47,7 +47,7 @@ target_link_libraries(rle
 if(NOT APPLE)
   add_executable(wal_hiccup wal_hiccup.cc)
   target_link_libraries(wal_hiccup
-    kudu_util
+    yb_util
     ${YB_TEST_LINK_LIBS})
 endif()
 

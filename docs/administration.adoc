@@ -83,8 +83,8 @@ line flag:
 
 [source,bash]
 ----
-$ kudu-tserver --dump_metrics_json
-$ kudu-master --dump_metrics_json
+$ yb-tserver --dump_metrics_json
+$ yb-master --dump_metrics_json
 ----
 
 This will output a large JSON document. Each metric indicates its name, label, description,

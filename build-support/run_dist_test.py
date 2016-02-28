@@ -115,7 +115,7 @@ def main():
   # lib directories into $LD_LIBRARY_PATH below because we need to make sure
   # that non-TSAN-instrumented runtime tools (like 'llvm-symbolizer') do _NOT_
   # pick up the TSAN-instrumented libraries, whereas TSAN-instrumented test
-  # binaries (like 'foo_test' or 'kudu-tserver') _DO_ pick them up.
+  # binaries (like 'foo_test' or 'yb-tserver') _DO_ pick them up.
   fixup_rpaths(os.path.join(ROOT, "build"))
   fixup_rpaths(os.path.join(ROOT, "thirdparty"))
 

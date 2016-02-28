@@ -6,6 +6,6 @@ endif()
 
 @PACKAGE_INIT@
 
-set_and_check(KUDU_CLIENT_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+set_and_check(YB_CLIENT_INCLUDE_DIR "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
 
-include("${CMAKE_CURRENT_LIST_DIR}/kuduClientTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/ybClientTargets.cmake")

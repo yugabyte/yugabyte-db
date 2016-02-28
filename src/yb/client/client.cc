@@ -103,7 +103,7 @@ using internal::MetaCache;
 using sp::shared_ptr;
 
 static const int kHtTimestampBitsToShift = 12;
-static const char* kProgName = "kudu_client";
+static const char* kProgName = "yb_client";
 
 // We need to reroute all logging to stderr when the client library is
 // loaded. GoogleOnceInit() can do that, but there are multiple entry

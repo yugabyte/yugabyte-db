@@ -40,7 +40,7 @@ import sun.management.VMManagement;
 
 /**
  * Utility class to start and manipulate Kudu clusters. Relies on being IN the Kudu source code with
- * both the kudu-master and kudu-tserver binaries already compiled. {@link BaseKuduTest} should be
+ * both the yb-master and yb-tserver binaries already compiled. {@link BaseKuduTest} should be
  * extended instead of directly using this class in almost all cases.
  */
 public class MiniKuduCluster implements AutoCloseable {
@@ -156,7 +156,7 @@ public class MiniKuduCluster implements AutoCloseable {
       String dataDirPath = baseDirPath + "/ts-" + i + "-" + now;
       String flagsPath = TestUtils.getFlagsPath();
       String[] tsCmdLine = {
-          TestUtils.findBinary("kudu-tserver"),
+          TestUtils.findBinary("yb-tserver"),
           "--flagfile=" + flagsPath,
           "--fs_wal_dir=" + dataDirPath,
           "--fs_data_dirs=" + dataDirPath,
@@ -217,7 +217,7 @@ public class MiniKuduCluster implements AutoCloseable {
       // started yet and findFreePort(s) is "check-time-of-use" (it does not reserve the
       // ports, only checks that when it was last called, these ports could be used).
       List<String> masterCmdLine = Lists.newArrayList(
-          TestUtils.findBinary("kudu-master"),
+          TestUtils.findBinary("yb-master"),
           "--flagfile=" + flagsPath,
           "--fs_wal_dir=" + dataDirPath,
           "--fs_data_dirs=" + dataDirPath,

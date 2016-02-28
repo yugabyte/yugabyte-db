@@ -112,11 +112,11 @@ if [ "$CMD" = "master" ]; then
     MASTER_ADDRESSES="--master_addresses=$MASTER_IPS"
   fi
 
-  exec "$KUDU_HOME/sbin/kudu-master" \
+  exec "$KUDU_HOME/sbin/yb-master" \
     $MASTER_ADDRESSES \
     --flagfile="$GFLAG_FILE"
 elif [ "$CMD" = "tserver" ]; then
-  exec "$KUDU_HOME/sbin/kudu-tserver" \
+  exec "$KUDU_HOME/sbin/yb-tserver" \
     --tserver_master_addrs="$MASTER_IPS" \
     --flagfile="$GFLAG_FILE"
 else

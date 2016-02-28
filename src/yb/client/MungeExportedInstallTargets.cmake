@@ -16,16 +16,16 @@
 # under the License.
 #
 # Finds all Kudu client cmake installation files and replaces all references
-# to kudu_client_exported with kudu_client, thus renaming the targets.
+# to yb_client_exported with yb_client, thus renaming the targets.
 
-set(CMAKE_FILES_DIR "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/share/kuduClient/cmake")
+set(CMAKE_FILES_DIR "$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/share/ybClient/cmake")
 if(NOT EXISTS ${CMAKE_FILES_DIR})
   message(FATAL_ERROR "Cannot find cmake installation directory ${CMAKE_FILES_DIR}")
 endif()
 file(GLOB CMAKE_FILES "${CMAKE_FILES_DIR}/*.cmake")
 foreach(CMAKE_FILE ${CMAKE_FILES})
   message(STATUS "Munging kudu client targets in ${CMAKE_FILE}")
-  execute_process(COMMAND sed s/kudu_client_exported/kudu_client/g ${CMAKE_FILE}
+  execute_process(COMMAND sed s/yb_client_exported/yb_client/g ${CMAKE_FILE}
     OUTPUT_FILE ${CMAKE_FILE}.new)
   execute_process(COMMAND mv -f ${CMAKE_FILE}.new ${CMAKE_FILE})
 endforeach()

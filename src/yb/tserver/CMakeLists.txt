@@ -46,7 +46,7 @@ PROTOBUF_GENERATE_CPP(
   BINARY_ROOT ${CMAKE_CURRENT_BINARY_DIR}/../..
   PROTO_FILES tserver.proto)
 set(TSERVER_PROTO_LIBS
-  kudu_common_proto
+  yb_common_proto
   consensus_metadata_proto
   tablet_proto
   wire_protocol_proto)
@@ -86,7 +86,7 @@ KRPC_GENERATE(
   PROTO_FILES tserver_service.proto)
 set(TSERVER_KRPC_LIBS
   krpc
-  kudu_common_proto
+  yb_common_proto
   protobuf
   remote_bootstrap_proto
   rpc_header_proto
@@ -135,11 +135,11 @@ target_link_libraries(tserver
   tablet)
 
 #########################################
-# kudu-tserver
+# yb-tserver
 #########################################
 
-add_executable(kudu-tserver tablet_server_main.cc)
-target_link_libraries(kudu-tserver
+add_executable(yb-tserver tablet_server_main.cc)
+target_link_libraries(yb-tserver
   tserver
   ${YB_BASE_LIBS})
 
