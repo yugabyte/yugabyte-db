@@ -29,17 +29,17 @@ import static org.junit.Assert.assertNull;
 import static org.kududb.Type.STRING;
 import static org.junit.Assert.assertEquals;
 
-public class TestScannerMultiTablet extends BaseKuduTest {
+public class TestScannerMultiTablet extends BaseYBTest {
   // Generate a unique table name
   private static final String TABLE_NAME =
       TestScannerMultiTablet.class.getName()+"-"+System.currentTimeMillis();
 
   private static Schema schema = getSchema();
-  private static KuduTable table;
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
     // create a 4-tablets table for scanning
     CreateTableOptions builder = new CreateTableOptions();
 

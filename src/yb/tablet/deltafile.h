@@ -178,7 +178,7 @@ class DeltaFileReader : public DeltaStore,
   // The type of this delta, i.e. UNDO or REDO.
   const DeltaType delta_type_;
 
-  KuduOnceDynamic init_once_;
+  YBOnceDynamic init_once_;
 };
 
 // Iterator over the deltas contained in a delta file.

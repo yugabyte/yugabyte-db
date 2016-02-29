@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# This script is invoked from the Jenkins builds to build Kudu
+# This script is invoked from the Jenkins builds to build YB
 # and run all the unit tests.
 #
 # Environment variables may be used to customize operation:
@@ -37,9 +37,9 @@
 #     Only runs tests which have failed recently, if this is 1.
 #     Used by the kudu-flaky-tests jenkins build.
 #
-#   KUDU_FLAKY_TEST_ATTEMPTS  Default: 1
+#   YB_FLAKY_TEST_ATTEMPTS  Default: 1
 #     If more than 1, will fetch the list of known flaky tests
-#     from the kudu-test jenkins job, and allow those tests to
+#     from the yb-test jenkins job, and allow those tests to
 #     be flaky in this build.
 #
 #   TEST_RESULT_SERVER  Default: none
@@ -57,7 +57,7 @@
 #     Build and test java code if this is set to 1.
 #
 #   VALIDATE_CSD      Default: 0
-#     If 1, runs the CM CSD validator against the Kudu CSD.
+#     If 1, runs the CM CSD validator against the YB CSD.
 #     This requires access to an internal Cloudera maven repository.
 #
 #   BUILD_PYTHON       Default: 1
@@ -97,9 +97,9 @@ if [ "$BUILD_TYPE" = "TSAN" ]; then
   export YB_USE_TSAN=1
 fi
 
-export KUDU_FLAKY_TEST_ATTEMPTS=${KUDU_FLAKY_TEST_ATTEMPTS:-1}
+export YB_FLAKY_TEST_ATTEMPTS=${YB_FLAKY_TEST_ATTEMPTS:-1}
 export YB_ALLOW_SLOW_TESTS=${YB_ALLOW_SLOW_TESTS:-$DEFAULT_ALLOW_SLOW_TESTS}
-export KUDU_COMPRESS_TEST_OUTPUT=${KUDU_COMPRESS_TEST_OUTPUT:-1}
+export YB_COMPRESS_TEST_OUTPUT=${YB_COMPRESS_TEST_OUTPUT:-1}
 export TEST_TMPDIR=${TEST_TMPDIR:-/tmp/ybtest-$UID}
 BUILD_JAVA=${BUILD_JAVA:-1}
 VALIDATE_CSD=${VALIDATE_CSD:-0}
@@ -163,7 +163,7 @@ rm -rf $SOURCE_ROOT/CMakeCache.txt $SOURCE_ROOT/CMakeFiles
 
 # Configure the build
 #
-# ASAN/TSAN can't build the Python bindings because the exported Kudu client
+# ASAN/TSAN can't build the Python bindings because the exported YB client
 # library (which the bindings depend on) is missing ASAN/TSAN symbols.
 cd $BUILD_ROOT
 if [ "$BUILD_TYPE" = "ASAN" ]; then
@@ -194,24 +194,24 @@ fi
 
 # Only enable test core dumps for certain build types.
 if [ "$BUILD_TYPE" != "ASAN" ]; then
-  export KUDU_TEST_ULIMIT_CORE=unlimited
+  export YB_TEST_ULIMIT_CORE=unlimited
 fi
 
 # If we are supposed to be resistant to flaky tests, we need to fetch the
 # list of tests to ignore
-if [ "$KUDU_FLAKY_TEST_ATTEMPTS" -gt 1 ]; then
+if [ "$YB_FLAKY_TEST_ATTEMPTS" -gt 1 ]; then
   echo Fetching flaky test list...
-  export KUDU_FLAKY_TEST_LIST=$BUILD_ROOT/flaky-tests.txt
-  mkdir -p $(dirname $KUDU_FLAKY_TEST_LIST)
-  echo -n > $KUDU_FLAKY_TEST_LIST
+  export YB_FLAKY_TEST_LIST=$BUILD_ROOT/flaky-tests.txt
+  mkdir -p $(dirname $YB_FLAKY_TEST_LIST)
+  echo -n > $YB_FLAKY_TEST_LIST
     if [ -n "$TEST_RESULT_SERVER" ] && \
-        list_flaky_tests > $KUDU_FLAKY_TEST_LIST ; then
-    echo Will retry flaky tests up to $KUDU_FLAKY_TEST_ATTEMPTS times:
-    cat $KUDU_FLAKY_TEST_LIST
+        list_flaky_tests > $YB_FLAKY_TEST_LIST ; then
+    echo Will retry flaky tests up to $YB_FLAKY_TEST_ATTEMPTS times:
+    cat $YB_FLAKY_TEST_LIST
     echo ----------
   else
     echo Unable to fetch flaky test list. Disabling flaky test resistance.
-    export KUDU_FLAKY_TEST_ATTEMPTS=1
+    export YB_FLAKY_TEST_ATTEMPTS=1
   fi
 fi
 
@@ -332,13 +332,13 @@ if [ "$BUILD_PYTHON" == "1" ]; then
   # Failing to compile the Python client should result in a build failure
   set -e
   export YB_HOME=$SOURCE_ROOT
-  export KUDU_BUILD=$BUILD_ROOT
+  export YB_BUILD=$BUILD_ROOT
   pushd $SOURCE_ROOT/python
 
   # Create a sane test environment
-  rm -Rf $KUDU_BUILD/py_env
-  virtualenv $KUDU_BUILD/py_env
-  source $KUDU_BUILD/py_env/bin/activate
+  rm -Rf $YB_BUILD/py_env
+  virtualenv $YB_BUILD/py_env
+  source $YB_BUILD/py_env/bin/activate
   pip install --upgrade pip
   CC=$CLANG CXX=$CLANG++ pip install --disable-pip-version-check -r requirements.txt
 
@@ -349,8 +349,8 @@ if [ "$BUILD_PYTHON" == "1" ]; then
   CC=$CLANG CXX=$CLANG++ python setup.py build_ext
   set +e
   if ! python setup.py test \
-      --addopts="kudu --junit-xml=$KUDU_BUILD/test-logs/python_client.xml" \
-      2> $KUDU_BUILD/test-logs/python_client.log ; then
+      --addopts="kudu --junit-xml=$YB_BUILD/test-logs/python_client.xml" \
+      2> $YB_BUILD/test-logs/python_client.log ; then
     EXIT_STATUS=1
     FAILURES="$FAILURES"$'Python tests failed\n'
   fi

@@ -42,14 +42,14 @@ using std::vector;
 const char* kTabletId = "test-consensus-metadata";
 const int64_t kInitialTerm = 3;
 
-class ConsensusMetadataTest : public KuduTest {
+class ConsensusMetadataTest : public YBTest {
  public:
   ConsensusMetadataTest()
     : fs_manager_(env_.get(), GetTestPath("fs_root")) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     ASSERT_OK(fs_manager_.CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_.Open());
 

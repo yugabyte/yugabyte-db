@@ -107,85 +107,85 @@ cdef extern from "yb/util/monotime.h" namespace "yb" nogil:
 
 cdef extern from "yb/client/schema.h" namespace "yb::client" nogil:
 
-    enum DataType" yb::client::KuduColumnSchema::DataType":
-        YB_INT8 " yb::client::KuduColumnSchema::INT8"
-        YB_INT16 " yb::client::KuduColumnSchema::INT16"
-        YB_INT32 " yb::client::KuduColumnSchema::INT32"
-        YB_INT64 " yb::client::KuduColumnSchema::INT64"
-        YB_STRING " yb::client::KuduColumnSchema::STRING"
-        YB_BOOL " yb::client::KuduColumnSchema::BOOL"
-        YB_FLOAT " yb::client::KuduColumnSchema::FLOAT"
-        YB_DOUBLE " yb::client::KuduColumnSchema::DOUBLE"
-        YB_BINARY " yb::client::KuduColumnSchema::BINARY"
-        YB_TIMESTAMP " yb::client::KuduColumnSchema::TIMESTAMP"
+    enum DataType" yb::client::YBColumnSchema::DataType":
+        YB_INT8 " yb::client::YBColumnSchema::INT8"
+        YB_INT16 " yb::client::YBColumnSchema::INT16"
+        YB_INT32 " yb::client::YBColumnSchema::INT32"
+        YB_INT64 " yb::client::YBColumnSchema::INT64"
+        YB_STRING " yb::client::YBColumnSchema::STRING"
+        YB_BOOL " yb::client::YBColumnSchema::BOOL"
+        YB_FLOAT " yb::client::YBColumnSchema::FLOAT"
+        YB_DOUBLE " yb::client::YBColumnSchema::DOUBLE"
+        YB_BINARY " yb::client::YBColumnSchema::BINARY"
+        YB_TIMESTAMP " yb::client::YBColumnSchema::TIMESTAMP"
 
-    enum EncodingType" yb::client::KuduColumnStorageAttributes::EncodingType":
-        EncodingType_AUTO " yb::client::KuduColumnStorageAttributes::AUTO_ENCODING"
-        EncodingType_PLAIN " yb::client::KuduColumnStorageAttributes::PLAIN_ENCODING"
-        EncodingType_PREFIX " yb::client::KuduColumnStorageAttributes::PREFIX_ENCODING"
-        EncodingType_GROUP_VARINT " yb::client::KuduColumnStorageAttributes::GROUP_VARINT"
-        EncodingType_RLE " yb::client::KuduColumnStorageAttributes::RLE"
+    enum EncodingType" yb::client::YBColumnStorageAttributes::EncodingType":
+        EncodingType_AUTO " yb::client::YBColumnStorageAttributes::AUTO_ENCODING"
+        EncodingType_PLAIN " yb::client::YBColumnStorageAttributes::PLAIN_ENCODING"
+        EncodingType_PREFIX " yb::client::YBColumnStorageAttributes::PREFIX_ENCODING"
+        EncodingType_GROUP_VARINT " yb::client::YBColumnStorageAttributes::GROUP_VARINT"
+        EncodingType_RLE " yb::client::YBColumnStorageAttributes::RLE"
 
-    enum CompressionType" yb::client::KuduColumnStorageAttributes::CompressionType":
-        CompressionType_DEFAULT " yb::client::KuduColumnStorageAttributes::DEFAULT_COMPRESSION"
-        CompressionType_NONE " yb::client::KuduColumnStorageAttributes::NO_COMPRESSION"
-        CompressionType_SNAPPY " yb::client::KuduColumnStorageAttributes::SNAPPY"
-        CompressionType_LZ4 " yb::client::KuduColumnStorageAttributes::LZ4"
-        CompressionType_ZLIB " yb::client::KuduColumnStorageAttributes::ZLIB"
+    enum CompressionType" yb::client::YBColumnStorageAttributes::CompressionType":
+        CompressionType_DEFAULT " yb::client::YBColumnStorageAttributes::DEFAULT_COMPRESSION"
+        CompressionType_NONE " yb::client::YBColumnStorageAttributes::NO_COMPRESSION"
+        CompressionType_SNAPPY " yb::client::YBColumnStorageAttributes::SNAPPY"
+        CompressionType_LZ4 " yb::client::YBColumnStorageAttributes::LZ4"
+        CompressionType_ZLIB " yb::client::YBColumnStorageAttributes::ZLIB"
 
-    cdef struct KuduColumnStorageAttributes:
-        KuduColumnStorageAttributes()
+    cdef struct YBColumnStorageAttributes:
+        YBColumnStorageAttributes()
 
         EncodingType encoding
         CompressionType compression
         string ToString()
 
-    cdef cppclass KuduColumnSchema:
-        KuduColumnSchema(const KuduColumnSchema& other)
-        KuduColumnSchema(const string& name, DataType type)
-        KuduColumnSchema(const string& name, DataType type, c_bool is_nullable)
-        KuduColumnSchema(const string& name, DataType type, c_bool is_nullable,
+    cdef cppclass YBColumnSchema:
+        YBColumnSchema(const YBColumnSchema& other)
+        YBColumnSchema(const string& name, DataType type)
+        YBColumnSchema(const string& name, DataType type, c_bool is_nullable)
+        YBColumnSchema(const string& name, DataType type, c_bool is_nullable,
                          const void* default_value)
 
         string& name()
         c_bool is_nullable()
         DataType type()
 
-        c_bool Equals(KuduColumnSchema& other)
-        void CopyFrom(KuduColumnSchema& other)
+        c_bool Equals(YBColumnSchema& other)
+        void CopyFrom(YBColumnSchema& other)
 
     cdef cppclass YBSchema:
         YBSchema()
-        YBSchema(vector[KuduColumnSchema]& columns, int key_columns)
+        YBSchema(vector[YBColumnSchema]& columns, int key_columns)
 
         c_bool Equals(const YBSchema& other)
-        KuduColumnSchema Column(size_t idx)
+        YBColumnSchema Column(size_t idx)
         size_t num_columns()
 
         void GetPrimaryKeyColumnIndexes(vector[int]* indexes)
 
-        KuduPartialRow* NewRow()
+        YBPartialRow* NewRow()
 
-    cdef cppclass KuduColumnSpec:
+    cdef cppclass YBColumnSpec:
 
-         KuduColumnSpec* Default(YBValue* value)
-         KuduColumnSpec* RemoveDefault()
+         YBColumnSpec* Default(YBValue* value)
+         YBColumnSpec* RemoveDefault()
 
-         KuduColumnSpec* Compression(CompressionType compression)
-         KuduColumnSpec* Encoding(EncodingType encoding)
-         KuduColumnSpec* BlockSize(int32_t block_size)
+         YBColumnSpec* Compression(CompressionType compression)
+         YBColumnSpec* Encoding(EncodingType encoding)
+         YBColumnSpec* BlockSize(int32_t block_size)
 
-         KuduColumnSpec* PrimaryKey()
-         KuduColumnSpec* NotNull()
-         KuduColumnSpec* Nullable()
-         KuduColumnSpec* Type(DataType type_)
+         YBColumnSpec* PrimaryKey()
+         YBColumnSpec* NotNull()
+         YBColumnSpec* Nullable()
+         YBColumnSpec* Type(DataType type_)
 
-         KuduColumnSpec* RenameTo(string& new_name)
+         YBColumnSpec* RenameTo(string& new_name)
 
 
     cdef cppclass YBSchemaBuilder:
 
-        KuduColumnSpec* AddColumn(string& name)
+        YBColumnSpec* AddColumn(string& name)
         YBSchemaBuilder* SetPrimaryKey(vector[string]& key_col_names);
 
         Status Build(YBSchema* schema)
@@ -275,9 +275,9 @@ cdef extern from "yb/util/slice.h" namespace "kudu" nogil:
 
 cdef extern from "yb/common/partial_row.h" namespace "kudu" nogil:
 
-    cdef cppclass KuduPartialRow:
+    cdef cppclass YBPartialRow:
         # Schema must not be garbage-collected
-        # KuduPartialRow(const Schema* schema)
+        # YBPartialRow(const Schema* schema)
 
         #----------------------------------------------------------------------
         # Setters
@@ -388,8 +388,8 @@ cdef extern from "yb/client/write_op.h" namespace "yb::client" nogil:
         DELETE " yb::client::YBWriteOperation::DELETE"
 
     cdef cppclass YBWriteOperation:
-        KuduPartialRow& row()
-        KuduPartialRow* mutable_row()
+        YBPartialRow& row()
+        YBPartialRow* mutable_row()
 
         # This is a pure virtual function implemented on each of the cppclass
         # subclasses
@@ -401,7 +401,7 @@ cdef extern from "yb/client/write_op.h" namespace "yb::client" nogil:
     cdef cppclass YBInsert(YBWriteOperation):
         pass
 
-    cdef cppclass KuduDelete(YBWriteOperation):
+    cdef cppclass YBDelete(YBWriteOperation):
         pass
 
     cdef cppclass YBUpdate(YBWriteOperation):
@@ -439,13 +439,13 @@ cdef extern from "yb/client/value.h" namespace "yb::client" nogil:
 
 cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
 
-    # Omitted KuduClient::ReplicaSelection enum
+    # Omitted YBClient::ReplicaSelection enum
 
-    cdef cppclass KuduClient:
+    cdef cppclass YBClient:
 
         Status DeleteTable(const string& table_name)
         Status OpenTable(const string& table_name,
-                         shared_ptr[KuduTable]* table)
+                         shared_ptr[YBTable]* table)
         Status GetTableSchema(const string& table_name, YBSchema* schema)
 
         YBTableCreator* NewTableCreator()
@@ -459,7 +459,7 @@ cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
 
         Status TableExists(const string& table_name, c_bool* exists)
 
-        KuduTableAlterer* NewTableAlterer()
+        YBTableAlterer* NewTableAlterer()
         Status IsAlterTableInProgress(const string& table_name,
                                       c_bool* alter_in_progress)
 
@@ -475,7 +475,7 @@ cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
 
         YBClientBuilder& default_rpc_timeout(const MonoDelta& timeout)
 
-        Status Build(shared_ptr[KuduClient]* client)
+        Status Build(shared_ptr[YBClient]* client)
 
     cdef cppclass YBTableCreator:
         YBTableCreator& table_name(string& name)
@@ -486,44 +486,44 @@ cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
 
         Status Create()
 
-    cdef cppclass KuduTableAlterer:
+    cdef cppclass YBTableAlterer:
         # The name of the existing table to alter
-        KuduTableAlterer& table_name(string& name)
+        YBTableAlterer& table_name(string& name)
 
-        KuduTableAlterer& rename_table(string& name)
+        YBTableAlterer& rename_table(string& name)
 
-        KuduTableAlterer& add_column(string& name, DataType type,
+        YBTableAlterer& add_column(string& name, DataType type,
                                      const void *default_value)
-        KuduTableAlterer& add_column(string& name, DataType type,
+        YBTableAlterer& add_column(string& name, DataType type,
                                      const void *default_value,
-                                     KuduColumnStorageAttributes attr)
+                                     YBColumnStorageAttributes attr)
 
-        KuduTableAlterer& add_nullable_column(string& name, DataType type)
+        YBTableAlterer& add_nullable_column(string& name, DataType type)
 
-        KuduTableAlterer& drop_column(string& name)
+        YBTableAlterer& drop_column(string& name)
 
-        KuduTableAlterer& rename_column(string& old_name, string& new_name)
+        YBTableAlterer& rename_column(string& old_name, string& new_name)
 
-        KuduTableAlterer& wait(c_bool wait)
+        YBTableAlterer& wait(c_bool wait)
 
         Status Alter()
 
-    # Instances of KuduTable are not directly instantiated by users of the
+    # Instances of YBTable are not directly instantiated by users of the
     # client.
-    cdef cppclass KuduTable:
+    cdef cppclass YBTable:
 
         string& name()
         YBSchema& schema()
 
         YBInsert* NewInsert()
         YBUpdate* NewUpdate()
-        KuduDelete* NewDelete()
+        YBDelete* NewDelete()
 
         YBPredicate* NewComparisonPredicate(const Slice& col_name,
                                               ComparisonOp op,
                                               YBValue* value);
 
-        KuduClient* client()
+        YBClient* client()
         # const PartitionSchema& partition_schema()
 
     enum FlushMode" yb::client::YBSession::FlushMode":
@@ -543,7 +543,7 @@ cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
         Status Apply(YBWriteOperation* write_op)
         Status Apply(YBInsert* write_op)
         Status Apply(YBUpdate* write_op)
-        Status Apply(KuduDelete* write_op)
+        Status Apply(YBDelete* write_op)
 
         # This is thread-safe
         Status Flush()
@@ -557,7 +557,7 @@ cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
         #                   YBStatusCallback cb)
         # Status ApplyAsync(YBUpdate* write_op,
         #                   YBStatusCallback cb)
-        # Status ApplyAsync(KuduDelete* write_op,
+        # Status ApplyAsync(YBDelete* write_op,
         #                   YBStatusCallback cb)
         # void FlushAsync(YBStatusCallback& cb)
 
@@ -569,14 +569,14 @@ cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
         int CountPendingErrors()
         void GetPendingErrors(vector[C_YBError*]* errors, c_bool* overflowed)
 
-        KuduClient* client()
+        YBClient* client()
 
     enum ReadMode" yb::client::YBScanner::ReadMode":
         READ_LATEST " yb::client::YBScanner::READ_LATEST"
         READ_AT_SNAPSHOT " yb::client::YBScanner::READ_AT_SNAPSHOT"
 
     cdef cppclass YBScanner:
-        YBScanner(KuduTable* table)
+        YBScanner(YBTable* table)
 
         Status AddConjunctPredicate(YBPredicate* pred)
 

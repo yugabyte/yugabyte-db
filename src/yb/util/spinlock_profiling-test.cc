@@ -39,7 +39,7 @@ extern void SubmitSpinLockProfileData(const void *, int64);
 
 namespace yb {
 
-class SpinLockProfilingTest : public KuduTest {};
+class SpinLockProfilingTest : public YBTest {};
 
 TEST_F(SpinLockProfilingTest, TestSpinlockProfiling) {
   scoped_refptr<Trace> t(new Trace);

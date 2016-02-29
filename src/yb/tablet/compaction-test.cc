@@ -62,10 +62,10 @@ static const char *kRowKeyFormat = "hello %08d";
 static const size_t kLargeRollThreshold = 1024 * 1024 * 1024; // 1GB
 static const size_t kSmallRollThreshold = 1024; // 1KB
 
-class TestCompaction : public KuduRowSetTest {
+class TestCompaction : public YBRowSetTest {
  public:
   TestCompaction()
-    : KuduRowSetTest(CreateSchema()),
+    : YBRowSetTest(CreateSchema()),
       op_id_(consensus::MaximumOpId()),
       row_builder_(schema_),
       mvcc_(scoped_refptr<server::Clock>(
@@ -757,7 +757,7 @@ TEST_F(TestCompaction, TestCompactionFreesDiskSpace) {
     // disk space usage. Otherwise some deleted blocks are kept open for
     // reading and aren't properly deallocated by the block manager.
     LocalTabletWriter writer(tablet().get(), &client_schema());
-    KuduPartialRow row(&client_schema());
+    YBPartialRow row(&client_schema());
 
     for (int i = 0; i < 3; i++) {
       for (int j = 0; j < 10; j++) {

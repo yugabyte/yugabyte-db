@@ -50,7 +50,7 @@ static int DecodeKey(const Slice& k) {
 static void* EncodeValue(uintptr_t v) { return reinterpret_cast<void*>(v); }
 static int DecodeValue(void* v) { return reinterpret_cast<uintptr_t>(v); }
 
-class CacheTest : public KuduTest,
+class CacheTest : public YBTest,
                   public ::testing::WithParamInterface<CacheType>,
                   public CacheDeleter {
  public:

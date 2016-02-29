@@ -35,7 +35,7 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestInputFormatJob extends BaseKuduTest {
+public class TestInputFormatJob extends BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestInputFormatJob.class);
 
   private static final String TABLE_NAME =
@@ -48,13 +48,13 @@ public class TestInputFormatJob extends BaseKuduTest {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseKuduTest.tearDownAfterClass();
+      BaseYBTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }
@@ -91,8 +91,8 @@ public class TestInputFormatJob extends BaseKuduTest {
     job.setMapperClass(mapperClass);
     job.setNumReduceTasks(0);
     job.setOutputFormatClass(NullOutputFormat.class);
-    KuduTableMapReduceUtil.TableInputFormatConfigurator configurator =
-        new KuduTableMapReduceUtil.TableInputFormatConfigurator(
+    YBTableMapReduceUtil.TableInputFormatConfigurator configurator =
+        new YBTableMapReduceUtil.TableInputFormatConfigurator(
             job,
             TABLE_NAME,
             "*",

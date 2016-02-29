@@ -27,9 +27,9 @@ import org.apache.hadoop.util.JarFinder;
 import org.apache.hadoop.util.StringUtils;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
-import org.kududb.client.AsyncKuduClient;
+import org.kududb.client.AsyncYBClient;
 import org.kududb.client.ColumnRangePredicate;
-import org.kududb.client.KuduTable;
+import org.kududb.client.YBTable;
 import org.kududb.client.Operation;
 
 import java.io.IOException;
@@ -44,15 +44,15 @@ import java.util.zip.ZipFile;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTableMapReduceUtil {
+public class YBTableMapReduceUtil {
   // Mostly lifted from HBase's TableMapReduceUtil
 
-  private static final Log LOG = LogFactory.getLog(KuduTableMapReduceUtil.class);
+  private static final Log LOG = LogFactory.getLog(YBTableMapReduceUtil.class);
 
   /**
    * Doesn't need instantiation
    */
-  private KuduTableMapReduceUtil() { }
+  private YBTableMapReduceUtil() { }
 
 
   /**
@@ -104,7 +104,7 @@ public class KuduTableMapReduceUtil {
       extends AbstractMapReduceConfigurator<S> {
 
     protected String masterAddresses;
-    protected long operationTimeoutMs = AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS;
+    protected long operationTimeoutMs = AsyncYBClient.DEFAULT_OPERATION_TIMEOUT_MS;
 
     /**
      * {@inheritDoc}
@@ -117,14 +117,14 @@ public class KuduTableMapReduceUtil {
      * {@inheritDoc}
      */
     public void configure() throws IOException {
-      job.setOutputFormatClass(KuduTableOutputFormat.class);
+      job.setOutputFormatClass(YBTableOutputFormat.class);
       job.setOutputKeyClass(NullWritable.class);
       job.setOutputValueClass(Operation.class);
 
       Configuration conf = job.getConfiguration();
-      conf.set(KuduTableOutputFormat.MASTER_ADDRESSES_KEY, masterAddresses);
-      conf.set(KuduTableOutputFormat.OUTPUT_TABLE_KEY, table);
-      conf.setLong(KuduTableOutputFormat.OPERATION_TIMEOUT_MS_KEY, operationTimeoutMs);
+      conf.set(YBTableOutputFormat.MASTER_ADDRESSES_KEY, masterAddresses);
+      conf.set(YBTableOutputFormat.OUTPUT_TABLE_KEY, table);
+      conf.setLong(YBTableOutputFormat.OPERATION_TIMEOUT_MS_KEY, operationTimeoutMs);
       if (addDependencies) {
         addDependencyJars(job);
       }
@@ -142,7 +142,7 @@ public class KuduTableMapReduceUtil {
       extends AbstractMapReduceConfigurator<S> {
 
     protected String masterAddresses;
-    protected long operationTimeoutMs = AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS;
+    protected long operationTimeoutMs = AsyncYBClient.DEFAULT_OPERATION_TIMEOUT_MS;
     protected final String columnProjection;
     protected boolean cacheBlocks;
     protected List<ColumnRangePredicate> columnRangePredicates = new ArrayList<>();
@@ -175,21 +175,21 @@ public class KuduTableMapReduceUtil {
      * files on the filesystem
      */
     public void configure() throws IOException {
-      job.setInputFormatClass(KuduTableInputFormat.class);
+      job.setInputFormatClass(YBTableInputFormat.class);
 
       Configuration conf = job.getConfiguration();
 
-      conf.set(KuduTableInputFormat.MASTER_ADDRESSES_KEY, masterAddresses);
-      conf.set(KuduTableInputFormat.INPUT_TABLE_KEY, table);
-      conf.setLong(KuduTableInputFormat.OPERATION_TIMEOUT_MS_KEY, operationTimeoutMs);
-      conf.setBoolean(KuduTableInputFormat.SCAN_CACHE_BLOCKS, cacheBlocks);
+      conf.set(YBTableInputFormat.MASTER_ADDRESSES_KEY, masterAddresses);
+      conf.set(YBTableInputFormat.INPUT_TABLE_KEY, table);
+      conf.setLong(YBTableInputFormat.OPERATION_TIMEOUT_MS_KEY, operationTimeoutMs);
+      conf.setBoolean(YBTableInputFormat.SCAN_CACHE_BLOCKS, cacheBlocks);
 
       if (columnProjection != null) {
-        conf.set(KuduTableInputFormat.COLUMN_PROJECTION_KEY, columnProjection);
+        conf.set(YBTableInputFormat.COLUMN_PROJECTION_KEY, columnProjection);
       }
 
       if (!columnRangePredicates.isEmpty()) {
-        conf.set(KuduTableInputFormat.ENCODED_COLUMN_RANGE_PREDICATES_KEY,
+        conf.set(YBTableInputFormat.ENCODED_COLUMN_RANGE_PREDICATES_KEY,
             base64EncodePredicates(columnRangePredicates));
       }
 
@@ -326,15 +326,15 @@ public class KuduTableMapReduceUtil {
   }
 
   /**
-   * Use this method when setting up a task to get access to the KuduTable in order to create
+   * Use this method when setting up a task to get access to the YBTable in order to create
    * Inserts, Updates, and Deletes.
    * @param context Map context
    * @return The kudu table object as setup by the output format
    */
   @SuppressWarnings("rawtypes")
-  public static KuduTable getTableFromContext(TaskInputOutputContext context) {
-    String multitonKey = context.getConfiguration().get(KuduTableOutputFormat.MULTITON_KEY);
-    return KuduTableOutputFormat.getKuduTable(multitonKey);
+  public static YBTable getTableFromContext(TaskInputOutputContext context) {
+    String multitonKey = context.getConfiguration().get(YBTableOutputFormat.MULTITON_KEY);
+    return YBTableOutputFormat.getYBTable(multitonKey);
   }
 
   /**
@@ -409,14 +409,14 @@ public class KuduTableMapReduceUtil {
    * fine-grained control over the jars shipped to the cluster.
    * </p>
    * @param conf The Configuration object to extend with dependencies.
-   * @see KuduTableMapReduceUtil
+   * @see YBTableMapReduceUtil
    * @see <a href="https://issues.apache.org/jira/browse/PIG-3285">PIG-3285</a>
    */
   public static void addKuduDependencyJars(Configuration conf) throws IOException {
     addDependencyJars(conf,
         // explicitly pull a class from each module
         Operation.class,                      // kudu-client
-        KuduTableMapReduceUtil.class,   // kudu-mapreduce
+        YBTableMapReduceUtil.class,   // kudu-mapreduce
         // pull necessary dependencies
         com.stumbleupon.async.Deferred.class);
   }

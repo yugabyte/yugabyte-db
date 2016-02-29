@@ -36,7 +36,7 @@ namespace btree {
 
 using boost::unordered_set;
 
-class TestCBTree : public KuduTest {
+class TestCBTree : public YBTest {
  protected:
   template<class T>
   InsertStatus InsertInLeaf(LeafNode<T> *l, ThreadSafeArena *arena,

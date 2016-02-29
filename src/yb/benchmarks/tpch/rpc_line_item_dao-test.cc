@@ -38,13 +38,13 @@ using client::YBSchema;
 using std::string;
 using std::vector;
 
-class RpcLineItemDAOTest : public KuduTest {
+class RpcLineItemDAOTest : public YBTest {
 
  public:
   RpcLineItemDAOTest() {}
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     // Start minicluster
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
@@ -60,7 +60,7 @@ class RpcLineItemDAOTest : public KuduTest {
 
   virtual void TearDown() OVERRIDE {
     cluster_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
  protected:
@@ -69,7 +69,7 @@ class RpcLineItemDAOTest : public KuduTest {
 
   // Builds a test row to be inserted into the lineitem table.
   // The row's ship_date is set such that it matches the TPCH Q1 predicate.
-  static void BuildTestRow(int order, int line, KuduPartialRow* row) {
+  static void BuildTestRow(int order, int line, YBPartialRow* row) {
     CHECK_OK(row->SetInt64(tpch::kOrderKeyColIdx, order));
     CHECK_OK(row->SetInt32(tpch::kLineNumberColIdx, line));
     CHECK_OK(row->SetInt32(tpch::kPartKeyColIdx, 12345));
@@ -88,7 +88,7 @@ class RpcLineItemDAOTest : public KuduTest {
     CHECK_OK(row->SetStringCopy(tpch::kCommentColIdx, StringPrintf("hello %d", line)));
   }
 
-  static void UpdateTestRow(int key, int line_number, int quantity, KuduPartialRow* row) {
+  static void UpdateTestRow(int key, int line_number, int quantity, YBPartialRow* row) {
     CHECK_OK(row->SetInt64(tpch::kOrderKeyColIdx, key));
     CHECK_OK(row->SetInt32(tpch::kLineNumberColIdx, line_number));
     CHECK_OK(row->SetInt32(tpch::kQuantityColIdx, quantity));

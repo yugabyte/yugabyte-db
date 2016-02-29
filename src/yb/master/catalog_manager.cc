@@ -712,7 +712,7 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
   }
 
   // Decode split rows.
-  vector<KuduPartialRow> split_rows;
+  vector<YBPartialRow> split_rows;
 
   RowOperationsPBDecoder decoder(&req.split_rows(), &client_schema, &schema, nullptr);
   vector<DecodedRowOperation> ops;

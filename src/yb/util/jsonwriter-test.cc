@@ -25,7 +25,7 @@ using jsonwriter_test::TestAllTypes;
 
 namespace yb {
 
-class TestJsonWriter : public KuduTest {};
+class TestJsonWriter : public YBTest {};
 
 TEST_F(TestJsonWriter, TestPBEmpty) {
   TestAllTypes pb;

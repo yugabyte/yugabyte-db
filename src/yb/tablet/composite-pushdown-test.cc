@@ -29,10 +29,10 @@ namespace tablet {
 
 const char* const kTestHostnames[] = { "foo", "foobar", "baz", nullptr };
 
-class CompositePushdownTest : public KuduTabletTest {
+class CompositePushdownTest : public YBTabletTest {
  public:
   CompositePushdownTest()
-      : KuduTabletTest(Schema({ ColumnSchema("year", INT16),
+      : YBTabletTest(Schema({ ColumnSchema("year", INT16),
                                 ColumnSchema("month", INT8),
                                 ColumnSchema("day", INT8),
                                 ColumnSchema("hostname", STRING),
@@ -41,7 +41,7 @@ class CompositePushdownTest : public KuduTabletTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
 
     FillTestTablet();
   }
@@ -51,7 +51,7 @@ class CompositePushdownTest : public KuduTabletTest {
     int i = 0;
 
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
     for (int16_t year = 2000; year <= 2010; year++) {
       for (int8_t month = 1; month <= 12; month++) {
         for (int8_t day = 1; day <= 28; day++) {

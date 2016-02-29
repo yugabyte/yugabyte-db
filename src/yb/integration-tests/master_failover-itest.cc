@@ -33,7 +33,7 @@
 namespace yb {
 
 // Note: this test needs to be in the client namespace in order for
-// KuduClient::Data class methods to be visible via FRIEND_TEST macro.
+// YBClient::Data class methods to be visible via FRIEND_TEST macro.
 namespace client {
 
 const int kNumTabletServerReplicas = 3;
@@ -42,7 +42,7 @@ using sp::shared_ptr;
 using std::string;
 using std::vector;
 
-class MasterFailoverTest : public KuduTest {
+class MasterFailoverTest : public YBTest {
  public:
   enum CreateTableMode {
     kWaitForCreate = 0,
@@ -71,7 +71,7 @@ class MasterFailoverTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     ASSERT_NO_FATAL_FAILURE(RestartCluster());
   }
 
@@ -79,7 +79,7 @@ class MasterFailoverTest : public KuduTest {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   void RestartCluster() {
@@ -96,9 +96,9 @@ class MasterFailoverTest : public KuduTest {
   Status CreateTable(const std::string& table_name, CreateTableMode mode) {
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
+    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     return table_creator->table_name(table_name)
@@ -109,7 +109,7 @@ class MasterFailoverTest : public KuduTest {
   }
 
   Status RenameTable(const std::string& table_name_orig, const std::string& table_name_new) {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name_orig));
     return table_alterer
       ->RenameTo(table_name_new)
       ->timeout(MonoDelta::FromSeconds(90))
@@ -123,7 +123,7 @@ class MasterFailoverTest : public KuduTest {
   // requires that the table and tablet exist both on the masters and
   // the tablet servers.
   Status OpenTableAndScanner(const std::string& table_name) {
-    shared_ptr<KuduTable> table;
+    shared_ptr<YBTable> table;
     RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name, &table),
                           "Unable to open table " + table_name);
     YBScanner scanner(table.get());
@@ -138,7 +138,7 @@ class MasterFailoverTest : public KuduTest {
   int num_masters_;
   ExternalMiniClusterOptions opts_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
 };
 
 // Test that synchronous CreateTable (issue CreateTable call and then
@@ -219,7 +219,7 @@ TEST_F(MasterFailoverTest, TestDeleteTableSync) {
   ScopedResumeExternalDaemon resume_daemon(cluster_->master(leader_idx));
 
   ASSERT_OK(client_->DeleteTable(table_name));
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   Status s = client_->OpenTable(table_name, &table);
   ASSERT_TRUE(s.IsNotFound());
 }
@@ -250,7 +250,7 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
 
   string table_name_new = "testAlterTableSyncRenamed";
   ASSERT_OK(RenameTable(table_name_orig, table_name_new));
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(table_name_new, &table));
 
   Status s = client_->OpenTable(table_name_orig, &table);

@@ -29,7 +29,7 @@ import java.io.IOException;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTableOutputCommitter extends OutputCommitter {
+public class YBTableOutputCommitter extends OutputCommitter {
   @Override
   public void setupJob(JobContext jobContext) throws IOException {
 

@@ -22,7 +22,7 @@ set -x
 # Time marker for both stderr and stdout
 date 1>&2
 
-export YB_HOME=${YB_HOME:-/usr/lib/kudu}
+export YB_HOME=${YB_HOME:-/usr/lib/yugabyte}
 
 CMD=$1
 shift 2

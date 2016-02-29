@@ -33,7 +33,7 @@ class ErrorCollector;
 
 class YBSession::Data {
  public:
-  explicit Data(sp::shared_ptr<KuduClient> client);
+  explicit Data(sp::shared_ptr<YBClient> client);
   ~Data();
 
   void Init(const sp::shared_ptr<YBSession>& session);
@@ -52,7 +52,7 @@ class YBSession::Data {
   Status Close(bool force);
 
   // The client that this session is associated with.
-  const sp::shared_ptr<KuduClient> client_;
+  const sp::shared_ptr<YBClient> client_;
 
   // Lock protecting internal state.
   // Note that this lock should not be taken if the thread is already holding

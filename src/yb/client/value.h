@@ -53,7 +53,7 @@ class YB_EXPORT YBValue {
   ~YBValue();
  private:
   friend class ComparisonPredicateData;
-  friend class KuduColumnSpec;
+  friend class YBColumnSpec;
 
   class YB_NO_EXPORT Data;
   explicit YBValue(Data* d);

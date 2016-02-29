@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
  * This only tests client propagation since it's the only thing that is client-specific.
  * All the work for commit wait is done and tested on the server-side.
  */
-public class TestHybridTime extends BaseKuduTest {
+public class TestHybridTime extends BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestHybridTime.class);
 
   // Generate a unique table name
@@ -47,11 +47,11 @@ public class TestHybridTime extends BaseKuduTest {
     TestHybridTime.class.getName() + "-" + System.currentTimeMillis();
 
   protected static Schema schema = getSchema();
-  protected static KuduTable table;
+  protected static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
 
     // Using multiple tablets doesn't work with the current way this test works since we could
     // jump from one TS to another which changes the logical clock.

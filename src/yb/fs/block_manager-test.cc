@@ -65,7 +65,7 @@ namespace yb {
 namespace fs {
 
 template <typename T>
-class BlockManagerTest : public KuduTest {
+class BlockManagerTest : public YBTest {
  public:
   BlockManagerTest() :
     bm_(CreateBlockManager(scoped_refptr<MetricEntity>(),

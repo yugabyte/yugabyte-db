@@ -48,16 +48,16 @@ class PartialRowPB;
 // This type contains a normal contiguous row, plus a bitfield indicating
 // which columns have been set. Additionally, this type may optionally own
 // copies of indirect data for variable length columns.
-class YB_EXPORT KuduPartialRow {
+class YB_EXPORT YBPartialRow {
  public:
   // The given Schema object must remain valid for the lifetime of this
   // row.
-  explicit KuduPartialRow(const Schema* schema);
-  virtual ~KuduPartialRow();
+  explicit YBPartialRow(const Schema* schema);
+  virtual ~YBPartialRow();
 
-  KuduPartialRow(const KuduPartialRow& other);
+  YBPartialRow(const YBPartialRow& other);
 
-  KuduPartialRow& operator=(KuduPartialRow other);
+  YBPartialRow& operator=(YBPartialRow other);
 
   //------------------------------------------------------------
   // Setters

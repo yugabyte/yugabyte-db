@@ -41,9 +41,9 @@ import com.google.common.net.HostAndPort;
 import com.stumbleupon.async.Callback;
 import com.stumbleupon.async.Deferred;
 
-public class BaseKuduTest {
+public class BaseYBTest {
 
-  private static final Logger LOG = LoggerFactory.getLogger(BaseKuduTest.class);
+  private static final Logger LOG = LoggerFactory.getLogger(BaseYBTest.class);
 
   private static final String NUM_MASTERS_PROP = "NUM_MASTERS";
   private static final int NUM_TABLET_SERVERS = 3;
@@ -63,8 +63,8 @@ public class BaseKuduTest {
   protected static final int DEFAULT_SLEEP = 50000;
 
   // We create both versions of the client for ease of use.
-  protected static AsyncKuduClient client;
-  protected static KuduClient syncClient;
+  protected static AsyncYBClient client;
+  protected static YBClient syncClient;
   protected static Schema basicSchema = getBasicSchema();
   protected static Schema allTypesSchema = getSchemaWithAllTypes();
 
@@ -83,8 +83,8 @@ public class BaseKuduTest {
     masterHostPorts = miniCluster.getMasterHostPorts();
 
     LOG.info("Creating new Kudu client...");
-    client = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses).build();
-    syncClient = new KuduClient(client);
+    client = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
+    syncClient = new YBClient(client);
     LOG.info("Waiting for tablet servers...");
     if (!miniCluster.waitForTabletServers(NUM_TABLET_SERVERS)) {
       fail("Couldn't get " + NUM_TABLET_SERVERS + " tablet servers running, aborting");
@@ -106,10 +106,10 @@ public class BaseKuduTest {
     }
   }
 
-  protected static KuduTable createTable(String tableName, Schema schema,
+  protected static YBTable createTable(String tableName, Schema schema,
                                          CreateTableOptions builder) {
     LOG.info("Creating table: {}", tableName);
-    Deferred<KuduTable> d = client.createTable(tableName, schema, builder);
+    Deferred<YBTable> d = client.createTable(tableName, schema, builder);
     final AtomicBoolean gotError = new AtomicBoolean(false);
     d.addErrback(new Callback<Object, Object>() {
       @Override
@@ -119,7 +119,7 @@ public class BaseKuduTest {
         return null;
       }
     });
-    KuduTable table = null;
+    YBTable table = null;
     try {
       table = d.join(DEFAULT_SLEEP);
     } catch (Exception e) {
@@ -162,7 +162,7 @@ public class BaseKuduTest {
     return counter.get();
   }
 
-  protected List<String> scanTableToStrings(KuduTable table) throws Exception {
+  protected List<String> scanTableToStrings(YBTable table) throws Exception {
     List<String> rowStrings = Lists.newArrayList();
     YBScanner scanner = syncClient.newScannerBuilder(table).build();
     while (scanner.hasMoreRows()) {
@@ -176,7 +176,7 @@ public class BaseKuduTest {
   }
 
   private static final int[] KEYS = new int[] {10, 20, 30};
-  protected static KuduTable createFourTabletsTableWithNineRows(String tableName) throws
+  protected static YBTable createFourTabletsTableWithNineRows(String tableName) throws
       Exception {
     CreateTableOptions builder = new CreateTableOptions();
     for (int i : KEYS) {
@@ -184,7 +184,7 @@ public class BaseKuduTest {
       splitRow.addInt(0, i);
       builder.addSplitRow(splitRow);
     }
-    KuduTable table = createTable(tableName, basicSchema, builder);
+    YBTable table = createTable(tableName, basicSchema, builder);
     AsyncYBSession session = client.newSession();
 
     // create a table with on empty tablet and 3 tablets of 3 rows each
@@ -238,7 +238,7 @@ public class BaseKuduTest {
     return new Schema(columns);
   }
 
-  protected Insert createBasicSchemaInsert(KuduTable table, int key) {
+  protected Insert createBasicSchemaInsert(YBTable table, int key) {
     Insert insert = table.newInsert();
     PartialRow row = insert.getRow();
     row.addInt(0, key);
@@ -265,11 +265,11 @@ public class BaseKuduTest {
   /**
    * Helper method to open a table. It sets the default sleep time when joining on the Deferred.
    * @param name Name of the table
-   * @return A KuduTable
+   * @return A YBTable
    * @throws Exception MasterErrorException if the table doesn't exist
    */
-  protected static KuduTable openTable(String name) throws Exception {
-    Deferred<KuduTable> d = client.openTable(name);
+  protected static YBTable openTable(String name) throws Exception {
+    Deferred<YBTable> d = client.openTable(name);
     return d.join(DEFAULT_SLEEP);
   }
 
@@ -279,10 +279,10 @@ public class BaseKuduTest {
    * if the tablet has no leader after some retries, or if the tablet server was already killed.
    *
    * This method is thread-safe.
-   * @param table a KuduTable which will get its single tablet's leader killed.
+   * @param table a YBTable which will get its single tablet's leader killed.
    * @throws Exception
    */
-  protected static void killTabletLeader(KuduTable table) throws Exception {
+  protected static void killTabletLeader(YBTable table) throws Exception {
     LocatedTablet.Replica leader = null;
     DeadlineTracker deadlineTracker = new DeadlineTracker();
     deadlineTracker.setDeadline(DEFAULT_SLEEP);

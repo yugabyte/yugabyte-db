@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
  *
  * A major difference with {@link AsyncYBSession} is that the time spent waiting on operations is
  * defined by {@link #setTimeoutMillis(long)} which defaults to getting it from
- * {@link KuduClient#getDefaultOperationTimeoutMs()}.
+ * {@link YBClient#getDefaultOperationTimeoutMs()}.
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving

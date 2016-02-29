@@ -125,9 +125,9 @@ Status RetryFunc(const MonoTime& deadline,
 }
 
 template<class ReqClass, class RespClass>
-Status KuduClient::Data::SyncLeaderMasterRpc(
+Status YBClient::Data::SyncLeaderMasterRpc(
     const MonoTime& deadline,
-    KuduClient* client,
+    YBClient* client,
     const ReqClass& req,
     RespClass* resp,
     int* num_attempts,
@@ -208,9 +208,9 @@ Status KuduClient::Data::SyncLeaderMasterRpc(
 
 // Explicit specialization for callers outside this compilation unit.
 template
-Status KuduClient::Data::SyncLeaderMasterRpc(
+Status YBClient::Data::SyncLeaderMasterRpc(
     const MonoTime& deadline,
-    KuduClient* client,
+    YBClient* client,
     const ListTablesRequestPB& req,
     ListTablesResponsePB* resp,
     int* num_attempts,
@@ -220,9 +220,9 @@ Status KuduClient::Data::SyncLeaderMasterRpc(
                                  ListTablesResponsePB*,
                                  RpcController*)>& func);
 template
-Status KuduClient::Data::SyncLeaderMasterRpc(
+Status YBClient::Data::SyncLeaderMasterRpc(
     const MonoTime& deadline,
-    KuduClient* client,
+    YBClient* client,
     const ListTabletServersRequestPB& req,
     ListTabletServersResponsePB* resp,
     int* num_attempts,
@@ -232,12 +232,12 @@ Status KuduClient::Data::SyncLeaderMasterRpc(
                                  ListTabletServersResponsePB*,
                                  RpcController*)>& func);
 
-KuduClient::Data::Data()
-    : latest_observed_timestamp_(KuduClient::kNoTimestamp) {
+YBClient::Data::Data()
+    : latest_observed_timestamp_(YBClient::kNoTimestamp) {
 }
 
-KuduClient::Data::~Data() {
-  // Workaround for KUDU-956: the user may close a KuduClient while a flush
+YBClient::Data::~Data() {
+  // Workaround for KUDU-956: the user may close a YBClient while a flush
   // is still outstanding. In that case, the flush's callback will be the last
   // holder of the client reference, causing it to shut down on the reactor
   // thread. This triggers a ThreadRestrictions crash. It's not critical to
@@ -247,7 +247,7 @@ KuduClient::Data::~Data() {
   dns_resolver_.reset();
 }
 
-RemoteTabletServer* KuduClient::Data::SelectTServer(const scoped_refptr<RemoteTablet>& rt,
+RemoteTabletServer* YBClient::Data::SelectTServer(const scoped_refptr<RemoteTablet>& rt,
                                                     const ReplicaSelection selection,
                                                     const set<string>& blacklist,
                                                     vector<RemoteTabletServer*>* candidates) const {
@@ -304,7 +304,7 @@ RemoteTabletServer* KuduClient::Data::SelectTServer(const scoped_refptr<RemoteTa
   return ret;
 }
 
-Status KuduClient::Data::GetTabletServer(KuduClient* client,
+Status YBClient::Data::GetTabletServer(YBClient* client,
                                          const scoped_refptr<RemoteTablet>& rt,
                                          ReplicaSelection selection,
                                          const set<string>& blacklist,
@@ -332,7 +332,7 @@ Status KuduClient::Data::GetTabletServer(KuduClient* client,
   return Status::OK();
 }
 
-Status KuduClient::Data::CreateTable(KuduClient* client,
+Status YBClient::Data::CreateTable(YBClient* client,
                                      const CreateTableRequestPB& req,
                                      const YBSchema& schema,
                                      const MonoTime& deadline) {
@@ -384,7 +384,7 @@ Status KuduClient::Data::CreateTable(KuduClient* client,
   return Status::OK();
 }
 
-Status KuduClient::Data::IsCreateTableInProgress(KuduClient* client,
+Status YBClient::Data::IsCreateTableInProgress(YBClient* client,
                                                  const string& table_name,
                                                  const MonoTime& deadline,
                                                  bool *create_in_progress) {
@@ -415,17 +415,17 @@ Status KuduClient::Data::IsCreateTableInProgress(KuduClient* client,
   return Status::OK();
 }
 
-Status KuduClient::Data::WaitForCreateTableToFinish(KuduClient* client,
+Status YBClient::Data::WaitForCreateTableToFinish(YBClient* client,
                                                     const string& table_name,
                                                     const MonoTime& deadline) {
   return RetryFunc(deadline,
                    "Waiting on Create Table to be completed",
                    "Timed out waiting for Table Creation",
-                   boost::bind(&KuduClient::Data::IsCreateTableInProgress,
+                   boost::bind(&YBClient::Data::IsCreateTableInProgress,
                                this, client, table_name, _1, _2));
 }
 
-Status KuduClient::Data::DeleteTable(KuduClient* client,
+Status YBClient::Data::DeleteTable(YBClient* client,
                                      const string& table_name,
                                      const MonoTime& deadline) {
   DeleteTableRequestPB req;
@@ -449,7 +449,7 @@ Status KuduClient::Data::DeleteTable(KuduClient* client,
   return Status::OK();
 }
 
-Status KuduClient::Data::AlterTable(KuduClient* client,
+Status YBClient::Data::AlterTable(YBClient* client,
                                     const AlterTableRequestPB& req,
                                     const MonoTime& deadline) {
   AlterTableResponsePB resp;
@@ -474,7 +474,7 @@ Status KuduClient::Data::AlterTable(KuduClient* client,
   return Status::OK();
 }
 
-Status KuduClient::Data::IsAlterTableInProgress(KuduClient* client,
+Status YBClient::Data::IsAlterTableInProgress(YBClient* client,
                                                 const string& table_name,
                                                 const MonoTime& deadline,
                                                 bool *alter_in_progress) {
@@ -500,18 +500,18 @@ Status KuduClient::Data::IsAlterTableInProgress(KuduClient* client,
   return Status::OK();
 }
 
-Status KuduClient::Data::WaitForAlterTableToFinish(KuduClient* client,
+Status YBClient::Data::WaitForAlterTableToFinish(YBClient* client,
                                                    const string& alter_name,
                                                    const MonoTime& deadline) {
   return RetryFunc(deadline,
                    "Waiting on Alter Table to be completed",
                    "Timed out waiting for AlterTable",
-                   boost::bind(&KuduClient::Data::IsAlterTableInProgress,
+                   boost::bind(&YBClient::Data::IsAlterTableInProgress,
                                this,
                                client, alter_name, _1, _2));
 }
 
-Status KuduClient::Data::InitLocalHostNames() {
+Status YBClient::Data::InitLocalHostNames() {
   // Currently, we just use our configured hostname, and resolve it to come up with
   // a list of potentially local hosts. It would be better to iterate over all of
   // the local network adapters. See KUDU-327.
@@ -541,11 +541,11 @@ Status KuduClient::Data::InitLocalHostNames() {
   return Status::OK();
 }
 
-bool KuduClient::Data::IsLocalHostPort(const HostPort& hp) const {
+bool YBClient::Data::IsLocalHostPort(const HostPort& hp) const {
   return ContainsKey(local_host_names_, hp.host());
 }
 
-bool KuduClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
+bool YBClient::Data::IsTabletServerLocal(const RemoteTabletServer& rts) const {
   vector<HostPort> host_ports;
   rts.GetHostPorts(&host_ports);
   for (const HostPort& hp : host_ports) {
@@ -565,7 +565,7 @@ namespace internal {
 // method as to enable code sharing.
 class GetTableSchemaRpc : public Rpc {
  public:
-  GetTableSchemaRpc(KuduClient* client,
+  GetTableSchemaRpc(YBClient* client,
                     StatusCallback user_cb,
                     string table_name,
                     YBSchema* out_schema,
@@ -587,7 +587,7 @@ class GetTableSchemaRpc : public Rpc {
 
   void NewLeaderMasterDeterminedCb(const Status& status);
 
-  KuduClient* client_;
+  YBClient* client_;
   StatusCallback user_cb_;
   const string table_name_;
   YBSchema* out_schema_;
@@ -596,7 +596,7 @@ class GetTableSchemaRpc : public Rpc {
   GetTableSchemaResponsePB resp_;
 };
 
-GetTableSchemaRpc::GetTableSchemaRpc(KuduClient* client,
+GetTableSchemaRpc::GetTableSchemaRpc(YBClient* client,
                                      StatusCallback user_cb,
                                      string table_name,
                                      YBSchema* out_schema,
@@ -623,7 +623,7 @@ void GetTableSchemaRpc::SendRpc() {
     return;
   }
 
-  // See KuduClient::Data::SyncLeaderMasterRpc().
+  // See YBClient::Data::SyncLeaderMasterRpc().
   MonoTime rpc_deadline = now;
   rpc_deadline.AddDelta(client_->default_rpc_timeout());
   mutable_retrier()->mutable_controller()->set_deadline(
@@ -728,7 +728,7 @@ void GetTableSchemaRpc::SendRpcCb(const Status& status) {
 
 } // namespace internal
 
-Status KuduClient::Data::GetTableSchema(KuduClient* client,
+Status YBClient::Data::GetTableSchema(YBClient* client,
                                         const string& table_name,
                                         const MonoTime& deadline,
                                         YBSchema* schema,
@@ -747,7 +747,7 @@ Status KuduClient::Data::GetTableSchema(KuduClient* client,
   return sync.Wait();
 }
 
-void KuduClient::Data::LeaderMasterDetermined(const Status& status,
+void YBClient::Data::LeaderMasterDetermined(const Status& status,
                                               const HostPort& host_port) {
   Sockaddr leader_sock_addr;
   Status new_status = status;
@@ -772,14 +772,14 @@ void KuduClient::Data::LeaderMasterDetermined(const Status& status,
   }
 }
 
-Status KuduClient::Data::SetMasterServerProxy(KuduClient* client,
+Status YBClient::Data::SetMasterServerProxy(YBClient* client,
                                               const MonoTime& deadline) {
   Synchronizer sync;
   SetMasterServerProxyAsync(client, deadline, sync.AsStatusCallback());
   return sync.Wait();
 }
 
-void KuduClient::Data::SetMasterServerProxyAsync(KuduClient* client,
+void YBClient::Data::SetMasterServerProxyAsync(YBClient* client,
                                                  const MonoTime& deadline,
                                                  const StatusCallback& cb) {
   DCHECK(deadline.Initialized());
@@ -822,7 +822,7 @@ void KuduClient::Data::SetMasterServerProxyAsync(KuduClient* client,
   if (!leader_master_rpc_) {
     // No one is sending a request yet - we need to be the one to do it.
     leader_master_rpc_.reset(new GetLeaderMasterRpc(
-                               Bind(&KuduClient::Data::LeaderMasterDetermined,
+                               Bind(&YBClient::Data::LeaderMasterDetermined,
                                     Unretained(this)),
                                master_sockaddrs,
                                actual_deadline,
@@ -834,21 +834,21 @@ void KuduClient::Data::SetMasterServerProxyAsync(KuduClient* client,
 
 }
 
-HostPort KuduClient::Data::leader_master_hostport() const {
+HostPort YBClient::Data::leader_master_hostport() const {
   lock_guard<simple_spinlock> l(&leader_master_lock_);
   return leader_master_hostport_;
 }
 
-shared_ptr<master::MasterServiceProxy> KuduClient::Data::master_proxy() const {
+shared_ptr<master::MasterServiceProxy> YBClient::Data::master_proxy() const {
   lock_guard<simple_spinlock> l(&leader_master_lock_);
   return master_proxy_;
 }
 
-uint64_t KuduClient::Data::GetLatestObservedTimestamp() const {
+uint64_t YBClient::Data::GetLatestObservedTimestamp() const {
   return latest_observed_timestamp_.Load();
 }
 
-void KuduClient::Data::UpdateLatestObservedTimestamp(uint64_t timestamp) {
+void YBClient::Data::UpdateLatestObservedTimestamp(uint64_t timestamp) {
   latest_observed_timestamp_.StoreMax(timestamp);
 }
 

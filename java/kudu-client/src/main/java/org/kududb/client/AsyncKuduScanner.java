@@ -130,8 +130,8 @@ public final class AsyncYBScanner {
   // Initial configurations.
   //////////////////////////
 
-  private final AsyncKuduClient client;
-  private final KuduTable table;
+  private final AsyncYBClient client;
+  private final YBTable table;
   private final Schema schema;
   private final List<Tserver.ColumnRangePredicatePB> columnRangePredicates;
 
@@ -192,7 +192,7 @@ public final class AsyncYBScanner {
    * If == DONE, then we're done scanning.
    * Otherwise it contains a proper tabletSlice name, and we're currently scanning.
    */
-  private AsyncKuduClient.RemoteTablet tablet;
+  private AsyncYBClient.RemoteTablet tablet;
 
   /**
    * This is the scanner ID we got from the TabletServer.
@@ -218,7 +218,7 @@ public final class AsyncYBScanner {
 
   private static final AtomicBoolean PARTITION_PRUNE_WARN = new AtomicBoolean(true);
 
-  AsyncYBScanner(AsyncKuduClient client, KuduTable table, List<String> projectedNames,
+  AsyncYBScanner(AsyncYBClient client, YBTable table, List<String> projectedNames,
                    List<Integer> projectedIndexes, ReadMode readMode, long scanRequestTimeout,
                    List<Tserver.ColumnRangePredicatePB> columnRangePredicates, long limit,
                    boolean cacheBlocks, boolean prefetching,
@@ -229,7 +229,7 @@ public final class AsyncYBScanner {
         "got %s", batchSizeBytes);
     checkArgument(limit > 0, "Need a strictly positive number for the limit, " +
         "got %s", limit);
-    if (htTimestamp != AsyncKuduClient.NO_TIMESTAMP) {
+    if (htTimestamp != AsyncYBClient.NO_TIMESTAMP) {
       checkArgument(htTimestamp >= 0, "Need non-negative number for the scan, " +
           " timestamp got %s", htTimestamp);
       checkArgument(readMode == ReadMode.READ_AT_SNAPSHOT, "When specifying a " +
@@ -250,8 +250,8 @@ public final class AsyncYBScanner {
     this.batchSizeBytes = batchSizeBytes;
 
     if (!table.getPartitionSchema().isSimpleRangePartitioning() &&
-        (startPrimaryKey != AsyncKuduClient.EMPTY_ARRAY ||
-         endPrimaryKey != AsyncKuduClient.EMPTY_ARRAY) &&
+        (startPrimaryKey != AsyncYBClient.EMPTY_ARRAY ||
+         endPrimaryKey != AsyncYBClient.EMPTY_ARRAY) &&
         PARTITION_PRUNE_WARN.getAndSet(false)) {
       LOG.warn("Starting full table scan. " +
                "In the future this scan may be automatically optimized with partition pruning.");
@@ -457,7 +457,7 @@ public final class AsyncYBScanner {
   private final Callback<Exception, Exception> nextRowErrback() {
     return new Callback<Exception, Exception>() {
       public Exception call(final Exception error) {
-        final AsyncKuduClient.RemoteTablet old_tablet = tablet;  // Save before invalidate().
+        final AsyncYBClient.RemoteTablet old_tablet = tablet;  // Save before invalidate().
         String message = old_tablet + " pretends to not know " + AsyncYBScanner.this;
         LOG.warn(message, error);
         invalidate();  // If there was an error, don't assume we're still OK.
@@ -473,7 +473,7 @@ public final class AsyncYBScanner {
     Partition partition = tablet.getPartition();
     // Stop scanning if we have scanned until or past the end partition key.
     if (partition.isEndPartition()
-        || (this.endPartitionKey != AsyncKuduClient.EMPTY_ARRAY
+        || (this.endPartitionKey != AsyncYBClient.EMPTY_ARRAY
             && Bytes.memcmp(this.endPartitionKey, partition.getPartitionKeyEnd()) <= 0)) {
       hasMore = false;
       closed = true; // the scanner is closed on the other side at this point
@@ -541,7 +541,7 @@ public final class AsyncYBScanner {
   // Package private stuff. //
   // ---------------------- //
 
-  KuduTable table() {
+  YBTable table() {
     return table;
   }
 
@@ -549,7 +549,7 @@ public final class AsyncYBScanner {
    * Sets the name of the tabletSlice that's hosting {@code this.start_key}.
    * @param tablet The tabletSlice we're currently supposed to be scanning.
    */
-  void setTablet(final AsyncKuduClient.RemoteTablet tablet) {
+  void setTablet(final AsyncYBClient.RemoteTablet tablet) {
     this.tablet = tablet;
   }
 
@@ -566,7 +566,7 @@ public final class AsyncYBScanner {
   /**
    * Returns the tabletSlice currently being scanned, if any.
    */
-  AsyncKuduClient.RemoteTablet currentTablet() {
+  AsyncYBClient.RemoteTablet currentTablet() {
     return tablet;
   }
 
@@ -650,7 +650,7 @@ public final class AsyncYBScanner {
 
     State state;
 
-    ScanRequest(KuduTable table, State state) {
+    ScanRequest(YBTable table, State state) {
       super(table);
       this.state = state;
       this.setTimeoutMillis(scanRequestTimeout);
@@ -679,23 +679,23 @@ public final class AsyncYBScanner {
           newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
           newBuilder.setCacheBlocks(cacheBlocks);
           // if the last propagated timestamp is set send it with the scan
-          if (table.getAsyncClient().getLastPropagatedTimestamp() != AsyncKuduClient.NO_TIMESTAMP) {
+          if (table.getAsyncClient().getLastPropagatedTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
             newBuilder.setPropagatedTimestamp(table.getAsyncClient().getLastPropagatedTimestamp());
           }
           newBuilder.setReadMode(AsyncYBScanner.this.getReadMode().pbVersion());
 
           // if the mode is set to read on snapshot sent the snapshot timestamp
           if (AsyncYBScanner.this.getReadMode() == ReadMode.READ_AT_SNAPSHOT &&
-            AsyncYBScanner.this.getSnapshotTimestamp() != AsyncKuduClient.NO_TIMESTAMP) {
+            AsyncYBScanner.this.getSnapshotTimestamp() != AsyncYBClient.NO_TIMESTAMP) {
             newBuilder.setSnapTimestamp(AsyncYBScanner.this.getSnapshotTimestamp());
           }
 
-          if (AsyncYBScanner.this.startPrimaryKey != AsyncKuduClient.EMPTY_ARRAY &&
+          if (AsyncYBScanner.this.startPrimaryKey != AsyncYBClient.EMPTY_ARRAY &&
               AsyncYBScanner.this.startPrimaryKey.length > 0) {
             newBuilder.setStartPrimaryKey(ZeroCopyLiteralByteString.copyFrom(startPrimaryKey));
           }
 
-          if (AsyncYBScanner.this.endPrimaryKey != AsyncKuduClient.EMPTY_ARRAY &&
+          if (AsyncYBScanner.this.endPrimaryKey != AsyncYBClient.EMPTY_ARRAY &&
               AsyncYBScanner.this.endPrimaryKey.length > 0) {
             newBuilder.setStopPrimaryKey(ZeroCopyLiteralByteString.copyFrom(endPrimaryKey));
           }
@@ -774,12 +774,12 @@ public final class AsyncYBScanner {
 
   /**
    * A Builder class to build {@link AsyncYBScanner}.
-   * Use {@link AsyncKuduClient#newScannerBuilder} in order to get a builder instance.
+   * Use {@link AsyncYBClient#newScannerBuilder} in order to get a builder instance.
    */
   public static class AsyncYBScannerBuilder
       extends AbstractYBScannerBuilder<AsyncYBScannerBuilder, AsyncYBScanner> {
 
-    AsyncYBScannerBuilder(AsyncKuduClient client, KuduTable table) {
+    AsyncYBScannerBuilder(AsyncYBClient client, YBTable table) {
       super(client, table);
     }
 

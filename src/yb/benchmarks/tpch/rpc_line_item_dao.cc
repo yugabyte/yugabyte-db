@@ -40,7 +40,7 @@ DEFINE_bool(tpch_cache_blocks_when_scanning, true,
 namespace yb {
 
 using client::YBInsert;
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
 using client::YBError;
 using client::YBPredicate;
@@ -123,7 +123,7 @@ void RpcLineItemDAO::Init() {
   CHECK_OK(session_->SetFlushMode(YBSession::MANUAL_FLUSH));
 }
 
-void RpcLineItemDAO::WriteLine(boost::function<void(KuduPartialRow*)> f) {
+void RpcLineItemDAO::WriteLine(boost::function<void(YBPartialRow*)> f) {
   gscoped_ptr<YBInsert> insert(client_table_->NewInsert());
   f(insert->mutable_row());
   CHECK_OK(session_->Apply(insert.release()));
@@ -140,7 +140,7 @@ void RpcLineItemDAO::FlushIfBufferFull() {
   session_->FlushAsync(new FlushCallback(session_, &semaphore_));
 }
 
-void RpcLineItemDAO::MutateLine(boost::function<void(KuduPartialRow*)> f) {
+void RpcLineItemDAO::MutateLine(boost::function<void(YBPartialRow*)> f) {
   gscoped_ptr<YBUpdate> update(client_table_->NewUpdate());
   f(update->mutable_row());
   CHECK_OK(session_->Apply(update.release()));
@@ -223,7 +223,7 @@ RpcLineItemDAO::~RpcLineItemDAO() {
 
 RpcLineItemDAO::RpcLineItemDAO(string master_address, string table_name,
                                int batch_size, int mstimeout,
-                               vector<const KuduPartialRow*> tablet_splits)
+                               vector<const YBPartialRow*> tablet_splits)
     : master_address_(std::move(master_address)),
       table_name_(std::move(table_name)),
       timeout_(MonoDelta::FromMilliseconds(mstimeout)),

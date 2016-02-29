@@ -36,12 +36,12 @@ import java.util.Set;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class TestFlexiblePartitioning extends BaseKuduTest {
+public class TestFlexiblePartitioning extends BaseYBTest {
   private String tableName;
 
   @Before
   public void setTableName() {
-    tableName = TestKuduClient.class.getName() + "-" + System.currentTimeMillis();
+    tableName = TestYBClient.class.getName() + "-" + System.currentTimeMillis();
   }
 
   private static Schema createSchema() {
@@ -66,7 +66,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
     return rows;
   }
 
-  private void insertRows(KuduTable table, Set<Row> rows) throws Exception {
+  private void insertRows(YBTable table, Set<Row> rows) throws Exception {
     YBSession session = syncClient.newSession();
     try {
       for (Row row : rows) {
@@ -95,7 +95,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
 
     syncClient.createTable(tableName, schema, tableBuilder);
 
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
 
     Set<Row> rows = rows();
     insertRows(table, rows);

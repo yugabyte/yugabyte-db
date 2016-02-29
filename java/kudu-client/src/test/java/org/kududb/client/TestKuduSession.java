@@ -20,12 +20,12 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestYBSession extends BaseKuduTest {
+public class TestYBSession extends BaseYBTest {
   // Generate a unique table name
   private static final String TABLE_NAME_PREFIX =
       TestYBSession.class.getName()+"-"+System.currentTimeMillis();
 
-  private KuduTable table;
+  private YBTable table;
 
   @Test(timeout = 100000)
   public void testBasicOps() throws Exception {

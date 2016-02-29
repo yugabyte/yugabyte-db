@@ -30,19 +30,19 @@ import java.util.concurrent.Executor;
 /**
  * A synchronous and thread-safe client for Kudu.
  * <p>
- * This class acts as a wrapper around {@link AsyncKuduClient}. The {@link Deferred} objects are
+ * This class acts as a wrapper around {@link AsyncYBClient}. The {@link Deferred} objects are
  * joined against using the default admin operation timeout
- * (see {@link org.kududb.client.KuduClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
+ * (see {@link org.kududb.client.YBClient.YBClientBuilder#defaultAdminOperationTimeoutMs(long)} (long)}).
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduClient implements AutoCloseable {
+public class YBClient implements AutoCloseable {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AsyncKuduClient.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AsyncYBClient.class);
 
-  private final AsyncKuduClient asyncClient;
+  private final AsyncYBClient asyncClient;
 
-  KuduClient(AsyncKuduClient asyncClient) {
+  YBClient(AsyncYBClient asyncClient) {
     this.asyncClient = asyncClient;
   }
 
@@ -53,7 +53,7 @@ public class KuduClient implements AutoCloseable {
    * @param schema Table's schema
    * @return an object to communicate with the created table
    */
-  public KuduTable createTable(String name, Schema schema) throws Exception {
+  public YBTable createTable(String name, Schema schema) throws Exception {
     return createTable(name, schema, new CreateTableOptions());
   }
 
@@ -64,9 +64,9 @@ public class KuduClient implements AutoCloseable {
    * @param builder a builder containing the table's configurations
    * @return an object to communicate with the created table
    */
-  public KuduTable createTable(String name, Schema schema, CreateTableOptions builder)
+  public YBTable createTable(String name, Schema schema, CreateTableOptions builder)
       throws Exception {
-    Deferred<KuduTable> d = asyncClient.createTable(name, schema, builder);
+    Deferred<YBTable> d = asyncClient.createTable(name, schema, builder);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -84,7 +84,7 @@ public class KuduClient implements AutoCloseable {
    * Alter a table on the cluster as specified by the builder.
    *
    * When the method returns it only indicates that the master accepted the alter
-   * command, use {@link KuduClient#isAlterTableDone(String)} to know when the alter finishes.
+   * command, use {@link YBClient#isAlterTableDone(String)} to know when the alter finishes.
    * @param name the table's name, if this is a table rename then the old table name must be passed
    * @param ato the alter table builder
    * @return an rpc response object
@@ -108,7 +108,7 @@ public class KuduClient implements AutoCloseable {
       Deferred<IsAlterTableDoneResponse> d = asyncClient.isAlterTableDone(name);
       IsAlterTableDoneResponse response;
       try {
-        response = d.join(AsyncKuduClient.SLEEP_TIME);
+        response = d.join(AsyncYBClient.SLEEP_TIME);
       } catch (Exception ex) {
         throw ex;
       }
@@ -120,15 +120,15 @@ public class KuduClient implements AutoCloseable {
       // Count time that was slept and see if we need to wait a little more.
       long elapsed = System.currentTimeMillis() - start;
       // Don't oversleep the deadline.
-      if (totalSleepTime + AsyncKuduClient.SLEEP_TIME > getDefaultAdminOperationTimeoutMs()) {
+      if (totalSleepTime + AsyncYBClient.SLEEP_TIME > getDefaultAdminOperationTimeoutMs()) {
         return false;
       }
       // elapsed can be bigger if we slept about 500ms
-      if (elapsed <= AsyncKuduClient.SLEEP_TIME) {
-        LOG.debug("Alter not done, sleep " + (AsyncKuduClient.SLEEP_TIME - elapsed) +
+      if (elapsed <= AsyncYBClient.SLEEP_TIME) {
+        LOG.debug("Alter not done, sleep " + (AsyncYBClient.SLEEP_TIME - elapsed) +
             " and slept " + totalSleepTime);
-        Thread.sleep(AsyncKuduClient.SLEEP_TIME - elapsed);
-        totalSleepTime += AsyncKuduClient.SLEEP_TIME;
+        Thread.sleep(AsyncYBClient.SLEEP_TIME - elapsed);
+        totalSleepTime += AsyncYBClient.SLEEP_TIME;
       } else {
         totalSleepTime += elapsed;
       }
@@ -178,10 +178,10 @@ public class KuduClient implements AutoCloseable {
    * Open the table with the given name. If the table was just created, this method will block until
    * all its tablets have also been created.
    * @param name table to open
-   * @return a KuduTable if the table exists, else a MasterErrorException
+   * @return a YBTable if the table exists, else a MasterErrorException
    */
-  public KuduTable openTable(final String name) throws Exception {
-    Deferred<KuduTable> d = asyncClient.openTable(name);
+  public YBTable openTable(final String name) throws Exception {
+    Deferred<YBTable> d = asyncClient.openTable(name);
     return d.join(getDefaultAdminOperationTimeoutMs());
   }
 
@@ -202,7 +202,7 @@ public class KuduClient implements AutoCloseable {
    * The string is assumed to use the platform's default charset.
    * @return a new scanner builder for this table
    */
-  public YBScanner.YBScannerBuilder newScannerBuilder(KuduTable table) {
+  public YBScanner.YBScannerBuilder newScannerBuilder(YBTable table) {
     return new YBScanner.YBScannerBuilder(asyncClient, table);
   }
 
@@ -245,14 +245,14 @@ public class KuduClient implements AutoCloseable {
    * All the parameters beyond those in the constructors are optional.
    */
   public final static class YBClientBuilder {
-    private AsyncKuduClient.AsyncYBClientBuilder clientBuilder;
+    private AsyncYBClient.AsyncYBClientBuilder clientBuilder;
 
     /**
      * Creates a new builder for a client that will connect to the specified masters.
      * @param masterAddresses comma-separated list of "host:port" pairs of the masters
      */
     public YBClientBuilder(String masterAddresses) {
-      clientBuilder = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses);
+      clientBuilder = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses);
     }
 
     /**
@@ -272,7 +272,7 @@ public class KuduClient implements AutoCloseable {
      * @param masterAddresses list of master addresses
      */
     public YBClientBuilder(List<String> masterAddresses) {
-      clientBuilder = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses);
+      clientBuilder = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses);
     }
 
     /**
@@ -354,9 +354,9 @@ public class KuduClient implements AutoCloseable {
      * Doesn't block and won't throw an exception if the masters don't exist.
      * @return a new asynchronous Kudu client
      */
-    public KuduClient build() {
-      AsyncKuduClient client = clientBuilder.build();
-      return new KuduClient(client);
+    public YBClient build() {
+      AsyncYBClient client = clientBuilder.build();
+      return new YBClient(client);
     }
 
   }

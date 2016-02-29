@@ -52,12 +52,12 @@ struct Thing {
 
   const bool should_fail_;
   int value_;
-  KuduOnceDynamic once_;
+  YBOnceDynamic once_;
 };
 
 } // anonymous namespace
 
-TEST(TestOnce, KuduOnceDynamicTest) {
+TEST(TestOnce, YBOnceDynamicTest) {
   {
     Thing t(false);
     ASSERT_EQ(0, t.value_);
@@ -89,7 +89,7 @@ static void InitOrGetInitted(Thing* t, int i) {
   }
 }
 
-TEST(TestOnce, KuduOnceDynamicThreadSafeTest) {
+TEST(TestOnce, YBOnceDynamicThreadSafeTest) {
   Thing thing(false);
 
   // The threads will read and write to thing.once_.initted. If access to

@@ -38,7 +38,7 @@ using strings::Substitute;
 
 namespace yb {
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
 using master::MiniMaster;
 using master::TabletLocationsPB;
@@ -302,7 +302,7 @@ Status MiniCluster::WaitForTabletServerCount(int count,
 }
 
 Status MiniCluster::CreateClient(YBClientBuilder* builder,
-                                 client::sp::shared_ptr<KuduClient>* client) {
+                                 client::sp::shared_ptr<YBClient>* client) {
   YBClientBuilder default_builder;
   if (builder == nullptr) {
     builder = &default_builder;

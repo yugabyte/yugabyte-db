@@ -40,7 +40,7 @@
 
 namespace yb {
 
-class KuduPartialRow;
+class YBPartialRow;
 
 namespace tserver {
 class TabletServerServiceProxy;
@@ -55,8 +55,8 @@ class TSInfoPB;
 namespace client {
 
 class ClientTest_TestMasterLookupPermits_Test;
-class KuduClient;
-class KuduTable;
+class YBClient;
+class YBTable;
 
 namespace internal {
 
@@ -72,7 +72,7 @@ class RemoteTabletServer {
   // Initialize the RPC proxy to this tablet server, if it is not already set up.
   // This will involve a DNS lookup if there is not already an active proxy.
   // If there is an active proxy, does nothing.
-  void InitProxy(KuduClient* client, const StatusCallback& cb);
+  void InitProxy(YBClient* client, const StatusCallback& cb);
 
   // Update information from the given pb.
   // Requires that 'pb''s UUID matches this server.
@@ -93,7 +93,7 @@ class RemoteTabletServer {
   // Internal callback for DNS resolution.
   void DnsResolutionFinished(const HostPort& hp,
                              std::vector<Sockaddr>* addrs,
-                             KuduClient* client,
+                             YBClient* client,
                              const StatusCallback& user_callback,
                              const Status &result_status);
 
@@ -205,7 +205,7 @@ class RemoteTablet : public RefCountedThreadSafe<RemoteTablet> {
 class MetaCache : public RefCountedThreadSafe<MetaCache> {
  public:
   // The passed 'client' object must remain valid as long as MetaCache is alive.
-  explicit MetaCache(KuduClient* client);
+  explicit MetaCache(YBClient* client);
   ~MetaCache();
 
   // Look up which tablet hosts the given partition key for a table. When it is
@@ -217,7 +217,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   //
   // NOTE: the memory referenced by 'table' must remain valid until 'callback'
   // is invoked.
-  void LookupTabletByKey(const KuduTable* table,
+  void LookupTabletByKey(const YBTable* table,
                          const std::string& partition_key,
                          const MonoTime& deadline,
                          scoped_refptr<RemoteTablet>* remote_tablet,
@@ -245,7 +245,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
   // Lookup the given tablet by key, only consulting local information.
   // Returns true and sets *remote_tablet if successful.
-  bool LookupTabletByKeyFastPath(const KuduTable* table,
+  bool LookupTabletByKeyFastPath(const YBTable* table,
                                  const std::string& partition_key,
                                  scoped_refptr<RemoteTablet>* remote_tablet);
 
@@ -257,7 +257,7 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
   // NOTE: Must be called with lock_ held.
   void UpdateTabletServer(const master::TSInfoPB& pb);
 
-  KuduClient* client_;
+  YBClient* client_;
 
   rw_spinlock lock_;
 

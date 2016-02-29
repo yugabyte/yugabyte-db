@@ -131,7 +131,7 @@ class BloomFileReader {
   boost::ptr_vector<cfile::IndexTreeIterator> index_iters_;
   gscoped_ptr<padded_spinlock[]> iter_locks_;
 
-  KuduOnceDynamic init_once_;
+  YBOnceDynamic init_once_;
 
   ScopedTrackedConsumption mem_consumption_;
 };

@@ -45,7 +45,7 @@ static const char* kLeaderUuid = "peer-0";
 static const char* kPeerUuid = "peer-1";
 static const char* kTestTablet = "test-tablet";
 
-class ConsensusQueueTest : public KuduTest {
+class ConsensusQueueTest : public YBTest {
  public:
   ConsensusQueueTest()
       : schema_(GetSimpleTestSchema()),
@@ -55,7 +55,7 @@ class ConsensusQueueTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());

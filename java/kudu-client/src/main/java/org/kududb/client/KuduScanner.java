@@ -112,14 +112,14 @@ public class YBScanner {
 
   /**
    * A Builder class to build {@link YBScanner}.
-   * Use {@link KuduClient#newScannerBuilder} in order to get a builder instance.
+   * Use {@link YBClient#newScannerBuilder} in order to get a builder instance.
    */
   @InterfaceAudience.Public
   @InterfaceStability.Evolving
   public static class YBScannerBuilder
       extends AbstractYBScannerBuilder<YBScannerBuilder, YBScanner> {
 
-    YBScannerBuilder(AsyncKuduClient client, KuduTable table) {
+    YBScannerBuilder(AsyncYBClient client, YBTable table) {
       super(client, table);
     }
 

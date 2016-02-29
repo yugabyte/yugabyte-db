@@ -32,19 +32,19 @@ namespace client {
 using master::AlterTableRequestPB;
 using master::AlterTableRequestPB_AlterColumn;
 
-KuduTableAlterer::Data::Data(KuduClient* client, string name)
+YBTableAlterer::Data::Data(YBClient* client, string name)
     : client_(client),
       table_name_(std::move(name)),
       wait_(true) {
 }
 
-KuduTableAlterer::Data::~Data() {
+YBTableAlterer::Data::~Data() {
   for (Step& s : steps_) {
     delete s.spec;
   }
 }
 
-Status KuduTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
+Status YBTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
   if (!status_.ok()) {
     return status_;
   }
@@ -67,7 +67,7 @@ Status KuduTableAlterer::Data::ToRequest(AlterTableRequestPB* req) {
     switch (s.step_type) {
       case AlterTableRequestPB::ADD_COLUMN:
       {
-        KuduColumnSchema col;
+        YBColumnSchema col;
         RETURN_NOT_OK(s.spec->ToColumnSchema(&col));
         ColumnSchemaToPB(*col.col_,
                          pb_step->mutable_add_column()->mutable_schema());

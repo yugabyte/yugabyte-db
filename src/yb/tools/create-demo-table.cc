@@ -36,7 +36,7 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
-using yb::client::KuduClient;
+using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBTableCreator;
@@ -101,7 +101,7 @@ static int CreateDemoTable(int argc, char** argv) {
   CHECK_OK(GetDemoSchema(table_name, &schema));
 
   // Set up client.
-  shared_ptr<KuduClient> client;
+  shared_ptr<YBClient> client;
   CHECK_OK(YBClientBuilder()
            .master_server_addrs(addrs)
            .Build(&client));

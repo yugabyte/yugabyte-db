@@ -24,7 +24,7 @@ namespace yb {
 
 namespace client {
 
-YBTableCreator::Data::Data(KuduClient* client)
+YBTableCreator::Data::Data(YBClient* client)
   : client_(client),
     schema_(nullptr),
     num_replicas_(0),

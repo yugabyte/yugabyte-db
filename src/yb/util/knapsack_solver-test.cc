@@ -27,7 +27,7 @@ using std::vector;
 
 namespace yb {
 
-class TestKnapsack : public KuduTest {
+class TestKnapsack : public YBTest {
 };
 
 // A simple test item for use with the knapsack solver.

@@ -32,7 +32,7 @@ using std::vector;
 namespace yb {
 
 // Test harness.
-class TestIntervalTree : public KuduTest {
+class TestIntervalTree : public YBTest {
 };
 
 // Simple interval class for integer intervals.

@@ -77,9 +77,9 @@ using std::vector;
 namespace yb {
 namespace tablet {
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBInsert;
 using client::YBRowResult;
 using client::YBScanner;
@@ -87,12 +87,12 @@ using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBStatusMemberCallback;
-using client::KuduTable;
+using client::YBTable;
 using client::YBTableCreator;
 using strings::Split;
 using strings::Substitute;
 
-class FullStackInsertScanTest : public KuduTest {
+class FullStackInsertScanTest : public YBTest {
  protected:
   FullStackInsertScanTest()
     : // Set the default value depending on whether slow tests are allowed
@@ -106,16 +106,16 @@ class FullStackInsertScanTest : public KuduTest {
 
     // schema has kNumIntCols contiguous columns of Int32 and Int64, in order.
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
-    b.AddColumn("int32_val1")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("int32_val2")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("int32_val3")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("int32_val4")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("int64_val1")->Type(KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn("int64_val2")->Type(KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn("int64_val3")->Type(KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn("int64_val4")->Type(KuduColumnSchema::INT64)->NotNull();
+    b.AddColumn("key")->Type(YBColumnSchema::INT64)->NotNull()->PrimaryKey();
+    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->NotNull();
+    b.AddColumn("int32_val1")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("int32_val2")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("int32_val3")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("int32_val4")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("int64_val1")->Type(YBColumnSchema::INT64)->NotNull();
+    b.AddColumn("int64_val2")->Type(YBColumnSchema::INT64)->NotNull();
+    b.AddColumn("int64_val3")->Type(YBColumnSchema::INT64)->NotNull();
+    b.AddColumn("int64_val4")->Type(YBColumnSchema::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -124,7 +124,7 @@ class FullStackInsertScanTest : public KuduTest {
   const int kNumRows;
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
   }
 
   void CreateTable() {
@@ -143,7 +143,7 @@ class FullStackInsertScanTest : public KuduTest {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   void DoConcurrentClientInserts();
@@ -158,7 +158,7 @@ class FullStackInsertScanTest : public KuduTest {
   }
 
   // Generate random row according to schema_.
-  static void RandomRow(Random* rng, KuduPartialRow* row,
+  static void RandomRow(Random* rng, YBPartialRow* row,
                         char* buf, int64_t key, int id);
 
   void InitCluster() {
@@ -210,11 +210,11 @@ class FullStackInsertScanTest : public KuduTest {
 
   YBSchema schema_;
   std::shared_ptr<MiniCluster> cluster_;
-  client::sp::shared_ptr<KuduClient> client_;
-  client::sp::shared_ptr<KuduTable> reader_table_;
+  client::sp::shared_ptr<YBClient> client_;
+  client::sp::shared_ptr<YBTable> reader_table_;
   // Concurrent client insertion test variables
   vector<client::sp::shared_ptr<YBSession> > sessions_;
-  vector<client::sp::shared_ptr<KuduTable> > tables_;
+  vector<client::sp::shared_ptr<YBTable> > tables_;
 };
 
 namespace {
@@ -350,7 +350,7 @@ void FullStackInsertScanTest::InsertRows(CountDownLatch* start_latch, int id,
   start_latch->Wait();
   // Retrieve id's session and table
   client::sp::shared_ptr<YBSession> session = sessions_[id];
-  client::sp::shared_ptr<KuduTable> table = tables_[id];
+  client::sp::shared_ptr<YBTable> table = tables_[id];
   // Identify start and end of keyrange id is responsible for
   int64_t start = kNumInsertsPerClient * id;
   int64_t end = start + kNumInsertsPerClient;
@@ -417,7 +417,7 @@ void FullStackInsertScanTest::ScanProjection(const vector<string>& cols,
 // type: (int64_t,  string,     int32_t x4, int64_t x4)
 // The first int32 gets the id and the first int64 gets the thread
 // id. The key is assigned to "key," and the other fields are random.
-void FullStackInsertScanTest::RandomRow(Random* rng, KuduPartialRow* row, char* buf,
+void FullStackInsertScanTest::RandomRow(Random* rng, YBPartialRow* row, char* buf,
                                         int64_t key, int id) {
   CHECK_OK(row->SetInt64(kKeyCol, key));
   int len = kRandomStrMinLength +

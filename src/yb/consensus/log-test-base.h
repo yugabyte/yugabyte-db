@@ -121,7 +121,7 @@ static Status AppendNoOpToLogSync(const scoped_refptr<Clock>& clock,
   return AppendNoOpsToLogSync(clock, log, op_id, 1, size);
 }
 
-class LogTestBase : public KuduTest {
+class LogTestBase : public YBTest {
  public:
 
   typedef pair<int, int> DeltaId;
@@ -132,7 +132,7 @@ class LogTestBase : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     current_index_ = 1;
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     metric_registry_.reset(new MetricRegistry());
@@ -147,7 +147,7 @@ class LogTestBase : public KuduTest {
   }
 
   virtual void TearDown() OVERRIDE {
-    KuduTest::TearDown();
+    YBTest::TearDown();
     STLDeleteElements(&entries_);
   }
 

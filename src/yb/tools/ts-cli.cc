@@ -50,7 +50,7 @@ using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
 using yb::Sockaddr;
-using yb::client::KuduScanBatch;
+using yb::client::YBScanBatch;
 using yb::tablet::TabletStatusPB;
 using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
@@ -274,7 +274,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
     }
 
     rows.clear();
-    KuduScanBatch::Data results;
+    YBScanBatch::Data results;
     RETURN_NOT_OK(results.Reset(&rpc,
                                 &schema,
                                 &client_schema,

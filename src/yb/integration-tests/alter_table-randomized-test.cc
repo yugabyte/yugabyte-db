@@ -32,16 +32,16 @@
 
 namespace yb {
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBError;
 using client::YBInsert;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::KuduTable;
-using client::KuduTableAlterer;
+using client::YBTable;
+using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBValue;
 using client::YBWriteOperation;
@@ -55,10 +55,10 @@ using strings::SubstituteAndAppend;
 const char* kTableName = "test-table";
 const int kMaxColumns = 30;
 
-class AlterTableRandomized : public KuduTest {
+class AlterTableRandomized : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     ExternalMiniClusterOptions opts;
     opts.num_tablet_servers = 3;
@@ -78,7 +78,7 @@ class AlterTableRandomized : public KuduTest {
 
   virtual void TearDown() OVERRIDE {
     cluster_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   void RestartTabletServer(int idx) {
@@ -91,7 +91,7 @@ class AlterTableRandomized : public KuduTest {
 
  protected:
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
 };
 
 struct RowState {
@@ -223,13 +223,13 @@ struct TableState {
 };
 
 struct MirrorTable {
-  explicit MirrorTable(shared_ptr<KuduClient> client)
+  explicit MirrorTable(shared_ptr<YBClient> client)
       : client_(std::move(client)) {}
 
   Status Create() {
     YBSchema schema;
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
     CHECK_OK(b.Build(&schema));
     gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     RETURN_NOT_OK(table_creator->table_name(kTableName)
@@ -298,13 +298,13 @@ struct MirrorTable {
     bool nullable = rand() % 2 == 1;
 
     // Add to the real table.
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
 
     if (nullable) {
       default_value = RowState::kNullValue;
-      table_alterer->AddColumn(name)->Type(KuduColumnSchema::INT32);
+      table_alterer->AddColumn(name)->Type(YBColumnSchema::INT32);
     } else {
-      table_alterer->AddColumn(name)->Type(KuduColumnSchema::INT32)->NotNull()
+      table_alterer->AddColumn(name)->Type(YBColumnSchema::INT32)->NotNull()
         ->Default(YBValue::FromInt(default_value));
     }
     ASSERT_OK(table_alterer->Alter());
@@ -314,7 +314,7 @@ struct MirrorTable {
   }
 
   void DropAColumn(const string& name) {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     CHECK_OK(table_alterer->DropColumn(name)->Alter());
     ts_.DropColumn(name);
   }
@@ -334,7 +334,7 @@ struct MirrorTable {
     // First scan the real table
     vector<string> rows;
     {
-      shared_ptr<KuduTable> table;
+      shared_ptr<YBTable> table;
       CHECK_OK(client_->OpenTable(kTableName, &table));
       client::ScanTableToStrings(table.get(), &rows);
     }
@@ -356,7 +356,7 @@ struct MirrorTable {
   Status DoRealOp(const vector<pair<string, int32_t> >& data,
                   OpType op_type) {
     shared_ptr<YBSession> session = client_->NewSession();
-    shared_ptr<KuduTable> table;
+    shared_ptr<YBTable> table;
     RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(15 * 1000);
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
@@ -387,7 +387,7 @@ struct MirrorTable {
     return errors[0]->status();
   }
 
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
   TableState ts_;
 };
 

@@ -23,11 +23,11 @@
 namespace yb {
 namespace tablet {
 
-class KuduTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
+class YBTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
  protected:
   typedef TabletTestBase<IntKeyTestSetup<INT64> > Superclass;
 
-  KuduTabletMmOpsTest()
+  YBTabletMmOpsTest()
   : Superclass(),
     next_time_(MonoTime::Now(MonoTime::FINE)) {
   }
@@ -87,14 +87,14 @@ class KuduTabletMmOpsTest : public TabletTestBase<IntKeyTestSetup<INT64>> {
   vector<scoped_refptr<Histogram> > all_possible_metrics_;
 };
 
-TEST_F(KuduTabletMmOpsTest, TestCompactRowSetsOpCacheStats) {
+TEST_F(YBTabletMmOpsTest, TestCompactRowSetsOpCacheStats) {
   CompactRowSetsOp op(tablet().get());
   NO_FATALS(TestFirstCall(&op));
   NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
                                        tablet()->metrics()->compact_rs_duration }));
 }
 
-TEST_F(KuduTabletMmOpsTest, TestMinorDeltaCompactionOpCacheStats) {
+TEST_F(YBTabletMmOpsTest, TestMinorDeltaCompactionOpCacheStats) {
   MinorDeltaCompactionOp op(tablet().get());
   NO_FATALS(TestFirstCall(&op));
   NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,
@@ -103,7 +103,7 @@ TEST_F(KuduTabletMmOpsTest, TestMinorDeltaCompactionOpCacheStats) {
                                        tablet()->metrics()->delta_minor_compact_rs_duration }));
 }
 
-TEST_F(KuduTabletMmOpsTest, TestMajorDeltaCompactionOpCacheStats) {
+TEST_F(YBTabletMmOpsTest, TestMajorDeltaCompactionOpCacheStats) {
   MajorDeltaCompactionOp op(tablet().get());
   NO_FATALS(TestFirstCall(&op));
   NO_FATALS(TestAffectedMetrics(&op, { tablet()->metrics()->flush_mrs_duration,

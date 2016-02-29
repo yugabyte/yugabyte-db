@@ -68,7 +68,7 @@ class LoggingConsumer : public TwitterConsumer {
 };
 
 gscoped_ptr<TwitterConsumer> CreateInsertConsumer() {
-  shared_ptr<client::KuduClient> client;
+  shared_ptr<client::YBClient> client;
   CHECK_OK(client::YBClientBuilder()
            .add_master_server_addr(FLAGS_twitter_rpc_master_address)
            .Build(&client));

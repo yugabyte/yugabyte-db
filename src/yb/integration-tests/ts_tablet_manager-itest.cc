@@ -50,9 +50,9 @@ DEFINE_int32(num_election_test_loops, 3,
 namespace yb {
 namespace tserver {
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBSchema;
-using client::KuduTable;
+using client::YBTable;
 using client::YBTableCreator;
 using consensus::GetConsensusRole;
 using consensus::RaftPeerPB;
@@ -70,7 +70,7 @@ using tserver::TSTabletManager;
 static const char* const kTableName = "test-table";
 static const int kNumReplicas = 2;
 
-class TsTabletManagerITest : public KuduTest {
+class TsTabletManagerITest : public YBTest {
  public:
   TsTabletManagerITest()
       : schema_(SimpleIntKeyYBSchema()) {
@@ -82,12 +82,12 @@ class TsTabletManagerITest : public KuduTest {
   const YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
-  client::sp::shared_ptr<KuduClient> client_;
+  client::sp::shared_ptr<YBClient> client_;
   std::shared_ptr<Messenger> client_messenger_;
 };
 
 void TsTabletManagerITest::SetUp() {
-  KuduTest::SetUp();
+  YBTest::SetUp();
 
   MessengerBuilder bld("client");
   ASSERT_OK(bld.Build(&client_messenger_));
@@ -101,7 +101,7 @@ void TsTabletManagerITest::SetUp() {
 
 void TsTabletManagerITest::TearDown() {
   cluster_->Shutdown();
-  KuduTest::TearDown();
+  YBTest::TearDown();
 }
 
 // Test that when the leader changes, the tablet manager gets notified and
@@ -116,7 +116,7 @@ TEST_F(TsTabletManagerITest, TestReportNewLeaderOnLeaderChange) {
   OverrideFlagForSlowTests("num_election_test_loops", "10");
 
   // Create the table.
-  client::sp::shared_ptr<KuduTable> table;
+  client::sp::shared_ptr<YBTable> table;
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&schema_)

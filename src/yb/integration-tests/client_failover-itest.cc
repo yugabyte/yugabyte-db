@@ -27,7 +27,7 @@
 #include "yb/integration-tests/test_workload.h"
 
 using yb::client::CountTableRows;
-using yb::client::KuduTable;
+using yb::client::YBTable;
 using yb::client::sp::shared_ptr;
 using yb::itest::TServerDetails;
 using yb::tablet::TABLET_DATA_TOMBSTONED;
@@ -99,7 +99,7 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
                                   workload.batches_completed() + 1));
 
   // Open the scanner and count the rows.
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(TestWorkload::kDefaultTableName, &table));
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
   LOG(INFO) << "Number of rows: " << workload.rows_inserted();

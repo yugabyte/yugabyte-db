@@ -17,11 +17,11 @@
 # under the License.
 
 from kudu.compat import unittest, long
-from kudu.tests.common import KuduTestBase
+from kudu.tests.common import YBTestBase
 import kudu
 
 
-class TestClient(KuduTestBase, unittest.TestCase):
+class TestClient(YBTestBase, unittest.TestCase):
 
     def setUp(self):
         pass

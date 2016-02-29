@@ -73,7 +73,7 @@ public abstract class Operation extends KuduRpc<OperationResponse> implements Ku
    * Package-private constructor. Subclasses need to be instantiated via AsyncYBSession
    * @param table table with the schema to use for this operation
    */
-  Operation(KuduTable table) {
+  Operation(YBTable table) {
     super(table);
     this.row = table.getSchema().newPartialRow();
   }
@@ -116,7 +116,7 @@ public abstract class Operation extends KuduRpc<OperationResponse> implements Ku
     final Tserver.WriteRequestPB.Builder builder = createAndFillWriteRequestPB(this);
     builder.setTabletId(ZeroCopyLiteralByteString.wrap(getTablet().getTabletIdAsBytes()));
     builder.setExternalConsistencyMode(this.externalConsistencyMode.pbVersion());
-    if (this.propagatedTimestamp != AsyncKuduClient.NO_TIMESTAMP) {
+    if (this.propagatedTimestamp != AsyncYBClient.NO_TIMESTAMP) {
       builder.setPropagatedTimestamp(this.propagatedTimestamp);
     }
     return toChannelBuffer(header, builder.build());

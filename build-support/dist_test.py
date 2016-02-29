@@ -48,7 +48,7 @@ DIST_TEST_HOME = os.environ.get('DIST_TEST_HOME',
 # The number of times that flaky tests will be retried.
 # Our non-distributed implementation sets a number of _attempts_, not a number
 # of retries, so we have to subtract 1.
-FLAKY_TEST_RETRIES = int(os.environ.get('KUDU_FLAKY_TEST_ATTEMPTS', 1)) - 1
+FLAKY_TEST_RETRIES = int(os.environ.get('YB_FLAKY_TEST_ATTEMPTS', 1)) - 1
 
 PATH_TO_REPO = "../"
 
@@ -259,10 +259,10 @@ def create_archive_input(staging, argv,
     command = ['../../build-support/run_dist_test.py',
                '-e', 'GTEST_SHARD_INDEX=%d' % shard,
                '-e', 'GTEST_TOTAL_SHARDS=%d' % num_shards,
-               '-e', 'KUDU_TEST_TIMEOUT=%d' % (TEST_TIMEOUT_SECS - 30),
+               '-e', 'YB_TEST_TIMEOUT=%d' % (TEST_TIMEOUT_SECS - 30),
                '-e', 'YB_ALLOW_SLOW_TESTS=%s' % os.environ.get('YB_ALLOW_SLOW_TESTS', 1),
-               '-e', 'KUDU_COMPRESS_TEST_OUTPUT=%s' % \
-                      os.environ.get('KUDU_COMPRESS_TEST_OUTPUT', 0)]
+               '-e', 'YB_COMPRESS_TEST_OUTPUT=%s' % \
+                      os.environ.get('YB_COMPRESS_TEST_OUTPUT', 0)]
     command.append('--')
     command += argv[1:]
 
@@ -360,7 +360,7 @@ def submit_tasks(staging, options):
     raise
 
 def get_flakies():
-  path = os.getenv('KUDU_FLAKY_TEST_LIST')
+  path = os.getenv('YB_FLAKY_TEST_LIST')
   if not path:
     return set()
   return set(l.strip() for l in file(path))

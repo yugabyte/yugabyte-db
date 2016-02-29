@@ -29,17 +29,17 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestKuduTable extends BaseKuduTest {
+public class TestYBTable extends BaseYBTest {
 
-  private static final Logger LOG = LoggerFactory.getLogger(TestKuduTable.class);
+  private static final Logger LOG = LoggerFactory.getLogger(TestYBTable.class);
 
-  private static final String BASE_TABLE_NAME = TestKuduTable.class.getName();
+  private static final String BASE_TABLE_NAME = TestYBTable.class.getName();
 
   private static Schema schema = getBasicSchema();
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
   }
 
   @Test(expected = IllegalArgumentException.class)
@@ -148,7 +148,7 @@ public class TestKuduTable extends BaseKuduTest {
               .defaultValue(defaultValue).build());
     }
     Schema schemaWithDefault = new Schema(columns);
-    KuduTable kuduTable = createTable(tableWithDefault, schemaWithDefault, builder);
+    YBTable kuduTable = createTable(tableWithDefault, schemaWithDefault, builder);
     assertEquals(defaultInt, kuduTable.getSchema().getColumnByIndex(0).getDefaultValue());
     assertEquals(defaultString,
         kuduTable.getSchema().getColumnByIndex(columns.size() - 2).getDefaultValue());
@@ -162,13 +162,13 @@ public class TestKuduTable extends BaseKuduTest {
     openTable(tableWithDefault);
 
     // Test splitting and reading those splits
-    KuduTable kuduTableWithoutDefaults = createTableWithSplitsAndTest(0);
+    YBTable kuduTableWithoutDefaults = createTableWithSplitsAndTest(0);
     // finish testing read defaults
     assertNull(kuduTableWithoutDefaults.getSchema().getColumnByIndex(0).getDefaultValue());
     createTableWithSplitsAndTest(3);
     createTableWithSplitsAndTest(10);
 
-    KuduTable table = createTableWithSplitsAndTest(30);
+    YBTable table = createTableWithSplitsAndTest(30);
 
     List<LocatedTablet>tablets = table.getTabletsLocations(null, getKeyInBytes(9), DEFAULT_SLEEP);
     assertEquals(10, tablets.size());
@@ -220,7 +220,7 @@ public class TestKuduTable extends BaseKuduTest {
     return row.encodePrimaryKey();
   }
 
-  public KuduTable createTableWithSplitsAndTest(int splitsCount) throws Exception {
+  public YBTable createTableWithSplitsAndTest(int splitsCount) throws Exception {
     String tableName = BASE_TABLE_NAME + System.currentTimeMillis();
     CreateTableOptions builder = new CreateTableOptions();
 
@@ -231,7 +231,7 @@ public class TestKuduTable extends BaseKuduTest {
         builder.addSplitRow(row);
       }
     }
-    KuduTable table = createTable(tableName, schema, builder);
+    YBTable table = createTable(tableName, schema, builder);
 
     // calling getTabletsLocation won't wait on the table to be assigned so we trigger the wait
     // by scanning

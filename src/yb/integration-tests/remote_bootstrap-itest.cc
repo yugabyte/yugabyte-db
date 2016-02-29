@@ -48,7 +48,7 @@ DEFINE_int32(test_delete_leader_payload_bytes, 16 * 1024,
 DEFINE_int32(test_delete_leader_num_writer_threads, 1,
              "Number of writer threads in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 
-using yb::client::KuduClient;
+using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
@@ -72,7 +72,7 @@ METRIC_DECLARE_counter(glog_error_messages);
 
 namespace yb {
 
-class RemoteBootstrapITest : public KuduTest {
+class RemoteBootstrapITest : public YBTest {
  public:
   virtual void TearDown() OVERRIDE {
     if (HasFatalFailure()) {
@@ -90,7 +90,7 @@ class RemoteBootstrapITest : public KuduTest {
       }
     }
     if (cluster_) cluster_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
     STLDeleteValues(&ts_map_);
   }
 
@@ -101,7 +101,7 @@ class RemoteBootstrapITest : public KuduTest {
 
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
   unordered_map<string, TServerDetails*> ts_map_;
 };
 
@@ -412,9 +412,9 @@ TEST_F(RemoteBootstrapITest, TestConcurrentRemoteBootstraps) {
   // remotely bootstrapped to a single target node from the same leader host.
   const int kNumTablets = 10;
   YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
-  vector<const KuduPartialRow*> splits;
+  vector<const YBPartialRow*> splits;
   for (int i = 0; i < kNumTablets - 1; i++) {
-    KuduPartialRow* row = client_schema.NewRow();
+    YBPartialRow* row = client_schema.NewRow();
     ASSERT_OK(row->SetInt32(0, numeric_limits<int32_t>::max() / kNumTablets * (i + 1)));
     splits.push_back(row);
   }

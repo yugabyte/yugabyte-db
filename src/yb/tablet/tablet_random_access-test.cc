@@ -74,10 +74,10 @@ const char* TestOp_names[] = {
 // The test maintains an in-memory copy of the expected state of the tablet, and uses only
 // a single thread, so that it's easy to verify that the tablet always matches the expected
 // state.
-class TestRandomAccess : public KuduTabletTest {
+class TestRandomAccess : public YBTabletTest {
  public:
   TestRandomAccess()
-    : KuduTabletTest(Schema({ ColumnSchema("key", INT32),
+    : YBTabletTest(Schema({ ColumnSchema("key", INT32),
                               ColumnSchema("val", INT32, true) }, 1)),
       done_(1) {
     OverrideFlagForSlowTests("keyspace_size", "30000");
@@ -91,7 +91,7 @@ class TestRandomAccess : public KuduTabletTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(tablet().get(), &client_schema_));
   }
 
@@ -170,7 +170,7 @@ class TestRandomAccess : public KuduTabletTest {
   // Adds an insert for the given key/value pair to 'ops', returning the new stringified
   // value of the row.
   string InsertRow(int key, int val, vector<LocalTabletWriter::Op>* ops) {
-    gscoped_ptr<KuduPartialRow> row(new KuduPartialRow(&client_schema_));
+    gscoped_ptr<YBPartialRow> row(new YBPartialRow(&client_schema_));
     CHECK_OK(row->SetInt32(0, key));
     if (val & 1) {
       CHECK_OK(row->SetNull(1));
@@ -185,7 +185,7 @@ class TestRandomAccess : public KuduTabletTest {
   // Adds an update of the given key/value pair to 'ops', returning the new stringified
   // value of the row.
   string MutateRow(int key, uint32_t new_val, vector<LocalTabletWriter::Op>* ops) {
-    gscoped_ptr<KuduPartialRow> row(new KuduPartialRow(&client_schema_));
+    gscoped_ptr<YBPartialRow> row(new YBPartialRow(&client_schema_));
     CHECK_OK(row->SetInt32(0, key));
     if (new_val & 1) {
       CHECK_OK(row->SetNull(1));
@@ -200,7 +200,7 @@ class TestRandomAccess : public KuduTabletTest {
   // Adds a delete of the given row to 'ops', returning an empty string (indicating that
   // the row no longer exists).
   string DeleteRow(int key, vector<LocalTabletWriter::Op>* ops) {
-    gscoped_ptr<KuduPartialRow> row(new KuduPartialRow(&client_schema_));
+    gscoped_ptr<YBPartialRow> row(new YBPartialRow(&client_schema_));
     CHECK_OK(row->SetInt32(0, key));
     ops->push_back(LocalTabletWriter::Op(RowOperationsPB::DELETE, row.release()));
     return "";

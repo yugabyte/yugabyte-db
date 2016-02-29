@@ -61,7 +61,7 @@ struct StringKeyTestSetup {
                   1);
   }
 
-  void BuildRowKey(KuduPartialRow *row, int64_t key_idx) {
+  void BuildRowKey(YBPartialRow *row, int64_t key_idx) {
     // This is called from multiple threads, so can't move this buffer
     // to be a class member. However, it's likely to get inlined anyway
     // and loop-hosted.
@@ -71,11 +71,11 @@ struct StringKeyTestSetup {
   }
 
   // builds a row key from an existing row for updates
-  void BuildRowKeyFromExistingRow(KuduPartialRow *row, const RowBlockRow& src_row) {
+  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowBlockRow& src_row) {
     CHECK_OK(row->SetStringCopy(0, *reinterpret_cast<const Slice*>(src_row.cell_ptr(0))));
   }
 
-  void BuildRow(KuduPartialRow *row, int64_t key_idx, int32_t val = 0) {
+  void BuildRow(YBPartialRow *row, int64_t key_idx, int32_t val = 0) {
     BuildRowKey(row, key_idx);
     CHECK_OK(row->SetInt32(1, key_idx));
     CHECK_OK(row->SetInt32(2, val));
@@ -112,7 +112,7 @@ struct CompositeKeyTestSetup {
   }
 
   // builds a row key from an existing row for updates
-  void BuildRowKeyFromExistingRow(KuduPartialRow *row, const RowBlockRow& src_row) {
+  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowBlockRow& src_row) {
     CHECK_OK(row->SetStringCopy(0, *reinterpret_cast<const Slice*>(src_row.cell_ptr(0))));
     CHECK_OK(row->SetInt32(1, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(1))));
   }
@@ -145,17 +145,17 @@ struct IntKeyTestSetup {
                     ColumnSchema("val", INT32) }, 1);
   }
 
-  void BuildRowKey(KuduPartialRow *row, int64_t i) {
+  void BuildRowKey(YBPartialRow *row, int64_t i) {
     CHECK(false) << "Unsupported type";
   }
 
   // builds a row key from an existing row for updates
   template<class RowType>
-  void BuildRowKeyFromExistingRow(KuduPartialRow *dst_row, const RowType& row) {
+  void BuildRowKeyFromExistingRow(YBPartialRow *dst_row, const RowType& row) {
     CHECK(false) << "Unsupported type";
   }
 
-  void BuildRow(KuduPartialRow *row, int64_t key_idx,
+  void BuildRow(YBPartialRow *row, int64_t key_idx,
                 int32_t val = 0) {
     BuildRowKey(row, key_idx);
     CHECK_OK(row->SetInt32(1, key_idx));
@@ -173,44 +173,44 @@ struct IntKeyTestSetup {
 };
 
 template<>
-void IntKeyTestSetup<INT8>::BuildRowKey(KuduPartialRow *row, int64_t i) {
+void IntKeyTestSetup<INT8>::BuildRowKey(YBPartialRow *row, int64_t i) {
   CHECK_OK(row->SetInt8(0, (int8_t) i * (i % 2 == 0 ? -1 : 1)));
 }
 
 template<>
-void IntKeyTestSetup<INT16>::BuildRowKey(KuduPartialRow *row, int64_t i) {
+void IntKeyTestSetup<INT16>::BuildRowKey(YBPartialRow *row, int64_t i) {
   CHECK_OK(row->SetInt16(0, (int16_t) i * (i % 2 == 0 ? -1 : 1)));
 }
 
 template<>
-void IntKeyTestSetup<INT32>::BuildRowKey(KuduPartialRow *row, int64_t i) {
+void IntKeyTestSetup<INT32>::BuildRowKey(YBPartialRow *row, int64_t i) {
   CHECK_OK(row->SetInt32(0, (int32_t) i * (i % 2 == 0 ? -1 : 1)));
 }
 
 template<>
-void IntKeyTestSetup<INT64>::BuildRowKey(KuduPartialRow *row, int64_t i) {
+void IntKeyTestSetup<INT64>::BuildRowKey(YBPartialRow *row, int64_t i) {
   CHECK_OK(row->SetInt64(0, (int64_t) i * (i % 2 == 0 ? -1 : 1)));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT8>::BuildRowKeyFromExistingRow(KuduPartialRow *row,
+void IntKeyTestSetup<INT8>::BuildRowKeyFromExistingRow(YBPartialRow *row,
                                                        const RowType& src_row) {
   CHECK_OK(row->SetInt8(0, *reinterpret_cast<const int8_t*>(src_row.cell_ptr(0))));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT16>::BuildRowKeyFromExistingRow(KuduPartialRow *row,
+void IntKeyTestSetup<INT16>::BuildRowKeyFromExistingRow(YBPartialRow *row,
                                                         const RowType& src_row) {
   CHECK_OK(row->SetInt16(0, *reinterpret_cast<const int16_t*>(src_row.cell_ptr(0))));
 }
 template<> template<class RowType>
-void IntKeyTestSetup<INT32>::BuildRowKeyFromExistingRow(KuduPartialRow *row,
+void IntKeyTestSetup<INT32>::BuildRowKeyFromExistingRow(YBPartialRow *row,
                                                         const RowType& src_row) {
   CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
 }
 
 template<> template<class RowType>
-void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(KuduPartialRow *row,
+void IntKeyTestSetup<INT64>::BuildRowKeyFromExistingRow(YBPartialRow *row,
                                                         const RowType& src_row) {
   CHECK_OK(row->SetInt64(0, *reinterpret_cast<const int64_t*>(src_row.cell_ptr(0))));
 }
@@ -251,17 +251,17 @@ struct NullableValueTestSetup {
                     ColumnSchema("val", INT32, true) }, 1);
   }
 
-  void BuildRowKey(KuduPartialRow *row, int64_t i) {
+  void BuildRowKey(YBPartialRow *row, int64_t i) {
     CHECK_OK(row->SetInt32(0, (int32_t)i));
   }
 
   // builds a row key from an existing row for updates
   template<class RowType>
-  void BuildRowKeyFromExistingRow(KuduPartialRow *row, const RowType& src_row) {
+  void BuildRowKeyFromExistingRow(YBPartialRow *row, const RowType& src_row) {
     CHECK_OK(row->SetInt32(0, *reinterpret_cast<const int32_t*>(src_row.cell_ptr(0))));
   }
 
-  void BuildRow(KuduPartialRow *row, int64_t key_idx, int32_t val = 0) {
+  void BuildRow(YBPartialRow *row, int64_t key_idx, int32_t val = 0) {
     BuildRowKey(row, key_idx);
     CHECK_OK(row->SetInt32(1, key_idx));
     if (ShouldInsertAsNull(key_idx)) {
@@ -303,10 +303,10 @@ typedef ::testing::Types<
                          > TabletTestHelperTypes;
 
 template<class TESTSETUP>
-class TabletTestBase : public KuduTabletTest {
+class TabletTestBase : public YBTabletTest {
  public:
   TabletTestBase() :
-    KuduTabletTest(TESTSETUP::CreateSchema()),
+    YBTabletTest(TESTSETUP::CreateSchema()),
     setup_(),
     max_rows_(setup_.GetMaxRows()),
     arena_(1024, 4*1024*1024)
@@ -319,7 +319,7 @@ class TabletTestBase : public KuduTabletTest {
                       TimeSeries *ts = NULL) {
 
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
 
     uint64_t inserted_since_last_report = 0;
     for (int64_t i = first_row; i < first_row + count; i++) {
@@ -341,7 +341,7 @@ class TabletTestBase : public KuduTabletTest {
   Status InsertTestRow(LocalTabletWriter* writer,
                        int64_t key_idx,
                        int32_t val) {
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
     setup_.BuildRow(&row, key_idx, val);
     return writer->Insert(row);
   }
@@ -349,7 +349,7 @@ class TabletTestBase : public KuduTabletTest {
   Status UpdateTestRow(LocalTabletWriter* writer,
                        int64_t key_idx,
                        int32_t new_val) {
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
 
     // select the col to update (the third if there is only one key
@@ -361,7 +361,7 @@ class TabletTestBase : public KuduTabletTest {
 
   Status UpdateTestRowToNull(LocalTabletWriter* writer,
                              int64_t key_idx) {
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
 
     // select the col to update (the third if there is only one key
@@ -372,7 +372,7 @@ class TabletTestBase : public KuduTabletTest {
   }
 
   Status DeleteTestRow(LocalTabletWriter* writer, int64_t key_idx) {
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
     setup_.BuildRowKey(&row, key_idx);
     return writer->Delete(row);
   }

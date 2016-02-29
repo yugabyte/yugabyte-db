@@ -43,9 +43,9 @@ using consensus::RaftConfigPB;
 using std::string;
 using std::vector;
 
-class KuduTabletTest : public KuduTest {
+class YBTabletTest : public YBTest {
  public:
-  explicit KuduTabletTest(const Schema& schema)
+  explicit YBTabletTest(const Schema& schema)
     : schema_(schema.CopyWithColumnIds()),
       client_schema_(schema) {
     // Keep unit tests fast, but only if no one has set the flag explicitly.
@@ -55,7 +55,7 @@ class KuduTabletTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     SetUpTestTablet();
   }
@@ -119,14 +119,14 @@ class KuduTabletTest : public KuduTest {
   gscoped_ptr<TabletHarness> harness_;
 };
 
-class KuduRowSetTest : public KuduTabletTest {
+class YBRowSetTest : public YBTabletTest {
  public:
-  explicit KuduRowSetTest(const Schema& schema)
-    : KuduTabletTest(schema) {
+  explicit YBRowSetTest(const Schema& schema)
+    : YBTabletTest(schema) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
     ASSERT_OK(tablet()->metadata()->CreateRowSet(&rowset_meta_,
                                                        SchemaBuilder(schema_).Build()));
   }

@@ -44,7 +44,7 @@ namespace yb {
 typedef RowProjector NoCodegenRP;
 typedef codegen::RowProjector CodegenRP;
 
-class CodegenTest : public KuduTest {
+class CodegenTest : public YBTest {
  public:
   CodegenTest()
     : random_(SeedRandom()),

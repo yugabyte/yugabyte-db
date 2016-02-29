@@ -45,10 +45,10 @@ inline void FlushSessionOrDie(const sp::shared_ptr<YBSession>& session) {
 }
 
 // Scans in LEADER_ONLY mode, returning stringified rows in the given vector.
-void ScanTableToStrings(KuduTable* table, std::vector<std::string>* row_strings);
+void ScanTableToStrings(YBTable* table, std::vector<std::string>* row_strings);
 
 // Count the number of rows in the table in LEADER_ONLY mode.
-int64_t CountTableRows(KuduTable* table);
+int64_t CountTableRows(YBTable* table);
 
 void ScanToStrings(YBScanner* scanner, std::vector<std::string>* row_strings);
 

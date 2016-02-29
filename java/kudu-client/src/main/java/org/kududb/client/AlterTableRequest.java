@@ -34,7 +34,7 @@ class AlterTableRequest extends KuduRpc<AlterTableResponse> {
   private final String name;
   private final AlterTableRequestPB.Builder builder;
 
-  AlterTableRequest(KuduTable masterTable, String name, AlterTableOptions ato) {
+  AlterTableRequest(YBTable masterTable, String name, AlterTableOptions ato) {
     super(masterTable);
     this.name = name;
     this.builder = ato.pb;

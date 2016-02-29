@@ -40,7 +40,7 @@ class BlockCacheHandle;
 // Provides a singleton and LRU cache for CFile blocks.
 class BlockCache {
  public:
-  // BlockId refers to the unique identifier for a Kudu block, that is, for an
+  // BlockId refers to the unique identifier for a YB block, that is, for an
   // entire CFile. This is different than the block cache's notion of a block,
   // which is just a portion of a CFile.
   typedef BlockId FileId;

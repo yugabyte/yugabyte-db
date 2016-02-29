@@ -33,7 +33,7 @@ METRIC_DECLARE_gauge_uint64(threads_running);
 
 namespace yb {
 
-class EMCTest : public KuduTest {
+class EMCTest : public YBTest {
  public:
   EMCTest() {
     // Hard-coded RPC ports for the masters. This is safe, as this unit test

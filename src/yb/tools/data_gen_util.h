@@ -23,7 +23,7 @@
 #include <stdint.h>
 
 namespace yb {
-class KuduPartialRow;
+class YBPartialRow;
 class Random;
 
 namespace client {
@@ -40,12 +40,12 @@ namespace tools {
 void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
-                        KuduPartialRow* row);
+                        YBPartialRow* row);
 
 // Generate row data for an arbitrary schema. Initial column value determined
 // by the value of 'record_id'.
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
-                        Random* random, KuduPartialRow* row);
+                        Random* random, YBPartialRow* row);
 
 } // namespace tools
 } // namespace yb

@@ -42,7 +42,7 @@ namespace yb {
 using debug::ScopedLeakCheckDisabler;
 using std::vector;
 
-class MultiThreadedMetricsTest : public KuduTest {
+class MultiThreadedMetricsTest : public YBTest {
  public:
   static void RegisterCounters(const scoped_refptr<MetricEntity>& metric_entity,
                                const string& name_prefix, int num_counters);

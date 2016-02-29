@@ -54,9 +54,9 @@ DECLARE_bool(use_hybrid_clock);
 
 namespace yb {
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBError;
 using client::YBInsert;
 using client::YBRowResult;
@@ -64,8 +64,8 @@ using client::YBScanner;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSession;
-using client::KuduTable;
-using client::KuduTableAlterer;
+using client::YBTable;
+using client::YBTableAlterer;
 using client::YBTableCreator;
 using client::YBUpdate;
 using client::YBValue;
@@ -79,15 +79,15 @@ using std::vector;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class AlterTableTest : public KuduTest {
+class AlterTableTest : public YBTest {
  public:
   AlterTableTest()
     : stop_threads_(false),
       inserted_idx_(0) {
 
     YBSchemaBuilder b;
-    b.AddColumn("c0")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("c1")->Type(KuduColumnSchema::INT32)->NotNull();
+    b.AddColumn("c0")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("c1")->Type(YBColumnSchema::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
 
     FLAGS_enable_data_block_fsync = false; // Keep unit tests fast.
@@ -102,7 +102,7 @@ class AlterTableTest : public KuduTest {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     MiniClusterOptions opts;
     opts.num_tablet_servers = num_replicas();
@@ -192,8 +192,8 @@ class AlterTableTest : public KuduTest {
                          const string& column_name,
                          int32_t default_value,
                          const MonoDelta& timeout) {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
-    table_alterer->AddColumn(column_name)->Type(KuduColumnSchema::INT32)->
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(table_name));
+    table_alterer->AddColumn(column_name)->Type(YBColumnSchema::INT32)->
       NotNull()->Default(YBValue::FromInt(default_value));
     return table_alterer->timeout(timeout)->Alter();
   }
@@ -217,9 +217,9 @@ class AlterTableTest : public KuduTest {
   void ScannerThread();
 
   Status CreateSplitTable(const string& table_name) {
-    vector<const KuduPartialRow*> split_rows;
+    vector<const YBPartialRow*> split_rows;
     for (int32_t i = 1; i < 10; i++) {
-      KuduPartialRow* row = schema_.NewRow();
+      YBPartialRow* row = schema_.NewRow();
       CHECK_OK(row->SetInt32(0, i * 100));
       split_rows.push_back(row);
     }
@@ -237,7 +237,7 @@ class AlterTableTest : public KuduTest {
   static const char *kTableName;
 
   gscoped_ptr<MiniCluster> cluster_;
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
 
   YBSchema schema_;
 
@@ -283,7 +283,7 @@ TEST_F(AlterTableTest, TestAddExistingColumn) {
 
 // Verify that adding a NOT NULL column without defaults will return an error.
 //
-// This doesn't use the KuduClient because it's trying to make an invalid request.
+// This doesn't use the YBClient because it's trying to make an invalid request.
 // Our APIs for the client are designed such that it's impossible to send such
 // a request.
 TEST_F(AlterTableTest, TestAddNotNullableColumnWithoutDefaults) {
@@ -314,8 +314,8 @@ TEST_F(AlterTableTest, TestAddNullableColumnWithoutDefault) {
   ASSERT_OK(tablet_peer_->tablet()->Flush());
 
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new")->Type(KuduColumnSchema::INT32);
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    table_alterer->AddColumn("new")->Type(YBColumnSchema::INT32);
     ASSERT_OK(table_alterer->Alter());
   }
 
@@ -407,7 +407,7 @@ TEST_F(AlterTableTest, TestGetSchemaAfterAlterTable) {
 
 void AlterTableTest::InsertRows(int start_row, int num_rows) {
   shared_ptr<YBSession> session = client_->NewSession();
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15 * 1000);
   CHECK_OK(client_->OpenTable(kTableName, &table));
@@ -438,7 +438,7 @@ void AlterTableTest::InsertRows(int start_row, int num_rows) {
 void AlterTableTest::UpdateRow(int32_t row_key,
                                const map<string, int32_t>& updates) {
   shared_ptr<YBSession> session = client_->NewSession();
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(client_->OpenTable(kTableName, &table));
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15 * 1000);
@@ -454,7 +454,7 @@ void AlterTableTest::UpdateRow(int32_t row_key,
 }
 
 void AlterTableTest::ScanToStrings(vector<string>* rows) {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(client_->OpenTable(kTableName, &table));
   ScanTableToStrings(table.get(), rows);
   std::sort(rows->begin(), rows->end());
@@ -464,10 +464,10 @@ void AlterTableTest::ScanToStrings(vector<string>* rows) {
 // Note that the 'start_row' here is not a row key, but the pre-transformation row
 // key (InsertRows swaps endianness so that we random-write instead of sequential-write)
 void AlterTableTest::VerifyRows(int start_row, int num_rows, VerifyPattern pattern) {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(client_->OpenTable(kTableName, &table));
   YBScanner scanner(table.get());
-  CHECK_OK(scanner.SetSelection(KuduClient::LEADER_ONLY));
+  CHECK_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
   CHECK_OK(scanner.Open());
 
   int verified = 0;
@@ -524,7 +524,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")
             ->Alter());
 
@@ -537,7 +537,7 @@ TEST_F(AlterTableTest, TestDropAndAddNewColumn) {
 // Tests that a renamed table can still be altered. This is a regression test, we used to not carry
 // over column ids after a table rename.
 TEST_F(AlterTableTest, TestRenameTableAndAdd) {
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   string new_name = "someothername";
   ASSERT_OK(table_alterer->RenameTo(new_name)
             ->Alter());
@@ -565,7 +565,7 @@ TEST_F(AlterTableTest, TestBootstrapAfterAlters) {
   ASSERT_EQ("(int32 c0=16777216, int32 c1=10002, int32 c2=12345)", rows[1]);
 
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   NO_FATALS(ScanToStrings(&rows));
@@ -620,7 +620,7 @@ TEST_F(AlterTableTest, TestCompactAfterUpdatingRemovedColumn) {
 
   // Drop c1.
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   NO_FATALS(ScanToStrings(&rows));
@@ -656,7 +656,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterUpdatingRemovedColumn) {
 
   // Drop c1.
   LOG(INFO) << "Dropping c1";
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1") ->Alter());
 
   NO_FATALS(ScanToStrings(&rows));
@@ -758,7 +758,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
 
   // Drop c2.
   LOG(INFO) << "Dropping c2";
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c2")->Alter());
 
   NO_FATALS(ScanToStrings(&rows));
@@ -787,7 +787,7 @@ TEST_F(AlterTableTest, TestMajorCompactDeltasAfterAddUpdateRemoveColumn) {
 // updateable)
 void AlterTableTest::InserterThread() {
   shared_ptr<YBSession> session = client_->NewSession();
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15 * 1000);
 
@@ -817,7 +817,7 @@ void AlterTableTest::InserterThread() {
 // updates across the previously inserted rows.
 void AlterTableTest::UpdaterThread() {
   shared_ptr<YBSession> session = client_->NewSession();
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
   session->SetTimeoutMillis(15 * 1000);
 
@@ -852,7 +852,7 @@ void AlterTableTest::UpdaterThread() {
 // Thread which loops reading data from the table.
 // No verification is performed.
 void AlterTableTest::ScannerThread() {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(client_->OpenTable(kTableName, &table));
   while (!stop_threads_.Load()) {
     YBScanner scanner(table.get());
@@ -927,7 +927,7 @@ TEST_F(AlterTableTest, TestInsertAfterAlterTable) {
   // Add a column, and immediately try to insert a row including that
   // new column.
   ASSERT_OK(AddNewI32Column(kSplitTableName, "new-i32", 10));
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kSplitTableName, &table));
   gscoped_ptr<YBInsert> insert(table->NewInsert());
   ASSERT_OK(insert->mutable_row()->SetInt32("c0", 1));
@@ -966,9 +966,9 @@ TEST_F(AlterTableTest, TestMultipleAlters) {
 
   // Issue a bunch of new alters without waiting for them to finish.
   for (int i = 0; i < kNumNewCols; i++) {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kSplitTableName));
     table_alterer->AddColumn(strings::Substitute("new_col$0", i))
-      ->Type(KuduColumnSchema::INT32)->NotNull()
+      ->Type(YBColumnSchema::INT32)->NotNull()
       ->Default(YBValue::FromInt(kDefaultValue));
     ASSERT_OK(table_alterer->wait(false)->Alter());
   }
@@ -990,7 +990,7 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_MATCHES_INDEX);
 
   LOG(INFO) << "Dropping and adding back c1";
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer->DropColumn("c1")->Alter());
 
   ASSERT_OK(AddNewI32Column(kTableName, "c1", 0xdeadbeef));

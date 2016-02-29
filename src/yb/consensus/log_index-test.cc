@@ -27,10 +27,10 @@ namespace log {
 using consensus::MakeOpId;
 using consensus::OpId;
 
-class LogIndexTest : public KuduTest {
+class LogIndexTest : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     index_ = new LogIndex(GetTestDataDirectory());
   }
 

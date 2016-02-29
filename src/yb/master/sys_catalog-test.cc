@@ -43,10 +43,10 @@ using yb::rpc::RpcController;
 namespace yb {
 namespace master {
 
-class SysCatalogTest : public KuduTest {
+class SysCatalogTest : public YBTest {
  protected:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     // Start master
     mini_master_.reset(new MiniMaster(Env::Default(), GetTestPath("Master"), 0));
@@ -62,7 +62,7 @@ class SysCatalogTest : public KuduTest {
 
   virtual void TearDown() OVERRIDE {
     mini_master_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   shared_ptr<Messenger> client_messenger_;

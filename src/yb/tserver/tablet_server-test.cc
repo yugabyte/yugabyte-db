@@ -634,7 +634,7 @@ TEST_F(TabletServerTest, TestInvalidWriteRequest_BadSchema) {
     RowOperationsPB* data = req.mutable_row_operations();
     ASSERT_OK(SchemaToPB(bad_schema, req.mutable_schema()));
 
-    KuduPartialRow row(&bad_schema);
+    YBPartialRow row(&bad_schema);
     CHECK_OK(row.SetInt32("key", 1234));
     CHECK_OK(row.SetInt32("int_val", 5678));
     CHECK_OK(row.SetStringCopy("string_val", "hello world via RPC"));
@@ -961,7 +961,7 @@ TEST_F(TabletServerTest, TestScan) {
     DrainScannerToStrings(resp.scanner_id(), schema_, &results));
   ASSERT_EQ(num_rows, results.size());
 
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   for (int i = 0; i < num_rows; i++) {
     BuildTestRow(i, &row);
     string expected = "(" + row.ToString() + ")";
@@ -1232,7 +1232,7 @@ TEST_F(TabletServerTest, TestSnapshotScan_LastRow) {
     ASSERT_EQ(num_rows, results.size());
 
     // Verify that we get the rows back in order.
-    KuduPartialRow row(&projection);
+    YBPartialRow row(&projection);
     for (int j = 0; j < num_rows; j++) {
       ASSERT_OK(row.SetInt32(0, j * 2));
       ASSERT_OK(row.SetStringCopy(1, StringPrintf("hello %d", j)));
@@ -2032,10 +2032,10 @@ TEST_F(TabletServerTest, TestWriteOutOfBounds) {
   PartitionSchema partition_schema;
   CHECK_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  KuduPartialRow start_row(&schema);
+  YBPartialRow start_row(&schema);
   ASSERT_OK(start_row.SetInt32("key", 10));
 
-  KuduPartialRow end_row(&schema);
+  YBPartialRow end_row(&schema);
   ASSERT_OK(end_row.SetInt32("key", 20));
 
   vector<Partition> partitions;

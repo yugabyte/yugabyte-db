@@ -25,7 +25,7 @@
 
 namespace yb {
 
-class RandomTest : public KuduTest {
+class RandomTest : public YBTest {
  public:
   RandomTest()
       : rng_(SeedRandom()) {

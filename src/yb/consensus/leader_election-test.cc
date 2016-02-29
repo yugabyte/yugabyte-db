@@ -79,7 +79,7 @@ class FromMapPeerProxyFactory : public PeerProxyFactory {
   const ProxyMap* const proxy_map_;
 };
 
-class LeaderElectionTest : public KuduTest {
+class LeaderElectionTest : public YBTest {
  public:
   LeaderElectionTest()
     : tablet_id_("test-tablet"),
@@ -423,7 +423,7 @@ TEST_F(LeaderElectionTest, TestFailToCreateProxy) {
 // VoteCounterTest
 ////////////////////////////////////////
 
-class VoteCounterTest : public KuduTest {
+class VoteCounterTest : public YBTest {
  protected:
   static void AssertUndecided(const VoteCounter& counter);
   static void AssertVoteCount(const VoteCounter& counter, int yes_votes, int no_votes);

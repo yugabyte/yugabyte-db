@@ -66,9 +66,9 @@ using std::vector;
 
 using google::protobuf::RepeatedPtrField;
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduTabletServer;
+using client::YBTabletServer;
 using consensus::ConsensusServiceProxy;
 using consensus::RaftPeerPB;
 using master::ListTabletServersRequestPB;
@@ -129,7 +129,7 @@ class ClusterAdminClient {
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
-  client::sp::shared_ptr<KuduClient> yb_client_;
+  client::sp::shared_ptr<YBClient> yb_client_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };

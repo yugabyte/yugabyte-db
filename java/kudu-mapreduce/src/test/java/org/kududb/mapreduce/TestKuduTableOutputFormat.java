@@ -25,28 +25,28 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestKuduTableOutputFormat extends BaseKuduTest {
+public class TestYBTableOutputFormat extends BaseYBTest {
 
   private static final String TABLE_NAME =
-      TestKuduTableOutputFormat.class.getName() + "-" + System.currentTimeMillis();
+      TestYBTableOutputFormat.class.getName() + "-" + System.currentTimeMillis();
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
   }
 
   @Test
   public void test() throws Exception {
     createTable(TABLE_NAME, getBasicSchema(), new CreateTableOptions());
 
-    KuduTableOutputFormat output = new KuduTableOutputFormat();
+    YBTableOutputFormat output = new YBTableOutputFormat();
     Configuration conf = new Configuration();
-    conf.set(KuduTableOutputFormat.MASTER_ADDRESSES_KEY, getMasterAddresses());
-    conf.set(KuduTableOutputFormat.OUTPUT_TABLE_KEY, TABLE_NAME);
+    conf.set(YBTableOutputFormat.MASTER_ADDRESSES_KEY, getMasterAddresses());
+    conf.set(YBTableOutputFormat.OUTPUT_TABLE_KEY, TABLE_NAME);
     output.setConf(conf);
 
-    String multitonKey = conf.get(KuduTableOutputFormat.MULTITON_KEY);
-    KuduTable table = KuduTableOutputFormat.getKuduTable(multitonKey);
+    String multitonKey = conf.get(YBTableOutputFormat.MULTITON_KEY);
+    YBTable table = YBTableOutputFormat.getYBTable(multitonKey);
     assertNotNull(table);
 
     Insert insert = table.newInsert();

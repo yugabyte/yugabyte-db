@@ -59,7 +59,7 @@ typedef vector<pair<uint64_t, int64_t> > SnapsAndCounts;
 // facilitates checking for data integrity.
 class LinkedListTester {
  public:
-  LinkedListTester(client::sp::shared_ptr<client::KuduClient> client,
+  LinkedListTester(client::sp::shared_ptr<client::YBClient> client,
                    std::string table_name, int num_chains, int num_tablets,
                    int num_replicas, bool enable_mutation)
       : verify_projection_(
@@ -73,10 +73,10 @@ class LinkedListTester {
         client_(std::move(client)) {
     client::YBSchemaBuilder b;
 
-    b.AddColumn(kKeyColumnName)->Type(client::KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn(kLinkColumnName)->Type(client::KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn(kInsertTsColumnName)->Type(client::KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn(kUpdatedColumnName)->Type(client::KuduColumnSchema::BOOL)->NotNull()
+    b.AddColumn(kKeyColumnName)->Type(client::YBColumnSchema::INT64)->NotNull()->PrimaryKey();
+    b.AddColumn(kLinkColumnName)->Type(client::YBColumnSchema::INT64)->NotNull();
+    b.AddColumn(kInsertTsColumnName)->Type(client::YBColumnSchema::INT64)->NotNull();
+    b.AddColumn(kUpdatedColumnName)->Type(client::YBColumnSchema::BOOL)->NotNull()
       ->Default(client::YBValue::FromBool(false));
     CHECK_OK(b.Build(&schema_));
   }
@@ -146,7 +146,7 @@ class LinkedListTester {
 
   // Generates a vector of keys for the table such that each tablet is
   // responsible for an equal fraction of the int64 key space.
-  std::vector<const KuduPartialRow*> GenerateSplitRows(const client::YBSchema& schema);
+  std::vector<const YBPartialRow*> GenerateSplitRows(const client::YBSchema& schema);
 
   // Generate a vector of ints which form the split keys.
   std::vector<int64_t> GenerateSplitInts();
@@ -162,7 +162,7 @@ class LinkedListTester {
   const int num_replicas_;
   const bool enable_mutation_;
   HdrHistogram latency_histogram_;
-  client::sp::shared_ptr<client::KuduClient> client_;
+  client::sp::shared_ptr<client::YBClient> client_;
   SnapsAndCounts sampled_timestamps_and_counts_;
 
  private:
@@ -192,7 +192,7 @@ class LinkedListChainGenerator {
     return (implicit_cast<uint64_t>(rand_.Next()) << 32) | rand_.Next();
   }
 
-  Status GenerateNextInsert(client::KuduTable* table, client::YBSession* session) {
+  Status GenerateNextInsert(client::YBTable* table, client::YBSession* session) {
     // Encode the chain index in the lowest 8 bits so that different chains never
     // intersect.
     int64_t this_key = (Rand64() << 8) | chain_idx_;
@@ -232,7 +232,7 @@ class ScopedRowUpdater {
 
   // Create and start a new ScopedUpdater. 'table' must remain valid for
   // the lifetime of this object.
-  explicit ScopedRowUpdater(client::KuduTable* table)
+  explicit ScopedRowUpdater(client::YBTable* table)
     : table_(table),
       to_update_(kint64max) { // no limit
     CHECK_OK(Thread::Create("linked_list-test", "updater",
@@ -269,7 +269,7 @@ class ScopedRowUpdater {
     FlushSessionOrDie(session);
   }
 
-  client::KuduTable* table_;
+  client::YBTable* table_;
   BlockingQueue<int64_t> to_update_;
   scoped_refptr<Thread> updater_;
 };
@@ -392,11 +392,11 @@ class LinkedListVerifier {
 // LinkedListTester
 /////////////////////////////////////////////////////////////
 
-std::vector<const KuduPartialRow*> LinkedListTester::GenerateSplitRows(
+std::vector<const YBPartialRow*> LinkedListTester::GenerateSplitRows(
     const client::YBSchema& schema) {
-  std::vector<const KuduPartialRow*> split_keys;
+  std::vector<const YBPartialRow*> split_keys;
   for (int64_t val : GenerateSplitInts()) {
-    KuduPartialRow* row = schema.NewRow();
+    YBPartialRow* row = schema.NewRow();
     CHECK_OK(row->SetInt64(kKeyColumnName, val));
     split_keys.push_back(row);
   }
@@ -430,7 +430,7 @@ Status LinkedListTester::LoadLinkedList(
     int64_t *written_count) {
 
   sampled_timestamps_and_counts_.clear();
-  client::sp::shared_ptr<client::KuduTable> table;
+  client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name_, &table),
                         "Could not open table " + table_name_);
 
@@ -559,7 +559,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
     const uint64_t snapshot_timestamp, const int64_t expected, bool log_errors,
     const boost::function<Status(const std::string&)>& cb, int64_t* verified_count) {
 
-  client::sp::shared_ptr<client::KuduTable> table;
+  client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table));
 
   string snapshot_str;
@@ -595,9 +595,9 @@ Status LinkedListTester::VerifyLinkedListRemote(
     // If we're doing a snapshot scan with a big enough cluster, call the callback on the scanner's
     // tserver. Do this only once.
     if (snapshot_timestamp != kNoSnapshot && !cb_called) {
-      client::KuduTabletServer* kts_ptr;
+      client::YBTabletServer* kts_ptr;
       scanner.GetCurrentServer(&kts_ptr);
-      gscoped_ptr<client::KuduTabletServer> kts(kts_ptr);
+      gscoped_ptr<client::YBTabletServer> kts(kts_ptr);
       const std::string down_ts = kts->uuid();
       LOG(INFO) << "Calling callback on tserver " << down_ts;
       RETURN_NOT_OK(cb(down_ts));

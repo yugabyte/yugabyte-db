@@ -176,8 +176,8 @@ cdef class Client:
     """
 
     cdef:
-        shared_ptr[KuduClient] client
-        KuduClient* cp
+        shared_ptr[YBClient] client
+        YBClient* cp
 
     cdef readonly:
         list master_addrs
@@ -464,7 +464,7 @@ cdef class Table:
     """
 
     cdef:
-        shared_ptr[KuduTable] table
+        shared_ptr[YBTable] table
 
     cdef readonly:
         object _name
@@ -560,7 +560,7 @@ cdef class Table:
         result.scanner = new YBScanner(self.ptr())
         return result
 
-    cdef inline KuduTable* ptr(self):
+    cdef inline YBTable* ptr(self):
         return self.table.get()
 
 
@@ -1097,7 +1097,7 @@ cdef class YBError:
 cdef class WriteOperation:
     cdef:
         Table table
-        KuduPartialRow* row
+        YBPartialRow* row
         bint applied
 
     def __cinit__(self, Table table):
@@ -1196,7 +1196,7 @@ cdef class Update(WriteOperation):
 
 cdef class Delete(WriteOperation):
     cdef:
-        KuduDelete* op
+        YBDelete* op
 
     def __cinit__(self, Table table):
         self.table = table

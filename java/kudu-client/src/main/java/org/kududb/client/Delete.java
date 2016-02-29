@@ -30,7 +30,7 @@ import org.kududb.annotations.InterfaceStability;
 @InterfaceStability.Evolving
 public class Delete extends Operation {
 
-  Delete(KuduTable table) {
+  Delete(YBTable table) {
     super(table);
   }
 

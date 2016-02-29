@@ -160,8 +160,8 @@ public:
     int64 num_keys,
     int num_action_threads,
     int num_extra_threads,
-    KuduClient* client,
-    KuduTable* table);
+    YBClient* client,
+    YBTable* table);
 
   virtual void Start();
   virtual void WaitForCompletion();
@@ -182,8 +182,8 @@ protected:
   string description_;
   const int64 num_keys_;
   const int num_action_threads_;
-  KuduClient* client_;
-  KuduTable* table_;
+  YBClient* client_;
+  YBTable* table_;
 
   gscoped_ptr<ThreadPool> thread_pool_;
   CountDownLatch running_threads_latch_;
@@ -194,8 +194,8 @@ MultiThreadedAction::MultiThreadedAction(
     int64 num_keys,
     int num_action_threads,
     int num_extra_threads,
-    KuduClient* client,
-    KuduTable* table)
+    YBClient* client,
+    YBTable* table)
   : description_(description),
     num_keys_(num_keys),
     num_action_threads_(num_action_threads),
@@ -229,7 +229,7 @@ class MultiThreadedWriter : public MultiThreadedAction {
 
 // client and table are managed by the caller and their lifetime should be a superset of this
   // object's lifetime.
-  MultiThreadedWriter(int64 num_keys, int num_writer_threads, KuduClient* client, KuduTable* table);
+  MultiThreadedWriter(int64 num_keys, int num_writer_threads, YBClient* client, YBTable* table);
 
   virtual void Start() OVERRIDE;
   atomic_long* InsertionPoint() { return &inserted_up_to_inclusive_; }
@@ -253,8 +253,8 @@ class MultiThreadedWriter : public MultiThreadedAction {
 MultiThreadedWriter::MultiThreadedWriter(
     int64 num_keys,
     int num_writer_threads,
-    KuduClient* client,
-    KuduTable* table)
+    YBClient* client,
+    YBTable* table)
   : MultiThreadedAction("writers", num_keys, num_writer_threads, 2, client, table),
     next_key_(0),
     inserted_up_to_inclusive_(-1) {
@@ -346,8 +346,8 @@ class MultiThreadedReader : public MultiThreadedAction {
   MultiThreadedReader(
     int64 num_keys,
     int num_reader_threads,
-    KuduClient* client,
-    KuduTable* table,
+    YBClient* client,
+    YBTable* table,
     atomic_long* insertion_point,
     const KeyIndexSet* inserted_keys,
     const KeyIndexSet* failed_keys);
@@ -369,8 +369,8 @@ class MultiThreadedReader : public MultiThreadedAction {
 MultiThreadedReader::MultiThreadedReader(
     int64 num_keys,
     int num_reader_threads,
-    KuduClient* client,
-    KuduTable* table,
+    YBClient* client,
+    YBTable* table,
     atomic_long* insertion_point,
     const KeyIndexSet* inserted_keys,
     const KeyIndexSet* failed_keys)
@@ -430,7 +430,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
 
     uint64_t read_ts = client_->GetLatestObservedTimestamp();
     YBScanner scanner(table_);
-    scanner.SetSelection(KuduClient::ReplicaSelection::LEADER_ONLY);
+    scanner.SetSelection(YBClient::ReplicaSelection::LEADER_ONLY);
     string key_str(GetKeyByIndex(key_index));
     CHECK_OK(scanner.SetProjectedColumns({ "k", "v" }));
     CHECK_OK(
@@ -446,7 +446,7 @@ void MultiThreadedReader::RunActionThread(int readerIndex) {
       continue;
     }
 
-    vector<KuduScanBatch::RowPtr> rows;
+    vector<YBScanBatch::RowPtr> rows;
     scanner.NextBatch(&rows);
     if (rows.size() != 1) {
       LOG(ERROR) << "Found an invalid number of rows for key #" << key_index << ": "
@@ -500,7 +500,7 @@ int main(int argc, char* argv[]) {
   yb::InitGoogleLoggingSafe(argv[0]);
 
   for (int i = 0; i < FLAGS_yb_load_test_num_iter; ++i) {
-    shared_ptr<KuduClient> client;
+    shared_ptr<YBClient> client;
     CHECK_OK(YBClientBuilder()
       .add_master_server_addr(FLAGS_yb_load_test_master_addresses)
       .default_rpc_timeout(MonoDelta::FromSeconds(600))  // for debugging
@@ -522,8 +522,8 @@ int main(int argc, char* argv[]) {
 
     LOG(INFO) << "Building schema";
     YBSchemaBuilder schemaBuilder;
-    schemaBuilder.AddColumn("k")->PrimaryKey()->Type(KuduColumnSchema::STRING)->NotNull();
-    schemaBuilder.AddColumn("v")->Type(KuduColumnSchema::STRING)->NotNull();
+    schemaBuilder.AddColumn("k")->PrimaryKey()->Type(YBColumnSchema::STRING)->NotNull();
+    schemaBuilder.AddColumn("v")->Type(YBColumnSchema::STRING)->NotNull();
     YBSchema schema;
     CHECK_OK(schemaBuilder.Build(&schema));
 
@@ -540,7 +540,7 @@ int main(int argc, char* argv[]) {
       CHECK_OK(table_creation_status);
     }
 
-    shared_ptr<KuduTable> table;
+    shared_ptr<YBTable> table;
     CHECK_OK(client->OpenTable(table_name, &table));
 
     LOG(INFO) << "Starting load test";

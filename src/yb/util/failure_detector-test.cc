@@ -43,10 +43,10 @@ static const int kFailureMonitorStddevMillis = 10;
 static const char* kNodeName = "node-1";
 static const char* kTestTabletName = "test-tablet";
 
-class FailureDetectorTest : public KuduTest {
+class FailureDetectorTest : public YBTest {
  public:
   FailureDetectorTest()
-    : KuduTest(),
+    : YBTest(),
       latch_(1),
       monitor_(new RandomizedFailureMonitor(SeedRandom(),
                                             kFailureMonitorMeanMillis,

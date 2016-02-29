@@ -33,7 +33,7 @@ public class GetTableSchemaRequest extends KuduRpc<GetTableSchemaResponse> {
   private final String name;
 
 
-  GetTableSchemaRequest(KuduTable masterTable, String name) {
+  GetTableSchemaRequest(YBTable masterTable, String name) {
     super(masterTable);
     this.name = name;
   }

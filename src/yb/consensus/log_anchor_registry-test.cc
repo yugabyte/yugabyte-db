@@ -28,7 +28,7 @@ using strings::Substitute;
 namespace yb {
 namespace log {
 
-class LogAnchorRegistryTest : public KuduTest {
+class LogAnchorRegistryTest : public YBTest {
 };
 
 TEST_F(LogAnchorRegistryTest, TestUpdateRegistration) {

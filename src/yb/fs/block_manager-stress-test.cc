@@ -74,7 +74,7 @@ namespace fs {
 //
 // TODO: Don't delete all blocks ala "permgen".
 template <typename T>
-class BlockManagerStressTest : public KuduTest {
+class BlockManagerStressTest : public YBTest {
  public:
   BlockManagerStressTest() :
     rand_seed_(SeedRandom()),

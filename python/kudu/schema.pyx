@@ -510,7 +510,7 @@ cdef class Schema:
             raise IndexError('Column index {0} is not in range'
                              .format(i))
 
-        result.schema = new KuduColumnSchema(self.schema.Column(i))
+        result.schema = new YBColumnSchema(self.schema.Column(i))
 
         return result
 

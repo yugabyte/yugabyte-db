@@ -242,9 +242,9 @@ gscoped_ptr<RpcLineItemDAO> TpchRealWorld::GetInittedDAO() {
       FLAGS_tpch_num_inserters;
 
   YBSchema schema(tpch::CreateLineItemSchema());
-  vector<const KuduPartialRow*> split_rows;
+  vector<const YBPartialRow*> split_rows;
   for (int64_t i = 1; i < FLAGS_tpch_num_inserters; i++) {
-    KuduPartialRow* row = schema.NewRow();
+    YBPartialRow* row = schema.NewRow();
     CHECK_OK(row->SetInt64(tpch::kOrderKeyColName, i * increment));
     CHECK_OK(row->SetInt32(tpch::kLineNumberColName, 0));
     split_rows.push_back(row);
@@ -264,7 +264,7 @@ void TpchRealWorld::LoadLineItemsThread(int i) {
   gscoped_ptr<RpcLineItemDAO> dao = GetInittedDAO();
   LineItemTsvImporter importer(GetNthLineItemFileName(i));
 
-  boost::function<void(KuduPartialRow*)> f =
+  boost::function<void(YBPartialRow*)> f =
       boost::bind(&LineItemTsvImporter::GetNextLine, &importer, _1);
   while (importer.HasNextLine() && !stop_threads_.Load()) {
     dao->WriteLine(f);

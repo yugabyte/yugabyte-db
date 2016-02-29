@@ -44,7 +44,7 @@ inline Status FindColumn(const Schema& schema, const Slice& col_name, int* idx) 
 }
 } // anonymous namespace
 
-KuduPartialRow::KuduPartialRow(const Schema* schema)
+YBPartialRow::YBPartialRow(const Schema* schema)
   : schema_(schema) {
   DCHECK(schema_->initialized());
   size_t column_bitmap_size = BitmapSize(schema_->num_columns());
@@ -65,14 +65,14 @@ KuduPartialRow::KuduPartialRow(const Schema* schema)
     *schema_, row_data_, ContiguousRowHelper::null_bitmap_size(*schema_));
 }
 
-KuduPartialRow::~KuduPartialRow() {
+YBPartialRow::~YBPartialRow() {
   DeallocateOwnedStrings();
   // Both the row data and bitmap came from the same allocation.
   // The bitmap is at the start of it.
   delete [] isset_bitmap_;
 }
 
-KuduPartialRow::KuduPartialRow(const KuduPartialRow& other)
+YBPartialRow::YBPartialRow(const YBPartialRow& other)
     : schema_(other.schema_) {
   size_t column_bitmap_size = BitmapSize(schema_->num_columns());
   size_t row_size = ContiguousRowHelper::row_size(*schema_);
@@ -96,7 +96,7 @@ KuduPartialRow::KuduPartialRow(const KuduPartialRow& other)
   }
 }
 
-KuduPartialRow& KuduPartialRow::operator=(KuduPartialRow other) {
+YBPartialRow& YBPartialRow::operator=(YBPartialRow other) {
   std::swap(schema_, other.schema_);
   std::swap(isset_bitmap_, other.isset_bitmap_);
   std::swap(owned_strings_bitmap_, other.owned_strings_bitmap_);
@@ -105,7 +105,7 @@ KuduPartialRow& KuduPartialRow::operator=(KuduPartialRow other) {
 }
 
 template<typename T>
-Status KuduPartialRow::Set(const Slice& col_name,
+Status YBPartialRow::Set(const Slice& col_name,
                            const typename T::cpp_type& val,
                            bool owned) {
   int col_idx;
@@ -114,7 +114,7 @@ Status KuduPartialRow::Set(const Slice& col_name,
 }
 
 template<typename T>
-Status KuduPartialRow::Set(int col_idx,
+Status YBPartialRow::Set(int col_idx,
                            const typename T::cpp_type& val,
                            bool owned) {
   const ColumnSchema& col = schema_->column(col_idx);
@@ -146,7 +146,7 @@ Status KuduPartialRow::Set(int col_idx,
   return Status::OK();
 }
 
-Status KuduPartialRow::Set(int32_t column_idx, const uint8_t* val) {
+Status YBPartialRow::Set(int32_t column_idx, const uint8_t* val) {
   const ColumnSchema& column_schema = schema()->column(column_idx);
 
   switch (column_schema.type_info()->type()) {
@@ -198,7 +198,7 @@ Status KuduPartialRow::Set(int32_t column_idx, const uint8_t* val) {
   return Status::OK();
 }
 
-void KuduPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
+void YBPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col) {
   if (BitmapTest(owned_strings_bitmap_, col_idx)) {
     ContiguousRow row(schema_, row_data_);
     const Slice* dst;
@@ -213,7 +213,7 @@ void KuduPartialRow::DeallocateStringIfSet(int col_idx, const ColumnSchema& col)
   }
 }
 
-void KuduPartialRow::DeallocateOwnedStrings() {
+void YBPartialRow::DeallocateOwnedStrings() {
   for (int i = 0; i < schema_->num_columns(); i++) {
     DeallocateStringIfSet(i, schema_->column(i));
   }
@@ -223,82 +223,82 @@ void KuduPartialRow::DeallocateOwnedStrings() {
 // Setters
 //------------------------------------------------------------
 
-Status KuduPartialRow::SetBool(const Slice& col_name, bool val) {
+Status YBPartialRow::SetBool(const Slice& col_name, bool val) {
   return Set<TypeTraits<BOOL> >(col_name, val);
 }
-Status KuduPartialRow::SetInt8(const Slice& col_name, int8_t val) {
+Status YBPartialRow::SetInt8(const Slice& col_name, int8_t val) {
   return Set<TypeTraits<INT8> >(col_name, val);
 }
-Status KuduPartialRow::SetInt16(const Slice& col_name, int16_t val) {
+Status YBPartialRow::SetInt16(const Slice& col_name, int16_t val) {
   return Set<TypeTraits<INT16> >(col_name, val);
 }
-Status KuduPartialRow::SetInt32(const Slice& col_name, int32_t val) {
+Status YBPartialRow::SetInt32(const Slice& col_name, int32_t val) {
   return Set<TypeTraits<INT32> >(col_name, val);
 }
-Status KuduPartialRow::SetInt64(const Slice& col_name, int64_t val) {
+Status YBPartialRow::SetInt64(const Slice& col_name, int64_t val) {
   return Set<TypeTraits<INT64> >(col_name, val);
 }
-Status KuduPartialRow::SetTimestamp(const Slice& col_name, int64_t val) {
+Status YBPartialRow::SetTimestamp(const Slice& col_name, int64_t val) {
   return Set<TypeTraits<TIMESTAMP> >(col_name, val);
 }
-Status KuduPartialRow::SetFloat(const Slice& col_name, float val) {
+Status YBPartialRow::SetFloat(const Slice& col_name, float val) {
   return Set<TypeTraits<FLOAT> >(col_name, val);
 }
-Status KuduPartialRow::SetDouble(const Slice& col_name, double val) {
+Status YBPartialRow::SetDouble(const Slice& col_name, double val) {
   return Set<TypeTraits<DOUBLE> >(col_name, val);
 }
-Status KuduPartialRow::SetString(const Slice& col_name, const Slice& val) {
+Status YBPartialRow::SetString(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<STRING> >(col_name, val, false);
 }
-Status KuduPartialRow::SetBinary(const Slice& col_name, const Slice& val) {
+Status YBPartialRow::SetBinary(const Slice& col_name, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_name, val, false);
 }
-Status KuduPartialRow::SetBool(int col_idx, bool val) {
+Status YBPartialRow::SetBool(int col_idx, bool val) {
   return Set<TypeTraits<BOOL> >(col_idx, val);
 }
-Status KuduPartialRow::SetInt8(int col_idx, int8_t val) {
+Status YBPartialRow::SetInt8(int col_idx, int8_t val) {
   return Set<TypeTraits<INT8> >(col_idx, val);
 }
-Status KuduPartialRow::SetInt16(int col_idx, int16_t val) {
+Status YBPartialRow::SetInt16(int col_idx, int16_t val) {
   return Set<TypeTraits<INT16> >(col_idx, val);
 }
-Status KuduPartialRow::SetInt32(int col_idx, int32_t val) {
+Status YBPartialRow::SetInt32(int col_idx, int32_t val) {
   return Set<TypeTraits<INT32> >(col_idx, val);
 }
-Status KuduPartialRow::SetInt64(int col_idx, int64_t val) {
+Status YBPartialRow::SetInt64(int col_idx, int64_t val) {
   return Set<TypeTraits<INT64> >(col_idx, val);
 }
-Status KuduPartialRow::SetTimestamp(int col_idx, int64_t val) {
+Status YBPartialRow::SetTimestamp(int col_idx, int64_t val) {
   return Set<TypeTraits<TIMESTAMP> >(col_idx, val);
 }
-Status KuduPartialRow::SetString(int col_idx, const Slice& val) {
+Status YBPartialRow::SetString(int col_idx, const Slice& val) {
   return Set<TypeTraits<STRING> >(col_idx, val, false);
 }
-Status KuduPartialRow::SetBinary(int col_idx, const Slice& val) {
+Status YBPartialRow::SetBinary(int col_idx, const Slice& val) {
   return Set<TypeTraits<BINARY> >(col_idx, val, false);
 }
-Status KuduPartialRow::SetFloat(int col_idx, float val) {
+Status YBPartialRow::SetFloat(int col_idx, float val) {
   return Set<TypeTraits<FLOAT> >(col_idx, val);
 }
-Status KuduPartialRow::SetDouble(int col_idx, double val) {
+Status YBPartialRow::SetDouble(int col_idx, double val) {
   return Set<TypeTraits<DOUBLE> >(col_idx, val);
 }
 
-Status KuduPartialRow::SetBinaryCopy(const Slice& col_name, const Slice& val) {
+Status YBPartialRow::SetBinaryCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<BINARY> >(col_name, val);
 }
-Status KuduPartialRow::SetBinaryCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetBinaryCopy(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<BINARY> >(col_idx, val);
 }
-Status KuduPartialRow::SetStringCopy(const Slice& col_name, const Slice& val) {
+Status YBPartialRow::SetStringCopy(const Slice& col_name, const Slice& val) {
   return SetSliceCopy<TypeTraits<STRING> >(col_name, val);
 }
-Status KuduPartialRow::SetStringCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetStringCopy(int col_idx, const Slice& val) {
   return SetSliceCopy<TypeTraits<STRING> >(col_idx, val);
 }
 
 template<typename T>
-Status KuduPartialRow::SetSliceCopy(const Slice& col_name, const Slice& val) {
+Status YBPartialRow::SetSliceCopy(const Slice& col_name, const Slice& val) {
   auto relocated = new uint8_t[val.size()];
   memcpy(relocated, val.data(), val.size());
   Slice relocated_val(relocated, val.size());
@@ -310,7 +310,7 @@ Status KuduPartialRow::SetSliceCopy(const Slice& col_name, const Slice& val) {
 }
 
 template<typename T>
-Status KuduPartialRow::SetSliceCopy(int col_idx, const Slice& val) {
+Status YBPartialRow::SetSliceCopy(int col_idx, const Slice& val) {
   auto relocated = new uint8_t[val.size()];
   memcpy(relocated, val.data(), val.size());
   Slice relocated_val(relocated, val.size());
@@ -321,13 +321,13 @@ Status KuduPartialRow::SetSliceCopy(int col_idx, const Slice& val) {
   return s;
 }
 
-Status KuduPartialRow::SetNull(const Slice& col_name) {
+Status YBPartialRow::SetNull(const Slice& col_name) {
   int col_idx;
   RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
   return SetNull(col_idx);
 }
 
-Status KuduPartialRow::SetNull(int col_idx) {
+Status YBPartialRow::SetNull(int col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(!col.is_nullable())) {
     return Status::InvalidArgument("column not nullable", col.ToString());
@@ -343,13 +343,13 @@ Status KuduPartialRow::SetNull(int col_idx) {
   return Status::OK();
 }
 
-Status KuduPartialRow::Unset(const Slice& col_name) {
+Status YBPartialRow::Unset(const Slice& col_name) {
   int col_idx;
   RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
   return Unset(col_idx);
 }
 
-Status KuduPartialRow::Unset(int col_idx) {
+Status YBPartialRow::Unset(int col_idx) {
   const ColumnSchema& col = schema_->column(col_idx);
   if (col.type_info()->physical_type() == BINARY) DeallocateStringIfSet(col_idx, col);
   BitmapClear(isset_bitmap_, col_idx);
@@ -363,135 +363,135 @@ Status KuduPartialRow::Unset(int col_idx) {
 //------------------------------------------------------------
 
 template
-Status KuduPartialRow::SetSliceCopy<TypeTraits<STRING> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(int col_idx, const Slice& val);
 
 template
-Status KuduPartialRow::SetSliceCopy<TypeTraits<BINARY> >(int col_idx, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(int col_idx, const Slice& val);
 
 template
-Status KuduPartialRow::SetSliceCopy<TypeTraits<STRING> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<STRING> >(const Slice& col_name, const Slice& val);
 
 template
-Status KuduPartialRow::SetSliceCopy<TypeTraits<BINARY> >(const Slice& col_name, const Slice& val);
+Status YBPartialRow::SetSliceCopy<TypeTraits<BINARY> >(const Slice& col_name, const Slice& val);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT8> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT8> >(int col_idx,
                                               const TypeTraits<INT8>::cpp_type& val,
                                               bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT16> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT16> >(int col_idx,
                                                const TypeTraits<INT16>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT32> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT32> >(int col_idx,
                                                const TypeTraits<INT32>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT64> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<INT64> >(int col_idx,
                                                const TypeTraits<INT64>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<TIMESTAMP> >(
+Status YBPartialRow::Set<TypeTraits<TIMESTAMP> >(
     int col_idx,
     const TypeTraits<TIMESTAMP>::cpp_type& val,
     bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<STRING> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<STRING> >(int col_idx,
                                                 const TypeTraits<STRING>::cpp_type& val,
                                                 bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<BINARY> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<BINARY> >(int col_idx,
                                                 const TypeTraits<BINARY>::cpp_type& val,
                                                 bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<FLOAT> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<FLOAT> >(int col_idx,
                                                const TypeTraits<FLOAT>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<DOUBLE> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<DOUBLE> >(int col_idx,
                                                 const TypeTraits<DOUBLE>::cpp_type& val,
                                                 bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<BOOL> >(int col_idx,
+Status YBPartialRow::Set<TypeTraits<BOOL> >(int col_idx,
                                               const TypeTraits<BOOL>::cpp_type& val,
                                               bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT8> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<INT8> >(const Slice& col_name,
                                               const TypeTraits<INT8>::cpp_type& val,
                                               bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT16> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<INT16> >(const Slice& col_name,
                                                const TypeTraits<INT16>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT32> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<INT32> >(const Slice& col_name,
                                                const TypeTraits<INT32>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<INT64> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<INT64> >(const Slice& col_name,
                                                const TypeTraits<INT64>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<TIMESTAMP> >(
+Status YBPartialRow::Set<TypeTraits<TIMESTAMP> >(
     const Slice& col_name,
     const TypeTraits<TIMESTAMP>::cpp_type& val,
     bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<FLOAT> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<FLOAT> >(const Slice& col_name,
                                                const TypeTraits<FLOAT>::cpp_type& val,
                                                bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<DOUBLE> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<DOUBLE> >(const Slice& col_name,
                                                 const TypeTraits<DOUBLE>::cpp_type& val,
                                                 bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<BOOL> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<BOOL> >(const Slice& col_name,
                                               const TypeTraits<BOOL>::cpp_type& val,
                                               bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<STRING> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<STRING> >(const Slice& col_name,
                                                 const TypeTraits<STRING>::cpp_type& val,
                                                 bool owned);
 
 template
-Status KuduPartialRow::Set<TypeTraits<BINARY> >(const Slice& col_name,
+Status YBPartialRow::Set<TypeTraits<BINARY> >(const Slice& col_name,
                                                 const TypeTraits<BINARY>::cpp_type& val,
                                                 bool owned);
 
 //------------------------------------------------------------
 // Getters
 //------------------------------------------------------------
-bool KuduPartialRow::IsColumnSet(int col_idx) const {
+bool YBPartialRow::IsColumnSet(int col_idx) const {
   DCHECK_GE(col_idx, 0);
   DCHECK_LT(col_idx, schema_->num_columns());
   return BitmapTest(isset_bitmap_, col_idx);
 }
 
-bool KuduPartialRow::IsColumnSet(const Slice& col_name) const {
+bool YBPartialRow::IsColumnSet(const Slice& col_name) const {
   int col_idx;
   CHECK_OK(FindColumn(*schema_, col_name, &col_idx));
   return IsColumnSet(col_idx);
 }
 
-bool KuduPartialRow::IsNull(int col_idx) const {
+bool YBPartialRow::IsNull(int col_idx) const {
   const ColumnSchema& col = schema_->column(col_idx);
   if (!col.is_nullable()) {
     return false;
@@ -503,76 +503,76 @@ bool KuduPartialRow::IsNull(int col_idx) const {
   return row.is_null(col_idx);
 }
 
-bool KuduPartialRow::IsNull(const Slice& col_name) const {
+bool YBPartialRow::IsNull(const Slice& col_name) const {
   int col_idx;
   CHECK_OK(FindColumn(*schema_, col_name, &col_idx));
   return IsNull(col_idx);
 }
 
-Status KuduPartialRow::GetBool(const Slice& col_name, bool* val) const {
+Status YBPartialRow::GetBool(const Slice& col_name, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_name, val);
 }
-Status KuduPartialRow::GetInt8(const Slice& col_name, int8_t* val) const {
+Status YBPartialRow::GetInt8(const Slice& col_name, int8_t* val) const {
   return Get<TypeTraits<INT8> >(col_name, val);
 }
-Status KuduPartialRow::GetInt16(const Slice& col_name, int16_t* val) const {
+Status YBPartialRow::GetInt16(const Slice& col_name, int16_t* val) const {
   return Get<TypeTraits<INT16> >(col_name, val);
 }
-Status KuduPartialRow::GetInt32(const Slice& col_name, int32_t* val) const {
+Status YBPartialRow::GetInt32(const Slice& col_name, int32_t* val) const {
   return Get<TypeTraits<INT32> >(col_name, val);
 }
-Status KuduPartialRow::GetInt64(const Slice& col_name, int64_t* val) const {
+Status YBPartialRow::GetInt64(const Slice& col_name, int64_t* val) const {
   return Get<TypeTraits<INT64> >(col_name, val);
 }
-Status KuduPartialRow::GetTimestamp(const Slice& col_name, int64_t* micros_since_utc_epoch) const {
+Status YBPartialRow::GetTimestamp(const Slice& col_name, int64_t* micros_since_utc_epoch) const {
   return Get<TypeTraits<TIMESTAMP> >(col_name, micros_since_utc_epoch);
 }
-Status KuduPartialRow::GetFloat(const Slice& col_name, float* val) const {
+Status YBPartialRow::GetFloat(const Slice& col_name, float* val) const {
   return Get<TypeTraits<FLOAT> >(col_name, val);
 }
-Status KuduPartialRow::GetDouble(const Slice& col_name, double* val) const {
+Status YBPartialRow::GetDouble(const Slice& col_name, double* val) const {
   return Get<TypeTraits<DOUBLE> >(col_name, val);
 }
-Status KuduPartialRow::GetString(const Slice& col_name, Slice* val) const {
+Status YBPartialRow::GetString(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<STRING> >(col_name, val);
 }
-Status KuduPartialRow::GetBinary(const Slice& col_name, Slice* val) const {
+Status YBPartialRow::GetBinary(const Slice& col_name, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_name, val);
 }
 
-Status KuduPartialRow::GetBool(int col_idx, bool* val) const {
+Status YBPartialRow::GetBool(int col_idx, bool* val) const {
   return Get<TypeTraits<BOOL> >(col_idx, val);
 }
-Status KuduPartialRow::GetInt8(int col_idx, int8_t* val) const {
+Status YBPartialRow::GetInt8(int col_idx, int8_t* val) const {
   return Get<TypeTraits<INT8> >(col_idx, val);
 }
-Status KuduPartialRow::GetInt16(int col_idx, int16_t* val) const {
+Status YBPartialRow::GetInt16(int col_idx, int16_t* val) const {
   return Get<TypeTraits<INT16> >(col_idx, val);
 }
-Status KuduPartialRow::GetInt32(int col_idx, int32_t* val) const {
+Status YBPartialRow::GetInt32(int col_idx, int32_t* val) const {
   return Get<TypeTraits<INT32> >(col_idx, val);
 }
-Status KuduPartialRow::GetInt64(int col_idx, int64_t* val) const {
+Status YBPartialRow::GetInt64(int col_idx, int64_t* val) const {
   return Get<TypeTraits<INT64> >(col_idx, val);
 }
-Status KuduPartialRow::GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const {
+Status YBPartialRow::GetTimestamp(int col_idx, int64_t* micros_since_utc_epoch) const {
   return Get<TypeTraits<TIMESTAMP> >(col_idx, micros_since_utc_epoch);
 }
-Status KuduPartialRow::GetFloat(int col_idx, float* val) const {
+Status YBPartialRow::GetFloat(int col_idx, float* val) const {
   return Get<TypeTraits<FLOAT> >(col_idx, val);
 }
-Status KuduPartialRow::GetDouble(int col_idx, double* val) const {
+Status YBPartialRow::GetDouble(int col_idx, double* val) const {
   return Get<TypeTraits<DOUBLE> >(col_idx, val);
 }
-Status KuduPartialRow::GetString(int col_idx, Slice* val) const {
+Status YBPartialRow::GetString(int col_idx, Slice* val) const {
   return Get<TypeTraits<STRING> >(col_idx, val);
 }
-Status KuduPartialRow::GetBinary(int col_idx, Slice* val) const {
+Status YBPartialRow::GetBinary(int col_idx, Slice* val) const {
   return Get<TypeTraits<BINARY> >(col_idx, val);
 }
 
 template<typename T>
-Status KuduPartialRow::Get(const Slice& col_name,
+Status YBPartialRow::Get(const Slice& col_name,
                            typename T::cpp_type* val) const {
   int col_idx;
   RETURN_NOT_OK(FindColumn(*schema_, col_name, &col_idx));
@@ -580,7 +580,7 @@ Status KuduPartialRow::Get(const Slice& col_name,
 }
 
 template<typename T>
-Status KuduPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
+Status YBPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
   const ColumnSchema& col = schema_->column(col_idx);
   if (PREDICT_FALSE(col.type_info()->type() != T::type)) {
     // TODO: at some point we could allow type coercion here.
@@ -606,7 +606,7 @@ Status KuduPartialRow::Get(int col_idx, typename T::cpp_type* val) const {
 //------------------------------------------------------------
 // Key-encoding related functions
 //------------------------------------------------------------
-Status KuduPartialRow::EncodeRowKey(string* encoded_key) const {
+Status YBPartialRow::EncodeRowKey(string* encoded_key) const {
   // Currently, a row key must be fully specified.
   // TODO: allow specifying a prefix of the key, and automatically
   // fill the rest with minimum values.
@@ -629,7 +629,7 @@ Status KuduPartialRow::EncodeRowKey(string* encoded_key) const {
   return Status::OK();
 }
 
-string KuduPartialRow::ToEncodedRowKeyOrDie() const {
+string YBPartialRow::ToEncodedRowKeyOrDie() const {
   string ret;
   CHECK_OK(EncodeRowKey(&ret));
   return ret;
@@ -639,16 +639,16 @@ string KuduPartialRow::ToEncodedRowKeyOrDie() const {
 // Utility code
 //------------------------------------------------------------
 
-bool KuduPartialRow::AllColumnsSet() const {
+bool YBPartialRow::AllColumnsSet() const {
   return BitMapIsAllSet(isset_bitmap_, 0, schema_->num_columns());
 }
 
-bool KuduPartialRow::IsKeySet() const {
+bool YBPartialRow::IsKeySet() const {
   return BitMapIsAllSet(isset_bitmap_, 0, schema_->num_key_columns());
 }
 
 
-std::string KuduPartialRow::ToString() const {
+std::string YBPartialRow::ToString() const {
   ContiguousRow row(schema_, row_data_);
   std::string ret;
   bool first = true;

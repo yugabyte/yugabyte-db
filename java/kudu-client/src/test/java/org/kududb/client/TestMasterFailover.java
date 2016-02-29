@@ -26,16 +26,16 @@ import static org.junit.Assert.assertEquals;
 
 
 /**
- * Tests {@link AsyncKuduClient} with multiple masters.
+ * Tests {@link AsyncYBClient} with multiple masters.
  */
-public class TestMasterFailover extends BaseKuduTest {
+public class TestMasterFailover extends BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestMasterFailover.class);
   private static final String TABLE_NAME =
       TestMasterFailover.class.getName() + "-" + System.currentTimeMillis();
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
     createTable(TABLE_NAME, basicSchema, new CreateTableOptions());
   }
 
@@ -54,7 +54,7 @@ public class TestMasterFailover extends BaseKuduTest {
     killMasterLeader();
 
     // Test that we can open a previously created table after killing the leader master.
-    KuduTable table = openTable(TABLE_NAME);
+    YBTable table = openTable(TABLE_NAME);
     assertEquals(0, countRowsInScan(client.newScannerBuilder(table).build()));
 
     // Test that we can create a new table when one of the masters is down.
@@ -65,7 +65,7 @@ public class TestMasterFailover extends BaseKuduTest {
 
     // Test that we can initialize a client when one of the masters specified in the
     // connection string is down.
-    AsyncKuduClient newClient = new AsyncKuduClient.AsyncYBClientBuilder(masterAddresses).build();
+    AsyncYBClient newClient = new AsyncYBClient.AsyncYBClientBuilder(masterAddresses).build();
     table = newClient.openTable(newTableName).join(DEFAULT_SLEEP);
     assertEquals(0, countRowsInScan(newClient.newScannerBuilder(table).build()));
   }

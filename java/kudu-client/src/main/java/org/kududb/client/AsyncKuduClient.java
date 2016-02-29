@@ -119,9 +119,9 @@ import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
-public class AsyncKuduClient implements AutoCloseable {
+public class AsyncYBClient implements AutoCloseable {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AsyncKuduClient.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AsyncYBClient.class);
   public static final int SLEEP_TIME = 500;
   public static final byte[] EMPTY_ARRAY = new byte[0];
   public static final long NO_TIMESTAMP = -1;
@@ -194,7 +194,7 @@ public class AsyncKuduClient implements AutoCloseable {
   // table. We'll use the following fake table name to identify places where we need special
   // handling.
   static final String MASTER_TABLE_NAME_PLACEHOLDER =  "Kudu Master";
-  final KuduTable masterTable;
+  final YBTable masterTable;
   private final List<HostAndPort> masterAddresses;
 
   private final HashedWheelTimer timer = new HashedWheelTimer(20, MILLISECONDS);
@@ -230,10 +230,10 @@ public class AsyncKuduClient implements AutoCloseable {
 
   private volatile boolean closed;
 
-  private AsyncKuduClient(AsyncYBClientBuilder b) {
+  private AsyncYBClient(AsyncYBClientBuilder b) {
     this.channelFactory = b.createChannelFactory();
     this.masterAddresses = b.masterAddresses;
-    this.masterTable = new KuduTable(this, MASTER_TABLE_NAME_PLACEHOLDER,
+    this.masterTable = new YBTable(this, MASTER_TABLE_NAME_PLACEHOLDER,
         MASTER_TABLE_NAME_PLACEHOLDER, null, null);
     this.defaultOperationTimeoutMs = b.defaultOperationTimeoutMs;
     this.defaultAdminOperationTimeoutMs = b.defaultAdminOperationTimeoutMs;
@@ -268,7 +268,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * @return a deferred object to track the progress of the createTable command that gives
    * an object to communicate with the created table
    */
-  public Deferred<KuduTable> createTable(String name, Schema schema) {
+  public Deferred<YBTable> createTable(String name, Schema schema) {
     return this.createTable(name, schema, new CreateTableOptions());
   }
 
@@ -280,7 +280,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * @return a deferred object to track the progress of the createTable command that gives
    * an object to communicate with the created table
    */
-  public Deferred<KuduTable> createTable(final String name, Schema schema,
+  public Deferred<YBTable> createTable(final String name, Schema schema,
                                          CreateTableOptions builder) {
     checkIsClosed();
     if (builder == null) {
@@ -290,9 +290,9 @@ public class AsyncKuduClient implements AutoCloseable {
         builder);
     create.setTimeoutMillis(defaultAdminOperationTimeoutMs);
     return sendRpcToTablet(create).addCallbackDeferring(
-        new Callback<Deferred<KuduTable>, CreateTableResponse>() {
+        new Callback<Deferred<YBTable>, CreateTableResponse>() {
       @Override
-      public Deferred<KuduTable> call(CreateTableResponse createTableResponse) throws Exception {
+      public Deferred<YBTable> call(CreateTableResponse createTableResponse) throws Exception {
         return openTable(name);
       }
     });
@@ -314,7 +314,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * Alter a table on the cluster as specified by the builder.
    *
    * When the returned deferred completes it only indicates that the master accepted the alter
-   * command, use {@link AsyncKuduClient#isAlterTableDone(String)} to know when the alter finishes.
+   * command, use {@link AsyncYBClient#isAlterTableDone(String)} to know when the alter finishes.
    * @param name the table's name, if this is a table rename then the old table name must be passed
    * @param ato the alter table builder
    * @return a deferred object to track the progress of the alter command
@@ -403,14 +403,14 @@ public class AsyncKuduClient implements AutoCloseable {
    * Open the table with the given name. If the table was just created, the Deferred will only get
    * called back when all the tablets have been successfully created.
    * @param name table to open
-   * @return a KuduTable if the table exists, else a MasterErrorException
+   * @return a YBTable if the table exists, else a MasterErrorException
    */
-  public Deferred<KuduTable> openTable(final String name) {
+  public Deferred<YBTable> openTable(final String name) {
     checkIsClosed();
 
     // We create an RPC that we're never going to send, and will instead use it to keep track of
     // timeouts and use its Deferred.
-    final KuduRpc<KuduTable> fakeRpc = new KuduRpc<KuduTable>(null) {
+    final KuduRpc<YBTable> fakeRpc = new KuduRpc<YBTable>(null) {
       @Override
       ChannelBuffer serialize(Message header) { return null; }
 
@@ -423,23 +423,23 @@ public class AsyncKuduClient implements AutoCloseable {
       }
 
       @Override
-      Pair<KuduTable, Object> deserialize(CallResponse callResponse, String tsUUID)
+      Pair<YBTable, Object> deserialize(CallResponse callResponse, String tsUUID)
           throws Exception { return null; }
     };
     fakeRpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
 
-    return getTableSchema(name).addCallbackDeferring(new Callback<Deferred<KuduTable>,
+    return getTableSchema(name).addCallbackDeferring(new Callback<Deferred<YBTable>,
         GetTableSchemaResponse>() {
       @Override
-      public Deferred<KuduTable> call(GetTableSchemaResponse response) throws Exception {
-        KuduTable table = new KuduTable(AsyncKuduClient.this,
+      public Deferred<YBTable> call(GetTableSchemaResponse response) throws Exception {
+        YBTable table = new YBTable(AsyncYBClient.this,
             name,
             response.getTableId(),
             response.getSchema(),
             response.getPartitionSchema());
         // We grab the Deferred first because calling callback on the RPC will reset it and we'd
         // return a different, non-triggered Deferred.
-        Deferred<KuduTable> d = fakeRpc.getDeferred();
+        Deferred<YBTable> d = fakeRpc.getDeferred();
         if (response.isCreateTableDone()) {
           LOG.debug("Opened table {}", name);
           fakeRpc.callback(table);
@@ -460,14 +460,14 @@ public class AsyncKuduClient implements AutoCloseable {
   /**
    * This callback will be repeatadly used when opening a table until it is done being created.
    */
-  Callback<Deferred<KuduTable>, Master.IsCreateTableDoneResponsePB> getOpenTableCB(
-      final KuduRpc<KuduTable> rpc, final KuduTable table) {
-    return new Callback<Deferred<KuduTable>, Master.IsCreateTableDoneResponsePB>() {
+  Callback<Deferred<YBTable>, Master.IsCreateTableDoneResponsePB> getOpenTableCB(
+      final KuduRpc<YBTable> rpc, final YBTable table) {
+    return new Callback<Deferred<YBTable>, Master.IsCreateTableDoneResponsePB>() {
       @Override
-      public Deferred<KuduTable> call(
+      public Deferred<YBTable> call(
           Master.IsCreateTableDoneResponsePB isCreateTableDoneResponsePB) throws Exception {
         String tableName = table.getName();
-        Deferred<KuduTable> d = rpc.getDeferred();
+        Deferred<YBTable> d = rpc.getDeferred();
         if (isCreateTableDoneResponsePB.getDone()) {
           LOG.debug("Table {}'s tablets are now created", tableName);
           rpc.callback(table);
@@ -518,7 +518,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * The string is assumed to use the platform's default charset.
    * @return a new scanner builder for this table
    */
-  public AsyncYBScanner.AsyncYBScannerBuilder newScannerBuilder(KuduTable table) {
+  public AsyncYBScanner.AsyncYBScannerBuilder newScannerBuilder(YBTable table) {
     checkIsClosed();
     return new AsyncYBScanner.AsyncYBScannerBuilder(this, table);
   }
@@ -673,7 +673,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * should go.
    * <p>
    * Use {@code AsyncUtil.addCallbacksDeferring} to add this as the callback and
-   * {@link AsyncKuduClient.RetryRpcErrback} as the "errback" to the {@code Deferred}
+   * {@link AsyncYBClient.RetryRpcErrback} as the "errback" to the {@code Deferred}
    * returned by {@link #locateTablet(String, byte[])}.
    * @param <R> RPC's return type.
    * @param <D> Previous query's return type, which we don't use, but need to specify in order to
@@ -759,7 +759,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * @param errback the errback to call if something goes wrong when calling IsCreateTableDone
    * @return Deferred used to track the provided KuduRpc
    */
-  <R> Deferred<R> delayedIsCreateTableDone(final KuduTable table, final KuduRpc<R> rpc,
+  <R> Deferred<R> delayedIsCreateTableDone(final YBTable table, final KuduRpc<R> rpc,
                                            final Callback<Deferred<R>,
                                                Master.IsCreateTableDoneResponsePB> retryCB,
                                            final Callback<Exception, Exception> errback) {
@@ -855,7 +855,7 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   /**
-   * Modifying the list returned by this method won't change how AsyncKuduClient behaves,
+   * Modifying the list returned by this method won't change how AsyncYBClient behaves,
    * but calling certain methods on the returned TabletClients can. For example,
    * it's possible to forcefully shutdown a connection to a tablet server by calling {@link
    * TabletClient#shutdown()}.
@@ -870,7 +870,7 @@ public class AsyncKuduClient implements AutoCloseable {
 
   /**
    * This method first clears tabletsCache and then tablet2client without any regards for
-   * calls to {@link #discoverTablets}. Call only when AsyncKuduClient is in a steady state.
+   * calls to {@link #discoverTablets}. Call only when AsyncYBClient is in a steady state.
    * @param tableId table for which we remove all the RemoteTablet entries
    */
   @VisibleForTesting
@@ -944,7 +944,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * @param partitionKey can be null, if not we'll find the exact tablet that contains it
    * @return Deferred to track the progress
    */
-  Deferred<Master.GetTableLocationsResponsePB> locateTablet(KuduTable table, byte[] partitionKey) {
+  Deferred<Master.GetTableLocationsResponsePB> locateTablet(YBTable table, byte[] partitionKey) {
     final boolean has_permit = acquireMasterLookupPermit();
     String tableId = table.getTableId();
     if (!has_permit) {
@@ -1146,8 +1146,8 @@ public class AsyncKuduClient implements AutoCloseable {
   /** Callback executed when a master lookup completes.  */
   private final class MasterLookupCB implements Callback<Object,
       Master.GetTableLocationsResponsePB> {
-    final KuduTable table;
-    MasterLookupCB(KuduTable table) {
+    final YBTable table;
+    MasterLookupCB(YBTable table) {
       this.table = table;
     }
     public Object call(final Master.GetTableLocationsResponsePB arg) {
@@ -1184,7 +1184,7 @@ public class AsyncKuduClient implements AutoCloseable {
   }
 
   @VisibleForTesting
-  void discoverTablets(KuduTable table, Master.GetTableLocationsResponsePB response)
+  void discoverTablets(YBTable table, Master.GetTableLocationsResponsePB response)
       throws NonRecoverableException {
     String tableId = table.getTableId();
     String tableName = table.getName();
@@ -1367,7 +1367,7 @@ public class AsyncKuduClient implements AutoCloseable {
    * of the above have been done. If this callback chain doesn't fail, then
    * the clean shutdown will be successful, and all the data will be safe on
    * the Kudu side. In case of a failure (the "errback" is invoked) you will have
-   * to open a new AsyncKuduClient if you want to retry those operations.
+   * to open a new AsyncYBClient if you want to retry those operations.
    * The Deferred doesn't actually hold any content.
    */
   public Deferred<ArrayList<Void>> shutdown() {
@@ -1380,7 +1380,7 @@ public class AsyncKuduClient implements AutoCloseable {
     // down from another thread.
     final class ShutdownThread extends Thread {
       ShutdownThread() {
-        super("AsyncKuduClient@" + AsyncKuduClient.super.hashCode() + " shutdown");
+        super("AsyncYBClient@" + AsyncYBClient.super.hashCode() + " shutdown");
       }
       public void run() {
         // This terminates the Executor.
@@ -1619,7 +1619,7 @@ public class AsyncKuduClient implements AutoCloseable {
     private boolean disconnected = false;
 
     TabletClient init(String uuid) {
-      final TabletClient client = new TabletClient(AsyncKuduClient.this, uuid);
+      final TabletClient client = new TabletClient(AsyncYBClient.this, uuid);
       if (defaultSocketReadTimeoutMs > 0) {
         super.addLast("timeout-handler",
             new ReadTimeoutHandler(timer,
@@ -2126,8 +2126,8 @@ public class AsyncKuduClient implements AutoCloseable {
      * Doesn't block and won't throw an exception if the masters don't exist.
      * @return a new asynchronous Kudu client
      */
-    public AsyncKuduClient build() {
-      return new AsyncKuduClient(this);
+    public AsyncYBClient build() {
+      return new AsyncYBClient(this);
     }
   }
 }

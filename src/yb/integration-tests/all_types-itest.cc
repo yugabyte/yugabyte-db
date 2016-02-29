@@ -54,17 +54,17 @@ struct SliceKeysTestSetup {
   // Split points are calculated by equally partitioning the int64_t key space and then
   // using the stringified hexadecimal representation to create the split keys (with
   // zero padding).
-  vector<const KuduPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
+  vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
     vector<string> splits;
     splits.reserve(kNumTablets - 1);
     for (int i = 1; i < kNumTablets; i++) {
       int split = i * increment_;
       splits.push_back(StringPrintf("%08x", split));
     }
-    vector<const KuduPartialRow*> rows;
+    vector<const YBPartialRow*> rows;
     for (string val : splits) {
       Slice slice(val);
-      KuduPartialRow* row = schema.NewRow();
+      YBPartialRow* row = schema.NewRow();
       CHECK_OK(row->SetSliceCopy<TypeTraits<KeyTypeWrapper::type> >(0, slice));
       rows.push_back(row);
     }
@@ -132,15 +132,15 @@ struct IntKeysTestSetup {
         client::FromInternalDataType(KeyTypeWrapper::type))->NotNull()->PrimaryKey();
   }
 
-  vector<const KuduPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
+  vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
     vector<CppType> splits;
     splits.reserve(kNumTablets - 1);
     for (int64_t i = 1; i < kNumTablets; i++) {
       splits.push_back(i * increment_);
     }
-    vector<const KuduPartialRow*> rows;
+    vector<const YBPartialRow*> rows;
     for (CppType val : splits) {
-      KuduPartialRow* row = schema.NewRow();
+      YBPartialRow* row = schema.NewRow();
       CHECK_OK(row->Set<TypeTraits<KeyTypeWrapper::type> >(0, val));
       rows.push_back(row);
     }
@@ -184,7 +184,7 @@ struct IntKeysTestSetup {
 
 // Integration that writes, scans and verifies all types.
 template <class TestSetup>
-class AllTypesItest : public KuduTest {
+class AllTypesItest : public YBTest {
  public:
   AllTypesItest() {
     if (AllowSlowTests()) {
@@ -198,16 +198,16 @@ class AllTypesItest : public KuduTest {
   void CreateAllTypesSchema() {
     YBSchemaBuilder builder;
     setup_.AddKeyColumnsToSchema(&builder);
-    builder.AddColumn("int8_val")->Type(KuduColumnSchema::INT8);
-    builder.AddColumn("int16_val")->Type(KuduColumnSchema::INT16);
-    builder.AddColumn("int32_val")->Type(KuduColumnSchema::INT32);
-    builder.AddColumn("int64_val")->Type(KuduColumnSchema::INT64);
-    builder.AddColumn("timestamp_val")->Type(KuduColumnSchema::TIMESTAMP);
-    builder.AddColumn("string_val")->Type(KuduColumnSchema::STRING);
-    builder.AddColumn("bool_val")->Type(KuduColumnSchema::BOOL);
-    builder.AddColumn("float_val")->Type(KuduColumnSchema::FLOAT);
-    builder.AddColumn("double_val")->Type(KuduColumnSchema::DOUBLE);
-    builder.AddColumn("binary_val")->Type(KuduColumnSchema::BINARY);
+    builder.AddColumn("int8_val")->Type(YBColumnSchema::INT8);
+    builder.AddColumn("int16_val")->Type(YBColumnSchema::INT16);
+    builder.AddColumn("int32_val")->Type(YBColumnSchema::INT32);
+    builder.AddColumn("int64_val")->Type(YBColumnSchema::INT64);
+    builder.AddColumn("timestamp_val")->Type(YBColumnSchema::TIMESTAMP);
+    builder.AddColumn("string_val")->Type(YBColumnSchema::STRING);
+    builder.AddColumn("bool_val")->Type(YBColumnSchema::BOOL);
+    builder.AddColumn("float_val")->Type(YBColumnSchema::FLOAT);
+    builder.AddColumn("double_val")->Type(YBColumnSchema::DOUBLE);
+    builder.AddColumn("binary_val")->Type(YBColumnSchema::BINARY);
     CHECK_OK(builder.Build(&schema_));
   }
 
@@ -233,10 +233,10 @@ class AllTypesItest : public KuduTest {
 
   Status CreateTable() {
     CreateAllTypesSchema();
-    vector<const KuduPartialRow*> split_rows = setup_.GenerateSplitRows(schema_);
+    vector<const YBPartialRow*> split_rows = setup_.GenerateSplitRows(schema_);
     gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
 
-    for (const KuduPartialRow* row : split_rows) {
+    for (const YBPartialRow* row : split_rows) {
       split_rows_.push_back(*row);
     }
 
@@ -252,7 +252,7 @@ class AllTypesItest : public KuduTest {
     YBInsert* insert = table_->NewInsert();
     RETURN_NOT_OK(setup_.GenerateRowKey(insert, split_idx, row_idx));
     int int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
-    KuduPartialRow* row = insert->mutable_row();
+    YBPartialRow* row = insert->mutable_row();
     RETURN_NOT_OK(row->SetInt8("int8_val", int_val));
     RETURN_NOT_OK(row->SetInt16("int16_val", int_val));
     RETURN_NOT_OK(row->SetInt32("int32_val", int_val));
@@ -362,12 +362,12 @@ class AllTypesItest : public KuduTest {
       string low_split;
       string high_split;
       if (i != 0) {
-        const KuduPartialRow& split = split_rows_[i - 1];
+        const YBPartialRow& split = split_rows_[i - 1];
         RETURN_NOT_OK(scanner.AddLowerBound(split));
         low_split = split.ToString();
       }
       if (i != kNumTablets - 1) {
-        const KuduPartialRow& split = split_rows_[i];
+        const YBPartialRow& split = split_rows_[i];
         RETURN_NOT_OK(scanner.AddExclusiveUpperBound(split));
         high_split = split.ToString();
       }
@@ -418,10 +418,10 @@ class AllTypesItest : public KuduTest {
  protected:
   TestSetup setup_;
   YBSchema schema_;
-  vector<KuduPartialRow> split_rows_;
-  shared_ptr<KuduClient> client_;
+  vector<YBPartialRow> split_rows_;
+  shared_ptr<YBClient> client_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<KuduTable> table_;
+  shared_ptr<YBTable> table_;
 };
 
 // Wrap the actual DataType so that we can have the setup structs be friends of other classes

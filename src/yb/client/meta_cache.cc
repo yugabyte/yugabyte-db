@@ -67,7 +67,7 @@ RemoteTabletServer::RemoteTabletServer(const master::TSInfoPB& pb)
 
 void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
                                                vector<Sockaddr>* addrs,
-                                               KuduClient* client,
+                                               YBClient* client,
                                                const StatusCallback& user_callback,
                                                const Status &result_status) {
   gscoped_ptr<vector<Sockaddr> > scoped_addrs(addrs);
@@ -94,7 +94,7 @@ void RemoteTabletServer::DnsResolutionFinished(const HostPort& hp,
   user_callback.Run(s);
 }
 
-void RemoteTabletServer::InitProxy(KuduClient* client, const StatusCallback& cb) {
+void RemoteTabletServer::InitProxy(YBClient* client, const StatusCallback& cb) {
   HostPort hp;
   {
     unique_lock<simple_spinlock> l(&lock_);
@@ -284,7 +284,7 @@ std::string RemoteTablet::ReplicasAsStringUnlocked() const {
 
 ////////////////////////////////////////////////////////////
 
-MetaCache::MetaCache(KuduClient* client)
+MetaCache::MetaCache(YBClient* client)
   : client_(client),
     master_lookup_sem_(50) {
 }
@@ -313,7 +313,7 @@ class LookupRpc : public Rpc {
  public:
   LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
             StatusCallback user_cb,
-            const KuduTable* table,
+            const YBTable* table,
             string partition_key,
             scoped_refptr<RemoteTablet>* remote_tablet,
             const MonoTime& deadline,
@@ -356,7 +356,7 @@ class LookupRpc : public Rpc {
   StatusCallback user_cb_;
 
   // Table to lookup.
-  const KuduTable* table_;
+  const YBTable* table_;
 
   // Encoded partition key to lookup.
   string partition_key_;
@@ -370,7 +370,7 @@ class LookupRpc : public Rpc {
 };
 
 LookupRpc::LookupRpc(const scoped_refptr<MetaCache>& meta_cache,
-                     StatusCallback user_cb, const KuduTable* table,
+                     StatusCallback user_cb, const YBTable* table,
                      string partition_key,
                      scoped_refptr<RemoteTablet>* remote_tablet,
                      const MonoTime& deadline,
@@ -432,7 +432,7 @@ void LookupRpc::SendRpc() {
   // The end partition key is left unset intentionally so that we'll prefetch
   // some additional tablets.
 
-  // See KuduClient::Data::SyncLeaderMasterRpc().
+  // See YBClient::Data::SyncLeaderMasterRpc().
   MonoTime now = MonoTime::Now(MonoTime::FINE);
   if (retrier().deadline().ComesBefore(now)) {
     SendRpcCb(Status::TimedOut("timed out after deadline expired"));
@@ -584,7 +584,7 @@ const scoped_refptr<RemoteTablet>& MetaCache::ProcessLookupResponse(const Lookup
   return FindOrDie(tablets_by_id_, rpc.resp().tablet_locations(0).tablet_id());
 }
 
-bool MetaCache::LookupTabletByKeyFastPath(const KuduTable* table,
+bool MetaCache::LookupTabletByKeyFastPath(const YBTable* table,
                                           const string& partition_key,
                                           scoped_refptr<RemoteTablet>* remote_tablet) {
   shared_lock<rw_spinlock> l(&lock_);
@@ -615,7 +615,7 @@ bool MetaCache::LookupTabletByKeyFastPath(const KuduTable* table,
   return false;
 }
 
-void MetaCache::LookupTabletByKey(const KuduTable* table,
+void MetaCache::LookupTabletByKey(const YBTable* table,
                                   const string& partition_key,
                                   const MonoTime& deadline,
                                   scoped_refptr<RemoteTablet>* remote_tablet,

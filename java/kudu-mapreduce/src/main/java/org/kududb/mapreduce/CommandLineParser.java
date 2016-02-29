@@ -18,13 +18,13 @@ package org.kududb.mapreduce;
 
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
-import org.kududb.client.AsyncKuduClient;
+import org.kududb.client.AsyncYBClient;
 import org.apache.hadoop.conf.Configuration;
-import org.kududb.client.KuduClient;
+import org.kududb.client.YBClient;
 
 /**
  * Utility class that manages common configurations to all MR jobs. For example,
- * any job that uses {#KuduTableMapReduceUtil} to setup an input or output format
+ * any job that uses {#YBTableMapReduceUtil} to setup an input or output format
  * and that has parsed the command line arguments with
  * {@link org.apache.hadoop.util.GenericOptionsParser} can simply be passed:
  * <code>
@@ -42,11 +42,11 @@ public class CommandLineParser {
   public static final String MASTER_ADDRESSES_DEFAULT = "127.0.0.1";
   public static final String OPERATION_TIMEOUT_MS_KEY = "kudu.operation.timeout.ms";
   public static final long OPERATION_TIMEOUT_MS_DEFAULT =
-      AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS;
+      AsyncYBClient.DEFAULT_OPERATION_TIMEOUT_MS;
   public static final String ADMIN_OPERATION_TIMEOUT_MS_KEY = "kudu.admin.operation.timeout.ms";
   public static final String SOCKET_READ_TIMEOUT_MS_KEY = "kudu.socket.read.timeout.ms";
   public static final long SOCKET_READ_TIMEOUT_MS_DEFAULT =
-      AsyncKuduClient.DEFAULT_SOCKET_READ_TIMEOUT_MS;
+      AsyncYBClient.DEFAULT_SOCKET_READ_TIMEOUT_MS;
   public static final String NUM_REPLICAS_KEY = "kudu.num.replicas";
   public static final int NUM_REPLICAS_DEFAULT = 3;
 
@@ -103,8 +103,8 @@ public class CommandLineParser {
    * Get an async client connected to the configured Master(s).
    * @return an async kudu client
    */
-  public AsyncKuduClient getAsyncClient() {
-    return new AsyncKuduClient.AsyncYBClientBuilder(getMasterAddresses())
+  public AsyncYBClient getAsyncClient() {
+    return new AsyncYBClient.AsyncYBClientBuilder(getMasterAddresses())
         .defaultOperationTimeoutMs(getOperationTimeoutMs())
         .defaultAdminOperationTimeoutMs(getAdminOperationTimeoutMs())
         .defaultSocketReadTimeoutMs(getSocketReadTimeoutMs())
@@ -115,8 +115,8 @@ public class CommandLineParser {
    * Get a client connected to the configured Master(s).
    * @return a kudu client
    */
-  public KuduClient getClient() {
-    return new KuduClient.YBClientBuilder(getMasterAddresses())
+  public YBClient getClient() {
+    return new YBClient.YBClientBuilder(getMasterAddresses())
         .defaultOperationTimeoutMs(getOperationTimeoutMs())
         .defaultAdminOperationTimeoutMs(getAdminOperationTimeoutMs())
         .defaultSocketReadTimeoutMs(getSocketReadTimeoutMs())

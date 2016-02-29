@@ -38,7 +38,7 @@ RowOperationsPB_Type ToInternalWriteType(YBWriteOperation::Type type) {
 
 // WriteOperation --------------------------------------------------------------
 
-YBWriteOperation::YBWriteOperation(const shared_ptr<KuduTable>& table)
+YBWriteOperation::YBWriteOperation(const shared_ptr<YBTable>& table)
   : table_(table),
     row_(table->schema().schema_) {
 }
@@ -82,7 +82,7 @@ int64_t YBWriteOperation::SizeInBuffer() const {
 
 // Insert -----------------------------------------------------------------------
 
-YBInsert::YBInsert(const shared_ptr<KuduTable>& table)
+YBInsert::YBInsert(const shared_ptr<YBTable>& table)
   : YBWriteOperation(table) {
 }
 
@@ -90,7 +90,7 @@ YBInsert::~YBInsert() {}
 
 // Update -----------------------------------------------------------------------
 
-YBUpdate::YBUpdate(const shared_ptr<KuduTable>& table)
+YBUpdate::YBUpdate(const shared_ptr<YBTable>& table)
   : YBWriteOperation(table) {
 }
 
@@ -98,11 +98,11 @@ YBUpdate::~YBUpdate() {}
 
 // Delete -----------------------------------------------------------------------
 
-KuduDelete::KuduDelete(const shared_ptr<KuduTable>& table)
+YBDelete::YBDelete(const shared_ptr<YBTable>& table)
   : YBWriteOperation(table) {
 }
 
-KuduDelete::~KuduDelete() {}
+YBDelete::~YBDelete() {}
 
 } // namespace client
 } // namespace yb

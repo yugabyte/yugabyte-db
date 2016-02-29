@@ -18,7 +18,7 @@
 // This header file contains generic helper utilities for writing tests against
 // MiniClusters and ExternalMiniClusters. Ideally, the functions will be
 // generic enough to use with either type of cluster, due to operating
-// primarily through RPC-based APIs or through KuduClient.
+// primarily through RPC-based APIs or through YBClient.
 // However, it's also OK to include common operations against a particular
 // cluster type if it's general enough to use from multiple tests while not
 // belonging in the MiniCluster / ExternalMiniCluster classes themselves. But
@@ -52,9 +52,9 @@ class Sockaddr;
 class Status;
 
 namespace client {
-class KuduClient;
+class YBClient;
 class YBSchema;
-class KuduTable;
+class YBTable;
 }
 
 namespace consensus {

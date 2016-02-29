@@ -40,13 +40,13 @@ class LocalTabletWriter {
  public:
   struct Op {
     Op(RowOperationsPB::Type type,
-       const KuduPartialRow* row)
+       const YBPartialRow* row)
       : type(type),
         row(row) {
     }
 
     RowOperationsPB::Type type;
-    const KuduPartialRow* row;
+    const YBPartialRow* row;
   };
 
   explicit LocalTabletWriter(Tablet* tablet,
@@ -59,22 +59,22 @@ class LocalTabletWriter {
 
   ~LocalTabletWriter() {}
 
-  Status Insert(const KuduPartialRow& row) {
+  Status Insert(const YBPartialRow& row) {
     return Write(RowOperationsPB::INSERT, row);
   }
 
-  Status Delete(const KuduPartialRow& row) {
+  Status Delete(const YBPartialRow& row) {
     return Write(RowOperationsPB::DELETE, row);
   }
 
-  Status Update(const KuduPartialRow& row) {
+  Status Update(const YBPartialRow& row) {
     return Write(RowOperationsPB::UPDATE, row);
   }
 
   // Perform a write against the local tablet.
   // Returns a bad Status if the applied operation had a per-row error.
   Status Write(RowOperationsPB::Type type,
-               const KuduPartialRow& row) {
+               const YBPartialRow& row) {
     vector<Op> ops;
     ops.push_back(Op(type, &row));
     return WriteBatch(ops);

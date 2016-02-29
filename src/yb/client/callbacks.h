@@ -32,7 +32,7 @@ class Status;
 namespace client {
 
 // All possible log levels.
-enum KuduLogSeverity {
+enum YBLogSeverity {
   SEVERITY_INFO,
   SEVERITY_WARNING,
   SEVERITY_ERROR,
@@ -40,16 +40,16 @@ enum KuduLogSeverity {
 };
 
 // Interface for all logging callbacks.
-class YB_EXPORT KuduLoggingCallback {
+class YB_EXPORT YBLoggingCallback {
  public:
-  KuduLoggingCallback() {
+  YBLoggingCallback() {
   }
 
-  virtual ~KuduLoggingCallback() {
+  virtual ~YBLoggingCallback() {
   }
 
   // 'message' is NOT terminated with an endline.
-  virtual void Run(KuduLogSeverity severity,
+  virtual void Run(YBLogSeverity severity,
                    const char* filename,
                    int line_number,
                    const struct ::tm* time,
@@ -57,27 +57,27 @@ class YB_EXPORT KuduLoggingCallback {
                    size_t message_len) = 0;
 
  private:
-  DISALLOW_COPY_AND_ASSIGN(KuduLoggingCallback);
+  DISALLOW_COPY_AND_ASSIGN(YBLoggingCallback);
 };
 
 // Logging callback that invokes a member function pointer.
 template <typename T>
-class YB_EXPORT KuduLoggingMemberCallback : public KuduLoggingCallback {
+class YB_EXPORT YBLoggingMemberCallback : public YBLoggingCallback {
  public:
   typedef void (T::*MemberType)(
-      KuduLogSeverity severity,
+      YBLogSeverity severity,
       const char* filename,
       int line_number,
       const struct ::tm* time,
       const char* message,
       size_t message_len);
 
-  KuduLoggingMemberCallback(T* object, MemberType member)
+  YBLoggingMemberCallback(T* object, MemberType member)
     : object_(object),
       member_(member) {
   }
 
-  virtual void Run(KuduLogSeverity severity,
+  virtual void Run(YBLogSeverity severity,
                    const char* filename,
                    int line_number,
                    const struct ::tm* time,
@@ -94,22 +94,22 @@ class YB_EXPORT KuduLoggingMemberCallback : public KuduLoggingCallback {
 
 // Logging callback that invokes a function pointer with a single argument.
 template <typename T>
-class YB_EXPORT KuduLoggingFunctionCallback : public KuduLoggingCallback {
+class YB_EXPORT YBLoggingFunctionCallback : public YBLoggingCallback {
  public:
   typedef void (*FunctionType)(T arg,
-      KuduLogSeverity severity,
+      YBLogSeverity severity,
       const char* filename,
       int line_number,
       const struct ::tm* time,
       const char* message,
       size_t message_len);
 
-  KuduLoggingFunctionCallback(FunctionType function, T arg)
+  YBLoggingFunctionCallback(FunctionType function, T arg)
     : function_(function),
       arg_(arg) {
   }
 
-  virtual void Run(KuduLogSeverity severity,
+  virtual void Run(YBLogSeverity severity,
                    const char* filename,
                    int line_number,
                    const struct ::tm* time,
@@ -161,11 +161,11 @@ class YB_EXPORT YBStatusMemberCallback : public YBStatusCallback {
 
 // Status callback that invokes a function pointer with a single argument.
 template <typename T>
-class YB_EXPORT KuduStatusFunctionCallback : public YBStatusCallback {
+class YB_EXPORT YBStatusFunctionCallback : public YBStatusCallback {
  public:
   typedef void (*FunctionType)(T arg, const Status& s);
 
-  KuduStatusFunctionCallback(FunctionType function, T arg)
+  YBStatusFunctionCallback(FunctionType function, T arg)
     : function_(function),
       arg_(arg) {
   }

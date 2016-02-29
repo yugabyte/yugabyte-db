@@ -31,7 +31,7 @@
 
 namespace yb {
 
-class NetUtilTest : public KuduTest {
+class NetUtilTest : public YBTest {
  protected:
   Status DoParseBindAddresses(const string& input, string* result) {
     vector<Sockaddr> addrs;

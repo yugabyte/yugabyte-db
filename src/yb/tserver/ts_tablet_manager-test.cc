@@ -49,14 +49,14 @@ using tablet::TabletPeer;
 static const char* const kTabletId = "my-tablet-id";
 
 
-class TsTabletManagerTest : public KuduTest {
+class TsTabletManagerTest : public YBTest {
  public:
   TsTabletManagerTest()
     : schema_({ ColumnSchema("key", UINT32) }, 1) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     mini_server_.reset(
         new MiniTabletServer(GetTestPath("TsTabletManagerTest-fsroot"), 0));

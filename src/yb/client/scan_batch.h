@@ -44,7 +44,7 @@ class YBSchema;
 // With C++11, you can iterate over the rows in the batch using a
 // range-foreach loop:
 //
-//   for (KuduScanBatch::RowPtr row : batch) {
+//   for (YBScanBatch::RowPtr row : batch) {
 //     ... row.GetInt(1, ...)
 //     ...
 //   }
@@ -54,33 +54,33 @@ class YBSchema;
 //   for (int i = 0, num_rows = batch.NumRows();
 //        i < num_rows;
 //        i++) {
-//     KuduScanBatch::RowPtr row = batch.Row(i);
+//     YBScanBatch::RowPtr row = batch.Row(i);
 //     ...
 //   }
 //
 // Note that, in the above example, NumRows() is only called once at the
 // beginning of the loop to avoid extra calls to the non-inlined method.
-class YB_EXPORT KuduScanBatch {
+class YB_EXPORT YBScanBatch {
  public:
   class RowPtr;
   class const_iterator;
   typedef RowPtr value_type;
 
-  KuduScanBatch();
-  ~KuduScanBatch();
+  YBScanBatch();
+  ~YBScanBatch();
 
   // Return the number of rows in this batch.
   int NumRows() const;
 
   // Return a reference to one of the rows in this batch.
-  // The returned object is only valid for as long as this KuduScanBatch.
-  KuduScanBatch::RowPtr Row(int idx) const;
+  // The returned object is only valid for as long as this YBScanBatch.
+  YBScanBatch::RowPtr Row(int idx) const;
 
   const_iterator begin() const;
   const_iterator end() const;
 
   // Returns the projection schema for this batch.
-  // All KuduScanBatch::RowPtr returned by this batch are guaranteed to have this schema.
+  // All YBScanBatch::RowPtr returned by this batch are guaranteed to have this schema.
   const YBSchema* projection_schema() const;
 
  private:
@@ -89,13 +89,13 @@ class YB_EXPORT KuduScanBatch {
   friend class yb::tools::TsAdminClient;
 
   Data* data_;
-  DISALLOW_COPY_AND_ASSIGN(KuduScanBatch);
+  DISALLOW_COPY_AND_ASSIGN(YBScanBatch);
 };
 
 // A single row result from a scan. Note that this object acts as a pointer into
-// a KuduScanBatch, and therefore is valid only as long as the batch it was constructed
+// a YBScanBatch, and therefore is valid only as long as the batch it was constructed
 // from.
-class YB_EXPORT KuduScanBatch::RowPtr {
+class YB_EXPORT YBScanBatch::RowPtr {
  public:
   // Construct an invalid RowPtr. Before use, you must assign
   // a properly-initialized value.
@@ -148,7 +148,7 @@ class YB_EXPORT KuduScanBatch::RowPtr {
   std::string ToString() const;
 
  private:
-  friend class KuduScanBatch;
+  friend class YBScanBatch;
   template<typename KeyTypeWrapper> friend struct SliceKeysTestSetup;
   template<typename KeyTypeWrapper> friend struct IntKeysTestSetup;
 
@@ -172,17 +172,17 @@ class YB_EXPORT KuduScanBatch::RowPtr {
   const uint8_t* row_data_;
 };
 
-// C++ forward iterator over the rows in a KuduScanBatch.
+// C++ forward iterator over the rows in a YBScanBatch.
 //
-// This iterator yields KuduScanBatch::RowPtr objects which point inside the row batch
+// This iterator yields YBScanBatch::RowPtr objects which point inside the row batch
 // itself. Thus, the iterator and any objects obtained from it are invalidated if the
-// KuduScanBatch is destroyed or used for a new NextBatch() call.
-class YB_EXPORT KuduScanBatch::const_iterator
-    : public std::iterator<std::forward_iterator_tag, KuduScanBatch::RowPtr> {
+// YBScanBatch is destroyed or used for a new NextBatch() call.
+class YB_EXPORT YBScanBatch::const_iterator
+    : public std::iterator<std::forward_iterator_tag, YBScanBatch::RowPtr> {
  public:
   ~const_iterator() {}
 
-  KuduScanBatch::RowPtr operator*() const {
+  YBScanBatch::RowPtr operator*() const {
     return batch_->Row(idx_);
   }
 
@@ -198,22 +198,22 @@ class YB_EXPORT KuduScanBatch::const_iterator
   }
 
  private:
-  friend class KuduScanBatch;
-  const_iterator(const KuduScanBatch* b, int idx)
+  friend class YBScanBatch;
+  const_iterator(const YBScanBatch* b, int idx)
       : batch_(b),
         idx_(idx) {
   }
 
-  const KuduScanBatch* batch_;
+  const YBScanBatch* batch_;
   int idx_;
 };
 
 
-inline KuduScanBatch::const_iterator KuduScanBatch::begin() const {
+inline YBScanBatch::const_iterator YBScanBatch::begin() const {
   return const_iterator(this, 0);
 }
 
-inline KuduScanBatch::const_iterator KuduScanBatch::end() const {
+inline YBScanBatch::const_iterator YBScanBatch::end() const {
   return const_iterator(this, NumRows());
 }
 

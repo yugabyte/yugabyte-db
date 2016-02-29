@@ -46,9 +46,9 @@ namespace yb {
 namespace tablet {
 
 using client::YBInsert;
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBRowResult;
 using client::YBScanner;
 using client::YBSchema;
@@ -56,7 +56,7 @@ using client::YBSchemaBuilder;
 using client::YBSession;
 using client::YBStatusCallback;
 using client::YBStatusMemberCallback;
-using client::KuduTable;
+using client::YBTable;
 using client::YBTableCreator;
 using client::YBUpdate;
 using client::sp::shared_ptr;
@@ -66,18 +66,18 @@ using client::sp::shared_ptr;
 // one that continuously updates all the rows sequentially and one that scans them all, until
 // it's been running for 'seconds_to_run'. It doesn't test for correctness, unless something
 // FATALs.
-class UpdateScanDeltaCompactionTest : public KuduTest {
+class UpdateScanDeltaCompactionTest : public YBTest {
  protected:
   UpdateScanDeltaCompactionTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn("string")->Type(KuduColumnSchema::STRING)->NotNull();
-    b.AddColumn("int64")->Type(KuduColumnSchema::INT64)->NotNull();
+    b.AddColumn("key")->Type(YBColumnSchema::INT64)->NotNull()->PrimaryKey();
+    b.AddColumn("string")->Type(YBColumnSchema::STRING)->NotNull();
+    b.AddColumn("int64")->Type(YBColumnSchema::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
   }
 
   void CreateTable() {
@@ -94,7 +94,7 @@ class UpdateScanDeltaCompactionTest : public KuduTest {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   // Inserts row_count rows sequentially.
@@ -139,7 +139,7 @@ class UpdateScanDeltaCompactionTest : public KuduTest {
 
   // Sets the passed values on the row.
   // TODO randomize the string column.
-  void MakeRow(int64_t key, int64_t val, KuduPartialRow* row) const;
+  void MakeRow(int64_t key, int64_t val, YBPartialRow* row) const;
 
   // If 'key' is a multiple of kSessionBatchSize, it uses 'last_s' to wait for the previous batch
   // to finish and then flushes the current one.
@@ -150,8 +150,8 @@ class UpdateScanDeltaCompactionTest : public KuduTest {
 
   YBSchema schema_;
   std::shared_ptr<MiniCluster> cluster_;
-  shared_ptr<KuduTable> table_;
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBTable> table_;
+  shared_ptr<YBClient> client_;
 };
 
 const char* const UpdateScanDeltaCompactionTest::kTableName = "update-scan-delta-compact-tbl";
@@ -291,7 +291,7 @@ void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) con
 
 void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
                                             int64_t val,
-                                            KuduPartialRow* row) const {
+                                            YBPartialRow* row) const {
   CHECK_OK(row->SetInt64(kKeyCol, key));
   CHECK_OK(row->SetStringCopy(kStrCol, "TODO random string"));
   CHECK_OK(row->SetInt64(kInt64Col, val));

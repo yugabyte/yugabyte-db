@@ -35,7 +35,7 @@ import java.io.IOException;
 
 import static org.junit.Assert.*;
 
-public class TestOutputFormatJob extends BaseKuduTest {
+public class TestOutputFormatJob extends BaseYBTest {
 
   private static final String TABLE_NAME =
       TestOutputFormatJob.class.getName() + "-" + System.currentTimeMillis();
@@ -44,14 +44,14 @@ public class TestOutputFormatJob extends BaseKuduTest {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
     createTable(TABLE_NAME, getBasicSchema(), new CreateTableOptions());
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseKuduTest.tearDownAfterClass();
+      BaseYBTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }
@@ -78,7 +78,7 @@ public class TestOutputFormatJob extends BaseKuduTest {
     job.setMapperClass(mapperClass);
     job.setInputFormatClass(TextInputFormat.class);
     job.setNumReduceTasks(0);
-    new KuduTableMapReduceUtil.TableOutputFormatConfigurator(
+    new YBTableMapReduceUtil.TableOutputFormatConfigurator(
         job,
         TABLE_NAME,
         getMasterAddresses())
@@ -89,7 +89,7 @@ public class TestOutputFormatJob extends BaseKuduTest {
     assertTrue("Test job did not end properly", job.waitForCompletion(true));
 
     // Make sure the data's there
-    KuduTable table = openTable(TABLE_NAME);
+    YBTable table = openTable(TABLE_NAME);
     AsyncYBScanner.AsyncYBScannerBuilder builder =
         client.newScannerBuilder(table);
     assertEquals(2, countRowsInScan(builder.build()));
@@ -102,7 +102,7 @@ public class TestOutputFormatJob extends BaseKuduTest {
   static class TestMapperTableOutput extends
       Mapper<LongWritable, Text, NullWritable, Operation> {
 
-    private KuduTable table;
+    private YBTable table;
     @Override
     protected void map(LongWritable key, Text value, Context context) throws IOException,
         InterruptedException {
@@ -119,7 +119,7 @@ public class TestOutputFormatJob extends BaseKuduTest {
     @Override
     protected void setup(Context context) throws IOException, InterruptedException {
       super.setup(context);
-      table = KuduTableMapReduceUtil.getTableFromContext(context);
+      table = YBTableMapReduceUtil.getTableFromContext(context);
     }
   }
 

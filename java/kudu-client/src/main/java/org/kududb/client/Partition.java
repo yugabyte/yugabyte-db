@@ -169,7 +169,7 @@ public class Partition implements Comparable<Partition> {
     if (partitionKey.length > bucketsLen) {
       return Arrays.copyOfRange(partitionKey, bucketsLen, partitionKey.length);
     } else {
-      return AsyncKuduClient.EMPTY_ARRAY;
+      return AsyncYBClient.EMPTY_ARRAY;
     }
   }
 

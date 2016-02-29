@@ -50,12 +50,12 @@ using internal::RemoteTabletServer;
 
 static const int64_t kNoTimestamp = -1;
 
-YBScanner::Data::Data(KuduTable* table)
+YBScanner::Data::Data(YBTable* table)
   : open_(false),
     data_in_open_(false),
     has_batch_size_bytes_(false),
     batch_size_bytes_(0),
-    selection_(KuduClient::CLOSEST_REPLICA),
+    selection_(YBClient::CLOSEST_REPLICA),
     read_mode_(READ_LATEST),
     is_fault_tolerant_(false),
     snapshot_timestamp_(kNoTimestamp),
@@ -464,19 +464,19 @@ void YBScanner::Data::SetProjectionSchema(const Schema* schema) {
 
 
 ////////////////////////////////////////////////////////////
-// KuduScanBatch
+// YBScanBatch
 ////////////////////////////////////////////////////////////
 
-KuduScanBatch::Data::Data() : projection_(NULL) {}
+YBScanBatch::Data::Data() : projection_(NULL) {}
 
-KuduScanBatch::Data::~Data() {}
+YBScanBatch::Data::~Data() {}
 
-size_t KuduScanBatch::Data::CalculateProjectedRowSize(const Schema& proj) {
+size_t YBScanBatch::Data::CalculateProjectedRowSize(const Schema& proj) {
   return proj.byte_size() +
         (proj.has_nullables() ? BitmapSize(proj.num_columns()) : 0);
 }
 
-Status KuduScanBatch::Data::Reset(RpcController* controller,
+Status YBScanBatch::Data::Reset(RpcController* controller,
                                   const Schema* projection,
                                   const YBSchema* client_projection,
                                   gscoped_ptr<RowwiseRowBlockPB> data) {
@@ -511,7 +511,7 @@ Status KuduScanBatch::Data::Reset(RpcController* controller,
   return Status::OK();
 }
 
-void KuduScanBatch::Data::ExtractRows(vector<KuduScanBatch::RowPtr>* rows) {
+void YBScanBatch::Data::ExtractRows(vector<YBScanBatch::RowPtr>* rows) {
   int n_rows = resp_data_.num_rows();
   rows->resize(n_rows);
 
@@ -526,9 +526,9 @@ void KuduScanBatch::Data::ExtractRows(vector<KuduScanBatch::RowPtr>* rows) {
   // Doing this resize and array indexing turns out to be noticeably faster
   // than using reserve and push_back.
   const uint8_t* src = direct_data_.data();
-  KuduScanBatch::RowPtr* dst = &(*rows)[0];
+  YBScanBatch::RowPtr* dst = &(*rows)[0];
   while (n_rows > 0) {
-    *dst = KuduScanBatch::RowPtr(projection_, client_projection_,src);
+    *dst = YBScanBatch::RowPtr(projection_, client_projection_,src);
     dst++;
     src += projected_row_size_;
     n_rows--;
@@ -536,7 +536,7 @@ void KuduScanBatch::Data::ExtractRows(vector<KuduScanBatch::RowPtr>* rows) {
   VLOG(1) << "Extracted " << rows->size() << " rows";
 }
 
-void KuduScanBatch::Data::Clear() {
+void YBScanBatch::Data::Clear() {
   resp_data_.Clear();
   controller_.Reset();
 }

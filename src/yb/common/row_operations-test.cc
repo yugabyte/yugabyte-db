@@ -31,7 +31,7 @@ using strings::SubstituteAndAppend;
 
 namespace yb {
 
-class RowOperationsTest : public KuduTest {
+class RowOperationsTest : public YBTest {
  public:
   RowOperationsTest()
     : arena_(1024, 128 * 1024) {
@@ -49,7 +49,7 @@ class RowOperationsTest : public KuduTest {
                               const Schema& server_schema,
                               const RowOperationsPB& pb);
   void DoFuzzTest(const Schema& server_schema,
-                  const KuduPartialRow& row,
+                  const YBPartialRow& row,
                   int n_random_changes);
 
   Schema schema_;
@@ -94,7 +94,7 @@ void RowOperationsTest::CheckDecodeDoesntCrash(const Schema& client_schema,
 }
 
 void RowOperationsTest::DoFuzzTest(const Schema& server_schema,
-                                   const KuduPartialRow& row,
+                                   const YBPartialRow& row,
                                    int n_random_changes) {
   for (int operation = 0; operation < 3; operation++) {
     RowOperationsPB pb;
@@ -157,7 +157,7 @@ void RowOperationsTest::DoFuzzTest(const Schema& server_schema,
 TEST_F(RowOperationsTest, FuzzTest) {
   const int n_iters = AllowSlowTests() ? 10000 : 1000;
 
-  KuduPartialRow row(&schema_without_ids_);
+  YBPartialRow row(&schema_without_ids_);
   EXPECT_OK(row.SetInt32("int_val", 54321));
   EXPECT_OK(row.SetStringCopy("string_val", "hello world"));
   DoFuzzTest(schema_, row, n_iters);
@@ -203,7 +203,7 @@ namespace {
 struct FailingCase {
   Schema* client_schema;
   Schema* server_schema;
-  KuduPartialRow* row;
+  YBPartialRow* row;
 };
 FailingCase g_failing_case;
 
@@ -231,7 +231,7 @@ TEST_F(RowOperationsTest, SchemaFuzz) {
     // Generate a random client and server schema pair.
     Schema client_schema = GenRandomSchema(false);
     Schema server_schema = GenRandomSchema(true);
-    KuduPartialRow row(&client_schema);
+    YBPartialRow row(&client_schema);
 
     // On a crash or ASAN failure, dump the case information to the log so we
     // can write a more specific repro.
@@ -281,7 +281,7 @@ TEST_F(RowOperationsTest, TestFuzz1) {
   server_schema_builder.AddColumn("c1", INT32, false, nullptr, nullptr);
   server_schema_builder.AddColumn("c2", STRING, false, nullptr, nullptr);
   Schema server_schema = server_schema_builder.Build();
-  KuduPartialRow row(&client_schema);
+  YBPartialRow row(&client_schema);
   CHECK_OK(row.SetInt32(0, 12345));
   CHECK_OK(row.SetStringCopy(1, "hello"));
   DoFuzzTest(server_schema, row, 100);
@@ -297,7 +297,7 @@ TEST_F(RowOperationsTest, TestFuzz2) {
   server_schema_builder.AddColumn("c1", STRING, true, nullptr, nullptr);
   server_schema_builder.AddColumn("c2", STRING, false, nullptr, nullptr);
   Schema server_schema = server_schema_builder.Build();
-  KuduPartialRow row(&client_schema);
+  YBPartialRow row(&client_schema);
   CHECK_OK(row.SetNull(0));
   CHECK_OK(row.SetStringCopy(1, "hello"));
   DoFuzzTest(server_schema, row, 100);
@@ -308,7 +308,7 @@ namespace {
 // Project client_row into server_schema, and stringify the result.
 // If an error occurs, the result string is "error: <stringified Status>"
 string TestProjection(RowOperationsPB::Type type,
-                      const KuduPartialRow& client_row,
+                      const YBPartialRow& client_row,
                       const Schema& server_schema) {
   RowOperationsPB pb;
   RowOperationsPBEncoder enc(&pb);
@@ -339,7 +339,7 @@ TEST_F(RowOperationsTest, ProjectionTestWholeSchemaSpecified) {
 
   // Test a row missing 'int_val', which is required.
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     EXPECT_EQ("error: Invalid argument: No value provided for required column: "
               "int_val[int32 NOT NULL]",
@@ -348,7 +348,7 @@ TEST_F(RowOperationsTest, ProjectionTestWholeSchemaSpecified) {
 
   // Test a row missing 'string_val', which is nullable
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     CHECK_OK(client_row.SetInt32("int_val", 54321));
     // The NULL should get filled in.
@@ -359,7 +359,7 @@ TEST_F(RowOperationsTest, ProjectionTestWholeSchemaSpecified) {
   // Test a row with all of the fields specified, both with the nullable field
   // specified to be NULL and non-NULL.
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     CHECK_OK(client_row.SetInt32("int_val", 54321));
     CHECK_OK(client_row.SetStringCopy("string_val", "hello world"));
@@ -395,7 +395,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithDefaults) {
 
   // Specify just the key. The other two columns have defaults, so they'll get filled in.
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     EXPECT_EQ("INSERT (int32 key=12345, int32 nullable_with_default=123,"
               " int32 non_null_with_default=456)",
@@ -404,7 +404,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithDefaults) {
 
   // Specify the key and override both defaults
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     CHECK_OK(client_row.SetInt32("nullable_with_default", 12345));
     CHECK_OK(client_row.SetInt32("non_null_with_default", 54321));
@@ -416,7 +416,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithDefaults) {
   // Specify the key and override both defaults, overriding the nullable
   // one to NULL.
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     CHECK_OK(client_row.SetNull("nullable_with_default"));
     CHECK_OK(client_row.SetInt32("non_null_with_default", 54321));
@@ -445,7 +445,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithClientHavingValidSubset) {
 
   // Specify just the key. This is an error because we're missing int_val.
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     EXPECT_EQ("error: Invalid argument: No value provided for required column:"
               " int_val[int32 NOT NULL]",
@@ -455,7 +455,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithClientHavingValidSubset) {
   // Specify both of the columns that the client is aware of.
   // Defaults should be filled for the other two.
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     CHECK_OK(client_row.SetInt32("int_val", 12345));
     EXPECT_EQ("INSERT (int32 key=12345, int32 int_val=12345,"
@@ -476,7 +476,7 @@ TEST_F(RowOperationsTest, ProjectionTestWithClientHavingInvalidSubset) {
   Schema client_schema = b.BuildWithoutIds();
 
   {
-    KuduPartialRow client_row(&client_schema);
+    YBPartialRow client_row(&client_schema);
     CHECK_OK(client_row.SetInt32("key", 12345));
     EXPECT_EQ("error: Invalid argument: Client missing required column:"
               " int_val[int32 NOT NULL]",
@@ -493,7 +493,7 @@ TEST_F(RowOperationsTest, TestProjectUpdates) {
   Schema server_schema = SchemaBuilder(client_schema).Build();
 
   // Check without specifying any columns
-  KuduPartialRow client_row(&client_schema);
+  YBPartialRow client_row(&client_schema);
   EXPECT_EQ("error: Invalid argument: No value provided for key column: key[int32 NOT NULL]",
             TestProjection(RowOperationsPB::UPDATE, client_row, server_schema));
 
@@ -532,7 +532,7 @@ TEST_F(RowOperationsTest, TestProjectUpdatesReorderedColumns) {
                        1);
   server_schema = SchemaBuilder(server_schema).Build();
 
-  KuduPartialRow client_row(&client_schema);
+  YBPartialRow client_row(&client_schema);
   ASSERT_OK(client_row.SetInt32("key", 12345));
   ASSERT_OK(client_row.SetInt32("int_val", 54321));
   EXPECT_EQ("MUTATE (int32 key=12345) SET int_val=54321",
@@ -551,7 +551,7 @@ TEST_F(RowOperationsTest, DISABLED_TestProjectUpdatesSubsetOfColumns) {
                        1);
   server_schema = SchemaBuilder(server_schema).Build();
 
-  KuduPartialRow client_row(&client_schema);
+  YBPartialRow client_row(&client_schema);
   ASSERT_OK(client_row.SetInt32("key", 12345));
   ASSERT_OK(client_row.SetString("string_val", "foo"));
   EXPECT_EQ("MUTATE (int32 key=12345) SET string_val=foo",
@@ -567,7 +567,7 @@ TEST_F(RowOperationsTest, TestClientMismatchedType) {
                        1);
   server_schema = SchemaBuilder(server_schema).Build();
 
-  KuduPartialRow client_row(&client_schema);
+  YBPartialRow client_row(&client_schema);
   ASSERT_OK(client_row.SetInt32("key", 12345));
   ASSERT_OK(client_row.SetInt8("int_val", 1));
   EXPECT_EQ("error: Invalid argument: The column 'int_val' must have type "
@@ -582,7 +582,7 @@ TEST_F(RowOperationsTest, TestProjectDeletes) {
                        2);
   Schema server_schema = SchemaBuilder(client_schema).Build();
 
-  KuduPartialRow client_row(&client_schema);
+  YBPartialRow client_row(&client_schema);
   // No columns set
   EXPECT_EQ("error: Invalid argument: No value provided for key column: key[int32 NOT NULL]",
             TestProjection(RowOperationsPB::DELETE, client_row, server_schema));
@@ -621,7 +621,7 @@ TEST_F(RowOperationsTest, SplitKeyRoundTrip) {
   int32_t int32_expected = 0xFFFFFE;
   int64_t int64_expected = 0xFFFFFFFE;
 
-  KuduPartialRow row(&client_schema);
+  YBPartialRow row(&client_schema);
   ASSERT_OK(row.SetInt8("int8", int8_expected));
   ASSERT_OK(row.SetInt16("int16", int16_expected));
   ASSERT_OK(row.SetInt32("int32", int32_expected));
@@ -639,7 +639,7 @@ TEST_F(RowOperationsTest, SplitKeyRoundTrip) {
   ASSERT_OK(decoder.DecodeOperations(&ops));
   ASSERT_EQ(1, ops.size());
 
-  const shared_ptr<KuduPartialRow>& row2 = ops[0].split_row;
+  const shared_ptr<YBPartialRow>& row2 = ops[0].split_row;
 
   int8_t int8_val;
   ASSERT_OK(row2->GetInt8("int8", &int8_val));

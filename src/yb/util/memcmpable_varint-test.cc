@@ -36,7 +36,7 @@ ostream &operator <<(ostream &os, const pair<T1, T2> &pair) {
 
 namespace yb {
 
-class TestMemcmpableVarint : public KuduTest {
+class TestMemcmpableVarint : public YBTest {
  protected:
   TestMemcmpableVarint() : random_(SeedRandom()) {}
 

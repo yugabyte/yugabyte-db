@@ -35,10 +35,10 @@ using strings::Substitute;
 namespace yb {
 namespace tablet {
 
-class TestTabletSchema : public KuduTabletTest {
+class TestTabletSchema : public YBTabletTest {
  public:
   TestTabletSchema()
-    : KuduTabletTest(CreateBaseSchema()) {
+    : YBTabletTest(CreateBaseSchema()) {
   }
 
   void InsertRows(const Schema& schema, size_t first_key, size_t nrows) {
@@ -55,7 +55,7 @@ class TestTabletSchema : public KuduTabletTest {
 
   void InsertRow(const Schema& schema, size_t key) {
     LocalTabletWriter writer(tablet().get(), &schema);
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     CHECK_OK(row.SetInt32(0, key));
     CHECK_OK(row.SetInt32(1, key));
     ASSERT_OK(writer.Insert(row));
@@ -63,14 +63,14 @@ class TestTabletSchema : public KuduTabletTest {
 
   void DeleteRow(const Schema& schema, size_t key) {
     LocalTabletWriter writer(tablet().get(), &schema);
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     CHECK_OK(row.SetInt32(0, key));
     ASSERT_OK(writer.Delete(row));
   }
 
   void MutateRow(const Schema& schema, size_t key, size_t col_idx, int32_t new_val) {
     LocalTabletWriter writer(tablet().get(), &schema);
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     CHECK_OK(row.SetInt32(0, key));
     CHECK_OK(row.SetInt32(col_idx, new_val));
     ASSERT_OK(writer.Update(row));
@@ -275,7 +275,7 @@ TEST_F(TestTabletSchema, TestModifyEmptyMemRowSet) {
   // Verify we can insert some new data.
   // Inserts the row "(2, 2, 2)"
   LocalTabletWriter writer(tablet().get(), &s2);
-  KuduPartialRow row(&s2);
+  YBPartialRow row(&s2);
   CHECK_OK(row.SetInt32(0, 2));
   CHECK_OK(row.SetInt32(1, 2));
   CHECK_OK(row.SetInt32(2, 2));

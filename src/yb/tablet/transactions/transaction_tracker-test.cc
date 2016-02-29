@@ -44,7 +44,7 @@ using std::vector;
 namespace yb {
 namespace tablet {
 
-class TransactionTrackerTest : public KuduTest {
+class TransactionTrackerTest : public YBTest {
  public:
   class NoOpTransactionState : public TransactionState {
    public:

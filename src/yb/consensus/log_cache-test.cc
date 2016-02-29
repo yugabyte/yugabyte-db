@@ -44,7 +44,7 @@ namespace consensus {
 static const char* kPeerUuid = "leader";
 static const char* kTestTablet = "test-tablet";
 
-class LogCacheTest : public KuduTest {
+class LogCacheTest : public YBTest {
  public:
   LogCacheTest()
     : schema_(GetSimpleTestSchema()),
@@ -52,7 +52,7 @@ class LogCacheTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_->Open());

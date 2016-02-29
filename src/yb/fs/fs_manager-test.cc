@@ -30,10 +30,10 @@ using std::shared_ptr;
 
 namespace yb {
 
-class FsManagerTestBase : public KuduTest {
+class FsManagerTestBase : public YBTest {
  public:
   void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     // Initialize File-System Layout
     ReinitFsManager();

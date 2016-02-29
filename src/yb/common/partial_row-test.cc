@@ -24,7 +24,7 @@
 
 namespace yb {
 
-class PartialRowTest : public KuduTest {
+class PartialRowTest : public YBTest {
  public:
   PartialRowTest()
     : schema_({ ColumnSchema("key", INT32),
@@ -39,7 +39,7 @@ class PartialRowTest : public KuduTest {
 };
 
 TEST_F(PartialRowTest, UnitTest) {
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   string enc_key;
 
   // Initially all columns are unset.
@@ -131,13 +131,13 @@ TEST_F(PartialRowTest, UnitTest) {
 }
 
 TEST_F(PartialRowTest, TestCopy) {
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
 
   // The assignment operator is used in this test because it internally calls
   // the copy constructor.
 
   // Check an empty copy.
-  KuduPartialRow copy = row;
+  YBPartialRow copy = row;
   EXPECT_FALSE(copy.IsColumnSet(0));
   EXPECT_FALSE(copy.IsColumnSet(1));
   EXPECT_FALSE(copy.IsColumnSet(2));

@@ -35,7 +35,7 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/subprocess.h"
 
-using yb::client::KuduClient;
+using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::YBSchemaFromSchema;
@@ -962,10 +962,10 @@ TEST_P(DeleteTableTombstonedParamTest, TestTabletTombstone) {
   // injecting any faults, then we delete the second tablet while exercising
   // several fault injection points.
   const int kNumTablets = 2;
-  vector<const KuduPartialRow*> split_rows;
+  vector<const YBPartialRow*> split_rows;
   Schema schema(GetSimpleTestSchema());
   client::YBSchema client_schema(client::YBSchemaFromSchema(schema));
-  KuduPartialRow* split_row = client_schema.NewRow();
+  YBPartialRow* split_row = client_schema.NewRow();
   ASSERT_OK(split_row->SetInt32(0, numeric_limits<int32_t>::max() / kNumTablets));
   split_rows.push_back(split_row);
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());

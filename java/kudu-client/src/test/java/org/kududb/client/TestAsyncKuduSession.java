@@ -43,17 +43,17 @@ import static org.junit.Assert.*;
  *
  * The test creates a table with a unique(ish) name which it deletes at the end.
  */
-public class TestAsyncYBSession extends BaseKuduTest {
+public class TestAsyncYBSession extends BaseYBTest {
   // Generate a unique table name
   private static final String TABLE_NAME =
       TestAsyncYBSession.class.getName()+"-"+System.currentTimeMillis();
 
   private static Schema schema = getBasicSchema();
-  private static KuduTable table;
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
     table = createTable(TABLE_NAME, schema, new CreateTableOptions());
   }
 

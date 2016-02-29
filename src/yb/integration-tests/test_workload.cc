@@ -35,15 +35,15 @@ namespace yb {
 using client::FromInternalCompressionType;
 using client::FromInternalDataType;
 using client::FromInternalEncodingType;
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduColumnSchema;;
+using client::YBColumnSchema;;
 using client::YBInsert;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 using client::YBSchemaFromSchema;
 using client::YBSession;
-using client::KuduTable;
+using client::YBTable;
 using client::YBTableCreator;
 using client::YBUpdate;
 using client::sp::shared_ptr;
@@ -75,7 +75,7 @@ TestWorkload::~TestWorkload() {
 void TestWorkload::WriteThread() {
   Random r(Env::Default()->gettid());
 
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   // Loop trying to open up the table. In some tests we set up very
   // low RPC timeouts to test those behaviors, so this might fail and
   // need retrying.
@@ -108,13 +108,13 @@ void TestWorkload::WriteThread() {
     for (int i = 0; i < write_batch_size_; i++) {
       if (pathological_one_row_enabled_) {
         gscoped_ptr<YBUpdate> update(table->NewUpdate());
-        KuduPartialRow* row = update->mutable_row();
+        YBPartialRow* row = update->mutable_row();
         CHECK_OK(row->SetInt32(0, 0));
         CHECK_OK(row->SetInt32(1, r.Next()));
         CHECK_OK(session->Apply(update.release()));
       } else {
         gscoped_ptr<YBInsert> insert(table->NewInsert());
-        KuduPartialRow* row = insert->mutable_row();
+        YBPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, r.Next()));
         CHECK_OK(row->SetInt32(1, r.Next()));
         string test_payload("hello world");
@@ -166,7 +166,7 @@ void TestWorkload::Setup() {
 
   bool table_exists;
 
-  // Retry KuduClient::TableExists() until we make that call retry reliably.
+  // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.
   MonoTime deadline(MonoTime::Now(MonoTime::FINE));
   deadline.AddDelta(MonoDelta::FromSeconds(10));
@@ -181,9 +181,9 @@ void TestWorkload::Setup() {
   if (!table_exists) {
     YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
 
-    vector<const KuduPartialRow*> splits;
+    vector<const YBPartialRow*> splits;
     for (int i = 1; i < num_tablets_; i++) {
-      KuduPartialRow* r = client_schema.NewRow();
+      YBPartialRow* r = client_schema.NewRow();
       CHECK_OK(r->SetInt32("key", MathLimits<int32_t>::kMax / num_tablets_ * i));
       splits.push_back(r);
     }
@@ -208,10 +208,10 @@ void TestWorkload::Setup() {
     shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(20000);
     CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
-    shared_ptr<KuduTable> table;
+    shared_ptr<YBTable> table;
     CHECK_OK(client_->OpenTable(table_name_, &table));
     gscoped_ptr<YBInsert> insert(table->NewInsert());
-    KuduPartialRow* row = insert->mutable_row();
+    YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, 0));
     CHECK_OK(row->SetInt32(1, 0));
     CHECK_OK(row->SetStringCopy(2, "hello world"));

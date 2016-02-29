@@ -31,16 +31,16 @@ class AlterTableRequestPB_AlterColumn;
 } // namespace master
 namespace client {
 
-class KuduColumnSpec;
+class YBColumnSpec;
 
-class KuduTableAlterer::Data {
+class YBTableAlterer::Data {
  public:
-  Data(KuduClient* client, std::string name);
+  Data(YBClient* client, std::string name);
   ~Data();
   Status ToRequest(master::AlterTableRequestPB* req);
 
 
-  KuduClient* const client_;
+  YBClient* const client_;
   const std::string table_name_;
 
   Status status_;
@@ -48,8 +48,8 @@ class KuduTableAlterer::Data {
   struct Step {
     master::AlterTableRequestPB::StepType step_type;
 
-    // Owned by KuduTableAlterer::Data.
-    KuduColumnSpec *spec;
+    // Owned by YBTableAlterer::Data.
+    YBColumnSpec *spec;
   };
   std::vector<Step> steps_;
 

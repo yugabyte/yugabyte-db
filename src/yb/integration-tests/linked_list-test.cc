@@ -49,7 +49,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/hdr_histogram.h"
 
-using yb::client::KuduClient;
+using yb::client::YBClient;
 using yb::client::YBClientBuilder;
 using yb::client::YBSchema;
 using yb::client::sp::shared_ptr;
@@ -140,7 +140,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
     }
   }
 
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
   gscoped_ptr<LinkedListTester> tester_;
 };
 

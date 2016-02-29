@@ -26,7 +26,7 @@ import org.kududb.annotations.InterfaceStability;
 @InterfaceStability.Evolving
 public class Insert extends Operation {
 
-  Insert(KuduTable table) {
+  Insert(YBTable table) {
     super(table);
   }
 

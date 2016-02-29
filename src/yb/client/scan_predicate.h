@@ -48,7 +48,7 @@ class YB_EXPORT YBPredicate {
   class YB_NO_EXPORT Data;
  private:
   friend class YBScanner;
-  friend class KuduTable;
+  friend class YBTable;
   friend class ComparisonPredicateData;
   friend class ErrorPredicateData;
 

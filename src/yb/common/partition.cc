@@ -169,7 +169,7 @@ void PartitionSchema::ToPB(PartitionSchemaPB* pb) const {
   SetColumnIdentifiers(range_schema_.column_ids, pb->mutable_range_schema()->mutable_columns());
 }
 
-Status PartitionSchema::EncodeKey(const KuduPartialRow& row, string* buf) const {
+Status PartitionSchema::EncodeKey(const YBPartialRow& row, string* buf) const {
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
@@ -193,7 +193,7 @@ Status PartitionSchema::EncodeKey(const ConstContiguousRow& row, string* buf) co
   return EncodeColumns(row, range_schema_.column_ids, buf);
 }
 
-Status PartitionSchema::CreatePartitions(const vector<KuduPartialRow>& split_rows,
+Status PartitionSchema::CreatePartitions(const vector<YBPartialRow>& split_rows,
                                          const Schema& schema,
                                          vector<Partition>* partitions) const {
   const KeyEncoder<string>& hash_encoder = GetKeyEncoder<string>(GetTypeInfo(UINT32));
@@ -232,7 +232,7 @@ Status PartitionSchema::CreatePartitions(const vector<KuduPartialRow>& split_row
   // Create the start range keys.
   set<string> start_keys;
   string start_key;
-  for (const KuduPartialRow& row : split_rows) {
+  for (const YBPartialRow& row : split_rows) {
     int column_count = 0;
     for (int column_idx = 0; column_idx < schema.num_columns(); column_idx++) {
       const ColumnSchema& column = schema.column(column_idx);
@@ -352,7 +352,7 @@ Status PartitionSchema::PartitionContainsRowImpl(const Partition& partition,
 }
 
 Status PartitionSchema::PartitionContainsRow(const Partition& partition,
-                                             const KuduPartialRow& row,
+                                             const YBPartialRow& row,
                                              bool* contains) const {
   return PartitionContainsRowImpl(partition, row, contains);
 }
@@ -365,7 +365,7 @@ Status PartitionSchema::PartitionContainsRow(const Partition& partition,
 
 
 Status PartitionSchema::DecodeRangeKey(Slice* encoded_key,
-                                       KuduPartialRow* row,
+                                       YBPartialRow* row,
                                        Arena* arena) const {
   ContiguousRow cont_row(row->schema(), row->row_data_);
   for (int i = 0; i < range_schema_.column_ids.size(); i++) {
@@ -438,8 +438,8 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
 
   if (!range_schema_.column_ids.empty()) {
     Arena arena(1024, 128 * 1024);
-    KuduPartialRow start_row(&schema);
-    KuduPartialRow end_row(&schema);
+    YBPartialRow start_row(&schema);
+    YBPartialRow end_row(&schema);
 
     s.append("range: [(");
 
@@ -470,7 +470,7 @@ string PartitionSchema::PartitionDebugString(const Partition& partition,
   return s;
 }
 
-void PartitionSchema::AppendRangeDebugStringComponentsOrString(const KuduPartialRow& row,
+void PartitionSchema::AppendRangeDebugStringComponentsOrString(const YBPartialRow& row,
                                                                const StringPiece default_string,
                                                                vector<string>* components) const {
   ConstContiguousRow const_row(row.schema(), row.row_data_);
@@ -495,7 +495,7 @@ void PartitionSchema::AppendRangeDebugStringComponentsOrString(const KuduPartial
   }
 }
 
-void PartitionSchema::AppendRangeDebugStringComponentsOrMin(const KuduPartialRow& row,
+void PartitionSchema::AppendRangeDebugStringComponentsOrMin(const YBPartialRow& row,
                                                             vector<string>* components) const {
   ConstContiguousRow const_row(row.schema(), row.row_data_);
 
@@ -548,7 +548,7 @@ string PartitionSchema::RowDebugString(const ConstContiguousRow& row) const {
   return JoinStrings(components, ", ");
 }
 
-string PartitionSchema::RowDebugString(const KuduPartialRow& row) const {
+string PartitionSchema::RowDebugString(const YBPartialRow& row) const {
   vector<string> components;
 
   for (const HashBucketSchema& hash_bucket_schema : hash_bucket_schemas_) {
@@ -584,7 +584,7 @@ string PartitionSchema::PartitionKeyDebugString(const string& key, const Schema&
 
   if (!range_schema_.column_ids.empty()) {
     Arena arena(1024, 128 * 1024);
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
 
     Status s = DecodeRangeKey(&encoded_key, &row, &arena);
     if (!s.ok()) {
@@ -680,7 +680,7 @@ Status PartitionSchema::EncodeColumns(const ConstContiguousRow& row,
 }
 
 // Encodes the specified primary key columns of the supplied row into the buffer.
-Status PartitionSchema::EncodeColumns(const KuduPartialRow& row,
+Status PartitionSchema::EncodeColumns(const YBPartialRow& row,
                                       const vector<ColumnId>& column_ids,
                                       string* buf) {
   for (int i = 0; i < column_ids.size(); i++) {
@@ -726,7 +726,7 @@ Status PartitionSchema::BucketForRow(const Row& row,
 //------------------------------------------------------------
 
 template
-Status PartitionSchema::BucketForRow(const KuduPartialRow& row,
+Status PartitionSchema::BucketForRow(const YBPartialRow& row,
                                      const HashBucketSchema& hash_bucket_schema,
                                      int32_t* bucket);
 

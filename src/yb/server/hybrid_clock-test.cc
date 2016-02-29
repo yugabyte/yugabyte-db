@@ -30,14 +30,14 @@ DECLARE_bool(use_mock_wall_clock);
 namespace yb {
 namespace server {
 
-class HybridClockTest : public KuduTest {
+class HybridClockTest : public YBTest {
  public:
   HybridClockTest()
       : clock_(new HybridClock) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     ASSERT_OK(clock_->Init());
   }
 

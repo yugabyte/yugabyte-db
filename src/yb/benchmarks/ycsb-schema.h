@@ -23,8 +23,8 @@
 
 namespace yb {
 
-static const client::KuduColumnSchema::DataType kString =
-    client::KuduColumnSchema::STRING;
+static const client::YBColumnSchema::DataType kString =
+    client::YBColumnSchema::STRING;
 
 inline client::YBSchema CreateYCSBSchema() {
   client::YBSchema s;

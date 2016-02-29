@@ -121,7 +121,7 @@ class MultiThreadedTabletTest : public TabletTestBase<SETUP> {
     int col_idx = schema.num_key_columns() == 1 ? 2 : 3;
     LOG(INFO) << "Update thread using schema: " << schema.ToString();
 
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
 
     while (running_insert_count_.count() > 0) {
       gscoped_ptr<RowwiseIterator> iter;

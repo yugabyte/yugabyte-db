@@ -28,32 +28,32 @@ namespace tools {
 void WriteValueToColumn(const client::YBSchema& schema,
                         int col_idx,
                         uint64_t value,
-                        KuduPartialRow* row) {
-  client::KuduColumnSchema::DataType type = schema.Column(col_idx).type();
+                        YBPartialRow* row) {
+  client::YBColumnSchema::DataType type = schema.Column(col_idx).type();
   char buf[kFastToBufferSize];
   switch (type) {
-    case client::KuduColumnSchema::INT8:
+    case client::YBColumnSchema::INT8:
       CHECK_OK(row->SetInt8(col_idx, value));
       break;
-    case client::KuduColumnSchema::INT16:
+    case client::YBColumnSchema::INT16:
       CHECK_OK(row->SetInt16(col_idx, value));
       break;
-    case client::KuduColumnSchema::INT32:
+    case client::YBColumnSchema::INT32:
       CHECK_OK(row->SetInt32(col_idx, value));
       break;
-    case client::KuduColumnSchema::INT64:
+    case client::YBColumnSchema::INT64:
       CHECK_OK(row->SetInt64(col_idx, value));
       break;
-    case client::KuduColumnSchema::FLOAT:
+    case client::YBColumnSchema::FLOAT:
       CHECK_OK(row->SetFloat(col_idx, value / 123.0));
       break;
-    case client::KuduColumnSchema::DOUBLE:
+    case client::YBColumnSchema::DOUBLE:
       CHECK_OK(row->SetDouble(col_idx, value / 123.0));
       break;
-    case client::KuduColumnSchema::STRING:
+    case client::YBColumnSchema::STRING:
       CHECK_OK(row->SetStringCopy(col_idx, FastHex64ToBuffer(value, buf)));
       break;
-    case client::KuduColumnSchema::BOOL:
+    case client::YBColumnSchema::BOOL:
       CHECK_OK(row->SetBool(col_idx, value));
       break;
     default:
@@ -62,7 +62,7 @@ void WriteValueToColumn(const client::YBSchema& schema,
 }
 
 void GenerateDataForRow(const client::YBSchema& schema, uint64_t record_id,
-                        Random* random, KuduPartialRow* row) {
+                        Random* random, YBPartialRow* row) {
   for (int col_idx = 0; col_idx < schema.num_columns(); col_idx++) {
     // We randomly generate the inserted data, except for the first column,
     // which is always based on a monotonic "record id".

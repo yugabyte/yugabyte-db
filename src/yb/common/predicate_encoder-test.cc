@@ -26,7 +26,7 @@
 
 namespace yb {
 
-class TestRangePredicateEncoder : public KuduTest {
+class TestRangePredicateEncoder : public YBTest {
  public:
   explicit TestRangePredicateEncoder(const Schema& s)
     : arena_(1024, 256 * 1024),

@@ -23,13 +23,13 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestRowErrors extends BaseKuduTest {
+public class TestRowErrors extends BaseYBTest {
 
-  private static KuduTable table;
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
 
   }
 

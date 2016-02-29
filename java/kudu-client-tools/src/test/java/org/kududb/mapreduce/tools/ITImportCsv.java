@@ -21,7 +21,7 @@ import org.kududb.Schema;
 import org.kududb.Type;
 import org.kududb.mapreduce.CommandLineParser;
 import org.kududb.mapreduce.HadoopTestingUtility;
-import org.kududb.client.BaseKuduTest;
+import org.kududb.client.BaseYBTest;
 import org.kududb.client.CreateTableOptions;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Job;
@@ -38,7 +38,7 @@ import java.util.ArrayList;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class ITImportCsv extends BaseKuduTest {
+public class ITImportCsv extends BaseYBTest {
 
   private static final String TABLE_NAME =
       ITImportCsv.class.getName() + "-" + System.currentTimeMillis();
@@ -49,7 +49,7 @@ public class ITImportCsv extends BaseKuduTest {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
 
     ArrayList<ColumnSchema> columns = new ArrayList<ColumnSchema>(4);
     columns.add(new ColumnSchema.ColumnSchemaBuilder("key", Type.INT32)
@@ -72,7 +72,7 @@ public class ITImportCsv extends BaseKuduTest {
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseKuduTest.tearDownAfterClass();
+      BaseYBTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }

@@ -49,7 +49,7 @@ public class TestOperation {
 
   @Test
   public void testSetStrings() {
-    KuduTable table = Mockito.mock(KuduTable.class);
+    YBTable table = Mockito.mock(YBTable.class);
     Mockito.doReturn(createManyStringsSchema()).when(table).getSchema();
     Insert insert = new Insert(table);
     PartialRow row = insert.getRow();
@@ -133,7 +133,7 @@ public class TestOperation {
 
   @Test
   public void testRowKeyStringify() {
-    KuduTable table = Mockito.mock(KuduTable.class);
+    YBTable table = Mockito.mock(YBTable.class);
     Mockito.doReturn(createAllTypesKeySchema()).when(table).getSchema();
     Insert insert = new Insert(table);
     PartialRow row = insert.getRow();

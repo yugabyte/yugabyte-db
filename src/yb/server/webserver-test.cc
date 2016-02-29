@@ -34,7 +34,7 @@ DECLARE_int32(webserver_max_post_length_bytes);
 
 namespace yb {
 
-class WebserverTest : public KuduTest {
+class WebserverTest : public YBTest {
  public:
   WebserverTest() {
     static_dir_ = GetTestPath("webserver-docroot");
@@ -47,7 +47,7 @@ class WebserverTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     AddDefaultPathHandlers(server_.get());
     ASSERT_OK(server_->Start());

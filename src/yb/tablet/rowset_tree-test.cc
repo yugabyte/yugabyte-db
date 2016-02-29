@@ -34,7 +34,7 @@ using std::unordered_set;
 
 namespace yb { namespace tablet {
 
-class TestRowSetTree : public KuduTest {
+class TestRowSetTree : public YBTest {
 };
 
 namespace {

@@ -28,22 +28,22 @@ namespace client {
 // Helper functions that convert between client-facing and internal PB enums.
 
 yb::EncodingType ToInternalEncodingType(
-    KuduColumnStorageAttributes::EncodingType type);
-KuduColumnStorageAttributes::EncodingType FromInternalEncodingType(
+    YBColumnStorageAttributes::EncodingType type);
+YBColumnStorageAttributes::EncodingType FromInternalEncodingType(
     yb::EncodingType type);
 
 yb::CompressionType ToInternalCompressionType(
-    KuduColumnStorageAttributes::CompressionType type);
-KuduColumnStorageAttributes::CompressionType FromInternalCompressionType(
+    YBColumnStorageAttributes::CompressionType type);
+YBColumnStorageAttributes::CompressionType FromInternalCompressionType(
     yb::CompressionType type);
 
 yb::DataType ToInternalDataType(
-    KuduColumnSchema::DataType type);
-KuduColumnSchema::DataType FromInternalDataType(
+    YBColumnSchema::DataType type);
+YBColumnSchema::DataType FromInternalDataType(
     yb::DataType type);
 
 
-class KuduColumnSpec::Data {
+class YBColumnSpec::Data {
  public:
   explicit Data(std::string name)
       : name(std::move(name)),
@@ -66,13 +66,13 @@ class KuduColumnSpec::Data {
   const std::string name;
 
   bool has_type;
-  KuduColumnSchema::DataType type;
+  YBColumnSchema::DataType type;
 
   bool has_encoding;
-  KuduColumnStorageAttributes::EncodingType encoding;
+  YBColumnStorageAttributes::EncodingType encoding;
 
   bool has_compression;
-  KuduColumnStorageAttributes::CompressionType compression;
+  YBColumnStorageAttributes::CompressionType compression;
 
   bool has_block_size;
   int32_t block_size;

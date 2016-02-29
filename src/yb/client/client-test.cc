@@ -92,14 +92,14 @@ using sp::shared_ptr;
 using tablet::TabletPeer;
 using tserver::MiniTabletServer;
 
-class ClientTest : public KuduTest {
+class ClientTest : public YBTest {
  public:
   ClientTest() {
     YBSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->Nullable();
-    b.AddColumn("non_null_with_default")->Type(KuduColumnSchema::INT32)->NotNull()
+    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->Nullable();
+    b.AddColumn("non_null_with_default")->Type(YBColumnSchema::INT32)->NotNull()
       ->Default(YBValue::FromInt(12345));
     CHECK_OK(b.Build(&schema_));
 
@@ -107,7 +107,7 @@ class ClientTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     // Reduce the TS<->Master heartbeat interval
     FLAGS_heartbeat_interval_ms = 10;
@@ -123,14 +123,14 @@ class ClientTest : public KuduTest {
                      .Build(&client_));
 
     ASSERT_NO_FATAL_FAILURE(CreateTable(kTableName, 1, GenerateSplitRows(), &client_table_));
-    ASSERT_NO_FATAL_FAILURE(CreateTable(kTable2Name, 1, vector<const KuduPartialRow*>(),
+    ASSERT_NO_FATAL_FAILURE(CreateTable(kTable2Name, 1, vector<const YBPartialRow*>(),
                                         &client_table2_));
   }
 
   // Generate a set of split rows for tablets used in this test.
-  vector<const KuduPartialRow*> GenerateSplitRows() {
-    vector<const KuduPartialRow*> rows;
-    KuduPartialRow* row = schema_.NewRow();
+  vector<const YBPartialRow*> GenerateSplitRows() {
+    vector<const YBPartialRow*> rows;
+    YBPartialRow* row = schema_.NewRow();
     CHECK_OK(row->SetInt32(0, 9));
     rows.push_back(row);
     return rows;
@@ -141,13 +141,13 @@ class ClientTest : public KuduTest {
       cluster_->Shutdown();
       cluster_.reset();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   // Count the rows of a table, checking that the operation succeeds.
   //
   // Must be public to use as a thread closure.
-  void CheckRowCount(KuduTable* table) {
+  void CheckRowCount(YBTable* table) {
     CountRowsFromClient(table);
   }
 
@@ -157,7 +157,7 @@ class ClientTest : public KuduTest {
   static const char *kTable2Name;
   static const int32_t kNoBound;
 
-  string GetFirstTabletId(KuduTable* table) {
+  string GetFirstTabletId(YBTable* table) {
     GetTableLocationsRequestPB req;
     GetTableLocationsResponsePB resp;
     req.mutable_table()->set_table_name(table->name());
@@ -172,14 +172,14 @@ class ClientTest : public KuduTest {
       MiniTabletServer* server = cluster_->mini_tablet_server(i);
       if (server->is_started()) {
         ASSERT_EQ(0, server->server()->rpc_server()->
-                  service_pool("kudu.tserver.TabletServerService")->
+                  service_pool("yb.tserver.TabletServerService")->
                   RpcsQueueOverflowMetric()->value());
       }
     }
   }
 
   // Inserts 'num_rows' test rows using 'client'
-  void InsertTestRows(KuduClient* client, KuduTable* table, int num_rows, int first_row = 0) {
+  void InsertTestRows(YBClient* client, YBTable* table, int num_rows, int first_row = 0) {
     shared_ptr<YBSession> session = client->NewSession();
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
@@ -192,11 +192,11 @@ class ClientTest : public KuduTest {
   }
 
   // Inserts 'num_rows' using the default client.
-  void InsertTestRows(KuduTable* table, int num_rows, int first_row = 0) {
+  void InsertTestRows(YBTable* table, int num_rows, int first_row = 0) {
     InsertTestRows(client_.get(), table, num_rows, first_row);
   }
 
-  void UpdateTestRows(KuduTable* table, int lo, int hi) {
+  void UpdateTestRows(YBTable* table, int lo, int hi) {
     shared_ptr<YBSession> session = client_->NewSession();
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
@@ -208,21 +208,21 @@ class ClientTest : public KuduTest {
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
   }
 
-  void DeleteTestRows(KuduTable* table, int lo, int hi) {
+  void DeleteTestRows(YBTable* table, int lo, int hi) {
     shared_ptr<YBSession> session = client_->NewSession();
     ASSERT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     session->SetTimeoutMillis(10000);
     for (int i = lo; i < hi; i++) {
-      gscoped_ptr<KuduDelete> del(DeleteTestRow(table, i));
+      gscoped_ptr<YBDelete> del(DeleteTestRow(table, i));
       ASSERT_OK(session->Apply(del.release()))
     }
     FlushSessionOrDie(session);
     ASSERT_NO_FATAL_FAILURE(CheckNoRpcOverflow());
   }
 
-  gscoped_ptr<YBInsert> BuildTestRow(KuduTable* table, int index) {
+  gscoped_ptr<YBInsert> BuildTestRow(YBTable* table, int index) {
     gscoped_ptr<YBInsert> insert(table->NewInsert());
-    KuduPartialRow* row = insert->mutable_row();
+    YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2));
     CHECK_OK(row->SetStringCopy(2, Slice(StringPrintf("hello %d", index))));
@@ -230,18 +230,18 @@ class ClientTest : public KuduTest {
     return insert.Pass();
   }
 
-  gscoped_ptr<YBUpdate> UpdateTestRow(KuduTable* table, int index) {
+  gscoped_ptr<YBUpdate> UpdateTestRow(YBTable* table, int index) {
     gscoped_ptr<YBUpdate> update(table->NewUpdate());
-    KuduPartialRow* row = update->mutable_row();
+    YBPartialRow* row = update->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     CHECK_OK(row->SetInt32(1, index * 2 + 1));
     CHECK_OK(row->SetStringCopy(2, Slice(StringPrintf("hello again %d", index))));
     return update.Pass();
   }
 
-  gscoped_ptr<KuduDelete> DeleteTestRow(KuduTable* table, int index) {
-    gscoped_ptr<KuduDelete> del(table->NewDelete());
-    KuduPartialRow* row = del->mutable_row();
+  gscoped_ptr<YBDelete> DeleteTestRow(YBTable* table, int index) {
+    gscoped_ptr<YBDelete> del(table->NewDelete());
+    YBPartialRow* row = del->mutable_row();
     CHECK_OK(row->SetInt32(0, index));
     return del.Pass();
   }
@@ -253,11 +253,11 @@ class ClientTest : public KuduTest {
       ASSERT_OK(scanner.Open());
 
       ASSERT_TRUE(scanner.HasMoreRows());
-      KuduScanBatch batch;
+      YBScanBatch batch;
       uint64_t sum = 0;
       while (scanner.HasMoreRows()) {
         ASSERT_OK(scanner.NextBatch(&batch));
-        for (const KuduScanBatch::RowPtr& row : batch) {
+        for (const YBScanBatch::RowPtr& row : batch) {
           int32_t value;
           ASSERT_OK(row.GetInt32(0, &value));
           sum += value;
@@ -284,10 +284,10 @@ class ClientTest : public KuduTest {
       ASSERT_OK(scanner.Open());
 
       ASSERT_TRUE(scanner.HasMoreRows());
-      KuduScanBatch batch;
+      YBScanBatch batch;
       while (scanner.HasMoreRows()) {
         ASSERT_OK(scanner.NextBatch(&batch));
-        for (const KuduScanBatch::RowPtr& row : batch) {
+        for (const YBScanBatch::RowPtr& row : batch) {
           Slice s;
           ASSERT_OK(row.GetString(2, &s));
           if (!s.starts_with("hello 2") && !s.starts_with("hello 3")) {
@@ -311,10 +311,10 @@ class ClientTest : public KuduTest {
       ASSERT_OK(scanner.Open());
 
       ASSERT_TRUE(scanner.HasMoreRows());
-      KuduScanBatch batch;
+      YBScanBatch batch;
       while (scanner.HasMoreRows()) {
         ASSERT_OK(scanner.NextBatch(&batch));
-        for (const KuduScanBatch::RowPtr& row : batch) {
+        for (const YBScanBatch::RowPtr& row : batch) {
           int32_t k;
           ASSERT_OK(row.GetInt32(0, &k));
           if (k < 5 || k > 10) {
@@ -325,15 +325,15 @@ class ClientTest : public KuduTest {
     }
   }
 
-  int CountRowsFromClient(KuduTable* table) {
+  int CountRowsFromClient(YBTable* table) {
     return CountRowsFromClient(table, kNoBound, kNoBound);
   }
 
-  int CountRowsFromClient(KuduTable* table, int32_t lower_bound, int32_t upper_bound) {
-    return CountRowsFromClient(table, KuduClient::LEADER_ONLY, lower_bound, upper_bound);
+  int CountRowsFromClient(YBTable* table, int32_t lower_bound, int32_t upper_bound) {
+    return CountRowsFromClient(table, YBClient::LEADER_ONLY, lower_bound, upper_bound);
   }
 
-  int CountRowsFromClient(KuduTable* table, KuduClient::ReplicaSelection selection,
+  int CountRowsFromClient(YBTable* table, YBClient::ReplicaSelection selection,
                           int32_t lower_bound, int32_t upper_bound) {
     YBScanner scanner(table);
     CHECK_OK(scanner.SetSelection(selection));
@@ -352,7 +352,7 @@ class ClientTest : public KuduTest {
     CHECK_OK(scanner.Open());
 
     int count = 0;
-    KuduScanBatch batch;
+    YBScanBatch batch;
     while (scanner.HasMoreRows()) {
       CHECK_OK(scanner.NextBatch(&batch));
       count += batch.NumRows();
@@ -364,8 +364,8 @@ class ClientTest : public KuduTest {
   // (or single tablet if 'split_rows' is empty).
   void CreateTable(const string& table_name,
                    int num_replicas,
-                   const vector<const KuduPartialRow*>& split_rows,
-                   shared_ptr<KuduTable>* table) {
+                   const vector<const YBPartialRow*>& split_rows,
+                   shared_ptr<YBTable>* table) {
 
     bool added_replicas = false;
     // Add more tablet servers to satisfy all replicas, if necessary.
@@ -442,9 +442,9 @@ class ClientTest : public KuduTest {
   YBSchema schema_;
 
   gscoped_ptr<MiniCluster> cluster_;
-  shared_ptr<KuduClient> client_;
-  shared_ptr<KuduTable> client_table_;
-  shared_ptr<KuduTable> client_table2_;
+  shared_ptr<YBClient> client_;
+  shared_ptr<YBTable> client_table_;
+  shared_ptr<YBTable> client_table2_;
 };
 
 const char *ClientTest::kTableName = "client-testtb";
@@ -464,7 +464,7 @@ TEST_F(ClientTest, TestListTables) {
 }
 
 TEST_F(ClientTest, TestListTabletServers) {
-  vector<KuduTabletServer*> tss;
+  vector<YBTabletServer*> tss;
   ElementDeleter deleter(&tss);
   ASSERT_OK(client_->ListTabletServers(&tss));
   ASSERT_EQ(1, tss.size());
@@ -475,7 +475,7 @@ TEST_F(ClientTest, TestListTabletServers) {
 }
 
 TEST_F(ClientTest, TestBadTable) {
-  shared_ptr<KuduTable> t;
+  shared_ptr<YBTable> t;
   Status s = client_->OpenTable("xxx-does-not-exist", &t);
   ASSERT_TRUE(s.IsNotFound());
   ASSERT_STR_CONTAINS(s.ToString(), "Not found: The table does not exist");
@@ -485,7 +485,7 @@ TEST_F(ClientTest, TestBadTable) {
 // to it (no "find the new leader master" since there's only one master).
 TEST_F(ClientTest, TestMasterDown) {
   cluster_->mini_master()->Shutdown();
-  shared_ptr<KuduTable> t;
+  shared_ptr<YBTable> t;
   client_->data_->default_admin_operation_timeout_ = MonoDelta::FromSeconds(1);
   Status s = client_->OpenTable("other-tablet", &t);
   ASSERT_TRUE(s.IsNetworkError());
@@ -541,7 +541,7 @@ TEST_F(ClientTest, TestScanAtSnapshot) {
   uint64_t count = 0;
 
   // Do a "normal", READ_LATEST scan
-  KuduScanBatch batch;
+  YBScanBatch batch;
   while (scanner.HasMoreRows()) {
     ASSERT_OK(scanner.NextBatch(&batch));
     count += batch.NumRows();
@@ -590,15 +590,15 @@ TEST_F(ClientTest, TestScanAtFutureTimestamp) {
 
 TEST_F(ClientTest, TestScanMultiTablet) {
   // 5 tablets, each with 10 rows worth of space.
-  gscoped_ptr<KuduPartialRow> row(schema_.NewRow());
-  vector<const KuduPartialRow*> rows;
+  gscoped_ptr<YBPartialRow> row(schema_.NewRow());
+  vector<const YBPartialRow*> rows;
   for (int i = 1; i < 5; i++) {
-    KuduPartialRow* row = schema_.NewRow();
+    YBPartialRow* row = schema_.NewRow();
     CHECK_OK(row->SetInt32(0, i * 10));
     rows.push_back(row);
   }
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable("TestScanMultiTablet", 1, rows, &table));
 
   // Insert rows with keys 12, 13, 15, 17, 22, 23, 25, 27...47 into each
@@ -655,7 +655,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete half the rows
   for (int i = 1; i < 5; ++i) {
-    gscoped_ptr<KuduDelete> del;
+    gscoped_ptr<YBDelete> del;
     del = DeleteTestRow(table.get(), 5 + i*10);
     ASSERT_OK(session->Apply(del.release()));
     del = DeleteTestRow(table.get(), 7 + i*10);
@@ -677,7 +677,7 @@ TEST_F(ClientTest, TestScanMultiTablet) {
 
   // Delete rest of rows
   for (int i = 1; i < 5; ++i) {
-    gscoped_ptr<KuduDelete> del;
+    gscoped_ptr<YBDelete> del;
     del = DeleteTestRow(table.get(), 2 + i*10);
     ASSERT_OK(session->Apply(del.release()));
     del = DeleteTestRow(table.get(), 3 + i*10);
@@ -707,7 +707,7 @@ TEST_F(ClientTest, TestScanEmptyTable) {
   // the last tablet, HasMoreRows will return true (because it doesn't
   // know whether there's data in subsequent tablets).
   ASSERT_TRUE(scanner.HasMoreRows());
-  KuduScanBatch batch;
+  YBScanBatch batch;
   ASSERT_OK(scanner.NextBatch(&batch));
   ASSERT_EQ(0, batch.NumRows());
   ASSERT_FALSE(scanner.HasMoreRows());
@@ -726,7 +726,7 @@ TEST_F(ClientTest, TestScanEmptyProjection) {
     ASSERT_OK(scanner.Open());
 
     ASSERT_TRUE(scanner.HasMoreRows());
-    KuduScanBatch batch;
+    YBScanBatch batch;
     uint64_t count = 0;
     while (scanner.HasMoreRows()) {
       ASSERT_OK(scanner.NextBatch(&batch));
@@ -757,7 +757,7 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
   YBScanner scanner(client_table_.get());
   ASSERT_OK(scanner.SetProjectedColumns({ "int_val" }));
   ASSERT_EQ(scanner.GetProjectionSchema().num_columns(), 1);
-  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), KuduColumnSchema::INT32);
+  ASSERT_EQ(scanner.GetProjectionSchema().Column(0).type(), YBColumnSchema::INT32);
   ASSERT_OK(scanner.AddConjunctPredicate(
                 client_table_->NewComparisonPredicate("key", YBPredicate::GREATER_EQUAL,
                                                       YBValue::FromInt(5))));
@@ -771,10 +771,10 @@ TEST_F(ClientTest, TestScanPredicateKeyColNotProjected) {
     ASSERT_OK(scanner.Open());
 
     ASSERT_TRUE(scanner.HasMoreRows());
-    KuduScanBatch batch;
+    YBScanBatch batch;
     while (scanner.HasMoreRows()) {
       ASSERT_OK(scanner.NextBatch(&batch));
-      for (const KuduScanBatch::RowPtr& row : batch) {
+      for (const YBScanBatch::RowPtr& row : batch) {
         int32_t val;
         ASSERT_OK(row.GetInt32(0, &val));
         ASSERT_EQ(curr_key * 2, val);
@@ -808,10 +808,10 @@ TEST_F(ClientTest, TestScanPredicateNonKeyColNotProjected) {
     ASSERT_OK(scanner.Open());
 
     ASSERT_TRUE(scanner.HasMoreRows());
-    KuduScanBatch batch;
+    YBScanBatch batch;
     while (scanner.HasMoreRows()) {
       ASSERT_OK(scanner.NextBatch(&batch));
-      for (const KuduScanBatch::RowPtr& row : batch) {
+      for (const YBScanBatch::RowPtr& row : batch) {
         int32_t val;
         ASSERT_OK(row.GetInt32(0, &val));
         ASSERT_EQ(curr_key / 2, val);
@@ -861,7 +861,7 @@ TEST_F(ClientTest, TestInvalidPredicates) {
 // Check that the tserver proxy is reset on close, even for empty tables.
 TEST_F(ClientTest, TestScanCloseProxy) {
   const string kEmptyTable = "TestScanCloseProxy";
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable(kEmptyTable, 3, GenerateSplitRows(), &table));
 
   {
@@ -887,14 +887,14 @@ TEST_F(ClientTest, TestScanCloseProxy) {
 namespace internal {
 
 static void ReadBatchToStrings(YBScanner* scanner, vector<string>* rows) {
-  KuduScanBatch batch;
+  YBScanBatch batch;
   ASSERT_OK(scanner->NextBatch(&batch));
   for (int i = 0; i < batch.NumRows(); i++) {
     rows->push_back(batch.Row(i).ToString());
   }
 }
 
-static void DoScanWithCallback(KuduTable* table,
+static void DoScanWithCallback(YBTable* table,
                                const vector<string>& expected_rows,
                                const boost::function<Status(const string&)>& cb) {
   // Initialize fault-tolerant snapshot scanner.
@@ -918,9 +918,9 @@ static void DoScanWithCallback(KuduTable* table,
   // Call the callback on the tserver serving the scan.
   LOG(INFO) << "Calling callback.";
   {
-    KuduTabletServer* kts_ptr;
+    YBTabletServer* kts_ptr;
     ASSERT_OK(scanner.GetCurrentServer(&kts_ptr));
-    gscoped_ptr<KuduTabletServer> kts(kts_ptr);
+    gscoped_ptr<YBTabletServer> kts(kts_ptr);
     ASSERT_OK(cb(kts->uuid()));
   }
 
@@ -947,8 +947,8 @@ static void DoScanWithCallback(KuduTable* table,
 TEST_F(ClientTest, TestScanFaultTolerance) {
   // Create test table and insert test rows.
   const string kScanTable = "TestScanFaultTolerance";
-  shared_ptr<KuduTable> table;
-  ASSERT_NO_FATAL_FAILURE(CreateTable(kScanTable, 3, vector<const KuduPartialRow*>(), &table));
+  shared_ptr<YBTable> table;
+  ASSERT_NO_FATAL_FAILURE(CreateTable(kScanTable, 3, vector<const YBPartialRow*>(), &table));
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(table.get(), FLAGS_test_scan_num_rows));
 
   // Do an initial scan to determine the expected rows for later verification.
@@ -1007,7 +1007,7 @@ TEST_F(ClientTest, TestScanFaultTolerance) {
 }
 
 TEST_F(ClientTest, TestGetTabletServerBlacklist) {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable("blacklist",
                                       3,
                                       GenerateSplitRows(),
@@ -1038,35 +1038,35 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
   vector<internal::RemoteTabletServer*> candidates;
   vector<internal::RemoteTabletServer*> tservers;
   ASSERT_OK(client_->data_->GetTabletServer(client_.get(), rt,
-                                            KuduClient::LEADER_ONLY,
+                                            YBClient::LEADER_ONLY,
                                             blacklist, &candidates, &rts));
   tservers.push_back(rts);
   // Blacklist the leader, should not work.
   blacklist.insert(rts->permanent_uuid());
   {
     Status s = client_->data_->GetTabletServer(client_.get(), rt,
-                                               KuduClient::LEADER_ONLY,
+                                               YBClient::LEADER_ONLY,
                                                blacklist, &candidates, &rts);
     ASSERT_TRUE(s.IsServiceUnavailable());
   }
   // Keep blacklisting replicas until we run out.
   ASSERT_OK(client_->data_->GetTabletServer(client_.get(), rt,
-                                            KuduClient::CLOSEST_REPLICA,
+                                            YBClient::CLOSEST_REPLICA,
                                             blacklist, &candidates, &rts));
   tservers.push_back(rts);
   blacklist.insert(rts->permanent_uuid());
   ASSERT_OK(client_->data_->GetTabletServer(client_.get(), rt,
-                                            KuduClient::FIRST_REPLICA,
+                                            YBClient::FIRST_REPLICA,
                                             blacklist, &candidates, &rts));
   tservers.push_back(rts);
   blacklist.insert(rts->permanent_uuid());
 
   // Make sure none of the three modes work when all nodes are blacklisted.
-  vector<KuduClient::ReplicaSelection> selections;
-  selections.push_back(KuduClient::LEADER_ONLY);
-  selections.push_back(KuduClient::CLOSEST_REPLICA);
-  selections.push_back(KuduClient::FIRST_REPLICA);
-  for (KuduClient::ReplicaSelection selection : selections) {
+  vector<YBClient::ReplicaSelection> selections;
+  selections.push_back(YBClient::LEADER_ONLY);
+  selections.push_back(YBClient::CLOSEST_REPLICA);
+  selections.push_back(YBClient::FIRST_REPLICA);
+  for (YBClient::ReplicaSelection selection : selections) {
     Status s = client_->data_->GetTabletServer(client_.get(), rt, selection,
                                                blacklist, &candidates, &rts);
     ASSERT_TRUE(s.IsServiceUnavailable());
@@ -1077,7 +1077,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
     client_->data_->meta_cache_->MarkTSFailed(rt, Status::NetworkError("test"));
   }
   blacklist.clear();
-  for (KuduClient::ReplicaSelection selection : selections) {
+  for (YBClient::ReplicaSelection selection : selections) {
     Status s = client_->data_->GetTabletServer(client_.get(), rt,
                                                selection,
                                                blacklist, &candidates, &rts);
@@ -1086,7 +1086,7 @@ TEST_F(ClientTest, TestGetTabletServerBlacklist) {
 }
 
 TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable("split-table",
                                       1, /* replicas */
                                       GenerateSplitRows(),
@@ -1098,7 +1098,7 @@ TEST_F(ClientTest, TestScanWithEncodedRangePredicate) {
   ASSERT_NO_FATAL_FAILURE(ScanTableToStrings(table.get(), &all_rows));
   ASSERT_EQ(100, all_rows.size());
 
-  gscoped_ptr<KuduPartialRow> row(table->schema().NewRow());
+  gscoped_ptr<YBPartialRow> row(table->schema().NewRow());
 
   // Test a double-sided range within first tablet
   {
@@ -1197,9 +1197,9 @@ static void AssertScannersDisappear(const tserver::ScannerManager* manager) {
 
 namespace {
 
-int64_t SumResults(const KuduScanBatch& batch) {
+int64_t SumResults(const YBScanBatch& batch) {
   int64_t sum = 0;
-  for (const KuduScanBatch::RowPtr& row : batch) {
+  for (const YBScanBatch::RowPtr& row : batch) {
     int32_t val;
     CHECK_OK(row.GetInt32(0, &val));
     sum += val;
@@ -1220,7 +1220,7 @@ TEST_F(ClientTest, TestScannerKeepAlive) {
   ASSERT_OK(scanner.SetBatchSizeBytes(100));
   ASSERT_OK(scanner.Open());
 
-  KuduScanBatch batch;
+  YBScanBatch batch;
   int64_t sum = 0;
 
   ASSERT_TRUE(scanner.HasMoreRows());
@@ -1361,7 +1361,7 @@ TEST_F(ClientTest, TestScanTimeout) {
     ASSERT_OK(scanner.Open());
     ASSERT_TRUE(scanner.HasMoreRows());
     while (scanner.HasMoreRows()) {
-      KuduScanBatch batch;
+      YBScanBatch batch;
       ASSERT_OK(scanner.NextBatch(&batch));
     }
   }
@@ -1416,7 +1416,7 @@ TEST_F(ClientTest, TestInsertSingleRowManualBatch) {
 }
 
 static Status ApplyInsertToSession(YBSession* session,
-                                   const shared_ptr<KuduTable>& table,
+                                   const shared_ptr<YBTable>& table,
                                    int row_key,
                                    int int_val,
                                    const char* string_val) {
@@ -1428,7 +1428,7 @@ static Status ApplyInsertToSession(YBSession* session,
 }
 
 static Status ApplyUpdateToSession(YBSession* session,
-                                   const shared_ptr<KuduTable>& table,
+                                   const shared_ptr<YBTable>& table,
                                    int row_key,
                                    int int_val) {
   gscoped_ptr<YBUpdate> update(table->NewUpdate());
@@ -1438,9 +1438,9 @@ static Status ApplyUpdateToSession(YBSession* session,
 }
 
 static Status ApplyDeleteToSession(YBSession* session,
-                                   const shared_ptr<KuduTable>& table,
+                                   const shared_ptr<YBTable>& table,
                                    int row_key) {
-  gscoped_ptr<KuduDelete> del(table->NewDelete());
+  gscoped_ptr<YBDelete> del(table->NewDelete());
   RETURN_NOT_OK(del->mutable_row()->SetInt32("key", row_key));
   return session->Apply(del.release());
 }
@@ -1804,7 +1804,7 @@ TEST_F(ClientTest, TestMutateNonexistentRow) {
 }
 
 TEST_F(ClientTest, TestWriteWithBadColumn) {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTableName, &table));
 
   // Try to do a write with the bad schema.
@@ -1820,12 +1820,12 @@ TEST_F(ClientTest, TestWriteWithBadColumn) {
 // Do a write with a bad schema on the client side. This should make the Prepare
 // phase of the write fail, which will result in an error on the RPC response.
 TEST_F(ClientTest, TestWriteWithBadSchema) {
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_OK(client_->OpenTable(kTableName, &table));
 
   // Remove the 'int_val' column.
   // Now the schema on the client is "old"
-  gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+  gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
   ASSERT_OK(table_alterer
             ->DropColumn("int_val")
             ->Alter());
@@ -1851,7 +1851,7 @@ TEST_F(ClientTest, TestWriteWithBadSchema) {
 TEST_F(ClientTest, TestBasicAlterOperations) {
   // test that having no steps throws an error
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(), "No alter steps provided");
@@ -1859,8 +1859,8 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that adding a non-nullable column with no default value throws an error
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull();
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    table_alterer->AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull();
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(), "column `key`: NOT NULL columns must have a default");
@@ -1868,7 +1868,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that remove key should throws an error
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     Status s = table_alterer
       ->DropColumn("key")
       ->Alter();
@@ -1878,7 +1878,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that renaming a key should throws an error
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->AlterColumn("key")->RenameTo("key2");
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsInvalidArgument());
@@ -1887,7 +1887,7 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
 
   // test that renaming to an already-existing name throws an error
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->AlterColumn("int_val")->RenameTo("string_val");
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsAlreadyPresent());
@@ -1901,9 +1901,9 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
       tablet_id, &tablet_peer));
 
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     table_alterer->DropColumn("int_val")
-      ->AddColumn("new_col")->Type(KuduColumnSchema::INT32);
+      ->AddColumn("new_col")->Type(YBColumnSchema::INT32);
     ASSERT_OK(table_alterer->Alter());
     ASSERT_EQ(1, tablet_peer->tablet()->metadata()->schema_version());
   }
@@ -1911,9 +1911,9 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   // test that specifying an encoding incompatible with the column's
   // type throws an error
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new_string_val")->Type(KuduColumnSchema::STRING)
-      ->Encoding(KuduColumnStorageAttributes::GROUP_VARINT);
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    table_alterer->AddColumn("new_string_val")->Type(YBColumnSchema::STRING)
+      ->Encoding(YBColumnStorageAttributes::GROUP_VARINT);
     Status s = table_alterer->Alter();
     ASSERT_TRUE(s.IsNotSupported());
     ASSERT_STR_CONTAINS(s.ToString(), "Unsupported type/encoding pair");
@@ -1921,16 +1921,16 @@ TEST_F(ClientTest, TestBasicAlterOperations) {
   }
 
   {
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
-    table_alterer->AddColumn("new_string_val")->Type(KuduColumnSchema::STRING)
-      ->Encoding(KuduColumnStorageAttributes::PREFIX_ENCODING);
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    table_alterer->AddColumn("new_string_val")->Type(YBColumnSchema::STRING)
+      ->Encoding(YBColumnStorageAttributes::PREFIX_ENCODING);
     ASSERT_OK(table_alterer->Alter());
     ASSERT_EQ(2, tablet_peer->tablet()->metadata()->schema_version());
   }
 
   {
     const char *kRenamedTableName = "RenamedTable";
-    gscoped_ptr<KuduTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
+    gscoped_ptr<YBTableAlterer> table_alterer(client_->NewTableAlterer(kTableName));
     ASSERT_OK(table_alterer
               ->RenameTo(kRenamedTableName)
               ->Alter());
@@ -2048,7 +2048,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTable) {
   const int kNumRowsToWrite = 100;
   const int kNumReplicas = 3;
 
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable(kReplicatedTable,
                                       kNumReplicas,
                                       GenerateSplitRows(),
@@ -2073,7 +2073,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   const int kNumReplicas = 3;
   const int kNumTries = 100;
 
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable(kReplicatedTable,
                                       kNumReplicas,
                                       GenerateSplitRows(),
@@ -2099,7 +2099,7 @@ TEST_F(ClientTest, TestReplicatedMultiTabletTableFailover) {
   for (;;) {
     tries++;
     int num_rows = CountRowsFromClient(table.get(),
-                                       KuduClient::LEADER_ONLY,
+                                       YBClient::LEADER_ONLY,
                                        kNoBound, kNoBound);
     if (num_rows == kNumRowsToWrite) {
       LOG(INFO) << "Found expected number of rows: " << num_rows;
@@ -2124,10 +2124,10 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   const int kNumRowsToWrite = 100;
   const int kNumReplicas = 3;
 
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   ASSERT_NO_FATAL_FAILURE(CreateTable(kReplicatedTable,
                                       kNumReplicas,
-                                      vector<const KuduPartialRow*>(),
+                                      vector<const YBPartialRow*>(),
                                       &table));
 
   // Insert some data.
@@ -2151,7 +2151,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
   vector<internal::RemoteTabletServer*> candidates;
   ASSERT_OK(client_->data_->GetTabletServer(client_.get(),
                                             rt,
-                                            KuduClient::LEADER_ONLY,
+                                            YBClient::LEADER_ONLY,
                                             blacklist,
                                             &candidates,
                                             &rts));
@@ -2211,7 +2211,7 @@ TEST_F(ClientTest, TestReplicatedTabletWritesWithLeaderElection) {
 
   LOG(INFO) << "Counting rows...";
   ASSERT_EQ(2 * kNumRowsToWrite, CountRowsFromClient(table.get(),
-                                                     KuduClient::FIRST_REPLICA,
+                                                     YBClient::FIRST_REPLICA,
                                                      kNoBound, kNoBound));
 }
 
@@ -2220,7 +2220,7 @@ namespace {
 void CheckCorrectness(YBScanner* scanner, int expected[], int nrows) {
   scanner->Open();
   int readrows = 0;
-  KuduScanBatch batch;
+  YBScanBatch batch;
   if (nrows) {
     ASSERT_TRUE(scanner->HasMoreRows());
   } else {
@@ -2229,7 +2229,7 @@ void CheckCorrectness(YBScanner* scanner, int expected[], int nrows) {
 
   while (scanner->HasMoreRows()) {
     ASSERT_OK(scanner->NextBatch(&batch));
-    for (const KuduScanBatch::RowPtr& r : batch) {
+    for (const YBScanBatch::RowPtr& r : batch) {
       int32_t key;
       int32_t val;
       Slice strval;
@@ -2400,11 +2400,11 @@ class DLSCallback : public YBStatusCallback {
 };
 
 // Returns col1 value of first row.
-int32_t ReadFirstRowKeyFirstCol(const shared_ptr<KuduTable>& tbl) {
+int32_t ReadFirstRowKeyFirstCol(const shared_ptr<YBTable>& tbl) {
   YBScanner scanner(tbl.get());
 
   scanner.Open();
-  KuduScanBatch batch;
+  YBScanBatch batch;
   CHECK(scanner.HasMoreRows());
   CHECK_OK(scanner.NextBatch(&batch));
   YBRowResult row = batch.Row(0);
@@ -2414,14 +2414,14 @@ int32_t ReadFirstRowKeyFirstCol(const shared_ptr<KuduTable>& tbl) {
 }
 
 // Checks that all rows have value equal to expected, return number of rows.
-int CheckRowsEqual(const shared_ptr<KuduTable>& tbl, int32_t expected) {
+int CheckRowsEqual(const shared_ptr<YBTable>& tbl, int32_t expected) {
   YBScanner scanner(tbl.get());
   scanner.Open();
-  KuduScanBatch batch;
+  YBScanBatch batch;
   int cnt = 0;
   while (scanner.HasMoreRows()) {
     CHECK_OK(scanner.NextBatch(&batch));
-    for (const KuduScanBatch::RowPtr& row : batch) {
+    for (const YBScanBatch::RowPtr& row : batch) {
       // Check that for every key:
       // 1. Column 1 int32_t value == expected
       // 2. Column 2 string value is empty
@@ -2445,8 +2445,8 @@ int CheckRowsEqual(const shared_ptr<KuduTable>& tbl, int32_t expected) {
 
 // Return a session "loaded" with updates. Sets the session timeout
 // to the parameter value. Larger timeouts decrease false positives.
-shared_ptr<YBSession> LoadedSession(const shared_ptr<KuduClient>& client,
-                                      const shared_ptr<KuduTable>& tbl,
+shared_ptr<YBSession> LoadedSession(const shared_ptr<YBClient>& client,
+                                      const shared_ptr<YBTable>& tbl,
                                       bool fwd, int max, int timeout) {
   shared_ptr<YBSession> session = client->NewSession();
   session->SetTimeoutMillis(timeout);
@@ -2471,11 +2471,11 @@ TEST_F(ClientTest, TestDeadlockSimulation) {
 
   // Make reverse client who will make batches that update rows
   // in reverse order. Separate client used so rpc calls come in at same time.
-  shared_ptr<KuduClient> rev_client;
+  shared_ptr<YBClient> rev_client;
   ASSERT_OK(YBClientBuilder()
                    .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
                    .Build(&rev_client));
-  shared_ptr<KuduTable> rev_table;
+  shared_ptr<YBTable> rev_table;
   ASSERT_OK(client_->OpenTable(kTableName, &rev_table));
 
   // Load up some rows
@@ -2548,10 +2548,10 @@ TEST_F(ClientTest, TestCreateDuplicateTable) {
 TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
   FLAGS_max_create_tablets_per_ts = 1;
 
-  KuduPartialRow* split1 = schema_.NewRow();
+  YBPartialRow* split1 = schema_.NewRow();
   ASSERT_OK(split1->SetInt32("key", 1));
 
-  KuduPartialRow* split2 = schema_.NewRow();
+  YBPartialRow* split2 = schema_.NewRow();
   ASSERT_OK(split2->SetInt32("key", 2));
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
@@ -2566,10 +2566,10 @@ TEST_F(ClientTest, TestCreateTableWithTooManyTablets) {
 }
 
 TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
-  KuduPartialRow* split1 = schema_.NewRow();
+  YBPartialRow* split1 = schema_.NewRow();
   ASSERT_OK(split1->SetInt32("key", 1));
 
-  KuduPartialRow* split2 = schema_.NewRow();
+  YBPartialRow* split2 = schema_.NewRow();
   ASSERT_OK(split2->SetInt32("key", 2));
 
   gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
@@ -2587,19 +2587,19 @@ TEST_F(ClientTest, TestCreateTableWithTooManyReplicas) {
 TEST_F(ClientTest, TestLatestObservedTimestamp) {
   // Check that a write updates the latest observed timestamp.
   uint64_t ts0 = client_->GetLatestObservedTimestamp();
-  ASSERT_EQ(ts0, KuduClient::kNoTimestamp);
+  ASSERT_EQ(ts0, YBClient::kNoTimestamp);
   ASSERT_NO_FATAL_FAILURE(InsertTestRows(client_table_.get(), 1, 0));
   uint64_t ts1 = client_->GetLatestObservedTimestamp();
   ASSERT_NE(ts0, ts1);
 
   // Check that the timestamp of the previous write will be observed by another
   // client performing a snapshot scan at that timestamp.
-  shared_ptr<KuduClient> client;
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBClient> client;
+  shared_ptr<YBTable> table;
   ASSERT_OK(YBClientBuilder()
       .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr().ToString())
       .Build(&client));
-  ASSERT_EQ(client->GetLatestObservedTimestamp(), KuduClient::kNoTimestamp);
+  ASSERT_EQ(client->GetLatestObservedTimestamp(), YBClient::kNoTimestamp);
   ASSERT_OK(client->OpenTable(client_table_->name(), &table));
   YBScanner scanner(table.get());
   ASSERT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
@@ -2623,7 +2623,7 @@ TEST_F(ClientTest, TestClonePredicates) {
   ASSERT_OK(scanner->Open());
 
   int count = 0;
-  KuduScanBatch batch;
+  YBScanBatch batch;
   while (scanner->HasMoreRows()) {
     ASSERT_OK(scanner->NextBatch(&batch));
     count += batch.NumRows();

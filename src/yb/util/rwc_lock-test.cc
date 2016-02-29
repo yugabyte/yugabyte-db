@@ -31,7 +31,7 @@ using base::subtle::Release_Store;
 using std::string;
 using std::vector;
 
-class RWCLockTest : public KuduTest {};
+class RWCLockTest : public YBTest {};
 
 // Holds counters of how many threads hold the lock in each of the
 // provided modes.

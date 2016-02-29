@@ -44,21 +44,21 @@ static const char* const kSlowTestsEnvVariable = "YB_ALLOW_SLOW_TESTS";
 static const uint64 kTestBeganAtMicros = Env::Default()->NowMicros();
 
 ///////////////////////////////////////////////////
-// KuduTest
+// YBTest
 ///////////////////////////////////////////////////
 
-KuduTest::KuduTest()
+YBTest::YBTest()
   : env_(new EnvWrapper(Env::Default())),
     test_dir_(GetTestDataDirectory()) {
 }
 
 // env passed in from subclass, for tests that run in-memory
-KuduTest::KuduTest(Env *env)
+YBTest::YBTest(Env *env)
   : env_(env),
     test_dir_(GetTestDataDirectory()) {
 }
 
-KuduTest::~KuduTest() {
+YBTest::~YBTest() {
   // Clean up the test directory in the destructor instead of a TearDown
   // method. This is better because it ensures that the child-class
   // dtor runs first -- so, if the child class is using a minicluster, etc,
@@ -76,11 +76,11 @@ KuduTest::~KuduTest() {
   }
 }
 
-void KuduTest::SetUp() {
+void YBTest::SetUp() {
   InitSpinLockContentionProfiling();
 }
 
-string KuduTest::GetTestPath(const string& relative_path) {
+string YBTest::GetTestPath(const string& relative_path) {
   CHECK(!test_dir_.empty()) << "Call SetUp() first";
   return JoinPathSegments(test_dir_, relative_path);
 }

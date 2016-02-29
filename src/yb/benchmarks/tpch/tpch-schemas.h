@@ -45,17 +45,17 @@ static const char* const kShipInstructColName = "l_shipinstruct";
 static const char* const kShipModeColName = "l_shipmode";
 static const char* const kCommentColName = "l_comment";
 
-static const client::KuduColumnStorageAttributes::EncodingType kPlainEncoding =
-  client::KuduColumnStorageAttributes::PLAIN_ENCODING;
+static const client::YBColumnStorageAttributes::EncodingType kPlainEncoding =
+  client::YBColumnStorageAttributes::PLAIN_ENCODING;
 
-static const client::KuduColumnSchema::DataType kInt64 =
-    client::KuduColumnSchema::INT64;
-static const client::KuduColumnSchema::DataType kInt32 =
-    client::KuduColumnSchema::INT32;
-static const client::KuduColumnSchema::DataType kString =
-    client::KuduColumnSchema::STRING;
-static const client::KuduColumnSchema::DataType kDouble =
-    client::KuduColumnSchema::DOUBLE;
+static const client::YBColumnSchema::DataType kInt64 =
+    client::YBColumnSchema::INT64;
+static const client::YBColumnSchema::DataType kInt32 =
+    client::YBColumnSchema::INT32;
+static const client::YBColumnSchema::DataType kString =
+    client::YBColumnSchema::STRING;
+static const client::YBColumnSchema::DataType kDouble =
+    client::YBColumnSchema::DOUBLE;
 
 enum {
   kOrderKeyColIdx = 0,

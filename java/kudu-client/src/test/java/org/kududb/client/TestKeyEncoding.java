@@ -81,7 +81,7 @@ public class TestKeyEncoding {
   public void testPrimaryKeys() {
     Schema schemaOneString =
         buildSchema(new ColumnSchema.ColumnSchemaBuilder("key", Type.STRING).key(true));
-    KuduTable table = new KuduTable(null, "one", "one", schemaOneString,
+    YBTable table = new YBTable(null, "one", "one", schemaOneString,
                                     defaultPartitionSchema(schemaOneString));
     Insert oneKeyInsert = new Insert(table);
     PartialRow row = oneKeyInsert.getRow();
@@ -91,7 +91,7 @@ public class TestKeyEncoding {
     Schema schemaTwoString = buildSchema(
         new ColumnSchema.ColumnSchemaBuilder("key", Type.STRING).key(true),
         new ColumnSchema.ColumnSchemaBuilder("key2", Type.STRING).key(true));
-    KuduTable table2 = new KuduTable(null, "two", "two", schemaTwoString,
+    YBTable table2 = new YBTable(null, "two", "two", schemaTwoString,
                                      defaultPartitionSchema(schemaTwoString));
     Insert twoKeyInsert = new Insert(table2);
     row = twoKeyInsert.getRow();
@@ -110,7 +110,7 @@ public class TestKeyEncoding {
         new ColumnSchema.ColumnSchemaBuilder("key", Type.INT32).key(true),
         new ColumnSchema.ColumnSchemaBuilder("key2", Type.STRING).key(true));
     PartitionSchema partitionSchemaIntString = defaultPartitionSchema(schemaIntString);
-    KuduTable table3 = new KuduTable(null, "three", "three",
+    YBTable table3 = new YBTable(null, "three", "three",
         schemaIntString, partitionSchemaIntString);
     Insert small = new Insert(table3);
     row = small.getRow();

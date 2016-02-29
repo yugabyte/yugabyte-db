@@ -30,7 +30,7 @@ using internal::ErrorCollector;
 
 using sp::shared_ptr;
 
-YBSession::Data::Data(shared_ptr<KuduClient> client)
+YBSession::Data::Data(shared_ptr<YBClient> client)
     : client_(std::move(client)),
       error_collector_(new ErrorCollector()),
       flush_mode_(AUTO_FLUSH_SYNC),

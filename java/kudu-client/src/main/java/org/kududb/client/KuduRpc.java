@@ -80,9 +80,9 @@ public abstract class KuduRpc<R> {
    */
   private Deferred<R> deferred;
 
-  private AsyncKuduClient.RemoteTablet tablet;
+  private AsyncYBClient.RemoteTablet tablet;
 
-  final KuduTable table;
+  final YBTable table;
 
   final DeadlineTracker deadlineTracker;
 
@@ -95,9 +95,9 @@ public abstract class KuduRpc<R> {
    * that access this attribute will have a happens-before relationship with
    * the rest of the code, due to other existing synchronization.
    */
-  byte attempt;  // package-private for TabletClient and AsyncKuduClient only.
+  byte attempt;  // package-private for TabletClient and AsyncYBClient only.
 
-  KuduRpc(KuduTable table) {
+  KuduRpc(YBTable table) {
     this.table = table;
     this.deadlineTracker = new DeadlineTracker();
   }
@@ -197,15 +197,15 @@ public abstract class KuduRpc<R> {
     return deferred;
   }
 
-  AsyncKuduClient.RemoteTablet getTablet() {
+  AsyncYBClient.RemoteTablet getTablet() {
     return this.tablet;
   }
 
-  void setTablet(AsyncKuduClient.RemoteTablet tablet) {
+  void setTablet(AsyncYBClient.RemoteTablet tablet) {
     this.tablet = tablet;
   }
 
-  public KuduTable getTable() {
+  public YBTable getTable() {
     return table;
   }
 

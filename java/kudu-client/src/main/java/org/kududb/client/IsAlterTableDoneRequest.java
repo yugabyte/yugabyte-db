@@ -33,7 +33,7 @@ class IsAlterTableDoneRequest extends KuduRpc<IsAlterTableDoneResponse> {
   private final String name;
 
 
-  IsAlterTableDoneRequest(KuduTable masterTable, String name) {
+  IsAlterTableDoneRequest(YBTable masterTable, String name) {
     super(masterTable);
     this.name = name;
   }

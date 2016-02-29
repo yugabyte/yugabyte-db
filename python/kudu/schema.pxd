@@ -31,13 +31,13 @@ cdef class ColumnSchema:
     Wraps a Kudu client ColumnSchema object
     """
     cdef:
-        KuduColumnSchema* schema
+        YBColumnSchema* schema
         KuduType _type
 
 
 cdef class ColumnSpec:
     cdef:
-        KuduColumnSpec* spec
+        YBColumnSpec* spec
 
 
 cdef class SchemaBuilder:

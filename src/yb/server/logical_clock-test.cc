@@ -25,7 +25,7 @@
 namespace yb {
 namespace server {
 
-class LogicalClockTest : public KuduTest {
+class LogicalClockTest : public YBTest {
  public:
   LogicalClockTest()
       : clock_(LogicalClock::CreateStartingAt(Timestamp::kInitialTimestamp)) {

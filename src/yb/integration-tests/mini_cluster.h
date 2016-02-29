@@ -29,7 +29,7 @@
 namespace yb {
 
 namespace client {
-class KuduClient;
+class YBClient;
 class YBClientBuilder;
 }
 
@@ -159,7 +159,7 @@ class MiniCluster {
   //
   // REQUIRES: the cluster must have already been Start()ed.
   Status CreateClient(client::YBClientBuilder* builder,
-                      client::sp::shared_ptr<client::KuduClient>* client);
+                      client::sp::shared_ptr<client::YBClient>* client);
 
  private:
   enum {

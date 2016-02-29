@@ -89,7 +89,7 @@ Status WaitUntilLeaderForTests(RaftConsensus* raft) {
 
 // Test suite for tests that focus on multiple peer interaction, but
 // without integrating with other components, such as transactions.
-class RaftConsensusQuorumTest : public KuduTest {
+class RaftConsensusQuorumTest : public YBTest {
  public:
   RaftConsensusQuorumTest()
     : clock_(server::LogicalClock::CreateStartingAt(Timestamp(0))),

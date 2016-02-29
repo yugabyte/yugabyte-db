@@ -26,7 +26,7 @@ namespace crc {
 
 using strings::Substitute;
 
-class CrcTest : public KuduTest {
+class CrcTest : public YBTest {
  protected:
 
   // Returns pointer to data which must be deleted by caller.

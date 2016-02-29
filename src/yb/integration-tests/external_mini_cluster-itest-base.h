@@ -35,7 +35,7 @@ namespace yb {
 
 // Simple base utility class to provide an external mini cluster with common
 // setup routines useful for integration tests.
-class ExternalMiniClusterITestBase : public KuduTest {
+class ExternalMiniClusterITestBase : public YBTest {
  public:
   virtual void TearDown() OVERRIDE {
     if (cluster_) {
@@ -55,7 +55,7 @@ class ExternalMiniClusterITestBase : public KuduTest {
       }
       cluster_->Shutdown();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
     STLDeleteValues(&ts_map_);
   }
 
@@ -66,7 +66,7 @@ class ExternalMiniClusterITestBase : public KuduTest {
 
   gscoped_ptr<ExternalMiniCluster> cluster_;
   gscoped_ptr<itest::ExternalMiniClusterFsInspector> inspect_;
-  client::sp::shared_ptr<client::KuduClient> client_;
+  client::sp::shared_ptr<client::YBClient> client_;
   std::unordered_map<std::string, itest::TServerDetails*> ts_map_;
 };
 

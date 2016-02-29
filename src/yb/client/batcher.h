@@ -34,7 +34,7 @@
 namespace yb {
 namespace client {
 
-class KuduClient;
+class YBClient;
 class YBSession;
 class YBStatusCallback;
 class YBWriteOperation;
@@ -62,7 +62,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // the provided ErrorCollector.
   //
   // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
-  Batcher(KuduClient* client,
+  Batcher(YBClient* client,
           ErrorCollector* error_collector,
           const client::sp::shared_ptr<YBSession>& session,
           yb::client::YBSession::ExternalConsistencyMode consistency_mode);
@@ -159,7 +159,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   };
   State state_;
 
-  KuduClient* const client_;
+  YBClient* const client_;
   client::sp::weak_ptr<YBSession> weak_session_;
 
   // The consistency mode set in the session.

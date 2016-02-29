@@ -32,12 +32,12 @@ import org.kududb.ColumnSchema;
 import org.kududb.Schema;
 import org.kududb.Type;
 
-public class TestKuduClient extends BaseKuduTest {
+public class TestYBClient extends BaseYBTest {
   private String tableName;
 
   @Before
   public void setTableName() {
-    tableName = TestKuduClient.class.getName() + "-" + System.currentTimeMillis();
+    tableName = TestYBClient.class.getName() + "-" + System.currentTimeMillis();
   }
 
   private Schema createManyStringsSchema() {
@@ -67,7 +67,7 @@ public class TestKuduClient extends BaseKuduTest {
   }
 
   /**
-   * Test creating and deleting a table through a KuduClient.
+   * Test creating and deleting a table through a YBClient.
    */
   @Test(timeout = 100000)
   public void testCreateDeleteTable() throws Exception {
@@ -87,7 +87,7 @@ public class TestKuduClient extends BaseKuduTest {
     syncClient.createTable(tableName, newSchema);
 
     // Check that we can open a table and see that it has the new schema.
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
     assertEquals(newSchema.getColumnCount(), table.getSchema().getColumnCount());
     assertTrue(table.getPartitionSchema().isSimpleRangePartitioning());
 
@@ -108,7 +108,7 @@ public class TestKuduClient extends BaseKuduTest {
     syncClient.createTable(tableName, schema);
 
     YBSession session = syncClient.newSession();
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
     for (int i = 0; i < 100; i++) {
       Insert insert = table.newInsert();
       PartialRow row = insert.getRow();
@@ -148,7 +148,7 @@ public class TestKuduClient extends BaseKuduTest {
     syncClient.createTable(tableName, schema);
 
     YBSession session = syncClient.newSession();
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
     Insert insert = table.newInsert();
     PartialRow row = insert.getRow();
     row.addString("key", "กขฃคฅฆง"); // some thai
@@ -177,7 +177,7 @@ public class TestKuduClient extends BaseKuduTest {
     byte[] testArray = new byte[] {1, 2, 3, 4, 5, 6 ,7, 8, 9};
 
     YBSession session = syncClient.newSession();
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
     for (int i = 0; i < 100; i++) {
       Insert insert = table.newInsert();
       PartialRow row = insert.getRow();
@@ -220,7 +220,7 @@ public class TestKuduClient extends BaseKuduTest {
     List<Long> timestamps = new ArrayList<>();
 
     YBSession session = syncClient.newSession();
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
     long lastTimestamp = 0;
     for (int i = 0; i < 100; i++) {
       Insert insert = table.newInsert();
@@ -263,9 +263,9 @@ public class TestKuduClient extends BaseKuduTest {
    */
   @Test(timeout = 100000)
   public void testAutoClose() throws Exception {
-    try (KuduClient localClient = new KuduClient.YBClientBuilder(masterAddresses).build()) {
+    try (YBClient localClient = new YBClient.YBClientBuilder(masterAddresses).build()) {
       localClient.createTable(tableName, basicSchema);
-      KuduTable table = localClient.openTable(tableName);
+      YBTable table = localClient.openTable(tableName);
       YBSession session = localClient.newSession();
 
       session.setFlushMode(SessionConfiguration.FlushMode.MANUAL_FLUSH);
@@ -273,7 +273,7 @@ public class TestKuduClient extends BaseKuduTest {
       session.apply(insert);
     }
 
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
     AsyncYBScanner scanner = new AsyncYBScanner.AsyncYBScannerBuilder(client, table).build();
     assertEquals(1, countRowsInScan(scanner));
   }
@@ -281,13 +281,13 @@ public class TestKuduClient extends BaseKuduTest {
   @Test(timeout = 100000)
   public void testCustomNioExecutor() throws Exception {
     long startTime = System.nanoTime();
-    final KuduClient localClient = new KuduClient.YBClientBuilder(masterAddresses)
+    final YBClient localClient = new YBClient.YBClientBuilder(masterAddresses)
         .nioExecutors(Executors.newFixedThreadPool(1), Executors.newFixedThreadPool(2))
         .bossCount(1)
         .workerCount(2)
         .build();
     long buildTime = (System.nanoTime() - startTime) / 1000000000L;
-    assertTrue("Building KuduClient is slow, maybe netty get stuck", buildTime < 3);
+    assertTrue("Building YBClient is slow, maybe netty get stuck", buildTime < 3);
     localClient.createTable(tableName, basicSchema);
     Thread[] threads = new Thread[4];
     for (int t = 0; t < 4; t++) {
@@ -296,7 +296,7 @@ public class TestKuduClient extends BaseKuduTest {
         @Override
         public void run() {
           try {
-            KuduTable table = localClient.openTable(tableName);
+            YBTable table = localClient.openTable(tableName);
             YBSession session = localClient.newSession();
             session.setFlushMode(SessionConfiguration.FlushMode.AUTO_FLUSH_SYNC);
             for (int i = 0; i < 100; i++) {

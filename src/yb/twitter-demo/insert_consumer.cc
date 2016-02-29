@@ -43,10 +43,10 @@ using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 using rpc::RpcController;
 using yb::client::YBInsert;
-using yb::client::KuduClient;
+using yb::client::YBClient;
 using yb::client::YBSession;
 using yb::client::YBStatusCallback;
-using yb::client::KuduTable;
+using yb::client::YBTable;
 using yb::client::YBTableCreator;
 
 FlushCB::FlushCB(InsertConsumer* consumer)
@@ -60,7 +60,7 @@ void FlushCB::Run(const Status& status) {
   consumer_->BatchFinished(status);
 }
 
-InsertConsumer::InsertConsumer(const client::sp::shared_ptr<KuduClient> &client)
+InsertConsumer::InsertConsumer(const client::sp::shared_ptr<YBClient> &client)
   : initted_(false),
     schema_(CreateTwitterSchema()),
     flush_cb_(this),
@@ -127,7 +127,7 @@ void InsertConsumer::ConsumeJSON(const Slice& json_slice) {
   string created_at = TwitterEventParser::ReformatTime(event_.tweet_event.created_at);
 
   gscoped_ptr<YBInsert> ins(table_->NewInsert());
-  KuduPartialRow* r = ins->mutable_row();
+  YBPartialRow* r = ins->mutable_row();
   CHECK_OK(r->SetInt64("tweet_id", event_.tweet_event.tweet_id));
   CHECK_OK(r->SetStringCopy("text", event_.tweet_event.text));
   CHECK_OK(r->SetStringCopy("source", event_.tweet_event.source));

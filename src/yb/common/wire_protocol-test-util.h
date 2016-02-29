@@ -42,7 +42,7 @@ inline void AddTestRowWithNullableStringToPB(RowOperationsPB::Type op_type,
                                              const char* string_val,
                                              RowOperationsPB* ops) {
   DCHECK(schema.initialized());
-  KuduPartialRow row(&schema);
+  YBPartialRow row(&schema);
   CHECK_OK(row.SetInt32("key", key));
   CHECK_OK(row.SetInt32("int_val", int_val));
   if (string_val) {
@@ -65,7 +65,7 @@ inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
                     const Schema& schema,
                     int32_t key,
                     RowOperationsPB* ops) {
-  KuduPartialRow row(&schema);
+  YBPartialRow row(&schema);
   CHECK_OK(row.SetInt32(0, key));
   RowOperationsPBEncoder enc(ops);
   enc.Add(op_type, row);

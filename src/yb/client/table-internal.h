@@ -26,9 +26,9 @@ namespace yb {
 
 namespace client {
 
-class KuduTable::Data {
+class YBTable::Data {
  public:
-  Data(sp::shared_ptr<KuduClient> client,
+  Data(sp::shared_ptr<YBClient> client,
        std::string name,
        std::string table_id,
        const YBSchema& schema,
@@ -37,14 +37,14 @@ class KuduTable::Data {
 
   Status Open();
 
-  sp::shared_ptr<KuduClient> client_;
+  sp::shared_ptr<YBClient> client_;
 
   std::string name_;
   const std::string id_;
 
   // TODO: figure out how we deal with a schema change from the client perspective.
   // Do we make them call a RefreshSchema() method? Or maybe reopen the table and get
-  // a new KuduTable instance (which would simplify the object lifecycle a little?)
+  // a new YBTable instance (which would simplify the object lifecycle a little?)
   const YBSchema schema_;
   const PartitionSchema partition_schema_;
 

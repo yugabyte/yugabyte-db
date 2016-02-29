@@ -51,10 +51,10 @@ namespace tablet {
 
 using std::unordered_set;
 
-class TestRowSet : public KuduRowSetTest {
+class TestRowSet : public YBRowSetTest {
  public:
   TestRowSet()
-    : KuduRowSetTest(CreateTestSchema()),
+    : YBRowSetTest(CreateTestSchema()),
       n_rows_(FLAGS_roundtrip_num_rows),
       op_id_(consensus::MaximumOpId()),
       mvcc_(scoped_refptr<server::Clock>(

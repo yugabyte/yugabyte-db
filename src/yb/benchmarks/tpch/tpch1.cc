@@ -94,7 +94,7 @@ DEFINE_string(table_name, "lineitem",
 
 namespace yb {
 
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBRowResult;
 using client::YBSchema;
 

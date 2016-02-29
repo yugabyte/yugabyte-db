@@ -21,15 +21,15 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestLeaderFailover extends BaseKuduTest {
+public class TestLeaderFailover extends BaseYBTest {
 
   private static final String TABLE_NAME =
       TestLeaderFailover.class.getName() + "-" + System.currentTimeMillis();
-  private static KuduTable table;
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
 
     CreateTableOptions builder = new CreateTableOptions().setNumReplicas(3);
     createTable(TABLE_NAME, basicSchema, builder);

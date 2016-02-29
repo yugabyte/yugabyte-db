@@ -24,24 +24,24 @@
 namespace yb {
 namespace twitter_demo {
 
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBSchema;
 using client::YBSchemaBuilder;
 
 inline YBSchema CreateTwitterSchema() {
   YBSchema s;
   YBSchemaBuilder b;
-  b.AddColumn("tweet_id")->Type(KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
-  b.AddColumn("text")->Type(KuduColumnSchema::STRING)->NotNull();
-  b.AddColumn("source")->Type(KuduColumnSchema::STRING)->NotNull();
-  b.AddColumn("created_at")->Type(KuduColumnSchema::STRING)->NotNull();
-  b.AddColumn("user_id")->Type(KuduColumnSchema::INT64)->NotNull();
-  b.AddColumn("user_name")->Type(KuduColumnSchema::STRING)->NotNull();
-  b.AddColumn("user_description")->Type(KuduColumnSchema::STRING)->NotNull();
-  b.AddColumn("user_location")->Type(KuduColumnSchema::STRING)->NotNull();
-  b.AddColumn("user_followers_count")->Type(KuduColumnSchema::INT32)->NotNull();
-  b.AddColumn("user_friends_count")->Type(KuduColumnSchema::INT32)->NotNull();
-  b.AddColumn("user_image_url")->Type(KuduColumnSchema::STRING)->NotNull();
+  b.AddColumn("tweet_id")->Type(YBColumnSchema::INT64)->NotNull()->PrimaryKey();
+  b.AddColumn("text")->Type(YBColumnSchema::STRING)->NotNull();
+  b.AddColumn("source")->Type(YBColumnSchema::STRING)->NotNull();
+  b.AddColumn("created_at")->Type(YBColumnSchema::STRING)->NotNull();
+  b.AddColumn("user_id")->Type(YBColumnSchema::INT64)->NotNull();
+  b.AddColumn("user_name")->Type(YBColumnSchema::STRING)->NotNull();
+  b.AddColumn("user_description")->Type(YBColumnSchema::STRING)->NotNull();
+  b.AddColumn("user_location")->Type(YBColumnSchema::STRING)->NotNull();
+  b.AddColumn("user_followers_count")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("user_friends_count")->Type(YBColumnSchema::INT32)->NotNull();
+  b.AddColumn("user_image_url")->Type(YBColumnSchema::STRING)->NotNull();
   CHECK_OK(b.Build(&s));
   return s;
 }

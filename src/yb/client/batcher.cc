@@ -189,7 +189,7 @@ class WriteRpc : public Rpc {
   virtual void SendRpc() OVERRIDE;
   virtual string ToString() const OVERRIDE;
 
-  const KuduTable* table() const {
+  const YBTable* table() const {
     // All of the ops for a given tablet obviously correspond to the same table,
     // so we'll just grab the table from the first.
     return ops_[0]->write_op->table();
@@ -275,7 +275,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   for (InFlightOp* op : ops_) {
     const Partition& partition = op->tablet->partition();
     const PartitionSchema& partition_schema = table()->partition_schema();
-    const KuduPartialRow& row = op->write_op->row();
+    const YBPartialRow& row = op->write_op->row();
 
 #ifndef NDEBUG
     bool partition_contains_row;
@@ -477,7 +477,7 @@ void WriteRpc::SendRpcCb(const Status& status) {
   delete this;
 }
 
-Batcher::Batcher(KuduClient* client,
+Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
                  const sp::shared_ptr<YBSession>& session,
                  yb::client::YBSession::ExternalConsistencyMode consistency_mode)

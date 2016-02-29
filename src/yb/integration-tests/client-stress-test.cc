@@ -38,15 +38,15 @@ using std::vector;
 
 namespace yb {
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
 using client::YBScanner;
-using client::KuduTable;
+using client::YBTable;
 
-class ClientStressTest : public KuduTest {
+class ClientStressTest : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     ExternalMiniClusterOptions opts = default_opts();
     if (multi_master()) {
@@ -61,12 +61,12 @@ class ClientStressTest : public KuduTest {
   virtual void TearDown() OVERRIDE {
     alarm(0);
     cluster_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
  protected:
-  void ScannerThread(KuduClient* client, const CountDownLatch* go_latch, int32_t start_key) {
-    client::sp::shared_ptr<KuduTable> table;
+  void ScannerThread(YBClient* client, const CountDownLatch* go_latch, int32_t start_key) {
+    client::sp::shared_ptr<YBTable> table;
     CHECK_OK(client->OpenTable(TestWorkload::kDefaultTableName, &table));
     vector<string> rows;
 
@@ -126,7 +126,7 @@ TEST_F(ClientStressTest, TestStartScans) {
   for (int run = 1; run <= (AllowSlowTests() ? 10 : 2); run++) {
     LOG(INFO) << "Starting run " << run;
     YBClientBuilder builder;
-    client::sp::shared_ptr<KuduClient> client;
+    client::sp::shared_ptr<YBClient> client;
     CHECK_OK(cluster_->CreateClient(builder, &client));
 
     CountDownLatch go_latch(1);

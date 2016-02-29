@@ -28,7 +28,7 @@
 namespace yb {
 
 class ColumnSchema;
-class KuduPartialRow;
+class YBPartialRow;
 class Schema;
 class TestWorkload;
 
@@ -44,12 +44,12 @@ class LookupRpc;
 class WriteRpc;
 } // namespace internal
 
-class KuduClient;
+class YBClient;
 class YBSchema;
 class YBSchemaBuilder;
 class YBWriteOperation;
 
-class YB_EXPORT KuduColumnStorageAttributes {
+class YB_EXPORT YBColumnStorageAttributes {
  public:
   enum EncodingType {
     AUTO_ENCODING = 0,
@@ -72,7 +72,7 @@ class YB_EXPORT KuduColumnStorageAttributes {
 
   // NOTE: this constructor is deprecated for external use, and will
   // be made private in a future release.
-  KuduColumnStorageAttributes(EncodingType encoding = AUTO_ENCODING,
+  YBColumnStorageAttributes(EncodingType encoding = AUTO_ENCODING,
                               CompressionType compression = DEFAULT_COMPRESSION,
                               int32_t block_size = 0)
       : encoding_(encoding),
@@ -96,7 +96,7 @@ class YB_EXPORT KuduColumnStorageAttributes {
   int32_t block_size_;
 };
 
-class YB_EXPORT KuduColumnSchema {
+class YB_EXPORT YBColumnSchema {
  public:
   enum DataType {
     INT8 = 0,
@@ -116,19 +116,19 @@ class YB_EXPORT KuduColumnSchema {
   // DEPRECATED: use YBSchemaBuilder instead.
   // TODO(KUDU-809): make this hard-to-use constructor private. Clients should use
   // the Builder API. Currently only the Python API uses this old API.
-  KuduColumnSchema(const std::string &name,
+  YBColumnSchema(const std::string &name,
                    DataType type,
                    bool is_nullable = false,
                    const void* default_value = NULL,
-                   KuduColumnStorageAttributes attributes = KuduColumnStorageAttributes());
-  KuduColumnSchema(const KuduColumnSchema& other);
-  ~KuduColumnSchema();
+                   YBColumnStorageAttributes attributes = YBColumnStorageAttributes());
+  YBColumnSchema(const YBColumnSchema& other);
+  ~YBColumnSchema();
 
-  KuduColumnSchema& operator=(const KuduColumnSchema& other);
+  YBColumnSchema& operator=(const YBColumnSchema& other);
 
-  void CopyFrom(const KuduColumnSchema& other);
+  void CopyFrom(const YBColumnSchema& other);
 
-  bool Equals(const KuduColumnSchema& other) const;
+  bool Equals(const YBColumnSchema& other) const;
 
   // Getters to expose column schema information.
   const std::string& name() const;
@@ -138,14 +138,14 @@ class YB_EXPORT KuduColumnSchema {
   // TODO: Expose default column value and attributes?
 
  private:
-  friend class KuduColumnSpec;
+  friend class YBColumnSpec;
   friend class YBSchema;
   friend class YBSchemaBuilder;
-  // KuduTableAlterer::Data needs to be a friend. Friending the parent class
+  // YBTableAlterer::Data needs to be a friend. Friending the parent class
   // is transitive to nested classes. See http://tiny.cloudera.com/jwtui
-  friend class KuduTableAlterer;
+  friend class YBTableAlterer;
 
-  KuduColumnSchema();
+  YBColumnSchema();
 
   // Owned.
   ColumnSchema* col_;
@@ -156,7 +156,7 @@ class YB_EXPORT KuduColumnSchema {
 // YBSchemaBuilder::AddColumn() to specify a column within a Schema.
 //
 // TODO(KUDU-861): this API will also be used for an improved AlterTable API.
-class YB_EXPORT KuduColumnSpec {
+class YB_EXPORT YBColumnSpec {
  public:
   // Set the default value for this column.
   //
@@ -166,15 +166,15 @@ class YB_EXPORT KuduColumnSpec {
   // When a user inserts data, if the user does not specify any value for
   // this column, the default will also be used.
   //
-  // The KuduColumnSpec takes ownership over 'value'.
-  KuduColumnSpec* Default(YBValue* value);
+  // The YBColumnSpec takes ownership over 'value'.
+  YBColumnSpec* Default(YBValue* value);
 
   // Set the preferred compression for this column.
-  KuduColumnSpec* Compression(KuduColumnStorageAttributes::CompressionType compression);
+  YBColumnSpec* Compression(YBColumnStorageAttributes::CompressionType compression);
 
   // Set the preferred encoding for this column.
   // Note that not all encodings are supported for all column types.
-  KuduColumnSpec* Encoding(KuduColumnStorageAttributes::EncodingType encoding);
+  YBColumnSpec* Encoding(YBColumnStorageAttributes::EncodingType encoding);
 
   // Set the target block size for this column.
   //
@@ -191,7 +191,7 @@ class YB_EXPORT KuduColumnSpec {
   // It's recommended that this not be set any lower than 4096 (4KB) or higher
   // than 1048576 (1MB).
   // TODO(KUDU-1107): move above info to docs
-  KuduColumnSpec* BlockSize(int32_t block_size);
+  YBColumnSpec* BlockSize(int32_t block_size);
 
   // Operations only relevant for Create Table
   // ------------------------------------------------------------
@@ -204,42 +204,42 @@ class YB_EXPORT KuduColumnSpec {
   //
   // Only relevant for a CreateTable operation. Primary keys may not be changed
   // after a table is created.
-  KuduColumnSpec* PrimaryKey();
+  YBColumnSpec* PrimaryKey();
 
   // Set this column to be not nullable.
   // Column nullability may not be changed once a table is created.
-  KuduColumnSpec* NotNull();
+  YBColumnSpec* NotNull();
 
   // Set this column to be nullable (the default).
   // Column nullability may not be changed once a table is created.
-  KuduColumnSpec* Nullable();
+  YBColumnSpec* Nullable();
 
   // Set the type of this column.
   // Column types may not be changed once a table is created.
-  KuduColumnSpec* Type(KuduColumnSchema::DataType type);
+  YBColumnSpec* Type(YBColumnSchema::DataType type);
 
   // Operations only relevant for Alter Table
   // ------------------------------------------------------------
 
   // Remove the default value for this column. Without a default, clients must
   // always specify a value for this column when inserting data.
-  KuduColumnSpec* RemoveDefault();
+  YBColumnSpec* RemoveDefault();
 
   // Rename this column.
-  KuduColumnSpec* RenameTo(const std::string& new_name);
+  YBColumnSpec* RenameTo(const std::string& new_name);
 
  private:
   class YB_NO_EXPORT Data;
   friend class YBSchemaBuilder;
-  friend class KuduTableAlterer;
+  friend class YBTableAlterer;
 
   // This class should always be owned and deleted by one of its friends,
   // not the user.
-  ~KuduColumnSpec();
+  ~YBColumnSpec();
 
-  explicit KuduColumnSpec(const std::string& col_name);
+  explicit YBColumnSpec(const std::string& col_name);
 
-  Status ToColumnSchema(KuduColumnSchema* col) const;
+  Status ToColumnSchema(YBColumnSchema* col) const;
 
   // Owned.
   Data* data_;
@@ -258,8 +258,8 @@ class YB_EXPORT KuduColumnSpec {
 // is represented as:
 //
 //   YBSchemaBuilder t;
-//   t.AddColumn("my_key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-//   t.AddColumn("a")->Type(KuduColumnSchema::FLOAT)->Default(YBValue::FromFloat(1.5));
+//   t.AddColumn("my_key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+//   t.AddColumn("a")->Type(YBColumnSchema::FLOAT)->Default(YBValue::FromFloat(1.5));
 //   YBSchema schema;
 //   t.Build(&schema);
 //
@@ -268,9 +268,9 @@ class YB_EXPORT YBSchemaBuilder {
   YBSchemaBuilder();
   ~YBSchemaBuilder();
 
-  // Return a KuduColumnSpec for a new column within the Schema.
+  // Return a YBColumnSpec for a new column within the Schema.
   // The returned object is owned by the YBSchemaBuilder.
-  KuduColumnSpec* AddColumn(const std::string& name);
+  YBColumnSpec* AddColumn(const std::string& name);
 
   // Set the primary key of the new Schema based on the given column names.
   // This may be used to specify a compound primary key.
@@ -299,15 +299,15 @@ class YB_EXPORT YBSchema {
   void CopyFrom(const YBSchema& other);
 
   // DEPRECATED: will be removed soon.
-  Status Reset(const std::vector<KuduColumnSchema>& columns, int key_columns)
+  Status Reset(const std::vector<YBColumnSchema>& columns, int key_columns)
     WARN_UNUSED_RESULT;
 
   bool Equals(const YBSchema& other) const;
-  KuduColumnSchema Column(size_t idx) const;
+  YBColumnSchema Column(size_t idx) const;
   size_t num_columns() const;
 
   // Get the indexes of the primary key columns within this Schema.
-  // In current versions of Kudu, these will always be contiguous column
+  // In current versions of YB, these will always be contiguous column
   // indexes starting with 0. However, in future versions this assumption
   // may not hold, so callers should not assume it is the case.
   void GetPrimaryKeyColumnIndexes(std::vector<int>* indexes) const;
@@ -318,13 +318,13 @@ class YB_EXPORT YBSchema {
   // the YBSchema object.
   //
   // The caller takes ownership of the created row.
-  KuduPartialRow* NewRow() const;
+  YBPartialRow* NewRow() const;
 
  private:
-  friend class KuduClient;
+  friend class YBClient;
   friend class YBScanner;
   friend class YBSchemaBuilder;
-  friend class KuduTable;
+  friend class YBTable;
   friend class YBTableCreator;
   friend class YBWriteOperation;
   friend class internal::GetTableSchemaRpc;

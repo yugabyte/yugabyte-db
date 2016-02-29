@@ -31,16 +31,16 @@ import java.util.List;
 
 import static org.junit.Assert.*;
 
-public class TestKuduTableInputFormat extends BaseKuduTest {
+public class TestYBTableInputFormat extends BaseYBTest {
 
   private static final String TABLE_NAME =
-      TestKuduTableInputFormat.class.getName() + "-" + System.currentTimeMillis();
+      TestYBTableInputFormat.class.getName() + "-" + System.currentTimeMillis();
 
   @Test
   public void test() throws Exception {
     createTable(TABLE_NAME, getBasicSchema(), new CreateTableOptions());
 
-    KuduTable table = openTable(TABLE_NAME);
+    YBTable table = openTable(TABLE_NAME);
     Schema schema = getBasicSchema();
     Insert insert = table.newInsert();
     PartialRow row = insert.getRow();
@@ -108,22 +108,22 @@ public class TestKuduTableInputFormat extends BaseKuduTest {
 
   private RecordReader<NullWritable, RowResult> createRecordReader(String columnProjection,
         List<ColumnRangePredicate> predicates) throws IOException, InterruptedException {
-    KuduTableInputFormat input = new KuduTableInputFormat();
+    YBTableInputFormat input = new YBTableInputFormat();
     Configuration conf = new Configuration();
-    conf.set(KuduTableInputFormat.MASTER_ADDRESSES_KEY, getMasterAddresses());
-    conf.set(KuduTableInputFormat.INPUT_TABLE_KEY, TABLE_NAME);
+    conf.set(YBTableInputFormat.MASTER_ADDRESSES_KEY, getMasterAddresses());
+    conf.set(YBTableInputFormat.INPUT_TABLE_KEY, TABLE_NAME);
     if (columnProjection != null) {
-      conf.set(KuduTableInputFormat.COLUMN_PROJECTION_KEY, columnProjection);
+      conf.set(YBTableInputFormat.COLUMN_PROJECTION_KEY, columnProjection);
     }
     if (predicates != null) {
-      String encodedPredicates = KuduTableMapReduceUtil.base64EncodePredicates(predicates);
-      conf.set(KuduTableInputFormat.ENCODED_COLUMN_RANGE_PREDICATES_KEY, encodedPredicates);
+      String encodedPredicates = YBTableMapReduceUtil.base64EncodePredicates(predicates);
+      conf.set(YBTableInputFormat.ENCODED_COLUMN_RANGE_PREDICATES_KEY, encodedPredicates);
     }
     input.setConf(conf);
     List<InputSplit> splits = input.getSplits(null);
 
     // We need to re-create the input format to reconnect the client.
-    input = new KuduTableInputFormat();
+    input = new YBTableInputFormat();
     input.setConf(conf);
     RecordReader<NullWritable, RowResult> reader = input.createRecordReader(null, null);
     reader.initialize(Iterables.getOnlyElement(splits), null);

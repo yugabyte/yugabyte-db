@@ -37,7 +37,7 @@ using std::unordered_set;
 
 namespace yb {
 
-class FlagTagsTest : public KuduTest {
+class FlagTagsTest : public YBTest {
 };
 
 TEST_F(FlagTagsTest, TestTags) {

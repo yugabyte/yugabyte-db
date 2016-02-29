@@ -35,7 +35,7 @@ using std::vector;
 
 namespace yb {
 
-class MtHdrHistogramTest : public KuduTest {
+class MtHdrHistogramTest : public YBTest {
  public:
   MtHdrHistogramTest() {
     num_threads_ = FLAGS_histogram_test_num_threads;

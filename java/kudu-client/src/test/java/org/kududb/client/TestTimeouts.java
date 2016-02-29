@@ -21,7 +21,7 @@ import static org.junit.Assert.fail;
 import com.stumbleupon.async.TimeoutException;
 import org.junit.Test;
 
-public class TestTimeouts extends BaseKuduTest {
+public class TestTimeouts extends BaseYBTest {
 
   private static final String TABLE_NAME =
       TestTimeouts.class.getName() + "-" + System.currentTimeMillis();
@@ -32,7 +32,7 @@ public class TestTimeouts extends BaseKuduTest {
    */
   @Test(timeout = 100000)
   public void testLowTimeouts() throws Exception {
-    KuduClient lowTimeoutsClient = new KuduClient.YBClientBuilder(masterAddresses)
+    YBClient lowTimeoutsClient = new YBClient.YBClientBuilder(masterAddresses)
         .defaultAdminOperationTimeoutMs(1)
         .defaultOperationTimeoutMs(1)
         .build();
@@ -45,7 +45,7 @@ public class TestTimeouts extends BaseKuduTest {
     }
 
     createTable(TABLE_NAME, basicSchema, new CreateTableOptions());
-    KuduTable table = openTable(TABLE_NAME);
+    YBTable table = openTable(TABLE_NAME);
 
     YBSession lowTimeoutSession = lowTimeoutsClient.newSession();
 

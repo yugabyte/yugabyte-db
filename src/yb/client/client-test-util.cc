@@ -48,15 +48,15 @@ void LogSessionErrorsAndDie(const sp::shared_ptr<YBSession>& session,
   CHECK_OK(s); // will fail
 }
 
-void ScanTableToStrings(KuduTable* table, vector<string>* row_strings) {
+void ScanTableToStrings(YBTable* table, vector<string>* row_strings) {
   row_strings->clear();
   YBScanner scanner(table);
-  ASSERT_OK(scanner.SetSelection(KuduClient::LEADER_ONLY));
+  ASSERT_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
   scanner.SetTimeoutMillis(60000);
   ScanToStrings(&scanner, row_strings);
 }
 
-int64_t CountTableRows(KuduTable* table) {
+int64_t CountTableRows(YBTable* table) {
   vector<string> rows;
   client::ScanTableToStrings(table, &rows);
   return rows.size();

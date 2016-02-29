@@ -29,16 +29,16 @@ namespace client {
 
 class YBTableCreator::Data {
  public:
-  explicit Data(KuduClient* client);
+  explicit Data(YBClient* client);
   ~Data();
 
-  KuduClient* client_;
+  YBClient* client_;
 
   std::string table_name_;
 
   const YBSchema* schema_;
 
-  std::vector<const KuduPartialRow*> split_rows_;
+  std::vector<const YBPartialRow*> split_rows_;
 
   PartitionSchemaPB partition_schema_;
 

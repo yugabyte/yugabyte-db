@@ -38,7 +38,7 @@ using strings::Substitute;
 namespace yb {
 namespace threadlocal {
 
-class ThreadLocalTest : public KuduTest {};
+class ThreadLocalTest : public YBTest {};
 
 const int kTargetCounterVal = 1000000;
 

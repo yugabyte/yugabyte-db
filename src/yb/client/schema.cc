@@ -27,17 +27,17 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
-MAKE_ENUM_LIMITS(yb::client::KuduColumnStorageAttributes::EncodingType,
-                 yb::client::KuduColumnStorageAttributes::AUTO_ENCODING,
-                 yb::client::KuduColumnStorageAttributes::RLE);
+MAKE_ENUM_LIMITS(yb::client::YBColumnStorageAttributes::EncodingType,
+                 yb::client::YBColumnStorageAttributes::AUTO_ENCODING,
+                 yb::client::YBColumnStorageAttributes::RLE);
 
-MAKE_ENUM_LIMITS(yb::client::KuduColumnStorageAttributes::CompressionType,
-                 yb::client::KuduColumnStorageAttributes::DEFAULT_COMPRESSION,
-                 yb::client::KuduColumnStorageAttributes::ZLIB);
+MAKE_ENUM_LIMITS(yb::client::YBColumnStorageAttributes::CompressionType,
+                 yb::client::YBColumnStorageAttributes::DEFAULT_COMPRESSION,
+                 yb::client::YBColumnStorageAttributes::ZLIB);
 
-MAKE_ENUM_LIMITS(yb::client::KuduColumnSchema::DataType,
-                 yb::client::KuduColumnSchema::INT8,
-                 yb::client::KuduColumnSchema::BOOL);
+MAKE_ENUM_LIMITS(yb::client::YBColumnSchema::DataType,
+                 yb::client::YBColumnSchema::INT8,
+                 yb::client::YBColumnSchema::BOOL);
 
 using std::unordered_map;
 using std::vector;
@@ -46,161 +46,161 @@ using strings::Substitute;
 namespace yb {
 namespace client {
 
-yb::EncodingType ToInternalEncodingType(KuduColumnStorageAttributes::EncodingType type) {
+yb::EncodingType ToInternalEncodingType(YBColumnStorageAttributes::EncodingType type) {
   switch (type) {
-    case KuduColumnStorageAttributes::AUTO_ENCODING: return yb::AUTO_ENCODING;
-    case KuduColumnStorageAttributes::PLAIN_ENCODING: return yb::PLAIN_ENCODING;
-    case KuduColumnStorageAttributes::PREFIX_ENCODING: return yb::PREFIX_ENCODING;
-    case KuduColumnStorageAttributes::DICT_ENCODING: return yb::DICT_ENCODING;
-    case KuduColumnStorageAttributes::GROUP_VARINT: return yb::GROUP_VARINT;
-    case KuduColumnStorageAttributes::RLE: return yb::RLE;
-    case KuduColumnStorageAttributes::BIT_SHUFFLE: return yb::BIT_SHUFFLE;
+    case YBColumnStorageAttributes::AUTO_ENCODING: return yb::AUTO_ENCODING;
+    case YBColumnStorageAttributes::PLAIN_ENCODING: return yb::PLAIN_ENCODING;
+    case YBColumnStorageAttributes::PREFIX_ENCODING: return yb::PREFIX_ENCODING;
+    case YBColumnStorageAttributes::DICT_ENCODING: return yb::DICT_ENCODING;
+    case YBColumnStorageAttributes::GROUP_VARINT: return yb::GROUP_VARINT;
+    case YBColumnStorageAttributes::RLE: return yb::RLE;
+    case YBColumnStorageAttributes::BIT_SHUFFLE: return yb::BIT_SHUFFLE;
     default: LOG(FATAL) << "Unexpected encoding type: " << type;
   }
 }
 
-KuduColumnStorageAttributes::EncodingType FromInternalEncodingType(yb::EncodingType type) {
+YBColumnStorageAttributes::EncodingType FromInternalEncodingType(yb::EncodingType type) {
   switch (type) {
-    case yb::AUTO_ENCODING: return KuduColumnStorageAttributes::AUTO_ENCODING;
-    case yb::PLAIN_ENCODING: return KuduColumnStorageAttributes::PLAIN_ENCODING;
-    case yb::PREFIX_ENCODING: return KuduColumnStorageAttributes::PREFIX_ENCODING;
-    case yb::DICT_ENCODING: return KuduColumnStorageAttributes::DICT_ENCODING;
-    case yb::GROUP_VARINT: return KuduColumnStorageAttributes::GROUP_VARINT;
-    case yb::RLE: return KuduColumnStorageAttributes::RLE;
-    case yb::BIT_SHUFFLE: return KuduColumnStorageAttributes::BIT_SHUFFLE;
+    case yb::AUTO_ENCODING: return YBColumnStorageAttributes::AUTO_ENCODING;
+    case yb::PLAIN_ENCODING: return YBColumnStorageAttributes::PLAIN_ENCODING;
+    case yb::PREFIX_ENCODING: return YBColumnStorageAttributes::PREFIX_ENCODING;
+    case yb::DICT_ENCODING: return YBColumnStorageAttributes::DICT_ENCODING;
+    case yb::GROUP_VARINT: return YBColumnStorageAttributes::GROUP_VARINT;
+    case yb::RLE: return YBColumnStorageAttributes::RLE;
+    case yb::BIT_SHUFFLE: return YBColumnStorageAttributes::BIT_SHUFFLE;
     default: LOG(FATAL) << "Unexpected internal encoding type: " << type;
   }
 }
 
-yb::CompressionType ToInternalCompressionType(KuduColumnStorageAttributes::CompressionType type) {
+yb::CompressionType ToInternalCompressionType(YBColumnStorageAttributes::CompressionType type) {
   switch (type) {
-    case KuduColumnStorageAttributes::DEFAULT_COMPRESSION: return yb::DEFAULT_COMPRESSION;
-    case KuduColumnStorageAttributes::NO_COMPRESSION: return yb::NO_COMPRESSION;
-    case KuduColumnStorageAttributes::SNAPPY: return yb::SNAPPY;
-    case KuduColumnStorageAttributes::LZ4: return yb::LZ4;
-    case KuduColumnStorageAttributes::ZLIB: return yb::ZLIB;
+    case YBColumnStorageAttributes::DEFAULT_COMPRESSION: return yb::DEFAULT_COMPRESSION;
+    case YBColumnStorageAttributes::NO_COMPRESSION: return yb::NO_COMPRESSION;
+    case YBColumnStorageAttributes::SNAPPY: return yb::SNAPPY;
+    case YBColumnStorageAttributes::LZ4: return yb::LZ4;
+    case YBColumnStorageAttributes::ZLIB: return yb::ZLIB;
     default: LOG(FATAL) << "Unexpected compression type" << type;
   }
 }
 
-KuduColumnStorageAttributes::CompressionType FromInternalCompressionType(
+YBColumnStorageAttributes::CompressionType FromInternalCompressionType(
     yb::CompressionType type) {
   switch (type) {
-    case yb::DEFAULT_COMPRESSION: return KuduColumnStorageAttributes::DEFAULT_COMPRESSION;
-    case yb::NO_COMPRESSION: return KuduColumnStorageAttributes::NO_COMPRESSION;
-    case yb::SNAPPY: return KuduColumnStorageAttributes::SNAPPY;
-    case yb::LZ4: return KuduColumnStorageAttributes::LZ4;
-    case yb::ZLIB: return KuduColumnStorageAttributes::ZLIB;
+    case yb::DEFAULT_COMPRESSION: return YBColumnStorageAttributes::DEFAULT_COMPRESSION;
+    case yb::NO_COMPRESSION: return YBColumnStorageAttributes::NO_COMPRESSION;
+    case yb::SNAPPY: return YBColumnStorageAttributes::SNAPPY;
+    case yb::LZ4: return YBColumnStorageAttributes::LZ4;
+    case yb::ZLIB: return YBColumnStorageAttributes::ZLIB;
     default: LOG(FATAL) << "Unexpected internal compression type: " << type;
   }
 }
 
-yb::DataType ToInternalDataType(KuduColumnSchema::DataType type) {
+yb::DataType ToInternalDataType(YBColumnSchema::DataType type) {
   switch (type) {
-    case KuduColumnSchema::INT8: return yb::INT8;
-    case KuduColumnSchema::INT16: return yb::INT16;
-    case KuduColumnSchema::INT32: return yb::INT32;
-    case KuduColumnSchema::INT64: return yb::INT64;
-    case KuduColumnSchema::TIMESTAMP: return yb::TIMESTAMP;
-    case KuduColumnSchema::FLOAT: return yb::FLOAT;
-    case KuduColumnSchema::DOUBLE: return yb::DOUBLE;
-    case KuduColumnSchema::STRING: return yb::STRING;
-    case KuduColumnSchema::BINARY: return yb::BINARY;
-    case KuduColumnSchema::BOOL: return yb::BOOL;
+    case YBColumnSchema::INT8: return yb::INT8;
+    case YBColumnSchema::INT16: return yb::INT16;
+    case YBColumnSchema::INT32: return yb::INT32;
+    case YBColumnSchema::INT64: return yb::INT64;
+    case YBColumnSchema::TIMESTAMP: return yb::TIMESTAMP;
+    case YBColumnSchema::FLOAT: return yb::FLOAT;
+    case YBColumnSchema::DOUBLE: return yb::DOUBLE;
+    case YBColumnSchema::STRING: return yb::STRING;
+    case YBColumnSchema::BINARY: return yb::BINARY;
+    case YBColumnSchema::BOOL: return yb::BOOL;
     default: LOG(FATAL) << "Unexpected data type: " << type;
   }
 }
 
-KuduColumnSchema::DataType FromInternalDataType(yb::DataType type) {
+YBColumnSchema::DataType FromInternalDataType(yb::DataType type) {
   switch (type) {
-    case yb::INT8: return KuduColumnSchema::INT8;
-    case yb::INT16: return KuduColumnSchema::INT16;
-    case yb::INT32: return KuduColumnSchema::INT32;
-    case yb::INT64: return KuduColumnSchema::INT64;
-    case yb::TIMESTAMP: return KuduColumnSchema::TIMESTAMP;
-    case yb::FLOAT: return KuduColumnSchema::FLOAT;
-    case yb::DOUBLE: return KuduColumnSchema::DOUBLE;
-    case yb::STRING: return KuduColumnSchema::STRING;
-    case yb::BINARY: return KuduColumnSchema::BINARY;
-    case yb::BOOL: return KuduColumnSchema::BOOL;
+    case yb::INT8: return YBColumnSchema::INT8;
+    case yb::INT16: return YBColumnSchema::INT16;
+    case yb::INT32: return YBColumnSchema::INT32;
+    case yb::INT64: return YBColumnSchema::INT64;
+    case yb::TIMESTAMP: return YBColumnSchema::TIMESTAMP;
+    case yb::FLOAT: return YBColumnSchema::FLOAT;
+    case yb::DOUBLE: return YBColumnSchema::DOUBLE;
+    case yb::STRING: return YBColumnSchema::STRING;
+    case yb::BINARY: return YBColumnSchema::BINARY;
+    case yb::BOOL: return YBColumnSchema::BOOL;
     default: LOG(FATAL) << "Unexpected internal data type: " << type;
   }
 }
 
 ////////////////////////////////////////////////////////////
-// KuduColumnSpec
+// YBColumnSpec
 ////////////////////////////////////////////////////////////
 
-KuduColumnSpec::KuduColumnSpec(const std::string& name)
+YBColumnSpec::YBColumnSpec(const std::string& name)
   : data_(new Data(name)) {
 }
 
-KuduColumnSpec::~KuduColumnSpec() {
+YBColumnSpec::~YBColumnSpec() {
   delete data_;
 }
 
-KuduColumnSpec* KuduColumnSpec::Type(KuduColumnSchema::DataType type) {
+YBColumnSpec* YBColumnSpec::Type(YBColumnSchema::DataType type) {
   data_->has_type = true;
   data_->type = type;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::Default(YBValue* v) {
+YBColumnSpec* YBColumnSpec::Default(YBValue* v) {
   data_->has_default = true;
   delete data_->default_val;
   data_->default_val = v;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::Compression(
-    KuduColumnStorageAttributes::CompressionType compression) {
+YBColumnSpec* YBColumnSpec::Compression(
+    YBColumnStorageAttributes::CompressionType compression) {
   data_->has_compression = true;
   data_->compression = compression;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::Encoding(
-    KuduColumnStorageAttributes::EncodingType encoding) {
+YBColumnSpec* YBColumnSpec::Encoding(
+    YBColumnStorageAttributes::EncodingType encoding) {
   data_->has_encoding = true;
   data_->encoding = encoding;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::BlockSize(int32_t block_size) {
+YBColumnSpec* YBColumnSpec::BlockSize(int32_t block_size) {
   data_->has_block_size = true;
   data_->block_size = block_size;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::PrimaryKey() {
+YBColumnSpec* YBColumnSpec::PrimaryKey() {
   data_->primary_key = true;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::NotNull() {
+YBColumnSpec* YBColumnSpec::NotNull() {
   data_->has_nullable = true;
   data_->nullable = false;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::Nullable() {
+YBColumnSpec* YBColumnSpec::Nullable() {
   data_->has_nullable = true;
   data_->nullable = true;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::RemoveDefault() {
+YBColumnSpec* YBColumnSpec::RemoveDefault() {
   data_->remove_default = true;
   return this;
 }
 
-KuduColumnSpec* KuduColumnSpec::RenameTo(const std::string& new_name) {
+YBColumnSpec* YBColumnSpec::RenameTo(const std::string& new_name) {
   data_->has_rename_to = true;
   data_->rename_to = new_name;
   return this;
 }
 
-Status KuduColumnSpec::ToColumnSchema(KuduColumnSchema* col) const {
+Status YBColumnSpec::ToColumnSchema(YBColumnSchema* col) const {
   // Verify that the user isn't trying to use any methods that
   // don't make sense for CREATE.
   if (data_->has_rename_to) {
@@ -230,14 +230,14 @@ Status KuduColumnSpec::ToColumnSchema(KuduColumnSchema* col) const {
 
 
   // Encoding and compression
-  KuduColumnStorageAttributes::EncodingType encoding =
-    KuduColumnStorageAttributes::AUTO_ENCODING;
+  YBColumnStorageAttributes::EncodingType encoding =
+    YBColumnStorageAttributes::AUTO_ENCODING;
   if (data_->has_encoding) {
     encoding = data_->encoding;
   }
 
-  KuduColumnStorageAttributes::CompressionType compression =
-    KuduColumnStorageAttributes::DEFAULT_COMPRESSION;
+  YBColumnStorageAttributes::CompressionType compression =
+    YBColumnStorageAttributes::DEFAULT_COMPRESSION;
   if (data_->has_compression) {
     compression = data_->compression;
   }
@@ -247,9 +247,9 @@ Status KuduColumnSpec::ToColumnSchema(KuduColumnSchema* col) const {
     block_size = data_->block_size;
   }
 
-  *col = KuduColumnSchema(data_->name, data_->type, nullable,
+  *col = YBColumnSchema(data_->name, data_->type, nullable,
                           default_val,
-                          KuduColumnStorageAttributes(encoding, compression, block_size));
+                          YBColumnStorageAttributes(encoding, compression, block_size));
 
   return Status::OK();
 }
@@ -273,7 +273,7 @@ class YB_NO_EXPORT YBSchemaBuilder::Data {
   bool has_key_col_names;
   vector<string> key_col_names;
 
-  vector<KuduColumnSpec*> specs;
+  vector<YBColumnSpec*> specs;
 };
 
 YBSchemaBuilder::YBSchemaBuilder()
@@ -281,17 +281,17 @@ YBSchemaBuilder::YBSchemaBuilder()
 }
 
 YBSchemaBuilder::~YBSchemaBuilder() {
-  for (KuduColumnSpec* spec : data_->specs) {
+  for (YBColumnSpec* spec : data_->specs) {
     // Can't use STLDeleteElements because YBSchemaBuilder
-    // is a friend of KuduColumnSpec in order to access its destructor.
+    // is a friend of YBColumnSpec in order to access its destructor.
     // STLDeleteElements is a free function and therefore can't access it.
     delete spec;
   }
   delete data_;
 }
 
-KuduColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
-  auto c = new KuduColumnSpec(name);
+YBColumnSpec* YBSchemaBuilder::AddColumn(const std::string& name) {
+  auto c = new YBColumnSpec(name);
   data_->specs.push_back(c);
   return c;
 }
@@ -304,8 +304,8 @@ YBSchemaBuilder* YBSchemaBuilder::SetPrimaryKey(
 }
 
 Status YBSchemaBuilder::Build(YBSchema* schema) {
-  vector<KuduColumnSchema> cols;
-  cols.resize(data_->specs.size(), KuduColumnSchema());
+  vector<YBColumnSchema> cols;
+  cols.resize(data_->specs.size(), YBColumnSchema());
   for (int i = 0; i < cols.size(); i++) {
     RETURN_NOT_OK(data_->specs[i]->ToColumnSchema(&cols[i]));
   }
@@ -342,7 +342,7 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
     // Build a map from name to index of all of the columns.
     unordered_map<string, int> name_to_idx_map;
     int i = 0;
-    for (KuduColumnSpec* spec : data_->specs) {
+    for (YBColumnSpec* spec : data_->specs) {
       // If they did pass the key column names, then we should not have explicitly
       // set it on any columns.
       if (spec->data_->primary_key) {
@@ -384,18 +384,18 @@ Status YBSchemaBuilder::Build(YBSchema* schema) {
 
 
 ////////////////////////////////////////////////////////////
-// KuduColumnSchema
+// YBColumnSchema
 ////////////////////////////////////////////////////////////
 
-std::string KuduColumnSchema::DataTypeToString(DataType type) {
+std::string YBColumnSchema::DataTypeToString(DataType type) {
   return DataType_Name(ToInternalDataType(type));
 }
 
-KuduColumnSchema::KuduColumnSchema(const std::string &name,
+YBColumnSchema::YBColumnSchema(const std::string &name,
                                    DataType type,
                                    bool is_nullable,
                                    const void* default_value,
-                                   KuduColumnStorageAttributes attributes) {
+                                   YBColumnStorageAttributes attributes) {
   ColumnStorageAttributes attr_private;
   attr_private.encoding = ToInternalEncodingType(attributes.encoding());
   attr_private.compression = ToInternalCompressionType(attributes.compression());
@@ -403,26 +403,26 @@ KuduColumnSchema::KuduColumnSchema(const std::string &name,
                           default_value, default_value, attr_private);
 }
 
-KuduColumnSchema::KuduColumnSchema(const KuduColumnSchema& other)
+YBColumnSchema::YBColumnSchema(const YBColumnSchema& other)
   : col_(nullptr) {
   CopyFrom(other);
 }
 
-KuduColumnSchema::KuduColumnSchema() : col_(nullptr) {
+YBColumnSchema::YBColumnSchema() : col_(nullptr) {
 }
 
-KuduColumnSchema::~KuduColumnSchema() {
+YBColumnSchema::~YBColumnSchema() {
   delete col_;
 }
 
-KuduColumnSchema& KuduColumnSchema::operator=(const KuduColumnSchema& other) {
+YBColumnSchema& YBColumnSchema::operator=(const YBColumnSchema& other) {
   if (&other != this) {
     CopyFrom(other);
   }
   return *this;
 }
 
-void KuduColumnSchema::CopyFrom(const KuduColumnSchema& other) {
+void YBColumnSchema::CopyFrom(const YBColumnSchema& other) {
   delete col_;
   if (other.col_) {
     col_ = new ColumnSchema(*other.col_);
@@ -431,21 +431,21 @@ void KuduColumnSchema::CopyFrom(const KuduColumnSchema& other) {
   }
 }
 
-bool KuduColumnSchema::Equals(const KuduColumnSchema& other) const {
+bool YBColumnSchema::Equals(const YBColumnSchema& other) const {
   return this == &other ||
     col_ == other.col_ ||
     (col_ != nullptr && col_->Equals(*other.col_, true));
 }
 
-const std::string& KuduColumnSchema::name() const {
+const std::string& YBColumnSchema::name() const {
   return DCHECK_NOTNULL(col_)->name();
 }
 
-bool KuduColumnSchema::is_nullable() const {
+bool YBColumnSchema::is_nullable() const {
   return DCHECK_NOTNULL(col_)->is_nullable();
 }
 
-KuduColumnSchema::DataType KuduColumnSchema::type() const {
+YBColumnSchema::DataType YBColumnSchema::type() const {
   return FromInternalDataType(DCHECK_NOTNULL(col_)->type_info()->type());
 }
 
@@ -483,9 +483,9 @@ void YBSchema::CopyFrom(const YBSchema& other) {
   schema_ = new Schema(*other.schema_);
 }
 
-Status YBSchema::Reset(const vector<KuduColumnSchema>& columns, int key_columns) {
+Status YBSchema::Reset(const vector<YBColumnSchema>& columns, int key_columns) {
   vector<ColumnSchema> cols_private;
-  for (const KuduColumnSchema& col : columns) {
+  for (const YBColumnSchema& col : columns) {
     cols_private.push_back(*col.col_);
   }
   gscoped_ptr<Schema> new_schema(new Schema());
@@ -501,17 +501,17 @@ bool YBSchema::Equals(const YBSchema& other) const {
       (schema_ && other.schema_ && schema_->Equals(*other.schema_));
 }
 
-KuduColumnSchema YBSchema::Column(size_t idx) const {
+YBColumnSchema YBSchema::Column(size_t idx) const {
   ColumnSchema col(schema_->column(idx));
-  KuduColumnStorageAttributes attrs(FromInternalEncodingType(col.attributes().encoding),
+  YBColumnStorageAttributes attrs(FromInternalEncodingType(col.attributes().encoding),
                                     FromInternalCompressionType(col.attributes().compression));
-  return KuduColumnSchema(col.name(), FromInternalDataType(col.type_info()->type()),
+  return YBColumnSchema(col.name(), FromInternalDataType(col.type_info()->type()),
                           col.is_nullable(), col.read_default_value(),
                           attrs);
 }
 
-KuduPartialRow* YBSchema::NewRow() const {
-  return new KuduPartialRow(schema_);
+YBPartialRow* YBSchema::NewRow() const {
+  return new YBPartialRow(schema_);
 }
 
 size_t YBSchema::num_columns() const {

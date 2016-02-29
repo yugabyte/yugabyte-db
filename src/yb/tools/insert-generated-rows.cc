@@ -44,13 +44,13 @@ namespace tools {
 using std::string;
 using std::vector;
 
-using client::KuduClient;
+using client::YBClient;
 using client::YBClientBuilder;
-using client::KuduColumnSchema;
+using client::YBColumnSchema;
 using client::YBInsert;
 using client::YBSchema;
 using client::YBSession;
-using client::KuduTable;
+using client::YBTable;
 using client::sp::shared_ptr;
 
 void PrintUsage(char** argv) {
@@ -74,13 +74,13 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   // Set up client.
   LOG(INFO) << "Connecting to Kudu Master...";
-  shared_ptr<KuduClient> client;
+  shared_ptr<YBClient> client;
   CHECK_OK(YBClientBuilder()
            .master_server_addrs(addrs)
            .Build(&client));
 
   LOG(INFO) << "Opening table...";
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(client->OpenTable(table_name, &table));
   YBSchema schema = table->schema();
 
@@ -94,7 +94,7 @@ static int WriteRandomDataToTable(int argc, char** argv) {
   for (uint64_t record_id = 0; true; ++record_id) {
 
     gscoped_ptr<YBInsert> insert(table->NewInsert());
-    KuduPartialRow* row = insert->mutable_row();
+    YBPartialRow* row = insert->mutable_row();
     GenerateDataForRow(schema, record_id, &random, row);
 
     LOG(INFO) << "Inserting record: " << row->ToString();

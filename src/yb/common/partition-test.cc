@@ -76,7 +76,7 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
 
   {
     string key;
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     ASSERT_OK(row.SetInt32("a", 0));
     ASSERT_OK(partition_schema.EncodeKey(row, &key));
 
@@ -92,7 +92,7 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
 
   {
     string key;
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     ASSERT_OK(row.SetInt32("a", 1));
     ASSERT_OK(partition_schema.EncodeKey(row, &key));
 
@@ -109,7 +109,7 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
 
   {
     string key;
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     ASSERT_OK(row.SetInt32("a", 0));
     ASSERT_OK(row.SetStringCopy("b", "b"));
     ASSERT_OK(row.SetStringCopy("c", "c"));
@@ -129,7 +129,7 @@ TEST(PartitionTest, TestPartitionKeyEncoding) {
 
   {
     string key;
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     ASSERT_OK(row.SetInt32("a", 1));
     ASSERT_OK(row.SetStringCopy("b", "b"));
     ASSERT_OK(row.SetStringCopy("c", "c"));
@@ -169,18 +169,18 @@ TEST(PartitionTest, TestCreateRangePartitions) {
   // [ ("1"), ("2") )
   // [ ("2"), ( "") )
 
-  KuduPartialRow split1(&schema);
+  YBPartialRow split1(&schema);
   ASSERT_OK(split1.SetStringCopy("a", "1"));
   string pk1;
   ASSERT_OK(partition_schema.EncodeKey(split1, &pk1));
 
-  KuduPartialRow split2(&schema);
+  YBPartialRow split2(&schema);
   ASSERT_OK(split2.SetStringCopy("a", "2"));
   string pk2;
   ASSERT_OK(partition_schema.EncodeKey(split2, &pk2));
 
   // Split keys need not be passed in sorted order.
-  vector<KuduPartialRow> split_rows = { split2, split1 };
+  vector<YBPartialRow> split_rows = { split2, split1 };
   vector<Partition> partitions;
   ASSERT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   ASSERT_EQ(3, partitions.size());
@@ -231,7 +231,7 @@ TEST(PartitionTest, TestCreateHashBucketPartitions) {
   // [ (3), (_) )
 
   vector<Partition> partitions;
-  ASSERT_OK(partition_schema.CreatePartitions(vector<KuduPartialRow>(), schema, &partitions));
+  ASSERT_OK(partition_schema.CreatePartitions(vector<YBPartialRow>(), schema, &partitions));
   ASSERT_EQ(3, partitions.size());
 
   EXPECT_EQ(0, partitions[0].hash_buckets()[0]);
@@ -304,21 +304,21 @@ TEST(PartitionTest, TestCreatePartitions) {
   //
   // _ signifies that the value is omitted from the encoded partition key.
 
-  KuduPartialRow split_a(&schema);
+  YBPartialRow split_a(&schema);
   ASSERT_OK(split_a.SetStringCopy("a", "a1"));
   ASSERT_OK(split_a.SetStringCopy("b", "b1"));
   ASSERT_OK(split_a.SetStringCopy("c", "c1"));
   string partition_key_a;
   ASSERT_OK(partition_schema.EncodeKey(split_a, &partition_key_a));
 
-  KuduPartialRow split_b(&schema);
+  YBPartialRow split_b(&schema);
   ASSERT_OK(split_b.SetStringCopy("a", "a2"));
   ASSERT_OK(split_b.SetStringCopy("b", "b2"));
   string partition_key_b;
   ASSERT_OK(partition_schema.EncodeKey(split_b, &partition_key_b));
 
   // Split keys need not be passed in sorted order.
-  vector<KuduPartialRow> split_rows = { split_b, split_a };
+  vector<YBPartialRow> split_rows = { split_b, split_a };
   vector<Partition> partitions;
   ASSERT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   ASSERT_EQ(12, partitions.size());

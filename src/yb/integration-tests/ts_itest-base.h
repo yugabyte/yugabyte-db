@@ -399,7 +399,7 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
     STLDeleteValues(&tablet_servers_);
   }
 
-  void CreateClient(client::sp::shared_ptr<client::KuduClient>* client) {
+  void CreateClient(client::sp::shared_ptr<client::YBClient>* client) {
     // Connect to the cluster.
     ASSERT_OK(client::YBClientBuilder()
                      .add_master_server_addr(cluster_->master()->bound_rpc_addr().ToString())
@@ -451,8 +451,8 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
   // Maps tablet to all replicas.
   TabletReplicaMap tablet_replicas_;
 
-  client::sp::shared_ptr<client::KuduClient> client_;
-  client::sp::shared_ptr<client::KuduTable> table_;
+  client::sp::shared_ptr<client::YBClient> client_;
+  client::sp::shared_ptr<client::YBTable> table_;
   std::string tablet_id_;
 
   ThreadSafeRandom random_;

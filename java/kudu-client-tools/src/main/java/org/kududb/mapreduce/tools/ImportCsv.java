@@ -17,7 +17,7 @@ package org.kududb.mapreduce.tools;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.mapreduce.CommandLineParser;
-import org.kududb.mapreduce.KuduTableMapReduceUtil;
+import org.kududb.mapreduce.YBTableMapReduceUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
 import org.apache.hadoop.fs.Path;
@@ -69,7 +69,7 @@ public class ImportCsv extends Configured implements Tool {
     job.setInputFormatClass(TextInputFormat.class);
     job.setMapperClass(mapperClass);
     job.setNumReduceTasks(0);
-    new KuduTableMapReduceUtil.TableOutputFormatConfiguratorWithCommandLineParser(
+    new YBTableMapReduceUtil.TableOutputFormatConfiguratorWithCommandLineParser(
         job,
         tableName)
         .configure();

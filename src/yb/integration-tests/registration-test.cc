@@ -50,7 +50,7 @@ using tserver::MiniTabletServer;
 
 // Tests for the Tablet Server registering with the Master,
 // and the master maintaining the tablet descriptor.
-class RegistrationTest : public KuduTest {
+class RegistrationTest : public YBTest {
  public:
   RegistrationTest()
     : schema_({ ColumnSchema("c1", UINT32) }, 1) {
@@ -60,7 +60,7 @@ class RegistrationTest : public KuduTest {
     // Make heartbeats faster to speed test runtime.
     FLAGS_heartbeat_interval_ms = 10;
 
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());

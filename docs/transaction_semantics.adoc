@@ -117,8 +117,8 @@ manually propagate timestamps from one client to the other for the causal relati
 to be captured.
 
 `CLIENT_PROPAGATED` consistency is currently only available on the java client
-and is exposed through the `AsyncKuduClient#getLastPropagatedTimestamp()` and
-`AsyncKuduClient#setLastPropagatedTimestamp()` methods.
+and is exposed through the `AsyncYBClient#getLastPropagatedTimestamp()` and
+`AsyncYBClient#setLastPropagatedTimestamp()` methods.
 
 .`Commit Wait` Consistency
 Kudu also implements an experimental implementation of an external consistency
