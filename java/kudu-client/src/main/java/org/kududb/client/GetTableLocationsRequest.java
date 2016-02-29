@@ -34,7 +34,7 @@ class GetTableLocationsRequest extends KuduRpc<Master.GetTableLocationsResponseP
   private final byte[] endKey;
   private final String tableId;
 
-  GetTableLocationsRequest(KuduTable table, byte[] startPartitionKey,
+  GetTableLocationsRequest(YBTable table, byte[] startPartitionKey,
                            byte[] endPartitionKey, String tableId) {
     super(table);
     if (startPartitionKey != null && endPartitionKey != null

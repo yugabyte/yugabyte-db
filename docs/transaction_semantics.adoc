@@ -48,7 +48,7 @@ the state of the storage engine at that point in time.
 ====
 * The term _timestamp_ is mentioned several times to illustrate the
 functionality, but _timestamp_ is an internal concept mostly invisible to users,
-except when setting timestamp on a `KuduScanner`.
+except when setting timestamp on a `YBScanner`.
 
 * We generally refer to methods and classes of the _async java_ client. While the {cpp}
 client mostly has analogous methods and classes, parity between the APIs is still
@@ -117,8 +117,8 @@ manually propagate timestamps from one client to the other for the causal relati
 to be captured.
 
 `CLIENT_PROPAGATED` consistency is currently only available on the java client
-and is exposed through the `AsyncKuduClient#getLastPropagatedTimestamp()` and
-`AsyncKuduClient#setLastPropagatedTimestamp()` methods.
+and is exposed through the `AsyncYBClient#getLastPropagatedTimestamp()` and
+`AsyncYBClient#setLastPropagatedTimestamp()` methods.
 
 .`Commit Wait` Consistency
 Kudu also implements an experimental implementation of an external consistency
@@ -129,7 +129,7 @@ visible until enough time has passed so that no other machine in the cluster cou
 possibly assign a lower timestamp to a following write.
 
 For the moment, Kudu's experimental implementation of `Commit Wait` is only available
-in the java client, by setting `KuduSession#setExternalConsistencyMode()`
+in the java client, by setting `YBSession#setExternalConsistencyMode()`
 to `COMMIT_WAIT`. When using this mode, the latency of writes is tightly
 tied to the accuracy of clocks on all the cluster hosts, and using this mode
 with loose clock synchronization causes writes to take a long time to complete or even time
@@ -140,7 +140,7 @@ out. See <<known_issues>>.
 Scans are read operations performed by clients that may span one or more rows across
 one or more tablets. When a server receives a scan, it takes a snapshot of the MVCC
 state and then proceeds in one of two ways depending on the read mode selected by
-the user by means of the `KuduScanner::SetReadMode()` method.
+the user by means of the `YBScanner::SetReadMode()` method.
 
 `READ_LATEST`:: This is the default read mode. The server takes a snapshot of
 the MVCC state and proceeds with the read immediately. Reads in this mode only yield
@@ -148,7 +148,7 @@ the MVCC state and proceeds with the read immediately. Reads in this mode only y
 
 `READ_AT_SNAPSHOT`:: In this read mode, scans are consistent and repeatable. A
 timestamp for the snapshot is selected either by the server, or set
-explicitly by the user through `KuduScanner::SetSnapshotMicros()`. Explicitly setting
+explicitly by the user through `YBScanner::SetSnapshotMicros()`. Explicitly setting
 the timestamp is recommended; see <<recommendations>>. The server waits until this
 timestamp is 'safe' (until all write operations that have a lower timestamp have
 completed and are visible). This delay, coupled with an external consistency method,

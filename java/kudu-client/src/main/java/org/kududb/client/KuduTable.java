@@ -25,8 +25,8 @@ import com.stumbleupon.async.Deferred;
 import java.util.List;
 
 /**
- * A KuduTable represents a table on a particular cluster. It holds the current
- * schema of the table. Any given KuduTable instance belongs to a specific AsyncKuduClient
+ * A YBTable represents a table on a particular cluster. It holds the current
+ * schema of the table. Any given YBTable instance belongs to a specific AsyncYBClient
  * instance.
  *
  * Upon construction, the table is looked up in the catalog (or catalog cache),
@@ -36,21 +36,21 @@ import java.util.List;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTable {
+public class YBTable {
 
   private final Schema schema;
   private final PartitionSchema partitionSchema;
-  private final AsyncKuduClient client;
+  private final AsyncYBClient client;
   private final String name;
   private final String tableId;
 
   /**
-   * Package-private constructor, use {@link KuduClient#openTable(String)} to get an instance.
+   * Package-private constructor, use {@link YBClient#openTable(String)} to get an instance.
    * @param client the client this instance belongs to
    * @param name this table's name
    * @param schema this table's schema
    */
-  KuduTable(AsyncKuduClient client, String name, String tableId,
+  YBTable(AsyncYBClient client, String name, String tableId,
             Schema schema, PartitionSchema partitionSchema) {
     this.schema = schema;
     this.partitionSchema = partitionSchema;
@@ -100,7 +100,7 @@ public class KuduTable {
    * Get the async client that created this instance.
    * @return an async kudu client
    */
-  public AsyncKuduClient getAsyncClient() {
+  public AsyncYBClient getAsyncClient() {
     return this.client;
   }
 

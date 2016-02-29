@@ -61,22 +61,22 @@ using rpc::MessengerBuilder;
 using strings::Substitute;
 using tablet::ColumnDataPB;
 using tablet::DeltaDataPB;
-using tablet::KuduTabletTest;
+using tablet::YBTabletTest;
 using tablet::RowSetDataPB;
 using tablet::TabletPeer;
 using tablet::TabletSuperBlockPB;
 using tablet::WriteTransactionState;
 
-class RemoteBootstrapTest : public KuduTabletTest {
+class RemoteBootstrapTest : public YBTabletTest {
  public:
   RemoteBootstrapTest()
-    : KuduTabletTest(Schema({ ColumnSchema("key", STRING),
+    : YBTabletTest(Schema({ ColumnSchema("key", STRING),
                               ColumnSchema("val", INT32) }, 1)) {
     CHECK_OK(ThreadPoolBuilder("test-exec").Build(&apply_pool_));
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
     SetUpTabletPeer();
     ASSERT_NO_FATAL_FAILURE(PopulateTablet());
     InitSession();
@@ -85,7 +85,7 @@ class RemoteBootstrapTest : public KuduTabletTest {
   virtual void TearDown() OVERRIDE {
     session_.reset();
     tablet_peer_->Shutdown();
-    KuduTabletTest::TearDown();
+    YBTabletTest::TearDown();
   }
 
  protected:
@@ -150,7 +150,7 @@ class RemoteBootstrapTest : public KuduTabletTest {
       ASSERT_OK(SchemaToPB(client_schema_, req.mutable_schema()));
       RowOperationsPB* data = req.mutable_row_operations();
       RowOperationsPBEncoder enc(data);
-      KuduPartialRow row(&client_schema_);
+      YBPartialRow row(&client_schema_);
 
       string key = Substitute("key$0", i);
       ASSERT_OK(row.SetString(0, key));

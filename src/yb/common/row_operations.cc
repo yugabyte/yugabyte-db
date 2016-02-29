@@ -55,7 +55,7 @@ RowOperationsPBEncoder::RowOperationsPBEncoder(RowOperationsPB* pb)
 RowOperationsPBEncoder::~RowOperationsPBEncoder() {
 }
 
-void RowOperationsPBEncoder::Add(RowOperationsPB::Type op_type, const KuduPartialRow& partial_row) {
+void RowOperationsPBEncoder::Add(RowOperationsPB::Type op_type, const YBPartialRow& partial_row) {
   const Schema* schema = partial_row.schema();
 
   // See wire_protocol.pb for a description of the format.
@@ -488,7 +488,7 @@ Status RowOperationsPBDecoder::DecodeUpdateOrDelete(const ClientServerMapping& m
 
 Status RowOperationsPBDecoder::DecodeSplitRow(const ClientServerMapping& mapping,
                                               DecodedRowOperation* op) {
-  op->split_row.reset(new KuduPartialRow(tablet_schema_));
+  op->split_row.reset(new YBPartialRow(tablet_schema_));
 
   const uint8_t* client_isset_map;
   const uint8_t* client_null_map;

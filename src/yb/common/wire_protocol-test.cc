@@ -27,7 +27,7 @@
 
 namespace yb {
 
-class WireProtocolTest : public KuduTest {
+class WireProtocolTest : public YBTest {
  public:
   WireProtocolTest()
     : schema_({ ColumnSchema("col1", STRING),

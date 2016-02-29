@@ -26,13 +26,13 @@
 
 namespace yb {
 
-class RowKeyUtilTest : public KuduTest {
+class RowKeyUtilTest : public YBTest {
  public:
   RowKeyUtilTest()
     : arena_(1024, 4096) {}
 
  protected:
-  uint8_t* row_data(KuduPartialRow* row) {
+  uint8_t* row_data(YBPartialRow* row) {
     return row->row_data_;
   }
 
@@ -44,7 +44,7 @@ TEST_F(RowKeyUtilTest, TestIncrementNonCompositeKey) {
                   ColumnSchema("other_col", INT32),
                   ColumnSchema("other_col2", STRING, true) },
                 1);
-  KuduPartialRow p_row(&schema);
+  YBPartialRow p_row(&schema);
   ContiguousRow row(&schema, row_data(&p_row));
 
   // Normal increment.
@@ -64,7 +64,7 @@ TEST_F(RowKeyUtilTest, TestIncrementCompositeKey) {
                   ColumnSchema("other_col", STRING, true) },
                 2);
 
-  KuduPartialRow p_row(&schema);
+  YBPartialRow p_row(&schema);
   ContiguousRow row(&schema, row_data(&p_row));
 
   // Normal increment.
@@ -92,7 +92,7 @@ TEST_F(RowKeyUtilTest, TestIncrementCompositeIntStringKey) {
                   ColumnSchema("other_col", STRING, true) },
                 2);
 
-  KuduPartialRow p_row(&schema);
+  YBPartialRow p_row(&schema);
   ContiguousRow row(&schema, row_data(&p_row));
 
   // Normal increment.
@@ -113,7 +113,7 @@ TEST_F(RowKeyUtilTest, TestIncrementCompositeStringIntKey) {
                   ColumnSchema("other_col", STRING, true) },
                 2);
 
-  KuduPartialRow p_row(&schema);
+  YBPartialRow p_row(&schema);
   ContiguousRow row(&schema, row_data(&p_row));
 
   // Normal increment.

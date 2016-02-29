@@ -30,27 +30,27 @@ import org.kududb.util.HybridTimeUtil;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public abstract class AbstractKuduScannerBuilder
-    <S extends AbstractKuduScannerBuilder<? super S, T>, T> {
-  final AsyncKuduClient client;
-  final KuduTable table;
+public abstract class AbstractYBScannerBuilder
+    <S extends AbstractYBScannerBuilder<? super S, T>, T> {
+  final AsyncYBClient client;
+  final YBTable table;
   final List<Tserver.ColumnRangePredicatePB> columnRangePredicates;
 
-  AsyncKuduScanner.ReadMode readMode = AsyncKuduScanner.ReadMode.READ_LATEST;
+  AsyncYBScanner.ReadMode readMode = AsyncYBScanner.ReadMode.READ_LATEST;
   int batchSizeBytes = 1024*1024;
   long limit = Long.MAX_VALUE;
   boolean prefetching = false;
   boolean cacheBlocks = true;
-  long htTimestamp = AsyncKuduClient.NO_TIMESTAMP;
-  byte[] lowerBoundPrimaryKey = AsyncKuduClient.EMPTY_ARRAY;
-  byte[] upperBoundPrimaryKey = AsyncKuduClient.EMPTY_ARRAY;
-  byte[] lowerBoundPartitionKey = AsyncKuduClient.EMPTY_ARRAY;
-  byte[] upperBoundPartitionKey = AsyncKuduClient.EMPTY_ARRAY;
+  long htTimestamp = AsyncYBClient.NO_TIMESTAMP;
+  byte[] lowerBoundPrimaryKey = AsyncYBClient.EMPTY_ARRAY;
+  byte[] upperBoundPrimaryKey = AsyncYBClient.EMPTY_ARRAY;
+  byte[] lowerBoundPartitionKey = AsyncYBClient.EMPTY_ARRAY;
+  byte[] upperBoundPartitionKey = AsyncYBClient.EMPTY_ARRAY;
   List<String> projectedColumnNames = null;
   List<Integer> projectedColumnIndexes = null;
   long scanRequestTimeout;
 
-  AbstractKuduScannerBuilder(AsyncKuduClient client, KuduTable table) {
+  AbstractYBScannerBuilder(AsyncYBClient client, YBTable table) {
     this.client = client;
     this.table = table;
     this.columnRangePredicates = new ArrayList<>();
@@ -62,7 +62,7 @@ public abstract class AbstractKuduScannerBuilder
    * @param readMode a read mode for the scanner
    * @return this instance
    */
-  public S readMode(AsyncKuduScanner.ReadMode readMode) {
+  public S readMode(AsyncYBScanner.ReadMode readMode) {
     this.readMode = readMode;
     return (S) this;
   }
@@ -204,7 +204,7 @@ public abstract class AbstractKuduScannerBuilder
 
   /**
    * Sets how long each scan request to a server can last.
-   * Defaults to {@link KuduClient#getDefaultOperationTimeoutMs()}.
+   * Defaults to {@link YBClient#getDefaultOperationTimeoutMs()}.
    * @param scanRequestTimeout a long representing time in milliseconds
    * @return this instance
    */
@@ -231,7 +231,7 @@ public abstract class AbstractKuduScannerBuilder
    */
   @Deprecated
   public S lowerBoundRaw(byte[] startPrimaryKey) {
-    if (lowerBoundPrimaryKey == AsyncKuduClient.EMPTY_ARRAY ||
+    if (lowerBoundPrimaryKey == AsyncYBClient.EMPTY_ARRAY ||
         Bytes.memcmp(startPrimaryKey, lowerBoundPrimaryKey) > 0) {
       this.lowerBoundPrimaryKey = startPrimaryKey;
     }
@@ -256,7 +256,7 @@ public abstract class AbstractKuduScannerBuilder
    */
   @Deprecated
   public S exclusiveUpperBoundRaw(byte[] endPrimaryKey) {
-    if (upperBoundPrimaryKey == AsyncKuduClient.EMPTY_ARRAY ||
+    if (upperBoundPrimaryKey == AsyncYBClient.EMPTY_ARRAY ||
         Bytes.memcmp(endPrimaryKey, upperBoundPrimaryKey) < 0) {
       this.upperBoundPrimaryKey = endPrimaryKey;
     }

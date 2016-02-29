@@ -44,13 +44,13 @@ namespace tools {
 using std::string;
 using std::vector;
 
-using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduColumnSchema;
-using client::KuduInsert;
-using client::KuduSchema;
-using client::KuduSession;
-using client::KuduTable;
+using client::YBClient;
+using client::YBClientBuilder;
+using client::YBColumnSchema;
+using client::YBInsert;
+using client::YBSchema;
+using client::YBSession;
+using client::YBTable;
 using client::sp::shared_ptr;
 
 void PrintUsage(char** argv) {
@@ -74,39 +74,39 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 
   // Set up client.
   LOG(INFO) << "Connecting to Kudu Master...";
-  shared_ptr<KuduClient> client;
-  CHECK_OK(KuduClientBuilder()
+  shared_ptr<YBClient> client;
+  CHECK_OK(YBClientBuilder()
            .master_server_addrs(addrs)
            .Build(&client));
 
   LOG(INFO) << "Opening table...";
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   CHECK_OK(client->OpenTable(table_name, &table));
-  KuduSchema schema = table->schema();
+  YBSchema schema = table->schema();
 
-  shared_ptr<KuduSession> session = client->NewSession();
+  shared_ptr<YBSession> session = client->NewSession();
   session->SetTimeoutMillis(5000); // Time out after 5 seconds.
-  CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   Random random(GetRandomSeed32());
 
   LOG(INFO) << "Inserting random rows...";
   for (uint64_t record_id = 0; true; ++record_id) {
 
-    gscoped_ptr<KuduInsert> insert(table->NewInsert());
-    KuduPartialRow* row = insert->mutable_row();
+    gscoped_ptr<YBInsert> insert(table->NewInsert());
+    YBPartialRow* row = insert->mutable_row();
     GenerateDataForRow(schema, record_id, &random, row);
 
     LOG(INFO) << "Inserting record: " << row->ToString();
     CHECK_OK(session->Apply(insert.release()));
     Status s = session->Flush();
     if (PREDICT_FALSE(!s.ok())) {
-      std::vector<client::KuduError*> errors;
+      std::vector<client::YBError*> errors;
       ElementDeleter d(&errors);
       bool overflow;
       session->GetPendingErrors(&errors, &overflow);
       CHECK(!overflow);
-      for (const client::KuduError* e : errors) {
+      for (const client::YBError* e : errors) {
         if (e->status().IsAlreadyPresent()) {
           LOG(WARNING) << "Ignoring insert error: " << e->status().ToString();
         } else {

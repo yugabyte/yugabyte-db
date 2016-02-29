@@ -40,10 +40,10 @@ class RpcLineItemDAO {
                  std::string table_name,
                  int batch_size,
                  int mstimeout = 5000,
-                 std::vector<const KuduPartialRow*> tablet_splits = {});
+                 std::vector<const YBPartialRow*> tablet_splits = {});
   ~RpcLineItemDAO();
-  void WriteLine(boost::function<void(KuduPartialRow*)> f);
-  void MutateLine(boost::function<void(KuduPartialRow*)> f);
+  void WriteLine(boost::function<void(YBPartialRow*)> f);
+  void MutateLine(boost::function<void(YBPartialRow*)> f);
   void Init();
   void FinishWriting();
 
@@ -61,7 +61,7 @@ class RpcLineItemDAO {
   bool IsTableEmpty();
 
   // TODO: this wrapper class is of limited utility now that we only have a single
-  // "DAO" implementation -- we could just return the KuduScanner to users directly.
+  // "DAO" implementation -- we could just return the YBScanner to users directly.
   class Scanner {
    public:
     ~Scanner() {}
@@ -70,13 +70,13 @@ class RpcLineItemDAO {
     bool HasMore();
 
     // Return the next batch of rows into '*rows'. Any existing data is cleared.
-    void GetNext(std::vector<client::KuduRowResult> *rows);
+    void GetNext(std::vector<client::YBRowResult> *rows);
 
    private:
     friend class RpcLineItemDAO;
     Scanner() {}
 
-    gscoped_ptr<client::KuduScanner> scanner_;
+    gscoped_ptr<client::YBScanner> scanner_;
   };
 
  private:
@@ -84,18 +84,18 @@ class RpcLineItemDAO {
 
   void FlushIfBufferFull();
   void OpenScanner(const std::vector<std::string>& columns,
-                   const std::vector<client::KuduPredicate*>& preds,
+                   const std::vector<client::YBPredicate*>& preds,
                    gscoped_ptr<Scanner>* scanner);
 
   simple_spinlock lock_;
-  client::sp::shared_ptr<client::KuduClient> client_;
-  client::sp::shared_ptr<client::KuduSession> session_;
-  client::sp::shared_ptr<client::KuduTable> client_table_;
+  client::sp::shared_ptr<client::YBClient> client_;
+  client::sp::shared_ptr<client::YBSession> session_;
+  client::sp::shared_ptr<client::YBTable> client_table_;
   const std::string master_address_;
   const std::string table_name_;
   const MonoDelta timeout_;
   const int batch_max_;
-  const std::vector<const KuduPartialRow*> tablet_splits_;
+  const std::vector<const YBPartialRow*> tablet_splits_;
   int batch_size_;
 
   // Semaphore which restricts us to one batch at a time.

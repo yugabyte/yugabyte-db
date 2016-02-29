@@ -456,8 +456,8 @@ std::shared_ptr<MasterServiceProxy> ExternalMiniCluster::master_proxy(int idx) {
       new MasterServiceProxy(messenger_, CHECK_NOTNULL(master(idx))->bound_rpc_addr()));
 }
 
-Status ExternalMiniCluster::CreateClient(client::KuduClientBuilder& builder,
-                                         client::sp::shared_ptr<client::KuduClient>* client) {
+Status ExternalMiniCluster::CreateClient(client::YBClientBuilder& builder,
+                                         client::sp::shared_ptr<client::YBClient>* client) {
   CHECK(!masters_.empty());
   builder.clear_master_server_addrs();
   for (const scoped_refptr<ExternalMaster>& master : masters_) {

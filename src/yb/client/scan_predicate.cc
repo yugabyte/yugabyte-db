@@ -30,27 +30,27 @@ using strings::Substitute;
 namespace yb {
 namespace client {
 
-KuduPredicate::KuduPredicate(Data* d)
+YBPredicate::YBPredicate(Data* d)
   : data_(d) {
 }
 
-KuduPredicate::~KuduPredicate() {
+YBPredicate::~YBPredicate() {
   delete data_;
 }
 
-KuduPredicate::Data::Data() {
+YBPredicate::Data::Data() {
 }
 
-KuduPredicate::Data::~Data() {
+YBPredicate::Data::~Data() {
 }
 
-KuduPredicate* KuduPredicate::Clone() const {
-  return new KuduPredicate(data_->Clone());
+YBPredicate* YBPredicate::Clone() const {
+  return new YBPredicate(data_->Clone());
 }
 
 ComparisonPredicateData::ComparisonPredicateData(ColumnSchema col,
-                                                 KuduPredicate::ComparisonOp op,
-                                                 KuduValue* val)
+                                                 YBPredicate::ComparisonOp op,
+                                                 YBValue* val)
     : col_(std::move(col)),
       op_(op),
       val_(val) {
@@ -68,13 +68,13 @@ Status ComparisonPredicateData::AddToScanSpec(ScanSpec* spec) {
   void* lower_bound = nullptr;
   void* upper_bound = nullptr;
   switch (op_) {
-    case KuduPredicate::LESS_EQUAL:
+    case YBPredicate::LESS_EQUAL:
       upper_bound = val_void;
       break;
-    case KuduPredicate::GREATER_EQUAL:
+    case YBPredicate::GREATER_EQUAL:
       lower_bound = val_void;
       break;
-    case KuduPredicate::EQUAL:
+    case YBPredicate::EQUAL:
       lower_bound = upper_bound = val_void;
       break;
     default:

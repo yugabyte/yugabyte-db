@@ -19,7 +19,7 @@ package org.kududb.mapreduce.tools;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.mapreduce.CommandLineParser;
-import org.kududb.mapreduce.KuduTableMapReduceUtil;
+import org.kududb.mapreduce.YBTableMapReduceUtil;
 import org.kududb.client.RowResult;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.conf.Configured;
@@ -81,7 +81,7 @@ public class RowCounter extends Configured implements Tool {
     job.setMapperClass(mapperClass);
     job.setNumReduceTasks(0);
     job.setOutputFormatClass(NullOutputFormat.class);
-    new KuduTableMapReduceUtil.TableInputFormatConfiguratorWithCommandLineParser(
+    new YBTableMapReduceUtil.TableInputFormatConfiguratorWithCommandLineParser(
         job,
         tableName,
         columnProjection)

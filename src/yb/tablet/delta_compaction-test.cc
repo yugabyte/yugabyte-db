@@ -51,7 +51,7 @@ namespace tablet {
 using fs::ReadableBlock;
 using fs::WritableBlock;
 
-class TestDeltaCompaction : public KuduTest {
+class TestDeltaCompaction : public YBTest {
  public:
   TestDeltaCompaction()
       : deltafile_idx_(0),
@@ -83,7 +83,7 @@ class TestDeltaCompaction : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     SeedRandom();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());

@@ -50,7 +50,7 @@ namespace yb {
 
 const int MAX_WIDTH = 32;
 
-class TestRle : public KuduTest {};
+class TestRle : public YBTest {};
 
 TEST(BitArray, TestBool) {
   const int len_bytes = 2;
@@ -281,7 +281,7 @@ TEST(Rle, TestValues) {
   }
 }
 
-class BitRle : public KuduTest {
+class BitRle : public YBTest {
 };
 
 // Tests all true/false values

@@ -31,7 +31,7 @@ using std::vector;
 
 namespace yb {
 
-class DebugUtilTest : public KuduTest {
+class DebugUtilTest : public YBTest {
 };
 
 TEST_F(DebugUtilTest, TestStackTrace) {

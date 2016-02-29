@@ -44,7 +44,7 @@ const char* kTabletId = "test-peers-tablet";
 const char* kLeaderUuid = "peer-0";
 const char* kFollowerUuid = "peer-1";
 
-class ConsensusPeersTest : public KuduTest {
+class ConsensusPeersTest : public YBTest {
  public:
   ConsensusPeersTest()
     : metric_entity_(METRIC_ENTITY_tablet.Instantiate(&metric_registry_, "peer-test")),
@@ -53,7 +53,7 @@ class ConsensusPeersTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     CHECK_OK(fs_manager_->CreateInitialFileSystemLayout());
     CHECK_OK(Log::Open(options_,

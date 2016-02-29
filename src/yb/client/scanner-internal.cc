@@ -50,12 +50,12 @@ using internal::RemoteTabletServer;
 
 static const int64_t kNoTimestamp = -1;
 
-KuduScanner::Data::Data(KuduTable* table)
+YBScanner::Data::Data(YBTable* table)
   : open_(false),
     data_in_open_(false),
     has_batch_size_bytes_(false),
     batch_size_bytes_(0),
-    selection_(KuduClient::CLOSEST_REPLICA),
+    selection_(YBClient::CLOSEST_REPLICA),
     read_mode_(READ_LATEST),
     is_fault_tolerant_(false),
     snapshot_timestamp_(kNoTimestamp),
@@ -67,10 +67,10 @@ KuduScanner::Data::Data(KuduTable* table)
   SetProjectionSchema(table->schema().schema_);
 }
 
-KuduScanner::Data::~Data() {
+YBScanner::Data::~Data() {
 }
 
-Status KuduScanner::Data::CheckForErrors() {
+Status YBScanner::Data::CheckForErrors() {
   if (PREDICT_TRUE(!last_response_.has_error())) {
     return Status::OK();
   }
@@ -78,7 +78,7 @@ Status KuduScanner::Data::CheckForErrors() {
   return StatusFromPB(last_response_.error().status());
 }
 
-void KuduScanner::Data::CopyPredicateBound(const ColumnSchema& col,
+void YBScanner::Data::CopyPredicateBound(const ColumnSchema& col,
                                            const void* bound_src,
                                            string* bound_dst) {
   const void* src;
@@ -96,7 +96,7 @@ void KuduScanner::Data::CopyPredicateBound(const ColumnSchema& col,
   bound_dst->assign(reinterpret_cast<const char*>(src), size);
 }
 
-Status KuduScanner::Data::CanBeRetried(const bool isNewScan,
+Status YBScanner::Data::CanBeRetried(const bool isNewScan,
                                        const Status& rpc_status, const Status& server_status,
                                        const MonoTime& actual_deadline, const MonoTime& deadline,
                                        const vector<RemoteTabletServer*>& candidates,
@@ -211,11 +211,11 @@ Status KuduScanner::Data::CanBeRetried(const bool isNewScan,
   return Status::OK();
 }
 
-Status KuduScanner::Data::OpenTablet(const string& partition_key,
+Status YBScanner::Data::OpenTablet(const string& partition_key,
                                      const MonoTime& deadline,
                                      set<string>* blacklist) {
 
-  PrepareRequest(KuduScanner::Data::NEW);
+  PrepareRequest(YBScanner::Data::NEW);
   next_req_.clear_scanner_id();
   NewScanRequestPB* scan = next_req_.mutable_new_scan_request();
   switch (read_mode_) {
@@ -384,7 +384,7 @@ Status KuduScanner::Data::OpenTablet(const string& partition_key,
   return Status::OK();
 }
 
-Status KuduScanner::Data::KeepAlive() {
+Status YBScanner::Data::KeepAlive() {
   if (!open_) return Status::IllegalState("Scanner was not open.");
   // If there is no scanner to keep alive, we still return Status::OK().
   if (!last_response_.IsInitialized() || !last_response_.has_more_results() ||
@@ -404,7 +404,7 @@ Status KuduScanner::Data::KeepAlive() {
   return Status::OK();
 }
 
-bool KuduScanner::Data::MoreTablets() const {
+bool YBScanner::Data::MoreTablets() const {
   CHECK(open_);
   // TODO(KUDU-565): add a test which has a scan end on a tablet boundary
 
@@ -434,8 +434,8 @@ bool KuduScanner::Data::MoreTablets() const {
           .compare(remote_->partition().partition_key_end()) > 0;
 }
 
-void KuduScanner::Data::PrepareRequest(RequestType state) {
-  if (state == KuduScanner::Data::CLOSE) {
+void YBScanner::Data::PrepareRequest(RequestType state) {
+  if (state == YBScanner::Data::CLOSE) {
     next_req_.set_batch_size_bytes(0);
   } else if (has_batch_size_bytes_) {
     next_req_.set_batch_size_bytes(batch_size_bytes_);
@@ -443,42 +443,42 @@ void KuduScanner::Data::PrepareRequest(RequestType state) {
     next_req_.clear_batch_size_bytes();
   }
 
-  if (state == KuduScanner::Data::NEW) {
+  if (state == YBScanner::Data::NEW) {
     next_req_.set_call_seq_id(0);
   } else {
     next_req_.set_call_seq_id(next_req_.call_seq_id() + 1);
   }
 }
 
-void KuduScanner::Data::UpdateLastError(const Status& error) {
+void YBScanner::Data::UpdateLastError(const Status& error) {
   if (last_error_.ok() || last_error_.IsTimedOut()) {
     last_error_ = error;
   }
 }
 
-void KuduScanner::Data::SetProjectionSchema(const Schema* schema) {
+void YBScanner::Data::SetProjectionSchema(const Schema* schema) {
   projection_ = schema;
-  client_projection_ = KuduSchema(*schema);
+  client_projection_ = YBSchema(*schema);
 }
 
 
 
 ////////////////////////////////////////////////////////////
-// KuduScanBatch
+// YBScanBatch
 ////////////////////////////////////////////////////////////
 
-KuduScanBatch::Data::Data() : projection_(NULL) {}
+YBScanBatch::Data::Data() : projection_(NULL) {}
 
-KuduScanBatch::Data::~Data() {}
+YBScanBatch::Data::~Data() {}
 
-size_t KuduScanBatch::Data::CalculateProjectedRowSize(const Schema& proj) {
+size_t YBScanBatch::Data::CalculateProjectedRowSize(const Schema& proj) {
   return proj.byte_size() +
         (proj.has_nullables() ? BitmapSize(proj.num_columns()) : 0);
 }
 
-Status KuduScanBatch::Data::Reset(RpcController* controller,
+Status YBScanBatch::Data::Reset(RpcController* controller,
                                   const Schema* projection,
-                                  const KuduSchema* client_projection,
+                                  const YBSchema* client_projection,
                                   gscoped_ptr<RowwiseRowBlockPB> data) {
   CHECK(controller->finished());
   controller_.Swap(controller);
@@ -511,7 +511,7 @@ Status KuduScanBatch::Data::Reset(RpcController* controller,
   return Status::OK();
 }
 
-void KuduScanBatch::Data::ExtractRows(vector<KuduScanBatch::RowPtr>* rows) {
+void YBScanBatch::Data::ExtractRows(vector<YBScanBatch::RowPtr>* rows) {
   int n_rows = resp_data_.num_rows();
   rows->resize(n_rows);
 
@@ -526,9 +526,9 @@ void KuduScanBatch::Data::ExtractRows(vector<KuduScanBatch::RowPtr>* rows) {
   // Doing this resize and array indexing turns out to be noticeably faster
   // than using reserve and push_back.
   const uint8_t* src = direct_data_.data();
-  KuduScanBatch::RowPtr* dst = &(*rows)[0];
+  YBScanBatch::RowPtr* dst = &(*rows)[0];
   while (n_rows > 0) {
-    *dst = KuduScanBatch::RowPtr(projection_, client_projection_,src);
+    *dst = YBScanBatch::RowPtr(projection_, client_projection_,src);
     dst++;
     src += projected_row_size_;
     n_rows--;
@@ -536,7 +536,7 @@ void KuduScanBatch::Data::ExtractRows(vector<KuduScanBatch::RowPtr>* rows) {
   VLOG(1) << "Extracted " << rows->size() << " rows";
 }
 
-void KuduScanBatch::Data::Clear() {
+void YBScanBatch::Data::Clear() {
   resp_data_.Clear();
   controller_.Reset();
 }

@@ -35,7 +35,7 @@ using strings::Substitute;
 
 namespace yb {
 
-class RollingLogTest : public KuduTest {
+class RollingLogTest : public YBTest {
  public:
   RollingLogTest()
     : log_dir_(GetTestPath("log_dir")) {

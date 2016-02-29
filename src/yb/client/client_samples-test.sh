@@ -17,7 +17,7 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-# Tests that the Kudu client library can be installed outside
+# Tests that the YB client library can be installed outside
 # the build tree, that the installed headers are sane, and that
 # the sample code can be built and runs correctly.
 
@@ -44,7 +44,7 @@ OUTPUT_DIR=$(cd $(dirname "$BASH_SOURCE"); pwd)
 
 # Install the client library to a temporary directory.
 # Try to detect whether we're building using Ninja or Make.
-LIBRARY_DIR=$(mktemp -d -t kudu-samples-test.XXXXXXXXXXXXX)
+LIBRARY_DIR=$(mktemp -d -t yb-samples-test.XXXXXXXXXXXXX)
 PREFIX_DIR=$LIBRARY_DIR/usr/local
 SAMPLES_DIR=$PREFIX_DIR/share/doc/ybClient/samples
 pushd $OUTPUT_DIR/..

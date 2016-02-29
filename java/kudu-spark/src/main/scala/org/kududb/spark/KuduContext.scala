@@ -22,8 +22,8 @@ import org.apache.hadoop.io.NullWritable
 import org.apache.spark.rdd.RDD
 import org.apache.spark.SparkContext
 import org.kududb.annotations.InterfaceStability
-import org.kududb.client.{AsyncKuduClient, KuduClient, RowResult}
-import org.kududb.mapreduce.KuduTableInputFormat
+import org.kududb.client.{AsyncYBClient, YBClient, RowResult}
+import org.kududb.mapreduce.YBTableInputFormat
 
 /**
   * KuduContext is a façade for Kudu operations.
@@ -34,8 +34,8 @@ import org.kududb.mapreduce.KuduTableInputFormat
   */
 @InterfaceStability.Unstable
 class KuduContext(kuduMaster: String) extends Serializable {
-  @transient lazy val syncClient = new KuduClient.KuduClientBuilder(kuduMaster).build()
-  @transient lazy val asyncClient = new AsyncKuduClient.AsyncKuduClientBuilder(kuduMaster).build()
+  @transient lazy val syncClient = new YBClient.YBClientBuilder(kuduMaster).build()
+  @transient lazy val asyncClient = new AsyncYBClient.AsyncYBClientBuilder(kuduMaster).build()
 
   /**
     * Create an RDD from a Kudu table.
@@ -58,7 +58,7 @@ class KuduContext(kuduMaster: String) extends Serializable {
       conf.set("kudu.mapreduce.column.projection", columnProjection.mkString(","))
     }
 
-    val rdd = sc.newAPIHadoopRDD(conf, classOf[KuduTableInputFormat],
+    val rdd = sc.newAPIHadoopRDD(conf, classOf[YBTableInputFormat],
                                  classOf[NullWritable], classOf[RowResult])
 
     val columnNames = if (columnProjection.nonEmpty) columnProjection.mkString(", ") else "(*)"

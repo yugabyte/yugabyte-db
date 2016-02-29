@@ -27,15 +27,15 @@ import org.kududb.master.Master;
 
 import static org.junit.Assert.*;
 
-public class TestAsyncKuduClient extends BaseKuduTest {
+public class TestAsyncYBClient extends BaseYBTest {
 
   private static final String TABLE_NAME =
-      TestAsyncKuduClient.class.getName() + "-" + System.currentTimeMillis();
-  private static KuduTable table;
+      TestAsyncYBClient.class.getName() + "-" + System.currentTimeMillis();
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
     // Set to 1 for testDisconnect to always test disconnecting the right server.
     CreateTableOptions options = new CreateTableOptions().setNumReplicas(1);
     table = createTable(TABLE_NAME, basicSchema, options);
@@ -56,7 +56,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
 
     // Test that we can reconnect to a TS while scanning.
     // 1. Insert enough rows to have to call next() multiple times.
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.setFlushMode(SessionConfiguration.FlushMode.AUTO_FLUSH_BACKGROUND);
     int rowCount = 200;
     for (int i = 0; i < rowCount; i++) {
@@ -65,7 +65,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
     session.flush();
 
     // 2. Start a scanner with a small max num bytes.
-    AsyncKuduScanner scanner = client.newScannerBuilder(table)
+    AsyncYBScanner scanner = client.newScannerBuilder(table)
         .batchSizeBytes(1)
         .build();
     Deferred<RowResultIterator> rri = scanner.nextRows();
@@ -86,7 +86,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
     String badHostname = "some-unknown-host-hopefully";
 
     // Test that a bad hostname for the master makes us error out quickly.
-    AsyncKuduClient invalidClient = new AsyncKuduClient.AsyncKuduClientBuilder(badHostname).build();
+    AsyncYBClient invalidClient = new AsyncYBClient.AsyncYBClientBuilder(badHostname).build();
     try {
       invalidClient.listTabletServers().join(1000);
       fail("This should have failed quickly");
@@ -123,7 +123,7 @@ public class TestAsyncKuduClient extends BaseKuduTest {
 
     // Test that a tablet full of unreachable replicas won't make us retry.
     try {
-      KuduTable badTable = new KuduTable(client, "Invalid table name",
+      YBTable badTable = new YBTable(client, "Invalid table name",
           "Invalid table ID", null, null);
       client.discoverTablets(badTable, builder.build());
       fail("This should have failed quickly");

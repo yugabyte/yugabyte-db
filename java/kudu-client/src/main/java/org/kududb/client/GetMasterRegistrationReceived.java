@@ -164,7 +164,7 @@ final class GetMasterRegistrationReceived {
             Common.PartitionPB.newBuilder().setPartitionKeyStart(ByteString.EMPTY)
                                            .setPartitionKeyEnd(ByteString.EMPTY));
         locationBuilder.setTabletId(
-            ByteString.copyFromUtf8(AsyncKuduClient.MASTER_TABLE_NAME_PLACEHOLDER));
+            ByteString.copyFromUtf8(AsyncYBClient.MASTER_TABLE_NAME_PLACEHOLDER));
         locationBuilder.setStale(false);
         locationBuilder.addReplicas(replicaBuilder);
         // No one else has called this before us.

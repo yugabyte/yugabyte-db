@@ -34,7 +34,7 @@ using strings::Substitute;
 namespace yb {
 namespace tablet {
 
-class MetadataTest : public KuduTest {
+class MetadataTest : public YBTest {
  public:
   MetadataTest() {
     all_blocks_ = { BlockId(1), BlockId(2), BlockId(3), BlockId(4) };

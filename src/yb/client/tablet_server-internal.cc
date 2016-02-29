@@ -22,12 +22,12 @@ using std::string;
 namespace yb {
 namespace client {
 
-KuduTabletServer::Data::Data(string uuid, string hostname)
+YBTabletServer::Data::Data(string uuid, string hostname)
     : uuid_(std::move(uuid)),
       hostname_(std::move(hostname)) {
 }
 
-KuduTabletServer::Data::~Data() {
+YBTabletServer::Data::~Data() {
 }
 
 } // namespace client

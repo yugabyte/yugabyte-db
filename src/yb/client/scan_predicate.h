@@ -30,7 +30,7 @@
 namespace yb {
 namespace client {
 
-class YB_EXPORT KuduPredicate {
+class YB_EXPORT YBPredicate {
  public:
   enum ComparisonOp {
     LESS_EQUAL,
@@ -38,24 +38,24 @@ class YB_EXPORT KuduPredicate {
     EQUAL
   };
 
-  ~KuduPredicate();
+  ~YBPredicate();
 
-  // Returns a new, identical, KuduPredicate.
-  KuduPredicate* Clone() const;
+  // Returns a new, identical, YBPredicate.
+  YBPredicate* Clone() const;
 
   // The PIMPL class has to be public since it's actually just an interface,
   // and gcc gives an error trying to derive from a private nested class.
   class YB_NO_EXPORT Data;
  private:
-  friend class KuduScanner;
-  friend class KuduTable;
+  friend class YBScanner;
+  friend class YBTable;
   friend class ComparisonPredicateData;
   friend class ErrorPredicateData;
 
-  explicit KuduPredicate(Data* d);
+  explicit YBPredicate(Data* d);
 
   Data* data_;
-  DISALLOW_COPY_AND_ASSIGN(KuduPredicate);
+  DISALLOW_COPY_AND_ASSIGN(YBPredicate);
 };
 
 } // namespace client

@@ -39,10 +39,10 @@ namespace client {
 
 using sp::shared_ptr;
 
-KuduTable::Data::Data(shared_ptr<KuduClient> client,
+YBTable::Data::Data(shared_ptr<YBClient> client,
                       string name,
                       string id,
-                      const KuduSchema& schema,
+                      const YBSchema& schema,
                       PartitionSchema partition_schema)
     : client_(std::move(client)),
       name_(std::move(name)),
@@ -51,10 +51,10 @@ KuduTable::Data::Data(shared_ptr<KuduClient> client,
       partition_schema_(std::move(partition_schema)) {
 }
 
-KuduTable::Data::~Data() {
+YBTable::Data::~Data() {
 }
 
-Status KuduTable::Data::Open() {
+Status YBTable::Data::Open() {
   // TODO: fetch the schema from the master here once catalog is available.
   GetTableLocationsRequestPB req;
   GetTableLocationsResponsePB resp;
@@ -78,7 +78,7 @@ Status KuduTable::Data::Open() {
       return Status::TimedOut(msg);
     }
 
-    // See KuduClient::Data::SyncLeaderMasterRpc().
+    // See YBClient::Data::SyncLeaderMasterRpc().
     MonoTime rpc_deadline = now;
     rpc_deadline.AddDelta(client_->default_rpc_timeout());
     rpc.set_deadline(MonoTime::Earliest(rpc_deadline, deadline));

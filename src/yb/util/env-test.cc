@@ -55,10 +55,10 @@ using std::vector;
 
 static const uint64_t kOneMb = 1024 * 1024;
 
-class TestEnv : public KuduTest {
+class TestEnv : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     CheckFallocateSupport();
   }
 

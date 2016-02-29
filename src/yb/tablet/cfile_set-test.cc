@@ -32,16 +32,16 @@ using std::shared_ptr;
 namespace yb {
 namespace tablet {
 
-class TestCFileSet : public KuduRowSetTest {
+class TestCFileSet : public YBRowSetTest {
  public:
   TestCFileSet() :
-    KuduRowSetTest(Schema({ ColumnSchema("c0", UINT32),
+    YBRowSetTest(Schema({ ColumnSchema("c0", UINT32),
                             ColumnSchema("c1", UINT32, false, nullptr, nullptr, GetRLEStorage()),
                             ColumnSchema("c2", UINT32) }, 1))
   {}
 
   virtual void SetUp() OVERRIDE {
-    KuduRowSetTest::SetUp();
+    YBRowSetTest::SetUp();
 
     // Use a small cfile block size, so that when we skip materializing a given
     // column for 10,000 rows, it can actually skip over a number of blocks.

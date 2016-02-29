@@ -34,10 +34,10 @@ namespace yb {
 // Number of heartbeats we want to observe before allowing the test to end.
 static const int kNumHeartbeats = 2;
 
-class ResettableHeartbeaterTest : public KuduTest {
+class ResettableHeartbeaterTest : public YBTest {
  public:
   ResettableHeartbeaterTest()
-    : KuduTest(),
+    : YBTest(),
       latch_(kNumHeartbeats) {
   }
 

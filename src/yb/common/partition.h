@@ -33,7 +33,7 @@ namespace yb {
 
 class ColumnRangePredicate;
 class ConstContiguousRow;
-class KuduPartialRow;
+class YBPartialRow;
 class PartitionSchemaPB;
 class TypeInfo;
 
@@ -135,7 +135,7 @@ class PartitionSchema {
 
   // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
-  Status EncodeKey(const KuduPartialRow& row, std::string* buf) const WARN_UNUSED_RESULT;
+  Status EncodeKey(const YBPartialRow& row, std::string* buf) const WARN_UNUSED_RESULT;
 
   // Appends the row's encoded partition key into the provided buffer.
   // On failure, the buffer may have data partially appended.
@@ -147,13 +147,13 @@ class PartitionSchema {
   // The number of resulting partitions is the product of the number of hash
   // buckets for each hash bucket component, multiplied by
   // (split_rows.size() + 1).
-  Status CreatePartitions(const std::vector<KuduPartialRow>& split_rows,
+  Status CreatePartitions(const std::vector<YBPartialRow>& split_rows,
                           const Schema& schema,
                           std::vector<Partition>* partitions) const WARN_UNUSED_RESULT;
 
   // Tests if the partition contains the row.
   Status PartitionContainsRow(const Partition& partition,
-                              const KuduPartialRow& row,
+                              const YBPartialRow& row,
                               bool* contains) const WARN_UNUSED_RESULT;
 
   // Tests if the partition contains the row.
@@ -165,7 +165,7 @@ class PartitionSchema {
   std::string PartitionDebugString(const Partition& partition, const Schema& schema) const;
 
   // Returns a text description of the partial row's partition key suitable for debug printing.
-  std::string RowDebugString(const KuduPartialRow& row) const;
+  std::string RowDebugString(const YBPartialRow& row) const;
 
   // Returns a text description of the row's partition key suitable for debug printing.
   std::string RowDebugString(const ConstContiguousRow& row) const;
@@ -197,7 +197,7 @@ class PartitionSchema {
 
   // Encodes the specified columns of a row into lexicographic sort-order
   // preserving format.
-  static Status EncodeColumns(const KuduPartialRow& row,
+  static Status EncodeColumns(const YBPartialRow& row,
                               const std::vector<ColumnId>& column_ids,
                               std::string* buf);
 
@@ -233,7 +233,7 @@ class PartitionSchema {
   //
   // If any columns of the range partition do not exist in the partial row,
   // processing stops and the provided default string piece is appended to the vector.
-  void AppendRangeDebugStringComponentsOrString(const KuduPartialRow& row,
+  void AppendRangeDebugStringComponentsOrString(const YBPartialRow& row,
                                                 StringPiece default_string,
                                                 std::vector<std::string>* components) const;
 
@@ -242,13 +242,13 @@ class PartitionSchema {
   //
   // If any columns of the range partition do not exist in the partial row, the
   // logical minimum value for that column will be used instead.
-  void AppendRangeDebugStringComponentsOrMin(const KuduPartialRow& row,
+  void AppendRangeDebugStringComponentsOrMin(const YBPartialRow& row,
                                              std::vector<std::string>* components) const;
 
   // Decodes a range partition key into a partial row, with variable-length
   // fields stored in the arena.
   Status DecodeRangeKey(Slice* encode_key,
-                        KuduPartialRow* partial_row,
+                        YBPartialRow* partial_row,
                         Arena* arena) const;
 
   // Decodes the hash bucket component of a partition key into its buckets.

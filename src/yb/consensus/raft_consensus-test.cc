@@ -162,7 +162,7 @@ class RaftConsensusSpy : public RaftConsensus {
 void DoNothing(const string& s) {
 }
 
-class RaftConsensusTest : public KuduTest {
+class RaftConsensusTest : public YBTest {
  public:
   RaftConsensusTest()
       : clock_(server::LogicalClock::CreateStartingAt(Timestamp(0))),

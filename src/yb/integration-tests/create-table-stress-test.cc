@@ -36,12 +36,12 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
-using yb::client::KuduColumnSchema;
-using yb::client::KuduSchema;
-using yb::client::KuduSchemaBuilder;
-using yb::client::KuduTableCreator;
+using yb::client::YBClient;
+using yb::client::YBClientBuilder;
+using yb::client::YBColumnSchema;
+using yb::client::YBSchema;
+using yb::client::YBSchemaBuilder;
+using yb::client::YBTableCreator;
 using yb::itest::CreateTabletServerMap;
 using yb::itest::TabletServerMap;
 using yb::master::MasterServiceProxy;
@@ -58,13 +58,13 @@ namespace yb {
 
 const char* kTableName = "test_table";
 
-class CreateTableStressTest : public KuduTest {
+class CreateTableStressTest : public YBTest {
  public:
   CreateTableStressTest() {
-    KuduSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("v1")->Type(KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn("v2")->Type(KuduColumnSchema::STRING)->NotNull();
+    YBSchemaBuilder b;
+    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("v1")->Type(YBColumnSchema::INT64)->NotNull();
+    b.AddColumn("v2")->Type(YBColumnSchema::STRING)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -84,13 +84,13 @@ class CreateTableStressTest : public KuduTest {
     // down tablets, they'll get resuscitated by their existing leaders.
     FLAGS_enable_remote_bootstrap = false;
 
-    KuduTest::SetUp();
+    YBTest::SetUp();
     MiniClusterOptions opts;
     opts.num_tablet_servers = 3;
     cluster_.reset(new MiniCluster(env_.get(), opts));
     ASSERT_OK(cluster_->Start());
 
-    ASSERT_OK(KuduClientBuilder()
+    ASSERT_OK(YBClientBuilder()
                      .add_master_server_addr(cluster_->mini_master()->bound_rpc_addr_str())
                      .Build(&client_));
 
@@ -111,25 +111,25 @@ class CreateTableStressTest : public KuduTest {
   void CreateBigTable(const string& table_name, int num_tablets);
 
  protected:
-  client::sp::shared_ptr<KuduClient> client_;
+  client::sp::shared_ptr<YBClient> client_;
   gscoped_ptr<MiniCluster> cluster_;
-  KuduSchema schema_;
+  YBSchema schema_;
   std::shared_ptr<Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
   TabletServerMap ts_map_;
 };
 
 void CreateTableStressTest::CreateBigTable(const string& table_name, int num_tablets) {
-  vector<const KuduPartialRow*> split_rows;
+  vector<const YBPartialRow*> split_rows;
   int num_splits = num_tablets - 1; // 4 tablets == 3 splits.
   // Let the "\x8\0\0\0" keys end up in the first split; start splitting at 1.
   for (int i = 1; i <= num_splits; i++) {
-    KuduPartialRow* row = schema_.NewRow();
+    YBPartialRow* row = schema_.NewRow();
     CHECK_OK(row->SetInt32(0, i));
     split_rows.push_back(row);
   }
 
-  gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
   ASSERT_OK(table_creator->table_name(table_name)
             .schema(&schema_)
             .split_rows(split_rows)
@@ -297,7 +297,7 @@ TEST_F(CreateTableStressTest, TestGetTableLocationsOptions) {
 
   // Get a single tablet in the middle, make sure we get that one back
 
-  gscoped_ptr<KuduPartialRow> row(schema_.NewRow());
+  gscoped_ptr<YBPartialRow> row(schema_.NewRow());
   ASSERT_OK(row->SetInt32(0, half_tablets - 1));
   string start_key_middle;
   ASSERT_OK(row->EncodeRowKey(&start_key_middle));

@@ -66,9 +66,9 @@ using std::vector;
 
 using google::protobuf::RepeatedPtrField;
 
-using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduTabletServer;
+using client::YBClient;
+using client::YBClientBuilder;
+using client::YBTabletServer;
 using consensus::ConsensusServiceProxy;
 using consensus::RaftPeerPB;
 using master::ListTabletServersRequestPB;
@@ -129,7 +129,7 @@ class ClusterAdminClient {
   bool initted_;
   std::shared_ptr<rpc::Messenger> messenger_;
   gscoped_ptr<MasterServiceProxy> master_proxy_;
-  client::sp::shared_ptr<KuduClient> yb_client_;
+  client::sp::shared_ptr<YBClient> yb_client_;
 
   DISALLOW_COPY_AND_ASSIGN(ClusterAdminClient);
 };
@@ -162,7 +162,7 @@ Status ClusterAdminClient::Init() {
                                << master_hostport.ToString();
   master_proxy_.reset(new MasterServiceProxy(messenger_, master_addrs[0]));
 
-  CHECK_OK(KuduClientBuilder()
+  CHECK_OK(YBClientBuilder()
       .add_master_server_addr(master_addr_list_)
       .default_admin_operation_timeout(timeout_)
       .Build(&yb_client_));

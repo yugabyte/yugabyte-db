@@ -37,19 +37,19 @@ import java.util.*;
 import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
 
 /**
- * A AsyncKuduSession belongs to a specific AsyncKuduClient, and represents a context in
+ * A AsyncYBSession belongs to a specific AsyncYBClient, and represents a context in
  * which all read/write data access should take place. Within a session,
  * multiple operations may be accumulated and batched together for better
  * efficiency. Settings like timeouts, priorities, and trace IDs are also set
  * per session.<p>
  *
- * AsyncKuduSession is separate from KuduTable because a given batch or transaction
+ * AsyncYBSession is separate from YBTable because a given batch or transaction
  * may span multiple tables. This is particularly important in the future when
  * we add ACID support, but even in the context of batching, we may be able to
  * coalesce writes to different tables hosted on the same server into the same
  * RPC.<p>
  *
- * AsyncKuduSession is separate from AsyncKuduClient because, in a multi-threaded
+ * AsyncYBSession is separate from AsyncYBClient because, in a multi-threaded
  * application, different threads may need to concurrently execute
  * transactions. Similar to a JDBC "session", transaction boundaries will be
  * delineated on a per-session basis -- in between a "BeginTransaction" and
@@ -61,14 +61,14 @@ import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
  *
  * Additionally, there is a guarantee that writes from different sessions do not
  * get batched together into the same RPCs -- this means that latency-sensitive
- * clients can run through the same AsyncKuduClient object as throughput-oriented
+ * clients can run through the same AsyncYBClient object as throughput-oriented
  * clients, perhaps by setting the latency-sensitive session's timeouts low and
  * priorities high. Without the separation of batches, a latency-sensitive
  * single-row insert might get batched along with 10MB worth of inserts from the
  * batch writer, thus delaying the response significantly.<p>
  *
  * Though we currently do not have transactional support, users will be forced
- * to use a AsyncKuduSession to instantiate reads as well as writes.  This will make
+ * to use a AsyncYBSession to instantiate reads as well as writes.  This will make
  * it more straight-forward to add RW transactions in the future without
  * significant modifications to the API.<p>
  *
@@ -80,12 +80,12 @@ import static org.kududb.client.ExternalConsistencyMode.CLIENT_PROPAGATED;
  */
 @InterfaceAudience.Public
 @InterfaceStability.Unstable
-public class AsyncKuduSession implements SessionConfiguration {
+public class AsyncYBSession implements SessionConfiguration {
 
-  public static final Logger LOG = LoggerFactory.getLogger(AsyncKuduSession.class);
+  public static final Logger LOG = LoggerFactory.getLogger(AsyncYBSession.class);
   private static final Range<Float> PERCENTAGE_RANGE = Ranges.closed(0.0f, 1.0f);
 
-  private final AsyncKuduClient client;
+  private final AsyncYBClient client;
   private final Random randomizer = new Random();
   private final ErrorCollector errorCollector;
   private int interval = 1000;
@@ -135,10 +135,10 @@ public class AsyncKuduSession implements SessionConfiguration {
   private boolean ignoreAllDuplicateRows = false;
 
   /**
-   * Package-private constructor meant to be used via AsyncKuduClient
+   * Package-private constructor meant to be used via AsyncYBClient
    * @param client client that creates this session
    */
-  AsyncKuduSession(AsyncKuduClient client) {
+  AsyncYBSession(AsyncYBClient client) {
     this.client = client;
     this.flushMode = FlushMode.AUTO_FLUSH_SYNC;
     this.consistencyMode = CLIENT_PROPAGATED;
@@ -357,8 +357,8 @@ public class AsyncKuduSession implements SessionConfiguration {
       throw new NullPointerException("Cannot apply a null operation");
     }
 
-    if (AsyncKuduClient.cannotRetryRequest(operation)) {
-      return AsyncKuduClient.tooManyAttemptsOrTimeout(operation, null);
+    if (AsyncYBClient.cannotRetryRequest(operation)) {
+      return AsyncYBClient.tooManyAttemptsOrTimeout(operation, null);
     }
 
     // This can be called multiple times but it's fine, we don't allow "thawing".
@@ -383,7 +383,7 @@ public class AsyncKuduSession implements SessionConfiguration {
 
     String tableId = operation.getTable().getTableId();
     byte[] partitionKey = operation.partitionKey();
-    AsyncKuduClient.RemoteTablet tablet = client.getTablet(tableId, partitionKey);
+    AsyncYBClient.RemoteTablet tablet = client.getTablet(tableId, partitionKey);
     // We go straight to the buffer if we know the tabletSlice
     if (tablet != null) {
       operation.setTablet(tablet);
@@ -411,7 +411,7 @@ public class AsyncKuduSession implements SessionConfiguration {
   }
 
   /**
-   * This errback is different from the one in AsyncKuduClient because we need to be able to remove
+   * This errback is different from the one in AsyncYBClient because we need to be able to remove
    * the operation from operationsInLookup if whatever master query we issue throws an Exception.
    * @param operation Operation to errback to.
    * @return An errback.
@@ -579,7 +579,7 @@ public class AsyncKuduSession implements SessionConfiguration {
       public BatchResponse call(final BatchResponse response) {
         LOG.trace("Got a Batch response for " + request.ops.size() + " rows");
         if (response.getWriteTimestamp() != 0) {
-          AsyncKuduSession.this.client.updateLastPropagatedTimestamp(response.getWriteTimestamp());
+          AsyncYBSession.this.client.updateLastPropagatedTimestamp(response.getWriteTimestamp());
         }
 
         // Send individualized responses to all the operations in this batch.
@@ -783,7 +783,7 @@ public class AsyncKuduSession implements SessionConfiguration {
   }
 
   private void tabletInFlightDone(Slice tablet) {
-    synchronized (AsyncKuduSession.this) {
+    synchronized (AsyncYBSession.this) {
       LOG.trace("Unmarking this tablet as in flight: " + Bytes.getString(tablet));
       operationsInFlight.remove(tablet);
     }
@@ -809,7 +809,7 @@ public class AsyncKuduSession implements SessionConfiguration {
       flushTablet(this.tabletSlice, this.expectedBatch);
     }
     public String toString() {
-      return "flush commits of session " + AsyncKuduSession.this +
+      return "flush commits of session " + AsyncYBSession.this +
           " for tabletSlice " + Bytes.getString(tabletSlice);
     }
   };

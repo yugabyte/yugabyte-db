@@ -51,10 +51,10 @@ static const char* kTestFileName = "pb_container.meta";
 static const char* kTestKeyvalName = "my-key";
 static const int kTestKeyvalValue = 1;
 
-class TestPBUtil : public KuduTest {
+class TestPBUtil : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     path_ = GetTestPath(kTestFileName);
   }
 

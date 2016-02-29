@@ -62,8 +62,8 @@ changes are:
 . The Java client's CreateTableBuilder and AlterTableBuilder classes have been renamed
 to CreateTableOptions and AlterTableOptions. Their methods now also return `this` objects,
 allowing them to be used as builders.
-. The Java client's AbstractKuduScannerBuilder#maxNumBytes() setter is now called
-batchSizeBytes as is the corresponding property in AsyncKuduScanner. This makes it
+. The Java client's AbstractYBScannerBuilder#maxNumBytes() setter is now called
+batchSizeBytes as is the corresponding property in AsyncYBScanner. This makes it
 consistent with the C++ client.
 . The "yb-admin" tool can now list and delete tables via its new subcommands
 "list_tables" and "delete_table <table_name>".

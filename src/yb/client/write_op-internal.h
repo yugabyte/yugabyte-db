@@ -24,7 +24,7 @@ namespace yb {
 
 namespace client {
 
-RowOperationsPB_Type ToInternalWriteType(KuduWriteOperation::Type type);
+RowOperationsPB_Type ToInternalWriteType(YBWriteOperation::Type type);
 
 } // namespace client
 } // namespace yb

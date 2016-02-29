@@ -35,10 +35,10 @@ DECLARE_int32(hung_task_check_interval_ms);
 
 namespace yb {
 
-class StackWatchdogTest : public KuduTest {
+class StackWatchdogTest : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     KernelStackWatchdog::GetInstance()->SaveLogsForTests(true);
     ANNOTATE_BENIGN_RACE(&FLAGS_hung_task_check_interval_ms,
                          "Integer flag change should be safe");

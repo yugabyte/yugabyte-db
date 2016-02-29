@@ -30,38 +30,38 @@ namespace yb {
 namespace client {
 
 // A constant cell value with a specific type.
-class YB_EXPORT KuduValue {
+class YB_EXPORT YBValue {
  public:
-  // Return a new identical KuduValue object.
-  KuduValue* Clone() const;
+  // Return a new identical YBValue object.
+  YBValue* Clone() const;
 
-  // Construct a KuduValue from the given integer.
-  static KuduValue* FromInt(int64_t v);
+  // Construct a YBValue from the given integer.
+  static YBValue* FromInt(int64_t v);
 
-  // Construct a KuduValue from the given float.
-  static KuduValue* FromFloat(float f);
+  // Construct a YBValue from the given float.
+  static YBValue* FromFloat(float f);
 
-  // Construct a KuduValue from the given double.
-  static KuduValue* FromDouble(double d);
+  // Construct a YBValue from the given double.
+  static YBValue* FromDouble(double d);
 
-  // Construct a KuduValue from the given bool.
-  static KuduValue* FromBool(bool b);
+  // Construct a YBValue from the given bool.
+  static YBValue* FromBool(bool b);
 
-  // Construct a KuduValue by copying the value of the given Slice.
-  static KuduValue* CopyString(Slice s);
+  // Construct a YBValue by copying the value of the given Slice.
+  static YBValue* CopyString(Slice s);
 
-  ~KuduValue();
+  ~YBValue();
  private:
   friend class ComparisonPredicateData;
-  friend class KuduColumnSpec;
+  friend class YBColumnSpec;
 
   class YB_NO_EXPORT Data;
-  explicit KuduValue(Data* d);
+  explicit YBValue(Data* d);
 
   // Owned.
   Data* data_;
 
-  DISALLOW_COPY_AND_ASSIGN(KuduValue);
+  DISALLOW_COPY_AND_ASSIGN(YBValue);
 };
 
 } // namespace client

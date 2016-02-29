@@ -18,7 +18,7 @@ package org.kududb.mapreduce.tools;
 
 import org.kududb.mapreduce.CommandLineParser;
 import org.kududb.mapreduce.HadoopTestingUtility;
-import org.kududb.client.BaseKuduTest;
+import org.kududb.client.BaseYBTest;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.util.GenericOptionsParser;
@@ -29,7 +29,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class ITRowCounter extends BaseKuduTest {
+public class ITRowCounter extends BaseYBTest {
 
   private static final String TABLE_NAME =
       ITRowCounter.class.getName() + "-" + System.currentTimeMillis();
@@ -38,13 +38,13 @@ public class ITRowCounter extends BaseKuduTest {
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
   }
 
   @AfterClass
   public static void tearDownAfterClass() throws Exception {
     try {
-      BaseKuduTest.tearDownAfterClass();
+      BaseYBTest.tearDownAfterClass();
     } finally {
       HADOOP_UTIL.cleanup();
     }

@@ -41,13 +41,13 @@ namespace tools {
 
 static const char* const kTsCliToolName = "yb-ts-cli";
 
-class KuduTsCliTest : public ExternalMiniClusterITestBase {
+class YBTsCliTest : public ExternalMiniClusterITestBase {
  protected:
   // Figure out where the admin tool is.
   string GetTsCliToolPath() const;
 };
 
-string KuduTsCliTest::GetTsCliToolPath() const {
+string YBTsCliTest::GetTsCliToolPath() const {
   string exe;
   CHECK_OK(Env::Default()->GetExecutablePath(&exe));
   string binroot = DirName(exe);
@@ -57,7 +57,7 @@ string KuduTsCliTest::GetTsCliToolPath() const {
 }
 
 // Test deleting a tablet.
-TEST_F(KuduTsCliTest, TestDeleteTablet) {
+TEST_F(YBTsCliTest, TestDeleteTablet) {
   MonoDelta timeout = MonoDelta::FromSeconds(30);
   vector<string> ts_flags, master_flags;
   ts_flags.push_back("--enable_leader_failure_detection=false");

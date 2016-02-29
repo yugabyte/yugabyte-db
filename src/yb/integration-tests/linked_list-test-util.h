@@ -59,7 +59,7 @@ typedef vector<pair<uint64_t, int64_t> > SnapsAndCounts;
 // facilitates checking for data integrity.
 class LinkedListTester {
  public:
-  LinkedListTester(client::sp::shared_ptr<client::KuduClient> client,
+  LinkedListTester(client::sp::shared_ptr<client::YBClient> client,
                    std::string table_name, int num_chains, int num_tablets,
                    int num_replicas, bool enable_mutation)
       : verify_projection_(
@@ -71,13 +71,13 @@ class LinkedListTester {
         enable_mutation_(enable_mutation),
         latency_histogram_(1000000, 3),
         client_(std::move(client)) {
-    client::KuduSchemaBuilder b;
+    client::YBSchemaBuilder b;
 
-    b.AddColumn(kKeyColumnName)->Type(client::KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn(kLinkColumnName)->Type(client::KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn(kInsertTsColumnName)->Type(client::KuduColumnSchema::INT64)->NotNull();
-    b.AddColumn(kUpdatedColumnName)->Type(client::KuduColumnSchema::BOOL)->NotNull()
-      ->Default(client::KuduValue::FromBool(false));
+    b.AddColumn(kKeyColumnName)->Type(client::YBColumnSchema::INT64)->NotNull()->PrimaryKey();
+    b.AddColumn(kLinkColumnName)->Type(client::YBColumnSchema::INT64)->NotNull();
+    b.AddColumn(kInsertTsColumnName)->Type(client::YBColumnSchema::INT64)->NotNull();
+    b.AddColumn(kUpdatedColumnName)->Type(client::YBColumnSchema::BOOL)->NotNull()
+      ->Default(client::YBValue::FromBool(false));
     CHECK_OK(b.Build(&schema_));
   }
 
@@ -146,7 +146,7 @@ class LinkedListTester {
 
   // Generates a vector of keys for the table such that each tablet is
   // responsible for an equal fraction of the int64 key space.
-  std::vector<const KuduPartialRow*> GenerateSplitRows(const client::KuduSchema& schema);
+  std::vector<const YBPartialRow*> GenerateSplitRows(const client::YBSchema& schema);
 
   // Generate a vector of ints which form the split keys.
   std::vector<int64_t> GenerateSplitInts();
@@ -154,7 +154,7 @@ class LinkedListTester {
   void DumpInsertHistogram(bool print_flags);
 
  protected:
-  client::KuduSchema schema_;
+  client::YBSchema schema_;
   const std::vector<std::string> verify_projection_;
   const std::string table_name_;
   const int num_chains_;
@@ -162,7 +162,7 @@ class LinkedListTester {
   const int num_replicas_;
   const bool enable_mutation_;
   HdrHistogram latency_histogram_;
-  client::sp::shared_ptr<client::KuduClient> client_;
+  client::sp::shared_ptr<client::YBClient> client_;
   SnapsAndCounts sampled_timestamps_and_counts_;
 
  private:
@@ -192,13 +192,13 @@ class LinkedListChainGenerator {
     return (implicit_cast<uint64_t>(rand_.Next()) << 32) | rand_.Next();
   }
 
-  Status GenerateNextInsert(client::KuduTable* table, client::KuduSession* session) {
+  Status GenerateNextInsert(client::YBTable* table, client::YBSession* session) {
     // Encode the chain index in the lowest 8 bits so that different chains never
     // intersect.
     int64_t this_key = (Rand64() << 8) | chain_idx_;
     int64_t ts = GetCurrentTimeMicros();
 
-    gscoped_ptr<client::KuduInsert> insert(table->NewInsert());
+    gscoped_ptr<client::YBInsert> insert(table->NewInsert());
     CHECK_OK(insert->mutable_row()->SetInt64(kKeyColumnName, this_key));
     CHECK_OK(insert->mutable_row()->SetInt64(kInsertTsColumnName, ts));
     CHECK_OK(insert->mutable_row()->SetInt64(kLinkColumnName, prev_key_));
@@ -232,7 +232,7 @@ class ScopedRowUpdater {
 
   // Create and start a new ScopedUpdater. 'table' must remain valid for
   // the lifetime of this object.
-  explicit ScopedRowUpdater(client::KuduTable* table)
+  explicit ScopedRowUpdater(client::YBTable* table)
     : table_(table),
       to_update_(kint64max) { // no limit
     CHECK_OK(Thread::Create("linked_list-test", "updater",
@@ -250,14 +250,14 @@ class ScopedRowUpdater {
 
  private:
   void RowUpdaterThread() {
-    client::sp::shared_ptr<client::KuduSession> session(table_->client()->NewSession());
+    client::sp::shared_ptr<client::YBSession> session(table_->client()->NewSession());
     session->SetTimeoutMillis(15000);
-    CHECK_OK(session->SetFlushMode(client::KuduSession::MANUAL_FLUSH));
+    CHECK_OK(session->SetFlushMode(client::YBSession::MANUAL_FLUSH));
 
     int64_t next_key;
     int64_t updated_count = 0;
     while (to_update_.BlockingGet(&next_key)) {
-      gscoped_ptr<client::KuduUpdate> update(table_->NewUpdate());
+      gscoped_ptr<client::YBUpdate> update(table_->NewUpdate());
       CHECK_OK(update->mutable_row()->SetInt64(kKeyColumnName, next_key));
       CHECK_OK(update->mutable_row()->SetBool(kUpdatedColumnName, true));
       CHECK_OK(session->Apply(update.release()));
@@ -269,7 +269,7 @@ class ScopedRowUpdater {
     FlushSessionOrDie(session);
   }
 
-  client::KuduTable* table_;
+  client::YBTable* table_;
   BlockingQueue<int64_t> to_update_;
   scoped_refptr<Thread> updater_;
 };
@@ -392,11 +392,11 @@ class LinkedListVerifier {
 // LinkedListTester
 /////////////////////////////////////////////////////////////
 
-std::vector<const KuduPartialRow*> LinkedListTester::GenerateSplitRows(
-    const client::KuduSchema& schema) {
-  std::vector<const KuduPartialRow*> split_keys;
+std::vector<const YBPartialRow*> LinkedListTester::GenerateSplitRows(
+    const client::YBSchema& schema) {
+  std::vector<const YBPartialRow*> split_keys;
   for (int64_t val : GenerateSplitInts()) {
-    KuduPartialRow* row = schema.NewRow();
+    YBPartialRow* row = schema.NewRow();
     CHECK_OK(row->SetInt64(kKeyColumnName, val));
     split_keys.push_back(row);
   }
@@ -414,7 +414,7 @@ std::vector<int64_t> LinkedListTester::GenerateSplitInts() {
 }
 
 Status LinkedListTester::CreateLinkedListTable() {
-  gscoped_ptr<client::KuduTableCreator> table_creator(client_->NewTableCreator());
+  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
   RETURN_NOT_OK_PREPEND(table_creator->table_name(table_name_)
                         .schema(&schema_)
                         .split_rows(GenerateSplitRows(schema_))
@@ -430,7 +430,7 @@ Status LinkedListTester::LoadLinkedList(
     int64_t *written_count) {
 
   sampled_timestamps_and_counts_.clear();
-  client::sp::shared_ptr<client::KuduTable> table;
+  client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK_PREPEND(client_->OpenTable(table_name_, &table),
                         "Could not open table " + table_name_);
 
@@ -446,9 +446,9 @@ Status LinkedListTester::LoadLinkedList(
   MonoTime deadline = start;
   deadline.AddDelta(run_for);
 
-  client::sp::shared_ptr<client::KuduSession> session = client_->NewSession();
+  client::sp::shared_ptr<client::YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(15000);
-  RETURN_NOT_OK_PREPEND(session->SetFlushMode(client::KuduSession::MANUAL_FLUSH),
+  RETURN_NOT_OK_PREPEND(session->SetFlushMode(client::YBSession::MANUAL_FLUSH),
                         "Couldn't set flush mode");
 
   ScopedRowUpdater updater(table.get());
@@ -559,7 +559,7 @@ Status LinkedListTester::VerifyLinkedListRemote(
     const uint64_t snapshot_timestamp, const int64_t expected, bool log_errors,
     const boost::function<Status(const std::string&)>& cb, int64_t* verified_count) {
 
-  client::sp::shared_ptr<client::KuduTable> table;
+  client::sp::shared_ptr<client::YBTable> table;
   RETURN_NOT_OK(client_->OpenTable(table_name_, &table));
 
   string snapshot_str;
@@ -569,12 +569,12 @@ Status LinkedListTester::VerifyLinkedListRemote(
     snapshot_str = server::HybridClock::StringifyTimestamp(Timestamp(snapshot_timestamp));
   }
 
-  client::KuduScanner scanner(table.get());
+  client::YBScanner scanner(table.get());
   RETURN_NOT_OK_PREPEND(scanner.SetProjectedColumns(verify_projection_), "Bad projection");
   RETURN_NOT_OK(scanner.SetBatchSizeBytes(0)); // Force at least one NextBatch RPC.
 
   if (snapshot_timestamp != kNoSnapshot) {
-    RETURN_NOT_OK(scanner.SetReadMode(client::KuduScanner::READ_AT_SNAPSHOT));
+    RETURN_NOT_OK(scanner.SetReadMode(client::YBScanner::READ_AT_SNAPSHOT));
     RETURN_NOT_OK(scanner.SetFaultTolerant());
     RETURN_NOT_OK(scanner.SetSnapshotRaw(snapshot_timestamp));
   }
@@ -590,21 +590,21 @@ Status LinkedListTester::VerifyLinkedListRemote(
   verifier.StartScanTimer();
 
   bool cb_called = false;
-  std::vector<client::KuduRowResult> rows;
+  std::vector<client::YBRowResult> rows;
   while (scanner.HasMoreRows()) {
     // If we're doing a snapshot scan with a big enough cluster, call the callback on the scanner's
     // tserver. Do this only once.
     if (snapshot_timestamp != kNoSnapshot && !cb_called) {
-      client::KuduTabletServer* kts_ptr;
+      client::YBTabletServer* kts_ptr;
       scanner.GetCurrentServer(&kts_ptr);
-      gscoped_ptr<client::KuduTabletServer> kts(kts_ptr);
+      gscoped_ptr<client::YBTabletServer> kts(kts_ptr);
       const std::string down_ts = kts->uuid();
       LOG(INFO) << "Calling callback on tserver " << down_ts;
       RETURN_NOT_OK(cb(down_ts));
       cb_called = true;
     }
     RETURN_NOT_OK_PREPEND(scanner.NextBatch(&rows), "Couldn't fetch next row batch");
-    for (const client::KuduRowResult& row : rows) {
+    for (const client::YBRowResult& row : rows) {
       int64_t key;
       int64_t link;
       bool updated;

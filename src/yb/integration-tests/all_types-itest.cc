@@ -46,7 +46,7 @@ struct SliceKeysTestSetup {
      increment_(static_cast<int>(MathLimits<int>::kMax / kNumTablets)) {
   }
 
-  void AddKeyColumnsToSchema(KuduSchemaBuilder* builder) const {
+  void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
     builder->AddColumn("key")->Type(
         client::FromInternalDataType(KeyTypeWrapper::type))->NotNull()->PrimaryKey();
   }
@@ -54,24 +54,24 @@ struct SliceKeysTestSetup {
   // Split points are calculated by equally partitioning the int64_t key space and then
   // using the stringified hexadecimal representation to create the split keys (with
   // zero padding).
-  vector<const KuduPartialRow*> GenerateSplitRows(const KuduSchema& schema) const {
+  vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
     vector<string> splits;
     splits.reserve(kNumTablets - 1);
     for (int i = 1; i < kNumTablets; i++) {
       int split = i * increment_;
       splits.push_back(StringPrintf("%08x", split));
     }
-    vector<const KuduPartialRow*> rows;
+    vector<const YBPartialRow*> rows;
     for (string val : splits) {
       Slice slice(val);
-      KuduPartialRow* row = schema.NewRow();
+      YBPartialRow* row = schema.NewRow();
       CHECK_OK(row->SetSliceCopy<TypeTraits<KeyTypeWrapper::type> >(0, slice));
       rows.push_back(row);
     }
     return rows;
   }
 
-  Status GenerateRowKey(KuduInsert* insert, int split_idx, int row_idx) const {
+  Status GenerateRowKey(YBInsert* insert, int split_idx, int row_idx) const {
     int row_key_num = (split_idx * increment_) + row_idx;
     string row_key = StringPrintf("%08x", row_key_num);
     Slice row_key_slice(row_key);
@@ -79,7 +79,7 @@ struct SliceKeysTestSetup {
                                                                                   row_key_slice);
   }
 
-  Status VerifyRowKey(const KuduRowResult& result, int split_idx, int row_idx) const {
+  Status VerifyRowKey(const YBRowResult& result, int split_idx, int row_idx) const {
     int expected_row_key_num = (split_idx * increment_) + row_idx;
     string expected_row_key = StringPrintf("%08x", expected_row_key_num);
     Slice expected_row_key_slice(expected_row_key);
@@ -127,32 +127,32 @@ struct IntKeysTestSetup {
     DCHECK(base::is_integral<CppType>::value);
   }
 
-  void AddKeyColumnsToSchema(KuduSchemaBuilder* builder) const {
+  void AddKeyColumnsToSchema(YBSchemaBuilder* builder) const {
     builder->AddColumn("key")->Type(
         client::FromInternalDataType(KeyTypeWrapper::type))->NotNull()->PrimaryKey();
   }
 
-  vector<const KuduPartialRow*> GenerateSplitRows(const KuduSchema& schema) const {
+  vector<const YBPartialRow*> GenerateSplitRows(const YBSchema& schema) const {
     vector<CppType> splits;
     splits.reserve(kNumTablets - 1);
     for (int64_t i = 1; i < kNumTablets; i++) {
       splits.push_back(i * increment_);
     }
-    vector<const KuduPartialRow*> rows;
+    vector<const YBPartialRow*> rows;
     for (CppType val : splits) {
-      KuduPartialRow* row = schema.NewRow();
+      YBPartialRow* row = schema.NewRow();
       CHECK_OK(row->Set<TypeTraits<KeyTypeWrapper::type> >(0, val));
       rows.push_back(row);
     }
     return rows;
   }
 
-  Status GenerateRowKey(KuduInsert* insert, int split_idx, int row_idx) const {
+  Status GenerateRowKey(YBInsert* insert, int split_idx, int row_idx) const {
     CppType val = (split_idx * increment_) + row_idx;
     return insert->mutable_row()->Set<TypeTraits<KeyTypeWrapper::type> >(0, val);
   }
 
-  Status VerifyRowKey(const KuduRowResult& result, int split_idx, int row_idx) const {
+  Status VerifyRowKey(const YBRowResult& result, int split_idx, int row_idx) const {
     CppType val;
     RETURN_NOT_OK(result.Get<TypeTraits<KeyTypeWrapper::type> >(0, &val));
     int expected = (split_idx * increment_) + row_idx;
@@ -184,7 +184,7 @@ struct IntKeysTestSetup {
 
 // Integration that writes, scans and verifies all types.
 template <class TestSetup>
-class AllTypesItest : public KuduTest {
+class AllTypesItest : public YBTest {
  public:
   AllTypesItest() {
     if (AllowSlowTests()) {
@@ -196,18 +196,18 @@ class AllTypesItest : public KuduTest {
   // Builds a schema that includes all (frontend) supported types.
   // The key is templated so that we can try different key types.
   void CreateAllTypesSchema() {
-    KuduSchemaBuilder builder;
+    YBSchemaBuilder builder;
     setup_.AddKeyColumnsToSchema(&builder);
-    builder.AddColumn("int8_val")->Type(KuduColumnSchema::INT8);
-    builder.AddColumn("int16_val")->Type(KuduColumnSchema::INT16);
-    builder.AddColumn("int32_val")->Type(KuduColumnSchema::INT32);
-    builder.AddColumn("int64_val")->Type(KuduColumnSchema::INT64);
-    builder.AddColumn("timestamp_val")->Type(KuduColumnSchema::TIMESTAMP);
-    builder.AddColumn("string_val")->Type(KuduColumnSchema::STRING);
-    builder.AddColumn("bool_val")->Type(KuduColumnSchema::BOOL);
-    builder.AddColumn("float_val")->Type(KuduColumnSchema::FLOAT);
-    builder.AddColumn("double_val")->Type(KuduColumnSchema::DOUBLE);
-    builder.AddColumn("binary_val")->Type(KuduColumnSchema::BINARY);
+    builder.AddColumn("int8_val")->Type(YBColumnSchema::INT8);
+    builder.AddColumn("int16_val")->Type(YBColumnSchema::INT16);
+    builder.AddColumn("int32_val")->Type(YBColumnSchema::INT32);
+    builder.AddColumn("int64_val")->Type(YBColumnSchema::INT64);
+    builder.AddColumn("timestamp_val")->Type(YBColumnSchema::TIMESTAMP);
+    builder.AddColumn("string_val")->Type(YBColumnSchema::STRING);
+    builder.AddColumn("bool_val")->Type(YBColumnSchema::BOOL);
+    builder.AddColumn("float_val")->Type(YBColumnSchema::FLOAT);
+    builder.AddColumn("double_val")->Type(YBColumnSchema::DOUBLE);
+    builder.AddColumn("binary_val")->Type(YBColumnSchema::BINARY);
     CHECK_OK(builder.Build(&schema_));
   }
 
@@ -227,16 +227,16 @@ class AllTypesItest : public KuduTest {
 
     cluster_.reset(new ExternalMiniCluster(opts));
     RETURN_NOT_OK(cluster_->Start());
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     return cluster_->CreateClient(builder, &client_);
   }
 
   Status CreateTable() {
     CreateAllTypesSchema();
-    vector<const KuduPartialRow*> split_rows = setup_.GenerateSplitRows(schema_);
-    gscoped_ptr<client::KuduTableCreator> table_creator(client_->NewTableCreator());
+    vector<const YBPartialRow*> split_rows = setup_.GenerateSplitRows(schema_);
+    gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
 
-    for (const KuduPartialRow* row : split_rows) {
+    for (const YBPartialRow* row : split_rows) {
       split_rows_.push_back(*row);
     }
 
@@ -248,11 +248,11 @@ class AllTypesItest : public KuduTest {
     return client_->OpenTable("all-types-table", &table_);
   }
 
-  Status GenerateRow(KuduSession* session, int split_idx, int row_idx) {
-    KuduInsert* insert = table_->NewInsert();
+  Status GenerateRow(YBSession* session, int split_idx, int row_idx) {
+    YBInsert* insert = table_->NewInsert();
     RETURN_NOT_OK(setup_.GenerateRowKey(insert, split_idx, row_idx));
     int int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
-    KuduPartialRow* row = insert->mutable_row();
+    YBPartialRow* row = insert->mutable_row();
     RETURN_NOT_OK(row->SetInt8("int8_val", int_val));
     RETURN_NOT_OK(row->SetInt16("int16_val", int_val));
     RETURN_NOT_OK(row->SetInt32("int32_val", int_val));
@@ -275,8 +275,8 @@ class AllTypesItest : public KuduTest {
   // perfectly partitioned table, if the encoding of the keys was correct and the rows
   // ended up in the right place.
   Status InsertRows() {
-    shared_ptr<KuduSession> session = client_->NewSession();
-    RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    shared_ptr<YBSession> session = client_->NewSession();
+    RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     int max_rows_per_tablet = setup_.GetRowsPerTablet();
     for (int i = 0; i < kNumTablets; ++i) {
       for (int j = 0; j < max_rows_per_tablet; ++j) {
@@ -307,7 +307,7 @@ class AllTypesItest : public KuduTest {
     projection->push_back("bool_val");
   }
 
-  void VerifyRow(const KuduRowResult& row, int split_idx, int row_idx) {
+  void VerifyRow(const YBRowResult& row, int split_idx, int row_idx) {
     ASSERT_OK(setup_.VerifyRowKey(row, split_idx, row_idx));
 
     int64_t expected_int_val = (split_idx * setup_.GetRowsPerTablet()) + row_idx;
@@ -358,16 +358,16 @@ class AllTypesItest : public KuduTest {
     // Scan a single tablet and make sure it has the rows we expect in the amount we
     // expect.
     for (int i = 0; i < kNumTablets; ++i) {
-      KuduScanner scanner(table_.get());
+      YBScanner scanner(table_.get());
       string low_split;
       string high_split;
       if (i != 0) {
-        const KuduPartialRow& split = split_rows_[i - 1];
+        const YBPartialRow& split = split_rows_[i - 1];
         RETURN_NOT_OK(scanner.AddLowerBound(split));
         low_split = split.ToString();
       }
       if (i != kNumTablets - 1) {
-        const KuduPartialRow& split = split_rows_[i];
+        const YBPartialRow& split = split_rows_[i];
         RETURN_NOT_OK(scanner.AddExclusiveUpperBound(split));
         high_split = split.ToString();
       }
@@ -375,14 +375,14 @@ class AllTypesItest : public KuduTest {
       RETURN_NOT_OK(scanner.SetProjectedColumns(projection));
       RETURN_NOT_OK(scanner.SetBatchSizeBytes(KMaxBatchSize));
       RETURN_NOT_OK(scanner.SetFaultTolerant());
-      RETURN_NOT_OK(scanner.SetReadMode(KuduScanner::READ_AT_SNAPSHOT));
+      RETURN_NOT_OK(scanner.SetReadMode(YBScanner::READ_AT_SNAPSHOT));
       RETURN_NOT_OK(scanner.SetTimeoutMillis(5000));
       RETURN_NOT_OK(scanner.Open());
       LOG(INFO) << "Scanning tablet: [" << low_split << ", " << high_split << ")";
 
       int total_rows_in_tablet = 0;
       while (scanner.HasMoreRows()) {
-        vector<KuduRowResult> rows;
+        vector<YBRowResult> rows;
         RETURN_NOT_OK(scanner.NextBatch(&rows));
 
         for (int j = 0; j < rows.size(); ++j) {
@@ -417,11 +417,11 @@ class AllTypesItest : public KuduTest {
 
  protected:
   TestSetup setup_;
-  KuduSchema schema_;
-  vector<KuduPartialRow> split_rows_;
-  shared_ptr<KuduClient> client_;
+  YBSchema schema_;
+  vector<YBPartialRow> split_rows_;
+  shared_ptr<YBClient> client_;
   gscoped_ptr<ExternalMiniCluster> cluster_;
-  shared_ptr<KuduTable> table_;
+  shared_ptr<YBTable> table_;
 };
 
 // Wrap the actual DataType so that we can have the setup structs be friends of other classes

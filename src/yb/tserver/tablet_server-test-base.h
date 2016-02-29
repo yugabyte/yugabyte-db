@@ -67,7 +67,7 @@ METRIC_DEFINE_entity(test);
 namespace yb {
 namespace tserver {
 
-class TabletServerTestBase : public KuduTest {
+class TabletServerTestBase : public YBTest {
  public:
   typedef pair<int32_t, int32_t> KeyValue;
 
@@ -94,7 +94,7 @@ class TabletServerTestBase : public KuduTest {
 
   // Starts the tablet server, override to start it later.
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     key_schema_ = schema_.CreateKeyProjection();
     rb_.reset(new RowBuilder(schema_));
@@ -163,7 +163,7 @@ class TabletServerTestBase : public KuduTest {
   // Inserts 'num_rows' test rows directly into the tablet (i.e not via RPC)
   void InsertTestRowsDirect(int64_t start_row, uint64_t num_rows) {
     tablet::LocalTabletWriter writer(tablet_peer_->tablet(), &schema_);
-    KuduPartialRow row(&schema_);
+    YBPartialRow row(&schema_);
     for (int64_t i = 0; i < num_rows; i++) {
       BuildTestRow(start_row + i, &row);
       CHECK_OK(writer.Insert(row));
@@ -271,7 +271,7 @@ class TabletServerTestBase : public KuduTest {
     ASSERT_FALSE(resp.has_error()) << resp.ShortDebugString();
   }
 
-  void BuildTestRow(int index, KuduPartialRow* row) {
+  void BuildTestRow(int index, YBPartialRow* row) {
     ASSERT_OK(row->SetInt32(0, index));
     ASSERT_OK(row->SetInt32(1, index * 2));
     ASSERT_OK(row->SetStringCopy(2, StringPrintf("hello %d", index)));

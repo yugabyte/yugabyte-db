@@ -49,9 +49,9 @@
 #include "yb/util/test_util.h"
 #include "yb/util/hdr_histogram.h"
 
-using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
-using yb::client::KuduSchema;
+using yb::client::YBClient;
+using yb::client::YBClientBuilder;
+using yb::client::YBSchema;
 using yb::client::sp::shared_ptr;
 using yb::itest::TServerDetails;
 
@@ -113,7 +113,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
   }
 
   void ResetClientAndTester() {
-    KuduClientBuilder builder;
+    YBClientBuilder builder;
     ASSERT_OK(cluster_->CreateClient(builder, &client_));
     tester_.reset(new LinkedListTester(client_, kTableId,
                                        FLAGS_num_chains,
@@ -140,7 +140,7 @@ class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
     }
   }
 
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBClient> client_;
   gscoped_ptr<LinkedListTester> tester_;
 };
 

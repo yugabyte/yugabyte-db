@@ -29,14 +29,14 @@ cdef extern from "<iostream>":
 #----------------------------------------------------------------------
 # Smart pointers and such
 
-cdef extern from "kudu/client/shared_ptr.h" namespace "kudu::client::sp" nogil:
+cdef extern from "yb/client/shared_ptr.h" namespace "yb::client::sp" nogil:
 
     cdef cppclass shared_ptr[T]:
         T* get()
         void reset()
         void reset(T* p)
 
-cdef extern from "kudu/util/status.h" namespace "kudu" nogil:
+cdef extern from "yb/util/status.h" namespace "yb" nogil:
 
     # We can later add more of the common status factory methods as needed
     cdef Status Status_OK "Status::OK"()
@@ -62,7 +62,7 @@ cdef extern from "kudu/util/status.h" namespace "kudu" nogil:
         c_bool IsAborted()
 
 
-cdef extern from "kudu/util/monotime.h" namespace "kudu" nogil:
+cdef extern from "yb/util/monotime.h" namespace "yb" nogil:
 
     # These classes are not yet needed directly but will need to be completed
     # from the C++ API
@@ -105,95 +105,95 @@ cdef extern from "kudu/util/monotime.h" namespace "kudu" nogil:
         pass
 
 
-cdef extern from "kudu/client/schema.h" namespace "kudu::client" nogil:
+cdef extern from "yb/client/schema.h" namespace "yb::client" nogil:
 
-    enum DataType" kudu::client::KuduColumnSchema::DataType":
-        KUDU_INT8 " kudu::client::KuduColumnSchema::INT8"
-        KUDU_INT16 " kudu::client::KuduColumnSchema::INT16"
-        KUDU_INT32 " kudu::client::KuduColumnSchema::INT32"
-        KUDU_INT64 " kudu::client::KuduColumnSchema::INT64"
-        KUDU_STRING " kudu::client::KuduColumnSchema::STRING"
-        KUDU_BOOL " kudu::client::KuduColumnSchema::BOOL"
-        KUDU_FLOAT " kudu::client::KuduColumnSchema::FLOAT"
-        KUDU_DOUBLE " kudu::client::KuduColumnSchema::DOUBLE"
-        KUDU_BINARY " kudu::client::KuduColumnSchema::BINARY"
-        KUDU_TIMESTAMP " kudu::client::KuduColumnSchema::TIMESTAMP"
+    enum DataType" yb::client::YBColumnSchema::DataType":
+        YB_INT8 " yb::client::YBColumnSchema::INT8"
+        YB_INT16 " yb::client::YBColumnSchema::INT16"
+        YB_INT32 " yb::client::YBColumnSchema::INT32"
+        YB_INT64 " yb::client::YBColumnSchema::INT64"
+        YB_STRING " yb::client::YBColumnSchema::STRING"
+        YB_BOOL " yb::client::YBColumnSchema::BOOL"
+        YB_FLOAT " yb::client::YBColumnSchema::FLOAT"
+        YB_DOUBLE " yb::client::YBColumnSchema::DOUBLE"
+        YB_BINARY " yb::client::YBColumnSchema::BINARY"
+        YB_TIMESTAMP " yb::client::YBColumnSchema::TIMESTAMP"
 
-    enum EncodingType" kudu::client::KuduColumnStorageAttributes::EncodingType":
-        EncodingType_AUTO " kudu::client::KuduColumnStorageAttributes::AUTO_ENCODING"
-        EncodingType_PLAIN " kudu::client::KuduColumnStorageAttributes::PLAIN_ENCODING"
-        EncodingType_PREFIX " kudu::client::KuduColumnStorageAttributes::PREFIX_ENCODING"
-        EncodingType_GROUP_VARINT " kudu::client::KuduColumnStorageAttributes::GROUP_VARINT"
-        EncodingType_RLE " kudu::client::KuduColumnStorageAttributes::RLE"
+    enum EncodingType" yb::client::YBColumnStorageAttributes::EncodingType":
+        EncodingType_AUTO " yb::client::YBColumnStorageAttributes::AUTO_ENCODING"
+        EncodingType_PLAIN " yb::client::YBColumnStorageAttributes::PLAIN_ENCODING"
+        EncodingType_PREFIX " yb::client::YBColumnStorageAttributes::PREFIX_ENCODING"
+        EncodingType_GROUP_VARINT " yb::client::YBColumnStorageAttributes::GROUP_VARINT"
+        EncodingType_RLE " yb::client::YBColumnStorageAttributes::RLE"
 
-    enum CompressionType" kudu::client::KuduColumnStorageAttributes::CompressionType":
-        CompressionType_DEFAULT " kudu::client::KuduColumnStorageAttributes::DEFAULT_COMPRESSION"
-        CompressionType_NONE " kudu::client::KuduColumnStorageAttributes::NO_COMPRESSION"
-        CompressionType_SNAPPY " kudu::client::KuduColumnStorageAttributes::SNAPPY"
-        CompressionType_LZ4 " kudu::client::KuduColumnStorageAttributes::LZ4"
-        CompressionType_ZLIB " kudu::client::KuduColumnStorageAttributes::ZLIB"
+    enum CompressionType" yb::client::YBColumnStorageAttributes::CompressionType":
+        CompressionType_DEFAULT " yb::client::YBColumnStorageAttributes::DEFAULT_COMPRESSION"
+        CompressionType_NONE " yb::client::YBColumnStorageAttributes::NO_COMPRESSION"
+        CompressionType_SNAPPY " yb::client::YBColumnStorageAttributes::SNAPPY"
+        CompressionType_LZ4 " yb::client::YBColumnStorageAttributes::LZ4"
+        CompressionType_ZLIB " yb::client::YBColumnStorageAttributes::ZLIB"
 
-    cdef struct KuduColumnStorageAttributes:
-        KuduColumnStorageAttributes()
+    cdef struct YBColumnStorageAttributes:
+        YBColumnStorageAttributes()
 
         EncodingType encoding
         CompressionType compression
         string ToString()
 
-    cdef cppclass KuduColumnSchema:
-        KuduColumnSchema(const KuduColumnSchema& other)
-        KuduColumnSchema(const string& name, DataType type)
-        KuduColumnSchema(const string& name, DataType type, c_bool is_nullable)
-        KuduColumnSchema(const string& name, DataType type, c_bool is_nullable,
+    cdef cppclass YBColumnSchema:
+        YBColumnSchema(const YBColumnSchema& other)
+        YBColumnSchema(const string& name, DataType type)
+        YBColumnSchema(const string& name, DataType type, c_bool is_nullable)
+        YBColumnSchema(const string& name, DataType type, c_bool is_nullable,
                          const void* default_value)
 
         string& name()
         c_bool is_nullable()
         DataType type()
 
-        c_bool Equals(KuduColumnSchema& other)
-        void CopyFrom(KuduColumnSchema& other)
+        c_bool Equals(YBColumnSchema& other)
+        void CopyFrom(YBColumnSchema& other)
 
-    cdef cppclass KuduSchema:
-        KuduSchema()
-        KuduSchema(vector[KuduColumnSchema]& columns, int key_columns)
+    cdef cppclass YBSchema:
+        YBSchema()
+        YBSchema(vector[YBColumnSchema]& columns, int key_columns)
 
-        c_bool Equals(const KuduSchema& other)
-        KuduColumnSchema Column(size_t idx)
+        c_bool Equals(const YBSchema& other)
+        YBColumnSchema Column(size_t idx)
         size_t num_columns()
 
         void GetPrimaryKeyColumnIndexes(vector[int]* indexes)
 
-        KuduPartialRow* NewRow()
+        YBPartialRow* NewRow()
 
-    cdef cppclass KuduColumnSpec:
+    cdef cppclass YBColumnSpec:
 
-         KuduColumnSpec* Default(KuduValue* value)
-         KuduColumnSpec* RemoveDefault()
+         YBColumnSpec* Default(YBValue* value)
+         YBColumnSpec* RemoveDefault()
 
-         KuduColumnSpec* Compression(CompressionType compression)
-         KuduColumnSpec* Encoding(EncodingType encoding)
-         KuduColumnSpec* BlockSize(int32_t block_size)
+         YBColumnSpec* Compression(CompressionType compression)
+         YBColumnSpec* Encoding(EncodingType encoding)
+         YBColumnSpec* BlockSize(int32_t block_size)
 
-         KuduColumnSpec* PrimaryKey()
-         KuduColumnSpec* NotNull()
-         KuduColumnSpec* Nullable()
-         KuduColumnSpec* Type(DataType type_)
+         YBColumnSpec* PrimaryKey()
+         YBColumnSpec* NotNull()
+         YBColumnSpec* Nullable()
+         YBColumnSpec* Type(DataType type_)
 
-         KuduColumnSpec* RenameTo(string& new_name)
-
-
-    cdef cppclass KuduSchemaBuilder:
-
-        KuduColumnSpec* AddColumn(string& name)
-        KuduSchemaBuilder* SetPrimaryKey(vector[string]& key_col_names);
-
-        Status Build(KuduSchema* schema)
+         YBColumnSpec* RenameTo(string& new_name)
 
 
-cdef extern from "kudu/client/row_result.h" namespace "kudu::client" nogil:
+    cdef cppclass YBSchemaBuilder:
 
-    cdef cppclass KuduRowResult:
+        YBColumnSpec* AddColumn(string& name)
+        YBSchemaBuilder* SetPrimaryKey(vector[string]& key_col_names);
+
+        Status Build(YBSchema* schema)
+
+
+cdef extern from "yb/client/row_result.h" namespace "yb::client" nogil:
+
+    cdef cppclass YBRowResult:
         c_bool IsNull(Slice& col_name)
         c_bool IsNull(int col_idx)
 
@@ -233,7 +233,7 @@ cdef extern from "kudu/client/row_result.h" namespace "kudu::client" nogil:
         string ToString()
 
 
-cdef extern from "kudu/util/slice.h" namespace "kudu" nogil:
+cdef extern from "yb/util/slice.h" namespace "kudu" nogil:
 
     cdef cppclass Slice:
         Slice()
@@ -273,11 +273,11 @@ cdef extern from "kudu/util/slice.h" namespace "kudu" nogil:
         # Many other API methods omitted
 
 
-cdef extern from "kudu/common/partial_row.h" namespace "kudu" nogil:
+cdef extern from "yb/common/partial_row.h" namespace "kudu" nogil:
 
-    cdef cppclass KuduPartialRow:
+    cdef cppclass YBPartialRow:
         # Schema must not be garbage-collected
-        # KuduPartialRow(const Schema* schema)
+        # YBPartialRow(const Schema* schema)
 
         #----------------------------------------------------------------------
         # Setters
@@ -380,16 +380,16 @@ cdef extern from "kudu/common/partial_row.h" namespace "kudu" nogil:
         # const Schema* schema()
 
 
-cdef extern from "kudu/client/write_op.h" namespace "kudu::client" nogil:
+cdef extern from "yb/client/write_op.h" namespace "yb::client" nogil:
 
-    enum WriteType" kudu::client::KuduWriteOperation::Type":
-        INSERT " kudu::client::KuduWriteOperation::INSERT"
-        UPDATE " kudu::client::KuduWriteOperation::UPDATE"
-        DELETE " kudu::client::KuduWriteOperation::DELETE"
+    enum WriteType" yb::client::YBWriteOperation::Type":
+        INSERT " yb::client::YBWriteOperation::INSERT"
+        UPDATE " yb::client::YBWriteOperation::UPDATE"
+        DELETE " yb::client::YBWriteOperation::DELETE"
 
-    cdef cppclass KuduWriteOperation:
-        KuduPartialRow& row()
-        KuduPartialRow* mutable_row()
+    cdef cppclass YBWriteOperation:
+        YBPartialRow& row()
+        YBPartialRow* mutable_row()
 
         # This is a pure virtual function implemented on each of the cppclass
         # subclasses
@@ -398,57 +398,57 @@ cdef extern from "kudu/client/write_op.h" namespace "kudu::client" nogil:
         # Also a pure virtual
         WriteType type()
 
-    cdef cppclass KuduInsert(KuduWriteOperation):
+    cdef cppclass YBInsert(YBWriteOperation):
         pass
 
-    cdef cppclass KuduDelete(KuduWriteOperation):
+    cdef cppclass YBDelete(YBWriteOperation):
         pass
 
-    cdef cppclass KuduUpdate(KuduWriteOperation):
+    cdef cppclass YBUpdate(YBWriteOperation):
         pass
 
 
-cdef extern from "kudu/client/scan_predicate.h" namespace "kudu::client" nogil:
-    enum ComparisonOp" kudu::client::KuduPredicate::ComparisonOp":
-        KUDU_LESS_EQUAL    " kudu::client::KuduPredicate::LESS_EQUAL"
-        KUDU_GREATER_EQUAL " kudu::client::KuduPredicate::GREATER_EQUAL"
-        KUDU_EQUAL         " kudu::client::KuduPredicate::EQUAL"
+cdef extern from "yb/client/scan_predicate.h" namespace "yb::client" nogil:
+    enum ComparisonOp" yb::client::YBPredicate::ComparisonOp":
+        KUDU_LESS_EQUAL    " yb::client::YBPredicate::LESS_EQUAL"
+        KUDU_GREATER_EQUAL " yb::client::YBPredicate::GREATER_EQUAL"
+        KUDU_EQUAL         " yb::client::YBPredicate::EQUAL"
 
-    cdef cppclass KuduPredicate:
-        KuduPredicate* Clone()
+    cdef cppclass YBPredicate:
+        YBPredicate* Clone()
 
 
-cdef extern from "kudu/client/value.h" namespace "kudu::client" nogil:
+cdef extern from "yb/client/value.h" namespace "yb::client" nogil:
 
-    cdef cppclass KuduValue:
+    cdef cppclass YBValue:
         @staticmethod
-        KuduValue* FromInt(int64_t val);
-
-        @staticmethod
-        KuduValue* FromFloat(float val);
+        YBValue* FromInt(int64_t val);
 
         @staticmethod
-        KuduValue* FromDouble(double val);
+        YBValue* FromFloat(float val);
 
         @staticmethod
-        KuduValue* FromBool(c_bool val);
+        YBValue* FromDouble(double val);
 
         @staticmethod
-        KuduValue* CopyString(const Slice& s);
+        YBValue* FromBool(c_bool val);
+
+        @staticmethod
+        YBValue* CopyString(const Slice& s);
 
 
-cdef extern from "kudu/client/client.h" namespace "kudu::client" nogil:
+cdef extern from "yb/client/client.h" namespace "yb::client" nogil:
 
-    # Omitted KuduClient::ReplicaSelection enum
+    # Omitted YBClient::ReplicaSelection enum
 
-    cdef cppclass KuduClient:
+    cdef cppclass YBClient:
 
         Status DeleteTable(const string& table_name)
         Status OpenTable(const string& table_name,
-                         shared_ptr[KuduTable]* table)
-        Status GetTableSchema(const string& table_name, KuduSchema* schema)
+                         shared_ptr[YBTable]* table)
+        Status GetTableSchema(const string& table_name, YBSchema* schema)
 
-        KuduTableCreator* NewTableCreator()
+        YBTableCreator* NewTableCreator()
         Status IsCreateTableInProgress(const string& table_name,
                                        c_bool* create_in_progress)
 
@@ -459,79 +459,79 @@ cdef extern from "kudu/client/client.h" namespace "kudu::client" nogil:
 
         Status TableExists(const string& table_name, c_bool* exists)
 
-        KuduTableAlterer* NewTableAlterer()
+        YBTableAlterer* NewTableAlterer()
         Status IsAlterTableInProgress(const string& table_name,
                                       c_bool* alter_in_progress)
 
-        shared_ptr[KuduSession] NewSession()
+        shared_ptr[YBSession] NewSession()
 
-    cdef cppclass KuduClientBuilder:
-        KuduClientBuilder()
-        KuduClientBuilder& master_server_addrs(const vector[string]& addrs)
-        KuduClientBuilder& add_master_server_addr(const string& addr)
+    cdef cppclass YBClientBuilder:
+        YBClientBuilder()
+        YBClientBuilder& master_server_addrs(const vector[string]& addrs)
+        YBClientBuilder& add_master_server_addr(const string& addr)
 
-        KuduClientBuilder& default_admin_operation_timeout(
+        YBClientBuilder& default_admin_operation_timeout(
             const MonoDelta& timeout)
 
-        KuduClientBuilder& default_rpc_timeout(const MonoDelta& timeout)
+        YBClientBuilder& default_rpc_timeout(const MonoDelta& timeout)
 
-        Status Build(shared_ptr[KuduClient]* client)
+        Status Build(shared_ptr[YBClient]* client)
 
-    cdef cppclass KuduTableCreator:
-        KuduTableCreator& table_name(string& name)
-        KuduTableCreator& schema(KuduSchema* schema)
-        KuduTableCreator& split_keys(vector[string]& keys)
-        KuduTableCreator& num_replicas(int n_replicas)
-        KuduTableCreator& wait(c_bool wait)
+    cdef cppclass YBTableCreator:
+        YBTableCreator& table_name(string& name)
+        YBTableCreator& schema(YBSchema* schema)
+        YBTableCreator& split_keys(vector[string]& keys)
+        YBTableCreator& num_replicas(int n_replicas)
+        YBTableCreator& wait(c_bool wait)
 
         Status Create()
 
-    cdef cppclass KuduTableAlterer:
+    cdef cppclass YBTableAlterer:
         # The name of the existing table to alter
-        KuduTableAlterer& table_name(string& name)
+        YBTableAlterer& table_name(string& name)
 
-        KuduTableAlterer& rename_table(string& name)
+        YBTableAlterer& rename_table(string& name)
 
-        KuduTableAlterer& add_column(string& name, DataType type,
+        YBTableAlterer& add_column(string& name, DataType type,
                                      const void *default_value)
-        KuduTableAlterer& add_column(string& name, DataType type,
+        YBTableAlterer& add_column(string& name, DataType type,
                                      const void *default_value,
-                                     KuduColumnStorageAttributes attr)
+                                     YBColumnStorageAttributes attr)
 
-        KuduTableAlterer& add_nullable_column(string& name, DataType type)
+        YBTableAlterer& add_nullable_column(string& name, DataType type)
 
-        KuduTableAlterer& drop_column(string& name)
+        YBTableAlterer& drop_column(string& name)
 
-        KuduTableAlterer& rename_column(string& old_name, string& new_name)
+        YBTableAlterer& rename_column(string& old_name, string& new_name)
 
-        KuduTableAlterer& wait(c_bool wait)
+        YBTableAlterer& wait(c_bool wait)
 
         Status Alter()
 
-    # Instances of KuduTable are not directly instantiated by users of the
+    # Instances of YBTable are not directly instantiated by users of the
     # client.
-    cdef cppclass KuduTable:
+    cdef cppclass YBTable:
 
         string& name()
-        KuduSchema& schema()
+        YBSchema& schema()
 
-        KuduInsert* NewInsert()
-        KuduUpdate* NewUpdate()
-        KuduDelete* NewDelete()
+        YBInsert* NewInsert()
+        YBUpdate* NewUpdate()
+        YBDelete* NewDelete()
 
-        KuduPredicate* NewComparisonPredicate(const Slice& col_name,
+        YBPredicate* NewComparisonPredicate(const Slice& col_name,
                                               ComparisonOp op,
-                                              KuduValue* value);
+                                              YBValue* value);
 
-        KuduClient* client()
+        YBClient* client()
         # const PartitionSchema& partition_schema()
 
-    enum FlushMode" kudu::client::KuduSession::FlushMode":
-        FlushMode_AutoSync " kudu::client::KuduSession::AUTO_FLUSH_SYNC"
-        FlushMode_AutoBackground " kudu::client::KuduSession::AUTO_FLUSH_BACKGROUND"
-        FlushMode_Manual " kudu::client::KuduSession::MANUAL_FLUSH"
+    enum FlushMode" yb::client::YBSession::FlushMode":
+        FlushMode_AutoSync " yb::client::YBSession::AUTO_FLUSH_SYNC"
+        FlushMode_AutoBackground " yb::client::YBSession::AUTO_FLUSH_BACKGROUND"
+        FlushMode_Manual " yb::client::YBSession::MANUAL_FLUSH"
 
-    cdef cppclass KuduSession:
+    cdef cppclass YBSession:
 
         Status SetFlushMode(FlushMode m)
 
@@ -540,10 +540,10 @@ cdef extern from "kudu/client/client.h" namespace "kudu::client" nogil:
 
         void SetPriority(int priority)
 
-        Status Apply(KuduWriteOperation* write_op)
-        Status Apply(KuduInsert* write_op)
-        Status Apply(KuduUpdate* write_op)
-        Status Apply(KuduDelete* write_op)
+        Status Apply(YBWriteOperation* write_op)
+        Status Apply(YBInsert* write_op)
+        Status Apply(YBUpdate* write_op)
+        Status Apply(YBDelete* write_op)
 
         # This is thread-safe
         Status Flush()
@@ -551,15 +551,15 @@ cdef extern from "kudu/client/client.h" namespace "kudu::client" nogil:
         # TODO: Will need to decide on a strategy for exposing the session's
         # async API to Python
 
-        # Status ApplyAsync(KuduWriteOperation* write_op,
-        #                   KuduStatusCallback cb)
-        # Status ApplyAsync(KuduInsert* write_op,
-        #                   KuduStatusCallback cb)
-        # Status ApplyAsync(KuduUpdate* write_op,
-        #                   KuduStatusCallback cb)
-        # Status ApplyAsync(KuduDelete* write_op,
-        #                   KuduStatusCallback cb)
-        # void FlushAsync(KuduStatusCallback& cb)
+        # Status ApplyAsync(YBWriteOperation* write_op,
+        #                   YBStatusCallback cb)
+        # Status ApplyAsync(YBInsert* write_op,
+        #                   YBStatusCallback cb)
+        # Status ApplyAsync(YBUpdate* write_op,
+        #                   YBStatusCallback cb)
+        # Status ApplyAsync(YBDelete* write_op,
+        #                   YBStatusCallback cb)
+        # void FlushAsync(YBStatusCallback& cb)
 
 
         Status Close()
@@ -567,24 +567,24 @@ cdef extern from "kudu/client/client.h" namespace "kudu::client" nogil:
         int CountBufferedOperations()
 
         int CountPendingErrors()
-        void GetPendingErrors(vector[C_KuduError*]* errors, c_bool* overflowed)
+        void GetPendingErrors(vector[C_YBError*]* errors, c_bool* overflowed)
 
-        KuduClient* client()
+        YBClient* client()
 
-    enum ReadMode" kudu::client::KuduScanner::ReadMode":
-        READ_LATEST " kudu::client::KuduScanner::READ_LATEST"
-        READ_AT_SNAPSHOT " kudu::client::KuduScanner::READ_AT_SNAPSHOT"
+    enum ReadMode" yb::client::YBScanner::ReadMode":
+        READ_LATEST " yb::client::YBScanner::READ_LATEST"
+        READ_AT_SNAPSHOT " yb::client::YBScanner::READ_AT_SNAPSHOT"
 
-    cdef cppclass KuduScanner:
-        KuduScanner(KuduTable* table)
+    cdef cppclass YBScanner:
+        YBScanner(YBTable* table)
 
-        Status AddConjunctPredicate(KuduPredicate* pred)
+        Status AddConjunctPredicate(YBPredicate* pred)
 
         Status Open()
         void Close()
 
         c_bool HasMoreRows()
-        Status NextBatch(vector[KuduRowResult]* rows)
+        Status NextBatch(vector[YBRowResult]* rows)
         Status SetBatchSizeBytes(uint32_t batch_size)
 
         # Pending definition of ReplicaSelection enum
@@ -597,11 +597,11 @@ cdef extern from "kudu/client/client.h" namespace "kudu::client" nogil:
 
         string ToString()
 
-    cdef cppclass C_KuduError " kudu::client::KuduError":
+    cdef cppclass C_YBError " yb::client::YBError":
 
         Status& status()
 
-        KuduWriteOperation& failed_op()
-        KuduWriteOperation* release_failed_op()
+        YBWriteOperation& failed_op()
+        YBWriteOperation* release_failed_op()
 
         c_bool was_possibly_successful()

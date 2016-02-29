@@ -47,10 +47,10 @@ DECLARE_bool(catalog_manager_check_ts_count_for_create_table);
 namespace yb {
 namespace master {
 
-class MasterTest : public KuduTest {
+class MasterTest : public YBTest {
  protected:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     // In this test, we create tables to test catalog manager behavior,
     // but we have no tablet servers. Typically this would be disallowed.
@@ -70,7 +70,7 @@ class MasterTest : public KuduTest {
 
   virtual void TearDown() OVERRIDE {
     mini_master_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   void DoListTables(const ListTablesRequestPB& req, ListTablesResponsePB* resp);
@@ -79,7 +79,7 @@ class MasterTest : public KuduTest {
                      const Schema& schema);
   Status CreateTable(const string& table_name,
                      const Schema& schema,
-                     const vector<KuduPartialRow>& split_rows);
+                     const vector<YBPartialRow>& split_rows);
 
   shared_ptr<Messenger> client_messenger_;
   gscoped_ptr<MiniMaster> mini_master_;
@@ -213,10 +213,10 @@ TEST_F(MasterTest, TestRegisterAndHeartbeat) {
 
 Status MasterTest::CreateTable(const string& table_name,
                                const Schema& schema) {
-  KuduPartialRow split1(&schema);
+  YBPartialRow split1(&schema);
   RETURN_NOT_OK(split1.SetInt32("key", 10));
 
-  KuduPartialRow split2(&schema);
+  YBPartialRow split2(&schema);
   RETURN_NOT_OK(split2.SetInt32("key", 20));
 
   return CreateTable(table_name, schema, { split1, split2 });
@@ -224,7 +224,7 @@ Status MasterTest::CreateTable(const string& table_name,
 
 Status MasterTest::CreateTable(const string& table_name,
                                const Schema& schema,
-                               const vector<KuduPartialRow>& split_rows) {
+                               const vector<YBPartialRow>& split_rows) {
 
   CreateTableRequestPB req;
   CreateTableResponsePB resp;
@@ -233,7 +233,7 @@ Status MasterTest::CreateTable(const string& table_name,
   req.set_name(table_name);
   RETURN_NOT_OK(SchemaToPB(schema, req.mutable_schema()));
   RowOperationsPBEncoder encoder(req.mutable_split_rows());
-  for (const KuduPartialRow& row : split_rows) {
+  for (const YBPartialRow& row : split_rows) {
     encoder.Add(RowOperationsPB::SPLIT_ROW, row);
   }
 
@@ -345,9 +345,9 @@ TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
 
   // No duplicate split rows.
   {
-    KuduPartialRow split1 = KuduPartialRow(&kTableSchema);
+    YBPartialRow split1 = YBPartialRow(&kTableSchema);
     ASSERT_OK(split1.SetInt32("key", 1));
-    KuduPartialRow split2(&kTableSchema);
+    YBPartialRow split2(&kTableSchema);
     ASSERT_OK(split2.SetInt32("key", 2));
     Status s = CreateTable(kTableName, kTableSchema, { split1, split1, split2 });
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
@@ -356,9 +356,9 @@ TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
 
   // No empty split rows.
   {
-    KuduPartialRow split1 = KuduPartialRow(&kTableSchema);
+    YBPartialRow split1 = YBPartialRow(&kTableSchema);
     ASSERT_OK(split1.SetInt32("key", 1));
-    KuduPartialRow split2(&kTableSchema);
+    YBPartialRow split2(&kTableSchema);
     Status s = CreateTable(kTableName, kTableSchema, { split1, split2 });
     ASSERT_TRUE(s.IsInvalidArgument());
     ASSERT_STR_CONTAINS(s.ToString(),
@@ -368,7 +368,7 @@ TEST_F(MasterTest, TestCreateTableCheckSplitRows) {
 
   // No non-range columns
   {
-    KuduPartialRow split = KuduPartialRow(&kTableSchema);
+    YBPartialRow split = YBPartialRow(&kTableSchema);
     ASSERT_OK(split.SetInt32("key", 1));
     ASSERT_OK(split.SetInt32("val", 1));
     Status s = CreateTable(kTableName, kTableSchema, { split });
@@ -384,7 +384,7 @@ TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
 
   {
     const Schema kTableSchema({ ColumnSchema("key", BOOL) }, 1);
-    Status s = CreateTable(kTableName, kTableSchema, vector<KuduPartialRow>());
+    Status s = CreateTable(kTableName, kTableSchema, vector<YBPartialRow>());
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
         "Key column may not have type of BOOL, FLOAT, or DOUBLE");
@@ -392,7 +392,7 @@ TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
 
   {
     const Schema kTableSchema({ ColumnSchema("key", FLOAT) }, 1);
-    Status s = CreateTable(kTableName, kTableSchema, vector<KuduPartialRow>());
+    Status s = CreateTable(kTableName, kTableSchema, vector<YBPartialRow>());
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
         "Key column may not have type of BOOL, FLOAT, or DOUBLE");
@@ -400,7 +400,7 @@ TEST_F(MasterTest, TestCreateTableInvalidKeyType) {
 
   {
     const Schema kTableSchema({ ColumnSchema("key", DOUBLE) }, 1);
-    Status s = CreateTable(kTableName, kTableSchema, vector<KuduPartialRow>());
+    Status s = CreateTable(kTableName, kTableSchema, vector<YBPartialRow>());
     ASSERT_TRUE(s.IsInvalidArgument()) << s.ToString();
     ASSERT_STR_CONTAINS(s.ToString(),
         "Key column may not have type of BOOL, FLOAT, or DOUBLE");

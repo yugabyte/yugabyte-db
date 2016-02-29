@@ -41,7 +41,7 @@ namespace tablet {
 static const TransactionState* kFakeTransaction =
   reinterpret_cast<TransactionState*>(0xdeadbeef);
 
-class LockManagerTest : public KuduTest {
+class LockManagerTest : public YBTest {
  public:
   void VerifyAlreadyLocked(const Slice& key) {
     LockEntry *entry;

@@ -36,12 +36,12 @@ import java.util.Set;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class TestFlexiblePartitioning extends BaseKuduTest {
+public class TestFlexiblePartitioning extends BaseYBTest {
   private String tableName;
 
   @Before
   public void setTableName() {
-    tableName = TestKuduClient.class.getName() + "-" + System.currentTimeMillis();
+    tableName = TestYBClient.class.getName() + "-" + System.currentTimeMillis();
   }
 
   private static Schema createSchema() {
@@ -66,8 +66,8 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
     return rows;
   }
 
-  private void insertRows(KuduTable table, Set<Row> rows) throws Exception {
-    KuduSession session = syncClient.newSession();
+  private void insertRows(YBTable table, Set<Row> rows) throws Exception {
+    YBSession session = syncClient.newSession();
     try {
       for (Row row : rows) {
         Insert insert = table.newInsert();
@@ -80,7 +80,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
     }
   }
 
-  private Set<Row> collectRows(KuduScanner scanner) throws Exception {
+  private Set<Row> collectRows(YBScanner scanner) throws Exception {
     Set<Row> rows = new HashSet<>();
     while (scanner.hasMoreRows()) {
       for (RowResult result : scanner.nextRows()) {
@@ -95,7 +95,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
 
     syncClient.createTable(tableName, schema, tableBuilder);
 
-    KuduTable table = syncClient.openTable(tableName);
+    YBTable table = syncClient.openTable(tableName);
 
     Set<Row> rows = rows();
     insertRows(table, rows);
@@ -110,7 +110,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
 
       Set<Row> expected = Sets.filter(rows, minRow.gtePred());
 
-      KuduScanner scanner = syncClient.newScannerBuilder(table).lowerBound(lowerBound).build();
+      YBScanner scanner = syncClient.newScannerBuilder(table).lowerBound(lowerBound).build();
       Set<Row> results = collectRows(scanner);
 
       assertEquals(expected, results);
@@ -123,7 +123,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
 
       Set<Row> expected = Sets.filter(rows, maxRow.ltPred());
 
-      KuduScanner scanner = syncClient.newScannerBuilder(table)
+      YBScanner scanner = syncClient.newScannerBuilder(table)
                                       .exclusiveUpperBound(upperBound)
                                       .build();
       Set<Row> results = collectRows(scanner);
@@ -141,7 +141,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
 
       Set<Row> expected = Sets.filter(rows, Predicates.and(minRow.gtePred(), maxRow.ltPred()));
 
-      KuduScanner scanner = syncClient.newScannerBuilder(table)
+      YBScanner scanner = syncClient.newScannerBuilder(table)
                                       .lowerBound(lowerBound)
                                       .exclusiveUpperBound(upperBound)
                                       .build();
@@ -156,7 +156,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
       Set<Row> results = new HashSet<>();
 
       for (LocatedTablet tablet : tablets) {
-        KuduScanner scanner = syncClient.newScannerBuilder(table)
+        YBScanner scanner = syncClient.newScannerBuilder(table)
                                         .lowerBoundPartitionKeyRaw(tablet.getPartition().getPartitionKeyStart())
                                         .exclusiveUpperBoundPartitionKeyRaw(tablet.getPartition().getPartitionKeyEnd())
                                         .build();
@@ -181,7 +181,7 @@ public class TestFlexiblePartitioning extends BaseKuduTest {
       Set<Row> results = new HashSet<>();
 
       for (LocatedTablet tablet : tablets) {
-        KuduScanner scanner = syncClient.newScannerBuilder(table)
+        YBScanner scanner = syncClient.newScannerBuilder(table)
                                         .lowerBound(lowerBound)
                                         .exclusiveUpperBound(upperBound)
                                         .lowerBoundPartitionKeyRaw(tablet.getPartition().getPartitionKeyStart())

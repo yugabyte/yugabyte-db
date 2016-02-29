@@ -36,10 +36,10 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
-using yb::client::KuduClient;
-using yb::client::KuduClientBuilder;
-using yb::client::KuduSchema;
-using yb::client::KuduTableCreator;
+using yb::client::YBClient;
+using yb::client::YBClientBuilder;
+using yb::client::YBSchema;
+using yb::client::YBTableCreator;
 using yb::client::sp::shared_ptr;
 using yb::rpc::RpcController;
 using std::string;
@@ -70,7 +70,7 @@ string LoadFile(const string& path) {
 
 // TODO: refactor this and the associated constants into some sort of
 // demo-tables.h class in a src/demos/ directory.
-Status GetDemoSchema(const string& table_name, KuduSchema* schema) {
+Status GetDemoSchema(const string& table_name, YBSchema* schema) {
   if (table_name == kTwitterTabletId) {
     *schema = twitter_demo::CreateTwitterSchema();
   } else if (table_name == kTPCH1TabletId) {
@@ -97,16 +97,16 @@ static int CreateDemoTable(int argc, char** argv) {
   vector<string> addrs = strings::Split(FLAGS_master_address, ",");
   CHECK(!addrs.empty()) << "At least one master address must be specified!";
 
-  KuduSchema schema;
+  YBSchema schema;
   CHECK_OK(GetDemoSchema(table_name, &schema));
 
   // Set up client.
-  shared_ptr<KuduClient> client;
-  CHECK_OK(KuduClientBuilder()
+  shared_ptr<YBClient> client;
+  CHECK_OK(YBClientBuilder()
            .master_server_addrs(addrs)
            .Build(&client));
 
-  gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
+  gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
   CHECK_OK(table_creator->table_name(table_name)
            .schema(&schema)
            .Create());

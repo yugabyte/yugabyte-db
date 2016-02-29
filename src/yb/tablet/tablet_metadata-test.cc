@@ -27,28 +27,28 @@
 namespace yb {
 namespace tablet {
 
-class TestTabletMetadata : public KuduTabletTest {
+class TestTabletMetadata : public YBTabletTest {
  public:
   TestTabletMetadata()
-      : KuduTabletTest(GetSimpleTestSchema()) {
+      : YBTabletTest(GetSimpleTestSchema()) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
     writer_.reset(new LocalTabletWriter(harness_->tablet().get(),
                                         &client_schema_));
   }
 
   void BuildPartialRow(int key, int intval, const char* strval,
-                       gscoped_ptr<KuduPartialRow>* row);
+                       gscoped_ptr<YBPartialRow>* row);
 
  protected:
   gscoped_ptr<LocalTabletWriter> writer_;
 };
 
 void TestTabletMetadata::BuildPartialRow(int key, int intval, const char* strval,
-                                         gscoped_ptr<KuduPartialRow>* row) {
-  row->reset(new KuduPartialRow(&client_schema_));
+                                         gscoped_ptr<YBPartialRow>* row) {
+  row->reset(new YBPartialRow(&client_schema_));
   CHECK_OK((*row)->SetInt32(0, key));
   CHECK_OK((*row)->SetInt32(1, intval));
   CHECK_OK((*row)->SetStringCopy(2, strval));
@@ -57,7 +57,7 @@ void TestTabletMetadata::BuildPartialRow(int key, int intval, const char* strval
 // Test that loading & storing the superblock results in an equivalent file.
 TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
   // Write some data to the tablet and flush.
-  gscoped_ptr<KuduPartialRow> row;
+  gscoped_ptr<YBPartialRow> row;
   BuildPartialRow(0, 0, "foo", &row);
   writer_->Insert(*row);
   ASSERT_OK(harness_->tablet()->Flush());

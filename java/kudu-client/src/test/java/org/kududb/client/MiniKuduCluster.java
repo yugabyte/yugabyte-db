@@ -40,7 +40,7 @@ import sun.management.VMManagement;
 
 /**
  * Utility class to start and manipulate Kudu clusters. Relies on being IN the Kudu source code with
- * both the yb-master and yb-tserver binaries already compiled. {@link BaseKuduTest} should be
+ * both the yb-master and yb-tserver binaries already compiled. {@link BaseYBTest} should be
  * extended instead of directly using this class in almost all cases.
  */
 public class MiniKuduCluster implements AutoCloseable {
@@ -63,7 +63,7 @@ public class MiniKuduCluster implements AutoCloseable {
   private final List<HostAndPort> masterHostPorts = new ArrayList<>();
 
   // Client we can use for common operations.
-  private final KuduClient syncClient;
+  private final YBClient syncClient;
   private final int defaultTimeoutMs;
 
   private String masterAddresses;
@@ -73,7 +73,7 @@ public class MiniKuduCluster implements AutoCloseable {
 
     startCluster(numMasters, numTservers);
 
-    syncClient = new KuduClient.KuduClientBuilder(getMasterAddresses())
+    syncClient = new YBClient.YBClientBuilder(getMasterAddresses())
         .defaultAdminOperationTimeoutMs(defaultTimeoutMs)
         .defaultOperationTimeoutMs(defaultTimeoutMs)
         .build();

@@ -30,7 +30,7 @@ class ListTablesRequest extends KuduRpc<ListTablesResponse> {
 
   private final String nameFilter;
 
-  ListTablesRequest(KuduTable masterTable, String nameFilter) {
+  ListTablesRequest(YBTable masterTable, String nameFilter) {
     super(masterTable);
     this.nameFilter = nameFilter;
   }

@@ -32,9 +32,9 @@ namespace yb {
 
 namespace client {
 
-class KuduScanner::Data {
+class YBScanner::Data {
  public:
-  explicit Data(KuduTable* table);
+  explicit Data(YBTable* table);
   ~Data();
 
   Status CheckForErrors();
@@ -44,7 +44,7 @@ class KuduScanner::Data {
   void CopyPredicateBound(const ColumnSchema& col,
                           const void* bound_src, std::string* bound_dst);
 
-  // Called when KuduScanner::NextBatch or KuduScanner::Data::OpenTablet result in an RPC or
+  // Called when YBScanner::NextBatch or YBScanner::Data::OpenTablet result in an RPC or
   // server error. Returns the error status if the call cannot be retried.
   //
   // The number of parameters reflects the complexity of handling retries.
@@ -101,7 +101,7 @@ class KuduScanner::Data {
   bool data_in_open_;
   bool has_batch_size_bytes_;
   uint32 batch_size_bytes_;
-  KuduClient::ReplicaSelection selection_;
+  YBClient::ReplicaSelection selection_;
 
   ReadMode read_mode_;
   bool is_fault_tolerant_;
@@ -127,14 +127,14 @@ class KuduScanner::Data {
   rpc::RpcController controller_;
 
   // The table we're scanning.
-  KuduTable* table_;
+  YBTable* table_;
 
   // The projection schema used in the scan.
   const Schema* projection_;
 
-  // 'projection_' after it is converted to KuduSchema, so that users can obtain
+  // 'projection_' after it is converted to YBSchema, so that users can obtain
   // the projection without having to include common/schema.h.
-  KuduSchema client_projection_;
+  YBSchema client_projection_;
 
   Arena arena_;
   AutoReleasePool pool_;
@@ -153,10 +153,10 @@ class KuduScanner::Data {
   // Number of attempts since the last successful scan.
   int scan_attempts_;
 
-  // The deprecated "NextBatch(vector<KuduRowResult>*) API requires some local
+  // The deprecated "NextBatch(vector<YBRowResult>*) API requires some local
   // storage for the actual row data. If that API is used, this member keeps the
   // actual storage for the batch that is returned.
-  KuduScanBatch batch_for_old_api_;
+  YBScanBatch batch_for_old_api_;
 
   // The latest error experienced by this scan that provoked a retry. If the
   // scan times out, this error will be incorporated into the status that is
@@ -168,28 +168,28 @@ class KuduScanner::Data {
   DISALLOW_COPY_AND_ASSIGN(Data);
 };
 
-class KuduScanBatch::Data {
+class YBScanBatch::Data {
  public:
   Data();
   ~Data();
 
   Status Reset(rpc::RpcController* controller,
                const Schema* projection,
-               const KuduSchema* client_projection,
+               const YBSchema* client_projection,
                gscoped_ptr<RowwiseRowBlockPB> resp_data);
 
   int num_rows() const {
     return resp_data_.num_rows();
   }
 
-  KuduRowResult row(int idx) {
+  YBRowResult row(int idx) {
     DCHECK_GE(idx, 0);
     DCHECK_LT(idx, num_rows());
     int offset = idx * projected_row_size_;
-    return KuduRowResult(projection_, client_projection_, &direct_data_[offset]);
+    return YBRowResult(projection_, client_projection_, &direct_data_[offset]);
   }
 
-  void ExtractRows(vector<KuduScanBatch::RowPtr>* rows);
+  void ExtractRows(vector<YBScanBatch::RowPtr>* rows);
 
   void Clear();
 
@@ -210,8 +210,8 @@ class KuduScanBatch::Data {
 
   // The projection being scanned.
   const Schema* projection_;
-  // The KuduSchema version of 'projection_'
-  const KuduSchema* client_projection_;
+  // The YBSchema version of 'projection_'
+  const YBSchema* client_projection_;
 
   // The number of bytes of direct data for each row.
   size_t projected_row_size_;

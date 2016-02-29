@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Protobufs which are common throughout Kudu.
+// Protobufs which are common throughout YB.
 //
 // This file may contain protobufs which are persisted on disk
 // as well as sent on the wire. If a particular protobuf is only
@@ -114,7 +114,7 @@ enum ExternalConsistencyMode {
   // Any further calls from the same client to other servers will update
   // those servers with that timestamp. The user will make sure that the
   // timestamp is propagated through back-channels to other
-  // KuduClient's.
+  // YBClient's.
   //
   // WARNING: Failure to propagate timestamp information through
   // back-channels will negate any external consistency guarantee under this
@@ -133,7 +133,7 @@ enum ExternalConsistencyMode {
 
   // The server will guarantee that each transaction is externally
   // consistent by making sure that none of its results are visible
-  // until every Kudu server agrees that the transaction is in the past.
+  // until every YB server agrees that the transaction is in the past.
   // The client is not obligated to forward timestamp information
   // through back-channels.
   //
@@ -211,7 +211,7 @@ enum OrderMode {
   ORDERED = 2;
 }
 
-// The serialized format of a Kudu table partition schema.
+// The serialized format of a YB table partition schema.
 message PartitionSchemaPB {
 
   // A column identifier for partition schemas. In general, the name will be
@@ -258,7 +258,7 @@ message PartitionSchemaPB {
   optional RangeSchemaPB range_schema = 2;
 }
 
-// The serialized format of a Kudu table partition.
+// The serialized format of a YB table partition.
 message PartitionPB {
   // The hash buckets of the partition. The number of hash buckets must match
   // the number of hash bucket components in the partition's schema.

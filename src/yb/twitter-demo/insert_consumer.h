@@ -32,17 +32,17 @@
 
 namespace yb {
 namespace client {
-class KuduClient;
-class KuduTable;
-class KuduSession;
-class KuduStatusCallback;
+class YBClient;
+class YBTable;
+class YBSession;
+class YBStatusCallback;
 } // namespace client
 
 namespace twitter_demo {
 
 class InsertConsumer;
 
-class FlushCB : public client::KuduStatusCallback {
+class FlushCB : public client::YBStatusCallback {
  public:
   explicit FlushCB(InsertConsumer* consumer);
 
@@ -58,7 +58,7 @@ class FlushCB : public client::KuduStatusCallback {
 class InsertConsumer : public TwitterConsumer {
  public:
   explicit InsertConsumer(
-    const client::sp::shared_ptr<client::KuduClient> &client);
+    const client::sp::shared_ptr<client::YBClient> &client);
   ~InsertConsumer();
 
   Status Init();
@@ -72,16 +72,16 @@ class InsertConsumer : public TwitterConsumer {
 
   bool initted_;
 
-  client::KuduSchema schema_;
+  client::YBSchema schema_;
   FlushCB flush_cb_;
   TwitterEventParser parser_;
 
   // Reusable object for latest event.
   TwitterEvent event_;
 
-  client::sp::shared_ptr<client::KuduClient> client_;
-  client::sp::shared_ptr<client::KuduSession> session_;
-  client::sp::shared_ptr<client::KuduTable> table_;
+  client::sp::shared_ptr<client::YBClient> client_;
+  client::sp::shared_ptr<client::YBSession> session_;
+  client::sp::shared_ptr<client::YBTable> table_;
 
   simple_spinlock lock_;
   bool request_pending_;

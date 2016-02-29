@@ -43,7 +43,7 @@ namespace tablet {
 
 using fs::WritableBlock;
 
-class TestDeltaMemStore : public KuduTest {
+class TestDeltaMemStore : public YBTest {
  public:
   TestDeltaMemStore()
     : op_id_(consensus::MaximumOpId()),
@@ -54,7 +54,7 @@ class TestDeltaMemStore : public KuduTest {
   }
 
   void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());

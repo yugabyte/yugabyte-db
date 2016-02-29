@@ -21,18 +21,18 @@ import com.stumbleupon.async.Deferred;
 import org.kududb.Schema;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
-import org.kududb.client.AsyncKuduScanner.ReadMode;
+import org.kududb.client.AsyncYBScanner.ReadMode;
 
 /**
- * Synchronous version of {@link AsyncKuduScanner}. Offers the same API but with blocking methods.
+ * Synchronous version of {@link AsyncYBScanner}. Offers the same API but with blocking methods.
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduScanner {
+public class YBScanner {
 
-  private final AsyncKuduScanner asyncScanner;
+  private final AsyncYBScanner asyncScanner;
 
-  KuduScanner(AsyncKuduScanner asyncScanner) {
+  YBScanner(AsyncYBScanner asyncScanner) {
     this.asyncScanner = asyncScanner;
   }
 
@@ -111,24 +111,24 @@ public class KuduScanner {
   }
 
   /**
-   * A Builder class to build {@link KuduScanner}.
-   * Use {@link KuduClient#newScannerBuilder} in order to get a builder instance.
+   * A Builder class to build {@link YBScanner}.
+   * Use {@link YBClient#newScannerBuilder} in order to get a builder instance.
    */
   @InterfaceAudience.Public
   @InterfaceStability.Evolving
-  public static class KuduScannerBuilder
-      extends AbstractKuduScannerBuilder<KuduScannerBuilder, KuduScanner> {
+  public static class YBScannerBuilder
+      extends AbstractYBScannerBuilder<YBScannerBuilder, YBScanner> {
 
-    KuduScannerBuilder(AsyncKuduClient client, KuduTable table) {
+    YBScannerBuilder(AsyncYBClient client, YBTable table) {
       super(client, table);
     }
 
     /**
-     * Builds a {@link KuduScanner} using the passed configurations.
-     * @return a new {@link KuduScanner}
+     * Builds a {@link YBScanner} using the passed configurations.
+     * @return a new {@link YBScanner}
      */
-    public KuduScanner build() {
-      return new KuduScanner(new AsyncKuduScanner(
+    public YBScanner build() {
+      return new YBScanner(new AsyncYBScanner(
           client, table, projectedColumnNames, projectedColumnIndexes, readMode,
           scanRequestTimeout, columnRangePredicates, limit, cacheBlocks,
           prefetching, lowerBoundPrimaryKey, upperBoundPrimaryKey,

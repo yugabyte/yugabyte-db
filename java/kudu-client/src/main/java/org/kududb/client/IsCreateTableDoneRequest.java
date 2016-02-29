@@ -31,7 +31,7 @@ class IsCreateTableDoneRequest extends KuduRpc<Master.IsCreateTableDoneResponseP
 
   private final String tableId;
 
-  IsCreateTableDoneRequest(KuduTable table, String tableId) {
+  IsCreateTableDoneRequest(YBTable table, String tableId) {
     super(table);
     this.tableId = tableId;
   }

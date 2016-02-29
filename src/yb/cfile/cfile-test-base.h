@@ -295,10 +295,10 @@ class DuplicateStringDataGenerator : public DataGenerator<STRING, HAS_NULLS> {
   int num_;
 };
 
-class CFileTestBase : public KuduTest {
+class CFileTestBase : public YBTest {
  public:
   void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     fs_manager_.reset(new FsManager(env_.get(), GetTestPath("fs_root")));
     ASSERT_OK(fs_manager_->CreateInitialFileSystemLayout());

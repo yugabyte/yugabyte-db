@@ -31,7 +31,7 @@ namespace yb {
 
 using strings::Substitute;
 
-class TestRowChangeList : public KuduTest {
+class TestRowChangeList : public YBTest {
  public:
   TestRowChangeList() :
     schema_(CreateSchema())

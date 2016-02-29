@@ -42,10 +42,10 @@ namespace tablet {
 
 using strings::Substitute;
 
-class TestMajorDeltaCompaction : public KuduRowSetTest {
+class TestMajorDeltaCompaction : public YBRowSetTest {
  public:
   TestMajorDeltaCompaction() :
-      KuduRowSetTest(Schema({ ColumnSchema("key", STRING),
+      YBRowSetTest(Schema({ ColumnSchema("key", STRING),
                               ColumnSchema("val1", INT32),
                               ColumnSchema("val2", STRING),
                               ColumnSchema("val3", INT32),
@@ -69,14 +69,14 @@ class TestMajorDeltaCompaction : public KuduRowSetTest {
   };
 
   virtual void SetUp() OVERRIDE {
-    KuduRowSetTest::SetUp();
+    YBRowSetTest::SetUp();
   }
 
   // Insert data into tablet_, setting up equivalent state in
   // expected_state_.
   void WriteTestTablet(int nrows) {
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    KuduPartialRow ins_row(&client_schema_);
+    YBPartialRow ins_row(&client_schema_);
 
     for (int i = 0; i < nrows; i++) {
       ExpectedRow row;
@@ -100,7 +100,7 @@ class TestMajorDeltaCompaction : public KuduRowSetTest {
   // Delete the data that was inserted and clear the expected state, end to front.
   void DeleteRows(int nrows) {
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    KuduPartialRow del_row(&client_schema_);
+    YBPartialRow del_row(&client_schema_);
 
     for (int i = nrows - 1; i >= 0; i--) {
       CHECK_OK(del_row.SetString(0, expected_state_[i].key));
@@ -115,7 +115,7 @@ class TestMajorDeltaCompaction : public KuduRowSetTest {
   // Makes corresponding updates in expected_state_.
   void UpdateRows(int nrows, bool even) {
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    KuduPartialRow prow(&client_schema_);
+    YBPartialRow prow(&client_schema_);
     for (int idx = 0; idx < nrows; idx++) {
       ExpectedRow* row = &expected_state_[idx];
       if ((idx % 2 == 0) == even) {

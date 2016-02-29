@@ -78,21 +78,21 @@ using std::set;
 using std::string;
 using std::vector;
 
-MAKE_ENUM_LIMITS(yb::client::KuduSession::FlushMode,
-                 yb::client::KuduSession::AUTO_FLUSH_SYNC,
-                 yb::client::KuduSession::MANUAL_FLUSH);
+MAKE_ENUM_LIMITS(yb::client::YBSession::FlushMode,
+                 yb::client::YBSession::AUTO_FLUSH_SYNC,
+                 yb::client::YBSession::MANUAL_FLUSH);
 
-MAKE_ENUM_LIMITS(yb::client::KuduSession::ExternalConsistencyMode,
-                 yb::client::KuduSession::CLIENT_PROPAGATED,
-                 yb::client::KuduSession::COMMIT_WAIT);
+MAKE_ENUM_LIMITS(yb::client::YBSession::ExternalConsistencyMode,
+                 yb::client::YBSession::CLIENT_PROPAGATED,
+                 yb::client::YBSession::COMMIT_WAIT);
 
-MAKE_ENUM_LIMITS(yb::client::KuduScanner::ReadMode,
-                 yb::client::KuduScanner::READ_LATEST,
-                 yb::client::KuduScanner::READ_AT_SNAPSHOT);
+MAKE_ENUM_LIMITS(yb::client::YBScanner::ReadMode,
+                 yb::client::YBScanner::READ_LATEST,
+                 yb::client::YBScanner::READ_AT_SNAPSHOT);
 
-MAKE_ENUM_LIMITS(yb::client::KuduScanner::OrderMode,
-                 yb::client::KuduScanner::UNORDERED,
-                 yb::client::KuduScanner::ORDERED);
+MAKE_ENUM_LIMITS(yb::client::YBScanner::OrderMode,
+                 yb::client::YBScanner::UNORDERED,
+                 yb::client::YBScanner::ORDERED);
 
 namespace yb {
 namespace client {
@@ -118,15 +118,15 @@ static void InitializeBasicLogging() {
   InitGoogleLoggingSafeBasic(kProgName);
 }
 
-// Adapts between the internal LogSeverity and the client's KuduLogSeverity.
-static void LoggingAdapterCB(KuduLoggingCallback* user_cb,
+// Adapts between the internal LogSeverity and the client's YBLogSeverity.
+static void LoggingAdapterCB(YBLoggingCallback* user_cb,
                              LogSeverity severity,
                              const char* filename,
                              int line_number,
                              const struct ::tm* time,
                              const char* message,
                              size_t message_len) {
-  KuduLogSeverity client_severity;
+  YBLogSeverity client_severity;
   switch (severity) {
     case yb::SEVERITY_INFO:
       client_severity = SEVERITY_INFO;
@@ -141,13 +141,13 @@ static void LoggingAdapterCB(KuduLoggingCallback* user_cb,
       client_severity = SEVERITY_FATAL;
       break;
     default:
-      LOG(FATAL) << "Unknown Kudu log severity: " << severity;
+      LOG(FATAL) << "Unknown YB log severity: " << severity;
   }
   user_cb->Run(client_severity, filename, line_number, time,
                message, message_len);
 }
 
-void InstallLoggingCallback(KuduLoggingCallback* cb) {
+void InstallLoggingCallback(YBLoggingCallback* cb) {
   RegisterLoggingCallback(Bind(&LoggingAdapterCB, Unretained(cb)));
 }
 
@@ -163,45 +163,45 @@ Status SetInternalSignalNumber(int signum) {
   return SetStackTraceSignal(signum);
 }
 
-KuduClientBuilder::KuduClientBuilder()
-  : data_(new KuduClientBuilder::Data()) {
+YBClientBuilder::YBClientBuilder()
+  : data_(new YBClientBuilder::Data()) {
 }
 
-KuduClientBuilder::~KuduClientBuilder() {
+YBClientBuilder::~YBClientBuilder() {
   delete data_;
 }
 
-KuduClientBuilder& KuduClientBuilder::clear_master_server_addrs() {
+YBClientBuilder& YBClientBuilder::clear_master_server_addrs() {
   data_->master_server_addrs_.clear();
   return *this;
 }
 
-KuduClientBuilder& KuduClientBuilder::master_server_addrs(const vector<string>& addrs) {
+YBClientBuilder& YBClientBuilder::master_server_addrs(const vector<string>& addrs) {
   for (const string& addr : addrs) {
     data_->master_server_addrs_.push_back(addr);
   }
   return *this;
 }
 
-KuduClientBuilder& KuduClientBuilder::add_master_server_addr(const string& addr) {
+YBClientBuilder& YBClientBuilder::add_master_server_addr(const string& addr) {
   data_->master_server_addrs_.push_back(addr);
   return *this;
 }
 
-KuduClientBuilder& KuduClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
+YBClientBuilder& YBClientBuilder::default_admin_operation_timeout(const MonoDelta& timeout) {
   data_->default_admin_operation_timeout_ = timeout;
   return *this;
 }
 
-KuduClientBuilder& KuduClientBuilder::default_rpc_timeout(const MonoDelta& timeout) {
+YBClientBuilder& YBClientBuilder::default_rpc_timeout(const MonoDelta& timeout) {
   data_->default_rpc_timeout_ = timeout;
   return *this;
 }
 
-Status KuduClientBuilder::Build(shared_ptr<KuduClient>* client) {
+Status YBClientBuilder::Build(shared_ptr<YBClient>* client) {
   RETURN_NOT_OK(CheckCPUFlags());
 
-  shared_ptr<KuduClient> c(new KuduClient());
+  shared_ptr<YBClient> c(new YBClient());
 
   // Init messenger.
   MessengerBuilder builder("client");
@@ -229,44 +229,44 @@ Status KuduClientBuilder::Build(shared_ptr<KuduClient>* client) {
   return Status::OK();
 }
 
-KuduClient::KuduClient()
-  : data_(new KuduClient::Data()) {
+YBClient::YBClient()
+  : data_(new YBClient::Data()) {
 }
 
-KuduClient::~KuduClient() {
+YBClient::~YBClient() {
   delete data_;
 }
 
-KuduTableCreator* KuduClient::NewTableCreator() {
-  return new KuduTableCreator(this);
+YBTableCreator* YBClient::NewTableCreator() {
+  return new YBTableCreator(this);
 }
 
-Status KuduClient::IsCreateTableInProgress(const string& table_name,
+Status YBClient::IsCreateTableInProgress(const string& table_name,
                                            bool *create_in_progress) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->IsCreateTableInProgress(this, table_name, deadline, create_in_progress);
 }
 
-Status KuduClient::DeleteTable(const string& table_name) {
+Status YBClient::DeleteTable(const string& table_name) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->DeleteTable(this, table_name, deadline);
 }
 
-KuduTableAlterer* KuduClient::NewTableAlterer(const string& name) {
-  return new KuduTableAlterer(this, name);
+YBTableAlterer* YBClient::NewTableAlterer(const string& name) {
+  return new YBTableAlterer(this, name);
 }
 
-Status KuduClient::IsAlterTableInProgress(const string& table_name,
+Status YBClient::IsAlterTableInProgress(const string& table_name,
                                           bool *alter_in_progress) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   return data_->IsAlterTableInProgress(this, table_name, deadline, alter_in_progress);
 }
 
-Status KuduClient::GetTableSchema(const string& table_name,
-                                  KuduSchema* schema) {
+Status YBClient::GetTableSchema(const string& table_name,
+                                  YBSchema* schema) {
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
   deadline.AddDelta(default_admin_operation_timeout());
   string table_id_ignored;
@@ -279,7 +279,7 @@ Status KuduClient::GetTableSchema(const string& table_name,
                                &table_id_ignored);
 }
 
-Status KuduClient::ListTabletServers(vector<KuduTabletServer*>* tablet_servers) {
+Status YBClient::ListTabletServers(vector<YBTabletServer*>* tablet_servers) {
   ListTabletServersRequestPB req;
   ListTabletServersResponsePB resp;
 
@@ -300,15 +300,15 @@ Status KuduClient::ListTabletServers(vector<KuduTabletServer*>* tablet_servers) 
   }
   for (int i = 0; i < resp.servers_size(); i++) {
     const ListTabletServersResponsePB_Entry& e = resp.servers(i);
-    auto ts = new KuduTabletServer();
-    ts->data_ = new KuduTabletServer::Data(e.instance_id().permanent_uuid(),
+    auto ts = new YBTabletServer();
+    ts->data_ = new YBTabletServer::Data(e.instance_id().permanent_uuid(),
                                            e.registration().rpc_addresses(0).host());
     tablet_servers->push_back(ts);
   }
   return Status::OK();
 }
 
-Status KuduClient::ListTables(vector<string>* tables,
+Status YBClient::ListTables(vector<string>* tables,
                               const string& filter) {
   ListTablesRequestPB req;
   ListTablesResponsePB resp;
@@ -337,7 +337,7 @@ Status KuduClient::ListTables(vector<string>* tables,
   return Status::OK();
 }
 
-Status KuduClient::TableExists(const string& table_name, bool* exists) {
+Status YBClient::TableExists(const string& table_name, bool* exists) {
   std::vector<std::string> tables;
   RETURN_NOT_OK(ListTables(&tables, table_name));
   for (const string& table : tables) {
@@ -350,9 +350,9 @@ Status KuduClient::TableExists(const string& table_name, bool* exists) {
   return Status::OK();
 }
 
-Status KuduClient::OpenTable(const string& table_name,
-                             shared_ptr<KuduTable>* table) {
-  KuduSchema schema;
+Status YBClient::OpenTable(const string& table_name,
+                             shared_ptr<YBTable>* table) {
+  YBSchema schema;
   string table_id;
   PartitionSchema partition_schema;
   MonoTime deadline = MonoTime::Now(MonoTime::FINE);
@@ -364,9 +364,9 @@ Status KuduClient::OpenTable(const string& table_name,
                                       &partition_schema,
                                       &table_id));
 
-  // In the future, probably will look up the table in some map to reuse KuduTable
+  // In the future, probably will look up the table in some map to reuse YBTable
   // instances.
-  shared_ptr<KuduTable> ret(new KuduTable(shared_from_this(), table_name, table_id,
+  shared_ptr<YBTable> ret(new YBTable(shared_from_this(), table_name, table_id,
                                           schema, partition_schema));
   RETURN_NOT_OK(ret->data_->Open());
   table->swap(ret);
@@ -374,62 +374,62 @@ Status KuduClient::OpenTable(const string& table_name,
   return Status::OK();
 }
 
-shared_ptr<KuduSession> KuduClient::NewSession() {
-  shared_ptr<KuduSession> ret(new KuduSession(shared_from_this()));
+shared_ptr<YBSession> YBClient::NewSession() {
+  shared_ptr<YBSession> ret(new YBSession(shared_from_this()));
   ret->data_->Init(ret);
   return ret;
 }
 
-bool KuduClient::IsMultiMaster() const {
+bool YBClient::IsMultiMaster() const {
   return data_->master_server_addrs_.size() > 1;
 }
 
-const MonoDelta& KuduClient::default_admin_operation_timeout() const {
+const MonoDelta& YBClient::default_admin_operation_timeout() const {
   return data_->default_admin_operation_timeout_;
 }
 
-const MonoDelta& KuduClient::default_rpc_timeout() const {
+const MonoDelta& YBClient::default_rpc_timeout() const {
   return data_->default_rpc_timeout_;
 }
 
-const uint64_t KuduClient::kNoTimestamp = 0;
+const uint64_t YBClient::kNoTimestamp = 0;
 
-uint64_t KuduClient::GetLatestObservedTimestamp() const {
+uint64_t YBClient::GetLatestObservedTimestamp() const {
   return data_->GetLatestObservedTimestamp();
 }
 
-void KuduClient::SetLatestObservedTimestamp(uint64_t ht_timestamp) {
+void YBClient::SetLatestObservedTimestamp(uint64_t ht_timestamp) {
   data_->UpdateLatestObservedTimestamp(ht_timestamp);
 }
 
 ////////////////////////////////////////////////////////////
-// KuduTableCreator
+// YBTableCreator
 ////////////////////////////////////////////////////////////
 
-KuduTableCreator::KuduTableCreator(KuduClient* client)
-  : data_(new KuduTableCreator::Data(client)) {
+YBTableCreator::YBTableCreator(YBClient* client)
+  : data_(new YBTableCreator::Data(client)) {
 }
 
-KuduTableCreator::~KuduTableCreator() {
+YBTableCreator::~YBTableCreator() {
   delete data_;
 }
 
-KuduTableCreator& KuduTableCreator::table_name(const string& name) {
+YBTableCreator& YBTableCreator::table_name(const string& name) {
   data_->table_name_ = name;
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::schema(const KuduSchema* schema) {
+YBTableCreator& YBTableCreator::schema(const YBSchema* schema) {
   data_->schema_ = schema;
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
+YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
                                                         int32_t num_buckets) {
   return add_hash_partitions(columns, num_buckets, 0);
 }
 
-KuduTableCreator& KuduTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
+YBTableCreator& YBTableCreator::add_hash_partitions(const std::vector<std::string>& columns,
                                                         int32_t num_buckets, int32_t seed) {
   PartitionSchemaPB::HashBucketSchemaPB* bucket_schema =
     data_->partition_schema_.add_hash_bucket_schemas();
@@ -441,7 +441,7 @@ KuduTableCreator& KuduTableCreator::add_hash_partitions(const std::vector<std::s
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::set_range_partition_columns(
+YBTableCreator& YBTableCreator::set_range_partition_columns(
     const std::vector<std::string>& columns) {
   PartitionSchemaPB::RangeSchemaPB* range_schema =
     data_->partition_schema_.mutable_range_schema();
@@ -453,27 +453,27 @@ KuduTableCreator& KuduTableCreator::set_range_partition_columns(
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::split_rows(const vector<const KuduPartialRow*>& rows) {
+YBTableCreator& YBTableCreator::split_rows(const vector<const YBPartialRow*>& rows) {
   data_->split_rows_ = rows;
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::num_replicas(int num_replicas) {
+YBTableCreator& YBTableCreator::num_replicas(int num_replicas) {
   data_->num_replicas_ = num_replicas;
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::timeout(const MonoDelta& timeout) {
+YBTableCreator& YBTableCreator::timeout(const MonoDelta& timeout) {
   data_->timeout_ = timeout;
   return *this;
 }
 
-KuduTableCreator& KuduTableCreator::wait(bool wait) {
+YBTableCreator& YBTableCreator::wait(bool wait) {
   data_->wait_ = wait;
   return *this;
 }
 
-Status KuduTableCreator::Create() {
+Status YBTableCreator::Create() {
   if (!data_->table_name_.length()) {
     return Status::InvalidArgument("Missing table name");
   }
@@ -492,7 +492,7 @@ Status KuduTableCreator::Create() {
 
   RowOperationsPBEncoder encoder(req.mutable_split_rows());
 
-  for (const KuduPartialRow* row : data_->split_rows_) {
+  for (const YBPartialRow* row : data_->split_rows_) {
     encoder.Add(RowOperationsPB::SPLIT_ROW, *row);
   }
   req.mutable_partition_schema()->CopyFrom(data_->partition_schema_);
@@ -522,56 +522,56 @@ Status KuduTableCreator::Create() {
 }
 
 ////////////////////////////////////////////////////////////
-// KuduTable
+// YBTable
 ////////////////////////////////////////////////////////////
 
-KuduTable::KuduTable(const shared_ptr<KuduClient>& client,
+YBTable::YBTable(const shared_ptr<YBClient>& client,
                      const string& name,
                      const string& table_id,
-                     const KuduSchema& schema,
+                     const YBSchema& schema,
                      const PartitionSchema& partition_schema)
-  : data_(new KuduTable::Data(client, name, table_id, schema, partition_schema)) {
+  : data_(new YBTable::Data(client, name, table_id, schema, partition_schema)) {
 }
 
-KuduTable::~KuduTable() {
+YBTable::~YBTable() {
   delete data_;
 }
 
-const string& KuduTable::name() const {
+const string& YBTable::name() const {
   return data_->name_;
 }
 
-const string& KuduTable::id() const {
+const string& YBTable::id() const {
   return data_->id_;
 }
 
-const KuduSchema& KuduTable::schema() const {
+const YBSchema& YBTable::schema() const {
   return data_->schema_;
 }
 
-KuduInsert* KuduTable::NewInsert() {
-  return new KuduInsert(shared_from_this());
+YBInsert* YBTable::NewInsert() {
+  return new YBInsert(shared_from_this());
 }
 
-KuduUpdate* KuduTable::NewUpdate() {
-  return new KuduUpdate(shared_from_this());
+YBUpdate* YBTable::NewUpdate() {
+  return new YBUpdate(shared_from_this());
 }
 
-KuduDelete* KuduTable::NewDelete() {
-  return new KuduDelete(shared_from_this());
+YBDelete* YBTable::NewDelete() {
+  return new YBDelete(shared_from_this());
 }
 
-KuduClient* KuduTable::client() const {
+YBClient* YBTable::client() const {
   return data_->client_.get();
 }
 
-const PartitionSchema& KuduTable::partition_schema() const {
+const PartitionSchema& YBTable::partition_schema() const {
   return data_->partition_schema_;
 }
 
-KuduPredicate* KuduTable::NewComparisonPredicate(const Slice& col_name,
-                                                 KuduPredicate::ComparisonOp op,
-                                                 KuduValue* value) {
+YBPredicate* YBTable::NewComparisonPredicate(const Slice& col_name,
+                                                 YBPredicate::ComparisonOp op,
+                                                 YBValue* value) {
   StringPiece name_sp(reinterpret_cast<const char*>(col_name.data()), col_name.size());
   const Schema* s = data_->schema_.schema_;
   int col_idx = s->find_column(name_sp);
@@ -581,63 +581,63 @@ KuduPredicate* KuduTable::NewComparisonPredicate(const Slice& col_name,
     //
     // This makes the API more "fluent".
     delete value; // we always take ownership of 'value'.
-    return new KuduPredicate(new ErrorPredicateData(
+    return new YBPredicate(new ErrorPredicateData(
                                  Status::NotFound("column not found", col_name)));
   }
 
-  return new KuduPredicate(new ComparisonPredicateData(s->column(col_idx), op, value));
+  return new YBPredicate(new ComparisonPredicateData(s->column(col_idx), op, value));
 }
 
 ////////////////////////////////////////////////////////////
 // Error
 ////////////////////////////////////////////////////////////
 
-const Status& KuduError::status() const {
+const Status& YBError::status() const {
   return data_->status_;
 }
 
-const KuduWriteOperation& KuduError::failed_op() const {
+const YBWriteOperation& YBError::failed_op() const {
   return *data_->failed_op_;
 }
 
-KuduWriteOperation* KuduError::release_failed_op() {
+YBWriteOperation* YBError::release_failed_op() {
   CHECK_NOTNULL(data_->failed_op_.get());
   return data_->failed_op_.release();
 }
 
-bool KuduError::was_possibly_successful() const {
+bool YBError::was_possibly_successful() const {
   // TODO: implement me - right now be conservative.
   return true;
 }
 
-KuduError::KuduError(KuduWriteOperation* failed_op,
+YBError::YBError(YBWriteOperation* failed_op,
                      const Status& status)
-  : data_(new KuduError::Data(gscoped_ptr<KuduWriteOperation>(failed_op),
+  : data_(new YBError::Data(gscoped_ptr<YBWriteOperation>(failed_op),
                               status)) {
 }
 
-KuduError::~KuduError() {
+YBError::~YBError() {
   delete data_;
 }
 
 ////////////////////////////////////////////////////////////
-// KuduSession
+// YBSession
 ////////////////////////////////////////////////////////////
 
-KuduSession::KuduSession(const shared_ptr<KuduClient>& client)
-  : data_(new KuduSession::Data(client)) {
+YBSession::YBSession(const shared_ptr<YBClient>& client)
+  : data_(new YBSession::Data(client)) {
 }
 
-KuduSession::~KuduSession() {
+YBSession::~YBSession() {
   WARN_NOT_OK(data_->Close(true), "Closed Session with pending operations.");
   delete data_;
 }
 
-Status KuduSession::Close() {
+Status YBSession::Close() {
   return data_->Close(false);
 }
 
-Status KuduSession::SetFlushMode(FlushMode m) {
+Status YBSession::SetFlushMode(FlushMode m) {
   if (m == AUTO_FLUSH_BACKGROUND) {
     return Status::NotSupported("AUTO_FLUSH_BACKGROUND has not been implemented in the"
         " c++ client (see KUDU-456).");
@@ -655,7 +655,7 @@ Status KuduSession::SetFlushMode(FlushMode m) {
   return Status::OK();
 }
 
-Status KuduSession::SetExternalConsistencyMode(ExternalConsistencyMode m) {
+Status YBSession::SetExternalConsistencyMode(ExternalConsistencyMode m) {
   if (data_->batcher_->HasPendingOperations()) {
     // TODO: there may be a more reasonable behavior here.
     return Status::IllegalState("Cannot change external consistency mode when writes are "
@@ -670,20 +670,20 @@ Status KuduSession::SetExternalConsistencyMode(ExternalConsistencyMode m) {
   return Status::OK();
 }
 
-void KuduSession::SetTimeoutMillis(int millis) {
+void YBSession::SetTimeoutMillis(int millis) {
   CHECK_GE(millis, 0);
   data_->timeout_ms_ = millis;
   data_->batcher_->SetTimeoutMillis(millis);
 }
 
-Status KuduSession::Flush() {
+Status YBSession::Flush() {
   Synchronizer s;
-  KuduStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
+  YBStatusMemberCallback<Synchronizer> ksmcb(&s, &Synchronizer::StatusCB);
   FlushAsync(&ksmcb);
   return s.Wait();
 }
 
-void KuduSession::FlushAsync(KuduStatusCallback* user_callback) {
+void YBSession::FlushAsync(YBStatusCallback* user_callback) {
   CHECK_EQ(data_->flush_mode_, MANUAL_FLUSH) << "TODO: handle other flush modes";
 
   // Swap in a new batcher to start building the next batch.
@@ -701,7 +701,7 @@ void KuduSession::FlushAsync(KuduStatusCallback* user_callback) {
   old_batcher->FlushAsync(user_callback);
 }
 
-bool KuduSession::HasPendingOperations() const {
+bool YBSession::HasPendingOperations() const {
   lock_guard<simple_spinlock> l(&data_->lock_);
   if (data_->batcher_->HasPendingOperations()) {
     return true;
@@ -714,18 +714,18 @@ bool KuduSession::HasPendingOperations() const {
   return false;
 }
 
-Status KuduSession::Apply(KuduWriteOperation* write_op) {
+Status YBSession::Apply(YBWriteOperation* write_op) {
   if (!write_op->row().IsKeySet()) {
     Status status = Status::IllegalState("Key not specified", write_op->ToString());
-    data_->error_collector_->AddError(gscoped_ptr<KuduError>(
-        new KuduError(write_op, status)));
+    data_->error_collector_->AddError(gscoped_ptr<YBError>(
+        new YBError(write_op, status)));
     return status;
   }
 
   Status s = data_->batcher_->Add(write_op);
   if (!PREDICT_FALSE(s.ok())) {
-    data_->error_collector_->AddError(gscoped_ptr<KuduError>(
-        new KuduError(write_op, s)));
+    data_->error_collector_->AddError(gscoped_ptr<YBError>(
+        new YBError(write_op, s)));
     return s;
   }
 
@@ -736,73 +736,73 @@ Status KuduSession::Apply(KuduWriteOperation* write_op) {
   return Status::OK();
 }
 
-int KuduSession::CountBufferedOperations() const {
+int YBSession::CountBufferedOperations() const {
   lock_guard<simple_spinlock> l(&data_->lock_);
   CHECK_EQ(data_->flush_mode_, MANUAL_FLUSH);
 
   return data_->batcher_->CountBufferedOperations();
 }
 
-int KuduSession::CountPendingErrors() const {
+int YBSession::CountPendingErrors() const {
   return data_->error_collector_->CountErrors();
 }
 
-void KuduSession::GetPendingErrors(vector<KuduError*>* errors, bool* overflowed) {
+void YBSession::GetPendingErrors(vector<YBError*>* errors, bool* overflowed) {
   data_->error_collector_->GetErrors(errors, overflowed);
 }
 
-KuduClient* KuduSession::client() const {
+YBClient* YBSession::client() const {
   return data_->client_.get();
 }
 
 ////////////////////////////////////////////////////////////
-// KuduTableAlterer
+// YBTableAlterer
 ////////////////////////////////////////////////////////////
-KuduTableAlterer::KuduTableAlterer(KuduClient* client, const string& name)
+YBTableAlterer::YBTableAlterer(YBClient* client, const string& name)
   : data_(new Data(client, name)) {
 }
 
-KuduTableAlterer::~KuduTableAlterer() {
+YBTableAlterer::~YBTableAlterer() {
   delete data_;
 }
 
-KuduTableAlterer* KuduTableAlterer::RenameTo(const string& new_name) {
+YBTableAlterer* YBTableAlterer::RenameTo(const string& new_name) {
   data_->rename_to_ = new_name;
   return this;
 }
 
-KuduColumnSpec* KuduTableAlterer::AddColumn(const string& name) {
+YBColumnSpec* YBTableAlterer::AddColumn(const string& name) {
   Data::Step s = {AlterTableRequestPB::ADD_COLUMN,
-                  new KuduColumnSpec(name)};
+                  new YBColumnSpec(name)};
   data_->steps_.push_back(s);
   return s.spec;
 }
 
-KuduColumnSpec* KuduTableAlterer::AlterColumn(const string& name) {
+YBColumnSpec* YBTableAlterer::AlterColumn(const string& name) {
   Data::Step s = {AlterTableRequestPB::ALTER_COLUMN,
-                  new KuduColumnSpec(name)};
+                  new YBColumnSpec(name)};
   data_->steps_.push_back(s);
   return s.spec;
 }
 
-KuduTableAlterer* KuduTableAlterer::DropColumn(const string& name) {
+YBTableAlterer* YBTableAlterer::DropColumn(const string& name) {
   Data::Step s = {AlterTableRequestPB::DROP_COLUMN,
-                  new KuduColumnSpec(name)};
+                  new YBColumnSpec(name)};
   data_->steps_.push_back(s);
   return this;
 }
 
-KuduTableAlterer* KuduTableAlterer::timeout(const MonoDelta& timeout) {
+YBTableAlterer* YBTableAlterer::timeout(const MonoDelta& timeout) {
   data_->timeout_ = timeout;
   return this;
 }
 
-KuduTableAlterer* KuduTableAlterer::wait(bool wait) {
+YBTableAlterer* YBTableAlterer::wait(bool wait) {
   data_->wait_ = wait;
   return this;
 }
 
-Status KuduTableAlterer::Alter() {
+Status YBTableAlterer::Alter() {
   AlterTableRequestPB req;
   RETURN_NOT_OK(data_->ToRequest(&req));
 
@@ -822,23 +822,23 @@ Status KuduTableAlterer::Alter() {
 }
 
 ////////////////////////////////////////////////////////////
-// KuduScanner
+// YBScanner
 ////////////////////////////////////////////////////////////
 
-KuduScanner::KuduScanner(KuduTable* table)
-  : data_(new KuduScanner::Data(table)) {
+YBScanner::YBScanner(YBTable* table)
+  : data_(new YBScanner::Data(table)) {
 }
 
-KuduScanner::~KuduScanner() {
+YBScanner::~YBScanner() {
   Close();
   delete data_;
 }
 
-Status KuduScanner::SetProjectedColumns(const vector<string>& col_names) {
+Status YBScanner::SetProjectedColumns(const vector<string>& col_names) {
   return SetProjectedColumnNames(col_names);
 }
 
-Status KuduScanner::SetProjectedColumnNames(const vector<string>& col_names) {
+Status YBScanner::SetProjectedColumnNames(const vector<string>& col_names) {
   if (data_->open_) {
     return Status::IllegalState("Projection must be set before Open()");
   }
@@ -858,7 +858,7 @@ Status KuduScanner::SetProjectedColumnNames(const vector<string>& col_names) {
   return SetProjectedColumnIndexes(col_indexes);
 }
 
-Status KuduScanner::SetProjectedColumnIndexes(const vector<int>& col_indexes) {
+Status YBScanner::SetProjectedColumnIndexes(const vector<int>& col_indexes) {
   if (data_->open_) {
     return Status::IllegalState("Projection must be set before Open()");
   }
@@ -880,13 +880,13 @@ Status KuduScanner::SetProjectedColumnIndexes(const vector<int>& col_indexes) {
   return Status::OK();
 }
 
-Status KuduScanner::SetBatchSizeBytes(uint32_t batch_size) {
+Status YBScanner::SetBatchSizeBytes(uint32_t batch_size) {
   data_->has_batch_size_bytes_ = true;
   data_->batch_size_bytes_ = batch_size;
   return Status::OK();
 }
 
-Status KuduScanner::SetReadMode(ReadMode read_mode) {
+Status YBScanner::SetReadMode(ReadMode read_mode) {
   if (data_->open_) {
     return Status::IllegalState("Read mode must be set before Open()");
   }
@@ -897,7 +897,7 @@ Status KuduScanner::SetReadMode(ReadMode read_mode) {
   return Status::OK();
 }
 
-Status KuduScanner::SetOrderMode(OrderMode order_mode) {
+Status YBScanner::SetOrderMode(OrderMode order_mode) {
   if (data_->open_) {
     return Status::IllegalState("Order mode must be set before Open()");
   }
@@ -908,7 +908,7 @@ Status KuduScanner::SetOrderMode(OrderMode order_mode) {
   return Status::OK();
 }
 
-Status KuduScanner::SetFaultTolerant() {
+Status YBScanner::SetFaultTolerant() {
   if (data_->open_) {
     return Status::IllegalState("Fault-tolerance must be set before Open()");
   }
@@ -917,7 +917,7 @@ Status KuduScanner::SetFaultTolerant() {
   return Status::OK();
 }
 
-Status KuduScanner::SetSnapshotMicros(uint64_t snapshot_timestamp_micros) {
+Status YBScanner::SetSnapshotMicros(uint64_t snapshot_timestamp_micros) {
   if (data_->open_) {
     return Status::IllegalState("Snapshot timestamp must be set before Open()");
   }
@@ -927,7 +927,7 @@ Status KuduScanner::SetSnapshotMicros(uint64_t snapshot_timestamp_micros) {
   return Status::OK();
 }
 
-Status KuduScanner::SetSnapshotRaw(uint64_t snapshot_timestamp) {
+Status YBScanner::SetSnapshotRaw(uint64_t snapshot_timestamp) {
   if (data_->open_) {
     return Status::IllegalState("Snapshot timestamp must be set before Open()");
   }
@@ -935,7 +935,7 @@ Status KuduScanner::SetSnapshotRaw(uint64_t snapshot_timestamp) {
   return Status::OK();
 }
 
-Status KuduScanner::SetSelection(KuduClient::ReplicaSelection selection) {
+Status YBScanner::SetSelection(YBClient::ReplicaSelection selection) {
   if (data_->open_) {
     return Status::IllegalState("Replica selection must be set before Open()");
   }
@@ -943,7 +943,7 @@ Status KuduScanner::SetSelection(KuduClient::ReplicaSelection selection) {
   return Status::OK();
 }
 
-Status KuduScanner::SetTimeoutMillis(int millis) {
+Status YBScanner::SetTimeoutMillis(int millis) {
   if (data_->open_) {
     return Status::IllegalState("Timeout must be set before Open()");
   }
@@ -951,7 +951,7 @@ Status KuduScanner::SetTimeoutMillis(int millis) {
   return Status::OK();
 }
 
-Status KuduScanner::AddConjunctPredicate(KuduPredicate* pred) {
+Status YBScanner::AddConjunctPredicate(YBPredicate* pred) {
   // Take ownership even if we return a bad status.
   data_->pool_.Add(pred);
   if (data_->open_) {
@@ -960,7 +960,7 @@ Status KuduScanner::AddConjunctPredicate(KuduPredicate* pred) {
   return pred->data_->AddToScanSpec(&data_->spec_);
 }
 
-Status KuduScanner::AddLowerBound(const KuduPartialRow& key) {
+Status YBScanner::AddLowerBound(const YBPartialRow& key) {
   gscoped_ptr<string> enc(new string());
   RETURN_NOT_OK(key.EncodeRowKey(enc.get()));
   RETURN_NOT_OK(AddLowerBoundRaw(Slice(*enc)));
@@ -968,7 +968,7 @@ Status KuduScanner::AddLowerBound(const KuduPartialRow& key) {
   return Status::OK();
 }
 
-Status KuduScanner::AddLowerBoundRaw(const Slice& key) {
+Status YBScanner::AddLowerBoundRaw(const Slice& key) {
   // Make a copy of the key.
   gscoped_ptr<EncodedKey> enc_key;
   RETURN_NOT_OK(EncodedKey::DecodeEncodedString(
@@ -978,7 +978,7 @@ Status KuduScanner::AddLowerBoundRaw(const Slice& key) {
   return Status::OK();
 }
 
-Status KuduScanner::AddExclusiveUpperBound(const KuduPartialRow& key) {
+Status YBScanner::AddExclusiveUpperBound(const YBPartialRow& key) {
   gscoped_ptr<string> enc(new string());
   RETURN_NOT_OK(key.EncodeRowKey(enc.get()));
   RETURN_NOT_OK(AddExclusiveUpperBoundRaw(Slice(*enc)));
@@ -986,7 +986,7 @@ Status KuduScanner::AddExclusiveUpperBound(const KuduPartialRow& key) {
   return Status::OK();
 }
 
-Status KuduScanner::AddExclusiveUpperBoundRaw(const Slice& key) {
+Status YBScanner::AddExclusiveUpperBoundRaw(const Slice& key) {
   // Make a copy of the key.
   gscoped_ptr<EncodedKey> enc_key;
   RETURN_NOT_OK(EncodedKey::DecodeEncodedString(
@@ -996,17 +996,17 @@ Status KuduScanner::AddExclusiveUpperBoundRaw(const Slice& key) {
   return Status::OK();
 }
 
-Status KuduScanner::AddLowerBoundPartitionKeyRaw(const Slice& partition_key) {
+Status YBScanner::AddLowerBoundPartitionKeyRaw(const Slice& partition_key) {
   data_->spec_.SetLowerBoundPartitionKey(partition_key);
   return Status::OK();
 }
 
-Status KuduScanner::AddExclusiveUpperBoundPartitionKeyRaw(const Slice& partition_key) {
+Status YBScanner::AddExclusiveUpperBoundPartitionKeyRaw(const Slice& partition_key) {
   data_->spec_.SetExclusiveUpperBoundPartitionKey(partition_key);
   return Status::OK();
 }
 
-Status KuduScanner::SetCacheBlocks(bool cache_blocks) {
+Status YBScanner::SetCacheBlocks(bool cache_blocks) {
   if (data_->open_) {
     return Status::IllegalState("Block caching must be set before Open()");
   }
@@ -1014,13 +1014,13 @@ Status KuduScanner::SetCacheBlocks(bool cache_blocks) {
   return Status::OK();
 }
 
-KuduSchema KuduScanner::GetProjectionSchema() const {
+YBSchema YBScanner::GetProjectionSchema() const {
   return data_->client_projection_;
 }
 
 namespace {
 // Callback for the RPC sent by Close().
-// We can't use the KuduScanner response and RPC controller members for this
+// We can't use the YBScanner response and RPC controller members for this
 // call, because the scanner object may be destructed while the call is still
 // being processed.
 struct CloseCallback {
@@ -1037,7 +1037,7 @@ struct CloseCallback {
 };
 } // anonymous namespace
 
-string KuduScanner::ToString() const {
+string YBScanner::ToString() const {
   Slice start_key = data_->spec_.lower_bound_key() ?
     data_->spec_.lower_bound_key()->encoded_key() : Slice("INF");
   Slice end_key = data_->spec_.exclusive_upper_bound_key() ?
@@ -1046,7 +1046,7 @@ string KuduScanner::ToString() const {
                              start_key.ToDebugString(), end_key.ToDebugString());
 }
 
-Status KuduScanner::Open() {
+Status YBScanner::Open() {
   CHECK(!data_->open_) << "Scanner already open";
   CHECK(data_->projection_ != nullptr) << "No projection provided";
 
@@ -1101,11 +1101,11 @@ Status KuduScanner::Open() {
   return Status::OK();
 }
 
-Status KuduScanner::KeepAlive() {
+Status YBScanner::KeepAlive() {
   return data_->KeepAlive();
 }
 
-void KuduScanner::Close() {
+void YBScanner::Close() {
   if (!data_->open_) return;
   CHECK(data_->proxy_);
 
@@ -1119,7 +1119,7 @@ void KuduScanner::Close() {
   if (!data_->next_req_.scanner_id().empty()) {
     gscoped_ptr<CloseCallback> closer(new CloseCallback);
     closer->scanner_id = data_->next_req_.scanner_id();
-    data_->PrepareRequest(KuduScanner::Data::CLOSE);
+    data_->PrepareRequest(YBScanner::Data::CLOSE);
     data_->next_req_.set_close_scanner(true);
     closer->controller.set_timeout(data_->timeout_);
     data_->proxy_->ScanAsync(data_->next_req_, &closer->response, &closer->controller,
@@ -1131,20 +1131,20 @@ void KuduScanner::Close() {
   return;
 }
 
-bool KuduScanner::HasMoreRows() const {
+bool YBScanner::HasMoreRows() const {
   CHECK(data_->open_);
   return data_->data_in_open_ || // more data in hand
       data_->last_response_.has_more_results() || // more data in this tablet
       data_->MoreTablets(); // more tablets to scan, possibly with more data
 }
 
-Status KuduScanner::NextBatch(vector<KuduRowResult>* rows) {
+Status YBScanner::NextBatch(vector<YBRowResult>* rows) {
   RETURN_NOT_OK(NextBatch(&data_->batch_for_old_api_));
   data_->batch_for_old_api_.data_->ExtractRows(rows);
   return Status::OK();
 }
 
-Status KuduScanner::NextBatch(KuduScanBatch* result) {
+Status YBScanner::NextBatch(YBScanBatch* result) {
   // TODO: do some double-buffering here -- when we return this batch
   // we should already have fired off the RPC for the next batch, but
   // need to do some swapping of the response objects around to avoid
@@ -1188,7 +1188,7 @@ Status KuduScanner::NextBatch(KuduScanBatch* result) {
 
     data_->controller_.Reset();
     data_->controller_.set_deadline(rpc_deadline);
-    data_->PrepareRequest(KuduScanner::Data::CONTINUE);
+    data_->PrepareRequest(YBScanner::Data::CONTINUE);
     Status rpc_status = data_->proxy_->Scan(data_->next_req_,
                                             &data_->last_response_,
                                             &data_->controller_);
@@ -1240,7 +1240,7 @@ Status KuduScanner::NextBatch(KuduScanBatch* result) {
   }
 }
 
-Status KuduScanner::GetCurrentServer(KuduTabletServer** server) {
+Status YBScanner::GetCurrentServer(YBTabletServer** server) {
   CHECK(data_->open_);
   internal::RemoteTabletServer* rts = data_->ts_;
   CHECK(rts);
@@ -1250,29 +1250,29 @@ Status KuduScanner::GetCurrentServer(KuduTabletServer** server) {
     return Status::IllegalState(strings::Substitute("No HostPort found for RemoteTabletServer $0",
                                                     rts->ToString()));
   }
-  *server = new KuduTabletServer();
-  (*server)->data_ = new KuduTabletServer::Data(rts->permanent_uuid(),
+  *server = new YBTabletServer();
+  (*server)->data_ = new YBTabletServer::Data(rts->permanent_uuid(),
                                                 host_ports[0].host());
   return Status::OK();
 }
 
 ////////////////////////////////////////////////////////////
-// KuduTabletServer
+// YBTabletServer
 ////////////////////////////////////////////////////////////
 
-KuduTabletServer::KuduTabletServer()
+YBTabletServer::YBTabletServer()
   : data_(nullptr) {
 }
 
-KuduTabletServer::~KuduTabletServer() {
+YBTabletServer::~YBTabletServer() {
   delete data_;
 }
 
-const string& KuduTabletServer::uuid() const {
+const string& YBTabletServer::uuid() const {
   return data_->uuid_;
 }
 
-const string& KuduTabletServer::hostname() const {
+const string& YBTabletServer::hostname() const {
   return data_->hostname_;
 }
 

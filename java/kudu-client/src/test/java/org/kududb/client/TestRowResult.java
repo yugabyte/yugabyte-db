@@ -26,17 +26,17 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
-public class TestRowResult extends BaseKuduTest {
+public class TestRowResult extends BaseYBTest {
 
   // Generate a unique table name
   private static final String TABLE_NAME =
       TestRowResult.class.getName() + "-" + System.currentTimeMillis();
 
-  private static KuduTable table;
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
     createTable(TABLE_NAME, allTypesSchema, new CreateTableOptions());
 
     table = openTable(TABLE_NAME);
@@ -62,10 +62,10 @@ public class TestRowResult extends BaseKuduTest {
     row.setNull(10);
     row.addLong(11, 11l);
 
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.apply(insert);
 
-    KuduScanner scanner = syncClient.newScannerBuilder(table).build();
+    YBScanner scanner = syncClient.newScannerBuilder(table).build();
     while (scanner.hasMoreRows()) {
       RowResultIterator it = scanner.nextRows();
       assertTrue(it.hasNext());

@@ -37,7 +37,7 @@ using std::vector;
 
 namespace yb {
 
-class TraceTest : public KuduTest {
+class TraceTest : public YBTest {
 };
 
 // Replace all digits in 's' with the character 'X'.
@@ -309,10 +309,10 @@ TEST_F(TraceTest, TestChromeSampling) {
   ASSERT_GT(ParseAndReturnEventCount(trace_json), 0);
 }
 
-class TraceEventCallbackTest : public KuduTest {
+class TraceEventCallbackTest : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     ASSERT_EQ(nullptr, s_instance);
     s_instance = this;
   }
@@ -325,7 +325,7 @@ class TraceEventCallbackTest : public KuduTest {
 
     ASSERT_TRUE(!!s_instance);
     s_instance = nullptr;
-    KuduTest::TearDown();
+    YBTest::TearDown();
 
   }
 
@@ -634,7 +634,7 @@ const int kShortDurationMs = 10;
 
 namespace debug {
 
-class TraceEventSyntheticDelayTest : public KuduTest,
+class TraceEventSyntheticDelayTest : public YBTest,
                                      public TraceEventSyntheticDelayClock {
  public:
   TraceEventSyntheticDelayTest() {

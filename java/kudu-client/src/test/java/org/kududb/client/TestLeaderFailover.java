@@ -21,15 +21,15 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class TestLeaderFailover extends BaseKuduTest {
+public class TestLeaderFailover extends BaseYBTest {
 
   private static final String TABLE_NAME =
       TestLeaderFailover.class.getName() + "-" + System.currentTimeMillis();
-  private static KuduTable table;
+  private static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
 
     CreateTableOptions builder = new CreateTableOptions().setNumReplicas(3);
     createTable(TABLE_NAME, basicSchema, builder);
@@ -45,14 +45,14 @@ public class TestLeaderFailover extends BaseKuduTest {
    */
   @Test(timeout = 100000)
   public void testFailover() throws Exception {
-    KuduSession session = syncClient.newSession();
+    YBSession session = syncClient.newSession();
     session.setIgnoreAllDuplicateRows(true);
     for (int i = 0; i < 3; i++) {
       session.apply(createBasicSchemaInsert(table, i));
     }
 
     // Make sure the rows are in there before messing things up.
-    AsyncKuduScanner scanner = client.newScannerBuilder(table).build();
+    AsyncYBScanner scanner = client.newScannerBuilder(table).build();
     assertEquals(3, countRowsInScan(scanner));
 
     killTabletLeader(table);

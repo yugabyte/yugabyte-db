@@ -23,7 +23,7 @@ import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.client.*;
 import org.kududb.mapreduce.CommandLineParser;
-import org.kududb.mapreduce.KuduTableMapReduceUtil;
+import org.kududb.mapreduce.YBTableMapReduceUtil;
 import org.kududb.util.Pair;
 import org.apache.commons.cli.CommandLine;
 import org.apache.commons.cli.GnuParser;
@@ -432,10 +432,10 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
       private String id;
       private long rowId = 0;
       private int i;
-      private KuduClient client;
-      private KuduTable table;
-      private KuduSession session;
-      private KuduTable headsTable;
+      private YBClient client;
+      private YBTable table;
+      private YBSession session;
+      private YBTable headsTable;
       private long numNodes;
       private long wrap;
       private int width;
@@ -600,7 +600,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
 
     protected void createSchema(String tableName, Schema schema, int numTablets) throws Exception {
       CommandLineParser parser = new CommandLineParser(getConf());
-      KuduClient client = parser.getClient();
+      YBClient client = parser.getClient();
       try {
         if (numTablets < 1) {
           numTablets = 1;
@@ -692,7 +692,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
       // Lack of YARN-445 means we can't auto-jstack on timeout, so disabling the timeout gives
       // us a chance to do it manually.
       job.getConfiguration().setInt("mapreduce.task.timeout", 0);
-      KuduTableMapReduceUtil.addDependencyJars(job);
+      YBTableMapReduceUtil.addDependencyJars(job);
 
       boolean success = job.waitForCompletion(true);
 
@@ -842,7 +842,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
 
       Joiner columnsToQuery = Joiner.on(",");
 
-      new KuduTableMapReduceUtil.TableInputFormatConfiguratorWithCommandLineParser(
+      new YBTableMapReduceUtil.TableInputFormatConfiguratorWithCommandLineParser(
           job, getTableName(getConf()),
           columnsToQuery.join(COLUMN_KEY_ONE, COLUMN_KEY_TWO, COLUMN_PREV_ONE, COLUMN_PREV_TWO))
           .configure();
@@ -1046,10 +1046,10 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
 
       CommandLineParser cmdLineParser = new CommandLineParser(getConf());
       long timeout = cmdLineParser.getOperationTimeoutMs();
-      KuduClient client = cmdLineParser.getClient();
+      YBClient client = cmdLineParser.getClient();
 
-      KuduTable table = client.openTable(getTableName(getConf()));
-      KuduScanner.KuduScannerBuilder builder =
+      YBTable table = client.openTable(getTableName(getConf()));
+      YBScanner.YBScannerBuilder builder =
           client.newScannerBuilder(table)
               .scanRequestTimeout(timeout);
 
@@ -1069,7 +1069,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
 
       int count = 0;
 
-      KuduScanner scanner = builder.build();
+      YBScanner scanner = builder.build();
       while (scanner.hasMoreRows() && count < limit) {
         RowResultIterator rowResults = scanner.nextRows();
         count = printNodesAndGetNewCount(count, limit, rowResults);
@@ -1131,9 +1131,9 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
 
     public static class UpdaterMapper extends Mapper<NullWritable, RowResult,
         NullWritable, NullWritable> {
-      private KuduClient client;
-      private KuduTable table;
-      private KuduSession session;
+      private YBClient client;
+      private YBTable table;
+      private YBSession session;
 
       /**
        * Schema we use when getting rows from the linked list, we only need the reference and
@@ -1262,7 +1262,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
        * Finds the next node in the linked list.
        */
       private RowResult nextNode(long prevKeyOne, long prevKeyTwo) throws IOException {
-        KuduScanner.KuduScannerBuilder builder = client.newScannerBuilder(table)
+        YBScanner.YBScannerBuilder builder = client.newScannerBuilder(table)
           .setProjectedColumnNames(SCAN_COLUMN_NAMES);
 
         configureScannerForRandomRead(builder, table, prevKeyOne, prevKeyTwo);
@@ -1342,7 +1342,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
 
       Joiner columnsToQuery = Joiner.on(",");
 
-      new KuduTableMapReduceUtil.TableInputFormatConfiguratorWithCommandLineParser(
+      new YBTableMapReduceUtil.TableInputFormatConfiguratorWithCommandLineParser(
           job, getHeadsTable(getConf()),
           columnsToQuery.join(COLUMN_KEY_ONE, COLUMN_KEY_TWO))
           .configure();
@@ -1362,7 +1362,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
       job.setOutputValueClass(NullWritable.class);
       job.setOutputFormatClass(NullOutputFormat.class);
 
-      KuduTableMapReduceUtil.addDependencyJars(job);
+      YBTableMapReduceUtil.addDependencyJars(job);
 
       boolean success = job.waitForCompletion(true);
 
@@ -1448,8 +1448,8 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
    */
   private static class Walker extends Configured implements Tool {
 
-    private KuduClient client;
-    private KuduTable table;
+    private YBClient client;
+    private YBTable table;
 
     @Override
     public int run(String[] args) throws IOException {
@@ -1513,15 +1513,15 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
     }
 
     private RowResult nextNode(long keyOne, long keyTwo) throws Exception {
-      KuduScanner.KuduScannerBuilder builder = client.newScannerBuilder(table);
+      YBScanner.YBScannerBuilder builder = client.newScannerBuilder(table);
       configureScannerForRandomRead(builder, table, keyOne, keyTwo);
 
       return getOneRowResult(builder.build());
     }
   }
 
-  private static void configureScannerForRandomRead(AbstractKuduScannerBuilder builder,
-                                                    KuduTable table,
+  private static void configureScannerForRandomRead(AbstractYBScannerBuilder builder,
+                                                    YBTable table,
                                                     long keyOne,
                                                     long keyTwo) {
     PartialRow lowerBound = table.getSchema().newPartialRow();
@@ -1567,7 +1567,7 @@ public class IntegrationTestBigLinkedList extends Configured implements Tool {
     return new StringBuilder().append(key1).append(",").append(key2).toString();
   }
 
-  private static RowResult getOneRowResult(KuduScanner scanner) throws Exception {
+  private static RowResult getOneRowResult(YBScanner scanner) throws Exception {
     RowResultIterator rowResults;
     rowResults = scanner.nextRows();
     if (rowResults.getNumRows() == 0) {

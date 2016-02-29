@@ -23,7 +23,7 @@
 
 namespace yb {
 
-class TestPredicate : public KuduTest {
+class TestPredicate : public YBTest {
  public:
   TestPredicate() :
     arena_(1024, 4096),
@@ -45,7 +45,7 @@ class TestPredicate : public KuduTest {
   //
   // The third STRING column is left unset.
   void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     ColumnBlock col0 = row_block_.column_block(0, n_rows_);
     ColumnBlock col1 = row_block_.column_block(1, n_rows_);

@@ -52,7 +52,7 @@ static std::pair<PartitionSchema, Partition> CreateDefaultPartition(const Schema
 
   // Create the tablet partitions.
   vector<Partition> partitions;
-  CHECK_OK(partition_schema.CreatePartitions(vector<KuduPartialRow>(), schema, &partitions));
+  CHECK_OK(partition_schema.CreatePartitions(vector<YBPartialRow>(), schema, &partitions));
   CHECK_EQ(1, partitions.size());
   return std::make_pair(partition_schema, partitions[0]);
 }
@@ -88,7 +88,7 @@ class TabletHarness {
     scoped_refptr<TabletMetadata> metadata;
     RETURN_NOT_OK(TabletMetadata::LoadOrCreate(fs_manager_.get(),
                                                options_.tablet_id,
-                                               "KuduTableTest",
+                                               "YBTableTest",
                                                schema_,
                                                partition.first,
                                                partition.second,

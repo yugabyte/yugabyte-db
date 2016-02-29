@@ -47,7 +47,7 @@ namespace yb {
 
 const int kHistorySize = 4;
 
-class MaintenanceManagerTest : public KuduTest {
+class MaintenanceManagerTest : public YBTest {
  public:
   MaintenanceManagerTest() {
     test_tracker_ = MemTracker::CreateTracker(1000, "test");

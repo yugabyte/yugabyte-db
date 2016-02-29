@@ -62,8 +62,8 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
   // Try to create a single-tablet table.
   // This won't succeed because we can't create enough replicas to get
   // a quorum.
-  gscoped_ptr<client::KuduTableCreator> table_creator(client_->NewTableCreator());
-  client::KuduSchema client_schema(client::KuduSchemaFromSchema(GetSimpleTestSchema()));
+  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
             .num_replicas(3)
@@ -76,7 +76,7 @@ TEST_F(CreateTableITest, TestCreateWhenMajorityOfReplicasFailCreation) {
     SleepFor(MonoDelta::FromMilliseconds(100));
     ASSERT_OK(cluster_->tablet_server(0)->GetInt64Metric(
         &METRIC_ENTITY_server,
-        "kudu.tabletserver",
+        "yb.tabletserver",
         &METRIC_handler_latency_yb_tserver_TabletServerAdminService_CreateTablet,
         "total_count",
         &num_create_attempts));
@@ -128,8 +128,8 @@ TEST_F(CreateTableITest, TestSpreadReplicasEvenly) {
   ts_flags.push_back("--never_fsync"); // run faster on slow disks
   NO_FATALS(StartCluster(ts_flags, master_flags, kNumServers));
 
-  gscoped_ptr<client::KuduTableCreator> table_creator(client_->NewTableCreator());
-  client::KuduSchema client_schema(client::KuduSchemaFromSchema(GetSimpleTestSchema()));
+  gscoped_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
   ASSERT_OK(table_creator->table_name(kTableName)
             .schema(&client_schema)
             .num_replicas(3)

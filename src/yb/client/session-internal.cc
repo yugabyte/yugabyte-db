@@ -30,7 +30,7 @@ using internal::ErrorCollector;
 
 using sp::shared_ptr;
 
-KuduSession::Data::Data(shared_ptr<KuduClient> client)
+YBSession::Data::Data(shared_ptr<YBClient> client)
     : client_(std::move(client)),
       error_collector_(new ErrorCollector()),
       flush_mode_(AUTO_FLUSH_SYNC),
@@ -38,16 +38,16 @@ KuduSession::Data::Data(shared_ptr<KuduClient> client)
       timeout_ms_(-1) {
 }
 
-KuduSession::Data::~Data() {
+YBSession::Data::~Data() {
 }
 
-void KuduSession::Data::Init(const shared_ptr<KuduSession>& session) {
+void YBSession::Data::Init(const shared_ptr<YBSession>& session) {
   lock_guard<simple_spinlock> l(&lock_);
   CHECK(!batcher_);
   NewBatcher(session, NULL);
 }
 
-void KuduSession::Data::NewBatcher(const shared_ptr<KuduSession>& session,
+void YBSession::Data::NewBatcher(const shared_ptr<YBSession>& session,
                                    scoped_refptr<Batcher>* old_batcher) {
   DCHECK(lock_.is_locked());
 
@@ -64,12 +64,12 @@ void KuduSession::Data::NewBatcher(const shared_ptr<KuduSession>& session,
   }
 }
 
-void KuduSession::Data::FlushFinished(Batcher* batcher) {
+void YBSession::Data::FlushFinished(Batcher* batcher) {
   lock_guard<simple_spinlock> l(&lock_);
   CHECK_EQ(flushed_batchers_.erase(batcher), 1);
 }
 
-Status KuduSession::Data::Close(bool force) {
+Status YBSession::Data::Close(bool force) {
   if (batcher_->HasPendingOperations() && !force) {
     return Status::IllegalState("Could not close. There are pending operations.");
   }

@@ -45,20 +45,20 @@ DEFINE_int32(seconds_to_run, 4,
 namespace yb {
 namespace tablet {
 
-using client::KuduInsert;
-using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduColumnSchema;
-using client::KuduRowResult;
-using client::KuduScanner;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
-using client::KuduSession;
-using client::KuduStatusCallback;
-using client::KuduStatusMemberCallback;
-using client::KuduTable;
-using client::KuduTableCreator;
-using client::KuduUpdate;
+using client::YBInsert;
+using client::YBClient;
+using client::YBClientBuilder;
+using client::YBColumnSchema;
+using client::YBRowResult;
+using client::YBScanner;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBSession;
+using client::YBStatusCallback;
+using client::YBStatusMemberCallback;
+using client::YBTable;
+using client::YBTableCreator;
+using client::YBUpdate;
 using client::sp::shared_ptr;
 
 // This integration test tries to trigger all the update-related bits while also serving as a
@@ -66,23 +66,23 @@ using client::sp::shared_ptr;
 // one that continuously updates all the rows sequentially and one that scans them all, until
 // it's been running for 'seconds_to_run'. It doesn't test for correctness, unless something
 // FATALs.
-class UpdateScanDeltaCompactionTest : public KuduTest {
+class UpdateScanDeltaCompactionTest : public YBTest {
  protected:
   UpdateScanDeltaCompactionTest() {
-    KuduSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT64)->NotNull()->PrimaryKey();
-    b.AddColumn("string")->Type(KuduColumnSchema::STRING)->NotNull();
-    b.AddColumn("int64")->Type(KuduColumnSchema::INT64)->NotNull();
+    YBSchemaBuilder b;
+    b.AddColumn("key")->Type(YBColumnSchema::INT64)->NotNull()->PrimaryKey();
+    b.AddColumn("string")->Type(YBColumnSchema::STRING)->NotNull();
+    b.AddColumn("int64")->Type(YBColumnSchema::INT64)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
   }
 
   void CreateTable() {
     ASSERT_NO_FATAL_FAILURE(InitCluster());
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
              .schema(&schema_)
              .num_replicas(1)
@@ -94,7 +94,7 @@ class UpdateScanDeltaCompactionTest : public KuduTest {
     if (cluster_) {
       cluster_->Shutdown();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   // Inserts row_count rows sequentially.
@@ -115,16 +115,16 @@ class UpdateScanDeltaCompactionTest : public KuduTest {
     // Start mini-cluster with 1 tserver.
     cluster_.reset(new MiniCluster(env_.get(), MiniClusterOptions()));
     ASSERT_OK(cluster_->Start());
-    KuduClientBuilder client_builder;
+    YBClientBuilder client_builder;
     client_builder.add_master_server_addr(
         cluster_->mini_master()->bound_rpc_addr_str());
     ASSERT_OK(client_builder.Build(&client_));
   }
 
-  shared_ptr<KuduSession> CreateSession() {
-    shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> CreateSession() {
+    shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(5000);
-    CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     return session;
   }
 
@@ -139,19 +139,19 @@ class UpdateScanDeltaCompactionTest : public KuduTest {
 
   // Sets the passed values on the row.
   // TODO randomize the string column.
-  void MakeRow(int64_t key, int64_t val, KuduPartialRow* row) const;
+  void MakeRow(int64_t key, int64_t val, YBPartialRow* row) const;
 
   // If 'key' is a multiple of kSessionBatchSize, it uses 'last_s' to wait for the previous batch
   // to finish and then flushes the current one.
   Status WaitForLastBatchAndFlush(int64_t key,
                                   Synchronizer* last_s,
-                                  KuduStatusCallback* last_s_cb,
-                                  shared_ptr<KuduSession> session);
+                                  YBStatusCallback* last_s_cb,
+                                  shared_ptr<YBSession> session);
 
-  KuduSchema schema_;
+  YBSchema schema_;
   std::shared_ptr<MiniCluster> cluster_;
-  shared_ptr<KuduTable> table_;
-  shared_ptr<KuduClient> client_;
+  shared_ptr<YBTable> table_;
+  shared_ptr<YBClient> client_;
 };
 
 const char* const UpdateScanDeltaCompactionTest::kTableName = "update-scan-delta-compact-tbl";
@@ -176,15 +176,15 @@ TEST_F(UpdateScanDeltaCompactionTest, TestAll) {
 }
 
 void UpdateScanDeltaCompactionTest::InsertBaseData() {
-  shared_ptr<KuduSession> session = CreateSession();
+  shared_ptr<YBSession> session = CreateSession();
   Synchronizer last_s;
-  KuduStatusMemberCallback<Synchronizer> last_s_cb(&last_s,
+  YBStatusMemberCallback<Synchronizer> last_s_cb(&last_s,
                                                    &Synchronizer::StatusCB);
   last_s_cb.Run(Status::OK());
 
   LOG_TIMING(INFO, "Insert") {
     for (int64_t key = 0; key < FLAGS_row_count; key++) {
-      gscoped_ptr<KuduInsert> insert(table_->NewInsert());
+      gscoped_ptr<YBInsert> insert(table_->NewInsert());
       MakeRow(key, 0, insert->mutable_row());
       ASSERT_OK(session->Apply(insert.release()));
       ASSERT_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
@@ -237,16 +237,16 @@ void UpdateScanDeltaCompactionTest::RunThreads() {
 }
 
 void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
-  shared_ptr<KuduSession> session = CreateSession();
+  shared_ptr<YBSession> session = CreateSession();
   Synchronizer last_s;
-  KuduStatusMemberCallback<Synchronizer> last_s_cb(&last_s,
+  YBStatusMemberCallback<Synchronizer> last_s_cb(&last_s,
                                                    &Synchronizer::StatusCB);
 
   for (int64_t iteration = 1; stop_latch->count() > 0; iteration++) {
     last_s_cb.Run(Status::OK());
     LOG_TIMING(INFO, "Update") {
       for (int64_t key = 0; key < FLAGS_row_count && stop_latch->count() > 0; key++) {
-        gscoped_ptr<KuduUpdate> update(table_->NewUpdate());
+        gscoped_ptr<YBUpdate> update(table_->NewUpdate());
         MakeRow(key, iteration, update->mutable_row());
         CHECK_OK(session->Apply(update.release()));
         CHECK_OK(WaitForLastBatchAndFlush(key, &last_s, &last_s_cb, session));
@@ -259,10 +259,10 @@ void UpdateScanDeltaCompactionTest::UpdateRows(CountDownLatch* stop_latch) {
 
 void UpdateScanDeltaCompactionTest::ScanRows(CountDownLatch* stop_latch) const {
   while (stop_latch->count() > 0) {
-    KuduScanner scanner(table_.get());
+    YBScanner scanner(table_.get());
     LOG_TIMING(INFO, "Scan") {
       CHECK_OK(scanner.Open());
-      vector<KuduRowResult> rows;
+      vector<YBRowResult> rows;
       while (scanner.HasMoreRows()) {
         CHECK_OK(scanner.NextBatch(&rows));
       }
@@ -291,7 +291,7 @@ void UpdateScanDeltaCompactionTest::CurlWebPages(CountDownLatch* stop_latch) con
 
 void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
                                             int64_t val,
-                                            KuduPartialRow* row) const {
+                                            YBPartialRow* row) const {
   CHECK_OK(row->SetInt64(kKeyCol, key));
   CHECK_OK(row->SetStringCopy(kStrCol, "TODO random string"));
   CHECK_OK(row->SetInt64(kInt64Col, val));
@@ -299,8 +299,8 @@ void UpdateScanDeltaCompactionTest::MakeRow(int64_t key,
 
 Status UpdateScanDeltaCompactionTest::WaitForLastBatchAndFlush(int64_t key,
                                                                Synchronizer* last_s,
-                                                               KuduStatusCallback* last_s_cb,
-                                                               shared_ptr<KuduSession> session) {
+                                                               YBStatusCallback* last_s_cb,
+                                                               shared_ptr<YBSession> session) {
   if (key % kSessionBatchSize == 0) {
     RETURN_NOT_OK(last_s->Wait());
     last_s->Reset();

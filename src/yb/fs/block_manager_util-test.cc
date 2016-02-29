@@ -36,7 +36,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-TEST_F(KuduTest, Lifecycle) {
+TEST_F(YBTest, Lifecycle) {
   string kType = "asdf";
   string kFileName = JoinPathSegments(GetTestDataDirectory(), "foo");
   string kUuid = "a_uuid";
@@ -68,7 +68,7 @@ TEST_F(KuduTest, Lifecycle) {
   }
 }
 
-TEST_F(KuduTest, Locking) {
+TEST_F(YBTest, Locking) {
   string kType = "asdf";
   string kFileName = JoinPathSegments(GetTestDataDirectory(), "foo");
   string kUuid = "a_uuid";
@@ -122,7 +122,7 @@ static void RunCheckIntegrityTest(Env* env,
             PathInstanceMetadataFile::CheckIntegrity(instances).ToString());
 }
 
-TEST_F(KuduTest, CheckIntegrity) {
+TEST_F(YBTest, CheckIntegrity) {
   vector<string> uuids = { "fee", "fi", "fo", "fum" };
   RepeatedPtrField<string> kAllUuids(uuids.begin(), uuids.end());
 

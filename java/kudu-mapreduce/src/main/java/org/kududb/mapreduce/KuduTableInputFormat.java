@@ -56,16 +56,16 @@ import java.util.Map;
  * <p>
  * Hadoop doesn't have the concept of "closing" the input format so in order to release the
  * resources we assume that once either {@link #getSplits(org.apache.hadoop.mapreduce.JobContext)}
- * or {@link KuduTableInputFormat.TableRecordReader#close()} have been called that
- * the object won't be used again and the AsyncKuduClient is shut down.
+ * or {@link YBTableInputFormat.TableRecordReader#close()} have been called that
+ * the object won't be used again and the AsyncYBClient is shut down.
  * </p>
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTableInputFormat extends InputFormat<NullWritable, RowResult>
+public class YBTableInputFormat extends InputFormat<NullWritable, RowResult>
     implements Configurable {
 
-  private static final Log LOG = LogFactory.getLog(KuduTableInputFormat.class);
+  private static final Log LOG = LogFactory.getLog(YBTableInputFormat.class);
 
   private static final long SLEEP_TIME_FOR_RETRIES_MS = 1000;
 
@@ -105,8 +105,8 @@ public class KuduTableInputFormat extends InputFormat<NullWritable, RowResult>
   private final Map<String, String> reverseDNSCacheMap = new HashMap<String, String>();
 
   private Configuration conf;
-  private KuduClient client;
-  private KuduTable table;
+  private YBClient client;
+  private YBTable table;
   private long operationTimeoutMs;
   private String nameServer;
   private boolean cacheBlocks;
@@ -226,11 +226,11 @@ public class KuduTableInputFormat extends InputFormat<NullWritable, RowResult>
     String tableName = conf.get(INPUT_TABLE_KEY);
     String masterAddresses = conf.get(MASTER_ADDRESSES_KEY);
     this.operationTimeoutMs = conf.getLong(OPERATION_TIMEOUT_MS_KEY,
-        AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS);
+        AsyncYBClient.DEFAULT_OPERATION_TIMEOUT_MS);
     this.nameServer = conf.get(NAME_SERVER_KEY);
     this.cacheBlocks = conf.getBoolean(SCAN_CACHE_BLOCKS, false);
 
-    this.client = new KuduClient.KuduClientBuilder(masterAddresses)
+    this.client = new YBClient.YBClientBuilder(masterAddresses)
         .defaultOperationTimeoutMs(operationTimeoutMs)
         .build();
     try {
@@ -373,7 +373,7 @@ public class KuduTableInputFormat extends InputFormat<NullWritable, RowResult>
     private final NullWritable currentKey = NullWritable.get();
     private RowResult currentValue;
     private RowResultIterator iterator;
-    private KuduScanner scanner;
+    private YBScanner scanner;
     private TableSplit split;
 
     @Override

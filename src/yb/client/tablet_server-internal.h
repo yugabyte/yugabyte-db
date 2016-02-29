@@ -25,7 +25,7 @@
 namespace yb {
 namespace client {
 
-class KuduTabletServer::Data {
+class YBTabletServer::Data {
  public:
   Data(std::string uuid, std::string hostname);
   ~Data();

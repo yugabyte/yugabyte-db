@@ -38,10 +38,10 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * <p>
  * Use {@link
- * KuduTableMapReduceUtil.TableOutputFormatConfigurator}
+ * YBTableMapReduceUtil.TableOutputFormatConfigurator}
  * to correctly setup this output format, then {@link
- * KuduTableMapReduceUtil#getTableFromContext(org.apache.hadoop.mapreduce.TaskInputOutputContext)}
- * to get a KuduTable.
+ * YBTableMapReduceUtil#getTableFromContext(org.apache.hadoop.mapreduce.TaskInputOutputContext)}
+ * to get a YBTable.
  * </p>
  *
  * <p>
@@ -49,15 +49,15 @@ import java.util.concurrent.atomic.AtomicLong;
  * resources we assume that once either
  * {@link #checkOutputSpecs(org.apache.hadoop.mapreduce.JobContext)}
  * or {@link TableRecordWriter#close(org.apache.hadoop.mapreduce.TaskAttemptContext)}
- * have been called that the object won't be used again and the KuduClient is shut down.
+ * have been called that the object won't be used again and the YBClient is shut down.
  * </p>
  */
 @InterfaceAudience.Public
 @InterfaceStability.Evolving
-public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
+public class YBTableOutputFormat extends OutputFormat<NullWritable,Operation>
     implements Configurable {
 
-  private static final Logger LOG = LoggerFactory.getLogger(KuduTableOutputFormat.class);
+  private static final Logger LOG = LoggerFactory.getLogger(YBTableOutputFormat.class);
 
   /** Job parameter that specifies the output table. */
   static final String OUTPUT_TABLE_KEY = "kudu.mapreduce.output.table";
@@ -72,18 +72,18 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
   static final String BUFFER_ROW_COUNT_KEY = "kudu.mapreduce.buffer.row.count";
 
   /**
-   * Job parameter that specifies which key is to be used to reach the KuduTableOutputFormat
+   * Job parameter that specifies which key is to be used to reach the YBTableOutputFormat
    * belonging to the caller
    */
   static final String MULTITON_KEY = "kudu.mapreduce.multitonkey";
 
   /**
    * This multiton is used so that the tasks using this output format/record writer can find
-   * their KuduTable without having a direct dependency on this class,
+   * their YBTable without having a direct dependency on this class,
    * with the additional complexity that the output format cannot be shared between threads.
    */
-  private static final ConcurrentHashMap<String, KuduTableOutputFormat> MULTITON = new
-      ConcurrentHashMap<String, KuduTableOutputFormat>();
+  private static final ConcurrentHashMap<String, YBTableOutputFormat> MULTITON = new
+      ConcurrentHashMap<String, YBTableOutputFormat>();
 
   /**
    * This counter helps indicate which task log to look at since rows that weren't applied will
@@ -93,9 +93,9 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
 
   private Configuration conf = null;
 
-  private KuduClient client;
-  private KuduTable table;
-  private KuduSession session;
+  private YBClient client;
+  private YBTable table;
+  private YBSession session;
   private long operationTimeoutMs;
 
   @Override
@@ -105,10 +105,10 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
     String masterAddress = this.conf.get(MASTER_ADDRESSES_KEY);
     String tableName = this.conf.get(OUTPUT_TABLE_KEY);
     this.operationTimeoutMs = this.conf.getLong(OPERATION_TIMEOUT_MS_KEY,
-        AsyncKuduClient.DEFAULT_OPERATION_TIMEOUT_MS);
+        AsyncYBClient.DEFAULT_OPERATION_TIMEOUT_MS);
     int bufferSpace = this.conf.getInt(BUFFER_ROW_COUNT_KEY, 1000);
 
-    this.client = new KuduClient.KuduClientBuilder(masterAddress)
+    this.client = new YBClient.YBClientBuilder(masterAddress)
         .defaultOperationTimeoutMs(operationTimeoutMs)
         .build();
     try {
@@ -119,7 +119,7 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
           "master address= " + masterAddress, ex);
     }
     this.session = client.newSession();
-    this.session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_BACKGROUND);
+    this.session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_BACKGROUND);
     this.session.setMutationBufferSpace(bufferSpace);
     this.session.setIgnoreAllDuplicateRows(true);
     String multitonKey = String.valueOf(Thread.currentThread().getId());
@@ -136,11 +136,11 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
     }
   }
 
-  public static KuduTable getKuduTable(String multitonKey) {
-    return MULTITON.get(multitonKey).getKuduTable();
+  public static YBTable getYBTable(String multitonKey) {
+    return MULTITON.get(multitonKey).getYBTable();
   }
 
-  private KuduTable getKuduTable() {
+  private YBTable getYBTable() {
     return this.table;
   }
 
@@ -163,15 +163,15 @@ public class KuduTableOutputFormat extends OutputFormat<NullWritable,Operation>
   @Override
   public OutputCommitter getOutputCommitter(TaskAttemptContext taskAttemptContext) throws
       IOException, InterruptedException {
-    return new KuduTableOutputCommitter();
+    return new YBTableOutputCommitter();
   }
 
   protected class TableRecordWriter extends RecordWriter<NullWritable, Operation> {
 
     private final AtomicLong rowsWithErrors = new AtomicLong();
-    private final KuduSession session;
+    private final YBSession session;
 
-    public TableRecordWriter(KuduSession session) {
+    public TableRecordWriter(YBSession session) {
       this.session = session;
     }
 

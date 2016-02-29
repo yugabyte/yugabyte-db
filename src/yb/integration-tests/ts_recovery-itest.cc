@@ -26,11 +26,11 @@ using std::string;
 
 namespace yb {
 
-class TsRecoveryITest : public KuduTest {
+class TsRecoveryITest : public YBTest {
  public:
   virtual void TearDown() OVERRIDE {
     if (cluster_) cluster_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
  protected:

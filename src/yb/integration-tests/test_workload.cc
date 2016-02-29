@@ -35,17 +35,17 @@ namespace yb {
 using client::FromInternalCompressionType;
 using client::FromInternalDataType;
 using client::FromInternalEncodingType;
-using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduColumnSchema;;
-using client::KuduInsert;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
-using client::KuduSchemaFromSchema;
-using client::KuduSession;
-using client::KuduTable;
-using client::KuduTableCreator;
-using client::KuduUpdate;
+using client::YBClient;
+using client::YBClientBuilder;
+using client::YBColumnSchema;;
+using client::YBInsert;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBSchemaFromSchema;
+using client::YBSession;
+using client::YBTable;
+using client::YBTableCreator;
+using client::YBUpdate;
 using client::sp::shared_ptr;
 
 const char* const TestWorkload::kDefaultTableName = "test-workload";
@@ -75,7 +75,7 @@ TestWorkload::~TestWorkload() {
 void TestWorkload::WriteThread() {
   Random r(Env::Default()->gettid());
 
-  shared_ptr<KuduTable> table;
+  shared_ptr<YBTable> table;
   // Loop trying to open up the table. In some tests we set up very
   // low RPC timeouts to test those behaviors, so this might fail and
   // need retrying.
@@ -91,9 +91,9 @@ void TestWorkload::WriteThread() {
     CHECK_OK(s);
   }
 
-  shared_ptr<KuduSession> session = client_->NewSession();
+  shared_ptr<YBSession> session = client_->NewSession();
   session->SetTimeoutMillis(write_timeout_millis_);
-  CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Wait for all of the workload threads to be ready to go. This maximizes the chance
   // that they all send a flood of requests at exactly the same time.
@@ -107,14 +107,14 @@ void TestWorkload::WriteThread() {
   while (should_run_.Load()) {
     for (int i = 0; i < write_batch_size_; i++) {
       if (pathological_one_row_enabled_) {
-        gscoped_ptr<KuduUpdate> update(table->NewUpdate());
-        KuduPartialRow* row = update->mutable_row();
+        gscoped_ptr<YBUpdate> update(table->NewUpdate());
+        YBPartialRow* row = update->mutable_row();
         CHECK_OK(row->SetInt32(0, 0));
         CHECK_OK(row->SetInt32(1, r.Next()));
         CHECK_OK(session->Apply(update.release()));
       } else {
-        gscoped_ptr<KuduInsert> insert(table->NewInsert());
-        KuduPartialRow* row = insert->mutable_row();
+        gscoped_ptr<YBInsert> insert(table->NewInsert());
+        YBPartialRow* row = insert->mutable_row();
         CHECK_OK(row->SetInt32(0, r.Next()));
         CHECK_OK(row->SetInt32(1, r.Next()));
         string test_payload("hello world");
@@ -132,12 +132,12 @@ void TestWorkload::WriteThread() {
     Status s = session->Flush();
 
     if (PREDICT_FALSE(!s.ok())) {
-      std::vector<client::KuduError*> errors;
+      std::vector<client::YBError*> errors;
       ElementDeleter d(&errors);
       bool overflow;
       session->GetPendingErrors(&errors, &overflow);
       CHECK(!overflow);
-      for (const client::KuduError* e : errors) {
+      for (const client::YBError* e : errors) {
         if (timeout_allowed_ && e->status().IsTimedOut()) {
           continue;
         }
@@ -166,7 +166,7 @@ void TestWorkload::Setup() {
 
   bool table_exists;
 
-  // Retry KuduClient::TableExists() until we make that call retry reliably.
+  // Retry YBClient::TableExists() until we make that call retry reliably.
   // See KUDU-1074.
   MonoTime deadline(MonoTime::Now(MonoTime::FINE));
   deadline.AddDelta(MonoDelta::FromSeconds(10));
@@ -179,16 +179,16 @@ void TestWorkload::Setup() {
   CHECK_OK(s);
 
   if (!table_exists) {
-    KuduSchema client_schema(KuduSchemaFromSchema(GetSimpleTestSchema()));
+    YBSchema client_schema(YBSchemaFromSchema(GetSimpleTestSchema()));
 
-    vector<const KuduPartialRow*> splits;
+    vector<const YBPartialRow*> splits;
     for (int i = 1; i < num_tablets_; i++) {
-      KuduPartialRow* r = client_schema.NewRow();
+      YBPartialRow* r = client_schema.NewRow();
       CHECK_OK(r->SetInt32("key", MathLimits<int32_t>::kMax / num_tablets_ * i));
       splits.push_back(r);
     }
 
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     CHECK_OK(table_creator->table_name(table_name_)
              .schema(&client_schema)
              .num_replicas(num_replicas_)
@@ -205,13 +205,13 @@ void TestWorkload::Setup() {
 
 
   if (pathological_one_row_enabled_) {
-    shared_ptr<KuduSession> session = client_->NewSession();
+    shared_ptr<YBSession> session = client_->NewSession();
     session->SetTimeoutMillis(20000);
-    CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
-    shared_ptr<KuduTable> table;
+    CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
+    shared_ptr<YBTable> table;
     CHECK_OK(client_->OpenTable(table_name_, &table));
-    gscoped_ptr<KuduInsert> insert(table->NewInsert());
-    KuduPartialRow* row = insert->mutable_row();
+    gscoped_ptr<YBInsert> insert(table->NewInsert());
+    YBPartialRow* row = insert->mutable_row();
     CHECK_OK(row->SetInt32(0, 0));
     CHECK_OK(row->SetInt32(1, 0));
     CHECK_OK(row->SetStringCopy(2, "hello world"));

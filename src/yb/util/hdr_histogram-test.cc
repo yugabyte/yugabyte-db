@@ -24,7 +24,7 @@ namespace yb {
 
 static const int kSigDigits = 2;
 
-class HdrHistogramTest : public KuduTest {
+class HdrHistogramTest : public YBTest {
 };
 
 TEST_F(HdrHistogramTest, SimpleTest) {

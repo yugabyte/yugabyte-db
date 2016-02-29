@@ -27,7 +27,7 @@ namespace yb {
 
 using std::string;
 
-class TestUser : public KuduTest {
+class TestUser : public YBTest {
 };
 
 // Validate that the current username is non-empty.

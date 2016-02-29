@@ -19,9 +19,9 @@ package org.kududb.spark
 import com.google.common.collect.ImmutableList
 import org.apache.spark.SparkContext
 import org.kududb.ColumnSchema.ColumnSchemaBuilder
-import org.kududb.client.KuduClient.KuduClientBuilder
+import org.kududb.client.YBClient.YBClientBuilder
 import org.kududb.client.MiniKuduCluster.MiniKuduClusterBuilder
-import org.kududb.client.{CreateTableOptions, KuduClient, KuduTable, MiniKuduCluster}
+import org.kududb.client.{CreateTableOptions, YBClient, YBTable, MiniKuduCluster}
 import org.kududb.{Schema, Type}
 import org.scalatest.{BeforeAndAfterAll, Suite}
 
@@ -29,8 +29,8 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
 
   var sc: SparkContext = null
   var miniCluster: MiniKuduCluster = null
-  var ybClient: KuduClient = null
-  var table: KuduTable = null
+  var ybClient: YBClient = null
+  var table: YBTable = null
   var kuduContext: KuduContext = null
 
   val tableName = "test"
@@ -52,7 +52,7 @@ trait TestContext extends BeforeAndAfterAll { self: Suite =>
 
     sc = new SparkContext("local[2]", "test", null, Nil, envMap)
 
-    ybClient = new KuduClientBuilder(miniCluster.getMasterAddresses).build()
+    ybClient = new YBClientBuilder(miniCluster.getMasterAddresses).build()
     assert(miniCluster.waitForTabletServers(1))
 
     kuduContext = new KuduContext(miniCluster.getMasterAddresses)

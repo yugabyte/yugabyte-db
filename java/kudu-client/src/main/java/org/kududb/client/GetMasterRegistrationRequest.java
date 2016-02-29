@@ -31,7 +31,7 @@ import org.jboss.netty.buffer.ChannelBuffer;
 public class GetMasterRegistrationRequest extends KuduRpc<GetMasterRegistrationResponse> {
   private static final String GET_MASTER_REGISTRATION = "GetMasterRegistration";
 
-  public GetMasterRegistrationRequest(KuduTable masterTable) {
+  public GetMasterRegistrationRequest(YBTable masterTable) {
     super(masterTable);
   }
 

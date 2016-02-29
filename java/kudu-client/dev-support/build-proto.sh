@@ -22,8 +22,8 @@
 # Should be used exclusively by Maven.
 #
 
-KUDU_DIR=`dirname $0`/../../..
-PROTOC_BIN=$KUDU_DIR/thirdparty/installed-deps/bin/protoc
+YB_DIR=`dirname $0`/../../..
+PROTOC_BIN=$YB_DIR/thirdparty/installed-deps/bin/protoc
 if [ ! -f "$PROTOC_BIN" ] ; then
   if which protoc > /dev/null; then
     PROTOC_BIN=`which protoc`

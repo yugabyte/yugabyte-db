@@ -100,7 +100,7 @@ class MockKsckMaster : public KsckMaster {
   vector<shared_ptr<KsckTable>> tables_;
 };
 
-class KsckTest : public KuduTest {
+class KsckTest : public YBTest {
  public:
   KsckTest()
       : master_(new MockKsckMaster()),

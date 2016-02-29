@@ -29,7 +29,7 @@ import java.util.List;
 @InterfaceAudience.Private
 public class ListTabletServersRequest extends KuduRpc<ListTabletServersResponse> {
 
-  public ListTabletServersRequest(KuduTable masterTable) {
+  public ListTabletServersRequest(YBTable masterTable) {
     super(masterTable);
   }
   @Override

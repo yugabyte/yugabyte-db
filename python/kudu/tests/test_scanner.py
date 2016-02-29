@@ -19,11 +19,11 @@
 from __future__ import division
 
 from kudu.compat import unittest
-from kudu.tests.common import KuduTestBase
+from kudu.tests.common import YBTestBase
 import kudu
 
 
-class TestScanner(KuduTestBase, unittest.TestCase):
+class TestScanner(YBTestBase, unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):

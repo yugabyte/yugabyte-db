@@ -26,7 +26,7 @@
 namespace yb {
 namespace client {
 
-class KuduPredicate::Data {
+class YBPredicate::Data {
  public:
   Data();
   virtual ~Data();
@@ -41,7 +41,7 @@ class KuduPredicate::Data {
 // construct, we return an instance of this class instead of the requested
 // predicate implementation. Then, when the caller adds it to a scanner,
 // the error is returned.
-class ErrorPredicateData : public KuduPredicate::Data {
+class ErrorPredicateData : public YBPredicate::Data {
  public:
   explicit ErrorPredicateData(const Status& s)
   : status_(s) {
@@ -65,11 +65,11 @@ class ErrorPredicateData : public KuduPredicate::Data {
 
 // A simple binary comparison predicate between a column and
 // a constant.
-class ComparisonPredicateData : public KuduPredicate::Data {
+class ComparisonPredicateData : public YBPredicate::Data {
  public:
   ComparisonPredicateData(ColumnSchema col,
-                          KuduPredicate::ComparisonOp op,
-                          KuduValue* value);
+                          YBPredicate::ComparisonOp op,
+                          YBValue* value);
   virtual ~ComparisonPredicateData();
 
   virtual Status AddToScanSpec(ScanSpec* spec) OVERRIDE;
@@ -79,11 +79,11 @@ class ComparisonPredicateData : public KuduPredicate::Data {
   }
 
  private:
-  friend class KuduScanner;
+  friend class YBScanner;
 
   ColumnSchema col_;
-  KuduPredicate::ComparisonOp op_;
-  gscoped_ptr<KuduValue> val_;
+  YBPredicate::ComparisonOp op_;
+  gscoped_ptr<YBValue> val_;
 
   // Owned.
   ColumnRangePredicate* pred_;

@@ -131,7 +131,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
   PartitionSchema partition_schema;
   RETURN_NOT_OK(PartitionSchema::FromPB(PartitionSchemaPB(), schema, &partition_schema));
 
-  vector<KuduPartialRow> split_rows;
+  vector<YBPartialRow> split_rows;
   vector<Partition> partitions;
   RETURN_NOT_OK(partition_schema.CreatePartitions(split_rows, schema, &partitions));
   DCHECK_EQ(1, partitions.size());
@@ -372,7 +372,7 @@ Status SysCatalogTable::AddTable(const TableInfo *table) {
   req.set_tablet_id(kSysCatalogTabletId);
   RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLES_ENTRY));
   CHECK_OK(row.SetString(kSysCatalogTableColId, table->id()));
   CHECK_OK(row.SetString(kSysCatalogTableColMetadata, metadata_buf));
@@ -398,7 +398,7 @@ Status SysCatalogTable::UpdateTable(const TableInfo *table) {
   req.set_tablet_id(kSysCatalogTabletId);
   RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLES_ENTRY));
   CHECK_OK(row.SetString(kSysCatalogTableColId, table->id()));
   CHECK_OK(row.SetString(kSysCatalogTableColMetadata, metadata_buf));
@@ -417,7 +417,7 @@ Status SysCatalogTable::DeleteTable(const TableInfo *table) {
   req.set_tablet_id(kSysCatalogTableColMetadata);
   RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLES_ENTRY));
   CHECK_OK(row.SetString(kSysCatalogTableColId, table->id()));
 
@@ -480,7 +480,7 @@ Status SysCatalogTable::AddTabletsToPB(const vector<TabletInfo*>& tablets,
                                        RowOperationsPB::Type op_type,
                                        RowOperationsPB* ops) const {
   faststring metadata_buf;
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   RowOperationsPBEncoder enc(ops);
   for (const TabletInfo *tablet : tablets) {
     if (!pb_util::SerializeToString(tablet->metadata().dirty().pb, &metadata_buf)) {
@@ -542,7 +542,7 @@ Status SysCatalogTable::DeleteTablets(const vector<TabletInfo*>& tablets) {
   RETURN_NOT_OK(SchemaToPB(schema_, req.mutable_schema()));
 
   RowOperationsPBEncoder enc(req.mutable_row_operations());
-  KuduPartialRow row(&schema_);
+  YBPartialRow row(&schema_);
   for (const TabletInfo* tablet : tablets) {
     CHECK_OK(row.SetInt8(kSysCatalogTableColType, TABLETS_ENTRY));
     CHECK_OK(row.SetString(kSysCatalogTableColId, tablet->tablet_id()));

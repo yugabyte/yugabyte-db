@@ -32,7 +32,7 @@ class DeleteTableRequest extends KuduRpc<DeleteTableResponse> {
 
   private final String name;
 
-  DeleteTableRequest(KuduTable table, String name) {
+  DeleteTableRequest(YBTable table, String name) {
     super(table);
     this.name = name;
   }

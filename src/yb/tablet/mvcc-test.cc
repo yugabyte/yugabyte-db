@@ -31,7 +31,7 @@ namespace tablet {
 using server::Clock;
 using server::HybridClock;
 
-class MvccTest : public KuduTest {
+class MvccTest : public YBTest {
  public:
   MvccTest()
       : clock_(

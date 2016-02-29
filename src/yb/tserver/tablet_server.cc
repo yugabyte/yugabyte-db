@@ -47,7 +47,7 @@ namespace yb {
 namespace tserver {
 
 TabletServer::TabletServer(const TabletServerOptions& opts)
-  : ServerBase("TabletServer", opts, "kudu.tabletserver"),
+  : ServerBase("TabletServer", opts, "yb.tabletserver"),
     initted_(false),
     fail_heartbeats_for_tests_(false),
     opts_(opts),

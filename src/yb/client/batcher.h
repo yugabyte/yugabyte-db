@@ -34,10 +34,10 @@
 namespace yb {
 namespace client {
 
-class KuduClient;
-class KuduSession;
-class KuduStatusCallback;
-class KuduWriteOperation;
+class YBClient;
+class YBSession;
+class YBStatusCallback;
+class YBWriteOperation;
 
 namespace internal {
 
@@ -62,10 +62,10 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // the provided ErrorCollector.
   //
   // Takes a reference on error_collector. Creates a weak_ptr to 'session'.
-  Batcher(KuduClient* client,
+  Batcher(YBClient* client,
           ErrorCollector* error_collector,
-          const client::sp::shared_ptr<KuduSession>& session,
-          yb::client::KuduSession::ExternalConsistencyMode consistency_mode);
+          const client::sp::shared_ptr<YBSession>& session,
+          yb::client::YBSession::ExternalConsistencyMode consistency_mode);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
@@ -84,7 +84,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  Status Add(KuduWriteOperation* write_op) WARN_UNUSED_RESULT;
+  Status Add(YBWriteOperation* write_op) WARN_UNUSED_RESULT;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -100,11 +100,11 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // then the callback will receive Status::OK. Otherwise, it will receive IOError,
   // and the caller must inspect the ErrorCollector to retrieve more detailed
   // information on which operations failed.
-  void FlushAsync(KuduStatusCallback* cb);
+  void FlushAsync(YBStatusCallback* cb);
 
   // Returns the consistency mode set on the batcher by the session when it was initially
   // created.
-  yb::client::KuduSession::ExternalConsistencyMode external_consistency_mode() const {
+  yb::client::YBSession::ExternalConsistencyMode external_consistency_mode() const {
     return consistency_mode_;
   }
 
@@ -159,11 +159,11 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   };
   State state_;
 
-  KuduClient* const client_;
-  client::sp::weak_ptr<KuduSession> weak_session_;
+  YBClient* const client_;
+  client::sp::weak_ptr<YBSession> weak_session_;
 
   // The consistency mode set in the session.
-  yb::client::KuduSession::ExternalConsistencyMode consistency_mode_;
+  yb::client::YBSession::ExternalConsistencyMode consistency_mode_;
 
   // Errors are reported into this error collector.
   scoped_refptr<ErrorCollector> const error_collector_;
@@ -175,7 +175,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   // If state is kFlushing, this member will be set to the user-provided
   // callback. Once there are no more in-flight operations, the callback
   // will be called exactly once (and the state changed to kFlushed).
-  KuduStatusCallback* flush_callback_;
+  YBStatusCallback* flush_callback_;
 
   // All buffered or in-flight ops.
   std::unordered_set<InFlightOp*> ops_;

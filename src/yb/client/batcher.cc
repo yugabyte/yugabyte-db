@@ -155,7 +155,7 @@ struct InFlightOp {
   State state;
 
   // The actual operation.
-  gscoped_ptr<KuduWriteOperation> write_op;
+  gscoped_ptr<YBWriteOperation> write_op;
 
   string partition_key;
 
@@ -189,7 +189,7 @@ class WriteRpc : public Rpc {
   virtual void SendRpc() OVERRIDE;
   virtual string ToString() const OVERRIDE;
 
-  const KuduTable* table() const {
+  const YBTable* table() const {
     // All of the ops for a given tablet obviously correspond to the same table,
     // so we'll just grab the table from the first.
     return ops_[0]->write_op->table();
@@ -252,10 +252,10 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 
   req_.set_tablet_id(tablet->tablet_id());
   switch (batcher->external_consistency_mode()) {
-    case yb::client::KuduSession::CLIENT_PROPAGATED:
+    case yb::client::YBSession::CLIENT_PROPAGATED:
       req_.set_external_consistency_mode(yb::CLIENT_PROPAGATED);
       break;
-    case yb::client::KuduSession::COMMIT_WAIT:
+    case yb::client::YBSession::COMMIT_WAIT:
       req_.set_external_consistency_mode(yb::COMMIT_WAIT);
       break;
     default:
@@ -275,7 +275,7 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
   for (InFlightOp* op : ops_) {
     const Partition& partition = op->tablet->partition();
     const PartitionSchema& partition_schema = table()->partition_schema();
-    const KuduPartialRow& row = op->write_op->row();
+    const YBPartialRow& row = op->write_op->row();
 
 #ifndef NDEBUG
     bool partition_contains_row;
@@ -477,10 +477,10 @@ void WriteRpc::SendRpcCb(const Status& status) {
   delete this;
 }
 
-Batcher::Batcher(KuduClient* client,
+Batcher::Batcher(YBClient* client,
                  ErrorCollector* error_collector,
-                 const sp::shared_ptr<KuduSession>& session,
-                 yb::client::KuduSession::ExternalConsistencyMode consistency_mode)
+                 const sp::shared_ptr<YBSession>& session,
+                 yb::client::YBSession::ExternalConsistencyMode consistency_mode)
   : state_(kGatheringOps),
     client_(client),
     weak_session_(session),
@@ -552,7 +552,7 @@ int Batcher::CountBufferedOperations() const {
 }
 
 void Batcher::CheckForFinishedFlush() {
-  sp::shared_ptr<KuduSession> session;
+  sp::shared_ptr<YBSession> session;
   {
     lock_guard<simple_spinlock> l(&lock_);
     if (state_ != kFlushing || !ops_.empty()) {
@@ -591,7 +591,7 @@ MonoTime Batcher::ComputeDeadlineUnlocked() const {
   return ret;
 }
 
-void Batcher::FlushAsync(KuduStatusCallback* cb) {
+void Batcher::FlushAsync(YBStatusCallback* cb) {
   {
     lock_guard<simple_spinlock> l(&lock_);
     CHECK_EQ(state_, kGatheringOps);
@@ -614,7 +614,7 @@ void Batcher::FlushAsync(KuduStatusCallback* cb) {
   FlushBuffersIfReady();
 }
 
-Status Batcher::Add(KuduWriteOperation* write_op) {
+Status Batcher::Add(YBWriteOperation* write_op) {
   int64_t required_size = write_op->SizeInBuffer();
   int64_t size_after_adding = buffer_bytes_used_.IncrementBy(required_size);
   if (PREDICT_FALSE(size_after_adding > max_buffer_size_)) {
@@ -681,7 +681,7 @@ void Batcher::MarkInFlightOpFailed(InFlightOp* op, const Status& s) {
 void Batcher::MarkInFlightOpFailedUnlocked(InFlightOp* op, const Status& s) {
   CHECK_EQ(1, ops_.erase(op))
     << "Could not remove op " << op->ToString() << " from in-flight list";
-  gscoped_ptr<KuduError> error(new KuduError(op->write_op.release(), s));
+  gscoped_ptr<YBError> error(new YBError(op->write_op.release(), s));
   error_collector_->AddError(error.Pass());
   had_errors_ = true;
   delete op;
@@ -820,7 +820,7 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
   } else {
     // Mark each of the rows in the write op as failed, since the whole RPC failed.
     for (InFlightOp* op : rpc.ops()) {
-      gscoped_ptr<KuduError> error(new KuduError(op->write_op.release(), s));
+      gscoped_ptr<YBError> error(new YBError(op->write_op.release(), s));
       error_collector_->AddError(error.Pass());
     }
 
@@ -851,11 +851,11 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
                  << rpc.resp().DebugString();
       continue;
     }
-    gscoped_ptr<KuduWriteOperation> op = rpc.ops()[err_pb.row_index()]->write_op.Pass();
+    gscoped_ptr<YBWriteOperation> op = rpc.ops()[err_pb.row_index()]->write_op.Pass();
     VLOG(1) << "Error on op " << op->ToString() << ": "
             << err_pb.error().ShortDebugString();
     Status op_status = StatusFromPB(err_pb.error());
-    gscoped_ptr<KuduError> error(new KuduError(op.release(), op_status));
+    gscoped_ptr<YBError> error(new YBError(op.release(), op_status));
     error_collector_->AddError(error.Pass());
     MarkHadErrors();
   }

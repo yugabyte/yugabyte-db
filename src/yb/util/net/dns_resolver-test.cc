@@ -31,7 +31,7 @@ using std::vector;
 
 namespace yb {
 
-class DnsResolverTest : public KuduTest {
+class DnsResolverTest : public YBTest {
  protected:
   DnsResolver resolver_;
 };

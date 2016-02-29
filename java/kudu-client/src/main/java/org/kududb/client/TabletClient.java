@@ -71,7 +71,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * This class needs careful synchronization. It's a non-sharable handler,
  * meaning there is one instance of it per Netty {@link Channel} and each
  * instance is only used by one Netty IO thread at a time.  At the same time,
- * {@link AsyncKuduClient} calls methods of this class from random threads at
+ * {@link AsyncYBClient} calls methods of this class from random threads at
  * random times. The bottom line is that any data only used in the Netty IO
  * threads doesn't require synchronization, everything else does.
  * <p>
@@ -117,7 +117,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
   /**
    * Set to {@code true} once we've disconnected from the server.
    * This way, if any thread is still trying to use this client after it's
-   * been removed from the caches in the {@link AsyncKuduClient}, we will
+   * been removed from the caches in the {@link AsyncYBClient}, we will
    * immediately fail / reschedule its requests.
    * <p>
    * Manipulating this value requires synchronizing on `this'.
@@ -131,7 +131,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
   private final ConcurrentHashMap<Integer, KuduRpc<?>> rpcs_inflight =
       new ConcurrentHashMap<Integer, KuduRpc<?>>();
 
-  private final AsyncKuduClient ybClient;
+  private final AsyncYBClient ybClient;
 
   private final String uuid;
 
@@ -139,7 +139,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
 
   private SecureRpcHelper secureRpcHelper;
 
-  public TabletClient(AsyncKuduClient client, String uuid) {
+  public TabletClient(AsyncYBClient client, String uuid) {
     this.ybClient = client;
     this.uuid = uuid;
     this.socketReadTimeoutMs = client.getDefaultSocketReadTimeoutMs();
@@ -657,7 +657,7 @@ public class TabletClient extends ReplayingDecoder<VoidEnum> {
    */
   private void failOrRetryRpc(final KuduRpc<?> rpc,
                               final ConnectionResetException exception) {
-    AsyncKuduClient.RemoteTablet tablet = rpc.getTablet();
+    AsyncYBClient.RemoteTablet tablet = rpc.getTablet();
     if (tablet == null) {  // Can't retry, dunno where this RPC should go.
       rpc.errback(exception);
     } else {

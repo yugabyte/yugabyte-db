@@ -22,7 +22,7 @@ This file contains some example code for the C++ client. It will
 probably be eventually removed in favor of actual runnable examples,
 but serves as a guide/docs for the client API design for now.
 
-See class docs for KuduClient, KuduSession, KuduTable for proper docs.
+See class docs for YBClient, YBSession, YBTable for proper docs.
 */
 
 // This is an example of explicit batching done by the client.
@@ -33,17 +33,17 @@ void ExplicitBatchingExample() {
   // Note that this may be done without a session, either before or
   // after creating a session, since a session isn't tied to any
   // particular table or set of tables.
-  scoped_refptr<KuduTable> t;
+  scoped_refptr<YBTable> t;
   CHECK_OK(client_->OpenTable("my_table", &t));
 
   // Create a new session. All data-access operations must happen through
   // a session.
-  shared_ptr<KuduSession> session(client->NewSession());
+  shared_ptr<YBSession> session(client->NewSession());
 
   // Setting flush mode to MANUAL_FLUSH makes the session accumulate
   // all operations until the next Flush() call. This is sort of like
   // TCP_CORK.
-  CHECK_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+  CHECK_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
 
   // Insert 100 rows.
   for (int i = 0; i < 100; i++) {
@@ -91,9 +91,9 @@ void ExplicitBatchingExample() {
 // which the client just wants to shove a bunch of data in, and perhaps
 // fail if it ever gets an error.
 void BulkIngestExample() {
-  scoped_refptr<KuduTable> t;
+  scoped_refptr<YBTable> t;
   CHECK_OK(client_->OpenTable("my_table", &t));
-  shared_ptr<KuduSession> session(client->NewSession());
+  shared_ptr<YBSession> session(client->NewSession());
 
   // If the amount of buffered data in RAM is larger than this amount,
   // blocks the writer from performing more inserts until memory has
@@ -107,7 +107,7 @@ void BulkIngestExample() {
 
   // In AUTO_FLUSH_BACKGROUND mode, the session will try to accumulate batches
   // for optimal efficiency, rather than flushing each operation.
-  CHECK_OK(session->SetFlushMode(KuduSession::AUTO_FLUSH_BACKGROUND));
+  CHECK_OK(session->SetFlushMode(YBSession::AUTO_FLUSH_BACKGROUND));
 
   for (int i = 0; i < 10000; i++) {
     gscoped_ptr<Insertion> ins = t->NewInsertion();

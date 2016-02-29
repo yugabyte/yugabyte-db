@@ -25,10 +25,10 @@
 namespace yb {
 namespace client {
 
-void LogSessionErrorsAndDie(const sp::shared_ptr<KuduSession>& session,
+void LogSessionErrorsAndDie(const sp::shared_ptr<YBSession>& session,
                             const Status& s) {
   CHECK(!s.ok());
-  std::vector<KuduError*> errors;
+  std::vector<YBError*> errors;
   ElementDeleter d(&errors);
   bool overflow;
   session->GetPendingErrors(&errors, &overflow);
@@ -37,7 +37,7 @@ void LogSessionErrorsAndDie(const sp::shared_ptr<KuduSession>& session,
   // Log only the first 10 errors.
   LOG(INFO) << errors.size() << " failed ops. First 10 errors follow";
   int i = 0;
-  for (const KuduError* e : errors) {
+  for (const YBError* e : errors) {
     if (i == 10) {
       break;
     }
@@ -48,33 +48,33 @@ void LogSessionErrorsAndDie(const sp::shared_ptr<KuduSession>& session,
   CHECK_OK(s); // will fail
 }
 
-void ScanTableToStrings(KuduTable* table, vector<string>* row_strings) {
+void ScanTableToStrings(YBTable* table, vector<string>* row_strings) {
   row_strings->clear();
-  KuduScanner scanner(table);
-  ASSERT_OK(scanner.SetSelection(KuduClient::LEADER_ONLY));
+  YBScanner scanner(table);
+  ASSERT_OK(scanner.SetSelection(YBClient::LEADER_ONLY));
   scanner.SetTimeoutMillis(60000);
   ScanToStrings(&scanner, row_strings);
 }
 
-int64_t CountTableRows(KuduTable* table) {
+int64_t CountTableRows(YBTable* table) {
   vector<string> rows;
   client::ScanTableToStrings(table, &rows);
   return rows.size();
 }
 
-void ScanToStrings(KuduScanner* scanner, vector<string>* row_strings) {
+void ScanToStrings(YBScanner* scanner, vector<string>* row_strings) {
   ASSERT_OK(scanner->Open());
-  vector<KuduRowResult> rows;
+  vector<YBRowResult> rows;
   while (scanner->HasMoreRows()) {
     ASSERT_OK(scanner->NextBatch(&rows));
-    for (const KuduRowResult& row : rows) {
+    for (const YBRowResult& row : rows) {
       row_strings->push_back(row.ToString());
     }
   }
 }
 
-KuduSchema KuduSchemaFromSchema(const Schema& schema) {
-  return KuduSchema(schema);
+YBSchema YBSchemaFromSchema(const Schema& schema) {
+  return YBSchema(schema);
 }
 
 } // namespace client

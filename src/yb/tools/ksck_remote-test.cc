@@ -32,12 +32,12 @@ DECLARE_int32(heartbeat_interval_ms);
 namespace yb {
 namespace tools {
 
-using client::KuduColumnSchema;
-using client::KuduInsert;
-using client::KuduSchemaBuilder;
-using client::KuduSession;
-using client::KuduTable;
-using client::KuduTableCreator;
+using client::YBColumnSchema;
+using client::YBInsert;
+using client::YBSchemaBuilder;
+using client::YBSession;
+using client::YBTable;
+using client::YBTableCreator;
 using client::sp::shared_ptr;
 using std::static_pointer_cast;
 using std::string;
@@ -46,18 +46,18 @@ using strings::Substitute;
 
 static const char *kTableName = "ksck-test-table";
 
-class RemoteKsckTest : public KuduTest {
+class RemoteKsckTest : public YBTest {
  public:
   RemoteKsckTest()
     : random_(SeedRandom()) {
-    KuduSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
+    YBSchemaBuilder b;
+    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(YBColumnSchema::INT32)->NotNull();
     CHECK_OK(b.Build(&schema_));
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     // Speed up testing, saves about 700ms per TEST_F.
     FLAGS_heartbeat_interval_ms = 10;
@@ -70,12 +70,12 @@ class RemoteKsckTest : public KuduTest {
     master_rpc_addr_ = mini_cluster_->mini_master()->bound_rpc_addr();
 
     // Connect to the cluster.
-    ASSERT_OK(client::KuduClientBuilder()
+    ASSERT_OK(client::YBClientBuilder()
                      .add_master_server_addr(master_rpc_addr_.ToString())
                      .Build(&client_));
 
     // Create one table.
-    gscoped_ptr<KuduTableCreator> table_creator(client_->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client_->NewTableCreator());
     ASSERT_OK(table_creator->table_name(kTableName)
                      .schema(&schema_)
                      .num_replicas(3)
@@ -94,7 +94,7 @@ class RemoteKsckTest : public KuduTest {
       mini_cluster_->Shutdown();
       mini_cluster_.reset();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   // Writes rows to the table until the continue_writing flag is set to false.
@@ -103,21 +103,21 @@ class RemoteKsckTest : public KuduTest {
   void GenerateRowWritesLoop(CountDownLatch* started_writing,
                              const AtomicBool& continue_writing,
                              Promise<Status>* promise) {
-    shared_ptr<KuduTable> table;
+    shared_ptr<YBTable> table;
     Status status;
     status = client_->OpenTable(kTableName, &table);
     if (!status.ok()) {
       promise->Set(status);
     }
-    shared_ptr<KuduSession> session(client_->NewSession());
+    shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeoutMillis(10000);
-    status = session->SetFlushMode(KuduSession::MANUAL_FLUSH);
+    status = session->SetFlushMode(YBSession::MANUAL_FLUSH);
     if (!status.ok()) {
       promise->Set(status);
     }
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
-      gscoped_ptr<KuduInsert> insert(table->NewInsert());
+      gscoped_ptr<YBInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
       status = session->Apply(insert.release());
       if (!status.ok()) {
@@ -134,11 +134,11 @@ class RemoteKsckTest : public KuduTest {
 
  protected:
   // Generate a set of split rows for tablets used in this test.
-  vector<const KuduPartialRow*> GenerateSplitRows() {
-    vector<const KuduPartialRow*> split_rows;
+  vector<const YBPartialRow*> GenerateSplitRows() {
+    vector<const YBPartialRow*> split_rows;
     vector<int> split_nums = { 33, 66 };
     for (int i : split_nums) {
-      KuduPartialRow* row = schema_.NewRow();
+      YBPartialRow* row = schema_.NewRow();
       CHECK_OK(row->SetInt32(0, i));
       split_rows.push_back(row);
     }
@@ -146,14 +146,14 @@ class RemoteKsckTest : public KuduTest {
   }
 
   Status GenerateRowWrites(uint64_t num_rows) {
-    shared_ptr<KuduTable> table;
+    shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    shared_ptr<KuduSession> session(client_->NewSession());
+    shared_ptr<YBSession> session(client_->NewSession());
     session->SetTimeoutMillis(10000);
-    RETURN_NOT_OK(session->SetFlushMode(KuduSession::MANUAL_FLUSH));
+    RETURN_NOT_OK(session->SetFlushMode(YBSession::MANUAL_FLUSH));
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
-      gscoped_ptr<KuduInsert> insert(table->NewInsert());
+      gscoped_ptr<YBInsert> insert(table->NewInsert());
       GenerateDataForRow(table->schema(), i, &random_, insert->mutable_row());
       RETURN_NOT_OK(session->Apply(insert.release()));
 
@@ -166,13 +166,13 @@ class RemoteKsckTest : public KuduTest {
   }
 
   std::shared_ptr<Ksck> ksck_;
-  shared_ptr<client::KuduClient> client_;
+  shared_ptr<client::YBClient> client_;
 
  private:
   Sockaddr master_rpc_addr_;
   std::shared_ptr<MiniCluster> mini_cluster_;
-  client::KuduSchema schema_;
-  shared_ptr<client::KuduTable> client_table_;
+  client::YBSchema schema_;
+  shared_ptr<client::YBTable> client_table_;
   std::shared_ptr<KsckMaster> master_;
   std::shared_ptr<KsckCluster> cluster_;
   Random random_;

@@ -21,13 +21,13 @@ namespace yb {
 
 namespace client {
 
-KuduError::Data::Data(gscoped_ptr<KuduWriteOperation> failed_op,
+YBError::Data::Data(gscoped_ptr<YBWriteOperation> failed_op,
                       const Status& status) :
   failed_op_(failed_op.Pass()),
   status_(status) {
 }
 
-KuduError::Data::~Data() {
+YBError::Data::~Data() {
 }
 
 } // namespace client

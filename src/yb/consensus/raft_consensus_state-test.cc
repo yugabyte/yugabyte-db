@@ -34,7 +34,7 @@ using std::vector;
 // TODO: Share a test harness with ConsensusMetadataTest?
 const char* kTabletId = "TestTablet";
 
-class RaftConsensusStateTest : public KuduTest {
+class RaftConsensusStateTest : public YBTest {
  public:
   RaftConsensusStateTest()
     : fs_manager_(env_.get(), GetTestPath("fs_root")),
@@ -42,7 +42,7 @@ class RaftConsensusStateTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     ASSERT_OK(fs_manager_.CreateInitialFileSystemLayout());
     ASSERT_OK(fs_manager_.Open());
 

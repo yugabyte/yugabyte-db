@@ -26,65 +26,65 @@ using strings::Substitute;
 namespace yb {
 namespace client {
 
-KuduValue::KuduValue(Data* d)
+YBValue::YBValue(Data* d)
 : data_(d) {
 }
 
-KuduValue::~KuduValue() {
+YBValue::~YBValue() {
   if (data_->type_ == Data::SLICE) {
     delete[] data_->slice_val_.data();
   }
   delete data_;
 }
 
-KuduValue* KuduValue::Clone() const {
+YBValue* YBValue::Clone() const {
   switch (data_->type_) {
     case Data::INT:
-      return KuduValue::FromInt(data_->int_val_);
+      return YBValue::FromInt(data_->int_val_);
     case Data::DOUBLE:
-      return KuduValue::FromDouble(data_->double_val_);
+      return YBValue::FromDouble(data_->double_val_);
     case Data::FLOAT:
-      return KuduValue::FromFloat(data_->float_val_);
+      return YBValue::FromFloat(data_->float_val_);
     case Data::SLICE:
-      return KuduValue::CopyString(data_->slice_val_);
+      return YBValue::CopyString(data_->slice_val_);
   }
   LOG(FATAL);
 }
 
-KuduValue* KuduValue::FromInt(int64_t v) {
+YBValue* YBValue::FromInt(int64_t v) {
   auto d = new Data;
   d->type_ = Data::INT;
   d->int_val_ = v;
 
-  return new KuduValue(d);
+  return new YBValue(d);
 }
 
-KuduValue* KuduValue::FromDouble(double v) {
+YBValue* YBValue::FromDouble(double v) {
   auto d = new Data;
   d->type_ = Data::DOUBLE;
   d->double_val_ = v;
 
-  return new KuduValue(d);
+  return new YBValue(d);
 }
 
 
-KuduValue* KuduValue::FromFloat(float v) {
+YBValue* YBValue::FromFloat(float v) {
   auto d = new Data;
   d->type_ = Data::FLOAT;
   d->float_val_ = v;
 
-  return new KuduValue(d);
+  return new YBValue(d);
 }
 
-KuduValue* KuduValue::FromBool(bool v) {
+YBValue* YBValue::FromBool(bool v) {
   auto d = new Data;
   d->type_ = Data::INT;
   d->int_val_ = v ? 1 : 0;
 
-  return new KuduValue(d);
+  return new YBValue(d);
 }
 
-KuduValue* KuduValue::CopyString(Slice s) {
+YBValue* YBValue::CopyString(Slice s) {
   auto copy = new uint8_t[s.size()];
   memcpy(copy, s.data(), s.size());
 
@@ -92,10 +92,10 @@ KuduValue* KuduValue::CopyString(Slice s) {
   d->type_ = Data::SLICE;
   d->slice_val_ = Slice(copy, s.size());
 
-  return new KuduValue(d);
+  return new YBValue(d);
 }
 
-Status KuduValue::Data::CheckTypeAndGetPointer(const string& col_name,
+Status YBValue::Data::CheckTypeAndGetPointer(const string& col_name,
                                                DataType t,
                                                void** val_void) {
   const TypeInfo* ti = GetTypeInfo(t);
@@ -112,12 +112,12 @@ Status KuduValue::Data::CheckTypeAndGetPointer(const string& col_name,
       break;
 
     case yb::FLOAT:
-      RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::FLOAT, "float"));
+      RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::FLOAT, "float"));
       *val_void = &float_val_;
       break;
 
     case yb::DOUBLE:
-      RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::DOUBLE, "double"));
+      RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::DOUBLE, "double"));
       *val_void = &double_val_;
       break;
 
@@ -132,8 +132,8 @@ Status KuduValue::Data::CheckTypeAndGetPointer(const string& col_name,
   return Status::OK();
 }
 
-Status KuduValue::Data::CheckValType(const string& col_name,
-                                     KuduValue::Data::Type type,
+Status YBValue::Data::CheckValType(const string& col_name,
+                                     YBValue::Data::Type type,
                                      const char* type_str) const {
   if (type_ != type) {
     return Status::InvalidArgument(
@@ -142,9 +142,9 @@ Status KuduValue::Data::CheckValType(const string& col_name,
   return Status::OK();
 }
 
-Status KuduValue::Data::CheckAndPointToBool(const string& col_name,
+Status YBValue::Data::CheckAndPointToBool(const string& col_name,
                                             void** val_void) {
-  RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::INT, "bool"));
+  RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::INT, "bool"));
   int64_t int_val = int_val_;
   if (int_val != 0 && int_val != 1) {
     return Status::InvalidArgument(
@@ -155,10 +155,10 @@ Status KuduValue::Data::CheckAndPointToBool(const string& col_name,
   return Status::OK();
 }
 
-Status KuduValue::Data::CheckAndPointToInt(const string& col_name,
+Status YBValue::Data::CheckAndPointToInt(const string& col_name,
                                            size_t int_size,
                                            void** val_void) {
-  RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::INT, "int"));
+  RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::INT, "int"));
 
   int64_t int_min, int_max;
   if (int_size == 8) {
@@ -181,9 +181,9 @@ Status KuduValue::Data::CheckAndPointToInt(const string& col_name,
   return Status::OK();
 }
 
-Status KuduValue::Data::CheckAndPointToString(const string& col_name,
+Status YBValue::Data::CheckAndPointToString(const string& col_name,
                                               void** val_void) {
-  RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::SLICE, "string"));
+  RETURN_NOT_OK(CheckValType(col_name, YBValue::Data::SLICE, "string"));
   *val_void = &slice_val_;
   return Status::OK();
 }

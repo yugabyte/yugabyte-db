@@ -29,7 +29,7 @@ using std::string;
 
 namespace yb {
 
-class ThreadTest : public KuduTest {};
+class ThreadTest : public YBTest {};
 
 // Join with a thread and emit warnings while waiting to join.
 // This has to be manually verified.

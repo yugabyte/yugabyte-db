@@ -24,14 +24,14 @@ namespace yb {
 
 namespace client {
 
-KuduTableCreator::Data::Data(KuduClient* client)
+YBTableCreator::Data::Data(YBClient* client)
   : client_(client),
     schema_(nullptr),
     num_replicas_(0),
     wait_(true) {
 }
 
-KuduTableCreator::Data::~Data() {
+YBTableCreator::Data::~Data() {
   STLDeleteElements(&split_rows_);
 }
 

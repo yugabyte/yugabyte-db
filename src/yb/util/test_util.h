@@ -28,14 +28,14 @@
 
 namespace yb {
 
-class KuduTest : public ::testing::Test {
+class YBTest : public ::testing::Test {
  public:
-  KuduTest();
+  YBTest();
 
   // Env passed in from subclass, for tests that run in-memory.
-  explicit KuduTest(Env *env);
+  explicit YBTest(Env *env);
 
-  virtual ~KuduTest();
+  virtual ~YBTest();
 
   virtual void SetUp() OVERRIDE;
 

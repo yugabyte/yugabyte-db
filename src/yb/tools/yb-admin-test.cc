@@ -30,8 +30,8 @@
 namespace yb {
 namespace tools {
 
-using client::KuduClient;
-using client::KuduClientBuilder;
+using client::YBClient;
+using client::YBClientBuilder;
 using client::sp::shared_ptr;
 using itest::TabletServerMap;
 using itest::TServerDetails;
@@ -165,8 +165,8 @@ TEST_F(AdminCliTest, TestDeleteTable) {
   BuildAndStart(ts_flags, master_flags);
   string master_address = cluster_->master()->bound_rpc_addr().ToString();
 
-  shared_ptr<KuduClient> client;
-  CHECK_OK(KuduClientBuilder()
+  shared_ptr<YBClient> client;
+  CHECK_OK(YBClientBuilder()
         .add_master_server_addr(master_address)
         .Build(&client));
 

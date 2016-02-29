@@ -56,7 +56,7 @@ public class TestUtils {
    * started by the tests
    */
   public static String getFlagsPath() {
-    URL u = BaseKuduTest.class.getResource("/flags");
+    URL u = BaseYBTest.class.getResource("/flags");
     if (u == null) {
       throw new RuntimeException("Unable to find 'flags' file");
     }
@@ -70,7 +70,7 @@ public class TestUtils {
       // not just the path, so we have to use REPLACE_EXISTING below.
       Path tmpFile = Files.createTempFile(
           Paths.get(getBaseDir()), "kudu-flags", ".flags");
-      Files.copy(BaseKuduTest.class.getResourceAsStream("/flags"), tmpFile,
+      Files.copy(BaseYBTest.class.getResourceAsStream("/flags"), tmpFile,
           StandardCopyOption.REPLACE_EXISTING);
       return tmpFile.toAbsolutePath().toString();
     } catch (IOException e) {
@@ -92,7 +92,7 @@ public class TestUtils {
   }
 
   private static String findBuildDir() {
-    URL myUrl = BaseKuduTest.class.getProtectionDomain().getCodeSource().getLocation();
+    URL myUrl = BaseYBTest.class.getProtectionDomain().getCodeSource().getLocation();
     File myPath = new File(urlToPath(myUrl));
     while (myPath != null) {
       if (new File(myPath, ".git").isDirectory()) {

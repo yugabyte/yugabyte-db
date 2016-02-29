@@ -36,17 +36,17 @@ enum Setup {
   ALL_ON_DISK
 };
 
-class TabletPushdownTest : public KuduTabletTest,
+class TabletPushdownTest : public YBTabletTest,
                            public ::testing::WithParamInterface<Setup> {
  public:
   TabletPushdownTest()
-    : KuduTabletTest(Schema({ ColumnSchema("key", INT32),
+    : YBTabletTest(Schema({ ColumnSchema("key", INT32),
                               ColumnSchema("int_val", INT32),
                               ColumnSchema("string_val", STRING) }, 1)) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
 
     FillTestTablet();
   }
@@ -60,7 +60,7 @@ class TabletPushdownTest : public KuduTabletTest,
     }
 
     LocalTabletWriter writer(tablet().get(), &client_schema_);
-    KuduPartialRow row(&client_schema_);
+    YBPartialRow row(&client_schema_);
     for (int64_t i = 0; i < nrows_; i++) {
       CHECK_OK(row.SetInt32(0, i));
       CHECK_OK(row.SetInt32(1, i * 10));

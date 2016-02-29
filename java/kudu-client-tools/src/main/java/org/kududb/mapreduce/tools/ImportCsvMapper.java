@@ -19,7 +19,7 @@ import org.kududb.Schema;
 import org.kududb.annotations.InterfaceAudience;
 import org.kududb.annotations.InterfaceStability;
 import org.kududb.client.*;
-import org.kududb.mapreduce.KuduTableMapReduceUtil;
+import org.kududb.mapreduce.YBTableMapReduceUtil;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.NullWritable;
@@ -47,7 +47,7 @@ public class ImportCsvMapper extends Mapper<LongWritable, Text, NullWritable, Op
 
   private CsvParser parser;
 
-  private KuduTable table;
+  private YBTable table;
   private Schema schema;
 
   /**
@@ -67,7 +67,7 @@ public class ImportCsvMapper extends Mapper<LongWritable, Text, NullWritable, Op
 
     this.parser = new CsvParser(conf.get(ImportCsv.COLUMNS_NAMES_KEY), this.separator);
 
-    this.table = KuduTableMapReduceUtil.getTableFromContext(context);
+    this.table = YBTableMapReduceUtil.getTableFromContext(context);
     this.schema = this.table.getSchema();
   }
 

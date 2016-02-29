@@ -29,7 +29,7 @@
 namespace yb {
 
 class Arena;
-class KuduPartialRow;
+class YBPartialRow;
 class Schema;
 
 class ClientServerMapping;
@@ -40,7 +40,7 @@ class RowOperationsPBEncoder {
   ~RowOperationsPBEncoder();
 
   // Append this partial row to the protobuf.
-  void Add(RowOperationsPB::Type type, const KuduPartialRow& row);
+  void Add(RowOperationsPB::Type type, const YBPartialRow& row);
 
  private:
   RowOperationsPB* pb_;
@@ -59,7 +59,7 @@ struct DecodedRowOperation {
   RowChangeList changelist;
 
   // For SPLIT_ROW, the partial row to split on.
-  std::shared_ptr<KuduPartialRow> split_row;
+  std::shared_ptr<YBPartialRow> split_row;
 
   std::string ToString(const Schema& schema) const;
 };

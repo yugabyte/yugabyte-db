@@ -27,7 +27,7 @@ using std::vector;
 
 namespace yb {
 
-class SubprocessTest : public KuduTest {};
+class SubprocessTest : public YBTest {};
 
 TEST_F(SubprocessTest, TestSimplePipe) {
   vector<string> argv;

@@ -367,7 +367,7 @@ All bug fixes should have tests.::
 
 Tests should run quickly (< 1s).::
   If you want to write a time-intensive
-  test, make the runtime dependent on `KuduTest#AllowSlowTests`, which is
+  test, make the runtime dependent on `YBTest#AllowSlowTests`, which is
   enabled via the `YB_ALLOW_SLOW_TESTS` environment variable and is
   used by Jenkins test execution.
 

@@ -40,10 +40,10 @@ namespace yb {
 
 METRIC_DEFINE_entity(test_entity);
 
-class MetricsTest : public KuduTest {
+class MetricsTest : public YBTest {
  public:
   void SetUp() override {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     entity_ = METRIC_ENTITY_test_entity.Instantiate(&registry_, "my-test");
   }

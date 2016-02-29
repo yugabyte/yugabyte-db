@@ -48,7 +48,7 @@ class RpcController;
 
 namespace client {
 
-class KuduClient::Data {
+class YBClient::Data {
  public:
   Data();
   ~Data();
@@ -61,48 +61,48 @@ class KuduClient::Data {
   // The 'candidates' return parameter indicates tservers that are live and meet the selection
   // criteria, but are possibly filtered by the blacklist. This is useful for implementing
   // retry logic.
-  Status GetTabletServer(KuduClient* client,
+  Status GetTabletServer(YBClient* client,
                          const scoped_refptr<internal::RemoteTablet>& rt,
                          ReplicaSelection selection,
                          const std::set<std::string>& blacklist,
                          std::vector<internal::RemoteTabletServer*>* candidates,
                          internal::RemoteTabletServer** ts);
 
-  Status CreateTable(KuduClient* client,
+  Status CreateTable(YBClient* client,
                      const master::CreateTableRequestPB& req,
-                     const KuduSchema& schema,
+                     const YBSchema& schema,
                      const MonoTime& deadline);
 
-  Status IsCreateTableInProgress(KuduClient* client,
+  Status IsCreateTableInProgress(YBClient* client,
                                  const std::string& table_name,
                                  const MonoTime& deadline,
                                  bool *create_in_progress);
 
-  Status WaitForCreateTableToFinish(KuduClient* client,
+  Status WaitForCreateTableToFinish(YBClient* client,
                                     const std::string& table_name,
                                     const MonoTime& deadline);
 
-  Status DeleteTable(KuduClient* client,
+  Status DeleteTable(YBClient* client,
                      const std::string& table_name,
                      const MonoTime& deadline);
 
-  Status AlterTable(KuduClient* client,
+  Status AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     const MonoTime& deadline);
 
-  Status IsAlterTableInProgress(KuduClient* client,
+  Status IsAlterTableInProgress(YBClient* client,
                                 const std::string& table_name,
                                 const MonoTime& deadline,
                                 bool *alter_in_progress);
 
-  Status WaitForAlterTableToFinish(KuduClient* client,
+  Status WaitForAlterTableToFinish(YBClient* client,
                                    const std::string& alter_name,
                                    const MonoTime& deadline);
 
-  Status GetTableSchema(KuduClient* client,
+  Status GetTableSchema(YBClient* client,
                         const std::string& table_name,
                         const MonoTime& deadline,
-                        KuduSchema* schema,
+                        YBSchema* schema,
                         PartitionSchema* partition_schema,
                         std::string* table_id);
 
@@ -138,7 +138,7 @@ class KuduClient::Data {
   // Invokes 'cb' with the appropriate status when finished.
   //
   // Works with both a distributed and non-distributed configuration.
-  void SetMasterServerProxyAsync(KuduClient* client,
+  void SetMasterServerProxyAsync(YBClient* client,
                                  const MonoTime& deadline,
                                  const StatusCallback& cb);
 
@@ -149,7 +149,7 @@ class KuduClient::Data {
   //
   // TODO (KUDU-492): Get rid of this method and re-factor the client
   // to lazily initialize 'master_proxy_'.
-  Status SetMasterServerProxy(KuduClient* client,
+  Status SetMasterServerProxy(YBClient* client,
                               const MonoTime& deadline);
 
   std::shared_ptr<master::MasterServiceProxy> master_proxy() const;
@@ -177,7 +177,7 @@ class KuduClient::Data {
   template<class ReqClass, class RespClass>
   Status SyncLeaderMasterRpc(
       const MonoTime& deadline,
-      KuduClient* client,
+      YBClient* client,
       const ReqClass& req,
       RespClass* resp,
       int* num_attempts,
@@ -216,7 +216,7 @@ class KuduClient::Data {
   // Protects 'leader_master_rpc_', 'leader_master_hostport_',
   // and master_proxy_
   //
-  // See: KuduClient::Data::SetMasterServerProxyAsync for a more
+  // See: YBClient::Data::SetMasterServerProxyAsync for a more
   // in-depth explanation of why this is needed and how it works.
   mutable simple_spinlock leader_master_lock_;
 

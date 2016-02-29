@@ -257,7 +257,7 @@ const char *GenericCalculatorService::kFirstString =
 const char *GenericCalculatorService::kSecondString =
     "2222222222222222222222222222222222222222222222222222222222222222222222";
 
-class RpcTestBase : public KuduTest {
+class RpcTestBase : public YBTest {
  public:
   RpcTestBase()
     : n_worker_threads_(3),
@@ -267,7 +267,7 @@ class RpcTestBase : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
   }
 
   virtual void TearDown() OVERRIDE {
@@ -278,7 +278,7 @@ class RpcTestBase : public KuduTest {
     if (server_messenger_) {
       server_messenger_->Shutdown();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
  protected:

@@ -78,16 +78,16 @@ static Schema GetTestSchema() {
   return Schema({ ColumnSchema("key", INT32) }, 1);
 }
 
-class TabletPeerTest : public KuduTabletTest {
+class TabletPeerTest : public YBTabletTest {
  public:
   TabletPeerTest()
-    : KuduTabletTest(GetTestSchema()),
+    : YBTabletTest(GetTestSchema()),
       insert_counter_(0),
       delete_counter_(0) {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTabletTest::SetUp();
+    YBTabletTest::SetUp();
 
     ASSERT_OK(ThreadPoolBuilder("apply").Build(&apply_pool_));
 
@@ -152,7 +152,7 @@ class TabletPeerTest : public KuduTabletTest {
   virtual void TearDown() OVERRIDE {
     tablet_peer_->Shutdown();
     apply_pool_->Shutdown();
-    KuduTabletTest::TearDown();
+    YBTabletTest::TearDown();
   }
 
  protected:
@@ -162,7 +162,7 @@ class TabletPeerTest : public KuduTabletTest {
     write_req->set_tablet_id(tablet()->tablet_id());
     CHECK_OK(SchemaToPB(schema, write_req->mutable_schema()));
 
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     CHECK_OK(row.SetInt32("key", insert_counter_++));
 
     RowOperationsPBEncoder enc(write_req->mutable_row_operations());
@@ -178,7 +178,7 @@ class TabletPeerTest : public KuduTabletTest {
     write_req->set_tablet_id(tablet()->tablet_id());
     CHECK_OK(SchemaToPB(schema, write_req->mutable_schema()));
 
-    KuduPartialRow row(&schema);
+    YBPartialRow row(&schema);
     CHECK_OK(row.SetInt32("key", delete_counter_++));
 
     RowOperationsPBEncoder enc(write_req->mutable_row_operations());

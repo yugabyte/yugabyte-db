@@ -33,7 +33,7 @@ METRIC_DECLARE_gauge_uint64(threads_running);
 
 namespace yb {
 
-class EMCTest : public KuduTest {
+class EMCTest : public YBTest {
  public:
   EMCTest() {
     // Hard-coded RPC ports for the masters. This is safe, as this unit test
@@ -68,7 +68,7 @@ TEST_F(EMCTest, TestBasicOperation) {
     // Retrieve a thread metric, which should always be present on any master.
     int64_t value;
     ASSERT_OK(master->GetInt64Metric(&METRIC_ENTITY_server,
-                                     "kudu.master",
+                                     "yb.master",
                                      &METRIC_threads_running,
                                      "value",
                                      &value));
@@ -90,7 +90,7 @@ TEST_F(EMCTest, TestBasicOperation) {
     // Retrieve a thread metric, which should always be present on any TS.
     int64_t value;
     ASSERT_OK(ts->GetInt64Metric(&METRIC_ENTITY_server,
-                                 "kudu.tabletserver",
+                                 "yb.tabletserver",
                                  &METRIC_threads_running,
                                  "value",
                                  &value));

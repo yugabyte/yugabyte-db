@@ -25,15 +25,15 @@
 
 namespace yb {
 
-class KuduOnceDynamic;
+class YBOnceDynamic;
 
 namespace internal {
 
 // Cheap, single-arg "bound callback" (similar to yb::Callback) for use
-// in KuduOnceDynamic.
+// in YBOnceDynamic.
 template<typename T>
 struct MemberFunc {
-  KuduOnceDynamic* once;
+  YBOnceDynamic* once;
   T* instance;
   Status (T::*member_func)();
 };
@@ -51,9 +51,9 @@ void InitCb(void* arg) {
 // 1. Can be used with single-arg, non-static member functions.
 // 2. Retains results and overall initialization state for repeated access.
 // 3. Access to initialization state is safe for concurrent use.
-class KuduOnceDynamic {
+class YBOnceDynamic {
  public:
-  KuduOnceDynamic()
+  YBOnceDynamic()
     : initted_(false) {
   }
 

@@ -39,7 +39,7 @@ import static org.junit.Assert.assertTrue;
  * This only tests client propagation since it's the only thing that is client-specific.
  * All the work for commit wait is done and tested on the server-side.
  */
-public class TestHybridTime extends BaseKuduTest {
+public class TestHybridTime extends BaseYBTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestHybridTime.class);
 
   // Generate a unique table name
@@ -47,11 +47,11 @@ public class TestHybridTime extends BaseKuduTest {
     TestHybridTime.class.getName() + "-" + System.currentTimeMillis();
 
   protected static Schema schema = getSchema();
-  protected static KuduTable table;
+  protected static YBTable table;
 
   @BeforeClass
   public static void setUpBeforeClass() throws Exception {
-    BaseKuduTest.setUpBeforeClass();
+    BaseYBTest.setUpBeforeClass();
 
     // Using multiple tablets doesn't work with the current way this test works since we could
     // jump from one TS to another which changes the logical clock.
@@ -76,8 +76,8 @@ public class TestHybridTime extends BaseKuduTest {
    */
   @Test(timeout = 100000)
   public void test() throws Exception {
-    AsyncKuduSession session = client.newSession();
-    session.setFlushMode(AsyncKuduSession.FlushMode.AUTO_FLUSH_SYNC);
+    AsyncYBSession session = client.newSession();
+    session.setFlushMode(AsyncYBSession.FlushMode.AUTO_FLUSH_SYNC);
     session.setExternalConsistencyMode(CLIENT_PROPAGATED);
     long[] clockValues;
     long previousLogicalValue = 0;
@@ -113,7 +113,7 @@ public class TestHybridTime extends BaseKuduTest {
     }
 
     // Test timestamp propagation with Batches
-    session.setFlushMode(AsyncKuduSession.FlushMode.MANUAL_FLUSH);
+    session.setFlushMode(AsyncYBSession.FlushMode.MANUAL_FLUSH);
     keys = new String[] {"11", "22", "33"};
     for (int i = 0; i < keys.length; i++) {
       Insert insert = table.newInsert();
@@ -153,9 +153,9 @@ public class TestHybridTime extends BaseKuduTest {
   }
 
   private int scanAtSnapshot(long time) throws Exception {
-    AsyncKuduScanner.AsyncKuduScannerBuilder builder = client.newScannerBuilder(table)
+    AsyncYBScanner.AsyncYBScannerBuilder builder = client.newScannerBuilder(table)
         .snapshotTimestampRaw(time)
-        .readMode(AsyncKuduScanner.ReadMode.READ_AT_SNAPSHOT);
+        .readMode(AsyncYBScanner.ReadMode.READ_AT_SNAPSHOT);
     return countRowsInScan(builder.build());
   }
 }

@@ -78,14 +78,14 @@ if 'YB_HOME' in os.environ:
 
     kudu_include_dirs = [os.path.join(yb_home, 'src')]
 
-    if 'KUDU_BUILD' in os.environ:
-        kudu_build = os.environ['KUDU_BUILD']
-        sys.stderr.write("Using KUDU_BUILD directory: %s\n" % (kudu_build,))
+    if 'YB_BUILD' in os.environ:
+        kudu_build = os.environ['YB_BUILD']
+        sys.stderr.write("Using YB_BUILD directory: %s\n" % (kudu_build,))
     else:
         kudu_build = os.path.join(yb_home, 'build', 'latest')
-        sys.stderr.write("Using inferred KUDU_BUILD directory: %s/\n" % (kudu_build,))
+        sys.stderr.write("Using inferred YB_BUILD directory: %s/\n" % (kudu_build,))
     if not os.path.isdir(kudu_build):
-        sys.stderr.write("%s is not a valid KUDU_BUILD directory" % (kudu_build,))
+        sys.stderr.write("%s is not a valid YB_BUILD directory" % (kudu_build,))
         sys.exit(1)
 
     kudu_include_dirs.append(os.path.join(kudu_build, 'src'))

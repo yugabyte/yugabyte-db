@@ -38,15 +38,15 @@ using std::vector;
 
 namespace yb {
 
-using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduScanner;
-using client::KuduTable;
+using client::YBClient;
+using client::YBClientBuilder;
+using client::YBScanner;
+using client::YBTable;
 
-class ClientStressTest : public KuduTest {
+class ClientStressTest : public YBTest {
  public:
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
 
     ExternalMiniClusterOptions opts = default_opts();
     if (multi_master()) {
@@ -61,21 +61,21 @@ class ClientStressTest : public KuduTest {
   virtual void TearDown() OVERRIDE {
     alarm(0);
     cluster_->Shutdown();
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
  protected:
-  void ScannerThread(KuduClient* client, const CountDownLatch* go_latch, int32_t start_key) {
-    client::sp::shared_ptr<KuduTable> table;
+  void ScannerThread(YBClient* client, const CountDownLatch* go_latch, int32_t start_key) {
+    client::sp::shared_ptr<YBTable> table;
     CHECK_OK(client->OpenTable(TestWorkload::kDefaultTableName, &table));
     vector<string> rows;
 
     go_latch->Wait();
 
-    KuduScanner scanner(table.get());
+    YBScanner scanner(table.get());
     CHECK_OK(scanner.AddConjunctPredicate(table->NewComparisonPredicate(
-        "key", client::KuduPredicate::GREATER_EQUAL,
-        client::KuduValue::FromInt(start_key))));
+        "key", client::YBPredicate::GREATER_EQUAL,
+        client::YBValue::FromInt(start_key))));
     ScanToStrings(&scanner, &rows);
   }
 
@@ -125,8 +125,8 @@ TEST_F(ClientStressTest, TestStartScans) {
   // is empty.
   for (int run = 1; run <= (AllowSlowTests() ? 10 : 2); run++) {
     LOG(INFO) << "Starting run " << run;
-    KuduClientBuilder builder;
-    client::sp::shared_ptr<KuduClient> client;
+    YBClientBuilder builder;
+    client::sp::shared_ptr<YBClient> client;
     CHECK_OK(cluster_->CreateClient(builder, &client));
 
     CountDownLatch go_latch(1);

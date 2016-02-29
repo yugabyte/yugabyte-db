@@ -20,16 +20,16 @@
 # Script which wraps running a test and redirects its output to a
 # test log directory.
 #
-# If KUDU_COMPRESS_TEST_OUTPUT is non-empty, then the logs will be
+# If YB_COMPRESS_TEST_OUTPUT is non-empty, then the logs will be
 # gzip-compressed while they are written.
 #
-# If KUDU_FLAKY_TEST_ATTEMPTS is non-zero, and the test being run matches
-# one of the lines in the file KUDU_FLAKY_TEST_LIST, then the test will
+# If YB_FLAKY_TEST_ATTEMPTS is non-zero, and the test being run matches
+# one of the lines in the file YB_FLAKY_TEST_LIST, then the test will
 # be retried on failure up to the specified number of times. This can be
 # used in the gerrit workflow to prevent annoying false -1s caused by
 # tests that are known to be flaky in master.
 #
-# If KUDU_REPORT_TEST_RESULTS is non-zero, then tests are reported to the
+# If YB_REPORT_TEST_RESULTS is non-zero, then tests are reported to the
 # central test server.
 
 # Path to the test executable or script to be run.
@@ -57,15 +57,15 @@ TEST_NAME=$(echo $TEST_FILENAME | perl -pe 's/\..+?$//') # Remove path and exten
 # Determine whether the test is a known flaky by comparing against the user-specified
 # list.
 TEST_EXECUTION_ATTEMPTS=1
-if [ -n "$KUDU_FLAKY_TEST_LIST" ]; then
-  if [ -f "$KUDU_FLAKY_TEST_LIST" ]; then
-    IS_KNOWN_FLAKY=$(grep --count --line-regexp "$TEST_NAME" "$KUDU_FLAKY_TEST_LIST")
+if [ -n "$YB_FLAKY_TEST_LIST" ]; then
+  if [ -f "$YB_FLAKY_TEST_LIST" ]; then
+    IS_KNOWN_FLAKY=$(grep --count --line-regexp "$TEST_NAME" "$YB_FLAKY_TEST_LIST")
   else
-    echo "Flaky test list file $KUDU_FLAKY_TEST_LIST missing"
+    echo "Flaky test list file $YB_FLAKY_TEST_LIST missing"
     IS_KNOWN_FLAKY=0
   fi
   if [ "$IS_KNOWN_FLAKY" -gt 0 ]; then
-    TEST_EXECUTION_ATTEMPTS=${KUDU_FLAKY_TEST_ATTEMPTS:-1}
+    TEST_EXECUTION_ATTEMPTS=${YB_FLAKY_TEST_ATTEMPTS:-1}
     echo $TEST_NAME is a known-flaky test. Will attempt running it
     echo up to $TEST_EXECUTION_ATTEMPTS times.
   fi
@@ -88,7 +88,7 @@ XMLFILE=$TEST_LOGDIR/$TEST_NAME.xml
 # run.
 rm -f $LOGFILE $LOGFILE.gz
 
-if [ -n "$KUDU_COMPRESS_TEST_OUTPUT" ] && [ "$KUDU_COMPRESS_TEST_OUTPUT" -ne 0 ] ; then
+if [ -n "$YB_COMPRESS_TEST_OUTPUT" ] && [ "$YB_COMPRESS_TEST_OUTPUT" -ne 0 ] ; then
   pipe_cmd=gzip
   LOGFILE=${LOGFILE}.gz
 else
@@ -104,7 +104,7 @@ fi
 # Configure TSAN (ignored if this isn't a TSAN build).
 #
 # Deadlock detection (new in clang 3.5) is disabled because:
-# 1. The clang 3.5 deadlock detector crashes in some Kudu unit tests. It
+# 1. The clang 3.5 deadlock detector crashes in some YB unit tests. It
 #    needs compiler-rt commits c4c3dfd, 9a8efe3, and possibly others.
 # 2. Many unit tests report lock-order-inversion warnings; they should be
 #    fixed before reenabling the detector.
@@ -126,11 +126,11 @@ export LSAN_OPTIONS
 # Set a 15-minute timeout for tests run via 'make test'.
 # This keeps our jenkins builds from hanging in the case that there's
 # a deadlock or anything.
-KUDU_TEST_TIMEOUT=${KUDU_TEST_TIMEOUT:-900}
+YB_TEST_TIMEOUT=${YB_TEST_TIMEOUT:-900}
 
 # Allow for collecting core dumps.
-KUDU_TEST_ULIMIT_CORE=${KUDU_TEST_ULIMIT_CORE:-0}
-ulimit -c $KUDU_TEST_ULIMIT_CORE
+YB_TEST_ULIMIT_CORE=${YB_TEST_ULIMIT_CORE:-0}
+ulimit -c $YB_TEST_ULIMIT_CORE
 
 # Run the actual test.
 for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
@@ -150,7 +150,7 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
 
   echo "Running $TEST_NAME, redirecting output into $LOGFILE" \
     "(attempt ${ATTEMPT_NUMBER}/$TEST_EXECUTION_ATTEMPTS)"
-  $ABS_TEST_PATH "$@" --test_timeout_after $KUDU_TEST_TIMEOUT 2>&1 \
+  $ABS_TEST_PATH "$@" --test_timeout_after $YB_TEST_TIMEOUT 2>&1 \
     | $SOURCE_ROOT/build-support/stacktrace_addr2line.pl $ABS_TEST_PATH \
     | $pipe_cmd > $LOGFILE
   STATUS=$?
@@ -189,7 +189,7 @@ for ATTEMPT_NUMBER in $(seq 1 $TEST_EXECUTION_ATTEMPTS) ; do
     done
   fi
 
-  if [ -n "$KUDU_REPORT_TEST_RESULTS" ]; then
+  if [ -n "$YB_REPORT_TEST_RESULTS" ]; then
     echo Reporting results
     $SOURCE_ROOT/build-support/report-test.sh "$ABS_TEST_PATH" "$LOGFILE" "$STATUS" &
 

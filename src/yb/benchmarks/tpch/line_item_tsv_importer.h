@@ -51,7 +51,7 @@ class LineItemTsvImporter {
 
   // Fills the row builder with a single line item from the file.
   // It returns 0 if it's done or the order number if it got a line
-  int GetNextLine(KuduPartialRow* row) {
+  int GetNextLine(YBPartialRow* row) {
     if (!HasNextLine()) return 0;
     columns_.clear();
 
@@ -86,7 +86,7 @@ class LineItemTsvImporter {
   }
 
  private:
-  int ConvertToInt64AndPopulate(const StringPiece &chars, KuduPartialRow* row,
+  int ConvertToInt64AndPopulate(const StringPiece &chars, YBPartialRow* row,
                                 int col_idx) {
     // TODO: extra copy here, since we don't have a way to parse StringPiece
     // into ints.
@@ -99,7 +99,7 @@ class LineItemTsvImporter {
     return number;
   }
 
-  int ConvertToIntAndPopulate(const StringPiece &chars, KuduPartialRow* row,
+  int ConvertToIntAndPopulate(const StringPiece &chars, YBPartialRow* row,
                               int col_idx) {
     // TODO: extra copy here, since we don't have a way to parse StringPiece
     // into ints.
@@ -112,7 +112,7 @@ class LineItemTsvImporter {
     return number;
   }
 
-  void ConvertToDoubleAndPopulate(const StringPiece &chars, KuduPartialRow* row,
+  void ConvertToDoubleAndPopulate(const StringPiece &chars, YBPartialRow* row,
                                   int col_idx) {
     // TODO: extra copy here, since we don't have a way to parse StringPiece
     // into ints.

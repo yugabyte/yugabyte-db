@@ -34,14 +34,14 @@ using std::vector;
 namespace yb {
 namespace master {
 
-using client::KuduClient;
-using client::KuduClientBuilder;
-using client::KuduColumnSchema;
-using client::KuduScanner;
-using client::KuduSchema;
-using client::KuduSchemaBuilder;
-using client::KuduTable;
-using client::KuduTableCreator;
+using client::YBClient;
+using client::YBClientBuilder;
+using client::YBColumnSchema;
+using client::YBScanner;
+using client::YBSchema;
+using client::YBSchemaBuilder;
+using client::YBTable;
+using client::YBTableCreator;
 using client::sp::shared_ptr;
 
 const char * const kTableId1 = "testMasterReplication-1";
@@ -49,7 +49,7 @@ const char * const kTableId2 = "testMasterReplication-2";
 
 const int kNumTabletServerReplicas = 3;
 
-class MasterReplicationTest : public KuduTest {
+class MasterReplicationTest : public YBTest {
  public:
   MasterReplicationTest() {
     // Hard-coded ports for the masters. This is safe, as this unit test
@@ -62,7 +62,7 @@ class MasterReplicationTest : public KuduTest {
   }
 
   virtual void SetUp() OVERRIDE {
-    KuduTest::SetUp();
+    YBTest::SetUp();
     cluster_.reset(new MiniCluster(env_.get(), opts_));
     ASSERT_OK(cluster_->Start());
     ASSERT_OK(cluster_->WaitForTabletServerCount(kNumTabletServerReplicas));
@@ -73,7 +73,7 @@ class MasterReplicationTest : public KuduTest {
       cluster_->Shutdown();
       cluster_.reset();
     }
-    KuduTest::TearDown();
+    YBTest::TearDown();
   }
 
   Status RestartCluster() {
@@ -98,8 +98,8 @@ class MasterReplicationTest : public KuduTest {
     }
   }
 
-  Status CreateClient(shared_ptr<KuduClient>* out) {
-    KuduClientBuilder builder;
+  Status CreateClient(shared_ptr<YBClient>* out) {
+    YBClientBuilder builder;
     for (int i = 0; i < num_masters_; i++) {
       if (!cluster_->mini_master(i)->master()->IsShutdown()) {
         builder.add_master_server_addr(cluster_->mini_master(i)->bound_rpc_addr_str());
@@ -109,15 +109,15 @@ class MasterReplicationTest : public KuduTest {
   }
 
 
-  Status CreateTable(const shared_ptr<KuduClient>& client,
+  Status CreateTable(const shared_ptr<YBClient>& client,
                      const std::string& table_name) {
-    KuduSchema schema;
-    KuduSchemaBuilder b;
-    b.AddColumn("key")->Type(KuduColumnSchema::INT32)->NotNull()->PrimaryKey();
-    b.AddColumn("int_val")->Type(KuduColumnSchema::INT32)->NotNull();
-    b.AddColumn("string_val")->Type(KuduColumnSchema::STRING)->NotNull();
+    YBSchema schema;
+    YBSchemaBuilder b;
+    b.AddColumn("key")->Type(YBColumnSchema::INT32)->NotNull()->PrimaryKey();
+    b.AddColumn("int_val")->Type(YBColumnSchema::INT32)->NotNull();
+    b.AddColumn("string_val")->Type(YBColumnSchema::STRING)->NotNull();
     CHECK_OK(b.Build(&schema));
-    gscoped_ptr<KuduTableCreator> table_creator(client->NewTableCreator());
+    gscoped_ptr<YBTableCreator> table_creator(client->NewTableCreator());
     return table_creator->table_name(table_name)
         .schema(&schema)
         .Create();
@@ -145,7 +145,7 @@ class MasterReplicationTest : public KuduTest {
 // the leader and ensure that the appropriate table/tablet info is
 // replicated to the newly elected leader.
 TEST_F(MasterReplicationTest, TestSysTablesReplication) {
-  shared_ptr<KuduClient> client;
+  shared_ptr<YBClient> client;
 
   // Create the first table.
   ASSERT_OK(CreateClient(&client));
@@ -169,8 +169,8 @@ TEST_F(MasterReplicationTest, TestTimeoutWhenAllMastersAreDown) {
 
   cluster_->Shutdown();
 
-  shared_ptr<KuduClient> client;
-  KuduClientBuilder builder;
+  shared_ptr<YBClient> client;
+  YBClientBuilder builder;
   builder.master_server_addrs(master_addrs);
   builder.default_rpc_timeout(MonoDelta::FromMilliseconds(100));
   Status s = builder.Build(&client);
@@ -200,8 +200,8 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
 
   // Verify that the client doesn't give up even though the entire
   // cluster is down for 100 milliseconds.
-  shared_ptr<KuduClient> client;
-  KuduClientBuilder builder;
+  shared_ptr<YBClient> client;
+  YBClientBuilder builder;
   builder.master_server_addrs(master_addrs);
   builder.default_admin_operation_timeout(MonoDelta::FromSeconds(15));
   EXPECT_OK(builder.Build(&client));

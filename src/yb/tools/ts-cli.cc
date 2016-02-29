@@ -43,14 +43,14 @@
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_controller.h"
 
-using yb::client::KuduRowResult;
+using yb::client::YBRowResult;
 using yb::HostPort;
 using yb::rpc::Messenger;
 using yb::rpc::MessengerBuilder;
 using yb::rpc::RpcController;
 using yb::server::ServerStatusPB;
 using yb::Sockaddr;
-using yb::client::KuduScanBatch;
+using yb::client::YBScanBatch;
 using yb::tablet::TabletStatusPB;
 using yb::tserver::DeleteTabletRequestPB;
 using yb::tserver::DeleteTabletResponsePB;
@@ -248,7 +248,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   RETURN_NOT_OK(GetTabletSchema(tablet_id, &schema_pb));
   Schema schema;
   RETURN_NOT_OK(SchemaFromPB(schema_pb, &schema));
-  yb::client::KuduSchema client_schema(schema);
+  yb::client::YBSchema client_schema(schema);
 
   ScanRequestPB req;
   ScanResponsePB resp;
@@ -262,7 +262,7 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
   new_req->set_order_mode(ORDERED);
   new_req->set_read_mode(READ_AT_SNAPSHOT);
 
-  vector<KuduRowResult> rows;
+  vector<YBRowResult> rows;
   while (true) {
     RpcController rpc;
     rpc.set_timeout(timeout_);
@@ -274,13 +274,13 @@ Status TsAdminClient::DumpTablet(const std::string& tablet_id) {
     }
 
     rows.clear();
-    KuduScanBatch::Data results;
+    YBScanBatch::Data results;
     RETURN_NOT_OK(results.Reset(&rpc,
                                 &schema,
                                 &client_schema,
                                 make_gscoped_ptr(resp.release_data())));
     results.ExtractRows(&rows);
-    for (const KuduRowResult& r : rows) {
+    for (const YBRowResult& r : rows) {
       std::cout << r.ToString() << std::endl;
     }
 

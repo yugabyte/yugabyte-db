@@ -28,19 +28,19 @@ import six
 
 from . import util
 
-BOOL = KUDU_BOOL
-STRING = KUDU_STRING
+BOOL = YB_BOOL
+STRING = YB_STRING
 
-INT8 = KUDU_INT8
-INT16 = KUDU_INT16
-INT32 = KUDU_INT32
-INT64 = KUDU_INT64
+INT8 = YB_INT8
+INT16 = YB_INT16
+INT32 = YB_INT32
+INT64 = YB_INT64
 
-FLOAT = KUDU_FLOAT
-DOUBLE = KUDU_DOUBLE
+FLOAT = YB_FLOAT
+DOUBLE = YB_DOUBLE
 
-TIMESTAMP = KUDU_TIMESTAMP
-BINARY = KUDU_BINARY
+TIMESTAMP = YB_TIMESTAMP
+BINARY = YB_BINARY
 
 
 cdef dict _reverse_dict(d):
@@ -101,16 +101,16 @@ cdef class KuduType(object):
         return 'KuduType({0})'.format(self.name)
 
 
-int8 = KuduType(KUDU_INT8)
-int16 = KuduType(KUDU_INT16)
-int32 = KuduType(KUDU_INT32)
-int64 = KuduType(KUDU_INT64)
-string_ = KuduType(KUDU_STRING)
-bool_ = KuduType(KUDU_BOOL)
-float_ = KuduType(KUDU_FLOAT)
-double_ = KuduType(KUDU_DOUBLE)
-binary = KuduType(KUDU_BINARY)
-timestamp = KuduType(KUDU_TIMESTAMP)
+int8 = KuduType(YB_INT8)
+int16 = KuduType(YB_INT16)
+int32 = KuduType(YB_INT32)
+int64 = KuduType(YB_INT64)
+string_ = KuduType(YB_STRING)
+bool_ = KuduType(YB_BOOL)
+float_ = KuduType(YB_FLOAT)
+double_ = KuduType(YB_DOUBLE)
+binary = KuduType(YB_BINARY)
+timestamp = KuduType(YB_TIMESTAMP)
 
 
 cdef dict _type_names = {
@@ -407,7 +407,7 @@ cdef class SchemaBuilder:
         schema : Schema
         """
         cdef Schema result = Schema()
-        cdef KuduSchema* schema = new KuduSchema()
+        cdef YBSchema* schema = new YBSchema()
         check_status(self.builder.Build(schema))
 
         result.schema = schema
@@ -510,7 +510,7 @@ cdef class Schema:
             raise IndexError('Column index {0} is not in range'
                              .format(i))
 
-        result.schema = new KuduColumnSchema(self.schema.Column(i))
+        result.schema = new YBColumnSchema(self.schema.Column(i))
 
         return result
 
