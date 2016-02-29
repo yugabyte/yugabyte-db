@@ -23,7 +23,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/user.h"
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 
@@ -39,4 +39,4 @@ TEST_F(TestUser, TestNonEmpty) {
   LOG(INFO) << "Name of the current user is: " << username;
 }
 
-} // namespace kudu
+} // namespace yb

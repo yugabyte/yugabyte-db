@@ -30,7 +30,7 @@
 #include "yb/util/net/sockaddr.h"
 
 
-namespace kudu {
+namespace yb {
 
 class ServerEntryPB;
 class HostPort;
@@ -141,6 +141,6 @@ class GetLeaderMasterRpc : public rpc::Rpc,
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_MASTER_MASTER_RPC_H */

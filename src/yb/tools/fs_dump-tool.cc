@@ -45,7 +45,7 @@ DEFINE_bool(metadata_only, false, "Whether just to dump the block metadata, "
 
 DEFINE_bool(headers_only, false, "Don't dump contents, dump headers only");
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using std::string;
@@ -206,8 +206,8 @@ static int FsDumpToolMain(int argc, char** argv) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::tools::FsDumpToolMain(argc, argv);
+  return yb::tools::FsDumpToolMain(argc, argv);
 }

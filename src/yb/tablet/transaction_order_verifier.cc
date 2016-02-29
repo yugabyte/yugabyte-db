@@ -18,7 +18,7 @@
 #include <glog/logging.h>
 #include "yb/tablet/transaction_order_verifier.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 TransactionOrderVerifier::TransactionOrderVerifier()
@@ -46,4 +46,4 @@ void TransactionOrderVerifier::CheckApply(int64_t op_idx,
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

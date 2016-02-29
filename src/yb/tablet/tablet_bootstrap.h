@@ -28,7 +28,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MetricRegistry;
 class Partition;
@@ -102,6 +102,6 @@ Status BootstrapTablet(const scoped_refptr<TabletMetadata>& meta,
                        consensus::ConsensusBootstrapInfo* consensus_info);
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_TABLET_TABLET_BOOTSTRAP_H_ */

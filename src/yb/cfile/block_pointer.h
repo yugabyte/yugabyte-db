@@ -26,7 +26,7 @@
 #include "yb/util/coding.h"
 #include "yb/util/status.h"
 
-namespace kudu { namespace cfile {
+namespace yb { namespace cfile {
 
 using std::string;
 
@@ -90,5 +90,5 @@ class BlockPointer {
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

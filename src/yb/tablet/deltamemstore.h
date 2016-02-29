@@ -39,7 +39,7 @@
 #include "yb/util/atomic.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 
 class MemTracker;
 class RowChangeList;
@@ -275,6 +275,6 @@ class DMSIterator : public DeltaIterator {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

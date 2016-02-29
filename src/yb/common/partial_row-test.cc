@@ -22,7 +22,7 @@
 #include "yb/common/schema.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class PartialRowTest : public KuduTest {
  public:
@@ -184,4 +184,4 @@ TEST_F(PartialRowTest, TestCopy) {
   EXPECT_EQ("mutated--binary", string_val.ToString());
 }
 
-} // namespace kudu
+} // namespace yb

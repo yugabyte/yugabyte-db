@@ -25,7 +25,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class NodeInstancePB;
 class Sockaddr;
@@ -151,5 +151,5 @@ class TSDescriptor {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_MASTER_TS_DESCRIPTOR_H */

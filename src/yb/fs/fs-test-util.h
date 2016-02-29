@@ -21,7 +21,7 @@
 #include "yb/fs/block_manager.h"
 #include "yb/util/malloc.h"
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 // ReadableBlock that counts the total number of bytes read.
@@ -76,6 +76,6 @@ class CountingReadableBlock : public ReadableBlock {
 };
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -37,7 +37,7 @@ DEFINE_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 static const char* const kSlowTestsEnvVariable = "KUDU_ALLOW_SLOW_TESTS";
 
@@ -173,4 +173,4 @@ string GetTestDataDirectory() {
   return dir;
 }
 
-} // namespace kudu
+} // namespace yb

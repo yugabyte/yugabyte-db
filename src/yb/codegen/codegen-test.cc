@@ -39,7 +39,7 @@ using std::vector;
 
 DECLARE_bool(codegen_dump_mc);
 
-namespace kudu {
+namespace yb {
 
 typedef RowProjector NoCodegenRP;
 typedef codegen::RowProjector CodegenRP;
@@ -359,4 +359,4 @@ TEST_F(CodegenTest, TestDumpMC) {
   EXPECT_THAT(msgs[0], testing::ContainsRegex("retq"));
 }
 
-} // namespace kudu
+} // namespace yb

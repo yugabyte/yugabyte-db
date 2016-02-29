@@ -22,25 +22,25 @@
 #include "yb/client/schema.h"
 #include "yb/common/common.pb.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 // Helper functions that convert between client-facing and internal PB enums.
 
-kudu::EncodingType ToInternalEncodingType(
+yb::EncodingType ToInternalEncodingType(
     KuduColumnStorageAttributes::EncodingType type);
 KuduColumnStorageAttributes::EncodingType FromInternalEncodingType(
-    kudu::EncodingType type);
+    yb::EncodingType type);
 
-kudu::CompressionType ToInternalCompressionType(
+yb::CompressionType ToInternalCompressionType(
     KuduColumnStorageAttributes::CompressionType type);
 KuduColumnStorageAttributes::CompressionType FromInternalCompressionType(
-    kudu::CompressionType type);
+    yb::CompressionType type);
 
-kudu::DataType ToInternalDataType(
+yb::DataType ToInternalDataType(
     KuduColumnSchema::DataType type);
 KuduColumnSchema::DataType FromInternalDataType(
-    kudu::DataType type);
+    yb::DataType type);
 
 
 class KuduColumnSpec::Data {
@@ -94,5 +94,5 @@ class KuduColumnSpec::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif // KUDU_CLIENT_SCHEMA_INTERNAL_H

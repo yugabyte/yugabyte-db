@@ -63,7 +63,7 @@ DEFINE_int32(consensus_inject_latency_ms_in_notifications, 0,
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, hidden);
 TAG_FLAG(consensus_inject_latency_ms_in_notifications, unsafe);
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::AsyncLogReader;
@@ -873,4 +873,4 @@ string PeerMessageQueue::QueueState::ToString() const {
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

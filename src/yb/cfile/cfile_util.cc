@@ -25,7 +25,7 @@
 #include "yb/util/env.h"
 #include "yb/util/mem_tracker.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using std::string;
@@ -89,4 +89,4 @@ ReaderOptions::ReaderOptions()
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

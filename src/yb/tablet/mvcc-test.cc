@@ -25,7 +25,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using server::Clock;
@@ -616,4 +616,4 @@ TEST_F(MvccTest, TestWaitUntilCleanDeadline) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

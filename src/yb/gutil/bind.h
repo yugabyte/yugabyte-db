@@ -51,7 +51,7 @@
 // need to crack open bind_internal.h.  On the other hand, it makes Bind()
 // harder to read.
 
-namespace kudu {
+namespace yb {
 
 template <typename Functor>
 Callback<
@@ -534,6 +534,6 @@ Bind(Functor functor, const P1& p1, const P2& p2, const P3& p3, const P4& p4,
           p7));
 }
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_GUTIL_BIND_H_

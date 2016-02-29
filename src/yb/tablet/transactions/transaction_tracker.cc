@@ -42,27 +42,27 @@ TAG_FLAG(tablet_transaction_memory_limit_mb, advanced);
 
 METRIC_DEFINE_gauge_uint64(tablet, all_transactions_inflight,
                            "Transactions In Flight",
-                           kudu::MetricUnit::kTransactions,
+                           yb::MetricUnit::kTransactions,
                            "Number of transactions currently in-flight, including any type.");
 METRIC_DEFINE_gauge_uint64(tablet, write_transactions_inflight,
                            "Write Transactions In Flight",
-                           kudu::MetricUnit::kTransactions,
+                           yb::MetricUnit::kTransactions,
                            "Number of write transactions currently in-flight");
 METRIC_DEFINE_gauge_uint64(tablet, alter_schema_transactions_inflight,
                            "Alter Schema Transactions In Flight",
-                           kudu::MetricUnit::kTransactions,
+                           yb::MetricUnit::kTransactions,
                            "Number of alter schema transactions currently in-flight");
 
 METRIC_DEFINE_counter(tablet, transaction_memory_pressure_rejections,
                       "Transaction Memory Pressure Rejections",
-                      kudu::MetricUnit::kTransactions,
+                      yb::MetricUnit::kTransactions,
                       "Number of transactions rejected because the tablet's "
                       "transaction memory limit was reached.");
 
 using std::shared_ptr;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using strings::Substitute;
@@ -252,4 +252,4 @@ void TransactionTracker::StartMemoryTracking(
 }
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb

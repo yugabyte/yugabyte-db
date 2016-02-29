@@ -60,7 +60,7 @@ TAG_FLAG(remote_bootstrap_save_downloaded_metadata, runtime);
 #define RETURN_NOT_OK_UNWIND_PREPEND(status, controller, msg) \
   RETURN_NOT_OK_PREPEND(UnwindRemoteError(status, controller), msg)
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::ConsensusMetadata;
@@ -549,4 +549,4 @@ string RemoteBootstrapClient::LogPrefix() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

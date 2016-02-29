@@ -57,9 +57,9 @@
       __FILE__, __LINE__, google::GLOG_ ## severity, num_suppressed, \
       &google::LogMessage::SendToLog).stream()
 
-namespace kudu {
+namespace yb {
 enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
-} // namespace kudu
+} // namespace yb
 
 ////////////////////////////////////////////////////////////////////////////////
 // Versions of glog macros for "LOG_EVERY" and "LOG_FIRST" that annotate the
@@ -151,7 +151,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 
 
 
-namespace kudu {
+namespace yb {
 
 // glog doesn't allow multiple invocations of InitGoogleLogging. This method conditionally
 // calls InitGoogleLogging only if it hasn't been called before.
@@ -230,6 +230,6 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 #define VLOG_WITH_PREFIX(verboselevel) LOG_IF(INFO, VLOG_IS_ON(verboselevel)) \
   << LogPrefix()
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_LOGGING_H

@@ -31,7 +31,7 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/stopwatch.h"
 
-namespace kudu {
+namespace yb {
 
 using strings::Substitute;
 
@@ -133,4 +133,4 @@ Status Sockaddr::LookupHostname(string* hostname) const {
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

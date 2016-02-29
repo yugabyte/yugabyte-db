@@ -27,7 +27,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // ============================================================================
@@ -264,4 +264,4 @@ RowSetMetadataUpdate& RowSetMetadataUpdate::SetNewUndoBlock(const BlockId& undo_
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -35,7 +35,7 @@ DEFINE_bool(block_manager_lock_dirs, true,
             "Note that read-only concurrent usage is still allowed.");
 TAG_FLAG(block_manager_lock_dirs, unsafe);
 
-namespace kudu {
+namespace yb {
 namespace fs {
 
 const char* BlockManager::kInstanceMetadataFileName = "block_manager_instance";
@@ -48,4 +48,4 @@ BlockManagerOptions::~BlockManagerOptions() {
 }
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

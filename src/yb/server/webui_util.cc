@@ -29,7 +29,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 void HtmlOutputSchemaTable(const Schema& schema,
                            std::stringstream* output) {
@@ -174,4 +174,4 @@ void HtmlOutputTaskList(const std::vector<scoped_refptr<MonitoredTask> >& tasks,
   *output << "</table>\n";
 }
 
-} // namespace kudu
+} // namespace yb

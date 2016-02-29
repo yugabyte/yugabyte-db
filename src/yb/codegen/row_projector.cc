@@ -64,7 +64,7 @@ using std::vector;
 
 DECLARE_bool(codegen_dump_functions);
 
-namespace kudu {
+namespace yb {
 namespace codegen {
 
 namespace {
@@ -76,11 +76,11 @@ namespace {
 // relocation fails.
 //
 // Uses CHECKs to make sure projection is well-formed. Use
-// kudu::RowProjector::Init() to return an error status instead.
+// yb::RowProjector::Init() to return an error status instead.
 template<bool READ>
 llvm::Function* MakeProjection(const string& name,
                                ModuleBuilder* mbuilder,
-                               const kudu::RowProjector& proj) {
+                               const yb::RowProjector& proj) {
   // Get the IRBuilder
   ModuleBuilder::LLVMBuilder* builder = mbuilder->builder();
   LLVMContext& context = builder->getContext();
@@ -91,8 +91,8 @@ llvm::Function* MakeProjection(const string& name,
 
   // Create the function after providing a declaration
   vector<Type*> argtypes = { Type::getInt8PtrTy(context),
-                             PointerType::getUnqual(mbuilder->GetType("class.kudu::RowBlockRow")),
-                             PointerType::getUnqual(mbuilder->GetType("class.kudu::Arena")) };
+                             PointerType::getUnqual(mbuilder->GetType("class.yb::RowBlockRow")),
+                             PointerType::getUnqual(mbuilder->GetType("class.yb::Arena")) };
   FunctionType* fty =
     FunctionType::get(Type::getInt1Ty(context), argtypes, false);
   Function* f = mbuilder->Create(fty, name);
@@ -174,7 +174,7 @@ llvm::Function* MakeProjection(const string& name,
   int success_update_number = 0;
 
   // Copy base data
-  for (const kudu::RowProjector::ProjectionIdxMapping& pmap : proj.base_cols_mapping()) {
+  for (const yb::RowProjector::ProjectionIdxMapping& pmap : proj.base_cols_mapping()) {
     // Retrieve information regarding this column-to-column transformation
     size_t proj_idx = pmap.first;
     size_t base_idx = pmap.second;
@@ -276,7 +276,7 @@ Status RowProjectorFunctions::Create(const Schema& base_schema,
 
   // Use a no-codegen row projector to check validity and to build
   // the codegen functions.
-  kudu::RowProjector no_codegen(&base_schema, &projection);
+  yb::RowProjector no_codegen(&base_schema, &projection);
   RETURN_NOT_OK(no_codegen.Init());
 
   // Build the functions for code gen. No need to mangle for uniqueness;
@@ -338,7 +338,7 @@ void AddNext(faststring* fs, const T& val) {
 // Writes to 'out' upon success.
 Status RowProjectorFunctions::EncodeKey(const Schema& base, const Schema& proj,
                                         faststring* out) {
-  kudu::RowProjector projector(&base, &proj);
+  yb::RowProjector projector(&base, &proj);
   RETURN_NOT_OK(projector.Init());
 
   AddNext(out, JITWrapper::ROW_PROJECTOR);
@@ -353,7 +353,7 @@ Status RowProjectorFunctions::EncodeKey(const Schema& base, const Schema& proj,
     AddNext(out, col.is_nullable());
   }
   AddNext(out, projector.base_cols_mapping().size());
-  for (const kudu::RowProjector::ProjectionIdxMapping& map : projector.base_cols_mapping()) {
+  for (const yb::RowProjector::ProjectionIdxMapping& map : projector.base_cols_mapping()) {
     AddNext(out, map);
   }
   for (size_t dfl_idx : projector.projection_defaults()) {
@@ -412,7 +412,7 @@ bool ContainerEquals(const T& t1, const T& t2) {
 //     MAP(base1, proj1) == MAP(base2, proj2)
 //
 // where WELLFORMED checks that a projection is well-formed (i.e., a
-// kudu::RowProjector can be initialized with the schema pair), PROJEQUAL
+// yb::RowProjector can be initialized with the schema pair), PROJEQUAL
 // is a relaxed version of the Schema::Equals() operator that is
 // independent of column names and column IDs, and MAP addresses
 // the actual dependency on column identification - which is the effect
@@ -427,7 +427,7 @@ bool ContainerEquals(const T& t1, const T& t2) {
 // incompatible.
 Status ProjectionsCompatible(const Schema& base1, const Schema& proj1,
                              const Schema& base2, const Schema& proj2) {
-  kudu::RowProjector rp1(&base1, &proj1), rp2(&base2, &proj2);
+  yb::RowProjector rp1(&base1, &proj1), rp2(&base2, &proj2);
   RETURN_NOT_OK_PREPEND(rp1.Init(), "(base1, proj1) projection "
                         "schema pair not well formed: ");
   RETURN_NOT_OK_PREPEND(rp2.Init(), "(base2, proj2) projection "
@@ -485,4 +485,4 @@ ostream& operator<<(ostream& o, const RowProjector& rp) {
 }
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb

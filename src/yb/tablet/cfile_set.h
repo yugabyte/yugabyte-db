@@ -36,7 +36,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 namespace metadata {
 class RowSetMetadata;
@@ -44,10 +44,10 @@ class RowSetMetadata;
 
 namespace tablet {
 
-using kudu::cfile::BloomFileReader;
-using kudu::cfile::CFileIterator;
-using kudu::cfile::CFileReader;
-using kudu::cfile::ColumnIterator;
+using yb::cfile::BloomFileReader;
+using yb::cfile::CFileIterator;
+using yb::cfile::CFileReader;
+using yb::cfile::ColumnIterator;
 
 // Set of CFiles which make up the base data for a single rowset
 //
@@ -229,5 +229,5 @@ class CFileSet::Iterator : public ColumnwiseIterator {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif

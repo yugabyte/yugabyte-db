@@ -44,7 +44,7 @@ using std::is_sorted;
 using std::shared_ptr;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // TODO: add test which calls CopyNextRows on an iterator with no more
@@ -537,4 +537,4 @@ TEST_F(TestRowSet, TestCompactStores) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

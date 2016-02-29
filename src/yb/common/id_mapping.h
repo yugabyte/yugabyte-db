@@ -24,7 +24,7 @@
 
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 // Light-weight hashtable implementation for mapping a small number of
 // integers to other integers.
@@ -162,5 +162,5 @@ class IdMapping {
   std::vector<value_type> entries_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_COMMON_ID_MAPPING_H */

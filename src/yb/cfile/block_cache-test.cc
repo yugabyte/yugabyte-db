@@ -21,7 +21,7 @@
 #include "yb/util/cache.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 static const char *DATA_TO_CACHE = "hello world";
@@ -59,4 +59,4 @@ TEST(TestBlockCache, TestBasics) {
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

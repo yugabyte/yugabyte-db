@@ -28,7 +28,7 @@
 #include "yb/common/scan_spec.h"
 #include "yb/util/object_pool.h"
 
-namespace kudu {
+namespace yb {
 
 class Arena;
 class MergeIterState;
@@ -222,5 +222,5 @@ class PredicateEvaluatingIterator : public RowwiseIterator {
   std::vector<ColumnRangePredicate> predicates_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

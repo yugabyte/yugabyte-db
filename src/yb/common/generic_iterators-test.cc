@@ -34,7 +34,7 @@ DEFINE_int32(num_lists, 3, "Number of lists to merge");
 DEFINE_int32(num_rows, 1000, "Number of entries per list");
 DEFINE_int32(num_iters, 1, "Number of times to run merge");
 
-namespace kudu {
+namespace yb {
 
 using std::shared_ptr;
 
@@ -302,4 +302,4 @@ TEST(TestPredicateEvaluatingIterator, TestDontWrapWhenNoPredicates) {
   ASSERT_EQ(outer_iter, materializing) << "InitAndMaybeWrap should not have wrapped iter";
 }
 
-} // namespace kudu
+} // namespace yb

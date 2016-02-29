@@ -25,7 +25,7 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 class RowBlock;
 class Schema;
@@ -92,5 +92,5 @@ class MultiColumnWriter {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_MULTI_COLUMN_WRITER_H */

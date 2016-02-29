@@ -24,7 +24,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 class TwitterConsumer {
@@ -62,5 +62,5 @@ class TwitterStreamer {
 
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb
 #endif

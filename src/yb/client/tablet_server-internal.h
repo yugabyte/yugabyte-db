@@ -22,7 +22,7 @@
 #include "yb/client/client.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 class KuduTabletServer::Data {
@@ -37,6 +37,6 @@ class KuduTabletServer::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

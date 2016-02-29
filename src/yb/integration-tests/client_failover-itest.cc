@@ -26,17 +26,17 @@
 #include "yb/integration-tests/external_mini_cluster-itest-base.h"
 #include "yb/integration-tests/test_workload.h"
 
-using kudu::client::CountTableRows;
-using kudu::client::KuduTable;
-using kudu::client::sp::shared_ptr;
-using kudu::itest::TServerDetails;
-using kudu::tablet::TABLET_DATA_TOMBSTONED;
+using yb::client::CountTableRows;
+using yb::client::KuduTable;
+using yb::client::sp::shared_ptr;
+using yb::itest::TServerDetails;
+using yb::tablet::TABLET_DATA_TOMBSTONED;
 using std::set;
 using std::string;
 using std::vector;
 using std::unordered_map;
 
-namespace kudu {
+namespace yb {
 
 // Integration test for client failover behavior.
 class ClientFailoverITest : public ExternalMiniClusterITestBase {
@@ -152,4 +152,4 @@ TEST_F(ClientFailoverITest, TestDeleteLeaderWhileScanning) {
   ASSERT_EQ(workload.rows_inserted(), CountTableRows(table.get()));
 }
 
-} // namespace kudu
+} // namespace yb

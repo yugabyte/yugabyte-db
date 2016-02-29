@@ -40,7 +40,7 @@ class Value;
 
 } // namespace llvm
 
-namespace kudu {
+namespace yb {
 namespace codegen {
 
 // A ModuleBuilder provides an interface to generate code for procedures
@@ -147,6 +147,6 @@ class ModuleBuilder {
 };
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif

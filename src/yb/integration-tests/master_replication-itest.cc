@@ -31,7 +31,7 @@
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 using client::KuduClient;
@@ -191,7 +191,7 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
   // Shut the cluster down and ...
   cluster_->Shutdown();
   // ... start the cluster after a delay.
-  scoped_refptr<kudu::Thread> start_thread;
+  scoped_refptr<yb::Thread> start_thread;
   ASSERT_OK(Thread::Create("TestCycleThroughAllMasters", "start_thread",
                                   &MasterReplicationTest::StartClusterDelayed,
                                   this,
@@ -210,4 +210,4 @@ TEST_F(MasterReplicationTest, TestCycleThroughAllMasters) {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

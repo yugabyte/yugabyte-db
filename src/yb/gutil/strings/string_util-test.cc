@@ -20,7 +20,7 @@
 
 #include <gtest/gtest.h>
 
-namespace kudu {
+namespace yb {
 
 TEST(StringUtilTest, MatchPatternTest) {
   EXPECT_TRUE(MatchPattern("www.google.com", "*.com"));
@@ -55,4 +55,4 @@ TEST(StringUtilTest, MatchPatternTest) {
                            "He********************************o")) ;
 }
 
-} // namespace kudu
+} // namespace yb

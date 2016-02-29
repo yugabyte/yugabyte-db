@@ -19,7 +19,7 @@
 
 #include "yb/gutil/ref_counted.h"
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 class Counter;
@@ -46,6 +46,6 @@ struct ScannerMetrics {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TSERVER_SCANNER_METRICS_H

@@ -41,7 +41,7 @@
 #include "yb/util/random.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 class ThreadPool;
@@ -672,5 +672,5 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_MASTER_CATALOG_MANAGER_H */

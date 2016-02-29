@@ -42,7 +42,7 @@ using google::protobuf::Message;
 using std::string;
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 Proxy::Proxy(const std::shared_ptr<Messenger>& messenger,
@@ -112,4 +112,4 @@ void Proxy::set_user_credentials(const UserCredentials& user_credentials) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

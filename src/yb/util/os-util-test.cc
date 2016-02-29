@@ -25,7 +25,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 void RunTest(const string& name, int user_ticks, int kernel_ticks, int io_wait) {
   string buf = strings::Substitute(string("0 ($0) S 0 0 0 0 0 0 0") +
@@ -56,4 +56,4 @@ TEST(OsUtilTest, TestSelfNameWithParens) {
   RunTest("a(b(c((d))e)", 111, 222, 333);
 }
 
-} // namespace kudu
+} // namespace yb

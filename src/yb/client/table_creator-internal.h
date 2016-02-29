@@ -23,7 +23,7 @@
 #include "yb/client/client.h"
 #include "yb/common/common.pb.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -52,6 +52,6 @@ class KuduTableCreator::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

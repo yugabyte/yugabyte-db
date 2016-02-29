@@ -68,7 +68,7 @@ DEFINE_int64(rpc_negotiation_timeout_ms, 3000,
 TAG_FLAG(rpc_negotiation_timeout_ms, advanced);
 TAG_FLAG(rpc_negotiation_timeout_ms, runtime);
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 namespace {
@@ -106,7 +106,7 @@ Status ReactorThread::Init() {
                coarse_timer_granularity_.ToSeconds());
 
   // Create Reactor thread.
-  return kudu::Thread::Create("reactor", "rpc reactor", &ReactorThread::RunThread, this, &thread_);
+  return yb::Thread::Create("reactor", "rpc reactor", &ReactorThread::RunThread, this, &thread_);
 }
 
 void ReactorThread::Shutdown() {
@@ -314,7 +314,7 @@ Reactor *ReactorThread::reactor() {
 }
 
 bool ReactorThread::IsCurrentThread() const {
-  return thread_.get() == kudu::Thread::current_thread();
+  return thread_.get() == yb::Thread::current_thread();
 }
 
 void ReactorThread::RunThread() {
@@ -664,4 +664,4 @@ bool Reactor::DrainTaskQueue(boost::intrusive::list<ReactorTask> *tasks) { // NO
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

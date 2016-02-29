@@ -26,7 +26,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/stopwatch.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::string;
@@ -233,4 +233,4 @@ void ConsensusMetadata::UpdateActiveRole() {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

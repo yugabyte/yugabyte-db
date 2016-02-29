@@ -45,7 +45,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 using consensus::RaftPeerPB;
 using master::AlterTableRequestPB;
@@ -853,4 +853,4 @@ void KuduClient::Data::UpdateLatestObservedTimestamp(uint64_t timestamp) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

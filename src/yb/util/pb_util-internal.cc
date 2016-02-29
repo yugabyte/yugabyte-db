@@ -16,7 +16,7 @@
 // under the License.
 #include "yb/util/pb_util-internal.h"
 
-namespace kudu {
+namespace yb {
 namespace pb_util {
 namespace internal {
 
@@ -103,4 +103,4 @@ bool WritableFileOutputStream::Next(void **data, int *size) {
 
 } // namespace internal
 } // namespace pb_util
-} // namespace kudu
+} // namespace yb

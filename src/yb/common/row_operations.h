@@ -26,7 +26,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Arena;
 class KuduPartialRow;
@@ -109,5 +109,5 @@ class RowOperationsPBDecoder {
 
   DISALLOW_COPY_AND_ASSIGN(RowOperationsPBDecoder);
 };
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_COMMON_ROW_OPERATIONS_H */

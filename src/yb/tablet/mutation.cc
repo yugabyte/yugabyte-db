@@ -20,7 +20,7 @@
 #include "yb/tablet/mutation.h"
 #include <string>
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 string Mutation::StringifyMutationList(const Schema &schema, const Mutation *head) {
@@ -87,4 +87,4 @@ inline void Mutation::DoAppendToList(Mutation **list) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

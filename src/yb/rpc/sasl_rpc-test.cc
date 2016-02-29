@@ -35,7 +35,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class TestSaslRpc : public RpcTestBase {
@@ -215,4 +215,4 @@ TEST_F(TestSaslRpc, TestServerTimeout) {
 ////////////////////////////////////////////////////////////////////////////////
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

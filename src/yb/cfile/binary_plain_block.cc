@@ -30,7 +30,7 @@
 #include "yb/util/hexdump.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 BinaryPlainBlockBuilder::BinaryPlainBlockBuilder(const WriterOptions *options)
@@ -287,4 +287,4 @@ Status BinaryPlainBlockDecoder::CopyNextValues(size_t *n, ColumnDataView *dst) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

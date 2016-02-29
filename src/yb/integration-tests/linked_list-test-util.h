@@ -43,7 +43,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 
 static const char* const kKeyColumnName = "rand_key";
 static const char* const kLinkColumnName = "link_to";
@@ -865,4 +865,4 @@ Status LinkedListVerifier::VerifyData(int64_t* verified_count, bool log_errors) 
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

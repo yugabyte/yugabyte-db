@@ -70,7 +70,7 @@ namespace google {
 bool Symbolize(void *pc, char *out, int out_size);
 }
 
-namespace kudu {
+namespace yb {
 
 const int PPROF_DEFAULT_SAMPLE_SECS = 30; // pprof default sample time in seconds.
 
@@ -249,4 +249,4 @@ void AddPprofPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/pprof/contention", "", PprofContentionHandler, false, false);
 }
 
-} // namespace kudu
+} // namespace yb

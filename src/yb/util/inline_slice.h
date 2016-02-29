@@ -23,7 +23,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 
 #if __BYTE_ORDER != __LITTLE_ENDIAN
 #error This needs to be ported for big endian
@@ -177,6 +177,6 @@ class InlineSlice {
 
 } PACKED;
 
-} // namespace kudu
+} // namespace yb
 
 #endif

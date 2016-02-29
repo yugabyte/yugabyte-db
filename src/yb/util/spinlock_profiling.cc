@@ -40,16 +40,16 @@ DEFINE_int32(lock_contention_trace_threshold_cycles,
 TAG_FLAG(lock_contention_trace_threshold_cycles, hidden);
 
 METRIC_DEFINE_gauge_uint64(server, spinlock_contention_time,
-    "Spinlock Contention Time", kudu::MetricUnit::kMicroseconds,
+    "Spinlock Contention Time", yb::MetricUnit::kMicroseconds,
     "Amount of time consumed by contention on internal spinlocks since the server "
     "started. If this increases rapidly, it may indicate a performance issue in Kudu "
     "internals triggered by a particular workload and warrant investigation.",
-    kudu::EXPOSE_AS_COUNTER);
+    yb::EXPOSE_AS_COUNTER);
 
 using base::SpinLock;
 using base::SpinLockHolder;
 
-namespace kudu {
+namespace yb {
 
 static const double kMicrosPerSecond = 1000000.0;
 
@@ -288,12 +288,12 @@ void StopSynchronizationProfiling() {
   CHECK_GE(base::subtle::Barrier_AtomicIncrement(&g_profiling_enabled, -1), 0);
 }
 
-} // namespace kudu
+} // namespace yb
 
 // The hook expected by gutil is in the gutil namespace. Simply forward into the
 // kudu namespace so we don't need to qualify everything.
 namespace gutil {
 void SubmitSpinLockProfileData(const void *contendedlock, int64 wait_cycles) {
-  kudu::SubmitSpinLockProfileData(contendedlock, wait_cycles);
+  yb::SubmitSpinLockProfileData(contendedlock, wait_cycles);
 }
 } // namespace gutil

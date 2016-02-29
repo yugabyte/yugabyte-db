@@ -27,7 +27,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 // Wraps the JSON parsing functionality of rapidjson::Document.
 //
@@ -84,6 +84,6 @@ class JsonReader {
   DISALLOW_COPY_AND_ASSIGN(JsonReader);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_JSONREADER_H_

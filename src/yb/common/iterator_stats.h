@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 struct IteratorStats {
   IteratorStats();
@@ -51,6 +51,6 @@ struct IteratorStats {
   void DCheckNonNegative() const;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -5,7 +5,7 @@
 #include "yb/util/coding.h"
 #include "yb/util/coding-inl.h"
 
-namespace kudu {
+namespace yb {
 
 void PutVarint32(faststring* dst, uint32_t v) {
   uint8_t buf[5];
@@ -138,4 +138,4 @@ bool GetLengthPrefixedSlice(Slice* input, Slice* result) {
   }
 }
 
-}  // namespace kudu
+}  // namespace yb

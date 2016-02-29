@@ -25,7 +25,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 namespace rpc {
 
@@ -129,5 +129,5 @@ class RpcController {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif

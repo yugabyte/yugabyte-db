@@ -21,7 +21,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/oid_generator.h"
 
-namespace kudu {
+namespace yb {
 
 string ObjectIdGenerator::Next() {
   boost::lock_guard<LockType> l(oid_lock_);
@@ -32,4 +32,4 @@ string ObjectIdGenerator::Next() {
                uuid[8], uuid[9], uuid[10], uuid[11], uuid[12], uuid[13], uuid[14], uuid[15]);
 }
 
-} // namespace kudu
+} // namespace yb

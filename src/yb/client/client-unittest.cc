@@ -28,7 +28,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 TEST(ClientUnitTest, TestSchemaBuilder_EmptySchema) {
@@ -171,5 +171,5 @@ TEST(ClientUnitTest, TestRetryFunc) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 

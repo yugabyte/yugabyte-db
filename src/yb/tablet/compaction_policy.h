@@ -25,7 +25,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class RowSet;
@@ -94,5 +94,5 @@ class BudgetedCompactionPolicy : public CompactionPolicy {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif

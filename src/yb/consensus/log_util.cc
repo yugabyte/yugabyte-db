@@ -57,7 +57,7 @@ DEFINE_bool(log_async_preallocate_segments, true,
             "Whether the WAL segments preallocation should happen asynchronously");
 TAG_FLAG(log_async_preallocate_segments, advanced);
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using consensus::OpId;
@@ -807,4 +807,4 @@ bool IsLogFileName(const string& fname) {
 }
 
 }  // namespace log
-}  // namespace kudu
+}  // namespace yb

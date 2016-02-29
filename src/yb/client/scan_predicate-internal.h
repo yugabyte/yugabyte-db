@@ -23,7 +23,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 class KuduPredicate::Data {
@@ -90,5 +90,5 @@ class ComparisonPredicateData : public KuduPredicate::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CLIENT_SCAN_PREDICATE_INTERNAL_H */

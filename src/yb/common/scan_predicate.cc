@@ -23,7 +23,7 @@
 #include "yb/common/types.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 
@@ -108,4 +108,4 @@ string ColumnRangePredicate::ToString() const {
   }
 }
 
-} // namespace kudu
+} // namespace yb

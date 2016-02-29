@@ -23,7 +23,7 @@
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 KuduValue::KuduValue(Data* d)
@@ -100,28 +100,28 @@ Status KuduValue::Data::CheckTypeAndGetPointer(const string& col_name,
                                                void** val_void) {
   const TypeInfo* ti = GetTypeInfo(t);
   switch (ti->physical_type()) {
-    case kudu::INT8:
-    case kudu::INT16:
-    case kudu::INT32:
-    case kudu::INT64:
+    case yb::INT8:
+    case yb::INT16:
+    case yb::INT32:
+    case yb::INT64:
       RETURN_NOT_OK(CheckAndPointToInt(col_name, ti->size(), val_void));
       break;
 
-    case kudu::BOOL:
+    case yb::BOOL:
       RETURN_NOT_OK(CheckAndPointToBool(col_name, val_void));
       break;
 
-    case kudu::FLOAT:
+    case yb::FLOAT:
       RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::FLOAT, "float"));
       *val_void = &float_val_;
       break;
 
-    case kudu::DOUBLE:
+    case yb::DOUBLE:
       RETURN_NOT_OK(CheckValType(col_name, KuduValue::Data::DOUBLE, "double"));
       *val_void = &double_val_;
       break;
 
-    case kudu::BINARY:
+    case yb::BINARY:
       RETURN_NOT_OK(CheckAndPointToString(col_name, val_void));
       break;
 
@@ -189,4 +189,4 @@ Status KuduValue::Data::CheckAndPointToString(const string& col_name,
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

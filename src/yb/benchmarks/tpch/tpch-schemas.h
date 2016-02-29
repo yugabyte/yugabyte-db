@@ -25,7 +25,7 @@
 #include "yb/client/schema.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tpch {
 
 static const char* const kOrderKeyColName = "l_orderkey";
@@ -114,5 +114,5 @@ inline std::vector<std::string> GetTpchQ1QueryColumns() {
 }
 
 } // namespace tpch
-} // namespace kudu
+} // namespace yb
 #endif

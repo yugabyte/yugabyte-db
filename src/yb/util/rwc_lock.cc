@@ -26,7 +26,7 @@
 #include "yb/util/thread.h"
 #endif // NDEBUG
 
-namespace kudu {
+namespace yb {
 
 RWCLock::RWCLock()
   : no_mutators_(&lock_),
@@ -120,4 +120,4 @@ void RWCLock::CommitUnlock() {
   lock_.unlock();
 }
 
-} // namespace kudu
+} // namespace yb

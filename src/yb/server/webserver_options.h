@@ -20,7 +20,7 @@
 #include <string>
 #include <stdint.h>
 
-namespace kudu {
+namespace yb {
 
 // Options controlling the web server.
 // The default constructor sets these from the gflags defined in webserver_options.cc.
@@ -38,5 +38,5 @@ struct WebserverOptions {
   uint32_t num_worker_threads;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_WEBSERVER_OPTIONS_H */

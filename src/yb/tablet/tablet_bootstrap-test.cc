@@ -35,7 +35,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 namespace log {
 
@@ -552,4 +552,4 @@ TEST_F(BootstrapTest, TestConsensusOnlyOperationOutOfOrderTimestamp) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

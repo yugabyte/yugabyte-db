@@ -32,7 +32,7 @@
 DEFINE_bool(verbose, false,
             "Print additional information (e.g., log segment headers)");
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using std::string;
@@ -146,8 +146,8 @@ static int FsListToolMain(int argc, char** argv) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::tools::FsListToolMain(argc, argv);
+  return yb::tools::FsListToolMain(argc, argv);
 }

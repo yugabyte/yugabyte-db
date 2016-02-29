@@ -22,7 +22,7 @@
 
 #include "yb/client/client.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -39,6 +39,6 @@ class KuduClientBuilder::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

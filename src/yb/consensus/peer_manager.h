@@ -26,7 +26,7 @@
 #include <string>
 #include <unordered_map>
 
-namespace kudu {
+namespace yb {
 
 class ThreadPool;
 
@@ -88,5 +88,5 @@ class PeerManager {
 
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CONSENSUS_PEER_MANAGER_H */

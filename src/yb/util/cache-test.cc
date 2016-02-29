@@ -35,7 +35,7 @@
 DECLARE_string(nvm_cache_path);
 #endif // defined(__linux__)
 
-namespace kudu {
+namespace yb {
 
 // Conversions between numeric keys/values and the types expected by Cache.
 static std::string EncodeKey(int k) {
@@ -243,4 +243,4 @@ TEST_P(CacheTest, NewId) {
   ASSERT_NE(a, b);
 }
 
-}  // namespace kudu
+}  // namespace yb

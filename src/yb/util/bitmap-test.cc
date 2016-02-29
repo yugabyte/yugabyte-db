@@ -21,7 +21,7 @@
 #include "yb/gutil/strings/join.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 static int ReadBackBitmap(uint8_t *bm, size_t bits,
                            std::vector<size_t> *result) {
@@ -220,4 +220,4 @@ TEST(TestBitMap, TestBitmapIteration) {
   ASSERT_EQ(expected_sizes[i], size);
 }
 
-} // namespace kudu
+} // namespace yb

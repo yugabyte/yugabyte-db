@@ -19,7 +19,7 @@
 
 #include "yb/gutil/callback_forward.h"
 
-namespace kudu {
+namespace yb {
 
 class Status;
 
@@ -38,6 +38,6 @@ typedef Callback<Status(void)> StatusClosure;
 // To be used when setting a StatusClosure is optional.
 extern Status DoNothingStatusClosure();
 
-} // namespace kudu
+} // namespace yb
 
 #endif

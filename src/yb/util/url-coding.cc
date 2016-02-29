@@ -43,7 +43,7 @@ using std::string;
 using std::vector;
 using namespace boost::archive::iterators; // NOLINT(*)
 
-namespace kudu {
+namespace yb {
 
 // Hive selectively encodes characters. This is the whitelist of
 // characters it will encode.
@@ -211,4 +211,4 @@ std::string EscapeForHtmlToString(const std::string& in) {
   return str.str();
 }
 
-} // namespace kudu
+} // namespace yb

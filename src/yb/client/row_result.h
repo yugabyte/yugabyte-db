@@ -19,7 +19,7 @@
 
 #include "yb/client/scan_batch.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 // DEPRECATED: Kudu 0.7.0 renamed KuduRowResult to KuduScanBatch::RowPtr.
@@ -28,6 +28,6 @@ namespace client {
 typedef KuduScanBatch::RowPtr KuduRowResult;
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

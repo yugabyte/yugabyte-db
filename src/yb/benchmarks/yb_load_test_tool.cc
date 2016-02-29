@@ -67,18 +67,18 @@ using strings::Substitute;
 using std::atomic_long;
 using std::atomic_bool;
 
-using namespace kudu::client;
-using kudu::client::sp::shared_ptr;
-using kudu::Status;
-using kudu::ThreadPool;
-using kudu::ThreadPoolBuilder;
-using kudu::MonoDelta;
-using kudu::MemoryOrder;
-using kudu::ConditionVariable;
-using kudu::Mutex;
-using kudu::MutexLock;
-using kudu::CountDownLatch;
-using kudu::Slice;
+using namespace yb::client;
+using yb::client::sp::shared_ptr;
+using yb::Status;
+using yb::ThreadPool;
+using yb::ThreadPoolBuilder;
+using yb::MonoDelta;
+using yb::MemoryOrder;
+using yb::ConditionVariable;
+using yb::Mutex;
+using yb::MutexLock;
+using yb::CountDownLatch;
+using yb::Slice;
 
 void ConfigureSession(KuduSession* session) {
   session->SetFlushMode(KuduSession::FlushMode::MANUAL_FLUSH);
@@ -496,8 +496,8 @@ int main(int argc, char* argv[]) {
   gflags::SetUsageMessage(
     "Usage: yb_load_test_tool --yb_load_test_master_addresses master1:port1,...,masterN:portN"
   );
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
   for (int i = 0; i < FLAGS_yb_load_test_num_iter; ++i) {
     shared_ptr<KuduClient> client;

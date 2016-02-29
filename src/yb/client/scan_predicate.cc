@@ -27,7 +27,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 KuduPredicate::KuduPredicate(Data* d)
@@ -88,4 +88,4 @@ Status ComparisonPredicateData::AddToScanSpec(ScanSpec* spec) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

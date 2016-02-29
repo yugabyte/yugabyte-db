@@ -27,7 +27,7 @@
 #include "yb/common/schema.h"
 #include "yb/util/auto_release_pool.h"
 
-namespace kudu {
+namespace yb {
 
 using std::vector;
 
@@ -78,6 +78,6 @@ class RangePredicateEncoder {
   AutoReleasePool pool_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

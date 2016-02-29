@@ -22,7 +22,7 @@
 #include "yb/util/random.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 void WriteValueToColumn(const client::KuduSchema& schema,
@@ -77,4 +77,4 @@ void GenerateDataForRow(const client::KuduSchema& schema, uint64_t record_id,
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

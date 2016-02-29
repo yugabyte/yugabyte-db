@@ -29,7 +29,7 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/thread_restrictions.h"
 
-namespace kudu {
+namespace yb {
 
 #define MAX_MONOTONIC_SECONDS \
   (((1ULL<<63) - 1ULL) /(int64_t)MonoTime::kNanosecondsPerSecond)
@@ -256,4 +256,4 @@ void SleepFor(const MonoDelta& delta) {
   base::SleepForNanoseconds(delta.ToNanoseconds());
 }
 
-} // namespace kudu
+} // namespace yb

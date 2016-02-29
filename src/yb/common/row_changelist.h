@@ -28,7 +28,7 @@
 #include "yb/gutil/casts.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 class faststring;
 
@@ -378,11 +378,11 @@ class RowChangeListDecoder {
 };
 
 
-} // namespace kudu
+} // namespace yb
 
 // Defined for tight_enum_test_cast<> -- has to be defined outside of any namespace.
-MAKE_ENUM_LIMITS(kudu::RowChangeList::ChangeType,
-                 kudu::RowChangeList::ChangeType_min,
-                 kudu::RowChangeList::ChangeType_max);
+MAKE_ENUM_LIMITS(yb::RowChangeList::ChangeType,
+                 yb::RowChangeList::ChangeType_min,
+                 yb::RowChangeList::ChangeType_max);
 
 #endif

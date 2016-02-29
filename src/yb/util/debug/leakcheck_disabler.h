@@ -21,7 +21,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/debug/leak_annotations.h"
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 // Scoped object that generically disables LSAN leak checking in a given scope.
@@ -42,6 +42,6 @@ class ScopedLeakCheckDisabler {
 };
 
 } // namespace debug
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_DEBUG_LEAKCHECK_DISABLER_H_

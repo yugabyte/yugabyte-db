@@ -27,7 +27,7 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 using std::string;
 
 class ResettableHeartbeaterThread {
@@ -52,7 +52,7 @@ class ResettableHeartbeaterThread {
   const HeartbeatFunction function_;
 
   // The actual running thread (NULL before it is started)
-  scoped_refptr<kudu::Thread> thread_;
+  scoped_refptr<yb::Thread> thread_;
 
   CountDownLatch run_latch_;
 
@@ -139,13 +139,13 @@ void ResettableHeartbeaterThread::RunThread() {
 }
 
 bool ResettableHeartbeaterThread::IsCurrentThread() const {
-  return thread_.get() == kudu::Thread::current_thread();
+  return thread_.get() == yb::Thread::current_thread();
 }
 
 Status ResettableHeartbeaterThread::Start() {
   CHECK(thread_ == nullptr);
   run_latch_.Reset(1);
-  return kudu::Thread::Create("heartbeater", strings::Substitute("$0-heartbeat", name_),
+  return yb::Thread::Create("heartbeater", strings::Substitute("$0-heartbeat", name_),
                               &ResettableHeartbeaterThread::RunThread,
                               this, &thread_);
 }
@@ -175,4 +175,4 @@ Status ResettableHeartbeaterThread::Stop() {
   return Status::OK();
 }
 
-}  // namespace kudu
+}  // namespace yb

@@ -27,7 +27,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 
 class ExternalMiniCluster;
 class Thread;
@@ -152,5 +152,5 @@ class TestWorkload {
   DISALLOW_COPY_AND_ASSIGN(TestWorkload);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_INTEGRATION_TESTS_TEST_WORKLOAD_H */

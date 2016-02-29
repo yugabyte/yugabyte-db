@@ -30,7 +30,7 @@
 #include "yb/util/threadpool.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 
 using strings::Substitute;
 
@@ -340,7 +340,7 @@ void ThreadPool::DispatchThread(bool permanent) {
 Status ThreadPool::CreateThreadUnlocked() {
   // The first few threads are permanent, and do not time out.
   bool permanent = (num_threads_ < min_threads_);
-  Status s = kudu::Thread::Create("thread pool", strings::Substitute("$0 [worker]", name_),
+  Status s = yb::Thread::Create("thread pool", strings::Substitute("$0 [worker]", name_),
                                   &ThreadPool::DispatchThread, this, permanent, nullptr);
   if (s.ok()) {
     num_threads_++;
@@ -348,4 +348,4 @@ Status ThreadPool::CreateThreadUnlocked() {
   return s;
 }
 
-} // namespace kudu
+} // namespace yb

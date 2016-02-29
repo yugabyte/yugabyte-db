@@ -206,7 +206,7 @@ TAG_FLAG(helpxml, advanced);
 DECLARE_bool(version);
 TAG_FLAG(version, stable);
 
-namespace kudu {
+namespace yb {
 namespace {
 
 void AppendXMLTag(const char* tag, const string& txt, string* r) {
@@ -284,4 +284,4 @@ int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags) {
   return ret;
 }
 
-} // namespace kudu
+} // namespace yb

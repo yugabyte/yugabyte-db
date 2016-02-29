@@ -25,7 +25,7 @@
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class TestKnapsack : public KuduTest {
 };
@@ -165,4 +165,4 @@ TEST_F(TestKnapsack, Benchmark) {
 }
 #endif
 
-} // namespace kudu
+} // namespace yb

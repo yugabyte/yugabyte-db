@@ -25,7 +25,7 @@
 
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 TEST(TestMonoTime, TestMonotonicity) {
   alarm(360);
@@ -198,4 +198,4 @@ TEST(TestMonoTimePerf, TestMonoTimePerfFine) {
   alarm(0);
 }
 
-} // namespace kudu
+} // namespace yb

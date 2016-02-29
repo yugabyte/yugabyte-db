@@ -28,7 +28,7 @@
 #include "yb/tserver/tserver.pb.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using boost::bind;
@@ -142,4 +142,4 @@ string AlterSchemaTransaction::ToString() const {
 }
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb

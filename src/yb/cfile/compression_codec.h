@@ -25,7 +25,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 class CompressionCodec {
@@ -70,5 +70,5 @@ Status GetCompressionCodec(CompressionType compression,
 CompressionType GetCompressionCodecType(const std::string& name);
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

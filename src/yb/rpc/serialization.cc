@@ -34,7 +34,7 @@ using google::protobuf::MessageLite;
 using google::protobuf::io::CodedInputStream;
 using google::protobuf::io::CodedOutputStream;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 namespace serialization {
 
@@ -197,4 +197,4 @@ Status ValidateConnHeader(const Slice& slice) {
 
 } // namespace serialization
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

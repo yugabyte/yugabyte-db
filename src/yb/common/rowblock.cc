@@ -19,7 +19,7 @@
 #include "yb/common/rowblock.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 SelectionVector::SelectionVector(size_t row_capacity)
   : bytes_capacity_(BitmapSize(row_capacity)),
@@ -112,4 +112,4 @@ void RowBlock::Resize(size_t new_size) {
   sel_vec_.Resize(new_size);
 }
 
-} // namespace kudu
+} // namespace yb

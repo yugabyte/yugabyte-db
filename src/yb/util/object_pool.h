@@ -25,7 +25,7 @@
 #include "yb/gutil/manual_constructor.h"
 #include "yb/gutil/gscoped_ptr.h"
 
-namespace kudu {
+namespace yb {
 
 using base::ManualConstructor;
 
@@ -164,5 +164,5 @@ class ReturnToPool {
 };
 
 
-} // namespace kudu
+} // namespace yb
 #endif

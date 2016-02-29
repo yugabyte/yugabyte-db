@@ -43,7 +43,7 @@ DEFINE_int32(budgeted_compaction_target_rowset_size, 32*1024*1024,
 TAG_FLAG(budgeted_compaction_target_rowset_size, experimental);
 TAG_FLAG(budgeted_compaction_target_rowset_size, advanced);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Adjust the result downward slightly for wider solutions.
@@ -344,4 +344,4 @@ Status BudgetedCompactionPolicy::PickRowSets(const RowSetTree &tree,
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

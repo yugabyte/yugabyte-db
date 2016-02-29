@@ -27,7 +27,7 @@
 #include "yb/server/server_base_options.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Env;
 class FsManager;
@@ -132,5 +132,5 @@ class ServerBase {
 };
 
 } // namespace server
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_SERVER_BASE_H */

@@ -21,7 +21,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 // Convert the given snake_case string to camel case.
 // Also treats '-' in a string like a '_'
@@ -44,5 +44,5 @@ void ToUpperCase(const std::string &string,
 // - 'hiBerNATe' -> 'Hibernate'
 void Capitalize(std::string *word);
 
-} // namespace kudu
+} // namespace yb
 #endif

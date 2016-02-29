@@ -29,7 +29,7 @@
 
 DECLARE_int32(heartbeat_interval_ms);
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using client::KuduColumnSchema;
@@ -300,4 +300,4 @@ TEST_F(RemoteKsckTest, DISABLED_TestChecksumSnapshotCurrentTimestamp) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

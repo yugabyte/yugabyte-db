@@ -59,40 +59,40 @@ using strings::Substitute;
 
 METRIC_DEFINE_gauge_uint64(server, threads_started,
                            "Threads Started",
-                           kudu::MetricUnit::kThreads,
+                           yb::MetricUnit::kThreads,
                            "Total number of threads started on this server",
-                           kudu::EXPOSE_AS_COUNTER);
+                           yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, threads_running,
                            "Threads Running",
-                           kudu::MetricUnit::kThreads,
+                           yb::MetricUnit::kThreads,
                            "Current number of running threads");
 
 METRIC_DEFINE_gauge_uint64(server, cpu_utime,
                            "User CPU Time",
-                           kudu::MetricUnit::kMilliseconds,
+                           yb::MetricUnit::kMilliseconds,
                            "Total user CPU time of the process",
-                           kudu::EXPOSE_AS_COUNTER);
+                           yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, cpu_stime,
                            "System CPU Time",
-                           kudu::MetricUnit::kMilliseconds,
+                           yb::MetricUnit::kMilliseconds,
                            "Total system CPU time of the process",
-                           kudu::EXPOSE_AS_COUNTER);
+                           yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, voluntary_context_switches,
                            "Voluntary Context Switches",
-                           kudu::MetricUnit::kContextSwitches,
+                           yb::MetricUnit::kContextSwitches,
                            "Total voluntary context switches",
-                           kudu::EXPOSE_AS_COUNTER);
+                           yb::EXPOSE_AS_COUNTER);
 
 METRIC_DEFINE_gauge_uint64(server, involuntary_context_switches,
                            "Involuntary Context Switches",
-                           kudu::MetricUnit::kContextSwitches,
+                           yb::MetricUnit::kContextSwitches,
                            "Total involuntary context switches",
-                           kudu::EXPOSE_AS_COUNTER);
+                           yb::EXPOSE_AS_COUNTER);
 
-namespace kudu {
+namespace yb {
 
 static uint64_t GetCpuUTime() {
   rusage ru;
@@ -603,4 +603,4 @@ void Thread::FinishThread(void* arg) {
           << t->category() << ":" << t->name();
 }
 
-} // namespace kudu
+} // namespace yb

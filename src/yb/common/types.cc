@@ -25,7 +25,7 @@
 using std::shared_ptr;
 using std::unordered_map;
 
-namespace kudu {
+namespace yb {
 
 template<typename TypeTraitsClass>
 TypeInfo::TypeInfo(TypeTraitsClass t)
@@ -90,4 +90,4 @@ const TypeInfo* GetTypeInfo(DataType type) {
   return Singleton<TypeInfoResolver>::get()->GetTypeInfo(type);
 }
 
-} // namespace kudu
+} // namespace yb

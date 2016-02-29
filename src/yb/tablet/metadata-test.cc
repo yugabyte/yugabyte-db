@@ -31,7 +31,7 @@ using std::vector;
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class MetadataTest : public KuduTest {
@@ -128,4 +128,4 @@ TEST_F(MetadataTest, RSMD_TestReplaceDeltas_Bad_DoesntExist) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

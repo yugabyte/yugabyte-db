@@ -36,7 +36,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Socket;
 class ThreadPool;
@@ -270,6 +270,6 @@ class Messenger {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

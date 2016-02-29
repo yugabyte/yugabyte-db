@@ -24,7 +24,7 @@
 #include "yb/tablet/local_tablet_writer.h"
 #include "yb/tablet/tablet-test-util.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class TestTabletMetadata : public KuduTabletTest {
@@ -95,4 +95,4 @@ TEST_F(TestTabletMetadata, TestLoadFromSuperBlock) {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

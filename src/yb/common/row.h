@@ -29,7 +29,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 // A simple cell of data which directly corresponds to a pointer value.
 // stack.
@@ -316,7 +316,7 @@ class DeltaProjector {
   }
 
  private:
-  friend class ::kudu::Schema;
+  friend class ::yb::Schema;
 
   Status ProjectBaseColumn(size_t proj_col_idx, size_t base_col_idx) {
     base_cols_mapping_[proj_col_idx] = base_col_idx;
@@ -755,6 +755,6 @@ class RowBuilder {
   size_t bitmap_size_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

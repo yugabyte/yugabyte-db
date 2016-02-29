@@ -24,7 +24,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::GetRaftConfigLeader;
@@ -239,4 +239,4 @@ TEST_F(RemoteBootstrapClientTest, TestDownloadAllBlocks) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

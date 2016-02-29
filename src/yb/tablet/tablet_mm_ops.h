@@ -20,7 +20,7 @@
 
 #include "yb/tablet/maintenance_manager.h"
 
-namespace kudu {
+namespace yb {
 
 class Histogram;
 template<class T>
@@ -115,6 +115,6 @@ class MajorDeltaCompactionOp : public MaintenanceOp {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_TABLET_TABLET_MM_OPS_H_ */

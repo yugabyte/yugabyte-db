@@ -21,7 +21,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 // Join two path segments with the appropriate path separator,
 // if necessary.
@@ -36,5 +36,5 @@ std::string DirName(const std::string& path);
 // This is like basename(3) but for C++ strings.
 std::string BaseName(const std::string& path);
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_PATH_UTIL_H */

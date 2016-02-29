@@ -29,7 +29,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::string;
@@ -633,4 +633,4 @@ TEST_F(VoteCounterTest, TestVoteCounter_EvenVoters) {
 
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

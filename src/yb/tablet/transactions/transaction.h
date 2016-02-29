@@ -28,7 +28,7 @@
 #include "yb/util/status.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 
 namespace tablet {
 class TabletPeer;
@@ -339,6 +339,6 @@ class StatusTransactionCompletionCallback : public TransactionCompletionCallback
 };
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_TABLET_TRANSACTION_H_ */

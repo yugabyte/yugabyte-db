@@ -21,7 +21,7 @@
 #include <glog/logging.h>
 #include "yb/gutil/walltime.h"
 
-namespace kudu {
+namespace yb {
 
 Semaphore::Semaphore(int capacity)
   : count_(capacity) {
@@ -69,4 +69,4 @@ int Semaphore::GetValue() {
   return count_.Load();
 }
 
-} // namespace kudu
+} // namespace yb

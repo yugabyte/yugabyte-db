@@ -24,7 +24,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class MonoDelta;
 class MonoTime;
 namespace server {
@@ -85,7 +85,7 @@ class LogicalClock : public Clock {
 };
 
 }  // namespace server
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_SERVER_LOGICAL_CLOCK_H_ */
 

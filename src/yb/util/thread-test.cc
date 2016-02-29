@@ -27,7 +27,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 class ThreadTest : public KuduTest {};
 
@@ -149,4 +149,4 @@ TEST_F(ThreadTest, TestThreadRestrictions_Waiting) {
 }
 #endif // NDEBUG
 
-} // namespace kudu
+} // namespace yb

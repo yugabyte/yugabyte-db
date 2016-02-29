@@ -27,7 +27,7 @@
 #include "yb/util/random.h"
 #include "yb/gutil/walltime.h"
 
-namespace kudu {
+namespace yb {
 
 void RandomString(void* dest, size_t n, Random* rng) {
   size_t i = 0;
@@ -50,4 +50,4 @@ uint32_t GetRandomSeed32() {
   return seed;
 }
 
-} // namespace kudu
+} // namespace yb

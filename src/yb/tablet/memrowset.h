@@ -34,7 +34,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MemTracker;
 
@@ -125,7 +125,7 @@ class MRSRow {
     // so, instead of using CopyRow we can just do a memcpy.
     memcpy(row_slice_.mutable_data(), row.row_data(), row_slice_.size());
     // Copy any referred-to memory to arena.
-    return kudu::RelocateIndirectDataToArena(this, arena);
+    return yb::RelocateIndirectDataToArena(this, arena);
   }
 
   struct Header {
@@ -510,6 +510,6 @@ inline const Schema* MRSRow::schema() const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

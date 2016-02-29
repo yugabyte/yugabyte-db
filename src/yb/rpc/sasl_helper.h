@@ -33,7 +33,7 @@ class MessageLite;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class MonoTime;
 class Sockaddr;
@@ -127,6 +127,6 @@ class SaslHelper {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif  // KUDU_RPC_SASL_HELPER_H

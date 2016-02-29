@@ -29,7 +29,7 @@
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 ////////////////////////////////////////////////////////////
@@ -305,4 +305,4 @@ string KuduScanBatch::RowPtr::ToString() const {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@
 #include "yb/tablet/mvcc.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // The type of the delta.
@@ -128,6 +128,6 @@ inline int DeltaKey::CompareTo<UNDO>(const DeltaKey &other) const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

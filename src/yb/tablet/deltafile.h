@@ -36,7 +36,7 @@
 #include "yb/tablet/tablet.pb.h"
 #include "yb/util/once.h"
 
-namespace kudu {
+namespace yb {
 
 class ScanSpec;
 
@@ -309,6 +309,6 @@ class DeltaFileIterator : public DeltaIterator {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

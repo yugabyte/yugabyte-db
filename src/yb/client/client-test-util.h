@@ -24,7 +24,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class Schema;
 
 namespace client {
@@ -52,10 +52,10 @@ int64_t CountTableRows(KuduTable* table);
 
 void ScanToStrings(KuduScanner* scanner, std::vector<std::string>* row_strings);
 
-// Convert a kudu::Schema to a kudu::client::KuduSchema.
+// Convert a yb::Schema to a yb::client::KuduSchema.
 KuduSchema KuduSchemaFromSchema(const Schema& schema);
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_CLIENT_CLIENT_TEST_UTIL_H */

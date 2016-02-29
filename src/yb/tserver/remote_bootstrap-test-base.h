@@ -31,7 +31,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::MinimumOpId;
@@ -121,6 +121,6 @@ class RemoteBootstrapTest : public TabletServerTestBase {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TSERVER_REMOTE_BOOTSTRAP_TEST_BASE_H_

@@ -47,20 +47,20 @@ class Singleton;
 #if defined(COMPILER_GCC)
 namespace BASE_HASH_NAMESPACE {
 template <>
-struct hash<kudu::Thread*> {
-  std::size_t operator()(kudu::Thread* value) const {
+struct hash<yb::Thread*> {
+  std::size_t operator()(yb::Thread* value) const {
     return reinterpret_cast<std::size_t>(value);
   }
 };
 }  // BASE_HASH_NAMESPACE
 #endif
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 // For any argument of type TRACE_VALUE_TYPE_CONVERTABLE the provided
 // class must implement this interface.
-class ConvertableToTraceFormat : public kudu::RefCountedThreadSafe<ConvertableToTraceFormat> {
+class ConvertableToTraceFormat : public yb::RefCountedThreadSafe<ConvertableToTraceFormat> {
  public:
   // Append the class info to the provided |out| string. The appended
   // data must be a valid JSON object. Strings must be properly quoted, and
@@ -72,7 +72,7 @@ class ConvertableToTraceFormat : public kudu::RefCountedThreadSafe<ConvertableTo
   virtual ~ConvertableToTraceFormat() {}
 
  private:
-  friend class kudu::RefCountedThreadSafe<ConvertableToTraceFormat>;
+  friend class yb::RefCountedThreadSafe<ConvertableToTraceFormat>;
 };
 
 struct TraceEventHandle {
@@ -139,7 +139,7 @@ class BASE_EXPORT TraceEvent {
 
   // Exposed for unittesting:
 
-  const kudu::RefCountedString* parameter_copy_storage() const {
+  const yb::RefCountedString* parameter_copy_storage() const {
     return parameter_copy_storage_.get();
   }
 
@@ -166,7 +166,7 @@ class BASE_EXPORT TraceEvent {
   scoped_refptr<ConvertableToTraceFormat> convertable_values_[kTraceMaxNumArgs];
   const unsigned char* category_group_enabled_;
   const char* name_;
-  scoped_refptr<kudu::RefCountedString> parameter_copy_storage_;
+  scoped_refptr<yb::RefCountedString> parameter_copy_storage_;
   int thread_id_;
   char phase_;
   unsigned char flags_;
@@ -433,7 +433,7 @@ class BASE_EXPORT TraceLog {
   float GetBufferPercentFull() const;
   bool BufferIsFull() const;
 
-  // Not using kudu::Callback because of its limited by 7 parameters.
+  // Not using yb::Callback because of its limited by 7 parameters.
   // Also, using primitive type allows directly passing callback from WebCore.
   // WARNING: It is possible for the previously set callback to be called
   // after a call to SetEventCallbackEnabled() that replaces or a call to
@@ -467,7 +467,7 @@ class BASE_EXPORT TraceLog {
   // done when tracing is enabled. If called when tracing is enabled, the
   // callback will be called directly with (empty_string, false) to indicate
   // the end of this unsuccessful flush.
-  typedef kudu::Callback<void(const scoped_refptr<kudu::RefCountedString>&,
+  typedef yb::Callback<void(const scoped_refptr<yb::RefCountedString>&,
                               bool has_more_events)> OutputCallback;
   void Flush(const OutputCallback& cb);
   void FlushButLeaveBufferIntact(const OutputCallback& flush_output_callback);
@@ -520,7 +520,7 @@ class BASE_EXPORT TraceLog {
                                 TraceEventHandle handle);
 
   // For every matching event, the callback will be called.
-  typedef kudu::Callback<void()> WatchEventCallback;
+  typedef yb::Callback<void()> WatchEventCallback;
   void SetWatchEvent(const std::string& category_name,
                      const std::string& event_name,
                      const WatchEventCallback& callback);
@@ -676,7 +676,7 @@ class BASE_EXPORT TraceLog {
 
   // Sampling thread handles.
   gscoped_ptr<TraceSamplingThread> sampling_thread_;
-  scoped_refptr<kudu::Thread> sampling_thread_handle_;
+  scoped_refptr<yb::Thread> sampling_thread_handle_;
 
   CategoryFilter category_filter_;
   CategoryFilter event_callback_category_filter_;
@@ -712,6 +712,6 @@ class BASE_EXPORT TraceLog {
 };
 
 }  // namespace debug
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_UTIL_DEBUG_TRACE_EVENT_IMPL_H_

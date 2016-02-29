@@ -27,7 +27,7 @@
 
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Sockaddr;
 
@@ -95,6 +95,6 @@ struct SaslMechanism {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

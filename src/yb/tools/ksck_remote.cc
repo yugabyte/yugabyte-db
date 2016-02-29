@@ -28,7 +28,7 @@ DEFINE_bool(checksum_cache_blocks, false, "Should the checksum scanners cache th
 DEFINE_int64(timeout_ms, 1000 * 60, "RPC timeout in milliseconds");
 DEFINE_int64(tablets_batch_size_max, 100, "How many tablets to get from the Master per RPC");
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 static const std::string kMessengerName = "ksck";
@@ -339,4 +339,4 @@ Status RemoteKsckMaster::GetTableInfo(const string& table_name, Schema* schema, 
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

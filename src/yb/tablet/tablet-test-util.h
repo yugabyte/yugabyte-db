@@ -36,7 +36,7 @@
 
 DECLARE_bool(enable_data_block_fsync);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using consensus::RaftConfigPB;
@@ -266,5 +266,5 @@ static Status WriteRow(const Slice &row_slice, RowSetWriterClass *writer) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif

@@ -40,7 +40,7 @@
 #include "yb/util/net/socket.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using std::map;
@@ -489,4 +489,4 @@ int SaslClient::SecretCb(sasl_conn_t* conn, int id, sasl_secret_t** psecret) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

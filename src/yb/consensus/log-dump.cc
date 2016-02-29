@@ -43,7 +43,7 @@ DEFINE_string(print_entries, "decoded",
 DEFINE_int32(truncate_data, 100,
              "Truncate the data fields to the given number of bytes "
              "before printing. Set to 0 to disable");
-namespace kudu {
+namespace yb {
 namespace log {
 
 using consensus::CommitMsg;
@@ -216,10 +216,10 @@ Status DumpSegment(const string &segment_path) {
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char **argv) {
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
   if (argc != 2) {
     std::cerr << "usage: " << argv[0]
               << " -fs_wal_dir <dir> -fs_data_dirs <dirs>"
@@ -227,12 +227,12 @@ int main(int argc, char **argv) {
               << std::endl;
     return 1;
   }
-  kudu::InitGoogleLoggingSafe(argv[0]);
-  kudu::Status s = kudu::log::DumpSegment(argv[1]);
+  yb::InitGoogleLoggingSafe(argv[0]);
+  yb::Status s = yb::log::DumpSegment(argv[1]);
   if (s.ok()) {
     return 0;
   } else if (s.IsNotFound()) {
-    s = kudu::log::DumpLog(argv[1]);
+    s = yb::log::DumpLog(argv[1]);
   }
   if (!s.ok()) {
     std::cerr << "Error: " << s.ToString() << std::endl;

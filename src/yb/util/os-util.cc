@@ -41,7 +41,7 @@ using std::stringstream;
 using strings::Split;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 // Ensure that Impala compiles on earlier kernels. If the target kernel does not support
 // _SC_CLK_TCK, sysconf(_SC_CLK_TCK) will return -1.
@@ -145,4 +145,4 @@ bool RunShellProcess(const string& cmd, string* msg) {
   return false;
 }
 
-} // namespace kudu
+} // namespace yb

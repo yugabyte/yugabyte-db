@@ -55,7 +55,7 @@ using std::shared_ptr;
 using std::unordered_map;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 using rpc::ErrorStatusPB;
 using rpc::Messenger;
@@ -252,11 +252,11 @@ WriteRpc::WriteRpc(const scoped_refptr<Batcher>& batcher,
 
   req_.set_tablet_id(tablet->tablet_id());
   switch (batcher->external_consistency_mode()) {
-    case kudu::client::KuduSession::CLIENT_PROPAGATED:
-      req_.set_external_consistency_mode(kudu::CLIENT_PROPAGATED);
+    case yb::client::KuduSession::CLIENT_PROPAGATED:
+      req_.set_external_consistency_mode(yb::CLIENT_PROPAGATED);
       break;
-    case kudu::client::KuduSession::COMMIT_WAIT:
-      req_.set_external_consistency_mode(kudu::COMMIT_WAIT);
+    case yb::client::KuduSession::COMMIT_WAIT:
+      req_.set_external_consistency_mode(yb::COMMIT_WAIT);
       break;
     default:
       LOG(FATAL) << "Unsupported consistency mode: " << batcher->external_consistency_mode();
@@ -480,7 +480,7 @@ void WriteRpc::SendRpcCb(const Status& status) {
 Batcher::Batcher(KuduClient* client,
                  ErrorCollector* error_collector,
                  const sp::shared_ptr<KuduSession>& session,
-                 kudu::client::KuduSession::ExternalConsistencyMode consistency_mode)
+                 yb::client::KuduSession::ExternalConsistencyMode consistency_mode)
   : state_(kGatheringOps),
     client_(client),
     weak_session_(session),
@@ -865,4 +865,4 @@ void Batcher::ProcessWriteResponse(const WriteRpc& rpc,
 
 } // namespace internal
 } // namespace client
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@
 using llvm::ExecutionEngine;
 using std::unique_ptr;
 
-namespace kudu {
+namespace yb {
 namespace codegen {
 
 JITWrapper::JITWrapper(unique_ptr<JITCodeOwner> owner)
@@ -33,4 +33,4 @@ JITWrapper::JITWrapper(unique_ptr<JITCodeOwner> owner)
 JITWrapper::~JITWrapper() {}
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb

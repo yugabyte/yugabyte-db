@@ -23,7 +23,7 @@
 
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 ///
 /// Represents a sockaddr.
@@ -75,13 +75,13 @@ class Sockaddr {
   struct sockaddr_in addr_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 // Specialize std::hash for Sockaddr
 namespace std {
 template<>
-struct hash<kudu::Sockaddr> {
-  int operator()(const kudu::Sockaddr& addr) const {
+struct hash<yb::Sockaddr> {
+  int operator()(const yb::Sockaddr& addr) const {
     return addr.HashCode();
   }
 };

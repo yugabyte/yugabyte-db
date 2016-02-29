@@ -28,7 +28,7 @@
 #include "yb/util/status.h"
 #include "yb/util/thread.h"
 
-namespace kudu {
+namespace yb {
 
 using std::unordered_map;
 using strings::Substitute;
@@ -210,4 +210,4 @@ void RandomizedFailureMonitor::RunThread() {
   }
 }
 
-}  // namespace kudu
+}  // namespace yb

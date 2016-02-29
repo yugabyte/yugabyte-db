@@ -23,7 +23,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/env.h"
 
-namespace kudu {
+namespace yb {
 namespace env_util {
 
 Status OpenFileForWrite(Env *env, const std::string &path,
@@ -92,6 +92,6 @@ class ScopedFileDeleter {
 };
 
 } // namespace env_util
-} // namespace kudu
+} // namespace yb
 
 #endif

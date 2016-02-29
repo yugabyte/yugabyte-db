@@ -13,7 +13,7 @@
 #include "yb/gutil/map-util.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 namespace random_internal {
 
@@ -227,6 +227,6 @@ class ThreadSafeRandom {
 
 
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_UTIL_RANDOM_H_

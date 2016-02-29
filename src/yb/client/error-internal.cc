@@ -17,7 +17,7 @@
 
 #include "yb/client/error-internal.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -31,4 +31,4 @@ KuduError::Data::~Data() {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

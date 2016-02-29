@@ -32,7 +32,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 class Status;
 
 namespace metadata {
@@ -239,6 +239,6 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 };
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_CONSENSUS_LEADER_ELECTION_H */

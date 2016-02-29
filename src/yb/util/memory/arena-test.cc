@@ -32,7 +32,7 @@ DEFINE_int32(num_threads, 16, "Number of threads to test");
 DEFINE_int32(allocs_per_thread, 10000, "Number of allocations each thread should do");
 DEFINE_int32(alloc_size, 4, "number of bytes in each allocation");
 
-namespace kudu {
+namespace yb {
 
 using std::shared_ptr;
 
@@ -187,4 +187,4 @@ TEST(TestArena, TestSTLAllocator) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

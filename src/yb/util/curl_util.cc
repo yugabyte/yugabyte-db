@@ -22,7 +22,7 @@
 #include <curl/curl.h>
 #include <glog/logging.h>
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -87,4 +87,4 @@ Status EasyCurl::DoRequest(const std::string& url,
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

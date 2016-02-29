@@ -27,7 +27,7 @@
 #include "yb/util/status.h"
 #include "yb/util/trace.h"
 
-namespace kudu {
+namespace yb {
 class ThreadPool;
 
 namespace log {
@@ -255,6 +255,6 @@ class TransactionDriver : public RefCountedThreadSafe<TransactionDriver> {
 };
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_TABLET_TRANSACTION_DRIVER_H_ */

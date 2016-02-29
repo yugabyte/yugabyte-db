@@ -26,7 +26,7 @@
 #include "yb/cfile/index_block.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using boost::ptr_vector;
@@ -122,5 +122,5 @@ class IndexTreeIterator {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

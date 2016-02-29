@@ -111,7 +111,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 struct FlagTags {
   enum {
@@ -134,9 +134,9 @@ struct FlagTags {
 // enum above.
 #define TAG_FLAG(flag_name, tag) \
   COMPILE_ASSERT(sizeof(FLAGS_##flag_name), flag_does_not_exist); \
-  COMPILE_ASSERT(sizeof(::kudu::FlagTags::tag), invalid_tag);   \
+  COMPILE_ASSERT(sizeof(::yb::FlagTags::tag), invalid_tag);   \
   namespace {                                                     \
-    ::kudu::flag_tags_internal::FlagTagger t_##flag_name##_##tag( \
+    ::yb::flag_tags_internal::FlagTagger t_##flag_name##_##tag( \
         AS_STRING(flag_name), AS_STRING(tag));                    \
   }
 
@@ -162,5 +162,5 @@ class FlagTagger {
 
 } // namespace flag_tags_internal
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_FLAG_TAGS_H */

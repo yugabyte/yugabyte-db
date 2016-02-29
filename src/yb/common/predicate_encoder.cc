@@ -24,7 +24,7 @@
 #include "yb/common/row_key-util.h"
 #include "yb/common/types.h"
 
-namespace kudu {
+namespace yb {
 
 RangePredicateEncoder::RangePredicateEncoder(const Schema* key_schema,
                                              Arena* arena)
@@ -241,4 +241,4 @@ void RangePredicateEncoder::ErasePushedPredicates(
   spec->mutable_predicates()->swap(new_preds);
 }
 
-} // namespace kudu
+} // namespace yb

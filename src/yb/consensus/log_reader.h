@@ -31,7 +31,7 @@
 #include "yb/gutil/spinlock.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 namespace log {
 class Log;
 class LogIndex;
@@ -202,6 +202,6 @@ class LogReader {
 };
 
 }  // namespace log
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_LOG_LOG_READER_H_ */

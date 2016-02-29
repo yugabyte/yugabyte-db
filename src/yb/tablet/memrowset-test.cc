@@ -35,7 +35,7 @@ DEFINE_int32(roundtrip_num_rows, 10000,
 DEFINE_int32(num_scan_passes, 1,
              "Number of passes to run the scan portion of the round-trip test");
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using consensus::OpId;
@@ -471,7 +471,7 @@ TEST_F(TestMemRowSet, TestInsertionMVCC) {
     SCOPED_TRACE(i);
     // Each snapshot 'i' is taken after row 'i' was committed.
     vector<string> rows;
-    ASSERT_OK(kudu::tablet::DumpRowSet(*mrs, schema_, snapshots[i], &rows));
+    ASSERT_OK(yb::tablet::DumpRowSet(*mrs, schema_, snapshots[i], &rows));
     ASSERT_EQ(1 + i, rows.size());
     string expected = StringPrintf("(string key=tx%d, uint32 val=%d)", i, i);
     ASSERT_EQ(expected, rows[i]);
@@ -509,7 +509,7 @@ TEST_F(TestMemRowSet, TestUpdateMVCC) {
   for (int i = 0; i <= 5; i++) {
     SCOPED_TRACE(i);
     vector<string> rows;
-    ASSERT_OK(kudu::tablet::DumpRowSet(*mrs, schema_, snapshots[i], &rows));
+    ASSERT_OK(yb::tablet::DumpRowSet(*mrs, schema_, snapshots[i], &rows));
     ASSERT_EQ(1, rows.size());
 
     string expected = StringPrintf("(string key=my row, uint32 val=%d)", i);
@@ -520,4 +520,4 @@ TEST_F(TestMemRowSet, TestUpdateMVCC) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@
 #include "yb/util/coding.h"
 #include "yb/util/coding-inl.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using std::vector;
@@ -131,4 +131,4 @@ Status CompressedBlockDecoder::Uncompress(const Slice& data, Slice *result) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

@@ -28,7 +28,7 @@
 #include "yb/tablet/transactions/transaction.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 template<class T>
 class AtomicGauge;
@@ -111,6 +111,6 @@ class TransactionTracker {
 };
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif // KUDU_TABLET_TRANSACTION_TRACKER_H_

@@ -32,7 +32,7 @@
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/net/sockaddr.h"
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 
@@ -111,6 +111,6 @@ class RemoteKsckMaster : public KsckMaster {
 };
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TOOLS_KSCK_REMOTE_H

@@ -24,7 +24,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 // Wrapper around a spawned subprocess.
 //
@@ -148,5 +148,5 @@ class Subprocess {
   DISALLOW_COPY_AND_ASSIGN(Subprocess);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_SUBPROCESS_H */

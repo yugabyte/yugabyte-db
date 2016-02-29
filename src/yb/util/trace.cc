@@ -28,7 +28,7 @@
 #include "yb/gutil/walltime.h"
 #include "yb/util/memory/arena.h"
 
-namespace kudu {
+namespace yb {
 
 using strings::internal::SubstituteArg;
 
@@ -201,4 +201,4 @@ void Trace::AddChildTrace(Trace* child_trace) {
   child_traces_.push_back(ptr);
 }
 
-} // namespace kudu
+} // namespace yb

@@ -103,7 +103,7 @@
 #include "yb/util/memcmpable_varint.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 ////////////////////////////////////////////////////////////
 // Begin code ripped from sqlite4
@@ -254,4 +254,4 @@ bool GetMemcmpableVarint64(Slice *input, uint64_t *value) {
 }
 
 
-} // namespace kudu
+} // namespace yb

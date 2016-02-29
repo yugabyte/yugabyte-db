@@ -36,7 +36,7 @@ using std::swap;
 #include <cstdlib>
 
 
-namespace kudu {
+namespace yb {
 
 namespace {
 static char dummy_buffer[0] = {};
@@ -362,4 +362,4 @@ void MemoryTrackingBufferAllocator::FreeInternal(Buffer* buffer) {
   mem_tracker_->Release(buffer->size());
 }
 
-}  // namespace kudu
+}  // namespace yb

@@ -48,29 +48,29 @@ DEFINE_int32(test_delete_leader_payload_bytes, 16 * 1024,
 DEFINE_int32(test_delete_leader_num_writer_threads, 1,
              "Number of writer threads in TestDeleteLeaderDuringRemoteBootstrapStressTest.");
 
-using kudu::client::KuduClient;
-using kudu::client::KuduClientBuilder;
-using kudu::client::KuduSchema;
-using kudu::client::KuduSchemaFromSchema;
-using kudu::client::KuduTableCreator;
-using kudu::client::sp::shared_ptr;
-using kudu::consensus::CONSENSUS_CONFIG_COMMITTED;
-using kudu::itest::TServerDetails;
-using kudu::tablet::TABLET_DATA_TOMBSTONED;
-using kudu::tserver::ListTabletsResponsePB;
-using kudu::tserver::RemoteBootstrapClient;
+using yb::client::KuduClient;
+using yb::client::KuduClientBuilder;
+using yb::client::KuduSchema;
+using yb::client::KuduSchemaFromSchema;
+using yb::client::KuduTableCreator;
+using yb::client::sp::shared_ptr;
+using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::itest::TServerDetails;
+using yb::tablet::TABLET_DATA_TOMBSTONED;
+using yb::tserver::ListTabletsResponsePB;
+using yb::tserver::RemoteBootstrapClient;
 using std::string;
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
 METRIC_DECLARE_entity(server);
-METRIC_DECLARE_histogram(handler_latency_kudu_consensus_ConsensusService_UpdateConsensus);
+METRIC_DECLARE_histogram(handler_latency_yb_consensus_ConsensusService_UpdateConsensus);
 METRIC_DECLARE_counter(glog_info_messages);
 METRIC_DECLARE_counter(glog_warning_messages);
 METRIC_DECLARE_counter(glog_error_messages);
 
-namespace kudu {
+namespace yb {
 
 class RemoteBootstrapITest : public KuduTest {
  public:
@@ -583,7 +583,7 @@ int64_t CountUpdateConsensusCalls(ExternalTabletServer* ets, const string& table
   CHECK_OK(ets->GetInt64Metric(
                &METRIC_ENTITY_server,
                "kudu.tabletserver",
-               &METRIC_handler_latency_kudu_consensus_ConsensusService_UpdateConsensus,
+               &METRIC_handler_latency_yb_consensus_ConsensusService_UpdateConsensus,
                "total_count",
                &ret));
   return ret;
@@ -683,4 +683,4 @@ TEST_F(RemoteBootstrapITest, TestDisableRemoteBootstrap_NoTightLoopWhenTabletDel
   EXPECT_LT(num_logs_per_second, 20);
 }
 
-} // namespace kudu
+} // namespace yb

@@ -23,7 +23,7 @@
 
 DEFINE_int32(benchmark_num_threads, 8, "Number of threads to use for the benchmark");
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 class MTBloomFileTest : public BloomFileTestBase {
@@ -34,20 +34,20 @@ TEST_F(MTBloomFileTest, Benchmark) {
   ASSERT_NO_FATAL_FAILURE(WriteTestBloomFile());
   ASSERT_OK(OpenBloomFile());
 
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
 
   for (int i = 0; i < FLAGS_benchmark_num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
+    scoped_refptr<yb::Thread> new_thread;
     CHECK_OK(Thread::Create("test", strings::Substitute("t$0", i),
                             boost::bind(&BloomFileTestBase::ReadBenchmark, this),
                             &new_thread));
     threads.push_back(new_thread);
   }
-  for (scoped_refptr<kudu::Thread>& t : threads) {
+  for (scoped_refptr<yb::Thread>& t : threads) {
     t->Join();
   }
 }
 #endif
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

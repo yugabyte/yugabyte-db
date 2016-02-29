@@ -36,7 +36,7 @@
 #include "yb/util/bit-stream-utils.inline.h"
 #include "yb/util/bit-util.h"
 
-namespace kudu {
+namespace yb {
 
 // Utility classes to do run length encoding (RLE) for fixed bit width values.  If runs
 // are sufficiently long, RLE is used, otherwise, the values are just bit-packed
@@ -532,5 +532,5 @@ inline void RleEncoder<T>::Clear() {
   bit_writer_.Clear();
 }
 
-} // namespace kudu
+} // namespace yb
 #endif

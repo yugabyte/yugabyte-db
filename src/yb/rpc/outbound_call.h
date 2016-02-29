@@ -41,7 +41,7 @@ class Message;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class CallResponse;
@@ -360,6 +360,6 @@ class CallResponse {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

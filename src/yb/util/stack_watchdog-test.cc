@@ -33,7 +33,7 @@ using strings::Substitute;
 
 DECLARE_int32(hung_task_check_interval_ms);
 
-namespace kudu {
+namespace yb {
 
 class StackWatchdogTest : public KuduTest {
  public:
@@ -104,4 +104,4 @@ TEST_F(StackWatchdogTest, TestPerformance) {
     }
   }
 }
-} // namespace kudu
+} // namespace yb

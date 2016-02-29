@@ -26,7 +26,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 // The HybridTime clock.
@@ -164,7 +164,7 @@ class HybridClock : public Clock {
   // and checks if the clock is synchronized.
   //
   // On OS X, the error will always be 0.
-  kudu::Status WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec);
+  yb::Status WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec);
 
   // Used to get the timestamp for metrics.
   uint64_t NowForMetrics();
@@ -220,6 +220,6 @@ class HybridClock : public Clock {
 };
 
 }  // namespace server
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_SERVER_HYBRID_CLOCK_H_ */

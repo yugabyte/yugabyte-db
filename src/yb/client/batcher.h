@@ -31,7 +31,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 class KuduClient;
@@ -65,7 +65,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   Batcher(KuduClient* client,
           ErrorCollector* error_collector,
           const client::sp::shared_ptr<KuduSession>& session,
-          kudu::client::KuduSession::ExternalConsistencyMode consistency_mode);
+          yb::client::KuduSession::ExternalConsistencyMode consistency_mode);
 
   // Abort the current batch. Any writes that were buffered and not yet sent are
   // discarded. Those that were sent may still be delivered.  If there is a pending Flush
@@ -104,7 +104,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
   // Returns the consistency mode set on the batcher by the session when it was initially
   // created.
-  kudu::client::KuduSession::ExternalConsistencyMode external_consistency_mode() const {
+  yb::client::KuduSession::ExternalConsistencyMode external_consistency_mode() const {
     return consistency_mode_;
   }
 
@@ -163,7 +163,7 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
   client::sp::weak_ptr<KuduSession> weak_session_;
 
   // The consistency mode set in the session.
-  kudu::client::KuduSession::ExternalConsistencyMode consistency_mode_;
+  yb::client::KuduSession::ExternalConsistencyMode consistency_mode_;
 
   // Errors are reported into this error collector.
   scoped_refptr<ErrorCollector> const error_collector_;
@@ -215,5 +215,5 @@ class Batcher : public RefCountedThreadSafe<Batcher> {
 
 } // namespace internal
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CLIENT_BATCHER_H */

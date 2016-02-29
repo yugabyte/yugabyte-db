@@ -22,7 +22,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
-namespace kudu {
+namespace yb {
 
 template<class T>
 class AtomicGauge;
@@ -43,5 +43,5 @@ struct CacheMetrics {
   scoped_refptr<AtomicGauge<uint64_t> > cache_usage;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_CACHE_METRICS_H */

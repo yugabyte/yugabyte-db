@@ -136,7 +136,7 @@ The generated ServiceIf class contains pure virtual methods for each of the RPCs
 in the service. Each method to be implemented has an API like:
 
   void MethodName(const RequestPB *req,
-     ResponsePB *resp, ::kudu::rpc::RpcContext *context);
+     ResponsePB *resp, ::yb::rpc::RpcContext *context);
 
 The request PB is the user-provided request, and the response PB is a cleared
 protobuf ready to store the RPC response. Once the RPC response has been filled in,

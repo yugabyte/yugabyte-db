@@ -30,7 +30,7 @@ class Message;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class Sockaddr;
 class Trace;
@@ -183,5 +183,5 @@ class RpcContext {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif

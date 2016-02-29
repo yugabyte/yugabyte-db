@@ -23,9 +23,9 @@
 // in common/wire_protocol.proto instead. If it is only used within
 // the server(s), it should go in cfile/cfile.proto, server/metadata.proto,
 // etc, as appropriate.
-package kudu;
+package yb;
 
-option java_package = "org.kududb";
+option java_package = "org.yb";
 
 // If you add a new type keep in mind to add it to the end
 // or update AddMapping() functions like the one in key_encoder.cc

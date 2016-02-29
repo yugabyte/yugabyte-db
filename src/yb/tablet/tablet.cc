@@ -88,10 +88,10 @@ TAG_FLAG(tablet_bloom_target_fp_rate, advanced);
 
 METRIC_DEFINE_entity(tablet);
 METRIC_DEFINE_gauge_size(tablet, memrowset_size, "MemRowSet Memory Usage",
-                         kudu::MetricUnit::kBytes,
+                         yb::MetricUnit::kBytes,
                          "Size of this tablet's memrowset");
 METRIC_DEFINE_gauge_size(tablet, on_disk_size, "Tablet Size On Disk",
-                         kudu::MetricUnit::kBytes,
+                         yb::MetricUnit::kBytes,
                          "Size of this tablet on disk.");
 
 using std::shared_ptr;
@@ -99,10 +99,10 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
-using kudu::MaintenanceManager;
+using yb::MaintenanceManager;
 using consensus::OpId;
 using consensus::MaximumOpId;
 using log::LogAnchorRegistry;
@@ -1774,4 +1774,4 @@ void Tablet::Iterator::GetIteratorStats(vector<IteratorStats>* stats) const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

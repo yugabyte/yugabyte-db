@@ -5,7 +5,7 @@
 #ifndef STORAGE_LEVELDB_HELPERS_MEMENV_MEMENV_H_
 #define STORAGE_LEVELDB_HELPERS_MEMENV_MEMENV_H_
 
-namespace kudu {
+namespace yb {
 
 class Env;
 
@@ -15,6 +15,6 @@ class Env;
 // *base_env must remain live while the result is in use.
 Env* NewMemEnv(Env* base_env);
 
-} // namespace kudu
+} // namespace yb
 
 #endif  // STORAGE_LEVELDB_HELPERS_MEMENV_MEMENV_H_

@@ -33,7 +33,7 @@
 #include "yb/util/yb_export.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 class ColumnSchema;
 namespace client {
 class KuduWriteOperation;
@@ -246,5 +246,5 @@ class YB_EXPORT KuduPartialRow {
   uint8_t* row_data_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_COMMON_PARTIAL_ROW_H */

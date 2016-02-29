@@ -25,7 +25,7 @@
 #include "yb/tablet/tablet_peer.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 class FsManager;
@@ -199,6 +199,6 @@ class SysCatalogTable {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu.cfile;
+package yb.cfile;
 
-option java_package = "org.kududb.cfile";
+option java_package = "org.yb.cfile";
 
 import "yb/common/common.proto";
 
@@ -54,7 +54,7 @@ message IndexBlockTrailerPB {
 // TODO: name all the PBs with *PB convention
 
 message CFileFooterPB {
-  required kudu.DataType data_type = 1;
+  required yb.DataType data_type = 1;
   required EncodingType encoding = 2;
 
   // Total number of values in the file.

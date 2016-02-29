@@ -26,7 +26,7 @@ using std::string;
 using std::vector;
 
 #ifndef NDEBUG
-namespace kudu {
+namespace yb {
 
 SyncPoint::Dependency::Dependency(string predecessor, string successor)
     : predecessor_(std::move(predecessor)), successor_(std::move(successor)) {}
@@ -88,5 +88,5 @@ void SyncPoint::Process(const string& point) {
   cv_.Broadcast();
 }
 
-}  // namespace kudu
+}  // namespace yb
 #endif  // NDEBUG

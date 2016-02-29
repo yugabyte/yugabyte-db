@@ -44,7 +44,7 @@ struct sq_connection;
 struct sq_request_info;
 struct sq_context;
 
-namespace kudu {
+namespace yb {
 
 // Wrapper class for the Mongoose web server library. Clients may register callback
 // methods which produce output for a given URL path
@@ -164,6 +164,6 @@ class Webserver : public WebCallbackRegistry {
   struct sq_context* context_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_WEBSERVER_H

@@ -25,7 +25,7 @@
 
 #include "yb/cfile/block_encodings.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 struct WriterOptions;
@@ -157,5 +157,5 @@ class GVIntBlockDecoder : public BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

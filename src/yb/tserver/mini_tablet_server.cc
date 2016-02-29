@@ -43,18 +43,18 @@
 
 using std::pair;
 
-using kudu::consensus::Consensus;
-using kudu::consensus::ConsensusOptions;
-using kudu::consensus::OpId;
-using kudu::consensus::RaftPeerPB;
-using kudu::consensus::RaftConfigPB;
-using kudu::log::Log;
-using kudu::log::LogOptions;
+using yb::consensus::Consensus;
+using yb::consensus::ConsensusOptions;
+using yb::consensus::OpId;
+using yb::consensus::RaftPeerPB;
+using yb::consensus::RaftConfigPB;
+using yb::log::Log;
+using yb::log::LogOptions;
 using strings::Substitute;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 MiniTabletServer::MiniTabletServer(const string& fs_root,
@@ -151,4 +151,4 @@ const Sockaddr MiniTabletServer::bound_http_addr() const {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

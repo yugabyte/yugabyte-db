@@ -22,7 +22,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/gscoped_ptr.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 // A simple ref-counted wrapper around ReplicateMsg.
@@ -45,6 +45,6 @@ inline ReplicateRefPtr make_scoped_refptr_replicate(ReplicateMsg* replicate) {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_CONSENSUS_REF_COUNTED_REPLICATE_H_ */

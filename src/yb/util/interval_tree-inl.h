@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 template<class Traits>
 IntervalTree<Traits>::IntervalTree(const IntervalVector &intervals)
@@ -308,6 +308,6 @@ void ITNode<Traits>::FindIntersectingInterval(const interval_type &query,
 
 } // namespace interval_tree_internal
 
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -36,12 +36,12 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
-using kudu::client::KuduClient;
-using kudu::client::KuduClientBuilder;
-using kudu::client::KuduSchema;
-using kudu::client::KuduTableCreator;
-using kudu::client::sp::shared_ptr;
-using kudu::rpc::RpcController;
+using yb::client::KuduClient;
+using yb::client::KuduClientBuilder;
+using yb::client::KuduSchema;
+using yb::client::KuduTableCreator;
+using yb::client::sp::shared_ptr;
+using yb::rpc::RpcController;
 using std::string;
 using std::vector;
 
@@ -52,7 +52,7 @@ static const char* const kTwitterTabletId = "twitter";
 static const char* const kTPCH1TabletId = "tpch1";
 static const char* const kYCSBTabletId = "ycsb";
 
-namespace kudu {
+namespace yb {
 
 void PrintUsage(char** argv) {
   std::cerr << "usage: " << argv[0] << " "
@@ -76,7 +76,7 @@ Status GetDemoSchema(const string& table_name, KuduSchema* schema) {
   } else if (table_name == kTPCH1TabletId) {
     *schema = tpch::CreateLineItemSchema();
   } else if (table_name == kYCSBTabletId) {
-    *schema = kudu::CreateYCSBSchema();
+    *schema = yb::CreateYCSBSchema();
   } else {
     return Status::InvalidArgument("Invalid demo table name", table_name);
   }
@@ -113,8 +113,8 @@ static int CreateDemoTable(int argc, char** argv) {
   return 0;
 }
 
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::CreateDemoTable(argc, argv);
+  return yb::CreateDemoTable(argc, argv);
 }

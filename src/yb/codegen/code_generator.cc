@@ -82,7 +82,7 @@ using llvm::TargetMachine;
 using llvm::Triple;
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 
@@ -230,4 +230,4 @@ Status CodeGenerator::CompileRowProjector(const Schema& base, const Schema& proj
 }
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb

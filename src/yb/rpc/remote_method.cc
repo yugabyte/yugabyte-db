@@ -21,7 +21,7 @@
 #include "yb/rpc/remote_method.h"
 #include "yb/rpc/rpc_header.pb.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using strings::Substitute;
@@ -46,4 +46,4 @@ string RemoteMethod::ToString() const {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

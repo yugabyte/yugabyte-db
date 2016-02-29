@@ -38,7 +38,7 @@ TAG_FLAG(trace_to_console, experimental);
 // The thread buckets for the sampling profiler.
 BASE_EXPORT TRACE_EVENT_API_ATOMIC_WORD g_trace_state[3];
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 using base::SpinLockHolder;
@@ -1032,7 +1032,7 @@ class TraceLog::ThreadLocalEventBuffer {
  private:
   // Check that the current thread is the one that constructed this trace buffer.
   void CheckIsOwnerThread() const {
-    DCHECK_EQ(kudu::Thread::UniqueThreadId(), owner_tid_);
+    DCHECK_EQ(yb::Thread::UniqueThreadId(), owner_tid_);
   }
 
   // Since TraceLog is a leaky singleton, trace_log_ will always be valid
@@ -1053,7 +1053,7 @@ TraceLog::ThreadLocalEventBuffer::ThreadLocalEventBuffer(TraceLog* trace_log)
     : trace_log_(trace_log),
       chunk_index_(0),
       generation_(trace_log->generation()),
-      owner_tid_(kudu::Thread::UniqueThreadId()) {
+      owner_tid_(yb::Thread::UniqueThreadId()) {
 }
 
 TraceLog::ThreadLocalEventBuffer::~ThreadLocalEventBuffer() {
@@ -1688,7 +1688,7 @@ TraceEventHandle TraceLog::AddTraceEvent(
     const uint64_t* arg_values,
     const scoped_refptr<ConvertableToTraceFormat>* convertable_values,
     unsigned char flags) {
-  int thread_id = static_cast<int>(kudu::Thread::UniqueThreadId());
+  int thread_id = static_cast<int>(yb::Thread::UniqueThreadId());
   MicrosecondsInt64 now = GetMonoTimeMicros();
   return AddTraceEventWithThreadIdAndTimestamp(phase, category_group_enabled,
                                                name, id, thread_id, now,
@@ -2054,7 +2054,7 @@ void TraceLog::AddMetadataEventsWhileLocked() {
 #endif
 
 
-  int current_thread_id = static_cast<int>(kudu::Thread::UniqueThreadId());
+  int current_thread_id = static_cast<int>(yb::Thread::UniqueThreadId());
   if (process_sort_index_ != 0) {
     InitializeMetadataEvent(AddEventToThreadSharedChunkWhileLocked(nullptr, false),
                             current_thread_id,
@@ -2383,7 +2383,7 @@ const CategoryFilter::StringList&
 }
 
 }  // namespace debug
-}  // namespace kudu
+}  // namespace yb
 
 namespace trace_event_internal {
 
@@ -2400,7 +2400,7 @@ ScopedTraceBinaryEfficient::ScopedTraceBinaryEfficient(
         TRACE_EVENT_API_ADD_TRACE_EVENT_WITH_THREAD_ID_AND_TIMESTAMP(
             TRACE_EVENT_PHASE_COMPLETE, category_group_enabled_, name,
             trace_event_internal::kNoEventId,
-            static_cast<int>(kudu::Thread::UniqueThreadId()),
+            static_cast<int>(yb::Thread::UniqueThreadId()),
             GetMonoTimeMicros(),
             0, nullptr, nullptr, nullptr, nullptr, TRACE_EVENT_FLAG_NONE);
   }

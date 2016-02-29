@@ -28,7 +28,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/semaphore.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class TransactionState;
@@ -396,4 +396,4 @@ void LockManager::Release(LockEntry *lock, LockStatus ls) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

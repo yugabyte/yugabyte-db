@@ -24,7 +24,7 @@
 #include "yb/common/key_encoder.h"
 #include "yb/util/debug-util.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 IndexTreeBuilder::IndexTreeBuilder(
@@ -324,4 +324,4 @@ IndexTreeIterator *IndexTreeIterator::IndexTreeIterator::Create(
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

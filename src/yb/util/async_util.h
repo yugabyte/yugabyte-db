@@ -25,7 +25,7 @@
 #include "yb/util/status.h"
 #include "yb/util/status_callback.h"
 
-namespace kudu {
+namespace yb {
 
 // Simple class which can be used to make async methods synchronous.
 // For example:
@@ -68,5 +68,5 @@ class Synchronizer {
   CountDownLatch l;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_ASYNC_UTIL_H */

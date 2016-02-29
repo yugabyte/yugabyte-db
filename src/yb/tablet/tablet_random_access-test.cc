@@ -53,7 +53,7 @@ enum TestOp {
 };
 MAKE_ENUM_LIMITS(TestOp, TEST_INSERT, TEST_NUM_OP_TYPES);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 const char* TestOp_names[] = {
@@ -564,4 +564,4 @@ TEST_F(TestRandomAccess, TestFuzz4) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

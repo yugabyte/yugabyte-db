@@ -20,7 +20,7 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 void BitmapChangeBits(uint8_t *bitmap, size_t offset, size_t num_bits, bool value) {
   DCHECK_GT(num_bits, 0);
@@ -129,4 +129,4 @@ std::string BitmapToString(const uint8_t *bitmap, size_t num_bits) {
   return s;
 }
 
-} // namespace kudu
+} // namespace yb

@@ -25,7 +25,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class FsManager;
 
@@ -169,6 +169,6 @@ class ConsensusMetadata {
 };
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_CONSENSUS_CONSENSUS_META_H_

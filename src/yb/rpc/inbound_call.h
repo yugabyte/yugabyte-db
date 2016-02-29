@@ -39,7 +39,7 @@ class Message;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class Histogram;
 class Trace;
@@ -212,6 +212,6 @@ class InboundCall {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif

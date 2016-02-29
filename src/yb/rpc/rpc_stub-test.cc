@@ -39,7 +39,7 @@ using boost::ptr_vector;
 using std::shared_ptr;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class RpcStubTest : public RpcTestBase {
@@ -430,4 +430,4 @@ TEST_F(RpcStubTest, TestCallbackClearedAfterRunning) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

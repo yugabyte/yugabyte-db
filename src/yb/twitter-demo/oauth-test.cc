@@ -25,7 +25,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 // Test case from Appendix A of the OAuth 1.0 standard:
@@ -62,4 +62,4 @@ TEST(OAuthTest, TestSignature) {
 
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb

@@ -20,7 +20,7 @@
 #include <string>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class RowSet;
@@ -83,6 +83,6 @@ class RowSetInfo {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

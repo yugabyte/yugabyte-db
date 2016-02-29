@@ -57,7 +57,7 @@ DEFINE_bool(page_align_wal_writes, false,
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 class WalHiccupBenchmarker {
  public:
@@ -275,13 +275,13 @@ void WalHiccupBenchmarker::RunOnce() {
   thr->Join();
 }
 
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char* argv[]) {
   google::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
-  kudu::WalHiccupBenchmarker benchmarker;
+  yb::WalHiccupBenchmarker benchmarker;
   benchmarker.Run();
 
   return 0;

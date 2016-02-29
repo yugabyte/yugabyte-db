@@ -35,7 +35,7 @@ using std::string;
 using std::shared_ptr;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class MultiThreadedRpcTest : public RpcTestBase {
@@ -78,7 +78,7 @@ class MultiThreadedRpcTest : public RpcTestBase {
   }
 };
 
-static void AssertShutdown(kudu::Thread* thread, const Status* status) {
+static void AssertShutdown(yb::Thread* thread, const Status* status) {
   ASSERT_OK(ThreadJoiner(thread).warn_every_ms(500).Join());
   string msg = status->ToString();
   ASSERT_TRUE(msg.find("Service unavailable") != string::npos ||
@@ -94,10 +94,10 @@ TEST_F(MultiThreadedRpcTest, TestShutdownDuringService) {
   StartTestServer(&server_addr);
 
   const int kNumThreads = 4;
-  scoped_refptr<kudu::Thread> threads[kNumThreads];
+  scoped_refptr<yb::Thread> threads[kNumThreads];
   Status statuses[kNumThreads];
   for (int i = 0; i < kNumThreads; i++) {
-    ASSERT_OK(kudu::Thread::Create("test", strings::Substitute("t$0", i),
+    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
       &MultiThreadedRpcTest::HammerServer, this, server_addr,
       GenericCalculatorService::kAddMethodName, &statuses[i], &threads[i]));
   }
@@ -123,9 +123,9 @@ TEST_F(MultiThreadedRpcTest, TestShutdownClientWhileCallsPending) {
 
   shared_ptr<Messenger> client_messenger(CreateMessenger("Client"));
 
-  scoped_refptr<kudu::Thread> thread;
+  scoped_refptr<yb::Thread> thread;
   Status status;
-  ASSERT_OK(kudu::Thread::Create("test", "test",
+  ASSERT_OK(yb::Thread::Create("test", "test",
       &MultiThreadedRpcTest::HammerServerWithMessenger, this, server_addr,
       GenericCalculatorService::kAddMethodName, &status, client_messenger, &thread));
 
@@ -197,11 +197,11 @@ TEST_F(MultiThreadedRpcTest, TestBlowOutServiceQueue) {
   ASSERT_OK(service_pool_->Init(n_worker_threads_));
   server_messenger_->RegisterService(service_name_, service_pool_);
 
-  scoped_refptr<kudu::Thread> threads[3];
+  scoped_refptr<yb::Thread> threads[3];
   Status status[3];
   CountDownLatch latch(1);
   for (int i = 0; i < 3; i++) {
-    ASSERT_OK(kudu::Thread::Create("test", strings::Substitute("t$0", i),
+    ASSERT_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
       &MultiThreadedRpcTest::SingleCall, this, server_addr,
       GenericCalculatorService::kAddMethodName, &status[i], &latch, &threads[i]));
   }
@@ -260,10 +260,10 @@ TEST_F(MultiThreadedRpcTest, TestShutdownWithIncomingConnections) {
   StartTestServer(&server_addr);
 
   // Start a number of threads which just hammer the server with TCP connections.
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
   for (int i = 0; i < 8; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", strings::Substitute("t$0", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", strings::Substitute("t$0", i),
         &HammerServerWithTCPConns, server_addr, &new_thread));
     threads.push_back(new_thread);
   }
@@ -281,11 +281,11 @@ TEST_F(MultiThreadedRpcTest, TestShutdownWithIncomingConnections) {
   service_pool_->Shutdown();
   server_messenger_->Shutdown();
 
-  for (scoped_refptr<kudu::Thread>& t : threads) {
+  for (scoped_refptr<yb::Thread>& t : threads) {
     ASSERT_OK(ThreadJoiner(t.get()).warn_every_ms(500).Join());
   }
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 

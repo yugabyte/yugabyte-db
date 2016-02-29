@@ -29,7 +29,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/util/hash_util.h"
 
-namespace kudu {
+namespace yb {
 
 using std::set;
 using std::string;
@@ -781,4 +781,4 @@ Status PartitionSchema::Validate(const Schema& schema) const {
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

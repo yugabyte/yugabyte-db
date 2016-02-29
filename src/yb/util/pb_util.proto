@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu;
+package yb;
 
-option java_package = "org.kududb";
+option java_package = "org.yb";
 
 import "google/protobuf/descriptor.proto";
 
@@ -35,6 +35,6 @@ message ContainerSupHeaderPB {
   required google.protobuf.FileDescriptorSet protos = 1;
 
   // The PB message type expected in each data entry in this container. Must
-  // be fully qualified (i.e. kudu.tablet.TabletSuperBlockPB).
+  // be fully qualified (i.e. yb.tablet.TabletSuperBlockPB).
   required string pb_type = 2;
 }

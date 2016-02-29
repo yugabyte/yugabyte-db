@@ -25,7 +25,7 @@
 #include "yb/util/random.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -613,4 +613,4 @@ Env* NewMemEnv(Env* base_env) {
   return new InMemoryEnv(base_env);
 }
 
-} // namespace kudu
+} // namespace yb

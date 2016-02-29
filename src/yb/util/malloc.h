@@ -19,7 +19,7 @@
 
 #include <stdint.h>
 
-namespace kudu {
+namespace yb {
 
 // Simple wrapper for malloc_usable_size().
 //
@@ -27,6 +27,6 @@ namespace kudu {
 // on const pointers (i.e. "this" in a const method).
 int64_t kudu_malloc_usable_size(const void* obj);
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_MALLOC_H

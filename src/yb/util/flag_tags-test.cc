@@ -35,7 +35,7 @@ TAG_FLAG(flag_with_two_tags, unsafe);
 using std::string;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 
 class FlagTagsTest : public KuduTest {
 };
@@ -58,4 +58,4 @@ TEST_F(FlagTagsTest, TestTags) {
   EXPECT_EQ(0, tags.size());
 }
 
-} // namespace kudu
+} // namespace yb

@@ -35,7 +35,7 @@
 using std::set;
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 using rpc::RpcController;
 using strings::Substitute;
@@ -219,15 +219,15 @@ Status KuduScanner::Data::OpenTablet(const string& partition_key,
   next_req_.clear_scanner_id();
   NewScanRequestPB* scan = next_req_.mutable_new_scan_request();
   switch (read_mode_) {
-    case READ_LATEST: scan->set_read_mode(kudu::READ_LATEST); break;
-    case READ_AT_SNAPSHOT: scan->set_read_mode(kudu::READ_AT_SNAPSHOT); break;
+    case READ_LATEST: scan->set_read_mode(yb::READ_LATEST); break;
+    case READ_AT_SNAPSHOT: scan->set_read_mode(yb::READ_AT_SNAPSHOT); break;
     default: LOG(FATAL) << "Unexpected read mode.";
   }
 
   if (is_fault_tolerant_) {
-    scan->set_order_mode(kudu::ORDERED);
+    scan->set_order_mode(yb::ORDERED);
   } else {
-    scan->set_order_mode(kudu::UNORDERED);
+    scan->set_order_mode(yb::UNORDERED);
   }
 
   if (last_primary_key_.length() > 0) {
@@ -542,4 +542,4 @@ void KuduScanBatch::Data::Clear() {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

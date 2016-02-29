@@ -27,7 +27,7 @@ class MessageLite;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class Status;
 class faststring;
@@ -84,5 +84,5 @@ Status ValidateConnHeader(const Slice& slice);
 
 } // namespace serialization
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif // KUDU_RPC_SERIALIZATION_H

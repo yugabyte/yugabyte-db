@@ -21,7 +21,7 @@
 
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 class VersionInfoPB;
 
@@ -44,5 +44,5 @@ class VersionInfo {
   DISALLOW_IMPLICIT_CONSTRUCTORS(VersionInfo);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_VERSION_INFO_H */

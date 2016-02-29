@@ -49,11 +49,11 @@
 #include "yb/util/test_util.h"
 #include "yb/util/hdr_histogram.h"
 
-using kudu::client::KuduClient;
-using kudu::client::KuduClientBuilder;
-using kudu::client::KuduSchema;
-using kudu::client::sp::shared_ptr;
-using kudu::itest::TServerDetails;
+using yb::client::KuduClient;
+using yb::client::KuduClientBuilder;
+using yb::client::KuduSchema;
+using yb::client::sp::shared_ptr;
+using yb::itest::TServerDetails;
 
 DEFINE_int32(seconds_to_run, 5, "Number of seconds for which to run the test");
 
@@ -67,7 +67,7 @@ DEFINE_bool(stress_flush_compact, false,
 DEFINE_bool(stress_wal_gc, false,
             "Set WAL segment size small so that logs will be GCed during the test");
 
-namespace kudu {
+namespace yb {
 
 class LinkedListTest : public tserver::TabletServerIntegrationTestBase {
  public:
@@ -308,4 +308,4 @@ TEST_F(LinkedListTest, TestLoadWhileOneServerDownAndVerify) {
   ASSERT_OK(tester_->WaitAndVerify(FLAGS_seconds_to_run, written));
 }
 
-} // namespace kudu
+} // namespace yb

@@ -21,7 +21,7 @@
 #include <map>
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 // Interface for registering webserver callbacks.
 class WebCallbackRegistry {
@@ -61,6 +61,6 @@ class WebCallbackRegistry {
                                    bool is_styled = true, bool is_on_nav_bar = true) = 0;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_UTIL_WEB_CALLBACK_REGISTRY_H */

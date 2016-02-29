@@ -22,18 +22,18 @@
 #include "yb/util/metrics.h"
 
 METRIC_DEFINE_counter(server, glog_info_messages,
-                      "INFO-level Log Messages", kudu::MetricUnit::kMessages,
+                      "INFO-level Log Messages", yb::MetricUnit::kMessages,
                       "Number of INFO-level log messages emitted by the application.");
 
 METRIC_DEFINE_counter(server, glog_warning_messages,
-                      "WARNING-level Log Messages", kudu::MetricUnit::kMessages,
+                      "WARNING-level Log Messages", yb::MetricUnit::kMessages,
                       "Number of WARNING-level log messages emitted by the application.");
 
 METRIC_DEFINE_counter(server, glog_error_messages,
-                      "ERROR-level Log Messages", kudu::MetricUnit::kMessages,
+                      "ERROR-level Log Messages", yb::MetricUnit::kMessages,
                       "Number of ERROR-level log messages emitted by the application.");
 
-namespace kudu {
+namespace yb {
 
 class MetricsSink : public google::LogSink {
  public:
@@ -83,4 +83,4 @@ ScopedGLogMetrics::~ScopedGLogMetrics() {
 
 
 
-} // namespace kudu
+} // namespace yb

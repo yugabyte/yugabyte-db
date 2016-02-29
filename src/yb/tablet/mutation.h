@@ -28,7 +28,7 @@
 #include "yb/util/slice.h"
 #include "yb/tablet/mvcc.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // A single mutation associated with a row.
@@ -108,6 +108,6 @@ inline Mutation *Mutation::CreateInArena(
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

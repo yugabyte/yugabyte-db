@@ -36,7 +36,7 @@ TAG_FLAG(hung_task_check_interval_ms, hidden);
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 DEFINE_STATIC_THREAD_LOCAL(KernelStackWatchdog::TLS,
                            KernelStackWatchdog, tls_);
@@ -172,4 +172,4 @@ void KernelStackWatchdog::TLS::Data::SnapshotCopy(Data* copy) const {
   }
 }
 
-} // namespace kudu
+} // namespace yb

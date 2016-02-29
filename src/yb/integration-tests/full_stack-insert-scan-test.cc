@@ -74,7 +74,7 @@ DECLARE_bool(enable_maintenance_manager);
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using client::KuduClient;
@@ -460,4 +460,4 @@ vector<string> FullStackInsertScanTest::Int64ColumnNames() const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

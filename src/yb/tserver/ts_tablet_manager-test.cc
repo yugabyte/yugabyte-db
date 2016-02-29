@@ -37,7 +37,7 @@
 #define ASSERT_MONOTONIC_REPORT_SEQNO(report_seqno, tablet_report) \
   ASSERT_NO_FATAL_FAILURE(AssertMonotonicReportSeqno(report_seqno, tablet_report))
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::kInvalidOpIdIndex;
@@ -238,4 +238,4 @@ TEST_F(TsTabletManagerTest, TestTabletReports) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

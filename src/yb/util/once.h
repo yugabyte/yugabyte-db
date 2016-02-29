@@ -23,13 +23,13 @@
 #include "yb/util/atomic.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class KuduOnceDynamic;
 
 namespace internal {
 
-// Cheap, single-arg "bound callback" (similar to kudu::Callback) for use
+// Cheap, single-arg "bound callback" (similar to yb::Callback) for use
 // in KuduOnceDynamic.
 template<typename T>
 struct MemberFunc {
@@ -70,7 +70,7 @@ class KuduOnceDynamic {
     // of the argument:
     //
     //   runtime error: call to function
-    //   kudu::cfile::BloomFileReader::InitOnceCb(kudu::cfile::BloomFileReader*)
+    //   yb::cfile::BloomFileReader::InitOnceCb(yb::cfile::BloomFileReader*)
     //   through pointer to incorrect function type 'void (*)(void *)'
     //
     // So let's do the cast ourselves, to void* here and back in InitCb().
@@ -105,6 +105,6 @@ class KuduOnceDynamic {
   Status status_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

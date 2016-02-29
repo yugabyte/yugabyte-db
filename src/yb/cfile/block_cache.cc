@@ -35,7 +35,7 @@ DEFINE_string(block_cache_type, "DRAM",
               "in a memory-mapped file using the NVML library.");
 TAG_FLAG(block_cache_type, experimental);
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 
@@ -141,4 +141,4 @@ void BlockCache::StartInstrumentation(const scoped_refptr<MetricEntity>& metric_
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

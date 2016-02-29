@@ -36,11 +36,11 @@ using std::string;
 using std::stringstream;
 using std::vector;
 
-using kudu::debug::CategoryFilter;
-using kudu::debug::TraceLog;
-using kudu::debug::TraceResultBuffer;
+using yb::debug::CategoryFilter;
+using yb::debug::TraceLog;
+using yb::debug::TraceResultBuffer;
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 enum Handler {
@@ -110,7 +110,7 @@ Status BeginRecording(const Webserver::WebRequest& req,
   int options;
   RETURN_NOT_OK(GetTracingOptions(req.query_string, &filter_str, &options));
 
-  kudu::debug::TraceLog::GetInstance()->SetEnabled(
+  yb::debug::TraceLog::GetInstance()->SetEnabled(
     CategoryFilter(filter_str),
     mode,
     static_cast<TraceLog::Options>(options));
@@ -137,7 +137,7 @@ Status CaptureMonitoring(stringstream* out) {
 
 void GetCategories(stringstream* out) {
   vector<string> groups;
-  kudu::debug::TraceLog::GetInstance()->GetKnownCategoryGroups(&groups);
+  yb::debug::TraceLog::GetInstance()->GetKnownCategoryGroups(&groups);
   JsonWriter j(out, JsonWriter::COMPACT);
   j.StartArray();
   for (const string& g : groups) {
@@ -263,4 +263,4 @@ void TracingPathHandlers::RegisterHandlers(Webserver* server) {
 }
 
 } // namespace server
-} // namespace kudu
+} // namespace yb

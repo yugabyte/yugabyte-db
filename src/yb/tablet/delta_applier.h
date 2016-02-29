@@ -29,7 +29,7 @@
 #include "yb/util/status.h"
 #include "yb/tablet/cfile_set.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 class DeltaIterator;
@@ -81,5 +81,5 @@ class DeltaApplier : public ColumnwiseIterator {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_DELTA_APPLIER_H */

@@ -10,7 +10,7 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/util/malloc.h"
 
-namespace kudu {
+namespace yb {
 
 const char* Status::CopyState(const char* state) {
   uint32_t size;
@@ -159,4 +159,4 @@ size_t Status::memory_footprint_excluding_this() const {
 size_t Status::memory_footprint_including_this() const {
   return kudu_malloc_usable_size(this) + memory_footprint_excluding_this();
 }
-}  // namespace kudu
+}  // namespace yb

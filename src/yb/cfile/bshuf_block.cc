@@ -16,7 +16,7 @@
 // under the License.
 #include "yb/cfile/bshuf_block.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 void AbortWithBitShuffleError(int64_t val) {
@@ -182,4 +182,4 @@ Status BShufBlockDecoder<UINT32>::CopyNextValuesToArray(size_t* n, uint8_t* arra
 
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

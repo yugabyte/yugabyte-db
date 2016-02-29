@@ -37,7 +37,7 @@ DEFINE_int32(mt_metrics_test_num_threads, 4,
 
 METRIC_DEFINE_entity(test_entity);
 
-namespace kudu {
+namespace yb {
 
 using debug::ScopedLeakCheckDisabler;
 using std::vector;
@@ -59,10 +59,10 @@ static void CountWithCounter(scoped_refptr<Counter> counter, int num_increments)
 
 // Helper function that spawns and then joins a bunch of threads.
 static void RunWithManyThreads(boost::function<void()>* f, int num_threads) {
-  vector<scoped_refptr<kudu::Thread> > threads;
+  vector<scoped_refptr<yb::Thread> > threads;
   for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    CHECK_OK(kudu::Thread::Create("test", StringPrintf("thread%d", i),
+    scoped_refptr<yb::Thread> new_thread;
+    CHECK_OK(yb::Thread::Create("test", StringPrintf("thread%d", i),
           *f, &new_thread));
     threads.push_back(new_thread);
   }
@@ -118,4 +118,4 @@ TEST_F(MultiThreadedMetricsTest, AddCounterToRegistryTest) {
   ASSERT_EQ(num_threads * num_counters, entity->UnsafeMetricsMapForTests().size());
 }
 
-} // namespace kudu
+} // namespace yb

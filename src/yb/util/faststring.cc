@@ -21,7 +21,7 @@
 
 #include "yb/gutil/gscoped_ptr.h"
 
-namespace kudu {
+namespace yb {
 
 void faststring::GrowByAtLeast(size_t count) {
   // Not enough space, need to reserve more.
@@ -54,4 +54,4 @@ void faststring::GrowArray(size_t newcapacity) {
 }
 
 
-} // namespace kudu
+} // namespace yb

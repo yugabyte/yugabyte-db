@@ -67,7 +67,7 @@ static int g_stack_trace_signum = SIGUSR2;
 // This lock also protects changes to the signal handler.
 static base::SpinLock g_dumper_thread_lock(base::LINKER_INITIALIZED);
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -385,4 +385,4 @@ uint64_t StackTrace::HashCode() const {
                                sizeof(frames_[0]) * num_frames_);
 }
 
-}  // namespace kudu
+}  // namespace yb

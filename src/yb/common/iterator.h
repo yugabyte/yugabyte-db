@@ -27,7 +27,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Arena;
 class RowBlock;
@@ -113,5 +113,5 @@ class ColumnwiseIterator : public virtual IteratorBase {
   virtual void GetIteratorStats(std::vector<IteratorStats>* stats) const = 0;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

@@ -26,7 +26,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/bitmap.h"
 
-namespace kudu {
+namespace yb {
 
 class RowBlockRow;
 
@@ -328,6 +328,6 @@ inline RowBlockRow RowBlock::row(size_t idx) const {
   return RowBlockRow(this, idx);
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

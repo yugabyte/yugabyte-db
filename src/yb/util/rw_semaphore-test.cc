@@ -26,7 +26,7 @@
 using boost::thread;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 struct SharedState {
   SharedState() : done(false), int_var(0) {}
 
@@ -87,4 +87,4 @@ TEST(RWSemaphoreTest, TestBasicOperation) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

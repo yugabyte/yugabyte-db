@@ -22,7 +22,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 void LogSessionErrorsAndDie(const sp::shared_ptr<KuduSession>& session,
@@ -78,4 +78,4 @@ KuduSchema KuduSchemaFromSchema(const Schema& schema) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

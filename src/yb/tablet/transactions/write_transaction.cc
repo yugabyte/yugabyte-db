@@ -42,7 +42,7 @@ DEFINE_int32(tablet_inject_latency_on_apply_write_txn_ms, 0,
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, unsafe);
 TAG_FLAG(tablet_inject_latency_on_apply_write_txn_ms, runtime);
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using boost::bind;
@@ -372,4 +372,4 @@ string WriteTransactionState::ToString() const {
 }
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb

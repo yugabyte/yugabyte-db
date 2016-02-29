@@ -24,7 +24,7 @@
 #include "yb/util/path_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class Env;
 class FileLock;
@@ -86,5 +86,5 @@ class PathInstanceMetadataFile {
 };
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb
 #endif

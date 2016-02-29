@@ -31,12 +31,12 @@
 #include "yb/gutil/port.h"
 #include "yb/util/coding-inl.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using std::string;
 using std::vector;
-using kudu::DataTypeTraits;
+using yb::DataTypeTraits;
 
 // Forward decl.
 class IndexBlockIterator;
@@ -182,5 +182,5 @@ class IndexBlockIterator {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

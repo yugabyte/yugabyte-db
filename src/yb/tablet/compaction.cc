@@ -42,7 +42,7 @@ using std::shared_ptr;
 using std::unordered_set;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 namespace {
@@ -1018,4 +1018,4 @@ Status DebugDumpCompactionInput(CompactionInput *input, vector<string> *lines) {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

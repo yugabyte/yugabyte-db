@@ -28,7 +28,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
-using kudu::Status;
+using yb::Status;
 using std::cerr;
 using std::endl;
 using std::string;
@@ -36,7 +36,7 @@ using std::string;
 DEFINE_bool(oneline, false, "print each protobuf on a single line");
 TAG_FLAG(oneline, stable);
 
-namespace kudu {
+namespace yb {
 namespace pb_util {
 
 Status DumpPBContainerFile(const string& filename) {
@@ -51,17 +51,17 @@ Status DumpPBContainerFile(const string& filename) {
 }
 
 } // namespace pb_util
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char **argv) {
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::InitGoogleLoggingSafe(argv[0]);
   if (argc != 2) {
     cerr << "usage: " << argv[0] << " [--oneline] <protobuf container filename>" << endl;
     return 2;
   }
 
-  Status s = kudu::pb_util::DumpPBContainerFile(argv[1]);
+  Status s = yb::pb_util::DumpPBContainerFile(argv[1]);
   if (s.ok()) {
     return 0;
   } else {

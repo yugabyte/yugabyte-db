@@ -5,7 +5,7 @@
 #include "yb/util/env.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 
 Env::~Env() {
 }
@@ -85,4 +85,4 @@ Status ReadFileToString(Env* env, const std::string& fname, faststring* data) {
 EnvWrapper::~EnvWrapper() {
 }
 
-}  // namespace kudu
+}  // namespace yb

@@ -42,7 +42,7 @@
 
 using std::allocator;
 
-namespace kudu {
+namespace yb {
 
 template<bool THREADSAFE> struct ArenaTraits;
 
@@ -490,6 +490,6 @@ inline T *ArenaBase<THREADSAFE>::NewObject(A1 arg1, A2 arg2, A3 arg3) {
   return new (mem) T(arg1, arg2, arg3);
 }
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_UTIL_MEMORY_ARENA_H_

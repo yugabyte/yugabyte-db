@@ -22,7 +22,7 @@
 #include <malloc/malloc.h>
 #endif // defined(__linux__)
 
-namespace kudu {
+namespace yb {
 
 int64_t kudu_malloc_usable_size(const void* obj) {
 #if defined(__linux__)
@@ -32,4 +32,4 @@ int64_t kudu_malloc_usable_size(const void* obj) {
 #endif // defined(__linux__)
 }
 
-} // namespace kudu
+} // namespace yb

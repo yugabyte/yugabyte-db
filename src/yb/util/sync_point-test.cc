@@ -27,7 +27,7 @@ using std::string;
 using std::vector;
 
 #ifndef NDEBUG
-namespace kudu {
+namespace yb {
 
 static void RunThread(bool *var) {
   *var = true;
@@ -45,7 +45,7 @@ TEST(SyncPointTest, TestSyncPoint) {
   // setting 'var' to true, which unblocks the main thread.
   scoped_refptr<Thread> thread;
   bool var = false;
-  ASSERT_OK(kudu::Thread::Create("test", "test",
+  ASSERT_OK(yb::Thread::Create("test", "test",
                                         &RunThread, &var, &thread));
 
   // Blocked on RunThread to process "first".
@@ -55,5 +55,5 @@ TEST(SyncPointTest, TestSyncPoint) {
   thread->Join();
 }
 
-} // namespace kudu
+} // namespace yb
 #endif // NDEBUG

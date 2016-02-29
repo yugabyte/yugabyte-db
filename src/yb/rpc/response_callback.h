@@ -20,7 +20,7 @@
 
 #include <boost/function.hpp>
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 typedef boost::function<void()> ResponseCallback;

@@ -31,7 +31,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 using client::KuduRowResult;
 using client::KuduSchema;
@@ -54,7 +54,7 @@ class RpcLineItemDAOTest : public KuduTest {
 
     // Create the table and Connect to it.
     string master_address(cluster_->mini_master()->bound_rpc_addr_str());
-    dao_.reset(new kudu::RpcLineItemDAO(master_address, kTableName, 5));
+    dao_.reset(new yb::RpcLineItemDAO(master_address, kTableName, 5));
     dao_->Init();
   }
 
@@ -162,4 +162,4 @@ TEST_F(RpcLineItemDAOTest, TestUpdate) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

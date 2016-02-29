@@ -29,7 +29,7 @@
 using std::string;
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class RpcBench : public RpcTestBase {
@@ -127,5 +127,5 @@ TEST_F(RpcBench, BenchmarkCalls) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 

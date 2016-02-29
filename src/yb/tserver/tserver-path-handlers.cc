@@ -40,24 +40,24 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/util/url-coding.h"
 
-using kudu::consensus::GetConsensusRole;
-using kudu::consensus::CONSENSUS_CONFIG_COMMITTED;
-using kudu::consensus::ConsensusStatePB;
-using kudu::consensus::RaftPeerPB;
-using kudu::consensus::TransactionStatusPB;
-using kudu::tablet::MaintenanceManagerStatusPB;
-using kudu::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
-using kudu::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
-using kudu::tablet::Tablet;
-using kudu::tablet::TabletPeer;
-using kudu::tablet::TabletStatusPB;
-using kudu::tablet::Transaction;
+using yb::consensus::GetConsensusRole;
+using yb::consensus::CONSENSUS_CONFIG_COMMITTED;
+using yb::consensus::ConsensusStatePB;
+using yb::consensus::RaftPeerPB;
+using yb::consensus::TransactionStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
+using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
+using yb::tablet::Tablet;
+using yb::tablet::TabletPeer;
+using yb::tablet::TabletStatusPB;
+using yb::tablet::Transaction;
 using std::endl;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 TabletServerPathHandlers::~TabletServerPathHandlers() {
@@ -567,4 +567,4 @@ void TabletServerPathHandlers::HandleMaintenanceManagerPage(const Webserver::Web
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

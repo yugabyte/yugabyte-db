@@ -32,7 +32,7 @@ using std::shared_ptr;
 using std::string;
 using std::unordered_set;
 
-namespace kudu { namespace tablet {
+namespace yb { namespace tablet {
 
 class TestRowSetTree : public KuduTest {
 };
@@ -177,4 +177,4 @@ TEST_F(TestRowSetTree, TestEndpointsConsistency) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

@@ -22,7 +22,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class ReactorTest : public RpcTestBase {
@@ -95,4 +95,4 @@ TEST_F(ReactorTest, TestReschedulesOnSameReactorThread) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

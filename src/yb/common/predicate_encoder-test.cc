@@ -24,7 +24,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class TestRangePredicateEncoder : public KuduTest {
  public:
@@ -302,4 +302,4 @@ TEST_F(SingleIntKeyTest, TestNoPredicates) {
   EXPECT_EQ("", spec.ToStringWithSchema(schema_));
 }
 
-} // namespace kudu
+} // namespace yb

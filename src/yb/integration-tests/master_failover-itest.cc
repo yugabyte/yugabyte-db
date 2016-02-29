@@ -30,7 +30,7 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 // Note: this test needs to be in the client namespace in order for
 // KuduClient::Data class methods to be visible via FRIEND_TEST macro.
@@ -258,4 +258,4 @@ TEST_F(MasterFailoverTest, TestRenameTableSync) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

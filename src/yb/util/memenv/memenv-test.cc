@@ -22,7 +22,7 @@ using std::string;
 using std::unordered_set;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class MemEnvTest : public ::testing::Test {
  public:
@@ -309,4 +309,4 @@ TEST_F(MemEnvTest, TestRWFile) {
   ASSERT_EQ(result, kTestData);
 }
 
-}  // namespace kudu
+}  // namespace yb

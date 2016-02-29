@@ -42,26 +42,26 @@
 #include "yb/util/test_util.h"
 #include "yb/util/trace.h"
 
-namespace kudu { namespace rpc {
+namespace yb { namespace rpc {
 
-using kudu::rpc_test::AddRequestPartialPB;
-using kudu::rpc_test::AddRequestPB;
-using kudu::rpc_test::AddResponsePB;
-using kudu::rpc_test::CalculatorError;
-using kudu::rpc_test::CalculatorServiceIf;
-using kudu::rpc_test::CalculatorServiceProxy;
-using kudu::rpc_test::EchoRequestPB;
-using kudu::rpc_test::EchoResponsePB;
-using kudu::rpc_test::PanicRequestPB;
-using kudu::rpc_test::PanicResponsePB;
-using kudu::rpc_test::SendTwoStringsRequestPB;
-using kudu::rpc_test::SendTwoStringsResponsePB;
-using kudu::rpc_test::SleepRequestPB;
-using kudu::rpc_test::SleepResponsePB;
-using kudu::rpc_test::WhoAmIRequestPB;
-using kudu::rpc_test::WhoAmIResponsePB;
-using kudu::rpc_test_diff_package::ReqDiffPackagePB;
-using kudu::rpc_test_diff_package::RespDiffPackagePB;
+using yb::rpc_test::AddRequestPartialPB;
+using yb::rpc_test::AddRequestPB;
+using yb::rpc_test::AddResponsePB;
+using yb::rpc_test::CalculatorError;
+using yb::rpc_test::CalculatorServiceIf;
+using yb::rpc_test::CalculatorServiceProxy;
+using yb::rpc_test::EchoRequestPB;
+using yb::rpc_test::EchoResponsePB;
+using yb::rpc_test::PanicRequestPB;
+using yb::rpc_test::PanicResponsePB;
+using yb::rpc_test::SendTwoStringsRequestPB;
+using yb::rpc_test::SendTwoStringsResponsePB;
+using yb::rpc_test::SleepRequestPB;
+using yb::rpc_test::SleepResponsePB;
+using yb::rpc_test::WhoAmIRequestPB;
+using yb::rpc_test::WhoAmIResponsePB;
+using yb::rpc_test_diff_package::ReqDiffPackagePB;
+using yb::rpc_test_diff_package::RespDiffPackagePB;
 
 // Implementation of CalculatorService which just implements the generic
 // RPC handler (no generated code).
@@ -227,7 +227,7 @@ class CalculatorService : public CalculatorServiceIf {
 
   virtual void TestArgumentsInDiffPackage(const ReqDiffPackagePB *req,
                                           RespDiffPackagePB *resp,
-                                          ::kudu::rpc::RpcContext *context) OVERRIDE {
+                                          ::yb::rpc::RpcContext *context) OVERRIDE {
     context->RespondSuccess();
   }
 
@@ -423,5 +423,5 @@ class RpcTestBase : public KuduTest {
 
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif

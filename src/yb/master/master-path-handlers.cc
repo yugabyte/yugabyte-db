@@ -41,7 +41,7 @@
 #include "yb/util/url-coding.h"
 
 
-namespace kudu {
+namespace yb {
 
 using consensus::RaftPeerPB;
 using std::vector;
@@ -451,4 +451,4 @@ string MasterPathHandlers::RegistrationToHtml(const RegistrationType& reg,
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

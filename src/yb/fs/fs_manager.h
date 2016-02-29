@@ -38,7 +38,7 @@ class Message;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class MemTracker;
 class MetricEntity;
@@ -275,6 +275,6 @@ class FsManager {
   DISALLOW_COPY_AND_ASSIGN(FsManager);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

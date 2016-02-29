@@ -23,7 +23,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 
 class Cache;
 class CacheDeleter;
@@ -88,6 +88,6 @@ class CodeCache {
 };
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif

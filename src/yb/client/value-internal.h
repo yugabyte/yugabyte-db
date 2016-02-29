@@ -24,7 +24,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 class KuduValue::Data {
@@ -78,5 +78,5 @@ class KuduValue::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CLIENT_VALUE_INTERNAL_H */

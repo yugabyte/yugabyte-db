@@ -18,9 +18,9 @@
 // Protobuf used for introspection of RPC services (eg listing in-flight RPCs,
 // reflection, etc)
 
-package kudu.rpc;
+package yb.rpc;
 
-option java_package = "org.kududb";
+option java_package = "org.yb";
 
 import "yb/rpc/rpc_header.proto";
 

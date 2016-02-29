@@ -21,7 +21,7 @@
 #include "yb/fs/fs_manager.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using consensus::MakeOpId;
@@ -110,4 +110,4 @@ TEST_F(LogIndexTest, TestMultiSegmentWithGC) {
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb

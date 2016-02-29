@@ -32,7 +32,7 @@
 #include "yb/util/debug/trace_event.h"
 #include "yb/util/stopwatch.h"
 
-namespace kudu { namespace tablet {
+namespace yb { namespace tablet {
 
 MvccManager::MvccManager(const scoped_refptr<server::Clock>& clock)
   : no_new_transactions_at_or_before_(Timestamp::kMin),
@@ -581,4 +581,4 @@ void ScopedTransaction::Abort() {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

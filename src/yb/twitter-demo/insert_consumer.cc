@@ -35,19 +35,19 @@
 #include "yb/twitter-demo/twitter-schema.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 using tserver::TabletServerServiceProxy;
 using tserver::WriteRequestPB;
 using tserver::WriteResponsePB;
 using rpc::RpcController;
-using kudu::client::KuduInsert;
-using kudu::client::KuduClient;
-using kudu::client::KuduSession;
-using kudu::client::KuduStatusCallback;
-using kudu::client::KuduTable;
-using kudu::client::KuduTableCreator;
+using yb::client::KuduInsert;
+using yb::client::KuduClient;
+using yb::client::KuduSession;
+using yb::client::KuduStatusCallback;
+using yb::client::KuduTable;
+using yb::client::KuduTableCreator;
 
 FlushCB::FlushCB(InsertConsumer* consumer)
   : consumer_(consumer) {
@@ -158,4 +158,4 @@ void InsertConsumer::ConsumeJSON(const Slice& json_slice) {
 }
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb

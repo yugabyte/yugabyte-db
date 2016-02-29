@@ -23,7 +23,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 enum TwitterEventType {
@@ -82,5 +82,5 @@ class TwitterEventParser {
 };
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb
 #endif

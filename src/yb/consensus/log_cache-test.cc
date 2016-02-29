@@ -38,7 +38,7 @@ DECLARE_int32(global_log_cache_size_limit_mb);
 
 METRIC_DECLARE_entity(tablet);
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 static const char* kPeerUuid = "leader";
@@ -305,4 +305,4 @@ TEST_F(LogCacheTest, TestReplaceMessages) {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

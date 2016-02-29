@@ -11,7 +11,7 @@
 #include "yb/gutil/port.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-namespace kudu {
+namespace yb {
 namespace subtle {
 
 typedef Atomic32 AtomicRefCount;
@@ -159,7 +159,7 @@ class RefCountedThreadSafe : public subtle::RefCountedThreadSafeBase {
 //
 template<typename T>
 class RefCountedData
-    : public kudu::RefCountedThreadSafe< kudu::RefCountedData<T> > {
+    : public yb::RefCountedThreadSafe< yb::RefCountedData<T> > {
  public:
   RefCountedData() : data() {}
   RefCountedData(const T& in_value) : data(in_value) {}
@@ -167,11 +167,11 @@ class RefCountedData
   T data;
 
  private:
-  friend class kudu::RefCountedThreadSafe<kudu::RefCountedData<T> >;
+  friend class yb::RefCountedThreadSafe<yb::RefCountedData<T> >;
   ~RefCountedData() {}
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 //
 // A smart pointer class for reference counted objects.  Use this class instead

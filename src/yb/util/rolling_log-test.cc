@@ -33,7 +33,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 class RollingLogTest : public KuduTest {
  public:
@@ -118,4 +118,4 @@ TEST_F(RollingLogTest, TestCompression) {
   ASSERT_GT(size, 0);
 }
 
-} // namespace kudu
+} // namespace yb

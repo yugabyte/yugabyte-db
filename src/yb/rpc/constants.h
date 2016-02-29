@@ -20,7 +20,7 @@
 
 #include <stdint.h>
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 // Magic number bytes sent at connection setup time.
@@ -47,6 +47,6 @@ static const uint8_t kHeaderFlagsLength = 3;
 static const uint8_t kMsgLengthPrefixLength = 4;
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_RPC_RPC_CONSTANTS_H

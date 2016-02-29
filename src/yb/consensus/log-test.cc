@@ -35,7 +35,7 @@ DEFINE_int32(num_batches, 10000,
 
 DECLARE_int32(log_min_segments_to_retain);
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using std::shared_ptr;
@@ -1048,4 +1048,4 @@ TEST_F(LogTest, TestGetMaxIndexesToSegmentSizeMap) {
   ASSERT_EQ(0, max_idx_to_segment_size.size());
 }
 } // namespace log
-} // namespace kudu
+} // namespace yb

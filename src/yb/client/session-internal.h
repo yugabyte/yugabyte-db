@@ -22,7 +22,7 @@
 #include "yb/client/client.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -75,7 +75,7 @@ class KuduSession::Data {
   std::unordered_set<internal::Batcher*> flushed_batchers_;
 
   FlushMode flush_mode_;
-  kudu::client::KuduSession::ExternalConsistencyMode external_consistency_mode_;
+  yb::client::KuduSession::ExternalConsistencyMode external_consistency_mode_;
 
   // Timeout for the next batch.
   int timeout_ms_;
@@ -84,6 +84,6 @@ class KuduSession::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

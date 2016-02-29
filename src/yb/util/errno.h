@@ -19,7 +19,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 void ErrnoToCString(int err, char *buf, size_t buf_len);
 
@@ -30,6 +30,6 @@ inline static std::string ErrnoToString(int err) {
   return std::string(buf);
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

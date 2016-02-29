@@ -16,7 +16,7 @@
 // under the License.
 //
 // Test protocol for kudu RPC.
-package kudu.rpc_test;
+package yb.rpc_test;
 
 import "yb/rpc/rpc_header.proto";
 import "yb/rpc/rtest_diff_package.proto";
@@ -75,12 +75,12 @@ message EchoResponsePB {
 message WhoAmIRequestPB {
 }
 message WhoAmIResponsePB {
-  required kudu.rpc.UserInformationPB credentials = 1;
+  required yb.rpc.UserInformationPB credentials = 1;
   required string address = 2;
 }
 
 message CalculatorError {
-  extend kudu.rpc.ErrorStatusPB {
+  extend yb.rpc.ErrorStatusPB {
     optional CalculatorError app_error_ext = 101;
   }
 
@@ -95,7 +95,7 @@ service CalculatorService {
   rpc Sleep(SleepRequestPB) returns(SleepResponsePB);
   rpc Echo(EchoRequestPB) returns(EchoResponsePB);
   rpc WhoAmI(WhoAmIRequestPB) returns (WhoAmIResponsePB);
-  rpc TestArgumentsInDiffPackage(kudu.rpc_test_diff_package.ReqDiffPackagePB)
-    returns(kudu.rpc_test_diff_package.RespDiffPackagePB);
+  rpc TestArgumentsInDiffPackage(yb.rpc_test_diff_package.ReqDiffPackagePB)
+    returns(yb.rpc_test_diff_package.RespDiffPackagePB);
   rpc Panic(PanicRequestPB) returns (PanicResponsePB);
 }

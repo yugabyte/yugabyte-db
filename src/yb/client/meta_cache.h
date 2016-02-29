@@ -38,7 +38,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/net/net_util.h"
 
-namespace kudu {
+namespace yb {
 
 class KuduPartialRow;
 
@@ -290,5 +290,5 @@ class MetaCache : public RefCountedThreadSafe<MetaCache> {
 
 } // namespace internal
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CLIENT_META_CACHE_H */

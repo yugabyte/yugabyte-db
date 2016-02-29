@@ -27,7 +27,7 @@
 #include <stdint.h>
 #include <string.h>
 
-namespace kudu {
+namespace yb {
 
 inline uint8_t *InlineEncodeVarint32(uint8_t *dst, uint32_t v) {
   // Operate on characters as unsigneds
@@ -112,6 +112,6 @@ inline void InlinePutVarint32(StrType* dst, uint32_t v) {
   dst->resize(old_size + ptr - p);
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

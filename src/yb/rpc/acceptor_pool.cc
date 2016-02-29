@@ -41,7 +41,7 @@ using std::string;
 
 METRIC_DEFINE_counter(server, rpc_connections_accepted,
                       "RPC Connections Accepted",
-                      kudu::MetricUnit::kConnections,
+                      yb::MetricUnit::kConnections,
                       "Number of incoming TCP connections made to the RPC server");
 
 DEFINE_int32(rpc_acceptor_listen_backlog, 128,
@@ -53,7 +53,7 @@ DEFINE_int32(rpc_acceptor_listen_backlog, 128,
              "new inbound connection requests.");
 TAG_FLAG(rpc_acceptor_listen_backlog, advanced);
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 AcceptorPool::AcceptorPool(Messenger* messenger, Socket* socket,
@@ -73,8 +73,8 @@ Status AcceptorPool::Start(int num_threads) {
   RETURN_NOT_OK(socket_.Listen(FLAGS_rpc_acceptor_listen_backlog));
 
   for (int i = 0; i < num_threads; i++) {
-    scoped_refptr<kudu::Thread> new_thread;
-    Status s = kudu::Thread::Create("acceptor pool", "acceptor",
+    scoped_refptr<yb::Thread> new_thread;
+    Status s = yb::Thread::Create("acceptor pool", "acceptor",
         &AcceptorPool::RunThread, this, &new_thread);
     if (!s.ok()) {
       Shutdown();
@@ -102,12 +102,12 @@ void AcceptorPool::Shutdown() {
   // Calling shutdown on an accepting (non-connected) socket is illegal on most
   // platforms (but not Linux). Instead, the accepting threads are interrupted
   // forcefully.
-  for (const scoped_refptr<kudu::Thread>& thread : threads_) {
+  for (const scoped_refptr<yb::Thread>& thread : threads_) {
     pthread_cancel(thread.get()->pthread_id());
   }
 #endif
 
-  for (const scoped_refptr<kudu::Thread>& thread : threads_) {
+  for (const scoped_refptr<yb::Thread>& thread : threads_) {
     CHECK_OK(ThreadJoiner(thread.get()).Join());
   }
   threads_.clear();
@@ -149,4 +149,4 @@ void AcceptorPool::RunThread() {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

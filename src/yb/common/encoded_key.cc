@@ -22,7 +22,7 @@
 #include "yb/common/row.h"
 #include "yb/common/row_key-util.h"
 
-namespace kudu {
+namespace yb {
 
 using std::string;
 
@@ -215,4 +215,4 @@ string EncodedKey::RangeToStringWithSchema(const EncodedKey* lower, const Encode
   return ret;
 }
 
-} // namespace kudu
+} // namespace yb

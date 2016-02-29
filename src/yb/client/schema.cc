@@ -27,102 +27,102 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/strings/substitute.h"
 
-MAKE_ENUM_LIMITS(kudu::client::KuduColumnStorageAttributes::EncodingType,
-                 kudu::client::KuduColumnStorageAttributes::AUTO_ENCODING,
-                 kudu::client::KuduColumnStorageAttributes::RLE);
+MAKE_ENUM_LIMITS(yb::client::KuduColumnStorageAttributes::EncodingType,
+                 yb::client::KuduColumnStorageAttributes::AUTO_ENCODING,
+                 yb::client::KuduColumnStorageAttributes::RLE);
 
-MAKE_ENUM_LIMITS(kudu::client::KuduColumnStorageAttributes::CompressionType,
-                 kudu::client::KuduColumnStorageAttributes::DEFAULT_COMPRESSION,
-                 kudu::client::KuduColumnStorageAttributes::ZLIB);
+MAKE_ENUM_LIMITS(yb::client::KuduColumnStorageAttributes::CompressionType,
+                 yb::client::KuduColumnStorageAttributes::DEFAULT_COMPRESSION,
+                 yb::client::KuduColumnStorageAttributes::ZLIB);
 
-MAKE_ENUM_LIMITS(kudu::client::KuduColumnSchema::DataType,
-                 kudu::client::KuduColumnSchema::INT8,
-                 kudu::client::KuduColumnSchema::BOOL);
+MAKE_ENUM_LIMITS(yb::client::KuduColumnSchema::DataType,
+                 yb::client::KuduColumnSchema::INT8,
+                 yb::client::KuduColumnSchema::BOOL);
 
 using std::unordered_map;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
-kudu::EncodingType ToInternalEncodingType(KuduColumnStorageAttributes::EncodingType type) {
+yb::EncodingType ToInternalEncodingType(KuduColumnStorageAttributes::EncodingType type) {
   switch (type) {
-    case KuduColumnStorageAttributes::AUTO_ENCODING: return kudu::AUTO_ENCODING;
-    case KuduColumnStorageAttributes::PLAIN_ENCODING: return kudu::PLAIN_ENCODING;
-    case KuduColumnStorageAttributes::PREFIX_ENCODING: return kudu::PREFIX_ENCODING;
-    case KuduColumnStorageAttributes::DICT_ENCODING: return kudu::DICT_ENCODING;
-    case KuduColumnStorageAttributes::GROUP_VARINT: return kudu::GROUP_VARINT;
-    case KuduColumnStorageAttributes::RLE: return kudu::RLE;
-    case KuduColumnStorageAttributes::BIT_SHUFFLE: return kudu::BIT_SHUFFLE;
+    case KuduColumnStorageAttributes::AUTO_ENCODING: return yb::AUTO_ENCODING;
+    case KuduColumnStorageAttributes::PLAIN_ENCODING: return yb::PLAIN_ENCODING;
+    case KuduColumnStorageAttributes::PREFIX_ENCODING: return yb::PREFIX_ENCODING;
+    case KuduColumnStorageAttributes::DICT_ENCODING: return yb::DICT_ENCODING;
+    case KuduColumnStorageAttributes::GROUP_VARINT: return yb::GROUP_VARINT;
+    case KuduColumnStorageAttributes::RLE: return yb::RLE;
+    case KuduColumnStorageAttributes::BIT_SHUFFLE: return yb::BIT_SHUFFLE;
     default: LOG(FATAL) << "Unexpected encoding type: " << type;
   }
 }
 
-KuduColumnStorageAttributes::EncodingType FromInternalEncodingType(kudu::EncodingType type) {
+KuduColumnStorageAttributes::EncodingType FromInternalEncodingType(yb::EncodingType type) {
   switch (type) {
-    case kudu::AUTO_ENCODING: return KuduColumnStorageAttributes::AUTO_ENCODING;
-    case kudu::PLAIN_ENCODING: return KuduColumnStorageAttributes::PLAIN_ENCODING;
-    case kudu::PREFIX_ENCODING: return KuduColumnStorageAttributes::PREFIX_ENCODING;
-    case kudu::DICT_ENCODING: return KuduColumnStorageAttributes::DICT_ENCODING;
-    case kudu::GROUP_VARINT: return KuduColumnStorageAttributes::GROUP_VARINT;
-    case kudu::RLE: return KuduColumnStorageAttributes::RLE;
-    case kudu::BIT_SHUFFLE: return KuduColumnStorageAttributes::BIT_SHUFFLE;
+    case yb::AUTO_ENCODING: return KuduColumnStorageAttributes::AUTO_ENCODING;
+    case yb::PLAIN_ENCODING: return KuduColumnStorageAttributes::PLAIN_ENCODING;
+    case yb::PREFIX_ENCODING: return KuduColumnStorageAttributes::PREFIX_ENCODING;
+    case yb::DICT_ENCODING: return KuduColumnStorageAttributes::DICT_ENCODING;
+    case yb::GROUP_VARINT: return KuduColumnStorageAttributes::GROUP_VARINT;
+    case yb::RLE: return KuduColumnStorageAttributes::RLE;
+    case yb::BIT_SHUFFLE: return KuduColumnStorageAttributes::BIT_SHUFFLE;
     default: LOG(FATAL) << "Unexpected internal encoding type: " << type;
   }
 }
 
-kudu::CompressionType ToInternalCompressionType(KuduColumnStorageAttributes::CompressionType type) {
+yb::CompressionType ToInternalCompressionType(KuduColumnStorageAttributes::CompressionType type) {
   switch (type) {
-    case KuduColumnStorageAttributes::DEFAULT_COMPRESSION: return kudu::DEFAULT_COMPRESSION;
-    case KuduColumnStorageAttributes::NO_COMPRESSION: return kudu::NO_COMPRESSION;
-    case KuduColumnStorageAttributes::SNAPPY: return kudu::SNAPPY;
-    case KuduColumnStorageAttributes::LZ4: return kudu::LZ4;
-    case KuduColumnStorageAttributes::ZLIB: return kudu::ZLIB;
+    case KuduColumnStorageAttributes::DEFAULT_COMPRESSION: return yb::DEFAULT_COMPRESSION;
+    case KuduColumnStorageAttributes::NO_COMPRESSION: return yb::NO_COMPRESSION;
+    case KuduColumnStorageAttributes::SNAPPY: return yb::SNAPPY;
+    case KuduColumnStorageAttributes::LZ4: return yb::LZ4;
+    case KuduColumnStorageAttributes::ZLIB: return yb::ZLIB;
     default: LOG(FATAL) << "Unexpected compression type" << type;
   }
 }
 
 KuduColumnStorageAttributes::CompressionType FromInternalCompressionType(
-    kudu::CompressionType type) {
+    yb::CompressionType type) {
   switch (type) {
-    case kudu::DEFAULT_COMPRESSION: return KuduColumnStorageAttributes::DEFAULT_COMPRESSION;
-    case kudu::NO_COMPRESSION: return KuduColumnStorageAttributes::NO_COMPRESSION;
-    case kudu::SNAPPY: return KuduColumnStorageAttributes::SNAPPY;
-    case kudu::LZ4: return KuduColumnStorageAttributes::LZ4;
-    case kudu::ZLIB: return KuduColumnStorageAttributes::ZLIB;
+    case yb::DEFAULT_COMPRESSION: return KuduColumnStorageAttributes::DEFAULT_COMPRESSION;
+    case yb::NO_COMPRESSION: return KuduColumnStorageAttributes::NO_COMPRESSION;
+    case yb::SNAPPY: return KuduColumnStorageAttributes::SNAPPY;
+    case yb::LZ4: return KuduColumnStorageAttributes::LZ4;
+    case yb::ZLIB: return KuduColumnStorageAttributes::ZLIB;
     default: LOG(FATAL) << "Unexpected internal compression type: " << type;
   }
 }
 
-kudu::DataType ToInternalDataType(KuduColumnSchema::DataType type) {
+yb::DataType ToInternalDataType(KuduColumnSchema::DataType type) {
   switch (type) {
-    case KuduColumnSchema::INT8: return kudu::INT8;
-    case KuduColumnSchema::INT16: return kudu::INT16;
-    case KuduColumnSchema::INT32: return kudu::INT32;
-    case KuduColumnSchema::INT64: return kudu::INT64;
-    case KuduColumnSchema::TIMESTAMP: return kudu::TIMESTAMP;
-    case KuduColumnSchema::FLOAT: return kudu::FLOAT;
-    case KuduColumnSchema::DOUBLE: return kudu::DOUBLE;
-    case KuduColumnSchema::STRING: return kudu::STRING;
-    case KuduColumnSchema::BINARY: return kudu::BINARY;
-    case KuduColumnSchema::BOOL: return kudu::BOOL;
+    case KuduColumnSchema::INT8: return yb::INT8;
+    case KuduColumnSchema::INT16: return yb::INT16;
+    case KuduColumnSchema::INT32: return yb::INT32;
+    case KuduColumnSchema::INT64: return yb::INT64;
+    case KuduColumnSchema::TIMESTAMP: return yb::TIMESTAMP;
+    case KuduColumnSchema::FLOAT: return yb::FLOAT;
+    case KuduColumnSchema::DOUBLE: return yb::DOUBLE;
+    case KuduColumnSchema::STRING: return yb::STRING;
+    case KuduColumnSchema::BINARY: return yb::BINARY;
+    case KuduColumnSchema::BOOL: return yb::BOOL;
     default: LOG(FATAL) << "Unexpected data type: " << type;
   }
 }
 
-KuduColumnSchema::DataType FromInternalDataType(kudu::DataType type) {
+KuduColumnSchema::DataType FromInternalDataType(yb::DataType type) {
   switch (type) {
-    case kudu::INT8: return KuduColumnSchema::INT8;
-    case kudu::INT16: return KuduColumnSchema::INT16;
-    case kudu::INT32: return KuduColumnSchema::INT32;
-    case kudu::INT64: return KuduColumnSchema::INT64;
-    case kudu::TIMESTAMP: return KuduColumnSchema::TIMESTAMP;
-    case kudu::FLOAT: return KuduColumnSchema::FLOAT;
-    case kudu::DOUBLE: return KuduColumnSchema::DOUBLE;
-    case kudu::STRING: return KuduColumnSchema::STRING;
-    case kudu::BINARY: return KuduColumnSchema::BINARY;
-    case kudu::BOOL: return KuduColumnSchema::BOOL;
+    case yb::INT8: return KuduColumnSchema::INT8;
+    case yb::INT16: return KuduColumnSchema::INT16;
+    case yb::INT32: return KuduColumnSchema::INT32;
+    case yb::INT64: return KuduColumnSchema::INT64;
+    case yb::TIMESTAMP: return KuduColumnSchema::TIMESTAMP;
+    case yb::FLOAT: return KuduColumnSchema::FLOAT;
+    case yb::DOUBLE: return KuduColumnSchema::DOUBLE;
+    case yb::STRING: return KuduColumnSchema::STRING;
+    case yb::BINARY: return KuduColumnSchema::BINARY;
+    case yb::BOOL: return KuduColumnSchema::BOOL;
     default: LOG(FATAL) << "Unexpected internal data type: " << type;
   }
 }
@@ -531,4 +531,4 @@ void KuduSchema::GetPrimaryKeyColumnIndexes(vector<int>* indexes) const {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

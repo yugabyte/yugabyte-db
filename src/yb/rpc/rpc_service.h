@@ -20,7 +20,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class InboundCall;
@@ -36,6 +36,6 @@ class RpcService : public RefCountedThreadSafe<RpcService> {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_RPC_SERVICE_H_

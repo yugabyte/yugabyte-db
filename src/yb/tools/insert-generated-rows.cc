@@ -38,7 +38,7 @@
 DEFINE_string(master_address, "localhost",
               "Comma separated list of master addresses to run against.");
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using std::string;
@@ -122,8 +122,8 @@ static int WriteRandomDataToTable(int argc, char** argv) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::tools::WriteRandomDataToTable(argc, argv);
+  return yb::tools::WriteRandomDataToTable(argc, argv);
 }

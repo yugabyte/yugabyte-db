@@ -44,7 +44,7 @@
 #include "yb/util/memory/arena.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using cfile::CFileIterator;
@@ -574,4 +574,4 @@ Status FsTool::DumpDeltaCFileBlockInternal(const Schema& schema,
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

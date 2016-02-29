@@ -20,9 +20,9 @@
 // which are exclusively used on the wire. If a protobuf is persisted on
 // disk and not used as part of the wire protocol, it belongs in another
 // place such as common/common.proto or within cfile/, server/, etc.
-package kudu;
+package yb;
 
-option java_package = "org.kududb";
+option java_package = "org.yb";
 
 import "yb/common/common.proto";
 import "yb/consensus/metadata.proto";
@@ -32,7 +32,7 @@ import "yb/consensus/metadata.proto";
 // should have this (or a more complex error result) as an optional field
 // in its response.
 //
-// This maps to kudu::Status in C++.
+// This maps to yb::Status in C++.
 message AppStatusPB {
   enum ErrorCode {
     UNKNOWN_ERROR = 999;
@@ -113,7 +113,7 @@ message RowwiseRowBlockPB {
   // Sidecar index for the row data.
   //
   // In the sidecar, each row is stored in the same in-memory format
-  // as kudu::ContiguousRow (i.e the raw unencoded data followed by
+  // as yb::ContiguousRow (i.e the raw unencoded data followed by
   // a null bitmap).
   //
   // The data for NULL cells will be present with undefined contents --

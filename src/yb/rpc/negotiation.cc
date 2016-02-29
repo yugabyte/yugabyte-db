@@ -44,7 +44,7 @@ TAG_FLAG(rpc_trace_negotiation, runtime);
 TAG_FLAG(rpc_trace_negotiation, advanced);
 TAG_FLAG(rpc_trace_negotiation, experimental);
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using std::shared_ptr;
@@ -237,4 +237,4 @@ void Negotiation::RunNegotiation(const scoped_refptr<Connection>& conn,
 
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

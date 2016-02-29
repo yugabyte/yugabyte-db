@@ -25,7 +25,7 @@ namespace google {
 class LogSink;
 } // namespace google
 
-namespace kudu {
+namespace yb {
 class MetricEntity;
 
 // Attaches GLog metrics to the given entity, for the duration of this
@@ -48,5 +48,5 @@ class ScopedGLogMetrics {
 // metrics will be identical, since the GLog tracking is process-wide.
 void RegisterGLogMetrics(const scoped_refptr<MetricEntity>& entity);
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_GLOG_METRICS_H */

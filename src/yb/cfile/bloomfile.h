@@ -30,7 +30,7 @@
 #include "yb/util/once.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 class BloomFileWriter {
@@ -137,6 +137,6 @@ class BloomFileReader {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

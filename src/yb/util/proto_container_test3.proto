@@ -14,7 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu;
+package yb;
 
 // Dependency chain:
 //
@@ -27,6 +27,6 @@ import "yb/util/proto_container_test2.proto";
 // Arbitrary protobuf has two PB dependencies.
 // dependency.
 message ProtoContainerTest3PB {
-  required kudu.ProtoContainerTestPB record_one = 1;
-  required kudu.ProtoContainerTest2PB record_two = 2;
+  required yb.ProtoContainerTestPB record_one = 1;
+  required yb.ProtoContainerTest2PB record_two = 2;
 }

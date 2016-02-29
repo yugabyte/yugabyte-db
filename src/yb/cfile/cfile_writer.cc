@@ -34,8 +34,8 @@
 #include "yb/util/pb_util.h"
 
 using google::protobuf::RepeatedPtrField;
-using kudu::fs::ScopedWritableBlockCloser;
-using kudu::fs::WritableBlock;
+using yb::fs::ScopedWritableBlockCloser;
+using yb::fs::WritableBlock;
 using std::string;
 
 DEFINE_int32(cfile_default_block_size, 256*1024, "The default block size to use in cfiles");
@@ -57,7 +57,7 @@ DEFINE_string(cfile_do_on_finish, "close",
               "Possible values are 'close', 'flush', or 'nothing'.");
 TAG_FLAG(cfile_do_on_finish, experimental);
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 const char kMagicString[] = "kuducfil";
@@ -368,7 +368,7 @@ Status CFileWriter::FinishCurDataBlock() {
     // key from the block locally, so we can write it into that index.
     RETURN_NOT_OK(data_block_->GetFirstKey(key_tmp_space));
     VLOG(1) << "Appending validx entry\n" <<
-      kudu::HexDump(Slice(key_tmp_space, typeinfo_->size()));
+      yb::HexDump(Slice(key_tmp_space, typeinfo_->size()));
   }
 
   vector<Slice> v;
@@ -417,7 +417,7 @@ Status CFileWriter::AppendRawBlock(const vector<Slice> &data_slices,
     CHECK(validx_key != nullptr) <<
       "must pass a  key for raw block if validx is configured";
     VLOG(1) << "Appending validx entry\n" <<
-      kudu::HexDump(Slice(reinterpret_cast<const uint8_t *>(validx_key),
+      yb::HexDump(Slice(reinterpret_cast<const uint8_t *>(validx_key),
                           typeinfo_->size()));
     key_encoder_->ResetAndEncode(validx_key, &tmp_buf_);
     s = validx_builder_->Append(Slice(tmp_buf_), ptr);
@@ -481,4 +481,4 @@ Status CFileWriter::WriteRawData(const Slice& data) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

@@ -19,7 +19,7 @@
 
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 // Looks for flags in argv and parses them.  Rearranges argv to put
 // flags first, or removes them entirely if remove_flags is true.
@@ -35,5 +35,5 @@ namespace kudu {
 // See gflags.h for more information.
 int ParseCommandLineFlags(int* argc, char*** argv, bool remove_flags);
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_FLAGS_H */

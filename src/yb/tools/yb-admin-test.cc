@@ -27,7 +27,7 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tools {
 
 using client::KuduClient;
@@ -187,4 +187,4 @@ TEST_F(AdminCliTest, TestDeleteTable) {
 }
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb

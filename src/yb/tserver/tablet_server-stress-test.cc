@@ -26,12 +26,12 @@ DECLARE_bool(enable_maintenance_manager);
 
 METRIC_DEFINE_histogram(test, insert_latency,
                         "Insert Latency",
-                        kudu::MetricUnit::kMicroseconds,
+                        yb::MetricUnit::kMicroseconds,
                         "TabletServer single threaded insert latency.",
                         10000000,
                         2);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 class TSStressTest : public TabletServerTestBase {
@@ -58,15 +58,15 @@ class TSStressTest : public TabletServerTestBase {
 
   void StartThreads() {
     for (int i = 0; i < FLAGS_num_inserter_threads; i++) {
-      scoped_refptr<kudu::Thread> new_thread;
-      CHECK_OK(kudu::Thread::Create("test", strings::Substitute("test$0", i),
+      scoped_refptr<yb::Thread> new_thread;
+      CHECK_OK(yb::Thread::Create("test", strings::Substitute("test$0", i),
                                     &TSStressTest::InserterThread, this, i, &new_thread));
       threads_.push_back(new_thread);
     }
   }
 
   void JoinThreads() {
-    for (scoped_refptr<kudu::Thread> thr : threads_) {
+    for (scoped_refptr<yb::Thread> thr : threads_) {
      CHECK_OK(ThreadJoiner(thr.get()).Join());
     }
   }
@@ -76,7 +76,7 @@ class TSStressTest : public TabletServerTestBase {
  protected:
   scoped_refptr<Histogram> histogram_;
   CountDownLatch start_latch_;
-  std::vector<scoped_refptr<kudu::Thread> > threads_;
+  std::vector<scoped_refptr<yb::Thread> > threads_;
 };
 
 void TSStressTest::InserterThread(int thread_idx) {
@@ -118,4 +118,4 @@ TEST_F(TSStressTest, TestMTInserts) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

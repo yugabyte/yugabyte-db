@@ -22,7 +22,7 @@
 #include "yb/server/server_base_options.h"
 #include "yb/util/net/net_util.h"
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 // Options for constructing the master.
@@ -37,5 +37,5 @@ struct MasterOptions : public server::ServerBaseOptions {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_MASTER_MASTER_OPTIONS_H */

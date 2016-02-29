@@ -29,7 +29,7 @@
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class DnsResolverTest : public KuduTest {
  protected:
@@ -52,4 +52,4 @@ TEST_F(DnsResolverTest, TestResolution) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

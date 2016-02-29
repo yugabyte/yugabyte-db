@@ -52,7 +52,7 @@ DECLARE_int32(heartbeat_interval_ms);
 DECLARE_int32(flush_threshold_mb);
 DECLARE_bool(use_hybrid_clock);
 
-namespace kudu {
+namespace yb {
 
 using client::KuduClient;
 using client::KuduClientBuilder;
@@ -1003,4 +1003,4 @@ TEST_F(ReplicatedAlterTableTest, TestReplicatedAlter) {
   VerifyRows(0, kNumRows, C1_IS_DEADBEEF);
 }
 
-} // namespace kudu
+} // namespace yb

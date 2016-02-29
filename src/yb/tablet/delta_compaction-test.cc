@@ -45,7 +45,7 @@ using std::shared_ptr;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using fs::ReadableBlock;
@@ -209,4 +209,4 @@ TEST_F(TestDeltaCompaction, TestMergeMultipleSchemas) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

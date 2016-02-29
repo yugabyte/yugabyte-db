@@ -28,7 +28,7 @@ DEFINE_int32(num_rows_per_tablet, 100, "The number of rows to be inserted into e
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 using sp::shared_ptr;
@@ -447,5 +447,5 @@ TYPED_TEST(AllTypesItest, TestAllKeyTypes) {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 

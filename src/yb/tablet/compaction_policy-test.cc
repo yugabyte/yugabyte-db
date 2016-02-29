@@ -28,7 +28,7 @@
 using std::shared_ptr;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Simple test for budgeted compaction: with three rowsets which
@@ -53,4 +53,4 @@ TEST(TestCompactionPolicy, TestBudgetedSelection) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

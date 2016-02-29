@@ -53,7 +53,7 @@ DEFINE_string(twitter_firehose_file, "/dev/fd/0",
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 using client::sp::shared_ptr;
@@ -92,8 +92,8 @@ static int main(int argc, char** argv) {
   // Since this is meant to be run by a user, not a daemon,
   // log to stderr by default.
   FLAGS_logtostderr = 1;
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
   gscoped_ptr<TwitterConsumer> consumer;
   if (FLAGS_twitter_firehose_sink == "console") {
@@ -118,8 +118,8 @@ static int main(int argc, char** argv) {
 }
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::twitter_demo::main(argc, argv);
+  return yb::twitter_demo::main(argc, argv);
 }

@@ -32,7 +32,7 @@
 #include "yb/util/locks.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class HostPort;
 class ReplicaState;
@@ -381,6 +381,6 @@ class ReplicaState {
 };
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_RAFT_CONSENSUS_UTIL_H_ */

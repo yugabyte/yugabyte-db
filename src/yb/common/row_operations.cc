@@ -29,7 +29,7 @@
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 string DecodedRowOperation::ToString(const Schema& schema) const {
   switch (type) {
@@ -573,4 +573,4 @@ Status RowOperationsPBDecoder::DecodeOperations(vector<DecodedRowOperation>* ops
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

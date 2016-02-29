@@ -32,7 +32,7 @@ using std::pair;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 static string EscapeUrl(const string& str) {
@@ -124,4 +124,4 @@ string OAuthRequest::AuthHeader(const string& consumer_secret,
 }
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb

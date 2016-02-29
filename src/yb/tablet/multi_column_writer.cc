@@ -23,7 +23,7 @@
 #include "yb/fs/block_id.h"
 #include "yb/gutil/stl_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using cfile::CFileWriter;
@@ -141,4 +141,4 @@ size_t MultiColumnWriter::written_size() const {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

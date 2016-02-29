@@ -36,11 +36,11 @@
 
 using std::string;
 using std::shared_ptr;
-using kudu::rpc::Messenger;
-using kudu::rpc::MessengerBuilder;
-using kudu::rpc::RpcController;
+using yb::rpc::Messenger;
+using yb::rpc::MessengerBuilder;
+using yb::rpc::RpcController;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 class SysCatalogTest : public KuduTest {
@@ -367,4 +367,4 @@ TEST_F(SysCatalogTest, TestTabletInfoCommit) {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

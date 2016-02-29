@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include "yb/util/bloom_filter.h"
 
-namespace kudu {
+namespace yb {
 
 static const int kRandomSeed = 0xdeadbeef;
 
@@ -84,4 +84,4 @@ TEST(TestBloomFilter, TestInsertAndProbe) {
   ASSERT_NEAR(fp_rate, expected_fp_rate, 0.20*expected_fp_rate);
 }
 
-} // namespace kudu
+} // namespace yb

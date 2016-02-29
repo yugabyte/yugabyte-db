@@ -20,7 +20,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/tablet/rowset.h"
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 template<class T>
@@ -103,5 +103,5 @@ class ProbeStatsSubmitter {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_TABLET_METRICS_H */

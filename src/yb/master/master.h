@@ -31,7 +31,7 @@
 #include "yb/util/promise.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MaintenanceManager;
 class RpcServer;
@@ -142,5 +142,5 @@ class Master : public server::ServerBase {
 };
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 #endif

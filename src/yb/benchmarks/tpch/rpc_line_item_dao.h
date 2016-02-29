@@ -30,7 +30,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/semaphore.h"
 
-namespace kudu {
+namespace yb {
 
 class RpcLineItemDAO {
  public:
@@ -102,5 +102,5 @@ class RpcLineItemDAO {
   Semaphore semaphore_;
 };
 
-} //namespace kudu
+} //namespace yb
 #endif

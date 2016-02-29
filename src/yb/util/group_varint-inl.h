@@ -24,7 +24,7 @@
 
 #include "yb/util/faststring.h"
 
-namespace kudu {
+namespace yb {
 namespace coding {
 
 extern bool SSE_TABLE_INITTED;
@@ -263,6 +263,6 @@ inline void AppendGroupVarInt32Sequence(faststring *s, uint32_t frame_of_referen
 
 
 } // namespace coding
-} // namespace kudu
+} // namespace yb
 
 #endif

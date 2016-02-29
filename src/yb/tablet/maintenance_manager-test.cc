@@ -29,7 +29,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"
 
-using kudu::tablet::MaintenanceManagerStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB;
 using std::shared_ptr;
 using std::vector;
 using strings::Substitute;
@@ -37,13 +37,13 @@ using strings::Substitute;
 METRIC_DEFINE_entity(test);
 METRIC_DEFINE_gauge_uint32(test, maintenance_ops_running,
                            "Number of Maintenance Operations Running",
-                           kudu::MetricUnit::kMaintenanceOperations,
+                           yb::MetricUnit::kMaintenanceOperations,
                            "The number of background maintenance operations currently running.");
 METRIC_DEFINE_histogram(test, maintenance_op_duration,
                         "Maintenance Operation Duration",
-                        kudu::MetricUnit::kSeconds, "", 60000000LU, 2);
+                        yb::MetricUnit::kSeconds, "", 60000000LU, 2);
 
-namespace kudu {
+namespace yb {
 
 const int kHistorySize = 4;
 
@@ -199,7 +199,7 @@ TEST_F(MaintenanceManagerTest, TestRegisterUnregister) {
   TestMaintenanceOp op1("1", MaintenanceOp::HIGH_IO_USAGE, OP_DISABLED, test_tracker_);
   op1.set_ram_anchored(1001);
   manager_->RegisterOp(&op1);
-  scoped_refptr<kudu::Thread> thread;
+  scoped_refptr<yb::Thread> thread;
   CHECK_OK(Thread::Create("TestThread", "TestRegisterUnregister",
         boost::bind(&TestMaintenanceOp::Enable, &op1), &thread));
   op1.WaitForState(OP_FINISHED);
@@ -218,7 +218,7 @@ TEST_F(MaintenanceManagerTest, TestMemoryPressure) {
   CHECK_EQ(false, op.WaitForStateWithTimeout(OP_FINISHED, 20));
 
   // set the ram_anchored by the high mem op so high that we'll have to run it.
-  scoped_refptr<kudu::Thread> thread;
+  scoped_refptr<yb::Thread> thread;
   CHECK_OK(Thread::Create("TestThread", "MaintenanceManagerTest",
       boost::bind(&TestMaintenanceOp::set_ram_anchored, &op, 1100), &thread));
   op.WaitForState(OP_FINISHED);
@@ -283,4 +283,4 @@ TEST_F(MaintenanceManagerTest, TestCompletedOpsHistory) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

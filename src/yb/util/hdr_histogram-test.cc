@@ -20,7 +20,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 static const int kSigDigits = 2;
 
@@ -110,4 +110,4 @@ TEST_F(HdrHistogramTest, PercentileAndCopyTest) {
   ASSERT_EQ(hist.TotalSum(), copy.TotalSum());
 }
 
-} // namespace kudu
+} // namespace yb

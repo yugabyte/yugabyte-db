@@ -29,7 +29,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 class ColumnDataView;
 
 namespace cfile {
@@ -155,6 +155,6 @@ class BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

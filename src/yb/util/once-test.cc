@@ -28,7 +28,7 @@
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -107,4 +107,4 @@ TEST(TestOnce, KuduOnceDynamicThreadSafeTest) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

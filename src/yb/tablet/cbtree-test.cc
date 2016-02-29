@@ -30,7 +30,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 namespace btree {
 
@@ -779,4 +779,4 @@ TEST_F(TestCBTree, TestScanPerformance) {
 
 } // namespace btree
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

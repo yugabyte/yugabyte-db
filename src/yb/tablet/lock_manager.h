@@ -21,7 +21,7 @@
 #include "yb/gutil/move.h"
 #include "yb/util/slice.h"
 
-namespace kudu { namespace tablet {
+namespace yb { namespace tablet {
 
 class LockManager;
 class LockTable;
@@ -127,5 +127,5 @@ class ScopedRowLock {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif

@@ -29,7 +29,7 @@ using std::shared_ptr;
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
-namespace kudu {
+namespace yb {
 
 namespace rpc {
 
@@ -94,4 +94,4 @@ void RpcRetrier::DelayedRetryCb(Rpc* rpc, const Status& status) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

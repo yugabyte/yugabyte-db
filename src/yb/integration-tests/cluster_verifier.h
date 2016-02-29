@@ -24,7 +24,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 using tools::ChecksumOptions;
 
@@ -93,5 +93,5 @@ class ClusterVerifier {
   DISALLOW_COPY_AND_ASSIGN(ClusterVerifier);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_INTEGRATION_TESTS_CLUSTER_VERIFIER_H */

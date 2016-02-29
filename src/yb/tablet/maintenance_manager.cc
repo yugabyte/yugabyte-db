@@ -56,11 +56,11 @@ DEFINE_bool(enable_maintenance_manager, true,
        "Enable the maintenance manager, runs compaction and tablet cleaning tasks.");
 TAG_FLAG(enable_maintenance_manager, unsafe);
 
-namespace kudu {
+namespace yb {
 
-using kudu::tablet::MaintenanceManagerStatusPB;
-using kudu::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
-using kudu::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
+using yb::tablet::MaintenanceManagerStatusPB;
+using yb::tablet::MaintenanceManagerStatusPB_CompletedOpPB;
+using yb::tablet::MaintenanceManagerStatusPB_MaintenanceOpPB;
 
 MaintenanceOpStats::MaintenanceOpStats() {
   Clear();
@@ -409,4 +409,4 @@ void MaintenanceManager::GetMaintenanceManagerStatusDump(MaintenanceManagerStatu
   }
 }
 
-} // namespace kudu
+} // namespace yb

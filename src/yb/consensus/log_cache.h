@@ -32,7 +32,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 class MemTracker;
@@ -213,5 +213,5 @@ class LogCache {
 };
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_CONSENSUS_LOG_CACHE_H */

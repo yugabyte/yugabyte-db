@@ -24,7 +24,7 @@
 #include <google/protobuf/io/zero_copy_stream.h>
 #include "yb/util/env.h"
 
-namespace kudu {
+namespace yb {
 namespace pb_util {
 namespace internal {
 
@@ -119,5 +119,5 @@ class WritableFileOutputStream : public google::protobuf::io::ZeroCopyOutputStre
 
 } // namespace internal
 } // namespace pb_util
-} // namespace kudu
+} // namespace yb
 #endif

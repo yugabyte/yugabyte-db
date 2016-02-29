@@ -29,7 +29,7 @@
 #include "yb/tablet/transactions/transaction.h"
 #include "yb/util/locks.h"
 
-namespace kudu {
+namespace yb {
 struct DecodedRowOperation;
 class ConstContiguousRow;
 class RowwiseRowBlockPB;
@@ -272,6 +272,6 @@ class WriteTransaction : public Transaction {
 };
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_TABLET_WRITE_TRANSACTION_H_ */

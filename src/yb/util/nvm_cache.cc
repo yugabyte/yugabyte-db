@@ -74,7 +74,7 @@ DEFINE_bool(nvm_cache_simulate_allocation_failure, false,
 TAG_FLAG(nvm_cache_simulate_allocation_failure, unsafe);
 
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 
@@ -589,4 +589,4 @@ Cache* NewLRUNvmCache(size_t capacity, const std::string& id) {
   return new ShardedLRUCache(capacity, id, vmp);
 }
 
-}  // namespace kudu
+}  // namespace yb

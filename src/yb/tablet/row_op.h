@@ -24,7 +24,7 @@
 #include "yb/tablet/rowset.h"
 #include "yb/tablet/lock_manager.h"
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 
@@ -68,6 +68,6 @@ struct RowOp {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_ROW_OP_H */
 

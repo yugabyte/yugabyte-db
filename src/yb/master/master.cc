@@ -52,12 +52,12 @@ using std::min;
 using std::shared_ptr;
 using std::vector;
 
-using kudu::consensus::RaftPeerPB;
-using kudu::rpc::ServiceIf;
-using kudu::tserver::ConsensusServiceImpl;
+using yb::consensus::RaftPeerPB;
+using yb::rpc::ServiceIf;
+using yb::tserver::ConsensusServiceImpl;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 Master::Master(const MasterOptions& opts)
@@ -261,4 +261,4 @@ Status Master::ListMasters(std::vector<ServerEntryPB>* masters) const {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

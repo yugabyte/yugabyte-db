@@ -23,7 +23,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 typedef SliceMap<int>::type MySliceMap;
 
@@ -53,4 +53,4 @@ TEST(SliceTest, TestSliceMap) {
   }
 }
 
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@
 #include <string>
 #include <utility>
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 class ConsensusRequestPB;
@@ -109,6 +109,6 @@ std::string OpsRangeString(const ConsensusRequestPB& req);
 OpId MakeOpId(int term, int index);
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* KUDU_CONSENSUS_OPID_UTIL_H_ */

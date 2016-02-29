@@ -49,7 +49,7 @@
     FAIL() << "Expected: " << TOKENPASTE2(_right,__LINE__).ShortDebugString() << "\n" \
            << "Value: " << TOKENPASTE2(_left,__LINE__).ShortDebugString() << "\n"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::Log;
@@ -866,5 +866,5 @@ class TestRaftConsensusQueueIface : public PeerMessageQueueObserver {
 };
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb
 

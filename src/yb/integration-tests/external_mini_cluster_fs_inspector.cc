@@ -30,7 +30,7 @@
 #include "yb/util/pb_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace itest {
 
 using std::set;
@@ -346,5 +346,5 @@ Status ExternalMiniClusterFsInspector::WaitForFilePatternInTabletWalDirOnTs(
 }
 
 } // namespace itest
-} // namespace kudu
+} // namespace yb
 

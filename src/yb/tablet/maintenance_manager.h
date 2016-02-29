@@ -35,7 +35,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
-namespace kudu {
+namespace yb {
 
 template<class T>
 class AtomicGauge;
@@ -260,7 +260,7 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   const int32_t num_threads_;
   OpMapTy ops_; // registered operations
   Mutex lock_;
-  scoped_refptr<kudu::Thread> monitor_thread_;
+  scoped_refptr<yb::Thread> monitor_thread_;
   gscoped_ptr<ThreadPool> thread_pool_;
   ConditionVariable cond_;
   bool shutdown_;
@@ -275,6 +275,6 @@ class MaintenanceManager : public std::enable_shared_from_this<MaintenanceManage
   DISALLOW_COPY_AND_ASSIGN(MaintenanceManager);
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -22,7 +22,7 @@
 
 #include <stdint.h>
 
-namespace kudu {
+namespace yb {
 class KuduPartialRow;
 class Random;
 
@@ -48,6 +48,6 @@ void GenerateDataForRow(const client::KuduSchema& schema, uint64_t record_id,
                         Random* random, KuduPartialRow* row);
 
 } // namespace tools
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TOOLS_DATA_GEN_UTIL_H_

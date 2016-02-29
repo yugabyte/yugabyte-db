@@ -32,7 +32,7 @@
 //
 // This macro should be fast enough to run even in hot code paths.
 #define MAYBE_FAULT(fraction_flag) \
-  kudu::fault_injection::MaybeFault(AS_STRING(fraction_flag), fraction_flag)
+  yb::fault_injection::MaybeFault(AS_STRING(fraction_flag), fraction_flag)
 
 // Inject a uniformly random amount of latency between 0 and the configured
 // number of milliseconds.
@@ -40,11 +40,11 @@
 // As with above, if the flag is configured to be <= 0, then this will be evaluated
 // inline and should be fast, even in hot code path.
 #define MAYBE_INJECT_RANDOM_LATENCY(max_ms_flag) \
-  kudu::fault_injection::MaybeInjectRandomLatency(max_ms_flag);
+  yb::fault_injection::MaybeInjectRandomLatency(max_ms_flag);
 
 // Implementation details below.
 // Use the MAYBE_FAULT macro instead.
-namespace kudu {
+namespace yb {
 namespace fault_injection {
 
 // Out-of-line implementation.
@@ -62,5 +62,5 @@ inline void MaybeInjectRandomLatency(double max_latency) {
 }
 
 } // namespace fault_injection
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_FAULT_INJECTION_H */

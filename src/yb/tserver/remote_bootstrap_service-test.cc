@@ -41,7 +41,7 @@
 DECLARE_uint64(remote_bootstrap_idle_timeout_ms);
 DECLARE_uint64(remote_bootstrap_timeout_poll_period_ms);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using consensus::MaximumOpId;
@@ -456,4 +456,4 @@ TEST_F(RemoteBootstrapServiceTest, TestSessionTimeout) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

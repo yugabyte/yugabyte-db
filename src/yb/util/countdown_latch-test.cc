@@ -23,7 +23,7 @@
 #include "yb/util/thread.h"
 #include "yb/util/threadpool.h"
 
-namespace kudu {
+namespace yb {
 
 static void DecrementLatch(CountDownLatch* latch, int amount) {
   if (amount == 1) {
@@ -68,4 +68,4 @@ TEST(TestCountDownLatch, TestResetToZero) {
   t->Join();
 }
 
-} // namespace kudu
+} // namespace yb

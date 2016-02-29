@@ -21,7 +21,7 @@
 
 // During Chromium import, WeakPtr-related code was removed.
 
-namespace kudu {
+namespace yb {
 namespace internal {
 
 // See kudu/gutil/callback.h for user documentation.
@@ -2690,6 +2690,6 @@ struct BindState<Runnable, RunType, void(P1, P2, P3, P4, P5, P6,
 };
 
 }  // namespace internal
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_GUTIL_BIND_INTERNAL_H_

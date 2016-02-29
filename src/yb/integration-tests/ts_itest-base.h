@@ -46,7 +46,7 @@ DEFINE_int32(num_replicas, 3, "Number of replicas per tablet server");
 #define ASSERT_ALL_REPLICAS_AGREE(count) \
   NO_FATALS(AssertAllReplicasAgree(count))
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using client::KuduSchemaFromSchema;
@@ -459,6 +459,6 @@ class TabletServerIntegrationTestBase : public TabletServerTestBase {
 };
 
 }  // namespace tserver
-}  // namespace kudu
+}  // namespace yb
 
 #endif /* SRC_KUDU_INTEGRATION_TESTS_ITEST_UTIL_H_ */

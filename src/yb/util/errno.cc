@@ -22,7 +22,7 @@
 
 #include "yb/util/logging.h"
 
-namespace kudu {
+namespace yb {
 
 void ErrnoToCString(int err, char *buf, size_t buf_len) {
   CHECK_GT(buf_len, 0);
@@ -43,4 +43,4 @@ void ErrnoToCString(int err, char *buf, size_t buf_len) {
   }
 #endif
 }
-} // namespace kudu
+} // namespace yb

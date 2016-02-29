@@ -104,12 +104,12 @@ DECLARE_int32(memory_limit_warn_threshold_percentage);
 
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
-                      kudu::MetricUnit::kRequests,
+                      yb::MetricUnit::kRequests,
                       "Number of RPC requests rejected due to "
                       "memory pressure while FOLLOWER.");
 METRIC_DEFINE_gauge_int64(tablet, raft_term,
                           "Current Raft Consensus Term",
-                          kudu::MetricUnit::kUnits,
+                          yb::MetricUnit::kUnits,
                           "Current Term of the Raft Consensus algorithm. This number increments "
                           "each time a leader election is started.");
 
@@ -137,7 +137,7 @@ int GetFailureMonitorCheckStddevMs() {
 
 } // anonymous namespace
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::LogEntryBatch;
@@ -1992,4 +1992,4 @@ Status RaftConsensus::HandleTermAdvanceUnlocked(ConsensusTerm new_term) {
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

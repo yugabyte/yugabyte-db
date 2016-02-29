@@ -17,7 +17,7 @@
 
 #include "yb/rpc/constants.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 const char* const kMagicNumber = "hrpc";
@@ -25,4 +25,4 @@ const char* const kSaslAppName = "Kudu";
 const char* const kSaslProtoName = "kudu";
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

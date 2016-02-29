@@ -23,7 +23,7 @@
 #include "yb/util/mutex.h"
 #include "yb/util/thread_restrictions.h"
 
-namespace kudu {
+namespace yb {
 
 // This is a C++ implementation of the Java CountDownLatch
 // class.
@@ -135,5 +135,5 @@ class CountDownOnScopeExit {
   CountDownLatch *latch_;
 };
 
-} // namespace kudu
+} // namespace yb
 #endif

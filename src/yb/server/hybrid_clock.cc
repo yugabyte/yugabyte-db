@@ -54,17 +54,17 @@ TAG_FLAG(use_mock_wall_clock, hidden);
 
 METRIC_DEFINE_gauge_uint64(server, hybrid_clock_timestamp,
                            "Hybrid Clock Timestamp",
-                           kudu::MetricUnit::kMicroseconds,
+                           yb::MetricUnit::kMicroseconds,
                            "Hybrid clock timestamp.");
 METRIC_DEFINE_gauge_uint64(server, hybrid_clock_error,
                            "Hybrid Clock Error",
-                           kudu::MetricUnit::kMicroseconds,
+                           yb::MetricUnit::kMicroseconds,
                            "Server clock maximum error.");
 
-using kudu::Status;
+using yb::Status;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace server {
 
 namespace {
@@ -87,7 +87,7 @@ Status GetClockModes(timex* timex) {
 }
 
 // Returns the current time/max error and checks if the clock is synchronized.
-kudu::Status GetClockTime(ntptimeval* timeval) {
+yb::Status GetClockTime(ntptimeval* timeval) {
   int rc = ntp_gettime(timeval);
   switch (rc) {
     case TIME_OK:
@@ -385,7 +385,7 @@ bool HybridClock::IsAfter(Timestamp t) {
   return t.value() < now.value();
 }
 
-kudu::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec) {
+yb::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_usec) {
   if (PREDICT_FALSE(FLAGS_use_mock_wall_clock)) {
     VLOG(1) << "Current clock time: " << mock_clock_time_usec_ << " error: "
             << mock_clock_max_error_usec_ << ". Updating to time: " << now_usec
@@ -412,7 +412,7 @@ kudu::Status HybridClock::WalltimeWithError(uint64_t* now_usec, uint64_t* error_
         "too high ($0 us).", *error_usec));
   }
 #endif // defined(__APPLE__)
-  return kudu::Status::OK();
+  return yb::Status::OK();
 }
 
 void HybridClock::SetMockClockWallTimeForTests(uint64_t now_usec) {
@@ -490,4 +490,4 @@ string HybridClock::StringifyTimestamp(const Timestamp& timestamp) {
 }
 
 }  // namespace server
-}  // namespace kudu
+}  // namespace yb

@@ -26,7 +26,7 @@
 using std::vector;
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 void ScanSpec::AddPredicate(const ColumnRangePredicate &pred) {
   predicates_.push_back(pred);
@@ -88,4 +88,4 @@ string ScanSpec::ToStringWithOptionalSchema(const Schema* s) const {
   return JoinStrings(preds, "\n");
 }
 
-} // namespace kudu
+} // namespace yb

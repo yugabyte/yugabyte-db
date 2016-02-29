@@ -32,7 +32,7 @@
 #include "yb/util/flag_tags.h"
 #include "yb/util/kernel_stack_watchdog.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 using strings::Substitute;
@@ -485,4 +485,4 @@ Status CallResponse::ParseFrom(gscoped_ptr<InboundTransfer> transfer) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

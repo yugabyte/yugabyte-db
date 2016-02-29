@@ -22,7 +22,7 @@
 #include "yb/common/partition.h"
 #include "yb/client/client.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -52,6 +52,6 @@ class KuduTable::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

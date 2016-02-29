@@ -24,7 +24,7 @@
 #include "yb/util/status.h"
 #include "yb/util/test_macros.h"
 
-namespace kudu { namespace cfile {
+namespace yb { namespace cfile {
 
 Status SearchInReaderString(const IndexBlockReader &reader,
                             string search_key,
@@ -207,7 +207,7 @@ TEST(TestIndexBlock, TestIndexBlockWithStrings) {
   EXPECT_LT(s.size(), est_size);
   EXPECT_GT(s.size(), est_size * 3 /4);
 
-  VLOG(1) << kudu::HexDump(s);
+  VLOG(1) << yb::HexDump(s);
 
   // Open the encoded block in a reader.
   IndexBlockReader reader;
@@ -324,4 +324,4 @@ TEST(TestIndexBlock, TestIterator) {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

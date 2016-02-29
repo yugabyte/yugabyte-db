@@ -34,7 +34,7 @@ using std::shared_ptr;
 using std::string;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 TEST(TestPstackWatcher, TestPstackWatcherCancellation) {
   PstackWatcher watcher(MonoDelta::FromSeconds(1000000));
@@ -82,4 +82,4 @@ TEST(TestPstackWatcher, TestPstackWatcherRunning) {
       << "errno=" << errno << ": " << ErrnoToString(errno);
 }
 
-} // namespace kudu
+} // namespace yb

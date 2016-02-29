@@ -21,7 +21,7 @@
 #include "yb/gutil/once.h"
 #include "yb/util/debug/leakcheck_disabler.h"
 
-namespace kudu {
+namespace yb {
 namespace crc {
 
 using debug::ScopedLeakCheckDisabler;
@@ -47,4 +47,4 @@ uint32_t Crc32c(const void* data, size_t length) {
 }
 
 } // namespace crc
-} // namespace kudu
+} // namespace yb

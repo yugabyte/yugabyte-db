@@ -27,15 +27,15 @@
 #include "yb/util/stopwatch.h"
 #include "yb/util/test_util.h"
 
-using kudu::debug::TraceLog;
-using kudu::debug::TraceResultBuffer;
-using kudu::debug::CategoryFilter;
+using yb::debug::TraceLog;
+using yb::debug::TraceResultBuffer;
+using yb::debug::CategoryFilter;
 using rapidjson::Document;
 using rapidjson::Value;
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class TraceTest : public KuduTest {
 };
@@ -822,4 +822,4 @@ TEST_F(TraceTest, TestVLogAndEchoToConsole) {
 }
 
 } // namespace debug
-} // namespace kudu
+} // namespace yb

@@ -26,7 +26,7 @@
 #include "yb/util/test_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace twitter_demo {
 
 // Return the directory of the currently-running executable.
@@ -81,4 +81,4 @@ TEST(ParserTest, TestReformatTime) {
 }
 
 } // namespace twitter_demo
-} // namespace kudu
+} // namespace yb

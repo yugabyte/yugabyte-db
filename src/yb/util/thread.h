@@ -33,7 +33,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 class Thread;
@@ -203,7 +203,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Return a string representation of the thread identifying information.
   std::string ToString() const;
 
-  // The current thread of execution, or NULL if the current thread isn't a kudu::Thread.
+  // The current thread of execution, or NULL if the current thread isn't a yb::Thread.
   // This call is signal-safe.
   static Thread* current_thread() { return tls_; }
 
@@ -235,7 +235,7 @@ class Thread : public RefCountedThreadSafe<Thread> {
   // Returns the system thread ID (tid on Linux) for the current thread. Note
   // that this is a static method and thus can be used from any thread,
   // including the main thread of the process. This is in contrast to
-  // Thread::tid(), which only works on kudu::Threads.
+  // Thread::tid(), which only works on yb::Threads.
   //
   // Thread::tid() will return the same value, but the value is cached in the
   // Thread object, so will be faster to call.
@@ -338,6 +338,6 @@ class Thread : public RefCountedThreadSafe<Thread> {
 // the given entity.
 Status StartThreadInstrumentation(const scoped_refptr<MetricEntity>& server_metrics,
                                   WebCallbackRegistry* web);
-} // namespace kudu
+} // namespace yb
 
 #endif /* KUDU_UTIL_THREAD_H */

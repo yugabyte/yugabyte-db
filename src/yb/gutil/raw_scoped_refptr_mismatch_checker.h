@@ -16,7 +16,7 @@
 // The following set of traits are designed to generate a compile error
 // whenever this antipattern is attempted.
 
-namespace kudu {
+namespace yb {
 
 // This is a base internal implementation file used by task.h and callback.h.
 // Not for public consumption, so we wrap it in namespace internal.
@@ -123,6 +123,6 @@ struct ParamsUseScopedRefptrCorrectly<Tuple8<A, B, C, D, E, F, G, H> > {
 
 }  // namespace internal
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_

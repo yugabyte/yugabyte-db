@@ -26,7 +26,7 @@
 #include "yb/tserver/tserver_admin.service.h"
 #include "yb/tserver/tserver_service.service.h"
 
-namespace kudu {
+namespace yb {
 class RowwiseIterator;
 class Schema;
 class Status;
@@ -165,6 +165,6 @@ class ConsensusServiceImpl : public consensus::ConsensusServiceIf {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif

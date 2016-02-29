@@ -31,7 +31,7 @@
 
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 inline Status FindColumn(const Schema& schema, const Slice& col_name, int* idx) {
@@ -669,4 +669,4 @@ std::string KuduPartialRow::ToString() const {
 //------------------------------------------------------------
 
 
-} // namespace kudu
+} // namespace yb

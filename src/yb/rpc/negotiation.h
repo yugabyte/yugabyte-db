@@ -20,7 +20,7 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/monotime.h"
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class Connection;
@@ -34,5 +34,5 @@ class Negotiation {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif // KUDU_RPC_NEGOTIATION_H

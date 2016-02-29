@@ -58,7 +58,7 @@ DEFINE_int32(rpc_default_keepalive_time_ms, 65000,
              "will disconnect the client.");
 TAG_FLAG(rpc_default_keepalive_time_ms, advanced);
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 class Messenger;
@@ -304,4 +304,4 @@ const scoped_refptr<RpcService> Messenger::rpc_service(const string& service_nam
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

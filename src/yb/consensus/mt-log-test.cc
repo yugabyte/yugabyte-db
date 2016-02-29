@@ -36,7 +36,7 @@ DEFINE_int32(num_writer_threads, 4, "Number of threads writing to the log");
 DEFINE_int32(num_batches_per_thread, 2000, "Number of batches per thread");
 DEFINE_int32(num_ops_per_batch_avg, 5, "Target average number of ops per batch");
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using std::vector;
@@ -134,19 +134,19 @@ class MultiThreadedLogTest : public LogTestBase {
 
   void Run() {
     for (int i = 0; i < FLAGS_num_writer_threads; i++) {
-      scoped_refptr<kudu::Thread> new_thread;
-      CHECK_OK(kudu::Thread::Create("test", "inserter",
+      scoped_refptr<yb::Thread> new_thread;
+      CHECK_OK(yb::Thread::Create("test", "inserter",
           &MultiThreadedLogTest::LogWriterThread, this, i, &new_thread));
       threads_.push_back(new_thread);
     }
-    for (scoped_refptr<kudu::Thread>& thread : threads_) {
+    for (scoped_refptr<yb::Thread>& thread : threads_) {
       ASSERT_OK(ThreadJoiner(thread.get()).Join());
     }
   }
  private:
   ThreadSafeRandom random_;
   simple_spinlock lock_;
-  vector<scoped_refptr<kudu::Thread> > threads_;
+  vector<scoped_refptr<yb::Thread> > threads_;
 };
 
 TEST_F(MultiThreadedLogTest, TestAppends) {
@@ -175,4 +175,4 @@ TEST_F(MultiThreadedLogTest, TestAppends) {
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb

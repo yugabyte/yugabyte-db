@@ -540,86 +540,86 @@ inline void DispatchToMethod(ObjT* obj, Method method, const Tuple0& arg) {
 
 template <class ObjT, class Method, class A>
 inline void DispatchToMethod(ObjT* obj, Method method, const A& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg));
 }
 
 template <class ObjT, class Method, class A>
 inline void DispatchToMethod(ObjT* obj, Method method, const Tuple1<A>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a));
 }
 
 template<class ObjT, class Method, class A, class B>
 inline void DispatchToMethod(ObjT* obj,
                              Method method,
                              const Tuple2<A, B>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b));
 }
 
 template<class ObjT, class Method, class A, class B, class C>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<A, B, C>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<A, B, C, D>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D, class E>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<A, B, C, D, E>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-                 kudu::internal::UnwrapTraits<E>::Unwrap(arg.e));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+                 yb::internal::UnwrapTraits<E>::Unwrap(arg.e));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D, class E,
          class F>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<A, B, C, D, E, F>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-                 kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-                 kudu::internal::UnwrapTraits<F>::Unwrap(arg.f));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+                 yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+                 yb::internal::UnwrapTraits<F>::Unwrap(arg.f));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D, class E,
          class F, class G>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple7<A, B, C, D, E, F, G>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-                 kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-                 kudu::internal::UnwrapTraits<F>::Unwrap(arg.f),
-                 kudu::internal::UnwrapTraits<G>::Unwrap(arg.g));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+                 yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+                 yb::internal::UnwrapTraits<F>::Unwrap(arg.f),
+                 yb::internal::UnwrapTraits<G>::Unwrap(arg.g));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D, class E,
          class F, class G, class H>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple8<A, B, C, D, E, F, G, H>& arg) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-                 kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-                 kudu::internal::UnwrapTraits<F>::Unwrap(arg.f),
-                 kudu::internal::UnwrapTraits<G>::Unwrap(arg.g),
-                 kudu::internal::UnwrapTraits<H>::Unwrap(arg.h));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+                 yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+                 yb::internal::UnwrapTraits<F>::Unwrap(arg.f),
+                 yb::internal::UnwrapTraits<G>::Unwrap(arg.g),
+                 yb::internal::UnwrapTraits<H>::Unwrap(arg.h));
 }
 
 // Static Dispatchers with no out params.
@@ -636,77 +636,77 @@ inline void DispatchToFunction(Function function, const A& arg) {
 
 template <class Function, class A>
 inline void DispatchToFunction(Function function, const Tuple1<A>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a));
 }
 
 template<class Function, class A, class B>
 inline void DispatchToFunction(Function function, const Tuple2<A, B>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b));
 }
 
 template<class Function, class A, class B, class C>
 inline void DispatchToFunction(Function function, const Tuple3<A, B, C>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-              kudu::internal::UnwrapTraits<C>::Unwrap(arg.c));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+              yb::internal::UnwrapTraits<C>::Unwrap(arg.c));
 }
 
 template<class Function, class A, class B, class C, class D>
 inline void DispatchToFunction(Function function,
                                const Tuple4<A, B, C, D>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-              kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-              kudu::internal::UnwrapTraits<D>::Unwrap(arg.d));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+              yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+              yb::internal::UnwrapTraits<D>::Unwrap(arg.d));
 }
 
 template<class Function, class A, class B, class C, class D, class E>
 inline void DispatchToFunction(Function function,
                                const Tuple5<A, B, C, D, E>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-              kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-              kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-              kudu::internal::UnwrapTraits<E>::Unwrap(arg.e));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+              yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+              yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+              yb::internal::UnwrapTraits<E>::Unwrap(arg.e));
 }
 
 template<class Function, class A, class B, class C, class D, class E, class F>
 inline void DispatchToFunction(Function function,
                                const Tuple6<A, B, C, D, E, F>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-              kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-              kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-              kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-              kudu::internal::UnwrapTraits<F>::Unwrap(arg.f));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+              yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+              yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+              yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+              yb::internal::UnwrapTraits<F>::Unwrap(arg.f));
 }
 
 template<class Function, class A, class B, class C, class D, class E, class F,
          class G>
 inline void DispatchToFunction(Function function,
                                const Tuple7<A, B, C, D, E, F, G>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-              kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-              kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-              kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-              kudu::internal::UnwrapTraits<F>::Unwrap(arg.f),
-              kudu::internal::UnwrapTraits<G>::Unwrap(arg.g));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+              yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+              yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+              yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+              yb::internal::UnwrapTraits<F>::Unwrap(arg.f),
+              yb::internal::UnwrapTraits<G>::Unwrap(arg.g));
 }
 
 template<class Function, class A, class B, class C, class D, class E, class F,
          class G, class H>
 inline void DispatchToFunction(Function function,
                                const Tuple8<A, B, C, D, E, F, G, H>& arg) {
-  (*function)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-              kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-              kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-              kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-              kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-              kudu::internal::UnwrapTraits<F>::Unwrap(arg.f),
-              kudu::internal::UnwrapTraits<G>::Unwrap(arg.g),
-              kudu::internal::UnwrapTraits<H>::Unwrap(arg.h));
+  (*function)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+              yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+              yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+              yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+              yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+              yb::internal::UnwrapTraits<F>::Unwrap(arg.f),
+              yb::internal::UnwrapTraits<G>::Unwrap(arg.g),
+              yb::internal::UnwrapTraits<H>::Unwrap(arg.h));
 }
 
 // Dispatchers with 0 out param (as a Tuple0).
@@ -720,61 +720,61 @@ inline void DispatchToMethod(ObjT* obj,
 
 template <class ObjT, class Method, class A>
 inline void DispatchToMethod(ObjT* obj, Method method, const A& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg));
 }
 
 template <class ObjT, class Method, class A>
 inline void DispatchToMethod(ObjT* obj,
                              Method method,
                              const Tuple1<A>& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a));
 }
 
 template<class ObjT, class Method, class A, class B>
 inline void DispatchToMethod(ObjT* obj,
                              Method method,
                              const Tuple2<A, B>& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b));
 }
 
 template<class ObjT, class Method, class A, class B, class C>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<A, B, C>& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<A, B, C, D>& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D, class E>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<A, B, C, D, E>& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-                 kudu::internal::UnwrapTraits<E>::Unwrap(arg.e));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+                 yb::internal::UnwrapTraits<E>::Unwrap(arg.e));
 }
 
 template<class ObjT, class Method, class A, class B, class C, class D, class E,
          class F>
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<A, B, C, D, E, F>& arg, Tuple0*) {
-  (obj->*method)(kudu::internal::UnwrapTraits<A>::Unwrap(arg.a),
-                 kudu::internal::UnwrapTraits<B>::Unwrap(arg.b),
-                 kudu::internal::UnwrapTraits<C>::Unwrap(arg.c),
-                 kudu::internal::UnwrapTraits<D>::Unwrap(arg.d),
-                 kudu::internal::UnwrapTraits<E>::Unwrap(arg.e),
-                 kudu::internal::UnwrapTraits<F>::Unwrap(arg.f));
+  (obj->*method)(yb::internal::UnwrapTraits<A>::Unwrap(arg.a),
+                 yb::internal::UnwrapTraits<B>::Unwrap(arg.b),
+                 yb::internal::UnwrapTraits<C>::Unwrap(arg.c),
+                 yb::internal::UnwrapTraits<D>::Unwrap(arg.d),
+                 yb::internal::UnwrapTraits<E>::Unwrap(arg.e),
+                 yb::internal::UnwrapTraits<F>::Unwrap(arg.f));
 }
 
 // Dispatchers with 1 out param.
@@ -800,7 +800,7 @@ template<class ObjT, class Method, class InA,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple1<InA>& in,
                              Tuple1<OutA>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a), &out->a);
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a), &out->a);
 }
 
 template<class ObjT, class Method, class InA, class InB,
@@ -808,8 +808,8 @@ template<class ObjT, class Method, class InA, class InB,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple2<InA, InB>& in,
                              Tuple1<OutA>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
                  &out->a);
 }
 
@@ -818,9 +818,9 @@ template<class ObjT, class Method, class InA, class InB, class InC,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<InA, InB, InC>& in,
                              Tuple1<OutA>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
                  &out->a);
 }
 
@@ -829,10 +829,10 @@ template<class ObjT, class Method, class InA, class InB, class InC, class InD,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<InA, InB, InC, InD>& in,
                              Tuple1<OutA>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
                  &out->a);
 }
 
@@ -841,11 +841,11 @@ template<class ObjT, class Method, class InA, class InB, class InC, class InD,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<InA, InB, InC, InD, InE>& in,
                              Tuple1<OutA>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
                  &out->a);
 }
 
@@ -855,12 +855,12 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<InA, InB, InC, InD, InE, InF>& in,
                              Tuple1<OutA>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
-                 kudu::internal::UnwrapTraits<InF>::Unwrap(in.f),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
+                 yb::internal::UnwrapTraits<InF>::Unwrap(in.f),
                  &out->a);
 }
 
@@ -888,7 +888,7 @@ inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple1<InA>& in,
                              Tuple2<OutA, OutB>* out) {
   (obj->*method)(
-      kudu::internal::UnwrapTraits<InA>::Unwrap(in.a), &out->a, &out->b);
+      yb::internal::UnwrapTraits<InA>::Unwrap(in.a), &out->a, &out->b);
 }
 
 template<class ObjT, class Method, class InA, class InB,
@@ -896,8 +896,8 @@ template<class ObjT, class Method, class InA, class InB,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple2<InA, InB>& in,
                              Tuple2<OutA, OutB>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
                  &out->a,
                  &out->b);
 }
@@ -907,9 +907,9 @@ template<class ObjT, class Method, class InA, class InB, class InC,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<InA, InB, InC>& in,
                              Tuple2<OutA, OutB>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
                  &out->a,
                  &out->b);
 }
@@ -919,10 +919,10 @@ template<class ObjT, class Method, class InA, class InB, class InC, class InD,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<InA, InB, InC, InD>& in,
                              Tuple2<OutA, OutB>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
                  &out->a,
                  &out->b);
 }
@@ -933,11 +933,11 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<InA, InB, InC, InD, InE>& in,
                              Tuple2<OutA, OutB>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
                  &out->a,
                  &out->b);
 }
@@ -948,12 +948,12 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<InA, InB, InC, InD, InE, InF>& in,
                              Tuple2<OutA, OutB>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
-                 kudu::internal::UnwrapTraits<InF>::Unwrap(in.f),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
+                 yb::internal::UnwrapTraits<InF>::Unwrap(in.f),
                  &out->a,
                  &out->b);
 }
@@ -981,7 +981,7 @@ template<class ObjT, class Method, class InA,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple1<InA>& in,
                              Tuple3<OutA, OutB, OutC>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
                  &out->a,
                  &out->b,
                  &out->c);
@@ -992,8 +992,8 @@ template<class ObjT, class Method, class InA, class InB,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple2<InA, InB>& in,
                              Tuple3<OutA, OutB, OutC>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
                  &out->a,
                  &out->b,
                  &out->c);
@@ -1004,9 +1004,9 @@ template<class ObjT, class Method, class InA, class InB, class InC,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<InA, InB, InC>& in,
                              Tuple3<OutA, OutB, OutC>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
                  &out->a,
                  &out->b,
                  &out->c);
@@ -1017,10 +1017,10 @@ template<class ObjT, class Method, class InA, class InB, class InC, class InD,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<InA, InB, InC, InD>& in,
                              Tuple3<OutA, OutB, OutC>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
                  &out->a,
                  &out->b,
                  &out->c);
@@ -1032,11 +1032,11 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<InA, InB, InC, InD, InE>& in,
                              Tuple3<OutA, OutB, OutC>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
                  &out->a,
                  &out->b,
                  &out->c);
@@ -1048,12 +1048,12 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<InA, InB, InC, InD, InE, InF>& in,
                              Tuple3<OutA, OutB, OutC>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
-                 kudu::internal::UnwrapTraits<InF>::Unwrap(in.f),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
+                 yb::internal::UnwrapTraits<InF>::Unwrap(in.f),
                  &out->a,
                  &out->b,
                  &out->c);
@@ -1074,7 +1074,7 @@ template<class ObjT, class Method, class InA,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const InA& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1086,7 +1086,7 @@ template<class ObjT, class Method, class InA,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple1<InA>& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1098,8 +1098,8 @@ template<class ObjT, class Method, class InA, class InB,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple2<InA, InB>& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1111,9 +1111,9 @@ template<class ObjT, class Method, class InA, class InB, class InC,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<InA, InB, InC>& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1125,10 +1125,10 @@ template<class ObjT, class Method, class InA, class InB, class InC, class InD,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<InA, InB, InC, InD>& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1141,11 +1141,11 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<InA, InB, InC, InD, InE>& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1158,12 +1158,12 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<InA, InB, InC, InD, InE, InF>& in,
                              Tuple4<OutA, OutB, OutC, OutD>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
-                 kudu::internal::UnwrapTraits<InF>::Unwrap(in.f),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
+                 yb::internal::UnwrapTraits<InF>::Unwrap(in.f),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1185,7 +1185,7 @@ template<class ObjT, class Method, class InA,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const InA& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1198,7 +1198,7 @@ template<class ObjT, class Method, class InA,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple1<InA>& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1211,8 +1211,8 @@ template<class ObjT, class Method, class InA, class InB,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple2<InA, InB>& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1225,9 +1225,9 @@ template<class ObjT, class Method, class InA, class InB, class InC,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple3<InA, InB, InC>& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1240,10 +1240,10 @@ template<class ObjT, class Method, class InA, class InB, class InC, class InD,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple4<InA, InB, InC, InD>& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1257,11 +1257,11 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple5<InA, InB, InC, InD, InE>& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
                  &out->a,
                  &out->b,
                  &out->c,
@@ -1275,12 +1275,12 @@ template<class ObjT, class Method,
 inline void DispatchToMethod(ObjT* obj, Method method,
                              const Tuple6<InA, InB, InC, InD, InE, InF>& in,
                              Tuple5<OutA, OutB, OutC, OutD, OutE>* out) {
-  (obj->*method)(kudu::internal::UnwrapTraits<InA>::Unwrap(in.a),
-                 kudu::internal::UnwrapTraits<InB>::Unwrap(in.b),
-                 kudu::internal::UnwrapTraits<InC>::Unwrap(in.c),
-                 kudu::internal::UnwrapTraits<InD>::Unwrap(in.d),
-                 kudu::internal::UnwrapTraits<InE>::Unwrap(in.e),
-                 kudu::internal::UnwrapTraits<InF>::Unwrap(in.f),
+  (obj->*method)(yb::internal::UnwrapTraits<InA>::Unwrap(in.a),
+                 yb::internal::UnwrapTraits<InB>::Unwrap(in.b),
+                 yb::internal::UnwrapTraits<InC>::Unwrap(in.c),
+                 yb::internal::UnwrapTraits<InD>::Unwrap(in.d),
+                 yb::internal::UnwrapTraits<InE>::Unwrap(in.e),
+                 yb::internal::UnwrapTraits<InF>::Unwrap(in.f),
                  &out->a,
                  &out->b,
                  &out->c,

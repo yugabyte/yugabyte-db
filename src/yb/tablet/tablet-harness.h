@@ -35,7 +35,7 @@
 using std::string;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Creates a default partition schema and partition for a table.
@@ -141,5 +141,5 @@ class TabletHarness {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_TABLET_PEER_HARNESS_H */

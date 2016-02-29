@@ -23,7 +23,7 @@
 
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 
 class Status;
 
@@ -66,6 +66,6 @@ class DummyAuthStore : public AuthStore {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_RPC_AUTH_STORE_H

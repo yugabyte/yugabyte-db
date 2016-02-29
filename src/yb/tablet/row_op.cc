@@ -19,7 +19,7 @@
 #include "yb/tablet/row_op.h"
 #include "yb/tablet/tablet.pb.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 RowOp::RowOp(DecodedRowOperation decoded_op)
@@ -56,4 +56,4 @@ void RowOp::SetAlreadyFlushed() {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

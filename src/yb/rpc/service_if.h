@@ -30,7 +30,7 @@ class Message;
 }
 }
 
-namespace kudu {
+namespace yb {
 
 class Histogram;
 
@@ -60,5 +60,5 @@ class ServiceIf {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif

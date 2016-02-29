@@ -48,7 +48,7 @@ using std::vector;
 using strings::Split;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -445,4 +445,4 @@ pid_t Subprocess::pid() const {
   return child_pid_;
 }
 
-} // namespace kudu
+} // namespace yb

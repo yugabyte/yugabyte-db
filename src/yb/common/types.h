@@ -29,7 +29,7 @@
 #include "yb/gutil/strings/numbers.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 // The size of the in-memory format of the largest
 // type we support.
@@ -557,6 +557,6 @@ class Variant {
   Slice vstr_;
 };
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif

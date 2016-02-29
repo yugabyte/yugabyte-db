@@ -23,7 +23,7 @@
 #include "yb/gutil/dynamic_annotations.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 // Scope guard which instructs TSAN to ignore all reads and writes
@@ -42,6 +42,6 @@ class ScopedTSANIgnoreReadsAndWrites {
 };
 
 } // namespace debug
-} // namespace kudu
+} // namespace yb
 
 #endif  // KUDU_UTIL_DEBUG_SANITIZER_SCOPES_H_

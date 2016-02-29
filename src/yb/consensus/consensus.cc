@@ -24,7 +24,7 @@
 #include "yb/gutil/stl_util.h"
 #include "yb/gutil/strings/substitute.h"
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using std::shared_ptr;
@@ -105,4 +105,4 @@ Status Consensus::ExecuteHook(HookPoint point) {
 }
 
 } // namespace consensus
-} // namespace kudu
+} // namespace yb

@@ -24,7 +24,7 @@ using std::string;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 JsonReader::JsonReader(string text) : text_(std::move(text)) {}
 
@@ -121,4 +121,4 @@ Status JsonReader::ExtractField(const Value* object,
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

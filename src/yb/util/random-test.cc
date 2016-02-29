@@ -23,7 +23,7 @@
 #include "yb/util/random.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class RandomTest : public KuduTest {
  public:
@@ -160,4 +160,4 @@ TEST_F(RandomTest, TestReservoirSamplePopulationTooSmall) {
   ASSERT_EQ(population, results);
 }
 
-} // namespace kudu
+} // namespace yb

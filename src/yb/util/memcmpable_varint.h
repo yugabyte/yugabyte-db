@@ -30,7 +30,7 @@
 #include "yb/util/faststring.h"
 #include "yb/util/slice.h"
 
-namespace kudu {
+namespace yb {
 
 void PutMemcmpableVarint64(faststring *dst, uint64_t value);
 
@@ -38,6 +38,6 @@ void PutMemcmpableVarint64(faststring *dst, uint64_t value);
 // and advance the slice past the parsed value.
 bool GetMemcmpableVarint64(Slice *input, uint64_t *value);
 
-} // namespace kudu
+} // namespace yb
 
 #endif

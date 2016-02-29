@@ -89,7 +89,7 @@ using strings::Substitute;
 static __thread uint64_t thread_local_id;
 static Atomic64 cur_thread_local_id_;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -1136,4 +1136,4 @@ Env* Env::Default() {
   return default_env;
 }
 
-}  // namespace kudu
+}  // namespace yb

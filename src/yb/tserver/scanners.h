@@ -35,7 +35,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/oid_generator.h"
 
-namespace kudu {
+namespace yb {
 
 class MetricEntity;
 class RowwiseIterator;
@@ -132,7 +132,7 @@ class ScannerManager {
   ObjectIdGenerator oid_generator_;
 
   // Thread to remove expired scanners.
-  scoped_refptr<kudu::Thread> removal_thread_;
+  scoped_refptr<yb::Thread> removal_thread_;
 
   FunctionGaugeDetacher metric_detacher_;
 
@@ -324,6 +324,6 @@ class Scanner {
 
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -94,7 +94,7 @@ DEFINE_double(fault_crash_after_rb_files_fetched, 0.0,
               "(For testing only!)");
 TAG_FLAG(fault_crash_after_rb_files_fetched, unsafe);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 METRIC_DEFINE_histogram(server, op_apply_queue_length, "Operation Apply Queue Length",
@@ -995,4 +995,4 @@ TransitionInProgressDeleter::~TransitionInProgressDeleter() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

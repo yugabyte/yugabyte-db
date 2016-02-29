@@ -40,7 +40,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/stopwatch.h"
 
-namespace kudu { namespace cfile {
+namespace yb { namespace cfile {
 
 extern void DumpSSETable();
 
@@ -876,4 +876,4 @@ TYPED_TEST(IntEncodingTest, IntSeekBenchmark) {
 #endif
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

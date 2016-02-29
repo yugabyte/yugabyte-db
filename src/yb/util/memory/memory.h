@@ -56,7 +56,7 @@ using std::sort;
 using std::swap;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 class BufferAllocator;
 class MemTracker;
@@ -973,6 +973,6 @@ void StaticQuota<thread_safe>::SetQuota(const size_t quota) {
   quota_ = quota;
 }
 
-}  // namespace kudu
+}  // namespace yb
 
 #endif  // KUDU_UTIL_MEMORY_MEMORY_H_

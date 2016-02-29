@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu.consensus;
+package yb.consensus;
 
-option java_package = "org.kududb.consensus";
+option java_package = "org.yb.consensus";
 
 import "yb/common/common.proto";
 import "yb/common/wire_protocol.proto";

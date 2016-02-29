@@ -22,7 +22,7 @@
 
 #include "yb/gutil/callback_forward.h"
 
-namespace kudu {
+namespace yb {
 
 enum LogSeverity {
   SEVERITY_INFO,
@@ -41,6 +41,6 @@ typedef Callback<void(LogSeverity severity,
                       const char* message,
                       size_t message_len)> LoggingCallback;
 
-} // namespace kudu
+} // namespace yb
 
 #endif

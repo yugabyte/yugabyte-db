@@ -28,7 +28,7 @@
 #include "yb/util/slice.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 class CompressedBlockBuilder {
@@ -89,5 +89,5 @@ class CompressedBlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 #endif

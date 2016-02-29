@@ -27,7 +27,7 @@
 #include "yb/util/coding-inl.h"
 #include "yb/util/hexdump.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 template<typename Type>
@@ -232,6 +232,6 @@ class PlainBlockDecoder : public BlockDecoder {
 };
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb
 
 #endif

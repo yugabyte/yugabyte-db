@@ -27,7 +27,7 @@
 #include "yb/util/status.h"
 #include "yb/common/row.h"
 
-namespace kudu {
+namespace yb {
 
 using std::set;
 using std::unordered_map;
@@ -484,4 +484,4 @@ Status SchemaBuilder::AddColumn(const ColumnSchema& column, bool is_key) {
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

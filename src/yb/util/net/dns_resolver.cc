@@ -32,7 +32,7 @@ TAG_FLAG(dns_num_resolver_threads, advanced);
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 DnsResolver::DnsResolver() {
   CHECK_OK(ThreadPoolBuilder("dns-resolver")
@@ -60,4 +60,4 @@ void DnsResolver::ResolveAddresses(const HostPort& hostport,
   }
 }
 
-} // namespace kudu
+} // namespace yb

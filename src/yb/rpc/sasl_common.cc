@@ -32,7 +32,7 @@
 
 using std::set;
 
-namespace kudu {
+namespace yb {
 namespace rpc {
 
 const char* const kSaslMechAnonymous = "ANONYMOUS";
@@ -218,4 +218,4 @@ SaslMechanism::Type SaslMechanism::value_of(const string& mech) {
 }
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb

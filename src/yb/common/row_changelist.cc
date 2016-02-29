@@ -30,7 +30,7 @@
 using strings::Substitute;
 using strings::SubstituteAndAppend;
 
-namespace kudu {
+namespace yb {
 
 string RowChangeList::ToString(const Schema &schema) const {
   DCHECK_GT(encoded_data_.size(), 0);
@@ -356,4 +356,4 @@ Status RowChangeListDecoder::DecodedUpdate::Validate(const Schema& schema,
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb

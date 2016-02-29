@@ -37,7 +37,7 @@
 using std::shared_ptr;
 using std::unordered_set;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 using strings::Substitute;
@@ -361,4 +361,4 @@ TEST_F(TestMajorDeltaCompaction, TestJustDeletes) {
 }
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb

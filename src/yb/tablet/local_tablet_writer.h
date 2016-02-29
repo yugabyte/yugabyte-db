@@ -28,7 +28,7 @@
 #include "yb/tablet/transactions/write_transaction.h"
 #include "yb/gutil/macros.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Helper class to write directly into a local tablet, without going
@@ -135,5 +135,5 @@ class LocalTabletWriter {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_LOCAL_TABLET_WRITER_H */

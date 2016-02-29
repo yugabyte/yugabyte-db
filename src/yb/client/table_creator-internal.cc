@@ -20,7 +20,7 @@
 
 #include "yb/gutil/stl_util.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -36,4 +36,4 @@ KuduTableCreator::Data::~Data() {
 }
 
 } // namespace client
-} // namespace kudu
+} // namespace yb

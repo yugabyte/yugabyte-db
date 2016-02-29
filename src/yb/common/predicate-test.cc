@@ -21,7 +21,7 @@
 #include "yb/common/rowblock.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class TestPredicate : public KuduTest {
  public:
@@ -128,4 +128,4 @@ TEST_F(TestPredicate, TestDontEvalauteOnUnselectedRows) {
   ASSERT_EQ(0, selvec.CountSelected());
 }
 
-} // namespace kudu
+} // namespace yb

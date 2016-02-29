@@ -24,7 +24,7 @@
 #include "yb/util/async_util.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 class HostPort;
 class Sockaddr;
@@ -59,5 +59,5 @@ class DnsResolver {
   DISALLOW_COPY_AND_ASSIGN(DnsResolver);
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_UTIL_NET_DNS_RESOLVER_H */

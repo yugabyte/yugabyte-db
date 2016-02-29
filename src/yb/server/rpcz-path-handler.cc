@@ -28,13 +28,13 @@
 #include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/server/webserver.h"
 
-using kudu::rpc::DumpRunningRpcsRequestPB;
-using kudu::rpc::DumpRunningRpcsResponsePB;
-using kudu::rpc::Messenger;
+using yb::rpc::DumpRunningRpcsRequestPB;
+using yb::rpc::DumpRunningRpcsResponsePB;
+using yb::rpc::Messenger;
 using std::shared_ptr;
 using std::stringstream;
 
-namespace kudu {
+namespace yb {
 
 namespace {
 
@@ -60,4 +60,4 @@ void AddRpczPathHandlers(const shared_ptr<Messenger>& messenger, Webserver* webs
                                  false, true);
 }
 
-} // namespace kudu
+} // namespace yb

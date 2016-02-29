@@ -24,7 +24,7 @@
 #include "yb/gutil/mathlimits.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class RowKeyUtilTest : public KuduTest {
  public:
@@ -132,4 +132,4 @@ TEST_F(RowKeyUtilTest, TestIncrementCompositeStringIntKey) {
 
 
 
-} // namespace kudu
+} // namespace yb

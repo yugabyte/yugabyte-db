@@ -26,7 +26,7 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/stringprintf.h"
 
-namespace kudu {
+namespace yb {
 
 class BlockIdPB;
 
@@ -101,5 +101,5 @@ struct BlockIdEqual {
   }
 };
 
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_FS_BLOCK_ID_H */

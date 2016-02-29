@@ -25,7 +25,7 @@
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 class WireProtocolTest : public KuduTest {
  public:
@@ -319,4 +319,4 @@ TEST_F(WireProtocolTest, TestColumnDefaultValue) {
   ASSERT_EQ(write_default_u32, *static_cast<const uint32_t *>(col5fpb.write_default_value()));
 }
 
-} // namespace kudu
+} // namespace yb

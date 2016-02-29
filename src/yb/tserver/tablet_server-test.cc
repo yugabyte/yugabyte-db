@@ -27,15 +27,15 @@
 #include "yb/util/curl_util.h"
 #include "yb/util/url-coding.h"
 
-using kudu::consensus::RaftConfigPB;
-using kudu::consensus::RaftPeerPB;
-using kudu::rpc::Messenger;
-using kudu::rpc::MessengerBuilder;
-using kudu::rpc::RpcController;
-using kudu::server::Clock;
-using kudu::server::HybridClock;
-using kudu::tablet::Tablet;
-using kudu::tablet::TabletPeer;
+using yb::consensus::RaftConfigPB;
+using yb::consensus::RaftPeerPB;
+using yb::rpc::Messenger;
+using yb::rpc::MessengerBuilder;
+using yb::rpc::RpcController;
+using yb::server::Clock;
+using yb::server::HybridClock;
+using yb::tablet::Tablet;
+using yb::tablet::TabletPeer;
 using std::shared_ptr;
 using std::string;
 using strings::Substitute;
@@ -58,7 +58,7 @@ METRIC_DECLARE_counter(rows_updated);
 METRIC_DECLARE_counter(rows_deleted);
 METRIC_DECLARE_gauge_uint64(log_block_manager_blocks_under_management);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 class TabletServerTest : public TabletServerTestBase {
@@ -2231,8 +2231,8 @@ TEST_F(TabletServerTest, TestKudu120PreRequisites) {
   log->SetLogFaultHooksForTests(log_hook);
 
   // Now start a transaction (delete) and stop just before commit.
-  scoped_refptr<kudu::Thread> thread1;
-  CHECK_OK(kudu::Thread::Create("DeleteThread", "DeleteThread",
+  scoped_refptr<yb::Thread> thread1;
+  CHECK_OK(yb::Thread::Create("DeleteThread", "DeleteThread",
                                 DeleteOneRowAsync, this, &thread1));
 
   // Wait for the replicate message to arrive and continue.
@@ -2242,9 +2242,9 @@ TEST_F(TabletServerTest, TestKudu120PreRequisites) {
   usleep(100* 1000); // 100 msecs
 
   // Now start a compaction before letting the commit message go through.
-  scoped_refptr<kudu::Thread> flush_thread;
+  scoped_refptr<yb::Thread> flush_thread;
   CountDownLatch flush_done_latch(1);
-  CHECK_OK(kudu::Thread::Create("CompactThread", "CompactThread",
+  CHECK_OK(yb::Thread::Create("CompactThread", "CompactThread",
                                 CompactAsync,
                                 tablet_peer_->tablet(),
                                 &flush_done_latch,
@@ -2274,4 +2274,4 @@ TEST_F(TabletServerTest, TestKudu120PreRequisites) {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

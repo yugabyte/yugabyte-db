@@ -48,7 +48,7 @@
                                  << (s2).ToString(); \
   } while (0);
 
-namespace kudu {
+namespace yb {
 
 using std::vector;
 using std::unordered_map;
@@ -849,13 +849,13 @@ class SchemaBuilder {
   size_t num_key_columns_;
 };
 
-} // namespace kudu
+} // namespace yb
 
 // Specialize std::hash for ColumnId
 namespace std {
 template<>
-struct hash<kudu::ColumnId> {
-  int operator()(const kudu::ColumnId& col_id) const {
+struct hash<yb::ColumnId> {
+  int operator()(const yb::ColumnId& col_id) const {
     return col_id;
   }
 };

@@ -32,7 +32,7 @@
 
 #include <string>
 
-namespace kudu {
+namespace yb {
 
 class MetricRegistry;
 class Webserver;
@@ -44,6 +44,6 @@ void AddDefaultPathHandlers(Webserver* webserver);
 // Adds an endpoint to get metrics in JSON format.
 void RegisterMetricsJsonHandler(Webserver* webserver, const MetricRegistry* const metrics);
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_SERVER_DEFAULT_PATH_HANDLERS_H

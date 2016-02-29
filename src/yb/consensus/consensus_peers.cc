@@ -63,7 +63,7 @@ DEFINE_bool(enable_remote_bootstrap, true,
             "replica. For testing purposes only.");
 TAG_FLAG(enable_remote_bootstrap, unsafe);
 
-namespace kudu {
+namespace yb {
 namespace consensus {
 
 using log::Log;
@@ -467,4 +467,4 @@ Status SetPermanentUuidForRemotePeer(const shared_ptr<Messenger>& messenger,
 }
 
 }  // namespace consensus
-}  // namespace kudu
+}  // namespace yb

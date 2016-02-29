@@ -32,7 +32,7 @@ using std::string;
 
 DECLARE_int32(webserver_max_post_length_bytes);
 
-namespace kudu {
+namespace yb {
 
 class WebserverTest : public KuduTest {
  public:
@@ -121,8 +121,8 @@ TEST_F(WebserverTest, TestPprofPaths) {
     ASSERT_OK(curl_.PostToURL(strings::Substitute("http://$0/pprof/symbol", addr_.ToString()),
                               req, &buf_));
     ASSERT_EQ(buf_.ToString(),
-              StringPrintf("%p\tkudu::SomeMethodForSymbolTest1()\n"
-                           "%p\tkudu::SomeMethodForSymbolTest2()\n",
+              StringPrintf("%p\tyb::SomeMethodForSymbolTest1()\n"
+                           "%p\tyb::SomeMethodForSymbolTest2()\n",
                            &SomeMethodForSymbolTest1,
                            &SomeMethodForSymbolTest2));
   }
@@ -160,4 +160,4 @@ TEST_F(WebserverTest, TestStaticFiles) {
   ASSERT_EQ("Remote error: HTTP 403", s.ToString());
 }
 
-} // namespace kudu
+} // namespace yb

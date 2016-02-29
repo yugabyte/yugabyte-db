@@ -81,7 +81,7 @@ using std::unique_ptr;
 using std::vector;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace codegen {
 
 namespace {
@@ -172,7 +172,7 @@ Function* ModuleBuilder::GetFunction(const string& name) {
 Type* ModuleBuilder::GetType(const string& name) {
   CHECK_EQ(state_, kBuilding);
   // Technically clang is not obligated to name every
-  // class as "class.kudu::ClassName" but so long as there
+  // class as "class.yb::ClassName" but so long as there
   // are no naming conflicts in the LLVM context it appears
   // to do so (naming conflicts are avoided by having 1 context
   // per module)
@@ -311,4 +311,4 @@ vector<const char*> ModuleBuilder::GetFunctionNames() const {
 }
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb

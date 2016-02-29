@@ -27,7 +27,7 @@
 #include "yb/client/schema.h"
 #include "yb/util/yb_export.h"
 
-namespace kudu {
+namespace yb {
 namespace client {
 
 class YB_EXPORT KuduPredicate {
@@ -59,5 +59,5 @@ class YB_EXPORT KuduPredicate {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 #endif // KUDU_CLIENT_SCAN_PREDICATE_H

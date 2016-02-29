@@ -29,7 +29,7 @@
 #include "yb/gutil/strings/stringpiece.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 static const char* const kPipeSeparator = "|";
 
@@ -131,5 +131,5 @@ class LineItemTsvImporter {
   string line_, tmp_;
   bool updated_, done_;
 };
-} // namespace kudu
+} // namespace yb
 #endif

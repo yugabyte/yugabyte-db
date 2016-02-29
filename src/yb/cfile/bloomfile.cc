@@ -33,7 +33,7 @@
 
 DECLARE_bool(cfile_lazy_open);
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using fs::ReadableBlock;
@@ -309,4 +309,4 @@ size_t BloomFileReader::memory_footprint_excluding_reader() const {
 }
 
 } // namespace cfile
-} // namespace kudu
+} // namespace yb

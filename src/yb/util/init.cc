@@ -25,7 +25,7 @@
 
 using std::string;
 
-namespace kudu {
+namespace yb {
 
 Status BadCPUStatus(const base::CPU& cpu, const char* instruction_set) {
   return Status::NotSupported(strings::Substitute(
@@ -51,4 +51,4 @@ void InitKuduOrDie() {
   CHECK_OK(CheckCPUFlags());
 }
 
-} // namespace kudu
+} // namespace yb

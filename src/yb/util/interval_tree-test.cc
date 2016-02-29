@@ -29,7 +29,7 @@
 
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 // Test harness.
 class TestIntervalTree : public KuduTest {
@@ -198,4 +198,4 @@ TEST_F(TestIntervalTree, TestEmpty) {
   VerifyFindIntersectingInterval(empty, t, IntInterval(1, 2));
 }
 
-} // namespace kudu
+} // namespace yb

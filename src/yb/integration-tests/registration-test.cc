@@ -39,7 +39,7 @@
 
 DECLARE_int32(heartbeat_interval_ms);
 
-namespace kudu {
+namespace yb {
 
 using std::vector;
 using std::shared_ptr;
@@ -161,4 +161,4 @@ TEST_F(RegistrationTest, TestTabletReports) {
   // the TS, and verifies that the master notices the issue.
 }
 
-} // namespace kudu
+} // namespace yb

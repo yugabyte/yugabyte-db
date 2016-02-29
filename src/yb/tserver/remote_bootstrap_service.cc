@@ -68,7 +68,7 @@ DEFINE_double(fault_crash_on_handle_rb_fetch_data, 0.0,
               "(For testing only!)");
 TAG_FLAG(fault_crash_on_handle_rb_fetch_data, unsafe);
 
-namespace kudu {
+namespace yb {
 namespace tserver {
 
 using crc::Crc32c;
@@ -356,4 +356,4 @@ void RemoteBootstrapServiceImpl::EndExpiredSessions() {
 }
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb

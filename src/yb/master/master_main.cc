@@ -24,13 +24,13 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 
-using kudu::master::Master;
+using yb::master::Master;
 
 DECLARE_string(rpc_bind_addresses);
 DECLARE_int32(webserver_port);
 DECLARE_bool(evict_failed_followers);
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 static int MasterMain(int argc, char** argv) {
@@ -70,8 +70,8 @@ static int MasterMain(int argc, char** argv) {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char** argv) {
-  return kudu::master::MasterMain(argc, argv);
+  return yb::master::MasterMain(argc, argv);
 }

@@ -18,7 +18,7 @@
 #ifndef KUDU_CODEGEN_PRECOMPILED_LL_H
 #define KUDU_CODEGEN_PRECOMPILED_LL_H
 
-namespace kudu {
+namespace yb {
 namespace codegen {
 
 // Declare the precompiled LLVM bitcode data. The actual data is provided by a
@@ -27,6 +27,6 @@ extern const char precompiled_ll_data[];
 extern const unsigned int precompiled_ll_len;
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_CODEGEN_PRECOMPILED_LL_H

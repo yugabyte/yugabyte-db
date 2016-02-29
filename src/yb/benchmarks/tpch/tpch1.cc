@@ -92,7 +92,7 @@ DEFINE_int32(tpch_max_batch_size, 1000,
 DEFINE_string(table_name, "lineitem",
               "The table name to write/read");
 
-namespace kudu {
+namespace yb {
 
 using client::KuduColumnSchema;
 using client::KuduRowResult;
@@ -234,45 +234,45 @@ void Tpch1(RpcLineItemDAO *dao) {
   CHECK_EQ(matching_rows, FLAGS_tpch_expected_matching_rows) << "Wrong number of rows returned";
 }
 
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char **argv) {
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
-  gscoped_ptr<kudu::Env> env;
-  gscoped_ptr<kudu::MiniCluster> cluster;
+  gscoped_ptr<yb::Env> env;
+  gscoped_ptr<yb::MiniCluster> cluster;
   string master_address;
   if (FLAGS_use_mini_cluster) {
-    env.reset(new kudu::EnvWrapper(kudu::Env::Default()));
-    kudu::Status s = env->CreateDir(FLAGS_mini_cluster_base_dir);
+    env.reset(new yb::EnvWrapper(yb::Env::Default()));
+    yb::Status s = env->CreateDir(FLAGS_mini_cluster_base_dir);
     CHECK(s.IsAlreadyPresent() || s.ok());
-    kudu::MiniClusterOptions options;
+    yb::MiniClusterOptions options;
     options.data_root = FLAGS_mini_cluster_base_dir;
-    cluster.reset(new kudu::MiniCluster(env.get(), options));
+    cluster.reset(new yb::MiniCluster(env.get(), options));
     CHECK_OK(cluster->StartSync());
     master_address = cluster->mini_master()->bound_rpc_addr_str();
   } else {
     master_address = FLAGS_master_address;
   }
 
-  gscoped_ptr<kudu::RpcLineItemDAO> dao(new kudu::RpcLineItemDAO(master_address, FLAGS_table_name,
+  gscoped_ptr<yb::RpcLineItemDAO> dao(new yb::RpcLineItemDAO(master_address, FLAGS_table_name,
                                                                  FLAGS_tpch_max_batch_size));
   dao->Init();
 
-  kudu::WarmupScanCache(dao.get());
+  yb::WarmupScanCache(dao.get());
 
   bool needs_loading = dao->IsTableEmpty();
   if (needs_loading) {
     LOG_TIMING(INFO, "loading") {
-      kudu::LoadLineItems(FLAGS_tpch_path_to_data, dao.get());
+      yb::LoadLineItems(FLAGS_tpch_path_to_data, dao.get());
     }
   } else {
     LOG(INFO) << "Data already in place";
   }
   for (int i = 0; i < FLAGS_tpch_num_query_iterations; i++) {
     LOG_TIMING(INFO, StringPrintf("querying for iteration # %d", i)) {
-      kudu::Tpch1(dao.get());
+      yb::Tpch1(dao.get());
     }
   }
 

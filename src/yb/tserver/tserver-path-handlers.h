@@ -23,7 +23,7 @@
 #include <sstream>
 #include <vector>
 
-namespace kudu {
+namespace yb {
 
 class Schema;
 struct IteratorStats;
@@ -79,5 +79,5 @@ class TabletServerPathHandlers {
 };
 
 } // namespace tserver
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TSERVER_TSERVER_PATH_HANDLERS_H */

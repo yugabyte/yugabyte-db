@@ -40,7 +40,7 @@ using std::map;
 using std::shared_ptr;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 
 using consensus::RaftPeerPB;
 using master::GetTableLocationsRequestPB;
@@ -655,4 +655,4 @@ void MetaCache::ReleaseMasterLookupPermit() {
 
 } // namespace internal
 } // namespace client
-} // namespace kudu
+} // namespace yb

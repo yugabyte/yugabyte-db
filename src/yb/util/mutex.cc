@@ -24,7 +24,7 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/env.h"
 
-namespace kudu {
+namespace yb {
 
 Mutex::Mutex()
 #ifndef NDEBUG
@@ -104,4 +104,4 @@ void Mutex::CheckUnheldAndMark() {
 
 #endif
 
-} // namespace kudu
+} // namespace yb

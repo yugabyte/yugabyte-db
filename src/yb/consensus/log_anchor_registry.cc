@@ -23,7 +23,7 @@
 
 #include "yb/gutil/strings/substitute.h"
 
-namespace kudu {
+namespace yb {
 namespace log {
 
 using consensus::kInvalidOpIdIndex;
@@ -177,4 +177,4 @@ int64_t MinLogIndexAnchorer::minimum_log_index() const {
 }
 
 } // namespace log
-} // namespace kudu
+} // namespace yb

@@ -35,7 +35,7 @@
 using google::protobuf::RepeatedPtrField;
 using std::vector;
 
-namespace kudu {
+namespace yb {
 
 void StatusToPB(const Status& status, AppStatusPB* pb) {
   pb->Clear();
@@ -557,4 +557,4 @@ void SerializeRowBlock(const RowBlock& block, RowwiseRowBlockPB* rowblock_pb,
   rowblock_pb->set_num_rows(rowblock_pb->num_rows() + num_rows);
 }
 
-} // namespace kudu
+} // namespace yb

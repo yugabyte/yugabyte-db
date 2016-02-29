@@ -20,7 +20,7 @@
 #include "yb/client/client.h"
 #include "yb/gutil/gscoped_ptr.h"
 
-namespace kudu {
+namespace yb {
 
 namespace client {
 
@@ -36,6 +36,6 @@ class KuduError::Data {
 };
 
 } // namespace client
-} // namespace kudu
+} // namespace yb
 
 #endif

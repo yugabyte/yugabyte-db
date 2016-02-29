@@ -25,7 +25,7 @@
 #include "yb/gutil/strings/fastmem.h"
 #include "yb/util/status.h"
 
-namespace kudu {
+namespace yb {
 
 // Return a list of all of the thread IDs currently running in this process.
 // Not async-safe.
@@ -158,6 +158,6 @@ class StackTrace {
   void* frames_[kMaxFrames];
 };
 
-} // namespace kudu
+} // namespace yb
 
 #endif

@@ -56,7 +56,7 @@
 //   of the ternary expression and the log stream on the other. This technique is
 //   cribbed from glog/logging.h.
 #define VLOG_AND_TRACE_INTERNAL(category, vlevel) \
-  kudu::debug::TraceVLog(__FILE__, __LINE__, category, VLOG_IS_ON(vlevel)).stream()
+  yb::debug::TraceVLog(__FILE__, __LINE__, category, VLOG_IS_ON(vlevel)).stream()
 #define VLOG_AND_TRACE(category, vlevel)                              \
   !( {                                                                \
       bool enabled;                                                   \
@@ -65,7 +65,7 @@
     } ) ? static_cast<void>(0) :                                      \
           google::LogMessageVoidify() & VLOG_AND_TRACE_INTERNAL(category, vlevel)
 
-namespace kudu {
+namespace yb {
 namespace debug {
 
 class TraceVLog {
@@ -114,5 +114,5 @@ class TraceVLog {
 };
 
 } // namespace debug
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_DEBUG_TRACE_LOGGING_H */

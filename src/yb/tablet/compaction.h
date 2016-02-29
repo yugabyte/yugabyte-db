@@ -26,7 +26,7 @@
 #include "yb/tablet/diskrowset.h"
 #include "yb/tablet/memrowset.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 struct CompactionInputRow;
 class WriteTransactionState;
@@ -171,6 +171,6 @@ Status ReupdateMissedDeltas(const string &tablet_name,
 Status DebugDumpCompactionInput(CompactionInput *input, vector<string> *lines);
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

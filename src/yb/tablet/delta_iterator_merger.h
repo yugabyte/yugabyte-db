@@ -23,7 +23,7 @@
 
 #include "yb/tablet/delta_store.h"
 
-namespace kudu {
+namespace yb {
 
 class ScanSpec;
 
@@ -66,6 +66,6 @@ class DeltaIteratorMerger : public DeltaIterator {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_TABLET_DELTA_ITERATOR_MERGER_H

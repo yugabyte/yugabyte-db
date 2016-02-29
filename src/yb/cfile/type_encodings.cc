@@ -33,7 +33,7 @@
 #include "yb/common/types.h"
 #include "yb/gutil/strings/substitute.h"
 
-namespace kudu {
+namespace yb {
 namespace cfile {
 
 using std::unordered_map;
@@ -327,5 +327,5 @@ const EncodingType TypeEncodingInfo::GetDefaultEncoding(const TypeInfo* typeinfo
 }
 
 }  // namespace cfile
-}  // namespace kudu
+}  // namespace yb
 

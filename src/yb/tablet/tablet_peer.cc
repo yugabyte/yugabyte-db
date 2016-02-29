@@ -52,7 +52,7 @@
 
 using std::shared_ptr;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 METRIC_DEFINE_histogram(tablet, op_prepare_queue_length, "Operation Prepare Queue Length",
@@ -649,4 +649,4 @@ Status FlushInflightsToLogCallback::WaitForInflightsAndFlushLog() {
 
 
 }  // namespace tablet
-}  // namespace kudu
+}  // namespace yb

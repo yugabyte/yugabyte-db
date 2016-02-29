@@ -92,7 +92,7 @@ DEFINE_string(tpch_path_to_ts_flags_file, "",
 DEFINE_string(tpch_table_name, "tpch_real_world",
               "Table name to use during the test");
 
-namespace kudu {
+namespace yb {
 
 using client::KuduRowResult;
 using client::KuduSchema;
@@ -327,12 +327,12 @@ Status TpchRealWorld::Run() {
   vector<scoped_refptr<Thread> > threads;
   if (FLAGS_tpch_load_data) {
     for (int i = 0; i < FLAGS_tpch_num_inserters; i++) {
-      scoped_refptr<kudu::Thread> thr;
-      RETURN_NOT_OK(kudu::Thread::Create("test", Substitute("lineitem-gen$0", i),
+      scoped_refptr<yb::Thread> thr;
+      RETURN_NOT_OK(yb::Thread::Create("test", Substitute("lineitem-gen$0", i),
                                          &TpchRealWorld::MonitorDbgenThread, this, i,
                                          &thr));
       threads.push_back(thr);
-      RETURN_NOT_OK(kudu::Thread::Create("test", Substitute("lineitem-load$0", i),
+      RETURN_NOT_OK(yb::Thread::Create("test", Substitute("lineitem-load$0", i),
                                          &TpchRealWorld::LoadLineItemsThread, this, i,
                                          &thr));
       threads.push_back(thr);
@@ -344,8 +344,8 @@ Status TpchRealWorld::Run() {
   }
 
   if (FLAGS_tpch_run_queries) {
-    scoped_refptr<kudu::Thread> thr;
-    RETURN_NOT_OK(kudu::Thread::Create("test", "lineitem-query",
+    scoped_refptr<yb::Thread> thr;
+    RETURN_NOT_OK(yb::Thread::Create("test", "lineitem-query",
                                        &TpchRealWorld::RunQueriesThread, this,
                                        &thr));
     threads.push_back(thr);
@@ -369,20 +369,20 @@ Status TpchRealWorld::Run() {
 
   stop_threads_.Store(true);
 
-  for (scoped_refptr<kudu::Thread> thr : threads) {
+  for (scoped_refptr<yb::Thread> thr : threads) {
     RETURN_NOT_OK(ThreadJoiner(thr.get()).Join());
   }
   return Status::OK();
 }
 
-} // namespace kudu
+} // namespace yb
 
 int main(int argc, char* argv[]) {
-  kudu::ParseCommandLineFlags(&argc, &argv, true);
-  kudu::InitGoogleLoggingSafe(argv[0]);
+  yb::ParseCommandLineFlags(&argc, &argv, true);
+  yb::InitGoogleLoggingSafe(argv[0]);
 
-  kudu::TpchRealWorld benchmarker;
-  kudu::Status s = benchmarker.Init();
+  yb::TpchRealWorld benchmarker;
+  yb::Status s = benchmarker.Init();
   if (!s.ok()) {
     std::cerr << "Couldn't initialize the benchmarking tool, reason: "<< s.ToString() << std::endl;
     return 1;

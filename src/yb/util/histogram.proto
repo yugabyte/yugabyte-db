@@ -14,9 +14,9 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-package kudu;
+package yb;
 
-option java_package = "org.kududb";
+option java_package = "org.yb";
 
 // Captures the state of an Histogram.
 message HistogramSnapshotPB {

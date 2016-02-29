@@ -38,7 +38,7 @@ class Message;
 } // namespace protobuf
 } // namespace google
 
-namespace kudu {
+namespace yb {
 
 class Socket;
 
@@ -164,5 +164,5 @@ struct TransferCallbacks {
 };
 
 } // namespace rpc
-} // namespace kudu
+} // namespace yb
 #endif

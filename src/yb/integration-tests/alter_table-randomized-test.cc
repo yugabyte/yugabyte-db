@@ -30,7 +30,7 @@
 #include "yb/util/random_util.h"
 #include "yb/util/test_util.h"
 
-namespace kudu {
+namespace yb {
 
 using client::KuduClient;
 using client::KuduClientBuilder;
@@ -443,4 +443,4 @@ TEST_F(AlterTableRandomized, TestRandomSequence) {
   NO_FATALS(v.CheckCluster());
 }
 
-} // namespace kudu
+} // namespace yb

@@ -23,7 +23,7 @@
 #include "yb/master/master.h"
 #include "yb/util/flag_tags.h"
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 DEFINE_string(master_addresses, "",
@@ -61,4 +61,4 @@ bool MasterOptions::IsDistributed() const {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

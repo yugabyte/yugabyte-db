@@ -60,34 +60,34 @@ DECLARE_bool(block_manager_lock_dirs);
 
 METRIC_DEFINE_gauge_uint64(server, log_block_manager_bytes_under_management,
                            "Bytes Under Management",
-                           kudu::MetricUnit::kBytes,
+                           yb::MetricUnit::kBytes,
                            "Number of bytes of data blocks currently under management");
 
 METRIC_DEFINE_gauge_uint64(server, log_block_manager_blocks_under_management,
                            "Blocks Under Management",
-                           kudu::MetricUnit::kBlocks,
+                           yb::MetricUnit::kBlocks,
                            "Number of data blocks currently under management");
 
 METRIC_DEFINE_counter(server, log_block_manager_containers,
                       "Number of Block Containers",
-                      kudu::MetricUnit::kLogBlockContainers,
+                      yb::MetricUnit::kLogBlockContainers,
                       "Number of log block containers");
 
 METRIC_DEFINE_counter(server, log_block_manager_full_containers,
                       "Number of Full Block Counters",
-                      kudu::MetricUnit::kLogBlockContainers,
+                      yb::MetricUnit::kLogBlockContainers,
                       "Number of full log block containers");
 
 using std::unordered_map;
 using std::unordered_set;
 using strings::Substitute;
-using kudu::env_util::ScopedFileDeleter;
-using kudu::fs::internal::LogBlock;
-using kudu::fs::internal::LogBlockContainer;
-using kudu::pb_util::ReadablePBContainerFile;
-using kudu::pb_util::WritablePBContainerFile;
+using yb::env_util::ScopedFileDeleter;
+using yb::fs::internal::LogBlock;
+using yb::fs::internal::LogBlockContainer;
+using yb::pb_util::ReadablePBContainerFile;
+using yb::pb_util::WritablePBContainerFile;
 
-namespace kudu {
+namespace yb {
 
 namespace fs {
 
@@ -1598,4 +1598,4 @@ Status LogBlockManager::Init() {
 }
 
 } // namespace fs
-} // namespace kudu
+} // namespace yb

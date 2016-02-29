@@ -36,7 +36,7 @@
 #include "yb/util/bit-stream-utils.h"
 #include "yb/util/alignment.h"
 
-namespace kudu {
+namespace yb {
 
 inline void BitWriter::PutValue(uint64_t v, int num_bits) {
   // TODO: revisit this limit if necessary (can be raised to 64 by fixing some edge cases)
@@ -217,6 +217,6 @@ inline bool BitReader::GetVlqInt(int32_t* v) {
   return true;
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif

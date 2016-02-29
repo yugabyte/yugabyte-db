@@ -50,15 +50,15 @@ TAG_FLAG(codegen_time_compilation, experimental);
 TAG_FLAG(codegen_time_compilation, runtime);
 
 METRIC_DEFINE_gauge_int64(server, code_cache_hits, "Codegen Cache Hits",
-                          kudu::MetricUnit::kCacheHits,
+                          yb::MetricUnit::kCacheHits,
                           "Number of codegen cache hits since start",
-                          kudu::EXPOSE_AS_COUNTER);
+                          yb::EXPOSE_AS_COUNTER);
 METRIC_DEFINE_gauge_int64(server, code_cache_queries, "Codegen Cache Queries",
-                          kudu::MetricUnit::kCacheQueries,
+                          yb::MetricUnit::kCacheQueries,
                           "Number of codegen cache queries (hits + misses) "
                           "since start",
-                          kudu::EXPOSE_AS_COUNTER);
-namespace kudu {
+                          yb::EXPOSE_AS_COUNTER);
+namespace yb {
 namespace codegen {
 
 namespace {
@@ -193,4 +193,4 @@ bool CompilationManager::RequestRowProjector(const Schema* base_schema,
 }
 
 } // namespace codegen
-} // namespace kudu
+} // namespace yb

@@ -21,7 +21,7 @@
 #include "yb/gutil/walltime.h"
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // Simple class which verifies the invariant that we eventually submit
@@ -87,5 +87,5 @@ class TransactionOrderVerifier {
 };
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_TABLET_TRANSACTION_ORDER_VERIFIER_H */

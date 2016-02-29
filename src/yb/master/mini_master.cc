@@ -33,7 +33,7 @@ using strings::Substitute;
 
 DECLARE_bool(rpc_server_allow_ephemeral_ports);
 
-namespace kudu {
+namespace yb {
 namespace master {
 
 MiniMaster::MiniMaster(Env* env, string fs_root, uint16_t rpc_port)
@@ -145,4 +145,4 @@ std::string MiniMaster::bound_rpc_addr_str() const {
 }
 
 } // namespace master
-} // namespace kudu
+} // namespace yb

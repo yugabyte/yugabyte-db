@@ -47,7 +47,7 @@
 using std::unordered_set;
 using strings::Substitute;
 
-namespace kudu {
+namespace yb {
 namespace tablet {
 
 // The base class takes as a template argument a "setup" class
@@ -440,7 +440,7 @@ class TabletTestBase : public KuduTabletTest {
     gscoped_ptr<RowwiseIterator> iter;
     RETURN_NOT_OK(this->tablet()->NewRowIterator(this->client_schema_, &iter));
     RETURN_NOT_OK(iter->Init(NULL));
-    return kudu::tablet::IterateToStringList(iter.get(), out);
+    return yb::tablet::IterateToStringList(iter.get(), out);
   }
 
   // Return the number of rows in the tablet.
@@ -470,6 +470,6 @@ class TabletTestBase : public KuduTabletTest {
 
 
 } // namespace tablet
-} // namespace kudu
+} // namespace yb
 
 #endif

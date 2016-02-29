@@ -100,9 +100,9 @@
 //
 // METRIC_DEFINE_gauge_uint64(server, threads_started,
 //                            "Threads Started",
-//                            kudu::MetricUnit::kThreads,
+//                            yb::MetricUnit::kThreads,
 //                            "Total number of threads started on this server",
-//                            kudu::EXPOSE_AS_COUNTER);
+//                            yb::EXPOSE_AS_COUNTER);
 //
 //
 // Metrics ownership
@@ -137,7 +137,7 @@
 //
 // 3) At the top of your .cc file where you want to emit a metric, define the metric prototype:
 //
-//   METRIC_DEFINE_counter(server, ping_requests, "Ping Requests", kudu::MetricUnit::kRequests,
+//   METRIC_DEFINE_counter(server, ping_requests, "Ping Requests", yb::MetricUnit::kRequests,
 //       "Number of Ping() RPC requests this server has handled since start");
 //
 // 4) In your class where you want to emit metrics, define the metric instance itself:
@@ -161,7 +161,7 @@
 // At the top of your CC file:
 //
 //   METRIC_DEFINE_entity(my_entity);
-//   METRIC_DEFINE_counter(my_entity, ping_requests, "Ping Requests", kudu::MetricUnit::kRequests,
+//   METRIC_DEFINE_counter(my_entity, ping_requests, "Ping Requests", yb::MetricUnit::kRequests,
 //       "Number of Ping() RPC requests this particular entity has handled since start");
 //
 // In whatever class represents the entity:
@@ -248,75 +248,75 @@
 // The metrics subsystem itself defines the entity type 'server', but other
 // entity types can be registered using this macro.
 #define METRIC_DEFINE_entity(name)                               \
-  ::kudu::MetricEntityPrototype METRIC_ENTITY_##name(#name)
+  ::yb::MetricEntityPrototype METRIC_ENTITY_##name(#name)
 
 // Convenience macros to define metric prototypes.
 // See the documentation at the top of this file for example usage.
 #define METRIC_DEFINE_counter(entity, name, label, unit, desc)   \
-  ::kudu::CounterPrototype METRIC_##name(                        \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc))
+  ::yb::CounterPrototype METRIC_##name(                        \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc))
 
 #define METRIC_DEFINE_gauge_string(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<std::string> METRIC_##name(                 \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<std::string> METRIC_##name(                 \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DEFINE_gauge_bool(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<bool> METRIC_##  name(                    \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<bool> METRIC_##  name(                    \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DEFINE_gauge_int32(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<int32_t> METRIC_##name(                   \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<int32_t> METRIC_##name(                   \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DEFINE_gauge_uint32(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<uint32_t> METRIC_##name(                    \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<uint32_t> METRIC_##name(                    \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DEFINE_gauge_int64(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<int64_t> METRIC_##name(                   \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<int64_t> METRIC_##name(                   \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DEFINE_gauge_uint64(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<uint64_t> METRIC_##name(                    \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<uint64_t> METRIC_##name(                    \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DEFINE_gauge_double(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<double> METRIC_##name(                      \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<double> METRIC_##name(                      \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 
 #define METRIC_DEFINE_histogram(entity, name, label, unit, desc, max_val, num_sig_digits) \
-  ::kudu::HistogramPrototype METRIC_##name(                                       \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc), \
+  ::yb::HistogramPrototype METRIC_##name(                                       \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc), \
     max_val, num_sig_digits)
 
 // The following macros act as forward declarations for entity types and metric prototypes.
 #define METRIC_DECLARE_entity(name) \
-  extern ::kudu::MetricEntityPrototype METRIC_ENTITY_##name
+  extern ::yb::MetricEntityPrototype METRIC_ENTITY_##name
 #define METRIC_DECLARE_counter(name)                             \
-  extern ::kudu::CounterPrototype METRIC_##name
+  extern ::yb::CounterPrototype METRIC_##name
 #define METRIC_DECLARE_gauge_string(name) \
-  extern ::kudu::GaugePrototype<std::string> METRIC_##name
+  extern ::yb::GaugePrototype<std::string> METRIC_##name
 #define METRIC_DECLARE_gauge_bool(name) \
-  extern ::kudu::GaugePrototype<bool> METRIC_##name
+  extern ::yb::GaugePrototype<bool> METRIC_##name
 #define METRIC_DECLARE_gauge_int32(name) \
-  extern ::kudu::GaugePrototype<int32_t> METRIC_##name
+  extern ::yb::GaugePrototype<int32_t> METRIC_##name
 #define METRIC_DECLARE_gauge_uint32(name) \
-  extern ::kudu::GaugePrototype<uint32_t> METRIC_##name
+  extern ::yb::GaugePrototype<uint32_t> METRIC_##name
 #define METRIC_DECLARE_gauge_int64(name) \
-  extern ::kudu::GaugePrototype<int64_t> METRIC_##name
+  extern ::yb::GaugePrototype<int64_t> METRIC_##name
 #define METRIC_DECLARE_gauge_uint64(name) \
-  extern ::kudu::GaugePrototype<uint64_t> METRIC_##name
+  extern ::yb::GaugePrototype<uint64_t> METRIC_##name
 #define METRIC_DECLARE_gauge_double(name) \
-  extern ::kudu::GaugePrototype<double> METRIC_##name
+  extern ::yb::GaugePrototype<double> METRIC_##name
 #define METRIC_DECLARE_histogram(name) \
-  extern ::kudu::HistogramPrototype METRIC_##name
+  extern ::yb::HistogramPrototype METRIC_##name
 
 #if defined(__APPLE__)
 #define METRIC_DEFINE_gauge_size(entity, name, label, unit, desc, ...) \
-  ::kudu::GaugePrototype<size_t> METRIC_##name(                    \
-      ::kudu::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
+  ::yb::GaugePrototype<size_t> METRIC_##name(                    \
+      ::yb::MetricPrototype::CtorArgs(#entity, #name, label, unit, desc, ## __VA_ARGS__))
 #define METRIC_DECLARE_gauge_size(name) \
-  extern ::kudu::GaugePrototype<size_t> METRIC_##name
+  extern ::yb::GaugePrototype<size_t> METRIC_##name
 #else
 #define METRIC_DEFINE_gauge_size METRIC_DEFINE_gauge_uint64
 #define METRIC_DECLARE_gauge_size METRIC_DECLARE_gauge_uint64
 #endif
 
-namespace kudu {
+namespace yb {
 
 class Counter;
 class CounterPrototype;
@@ -341,14 +341,14 @@ class HistogramSnapshotPB;
 
 class MetricEntity;
 
-} // namespace kudu
+} // namespace yb
 
 // Forward-declare the generic 'server' entity type.
 // We have to do this here below the forward declarations, but not
-// in the kudu namespace.
+// in the yb namespace.
 METRIC_DECLARE_entity(server);
 
-namespace kudu {
+namespace yb {
 
 // Unit types to be used with metrics.
 // As additional units are required, add them to this enum and also to Name().
@@ -1070,6 +1070,6 @@ inline scoped_refptr<FunctionGauge<T> > MetricEntity::FindOrCreateFunctionGauge(
   return m;
 }
 
-} // namespace kudu
+} // namespace yb
 
 #endif // KUDU_UTIL_METRICS_H

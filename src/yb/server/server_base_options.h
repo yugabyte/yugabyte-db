@@ -24,7 +24,7 @@
 #include "yb/server/webserver_options.h"
 #include "yb/server/rpc_server.h"
 
-namespace kudu {
+namespace yb {
 
 class Env;
 
@@ -50,5 +50,5 @@ struct ServerBaseOptions {
 };
 
 } // namespace server
-} // namespace kudu
+} // namespace yb
 #endif /* KUDU_SERVER_SERVER_BASE_OPTIONS_H */

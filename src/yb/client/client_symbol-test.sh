@@ -63,7 +63,7 @@ while read ADDR TYPE SYMBOL; do
   fi
 
   # Skip Kudu symbols. Using [[ ]] for regex support.
-  if [[ "$SYMBOL" =~ ^kudu:: ]]; then
+  if [[ "$SYMBOL" =~ ^yb:: ]]; then
     echo "Skipping kudu symbol '$SYMBOL'"
     continue;
   fi
