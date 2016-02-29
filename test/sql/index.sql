@@ -13,7 +13,9 @@ CREATE TABLE public.sometab(
     myint NUMERIC(8)
 );
 CREATE INDEX idx_hey ON public.sometab(numb);
+SET client_min_messages = error;
 CREATE INDEX idx_foo ON public.sometab using hash(name);
+SET client_min_messages = warning;
 CREATE INDEX idx_bar ON public.sometab(numb, name);
 CREATE UNIQUE INDEX idx_baz ON public.sometab(LOWER(name));
 CREATE INDEX idx_mul ON public.sometab(numb, LOWER(name));
