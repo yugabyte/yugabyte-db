@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_SERVER_GLOG_METRICS_H
-#define KUDU_SERVER_GLOG_METRICS_H
+#ifndef YB_SERVER_GLOG_METRICS_H
+#define YB_SERVER_GLOG_METRICS_H
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -49,4 +49,4 @@ class ScopedGLogMetrics {
 void RegisterGLogMetrics(const scoped_refptr<MetricEntity>& entity);
 
 } // namespace yb
-#endif /* KUDU_SERVER_GLOG_METRICS_H */
+#endif /* YB_SERVER_GLOG_METRICS_H */

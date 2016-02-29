@@ -492,7 +492,7 @@ Status LogBlockContainer::DeleteBlock(int64_t offset, int64_t length) {
     //
     // It's OK if we exceed the file's total size; the kernel will truncate
     // our request.
-    return data_file_->PunchHole(offset, KUDU_ALIGN_UP(
+    return data_file_->PunchHole(offset, YB_ALIGN_UP(
         length, instance()->filesystem_block_size_bytes()));
   }
   return Status::OK();
@@ -565,7 +565,7 @@ void LogBlockContainer::UpdateBytesWritten(int64_t more_bytes) {
   // that each Kudu block is guaranteed to be on a filesystem block
   // boundary. This guarantees that the disk space can be reclaimed when
   // the block is deleted.
-  total_bytes_written_ += KUDU_ALIGN_UP(more_bytes,
+  total_bytes_written_ += YB_ALIGN_UP(more_bytes,
                                         instance()->filesystem_block_size_bytes());
   if (full()) {
     VLOG(1) << "Container " << ToString() << " with size "
@@ -645,7 +645,7 @@ LogBlock::LogBlock(LogBlockContainer* container, BlockId block_id,
   DCHECK_GE(offset, 0);
   DCHECK_GE(length, 0);
 
-  container_->ConsumeMemory(kudu_malloc_usable_size(this));
+  container_->ConsumeMemory(yb_malloc_usable_size(this));
 }
 
 static void DeleteBlockAsync(LogBlockContainer* container,
@@ -665,7 +665,7 @@ LogBlock::~LogBlock() {
     container_->ExecClosure(Bind(&DeleteBlockAsync, container_, block_id_,
                                  offset_, length_));
   }
-  container_->ReleaseMemory(kudu_malloc_usable_size(this));
+  container_->ReleaseMemory(yb_malloc_usable_size(this));
 }
 
 void LogBlock::Delete() {
@@ -993,7 +993,7 @@ Status LogReadableBlock::Read(uint64_t offset, size_t length,
 }
 
 size_t LogReadableBlock::memory_footprint() const {
-  return kudu_malloc_usable_size(this);
+  return yb_malloc_usable_size(this);
 }
 
 } // namespace internal

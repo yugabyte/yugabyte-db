@@ -43,7 +43,7 @@ TAG_FLAG(webserver_interface, advanced);
 
 DEFINE_string(webserver_doc_root, yb::GetDefaultDocumentRoot(),
     "Files under <webserver_doc_root> are accessible via the debug webserver. "
-    "Defaults to $KUDU_HOME/www, or if $KUDU_HOME is not set, disables the document "
+    "Defaults to $YB_HOME/www, or if $YB_HOME is not set, disables the document "
     "root");
 TAG_FLAG(webserver_doc_root, advanced);
 
@@ -71,11 +71,11 @@ TAG_FLAG(webserver_port, stable);
 
 namespace yb {
 
-// Returns KUDU_HOME if set, otherwise we won't serve any static files.
+// Returns YB_HOME if set, otherwise we won't serve any static files.
 static string GetDefaultDocumentRoot() {
-  char* kudu_home = getenv("KUDU_HOME");
+  char* yb_home = getenv("YB_HOME");
   // Empty document root means don't serve static files
-  return kudu_home ? strings::Substitute("$0/www", kudu_home) : "";
+  return yb_home ? strings::Substitute("$0/www", yb_home) : "";
 }
 
 WebserverOptions::WebserverOptions()

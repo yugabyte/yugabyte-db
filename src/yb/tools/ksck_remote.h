@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TOOLS_KSCK_REMOTE_H
-#define KUDU_TOOLS_KSCK_REMOTE_H
+#ifndef YB_TOOLS_KSCK_REMOTE_H
+#define YB_TOOLS_KSCK_REMOTE_H
 
 #include <memory>
 #include <string>
@@ -113,4 +113,4 @@ class RemoteKsckMaster : public KsckMaster {
 } // namespace tools
 } // namespace yb
 
-#endif // KUDU_TOOLS_KSCK_REMOTE_H
+#endif // YB_TOOLS_KSCK_REMOTE_H

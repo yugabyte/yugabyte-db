@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_SCHEMA_INTERNAL_H
-#define KUDU_CLIENT_SCHEMA_INTERNAL_H
+#ifndef YB_CLIENT_SCHEMA_INTERNAL_H
+#define YB_CLIENT_SCHEMA_INTERNAL_H
 
 #include <string>
 
@@ -95,4 +95,4 @@ class KuduColumnSpec::Data {
 
 } // namespace client
 } // namespace yb
-#endif // KUDU_CLIENT_SCHEMA_INTERNAL_H
+#endif // YB_CLIENT_SCHEMA_INTERNAL_H

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// Test protocol for kudu RPC.
+// Test protocol for yb RPC.
 package yb.rpc_test;
 
 import "yb/rpc/rpc_header.proto";

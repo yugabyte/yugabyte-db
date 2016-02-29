@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_FS_BLOCK_MANAGER_METRICS_H
-#define KUDU_FS_BLOCK_MANAGER_METRICS_H
+#ifndef YB_FS_BLOCK_MANAGER_METRICS_H
+#define YB_FS_BLOCK_MANAGER_METRICS_H
 
 #include <stdint.h>
 
@@ -47,4 +47,4 @@ struct BlockManagerMetrics {
 } // namespace fs
 } // namespace yb
 
-#endif // KUDU_FS_BLOCK_MANAGER_METRICS_H
+#endif // YB_FS_BLOCK_MANAGER_METRICS_H

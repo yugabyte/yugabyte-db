@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_SCAN_PREDICATE_H
-#define KUDU_COMMON_SCAN_PREDICATE_H
+#ifndef YB_COMMON_SCAN_PREDICATE_H
+#define YB_COMMON_SCAN_PREDICATE_H
 
 #include <string>
 

@@ -17,8 +17,8 @@
 //
 // Ksck, a tool to run a Kudu System Check.
 
-#ifndef KUDU_TOOLS_KSCK_H
-#define KUDU_TOOLS_KSCK_H
+#ifndef YB_TOOLS_KSCK_H
+#define YB_TOOLS_KSCK_H
 
 #include <memory>
 #include <string>
@@ -308,4 +308,4 @@ class Ksck {
 } // namespace tools
 } // namespace yb
 
-#endif // KUDU_TOOLS_KSCK_H
+#endif // YB_TOOLS_KSCK_H

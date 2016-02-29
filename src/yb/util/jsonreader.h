@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_JSONREADER_H_
-#define KUDU_UTIL_JSONREADER_H_
+#ifndef YB_UTIL_JSONREADER_H_
+#define YB_UTIL_JSONREADER_H_
 
 #include <stdint.h>
 #include <string>
@@ -86,4 +86,4 @@ class JsonReader {
 
 } // namespace yb
 
-#endif // KUDU_UTIL_JSONREADER_H_
+#endif // YB_UTIL_JSONREADER_H_

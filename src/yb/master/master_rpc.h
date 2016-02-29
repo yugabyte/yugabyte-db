@@ -16,8 +16,8 @@
 // under the License.
 //
 // This module is internal to the client and not a public API.
-#ifndef KUDU_MASTER_MASTER_RPC_H
-#define KUDU_MASTER_MASTER_RPC_H
+#ifndef YB_MASTER_MASTER_RPC_H
+#define YB_MASTER_MASTER_RPC_H
 
 #include <vector>
 #include <string>
@@ -73,7 +73,7 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
 //
 // If queries have been made to all of the specified servers, but no
 // leader has been found, we re-try again (with an increasing delay,
-// see: RpcRetrier in kudu/rpc/rpc.{cc,h}) until a specified deadline
+// see: RpcRetrier in yb/rpc/rpc.{cc,h}) until a specified deadline
 // passes or we find a leader.
 //
 // The RPCs are sent in parallel in order to avoid prolonged delays on
@@ -81,7 +81,7 @@ class GetMasterRegistrationRpc : public rpc::Rpc {
 // of the Master servers is slow or stopped (that is, when we have to
 // wait for an RPC request to server N to timeout before we can make
 // an RPC request to server N+1). This allows for true fault tolerance
-// for the Kudu client.
+// for the YB client.
 //
 // The class is reference counted to avoid a "use-after-free"
 // scenario, when responses to the RPC return to the caller _after_ a
@@ -143,4 +143,4 @@ class GetLeaderMasterRpc : public rpc::Rpc,
 } // namespace master
 } // namespace yb
 
-#endif /* KUDU_MASTER_MASTER_RPC_H */
+#endif /* YB_MASTER_MASTER_RPC_H */

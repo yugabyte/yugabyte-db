@@ -17,8 +17,8 @@
 
 #include <stdint.h>
 
-#ifndef KUDU_UTIL_HASH_UTIL_H
-#define KUDU_UTIL_HASH_UTIL_H
+#ifndef YB_UTIL_HASH_UTIL_H
+#define YB_UTIL_HASH_UTIL_H
 
 namespace yb {
 

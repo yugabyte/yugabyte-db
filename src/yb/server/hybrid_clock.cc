@@ -99,7 +99,7 @@ yb::Status GetClockTime(ntptimeval* timeval) {
       return Status::ServiceUnavailable("Error reading clock. Clock considered unsynchronized");
     default:
       // TODO what to do about leap seconds? see KUDU-146
-      KLOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency issues "
+      YB_LOG_FIRST_N(ERROR, 1) << "Server undergoing leap second. This may cause consistency issues "
         << "(rc=" << rc << ")";
       return Status::OK();
   }

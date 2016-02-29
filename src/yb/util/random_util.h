@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_RANDOM_UTIL_H
-#define KUDU_UTIL_RANDOM_UTIL_H
+#ifndef YB_UTIL_RANDOM_UTIL_H
+#define YB_UTIL_RANDOM_UTIL_H
 
 #include <cstdlib>
 #include <stdint.h>
@@ -36,4 +36,4 @@ uint32_t GetRandomSeed32();
 
 } // namespace yb
 
-#endif // KUDU_UTIL_RANDOM_UTIL_H
+#endif // YB_UTIL_RANDOM_UTIL_H

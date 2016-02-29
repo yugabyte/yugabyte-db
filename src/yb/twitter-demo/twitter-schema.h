@@ -16,8 +16,8 @@
 // under the License.
 //
 // Inline functions to create the Twitter schema
-#ifndef KUDU_TWITTER_DEMO_TWITTER_SCHEMA_H
-#define KUDU_TWITTER_DEMO_TWITTER_SCHEMA_H
+#ifndef YB_TWITTER_DEMO_TWITTER_SCHEMA_H
+#define YB_TWITTER_DEMO_TWITTER_SCHEMA_H
 
 #include "yb/client/schema.h"
 

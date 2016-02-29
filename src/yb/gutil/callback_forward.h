@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef KUDU_GUTIL_CALLBACK_FORWARD_H_
-#define KUDU_GUTIL_CALLBACK_FORWARD_H_
+#ifndef YB_GUTIL_CALLBACK_FORWARD_H_
+#define YB_GUTIL_CALLBACK_FORWARD_H_
 
 namespace yb {
 
@@ -14,4 +14,4 @@ typedef Callback<void(void)> Closure;
 
 }  // namespace yb
 
-#endif  // KUDU_GUTIL_CALLBACK_FORWARD_H
+#endif // YB_GUTIL_CALLBACK_FORWARD_H

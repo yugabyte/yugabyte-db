@@ -4,7 +4,7 @@
 
 // This defines a set of argument wrappers and related factory methods that
 // can be used specify the refcounting and reference semantics of arguments
-// that are bound by the Bind() function in kudu/gutil/bind.h.
+// that are bound by the Bind() function in yb/gutil/bind.h.
 //
 // It also defines a set of simple functions and utilities that people want
 // when using Callback<> and Bind().
@@ -140,8 +140,8 @@
 //                        In most cases MessageLoop::DeleteSoon() is a better
 //                        fit.
 
-#ifndef KUDU_GUTIL_BIND_HELPERS_H_
-#define KUDU_GUTIL_BIND_HELPERS_H_
+#ifndef YB_GUTIL_BIND_HELPERS_H_
+#define YB_GUTIL_BIND_HELPERS_H_
 
 #include <assert.h>
 

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_SCAN_PREDICATE_H
-#define KUDU_CLIENT_SCAN_PREDICATE_H
+#ifndef YB_CLIENT_SCAN_PREDICATE_H
+#define YB_CLIENT_SCAN_PREDICATE_H
 
 #ifdef YB_HEADERS_NO_STUBS
 #include "yb/gutil/macros.h"
@@ -60,4 +60,4 @@ class YB_EXPORT KuduPredicate {
 
 } // namespace client
 } // namespace yb
-#endif // KUDU_CLIENT_SCAN_PREDICATE_H
+#endif // YB_CLIENT_SCAN_PREDICATE_H

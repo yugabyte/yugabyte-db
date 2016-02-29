@@ -19,7 +19,7 @@
 //
 // Utilities for working with protobufs.
 // Some of this code is cribbed from the protobuf source,
-// but modified to work with kudu's 'faststring' instead of STL strings.
+// but modified to work with yb's 'faststring' instead of STL strings.
 
 #include "yb/util/pb_util.h"
 
@@ -87,7 +87,7 @@ static const char* const kTmpTemplateSuffix = ".tmp.XXXXXX";
 
 // Protobuf container constants.
 static const int kPBContainerVersion = 1;
-static const char kPBContainerMagic[] = "kuducntr";
+static const char kPBContainerMagic[] = "yugacntr";
 static const int kPBContainerMagicLen = 8;
 static const int kPBContainerHeaderLen =
     // magic number + version

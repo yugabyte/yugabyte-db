@@ -25,14 +25,14 @@ const int IdMapping::kNoEntry = -1;
 
 size_t IdMapping::memory_footprint_excluding_this() const {
   if (entries_.capacity() > 0) {
-    return kudu_malloc_usable_size(entries_.data());
+    return yb_malloc_usable_size(entries_.data());
   } else {
     return 0;
   }
 }
 
 size_t IdMapping::memory_footprint_including_this() const {
-  return kudu_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
 } // namespace yb

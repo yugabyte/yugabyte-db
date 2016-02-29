@@ -33,8 +33,8 @@
 // BShufBuilder/Decoder is ok.
 //
 //
-#ifndef KUDU_CFILE_BINARY_DICT_BLOCK_H
-#define KUDU_CFILE_BINARY_DICT_BLOCK_H
+#ifndef YB_CFILE_BINARY_DICT_BLOCK_H
+#define YB_CFILE_BINARY_DICT_BLOCK_H
 
 #include <string>
 #include <unordered_map>
@@ -169,4 +169,4 @@ class BinaryDictBlockDecoder : public BlockDecoder {
 MAKE_ENUM_LIMITS(yb::cfile::DictEncodingMode, yb::cfile::DictEncodingMode_min,
                  yb::cfile::DictEncodingMode_max);
 
-#endif // KUDU_CFILE_BINARY_DICT_BLOCK_H
+#endif // YB_CFILE_BINARY_DICT_BLOCK_H

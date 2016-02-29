@@ -18,7 +18,7 @@
 # under the License.
 #
 # Tests that the dynamic symbols visible in the public client library
-# (i.e. those available for runtime linking) are all approved Kudu symbols.
+# (i.e. those available for runtime linking) are all approved YB symbols.
 
 NM=`which nm`
 if [ -n $NM ]; then
@@ -36,9 +36,9 @@ fi
 
 LIB=$(dirname "$BASH_SOURCE")/../lib/exported/libyb_client.$DYLIB_SUFFIX
 if [ -r $LIB ]; then
-  echo "Found kudu client library: $LIB"
+  echo "Found YB client library: $LIB"
 else
-  echo "Can't read kudu client library at $LIB"
+  echo "Can't read YB client library at $LIB"
   exit 1
 fi
 
@@ -62,9 +62,9 @@ while read ADDR TYPE SYMBOL; do
     continue
   fi
 
-  # Skip Kudu symbols. Using [[ ]] for regex support.
+  # Skip YB symbols. Using [[ ]] for regex support.
   if [[ "$SYMBOL" =~ ^yb:: ]]; then
-    echo "Skipping kudu symbol '$SYMBOL'"
+    echo "Skipping YB symbol '$SYMBOL'"
     continue;
   fi
 
@@ -80,7 +80,7 @@ while read ADDR TYPE SYMBOL; do
 done < <($NM_COMMAND)
 
 if [ $NUM_BAD_SYMS -gt 0 ]; then
-  echo "Kudu client library contains $NUM_BAD_SYMS bad symbols"
+  echo "YB client library contains $NUM_BAD_SYMS bad symbols"
   exit 1
 fi
 

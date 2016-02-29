@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_SASL_HELPER_H
-#define KUDU_RPC_SASL_HELPER_H
+#ifndef YB_RPC_SASL_HELPER_H
+#define YB_RPC_SASL_HELPER_H
 
 #include <set>
 #include <string>
@@ -129,4 +129,4 @@ class SaslHelper {
 } // namespace rpc
 } // namespace yb
 
-#endif  // KUDU_RPC_SASL_HELPER_H
+#endif // YB_RPC_SASL_HELPER_H

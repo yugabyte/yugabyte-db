@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_COMMON_TYPES_H
-#define KUDU_COMMON_TYPES_H
+#ifndef YB_COMMON_TYPES_H
+#define YB_COMMON_TYPES_H
 
 #include <glog/logging.h>
 

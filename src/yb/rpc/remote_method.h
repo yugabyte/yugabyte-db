@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_RPC_REMOTE_METHOD_H_
-#define KUDU_RPC_REMOTE_METHOD_H_
+#ifndef YB_RPC_REMOTE_METHOD_H_
+#define YB_RPC_REMOTE_METHOD_H_
 
 #include <string>
 
@@ -48,4 +48,4 @@ class RemoteMethod {
 } // namespace rpc
 } // namespace yb
 
-#endif // KUDU_RPC_REMOTE_METHOD_H_
+#endif // YB_RPC_REMOTE_METHOD_H_

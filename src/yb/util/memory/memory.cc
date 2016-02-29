@@ -165,7 +165,7 @@ void HeapBufferAllocator::FreeInternal(Buffer* buffer) {
 void* HeapBufferAllocator::Malloc(size_t size) {
   if (aligned_mode_) {
     void* data;
-    if (posix_memalign(&data, 16, KUDU_ALIGN_UP(size, 16))) {
+    if (posix_memalign(&data, 16, YB_ALIGN_UP(size, 16))) {
        return nullptr;
     }
     return data;

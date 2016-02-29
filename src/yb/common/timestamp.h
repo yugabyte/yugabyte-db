@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_COMMON_TIMESTAMP_H_
-#define KUDU_COMMON_TIMESTAMP_H_
+#ifndef YB_COMMON_TIMESTAMP_H_
+#define YB_COMMON_TIMESTAMP_H_
 
 #include <inttypes.h>
 #include <string>
@@ -94,4 +94,4 @@ inline int Timestamp::CompareTo(const Timestamp &other) const {
 
 } // namespace yb
 
-#endif /* KUDU_COMMON_TIMESTAMP_H_ */
+#endif /* YB_COMMON_TIMESTAMP_H_ */

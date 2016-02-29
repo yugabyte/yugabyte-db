@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TSERVER_TS_TABLET_MANAGER_H
-#define KUDU_TSERVER_TS_TABLET_MANAGER_H
+#ifndef YB_TSERVER_TS_TABLET_MANAGER_H
+#define YB_TSERVER_TS_TABLET_MANAGER_H
 
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/thread/locks.hpp>
@@ -363,4 +363,4 @@ class TransitionInProgressDeleter : public RefCountedThreadSafe<TransitionInProg
 
 } // namespace tserver
 } // namespace yb
-#endif /* KUDU_TSERVER_TS_TABLET_MANAGER_H */
+#endif /* YB_TSERVER_TS_TABLET_MANAGER_H */

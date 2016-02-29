@@ -35,8 +35,8 @@
 // - The leaf nodes are linked together with a "next" pointer. This makes
 //   scanning simpler (the Masstree implementation avoids this because it
 //   complicates the removal operation)
-#ifndef KUDU_TABLET_CONCURRENT_BTREE_H
-#define KUDU_TABLET_CONCURRENT_BTREE_H
+#ifndef YB_TABLET_CONCURRENT_BTREE_H
+#define YB_TABLET_CONCURRENT_BTREE_H
 
 #include <algorithm>
 #include <boost/smart_ptr/detail/yield_k.hpp>

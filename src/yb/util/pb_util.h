@@ -18,8 +18,8 @@
 // Utilities for dealing with protocol buffers.
 // These are mostly just functions similar to what are found in the protobuf
 // library itself, but using yb::faststring instances instead of STL strings.
-#ifndef KUDU_UTIL_PB_UTIL_H
-#define KUDU_UTIL_PB_UTIL_H
+#ifndef YB_UTIL_PB_UTIL_H
+#define YB_UTIL_PB_UTIL_H
 
 #include <string>
 

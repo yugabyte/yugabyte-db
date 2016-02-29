@@ -98,7 +98,7 @@ fi
 
 # Start master+ts
 export TMPDIR=${TMPDIR:-/tmp}
-export TEST_TMPDIR=${TEST_TMPDIR:-$TMPDIR/kudutest-$UID}
+export TEST_TMPDIR=${TEST_TMPDIR:-$TMPDIR/ybtest-$UID}
 mkdir -p $TEST_TMPDIR
 BASE_DIR=$(mktemp -d $TEST_TMPDIR/client_samples-test.XXXXXXXX)
 $OUTPUT_DIR/yb-master \

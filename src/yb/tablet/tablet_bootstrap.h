@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_TABLET_BOOTSTRAP_H_
-#define KUDU_TABLET_TABLET_BOOTSTRAP_H_
+#ifndef YB_TABLET_TABLET_BOOTSTRAP_H_
+#define YB_TABLET_TABLET_BOOTSTRAP_H_
 
 #include <boost/thread/shared_mutex.hpp>
 #include <memory>
@@ -104,4 +104,4 @@ Status BootstrapTablet(const scoped_refptr<TabletMetadata>& meta,
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* KUDU_TABLET_TABLET_BOOTSTRAP_H_ */
+#endif /* YB_TABLET_TABLET_BOOTSTRAP_H_ */

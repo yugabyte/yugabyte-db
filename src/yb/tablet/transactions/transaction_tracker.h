@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TABLET_TRANSACTION_TRACKER_H_
-#define KUDU_TABLET_TRANSACTION_TRACKER_H_
+#ifndef YB_TABLET_TRANSACTION_TRACKER_H_
+#define YB_TABLET_TRANSACTION_TRACKER_H_
 
 #include <memory>
 #include <string>
@@ -113,4 +113,4 @@ class TransactionTracker {
 }  // namespace tablet
 }  // namespace yb
 
-#endif // KUDU_TABLET_TRANSACTION_TRACKER_H_
+#endif // YB_TABLET_TRANSACTION_TRACKER_H_

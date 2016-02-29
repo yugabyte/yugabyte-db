@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CODEGEN_CODE_GENERATOR_H
-#define KUDU_CODEGEN_CODE_GENERATOR_H
+#ifndef YB_CODEGEN_CODE_GENERATOR_H
+#define YB_CODEGEN_CODE_GENERATOR_H
 
 #include "yb/codegen/row_projector.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -58,7 +58,7 @@ class RowProjectorFunctions;
 // codegen'd functions concurrently.
 //
 // Code generation may be disabled globally at compile time by defining
-// the preprocessor macro KUDU_DISABLE_CODEGEN.
+// the preprocessor macro YB_DISABLE_CODEGEN.
 class CodeGenerator {
  public:
   // The constructor makes all the appropriate static LLVM initialization

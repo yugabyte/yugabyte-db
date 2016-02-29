@@ -16,8 +16,8 @@
 // under the License.
 //
 // Utility functions which are handy when doing async/callback-based programming.
-#ifndef KUDU_UTIL_ASYNC_UTIL_H
-#define KUDU_UTIL_ASYNC_UTIL_H
+#ifndef YB_UTIL_ASYNC_UTIL_H
+#define YB_UTIL_ASYNC_UTIL_H
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/macros.h"
@@ -69,4 +69,4 @@ class Synchronizer {
 };
 
 } // namespace yb
-#endif /* KUDU_UTIL_ASYNC_UTIL_H */
+#endif /* YB_UTIL_ASYNC_UTIL_H */

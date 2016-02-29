@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_RPC_RPC_SIDECAR_H
-#define KUDU_RPC_RPC_SIDECAR_H
+#ifndef YB_RPC_RPC_SIDECAR_H
+#define YB_RPC_RPC_SIDECAR_H
 
 #include "yb/gutil/gscoped_ptr.h"
 #include "yb/util/faststring.h"
@@ -67,4 +67,4 @@ class RpcSidecar {
 } // namespace yb
 
 
-#endif /* KUDU_RPC_RPC_SIDECAR_H */
+#endif /* YB_RPC_RPC_SIDECAR_H */

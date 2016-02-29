@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_FS_FILE_BLOCK_MANAGER_H
-#define KUDU_FS_FILE_BLOCK_MANAGER_H
+#ifndef YB_FS_FILE_BLOCK_MANAGER_H
+#define YB_FS_FILE_BLOCK_MANAGER_H
 
 #include <map>
 #include <memory>

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CONSENSUS_LOG_CACHE_H
-#define KUDU_CONSENSUS_LOG_CACHE_H
+#ifndef YB_CONSENSUS_LOG_CACHE_H
+#define YB_CONSENSUS_LOG_CACHE_H
 
 #include <map>
 #include <memory>
@@ -214,4 +214,4 @@ class LogCache {
 
 } // namespace consensus
 } // namespace yb
-#endif /* KUDU_CONSENSUS_LOG_CACHE_H */
+#endif /* YB_CONSENSUS_LOG_CACHE_H */

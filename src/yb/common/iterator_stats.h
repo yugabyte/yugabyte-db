@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_ITERATOR_STATS_H
-#define KUDU_COMMON_ITERATOR_STATS_H
+#ifndef YB_COMMON_ITERATOR_STATS_H
+#define YB_COMMON_ITERATOR_STATS_H
 
 #include <stdint.h>
 #include <string>

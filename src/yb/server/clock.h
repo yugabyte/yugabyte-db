@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_SERVER_CLOCK_H_
-#define KUDU_SERVER_CLOCK_H_
+#ifndef YB_SERVER_CLOCK_H_
+#define YB_SERVER_CLOCK_H_
 
 #include <string>
 
@@ -99,4 +99,4 @@ class Clock : public RefCountedThreadSafe<Clock> {
 } // namespace server
 } // namespace yb
 
-#endif /* KUDU_SERVER_CLOCK_H_ */
+#endif /* YB_SERVER_CLOCK_H_ */

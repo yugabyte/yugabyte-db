@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CONSENSUS_LOG_UTIL_H_
-#define KUDU_CONSENSUS_LOG_UTIL_H_
+#ifndef YB_CONSENSUS_LOG_UTIL_H_
+#define YB_CONSENSUS_LOG_UTIL_H_
 
 #include <gtest/gtest.h>
 #include <iosfwd>
@@ -394,4 +394,4 @@ bool IsLogFileName(const std::string& fname);
 }  // namespace log
 }  // namespace yb
 
-#endif /* KUDU_CONSENSUS_LOG_UTIL_H_ */
+#endif /* YB_CONSENSUS_LOG_UTIL_H_ */

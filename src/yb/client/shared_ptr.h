@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CLIENT_SHARED_PTR_H
-#define KUDU_CLIENT_SHARED_PTR_H
+#ifndef YB_CLIENT_SHARED_PTR_H
+#define YB_CLIENT_SHARED_PTR_H
 
 // Kudu uses c++11 features internally, but provides a client interface which
 // does not require c++11. We use std::tr1::shared_ptr in our public interface
@@ -60,4 +60,4 @@ namespace sp {
 }
 #endif
 
-#endif // define KUDU_CLIENT_SHARED_PTR_H
+#endif // YB_CLIENT_SHARED_PTR_H

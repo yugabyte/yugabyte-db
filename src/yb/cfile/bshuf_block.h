@@ -20,8 +20,8 @@
 //                      UINT32, INT32, FLOAT, DOUBLE.
 // Reference:
 // https://github.com/kiyo-masui/bitshuffle.git
-#ifndef KUDU_CFILE_BSHUF_BLOCK_H
-#define KUDU_CFILE_BSHUF_BLOCK_H
+#ifndef YB_CFILE_BSHUF_BLOCK_H
+#define YB_CFILE_BSHUF_BLOCK_H
 
 #include <algorithm>
 #include <stdint.h>
@@ -321,7 +321,7 @@ class BShufBlockDecoder : public BlockDecoder {
   // Return the number of padding elements needed to ensure that the
   // number of elements is a multiple of 8.
   uint32_t NumOfPaddingNeeded() const {
-    return KUDU_ALIGN_UP(num_elems_, 8) - num_elems_;
+    return YB_ALIGN_UP(num_elems_, 8) - num_elems_;
   }
 
   Status Expand() {

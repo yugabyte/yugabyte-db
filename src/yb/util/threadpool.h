@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_THREAD_POOL_H
-#define KUDU_UTIL_THREAD_POOL_H
+#ifndef YB_UTIL_THREAD_POOL_H
+#define YB_UTIL_THREAD_POOL_H
 
 #include <boost/function.hpp>
 #include <gtest/gtest_prod.h>
@@ -128,7 +128,7 @@ class ThreadPool {
   //       require an explicit "abort" notification to exit from the run loop.
   void Shutdown();
 
-  // Submit a function using the kudu Closure system.
+  // Submit a function using the yb Closure system.
   Status SubmitClosure(const Closure& task) WARN_UNUSED_RESULT;
 
   // Submit a function binded using boost::bind(&FuncName, args...)

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_ACCEPTOR_POOL_H
-#define KUDU_RPC_ACCEPTOR_POOL_H
+#ifndef YB_RPC_ACCEPTOR_POOL_H
+#define YB_RPC_ACCEPTOR_POOL_H
 
 #include <vector>
 

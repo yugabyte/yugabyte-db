@@ -93,7 +93,7 @@ namespace {
 // Returns Status::OK() if codegen is not disabled and an error status indicating
 // that codegen has been disabled otherwise.
 Status CheckCodegenEnabled() {
-#ifdef KUDU_DISABLE_CODEGEN
+#ifdef YB_DISABLE_CODEGEN
   return Status::NotSupported("Code generation has been disabled at compile time.");
 #else
   return Status::OK();

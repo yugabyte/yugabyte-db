@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_SCAN_PREDICATE_INTERNAL_H
-#define KUDU_CLIENT_SCAN_PREDICATE_INTERNAL_H
+#ifndef YB_CLIENT_SCAN_PREDICATE_INTERNAL_H
+#define YB_CLIENT_SCAN_PREDICATE_INTERNAL_H
 
 #include "yb/client/value.h"
 #include "yb/client/value-internal.h"
@@ -91,4 +91,4 @@ class ComparisonPredicateData : public KuduPredicate::Data {
 
 } // namespace client
 } // namespace yb
-#endif /* KUDU_CLIENT_SCAN_PREDICATE_INTERNAL_H */
+#endif /* YB_CLIENT_SCAN_PREDICATE_INTERNAL_H */

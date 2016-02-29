@@ -16,8 +16,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_SCHEMA_H
-#define KUDU_CLIENT_SCHEMA_H
+#ifndef YB_CLIENT_SCHEMA_H
+#define YB_CLIENT_SCHEMA_H
 
 #include <string>
 #include <vector>
@@ -335,7 +335,7 @@ class YB_EXPORT KuduSchema {
   friend KuduSchema KuduSchemaFromSchema(const Schema& schema);
 
 
-  // For use by kudu tests.
+  // For use by yb tests.
   explicit KuduSchema(const Schema& schema);
 
   // Private since we don't want users to rely on the first N columns
@@ -348,4 +348,4 @@ class YB_EXPORT KuduSchema {
 
 } // namespace client
 } // namespace yb
-#endif // KUDU_CLIENT_SCHEMA_H
+#endif // YB_CLIENT_SCHEMA_H

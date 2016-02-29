@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_METADATA_H
-#define KUDU_TABLET_METADATA_H
+#ifndef YB_TABLET_METADATA_H
+#define YB_TABLET_METADATA_H
 
 // This header left around temporarily to make people's lives
 // easier after a refactor. We should clean this up and change

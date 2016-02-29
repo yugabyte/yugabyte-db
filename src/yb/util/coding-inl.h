@@ -21,8 +21,8 @@
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
-#ifndef KUDU_UTIL_CODING_INL_H
-#define KUDU_UTIL_CODING_INL_H
+#ifndef YB_UTIL_CODING_INL_H
+#define YB_UTIL_CODING_INL_H
 
 #include <stdint.h>
 #include <string.h>

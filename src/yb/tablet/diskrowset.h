@@ -15,12 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 //
-// A DiskRowSet is a horizontal slice of a Kudu tablet.
+// A DiskRowSet is a horizontal slice of a YB tablet.
 // Each DiskRowSet contains data for a a disjoint set of keys.
-// See src/kudu/tablet/README for a detailed description.
+// See src/yb/tablet/README for a detailed description.
 
-#ifndef KUDU_TABLET_DISKROWSET_H_
-#define KUDU_TABLET_DISKROWSET_H_
+#ifndef YB_TABLET_DISKROWSET_H_
+#define YB_TABLET_DISKROWSET_H_
 
 #include <boost/thread/mutex.hpp>
 #include <gtest/gtest_prod.h>
@@ -410,4 +410,4 @@ class DiskRowSet : public RowSet {
 } // namespace tablet
 } // namespace yb
 
-#endif // KUDU_TABLET_DISKROWSET_H_
+#endif // YB_TABLET_DISKROWSET_H_

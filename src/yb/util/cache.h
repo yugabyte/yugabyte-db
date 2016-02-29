@@ -10,13 +10,13 @@
 // length strings, may use the length of the string as the charge for
 // the string.
 //
-// This is taken from LevelDB and evolved to fit the kudu codebase.
+// This is taken from LevelDB and evolved to fit the yb codebase.
 //
 // TODO: this is pretty lock-heavy. Would be good to sub out something
 // a little more concurrent.
 
-#ifndef KUDU_UTIL_CACHE_H_
-#define KUDU_UTIL_CACHE_H_
+#ifndef YB_UTIL_CACHE_H_
+#define YB_UTIL_CACHE_H_
 
 #include <stdint.h>
 #include <string>

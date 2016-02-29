@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TPCH_LINE_ITEM_TSV_IMPORTER_H
-#define KUDU_TPCH_LINE_ITEM_TSV_IMPORTER_H
+#ifndef YB_TPCH_LINE_ITEM_TSV_IMPORTER_H
+#define YB_TPCH_LINE_ITEM_TSV_IMPORTER_H
 
 #include <iostream>
 #include <fstream>

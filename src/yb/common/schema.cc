@@ -72,7 +72,7 @@ size_t ColumnSchema::memory_footprint_excluding_this() const {
 }
 
 size_t ColumnSchema::memory_footprint_including_this() const {
-  return kudu_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
 Schema::Schema(const Schema& other)
@@ -355,13 +355,13 @@ size_t Schema::memory_footprint_excluding_this() const {
   }
 
   if (cols_.capacity() > 0) {
-    size += kudu_malloc_usable_size(cols_.data());
+    size += yb_malloc_usable_size(cols_.data());
   }
   if (col_ids_.capacity() > 0) {
-    size += kudu_malloc_usable_size(col_ids_.data());
+    size += yb_malloc_usable_size(col_ids_.data());
   }
   if (col_offsets_.capacity() > 0) {
-    size += kudu_malloc_usable_size(col_offsets_.data());
+    size += yb_malloc_usable_size(col_offsets_.data());
   }
   size += name_to_index_bytes_;
   size += id_to_index_.memory_footprint_excluding_this();
@@ -370,7 +370,7 @@ size_t Schema::memory_footprint_excluding_this() const {
 }
 
 size_t Schema::memory_footprint_including_this() const {
-  return kudu_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
 // ============================================================================

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_COMMON_KEYENCODER_H
-#define KUDU_COMMON_KEYENCODER_H
+#ifndef YB_COMMON_KEYENCODER_H
+#define YB_COMMON_KEYENCODER_H
 
 #include <arpa/inet.h>
 #include <climits>

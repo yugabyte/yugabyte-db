@@ -36,7 +36,7 @@ size_t percpu_rwlock::memory_footprint_excluding_this() const {
 }
 
 size_t percpu_rwlock::memory_footprint_including_this() const {
-  return kudu_malloc_usable_size(this) + memory_footprint_excluding_this();
+  return yb_malloc_usable_size(this) + memory_footprint_excluding_this();
 }
 
 } // namespace yb

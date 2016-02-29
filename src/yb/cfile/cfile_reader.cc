@@ -443,7 +443,7 @@ Status CFileReader::NewIterator(CFileIterator **iter, CacheControl cache_control
 }
 
 size_t CFileReader::memory_footprint() const {
-  size_t size = kudu_malloc_usable_size(this);
+  size_t size = yb_malloc_usable_size(this);
   size += block_->memory_footprint();
   size += init_once_.memory_footprint_excluding_this();
 
@@ -457,7 +457,7 @@ size_t CFileReader::memory_footprint() const {
     size += footer_->SpaceUsed();
   }
   if (block_uncompressor_) {
-    size += kudu_malloc_usable_size(block_uncompressor_.get());
+    size += yb_malloc_usable_size(block_uncompressor_.get());
   }
   return size;
 }

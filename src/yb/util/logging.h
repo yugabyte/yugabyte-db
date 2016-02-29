@@ -26,8 +26,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef KUDU_UTIL_LOGGING_H
-#define KUDU_UTIL_LOGGING_H
+#ifndef YB_UTIL_LOGGING_H
+#define YB_UTIL_LOGGING_H
 
 #include <string>
 #include <glog/logging.h>
@@ -48,8 +48,8 @@
 // to either an empty string or '[suppressed <n> similar messages]'.
 //
 // Example usage:
-//   KLOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
-#define KLOG_EVERY_N_SECS(severity, n_secs) \
+//   YB_LOG_EVERY_N_SECS(WARNING, 1) << "server is low on memory" << THROTTLE_MSG;
+#define YB_LOG_EVERY_N_SECS(severity, n_secs) \
   static logging_internal::LogThrottler LOG_THROTTLER;  \
   int num_suppressed = 0; \
   if (LOG_THROTTLER.ShouldLog(n_secs, &num_suppressed)) \
@@ -67,7 +67,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
 ////////////////////////////////////////////////////////////////////////////////
 
 // The "base" macros.
-#define KUDU_SOME_KIND_OF_LOG_EVERY_N(severity, n, what_to_do) \
+#define YB_SOME_KIND_OF_LOG_EVERY_N(severity, n, what_to_do) \
   static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
@@ -78,7 +78,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
         __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
         &what_to_do).stream()
 
-#define KUDU_SOME_KIND_OF_LOG_IF_EVERY_N(severity, condition, n, what_to_do) \
+#define YB_SOME_KIND_OF_LOG_IF_EVERY_N(severity, condition, n, what_to_do) \
   static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
@@ -89,7 +89,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
         __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
                  &what_to_do).stream()
 
-#define KUDU_SOME_KIND_OF_PLOG_EVERY_N(severity, n, what_to_do) \
+#define YB_SOME_KIND_OF_PLOG_EVERY_N(severity, n, what_to_do) \
   static int LOG_OCCURRENCES = 0, LOG_OCCURRENCES_MOD_N = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging every N is approximate"); \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES_MOD_N, "Logging every N is approximate"); \
@@ -100,7 +100,7 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
         __FILE__, __LINE__, google::GLOG_ ## severity, LOG_OCCURRENCES, \
         &what_to_do).stream()
 
-#define KUDU_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
+#define YB_SOME_KIND_OF_LOG_FIRST_N(severity, n, what_to_do) \
   static uint64_t LOG_OCCURRENCES = 0; \
   ANNOTATE_BENIGN_RACE(&LOG_OCCURRENCES, "Logging the first N is approximate"); \
   if (LOG_OCCURRENCES++ < n) \
@@ -109,44 +109,44 @@ enum PRIVATE_ThrottleMsg {THROTTLE_MSG};
       &what_to_do).stream()
 
 // The direct user-facing macros.
-#define KLOG_EVERY_N(severity, n) \
+#define YB_LOG_EVERY_N(severity, n) \
   GOOGLE_GLOG_COMPILE_ASSERT(google::GLOG_ ## severity < \
                              google::NUM_SEVERITIES, \
                              INVALID_REQUESTED_LOG_SEVERITY); \
-  KUDU_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
+  YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
 
-#define KSYSLOG_EVERY_N(severity, n) \
-  KUDU_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToSyslogAndLog)
+#define YB_SYSLOG_EVERY_N(severity, n) \
+  YB_SOME_KIND_OF_LOG_EVERY_N(severity, (n), google::LogMessage::SendToSyslogAndLog)
 
-#define KPLOG_EVERY_N(severity, n) \
-  KUDU_SOME_KIND_OF_PLOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
+#define YB_PLOG_EVERY_N(severity, n) \
+  YB_SOME_KIND_OF_PLOG_EVERY_N(severity, (n), google::LogMessage::SendToLog)
 
-#define KLOG_FIRST_N(severity, n) \
-  KUDU_SOME_KIND_OF_LOG_FIRST_N(severity, (n), google::LogMessage::SendToLog)
+#define YB_LOG_FIRST_N(severity, n) \
+  YB_SOME_KIND_OF_LOG_FIRST_N(severity, (n), google::LogMessage::SendToLog)
 
-#define KLOG_IF_EVERY_N(severity, condition, n) \
-  KUDU_SOME_KIND_OF_LOG_IF_EVERY_N(severity, (condition), (n), google::LogMessage::SendToLog)
+#define YB_LOG_IF_EVERY_N(severity, condition, n) \
+  YB_SOME_KIND_OF_LOG_IF_EVERY_N(severity, (condition), (n), google::LogMessage::SendToLog)
 
 // We also disable the un-annotated glog macros for anyone who includes this header.
 #undef LOG_EVERY_N
 #define LOG_EVERY_N(severity, n) \
-  GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_EVERY_N is deprecated. Please use KLOG_EVERY_N.")
+  GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_EVERY_N is deprecated. Please use YB_LOG_EVERY_N.")
 
 #undef SYSLOG_EVERY_N
 #define SYSLOG_EVERY_N(severity, n) \
-  GOOGLE_GLOG_COMPILE_ASSERT(false, "SYSLOG_EVERY_N is deprecated. Please use KSYSLOG_EVERY_N.")
+  GOOGLE_GLOG_COMPILE_ASSERT(false, "SYSLOG_EVERY_N is deprecated. Please use YB_SYSLOG_EVERY_N.")
 
 #undef PLOG_EVERY_N
 #define PLOG_EVERY_N(severity, n) \
-  GOOGLE_GLOG_COMPILE_ASSERT(false, "PLOG_EVERY_N is deprecated. Please use KPLOG_EVERY_N.")
+  GOOGLE_GLOG_COMPILE_ASSERT(false, "PLOG_EVERY_N is deprecated. Please use YB_PLOG_EVERY_N.")
 
 #undef LOG_FIRST_N
 #define LOG_FIRST_N(severity, n) \
-  GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_FIRST_N is deprecated. Please use KLOG_FIRST_N.")
+  GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_FIRST_N is deprecated. Please use YB_LOG_FIRST_N.")
 
 #undef LOG_IF_EVERY_N
 #define LOG_IF_EVERY_N(severity, condition, n) \
-  GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_IF_EVERY_N is deprecated. Please use KLOG_IF_EVERY_N.")
+  GOOGLE_GLOG_COMPILE_ASSERT(false, "LOG_IF_EVERY_N is deprecated. Please use YB_LOG_IF_EVERY_N.")
 
 
 
@@ -232,4 +232,4 @@ std::ostream& operator<<(std::ostream &os, const PRIVATE_ThrottleMsg&);
 
 } // namespace yb
 
-#endif // KUDU_UTIL_LOGGING_H
+#endif // YB_UTIL_LOGGING_H

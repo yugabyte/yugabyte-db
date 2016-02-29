@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_LAYER_TEST_BASE_H
-#define KUDU_TABLET_LAYER_TEST_BASE_H
+#ifndef YB_TABLET_LAYER_TEST_BASE_H
+#define YB_TABLET_LAYER_TEST_BASE_H
 
 #include <glog/logging.h>
 #include <gtest/gtest.h>
@@ -289,7 +289,7 @@ class TestRowSet : public KuduRowSetTest {
       i += dst.nrows();
 
       if (do_log) {
-        KLOG_EVERY_N(INFO, log_interval) << "Got row: " << schema.DebugRow(dst.row(0));
+        YB_LOG_EVERY_N(INFO, log_interval) << "Got row: " << schema.DebugRow(dst.row(0));
       }
     }
 

@@ -16,8 +16,8 @@
 // under the License.
 //
 // Inline functions to create the TPC-H schemas
-#ifndef KUDU_BENCHMARKS_TPCH_SCHEMAS_H
-#define KUDU_BENCHMARKS_TPCH_SCHEMAS_H
+#ifndef YB_BENCHMARKS_TPCH_SCHEMAS_H
+#define YB_BENCHMARKS_TPCH_SCHEMAS_H
 
 #include <string>
 #include <vector>

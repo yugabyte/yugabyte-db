@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_RLE_BLOCK_H
-#define KUDU_CFILE_RLE_BLOCK_H
+#ifndef YB_CFILE_RLE_BLOCK_H
+#define YB_CFILE_RLE_BLOCK_H
 
 #include <algorithm>
 #include <string>

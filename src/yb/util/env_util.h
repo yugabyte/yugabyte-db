@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_ENV_UTIL_H
-#define KUDU_UTIL_ENV_UTIL_H
+#ifndef YB_UTIL_ENV_UTIL_H
+#define YB_UTIL_ENV_UTIL_H
 
 #include <memory>
 #include <string>

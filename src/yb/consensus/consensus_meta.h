@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CONSENSUS_CONSENSUS_META_H_
-#define KUDU_CONSENSUS_CONSENSUS_META_H_
+#ifndef YB_CONSENSUS_CONSENSUS_META_H_
+#define YB_CONSENSUS_CONSENSUS_META_H_
 
 #include <stdint.h>
 #include <string>
@@ -171,4 +171,4 @@ class ConsensusMetadata {
 } // namespace consensus
 } // namespace yb
 
-#endif // KUDU_CONSENSUS_CONSENSUS_META_H_
+#endif // YB_CONSENSUS_CONSENSUS_META_H_

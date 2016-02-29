@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_RPC_NEGOTIATION_H
-#define KUDU_RPC_NEGOTIATION_H
+#ifndef YB_RPC_NEGOTIATION_H
+#define YB_RPC_NEGOTIATION_H
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/monotime.h"
@@ -35,4 +35,4 @@ class Negotiation {
 
 } // namespace rpc
 } // namespace yb
-#endif // KUDU_RPC_NEGOTIATION_H
+#endif // YB_RPC_NEGOTIATION_H

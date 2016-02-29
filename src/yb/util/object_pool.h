@@ -17,8 +17,8 @@
 //
 // Simple pool/freelist for objects of the same type, typically used
 // in local context.
-#ifndef KUDU_UTIL_OBJECT_POOL_H
-#define KUDU_UTIL_OBJECT_POOL_H
+#ifndef YB_UTIL_OBJECT_POOL_H
+#define YB_UTIL_OBJECT_POOL_H
 
 #include <glog/logging.h>
 #include <stdint.h>

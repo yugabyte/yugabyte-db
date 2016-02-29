@@ -24,8 +24,8 @@
 // belonging in the MiniCluster / ExternalMiniCluster classes themselves. But
 // consider just putting stuff like that in those classes.
 
-#ifndef KUDU_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
-#define KUDU_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
+#ifndef YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
+#define YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
 
 #include <boost/optional/optional_fwd.hpp>
 #include <memory>
@@ -300,4 +300,4 @@ Status StartRemoteBootstrap(const TServerDetails* ts,
 } // namespace itest
 } // namespace yb
 
-#endif // KUDU_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_
+#endif // YB_INTEGRATION_TESTS_CLUSTER_ITEST_UTIL_H_

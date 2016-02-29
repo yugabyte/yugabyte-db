@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CODEGEN_FUNCTION_BUILDER_H
-#define KUDU_CODEGEN_FUNCTION_BUILDER_H
+#ifndef YB_CODEGEN_FUNCTION_BUILDER_H
+#define YB_CODEGEN_FUNCTION_BUILDER_H
 
 #include <memory>
 #include <string>

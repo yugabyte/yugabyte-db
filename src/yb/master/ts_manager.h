@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_MASTER_TS_MANAGER_H
-#define KUDU_MASTER_TS_MANAGER_H
+#ifndef YB_MASTER_TS_MANAGER_H
+#define YB_MASTER_TS_MANAGER_H
 
 #include <memory>
 #include <string>

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_COUNTDOWN_LATCH_H
-#define KUDU_UTIL_COUNTDOWN_LATCH_H
+#ifndef YB_UTIL_COUNTDOWN_LATCH_H
+#define YB_UTIL_COUNTDOWN_LATCH_H
 
 #include "yb/gutil/macros.h"
 #include "yb/util/condition_variable.h"

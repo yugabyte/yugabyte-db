@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_CFILE_WRITER_H
-#define KUDU_CFILE_CFILE_WRITER_H
+#ifndef YB_CFILE_CFILE_WRITER_H
+#define YB_CFILE_CFILE_WRITER_H
 
 #include <boost/utility.hpp>
 #include <unordered_map>

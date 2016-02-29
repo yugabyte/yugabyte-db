@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_MASTER_CATALOG_MANAGER_H
-#define KUDU_MASTER_CATALOG_MANAGER_H
+#ifndef YB_MASTER_CATALOG_MANAGER_H
+#define YB_MASTER_CATALOG_MANAGER_H
 
 #include <boost/optional/optional_fwd.hpp>
 #include <boost/thread/mutex.hpp>
@@ -673,4 +673,4 @@ class CatalogManager : public tserver::TabletPeerLookupIf {
 
 } // namespace master
 } // namespace yb
-#endif /* KUDU_MASTER_CATALOG_MANAGER_H */
+#endif /* YB_MASTER_CATALOG_MANAGER_H */

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TABLET_MUTATION_H
-#define KUDU_TABLET_MUTATION_H
+#ifndef YB_TABLET_MUTATION_H
+#define YB_TABLET_MUTATION_H
 
 #include <string>
 

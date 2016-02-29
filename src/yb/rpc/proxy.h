@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_PROXY_H
-#define KUDU_RPC_PROXY_H
+#ifndef YB_RPC_PROXY_H
+#define YB_RPC_PROXY_H
 
 #include <memory>
 #include <string>

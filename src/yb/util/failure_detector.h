@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_FAILURE_DETECTOR_H_
-#define KUDU_UTIL_FAILURE_DETECTOR_H_
+#ifndef YB_UTIL_FAILURE_DETECTOR_H_
+#define YB_UTIL_FAILURE_DETECTOR_H_
 
 #include <string>
 #include <unordered_map>
@@ -176,4 +176,4 @@ class RandomizedFailureMonitor {
 
 }  // namespace yb
 
-#endif /* KUDU_UTIL_FAILURE_DETECTOR_H_ */
+#endif /* YB_UTIL_FAILURE_DETECTOR_H_ */

@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_MOCK_ROWSETS_H
-#define KUDU_TABLET_MOCK_ROWSETS_H
+#ifndef YB_TABLET_MOCK_ROWSETS_H
+#define YB_TABLET_MOCK_ROWSETS_H
 
 #include <memory>
 #include <string>
@@ -170,4 +170,4 @@ class MockMemRowSet : public MockRowSet {
 
 } // namespace tablet
 } // namespace yb
-#endif /* KUDU_TABLET_MOCK_ROWSETS_H */
+#endif /* YB_TABLET_MOCK_ROWSETS_H */

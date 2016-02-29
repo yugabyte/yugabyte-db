@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CFILE_PLAIN_BITMAP_BLOCK_H_
-#define KUDU_CFILE_PLAIN_BITMAP_BLOCK_H_
+#ifndef YB_CFILE_PLAIN_BITMAP_BLOCK_H_
+#define YB_CFILE_PLAIN_BITMAP_BLOCK_H_
 
 #include <algorithm>
 #include <string>

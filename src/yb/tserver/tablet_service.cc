@@ -164,7 +164,7 @@ bool CheckUuidMatchOrRespond(TabletPeerLookupIf* tablet_manager,
     string msg = Substitute("$0: Missing destination UUID in request from $1: $2",
                             method_name, context->requestor_string(), req->ShortDebugString());
 #ifdef NDEBUG
-    KLOG_EVERY_N(ERROR, 100) << msg;
+    YB_LOG_EVERY_N(ERROR, 100) << msg;
 #else
     LOG(DFATAL) << msg;
 #endif
@@ -692,9 +692,9 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
         "Soft memory limit exceeded (at %.2f%% of capacity)",
         capacity_pct);
     if (capacity_pct >= FLAGS_memory_limit_warn_threshold_percentage) {
-      KLOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+      YB_LOG_EVERY_N_SECS(WARNING, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
     } else {
-      KLOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
+      YB_LOG_EVERY_N_SECS(INFO, 1) << "Rejecting Write request: " << msg << THROTTLE_MSG;
     }
     SetupErrorAndRespond(resp->mutable_error(), Status::ServiceUnavailable(msg),
                          TabletServerErrorPB::UNKNOWN_ERROR,

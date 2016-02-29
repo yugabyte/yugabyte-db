@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_ROW_H
-#define KUDU_COMMON_ROW_H
+#ifndef YB_COMMON_ROW_H
+#define YB_COMMON_ROW_H
 
 #include <glog/logging.h>
 #include <string>

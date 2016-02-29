@@ -20,8 +20,8 @@
 //
 // Callers of this class should also include interval_tree-inl.h for function
 // definitions.
-#ifndef KUDU_UTIL_INTERVAL_TREE_H
-#define KUDU_UTIL_INTERVAL_TREE_H
+#ifndef YB_UTIL_INTERVAL_TREE_H
+#define YB_UTIL_INTERVAL_TREE_H
 
 #include <glog/logging.h>
 

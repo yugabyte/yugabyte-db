@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_THREADLOCAL_H_
-#define KUDU_UTIL_THREADLOCAL_H_
+#ifndef YB_UTIL_THREADLOCAL_H_
+#define YB_UTIL_THREADLOCAL_H_
 
 // Block-scoped static thread local implementation.
 //
@@ -140,4 +140,4 @@ static void Destroy(void* t) {
 } // namespace threadlocal
 } // namespace yb
 
-#endif // KUDU_UTIL_THREADLOCAL_H_
+#endif // YB_UTIL_THREADLOCAL_H_

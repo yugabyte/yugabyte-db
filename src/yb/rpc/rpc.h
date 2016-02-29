@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_RPC_RPC_H
-#define KUDU_RPC_RPC_H
+#ifndef YB_RPC_RPC_H
+#define YB_RPC_RPC_H
 
 #include <memory>
 #include <string>
@@ -146,4 +146,4 @@ class Rpc {
 } // namespace rpc
 } // namespace yb
 
-#endif // KUDU_RPC_RPC_H
+#endif // YB_RPC_RPC_H

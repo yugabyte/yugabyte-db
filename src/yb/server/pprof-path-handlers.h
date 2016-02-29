@@ -27,8 +27,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef KUDU_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
-#define KUDU_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
+#ifndef YB_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
+#define YB_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
 
 namespace yb {
 class Webserver;
@@ -37,4 +37,4 @@ class Webserver;
 void AddPprofPathHandlers(Webserver* webserver);
 }
 
-#endif // KUDU_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H
+#endif // YB_SERVER_PPROF_DEFAULT_PATH_HANDLERS_H

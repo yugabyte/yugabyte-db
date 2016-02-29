@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_COMMON_COLUMNBLOCK_H
-#define KUDU_COMMON_COLUMNBLOCK_H
+#ifndef YB_COMMON_COLUMNBLOCK_H
+#define YB_COMMON_COLUMNBLOCK_H
 
 #include "yb/common/types.h"
 #include "yb/common/row.h"

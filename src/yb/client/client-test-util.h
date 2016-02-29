@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CLIENT_CLIENT_TEST_UTIL_H
-#define KUDU_CLIENT_CLIENT_TEST_UTIL_H
+#ifndef YB_CLIENT_CLIENT_TEST_UTIL_H
+#define YB_CLIENT_CLIENT_TEST_UTIL_H
 
 #include <string>
 #include <vector>
@@ -58,4 +58,4 @@ KuduSchema KuduSchemaFromSchema(const Schema& schema);
 } // namespace client
 } // namespace yb
 
-#endif /* KUDU_CLIENT_CLIENT_TEST_UTIL_H */
+#endif /* YB_CLIENT_CLIENT_TEST_UTIL_H */

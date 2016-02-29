@@ -19,8 +19,8 @@
 // These should be used when doing bounds checks on user-provided data,
 // for example.
 // See also: https://www.securecoding.cert.org/confluence/display/cplusplus/INT32-CPP.+Ensure+that+operations+on+signed+integers+do+not+result+in+overflow
-#ifndef KUDU_UTIL_SAFE_MATH_H
-#define KUDU_UTIL_SAFE_MATH_H
+#ifndef YB_UTIL_SAFE_MATH_H
+#define YB_UTIL_SAFE_MATH_H
 
 #include "yb/gutil/mathlimits.h"
 

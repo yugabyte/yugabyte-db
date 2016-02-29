@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_FS_FS_TEST_UTIL_H
-#define KUDU_FS_FS_TEST_UTIL_H
+#ifndef YB_FS_FS_TEST_UTIL_H
+#define YB_FS_FS_TEST_UTIL_H
 
 #include "yb/fs/block_manager.h"
 #include "yb/util/malloc.h"

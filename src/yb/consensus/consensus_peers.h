@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CONSENSUS_CONSENSUS_PEERS_H_
-#define KUDU_CONSENSUS_CONSENSUS_PEERS_H_
+#ifndef YB_CONSENSUS_CONSENSUS_PEERS_H_
+#define YB_CONSENSUS_CONSENSUS_PEERS_H_
 
 #include <memory>
 #include <string>
@@ -321,4 +321,4 @@ Status SetPermanentUuidForRemotePeer(const std::shared_ptr<rpc::Messenger>& mess
 }  // namespace consensus
 }  // namespace yb
 
-#endif /* KUDU_CONSENSUS_CONSENSUS_PEERS_H_ */
+#endif /* YB_CONSENSUS_CONSENSUS_PEERS_H_ */

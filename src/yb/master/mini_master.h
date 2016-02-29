@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_MASTER_MINI_MASTER_H
-#define KUDU_MASTER_MINI_MASTER_H
+#ifndef YB_MASTER_MINI_MASTER_H
+#define YB_MASTER_MINI_MASTER_H
 
 #include <string>
 #include <vector>
@@ -91,4 +91,4 @@ class MiniMaster {
 } // namespace master
 } // namespace yb
 
-#endif /* KUDU_MASTER_MINI_MASTER_H */
+#endif /* YB_MASTER_MINI_MASTER_H */

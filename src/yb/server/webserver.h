@@ -26,8 +26,8 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#ifndef KUDU_UTIL_WEBSERVER_H
-#define KUDU_UTIL_WEBSERVER_H
+#ifndef YB_UTIL_WEBSERVER_H
+#define YB_UTIL_WEBSERVER_H
 
 #include <map>
 #include <string>
@@ -166,4 +166,4 @@ class Webserver : public WebCallbackRegistry {
 
 } // namespace yb
 
-#endif // KUDU_UTIL_WEBSERVER_H
+#endif // YB_UTIL_WEBSERVER_H

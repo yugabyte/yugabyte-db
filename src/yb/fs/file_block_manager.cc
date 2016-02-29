@@ -458,7 +458,7 @@ Status FileReadableBlock::Read(uint64_t offset, size_t length,
 
 size_t FileReadableBlock::memory_footprint() const {
   DCHECK(reader_);
-  return kudu_malloc_usable_size(this) + reader_->memory_footprint();
+  return yb_malloc_usable_size(this) + reader_->memory_footprint();
 }
 
 } // namespace internal

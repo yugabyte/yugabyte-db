@@ -39,8 +39,8 @@
 //   either trace recording or VLOG(n) is enabled. In the case that both are enabled,
 //   the arguments are only evaluated once.
 //
-#ifndef KUDU_DEBUG_TRACE_LOGGING_H
-#define KUDU_DEBUG_TRACE_LOGGING_H
+#ifndef YB_DEBUG_TRACE_LOGGING_H
+#define YB_DEBUG_TRACE_LOGGING_H
 
 #include <glog/logging.h>
 #include <string>
@@ -115,4 +115,4 @@ class TraceVLog {
 
 } // namespace debug
 } // namespace yb
-#endif /* KUDU_DEBUG_TRACE_LOGGING_H */
+#endif /* YB_DEBUG_TRACE_LOGGING_H */

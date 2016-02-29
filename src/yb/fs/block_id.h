@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_FS_BLOCK_ID_H
-#define KUDU_FS_BLOCK_ID_H
+#ifndef YB_FS_BLOCK_ID_H
+#define YB_FS_BLOCK_ID_H
 
 #include <iosfwd>
 #include <string>
@@ -102,4 +102,4 @@ struct BlockIdEqual {
 };
 
 } // namespace yb
-#endif /* KUDU_FS_BLOCK_ID_H */
+#endif /* YB_FS_BLOCK_ID_H */

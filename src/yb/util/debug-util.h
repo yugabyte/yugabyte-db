@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_UTIL_DEBUG_UTIL_H
-#define KUDU_UTIL_DEBUG_UTIL_H
+#ifndef YB_UTIL_DEBUG_UTIL_H
+#define YB_UTIL_DEBUG_UTIL_H
 
 #include <sys/types.h>
 
@@ -67,7 +67,7 @@ std::string GetStackTraceHex();
 
 // This is the same as GetStackTraceHex(), except multi-line in a format that
 // looks very similar to GetStackTrace() but without symbols. Because it's in
-// that format, the tool stacktrace_addr2line.pl in the kudu build-support
+// that format, the tool stacktrace_addr2line.pl in the yb build-support
 // directory can symbolize it automatically (to the extent that addr2line(1)
 // is able to find the symbols).
 std::string GetLogFormatStackTraceHex();

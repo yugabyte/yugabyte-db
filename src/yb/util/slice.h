@@ -19,8 +19,8 @@
 // whether to use gutil-based memeq/memcmp substitutes; if it is unset, Slice
 // will fall back to standard memcmp.
 
-#ifndef KUDU_UTIL_SLICE_H_
-#define KUDU_UTIL_SLICE_H_
+#ifndef YB_UTIL_SLICE_H_
+#define YB_UTIL_SLICE_H_
 
 #include <assert.h>
 #include <map>
@@ -211,4 +211,4 @@ struct SliceMap {
 
 }  // namespace yb
 
-#endif  // KUDU_UTIL_SLICE_H_
+#endif // YB_UTIL_SLICE_H_

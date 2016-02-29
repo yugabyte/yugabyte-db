@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef KUDU_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
-#define KUDU_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#ifndef YB_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#define YB_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/template_util.h"
@@ -125,4 +125,4 @@ struct ParamsUseScopedRefptrCorrectly<Tuple8<A, B, C, D, E, F, G, H> > {
 
 }  // namespace yb
 
-#endif  // KUDU_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_
+#endif // YB_GUTIL_RAW_SCOPED_REFPTR_MISMATCH_CHECKER_H_

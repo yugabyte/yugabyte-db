@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_SERVER_TCMALLOC_METRICS_H_
-#define KUDU_SERVER_TCMALLOC_METRICS_H_
+#ifndef YB_SERVER_TCMALLOC_METRICS_H_
+#define YB_SERVER_TCMALLOC_METRICS_H_
 
 #include "yb/gutil/ref_counted.h"
 
@@ -31,4 +31,4 @@ void RegisterMetrics(const scoped_refptr<MetricEntity>& entity);
 } // namespace tcmalloc
 } // namespace yb
 
-#endif // KUDU_SERVER_TCMALLOC_METRICS_H_
+#endif // YB_SERVER_TCMALLOC_METRICS_H_

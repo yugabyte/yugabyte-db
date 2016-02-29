@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CONSENSUS_LOG_ANCHOR_REGISTRY_
-#define KUDU_CONSENSUS_LOG_ANCHOR_REGISTRY_
+#ifndef YB_CONSENSUS_LOG_ANCHOR_REGISTRY_
+#define YB_CONSENSUS_LOG_ANCHOR_REGISTRY_
 
 #include <map>
 #include <string>
@@ -158,4 +158,4 @@ class MinLogIndexAnchorer {
 } // namespace log
 } // namespace yb
 
-#endif // KUDU_CONSENSUS_LOG_ANCHOR_REGISTRY_
+#endif // YB_CONSENSUS_LOG_ANCHOR_REGISTRY_

@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_RPC_RPC_CONSTANTS_H
-#define KUDU_RPC_RPC_CONSTANTS_H
+#ifndef YB_RPC_RPC_CONSTANTS_H
+#define YB_RPC_RPC_CONSTANTS_H
 
 #include <stdint.h>
 
@@ -49,4 +49,4 @@ static const uint8_t kMsgLengthPrefixLength = 4;
 } // namespace rpc
 } // namespace yb
 
-#endif // KUDU_RPC_RPC_CONSTANTS_H
+#endif // YB_RPC_RPC_CONSTANTS_H

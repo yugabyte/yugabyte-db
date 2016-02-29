@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_TABLET_TABLET_PEER_H_
-#define KUDU_TABLET_TABLET_PEER_H_
+#ifndef YB_TABLET_TABLET_PEER_H_
+#define YB_TABLET_TABLET_PEER_H_
 
 #include <map>
 #include <memory>
@@ -350,4 +350,4 @@ class FlushInflightsToLogCallback : public RefCountedThreadSafe<FlushInflightsTo
 }  // namespace tablet
 }  // namespace yb
 
-#endif /* KUDU_TABLET_TABLET_PEER_H_ */
+#endif /* YB_TABLET_TABLET_PEER_H_ */

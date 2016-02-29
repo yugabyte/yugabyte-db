@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_TABLET_DELTAFILE_H
-#define KUDU_TABLET_DELTAFILE_H
+#ifndef YB_TABLET_DELTAFILE_H
+#define YB_TABLET_DELTAFILE_H
 
 #include <boost/ptr_container/ptr_deque.hpp>
 #include <memory>

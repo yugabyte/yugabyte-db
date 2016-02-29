@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CONSENSUS_LEADER_ELECTION_H
-#define KUDU_CONSENSUS_LEADER_ELECTION_H
+#ifndef YB_CONSENSUS_LEADER_ELECTION_H
+#define YB_CONSENSUS_LEADER_ELECTION_H
 
 #include <map>
 #include <string>
@@ -241,4 +241,4 @@ class LeaderElection : public RefCountedThreadSafe<LeaderElection> {
 } // namespace consensus
 } // namespace yb
 
-#endif /* KUDU_CONSENSUS_LEADER_ELECTION_H */
+#endif /* YB_CONSENSUS_LEADER_ELECTION_H */

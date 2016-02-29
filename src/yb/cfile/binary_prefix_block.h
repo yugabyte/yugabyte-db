@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CFILE_BINARY_PREFIX_BLOCK_H
-#define KUDU_CFILE_BINARY_PREFIX_BLOCK_H
+#ifndef YB_CFILE_BINARY_PREFIX_BLOCK_H
+#define YB_CFILE_BINARY_PREFIX_BLOCK_H
 
 #include <vector>
 
@@ -160,4 +160,4 @@ class BinaryPrefixBlockDecoder : public BlockDecoder {
 } // namespace cfile
 } // namespace yb
 
-#endif // KUDU_CFILE_BINARY_PREFIX_BLOCK_H
+#endif // YB_CFILE_BINARY_PREFIX_BLOCK_H

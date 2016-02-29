@@ -7,8 +7,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef KUDU_GUTIL_BIND_INTERNAL_H_
-#define KUDU_GUTIL_BIND_INTERNAL_H_
+#ifndef YB_GUTIL_BIND_INTERNAL_H_
+#define YB_GUTIL_BIND_INTERNAL_H_
 
 #include "yb/gutil/bind_helpers.h"
 #include "yb/gutil/callback_internal.h"
@@ -24,7 +24,7 @@
 namespace yb {
 namespace internal {
 
-// See kudu/gutil/callback.h for user documentation.
+// See yb/gutil/callback.h for user documentation.
 //
 //
 // CONCEPTS:
@@ -2692,4 +2692,4 @@ struct BindState<Runnable, RunType, void(P1, P2, P3, P4, P5, P6,
 }  // namespace internal
 }  // namespace yb
 
-#endif  // KUDU_GUTIL_BIND_INTERNAL_H_
+#endif // YB_GUTIL_BIND_INTERNAL_H_

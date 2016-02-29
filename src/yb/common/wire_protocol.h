@@ -16,8 +16,8 @@
 // under the License.
 //
 // Helpers for dealing with the protobufs defined in wire_protocol.proto.
-#ifndef KUDU_COMMON_WIRE_PROTOCOL_H
-#define KUDU_COMMON_WIRE_PROTOCOL_H
+#ifndef YB_COMMON_WIRE_PROTOCOL_H
+#define YB_COMMON_WIRE_PROTOCOL_H
 
 #include <vector>
 

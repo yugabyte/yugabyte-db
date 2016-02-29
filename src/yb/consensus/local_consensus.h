@@ -14,8 +14,8 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-#ifndef KUDU_CONSENSUS_LOCAL_CONSENSUS_H_
-#define KUDU_CONSENSUS_LOCAL_CONSENSUS_H_
+#ifndef YB_CONSENSUS_LOCAL_CONSENSUS_H_
+#define YB_CONSENSUS_LOCAL_CONSENSUS_H_
 
 #include <boost/thread/locks.hpp>
 #include <string>
@@ -120,4 +120,4 @@ class LocalConsensus : public Consensus {
 } // namespace consensus
 } // namespace yb
 
-#endif /* KUDU_CONSENSUS_LOCAL_CONSENSUS_H_ */
+#endif /* YB_CONSENSUS_LOCAL_CONSENSUS_H_ */

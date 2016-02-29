@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef KUDU_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
-#define KUDU_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
+#ifndef YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
+#define YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
 
 #include <gtest/gtest_prod.h>
 #include <stack>
@@ -714,4 +714,4 @@ class BASE_EXPORT TraceLog {
 }  // namespace debug
 }  // namespace yb
 
-#endif  // KUDU_UTIL_DEBUG_TRACE_EVENT_IMPL_H_
+#endif // YB_UTIL_DEBUG_TRACE_EVENT_IMPL_H_

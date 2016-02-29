@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_RESETTABLE_HEARTBEATER_H_
-#define KUDU_UTIL_RESETTABLE_HEARTBEATER_H_
+#ifndef YB_UTIL_RESETTABLE_HEARTBEATER_H_
+#define YB_UTIL_RESETTABLE_HEARTBEATER_H_
 
 #include <boost/function.hpp>
 #include <string>
@@ -76,4 +76,4 @@ class ResettableHeartbeater {
 
 }  // namespace yb
 
-#endif /* KUDU_UTIL_RESETTABLE_HEARTBEATER_H_ */
+#endif /* YB_UTIL_RESETTABLE_HEARTBEATER_H_ */

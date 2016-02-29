@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_CODEGEN_CODE_CACHE_H
-#define KUDU_CODEGEN_CODE_CACHE_H
+#ifndef YB_CODEGEN_CODE_CACHE_H
+#define YB_CODEGEN_CODE_CACHE_H
 
 #include "yb/codegen/row_projector.h"
 #include "yb/gutil/gscoped_ptr.h"
@@ -48,7 +48,7 @@ class JITWrapper;
 class CodeCache {
  public:
   // TODO: currently CodeCache is implemented using the Cache in
-  // kudu/util/cache.h, which requires some transformation to nongeneric
+  // yb/util/cache.h, which requires some transformation to nongeneric
   // Slice-type keys, and void* values. Furthermore, the Cache implementation
   // provides concurrent write guarantees (thus relies on locks heavily), which
   // is unnecessary for the CodeCache. A potential improvement would be to

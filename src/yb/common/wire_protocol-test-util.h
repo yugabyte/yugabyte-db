@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
-#define KUDU_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
+#ifndef YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
+#define YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_
 
 #include "yb/common/wire_protocol.h"
 
@@ -73,4 +73,4 @@ inline void AddTestKeyToPB(RowOperationsPB::Type op_type,
 
 } // namespace yb
 
-#endif /* KUDU_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_ */
+#endif /* YB_COMMON_WIRE_PROTOCOL_TEST_UTIL_H_ */

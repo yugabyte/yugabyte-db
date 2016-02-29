@@ -91,8 +91,8 @@
 // some of the older compilers we have to support.
 // -------------------------------------------------------------------------
 
-#ifndef KUDU_GUTIL_GSCOPED_PTR_H_
-#define KUDU_GUTIL_GSCOPED_PTR_H_
+#ifndef YB_GUTIL_GSCOPED_PTR_H_
+#define YB_GUTIL_GSCOPED_PTR_H_
 
 // This is an implementation designed to match the anticipated future TR2
 // implementation of the scoped_ptr class, and its closely-related brethren,
@@ -827,4 +827,4 @@ gscoped_ptr<T> make_gscoped_ptr(T* ptr) {
   return gscoped_ptr<T>(ptr);
 }
 
-#endif  // KUDU_GUTIL_GSCOPED_PTR_H_
+#endif // YB_GUTIL_GSCOPED_PTR_H_

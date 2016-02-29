@@ -389,9 +389,9 @@ void Webserver::RegisterPathHandler(const string& path, const string& alias,
 
 const char* const PAGE_HEADER = "<!DOCTYPE html>"
 " <html>"
-"   <head><title>Kudu</title>"
+"   <head><title>YugaByte Data Fabric</title>"
 " <link href='/bootstrap/css/bootstrap.min.css' rel='stylesheet' media='screen' />"
-" <link href='/kudu.css' rel='stylesheet' />"
+" <link href='/yb.css' rel='stylesheet' />"
 " </head>"
 " <body>";
 
@@ -426,7 +426,7 @@ void Webserver::BootstrapPageHeader(stringstream* output) {
 
   if (!static_pages_available()) {
     (*output) << "<div style=\"color: red\"><strong>"
-              << "Static pages not available. Configure KUDU_HOME or use the --webserver_doc_root "
+              << "Static pages not available. Configure YB_HOME or use the --webserver_doc_root "
               << "flag to fix page styling.</strong></div>\n";
   }
 }

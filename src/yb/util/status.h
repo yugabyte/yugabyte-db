@@ -10,8 +10,8 @@
 // non-const method, all threads accessing the same Status must use
 // external synchronization.
 
-#ifndef KUDU_UTIL_STATUS_H_
-#define KUDU_UTIL_STATUS_H_
+#ifndef YB_UTIL_STATUS_H_
+#define YB_UTIL_STATUS_H_
 
 #include <stdint.h>
 #include <string>
@@ -27,14 +27,14 @@
 #include "yb/util/slice.h"
 
 // Return the given status if it is not OK.
-#define KUDU_RETURN_NOT_OK(s) do { \
+#define YB_RETURN_NOT_OK(s) do { \
     ::yb::Status _s = (s); \
     if (PREDICT_FALSE(!_s.ok())) return _s;     \
   } while (0);
 
 // Return the given status if it is not OK, but first clone it and
 // prepend the given message.
-#define KUDU_RETURN_NOT_OK_PREPEND(s, msg) do { \
+#define YB_RETURN_NOT_OK_PREPEND(s, msg) do { \
     ::yb::Status _s = (s); \
     if (PREDICT_FALSE(!_s.ok())) return _s.CloneAndPrepend(msg); \
   } while (0);
@@ -42,36 +42,36 @@
 // Return 'to_return' if 'to_call' returns a bad status.
 // The substitution for 'to_return' may reference the variable
 // 's' for the bad status.
-#define KUDU_RETURN_NOT_OK_RET(to_call, to_return) do { \
+#define YB_RETURN_NOT_OK_RET(to_call, to_return) do { \
     ::yb::Status s = (to_call); \
     if (PREDICT_FALSE(!s.ok())) return (to_return);  \
   } while (0);
 
 // Emit a warning if 'to_call' returns a bad status.
-#define KUDU_WARN_NOT_OK(to_call, warning_prefix) do { \
+#define YB_WARN_NOT_OK(to_call, warning_prefix) do { \
     ::yb::Status _s = (to_call); \
     if (PREDICT_FALSE(!_s.ok())) { \
-      KUDU_LOG(WARNING) << (warning_prefix) << ": " << _s.ToString();  \
+      YB_LOG(WARNING) << (warning_prefix) << ": " << _s.ToString();  \
     } \
   } while (0);
 
 // Log the given status and return immediately.
-#define KUDU_LOG_AND_RETURN(level, status) do { \
+#define YB_LOG_AND_RETURN(level, status) do { \
     ::yb::Status _s = (status); \
-    KUDU_LOG(level) << _s.ToString(); \
+    YB_LOG(level) << _s.ToString(); \
     return _s; \
   } while (0);
 
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
-#define KUDU_CHECK_OK_PREPEND(to_call, msg) do { \
+#define YB_CHECK_OK_PREPEND(to_call, msg) do { \
   ::yb::Status _s = (to_call); \
-  KUDU_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
+  YB_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
   } while (0);
 
 // If the status is bad, CHECK immediately, appending the status to the
 // logged message.
-#define KUDU_CHECK_OK(s) KUDU_CHECK_OK_PREPEND(s, "Bad status")
+#define YB_CHECK_OK(s) YB_CHECK_OK_PREPEND(s, "Bad status")
 
 // This header is used in both the Kudu build as well as in builds of
 // applications that use the Kudu C++ client. In the latter we need to be
@@ -85,17 +85,17 @@
 // 2. Namespaced versions of glog macros are mapped to the real glog macros
 //    (otherwise the macros are defined in the C++ client stubs).
 #ifdef YB_HEADERS_USE_SHORT_STATUS_MACROS
-#define RETURN_NOT_OK         KUDU_RETURN_NOT_OK
-#define RETURN_NOT_OK_PREPEND KUDU_RETURN_NOT_OK_PREPEND
-#define RETURN_NOT_OK_RET     KUDU_RETURN_NOT_OK_RET
-#define WARN_NOT_OK           KUDU_WARN_NOT_OK
-#define LOG_AND_RETURN        KUDU_LOG_AND_RETURN
-#define CHECK_OK_PREPEND      KUDU_CHECK_OK_PREPEND
-#define CHECK_OK              KUDU_CHECK_OK
+#define RETURN_NOT_OK         YB_RETURN_NOT_OK
+#define RETURN_NOT_OK_PREPEND YB_RETURN_NOT_OK_PREPEND
+#define RETURN_NOT_OK_RET     YB_RETURN_NOT_OK_RET
+#define WARN_NOT_OK           YB_WARN_NOT_OK
+#define LOG_AND_RETURN        YB_LOG_AND_RETURN
+#define CHECK_OK_PREPEND      YB_CHECK_OK_PREPEND
+#define CHECK_OK              YB_CHECK_OK
 
 // These are standard glog macros.
-#define KUDU_LOG              LOG
-#define KUDU_CHECK            CHECK
+#define YB_LOG              LOG
+#define YB_CHECK            CHECK
 #endif
 
 namespace yb {
@@ -356,4 +356,4 @@ inline void Status::operator=(Status&& s) {
 
 }  // namespace yb
 
-#endif  // KUDU_UTIL_STATUS_H_
+#endif  // YB_UTIL_STATUS_H_

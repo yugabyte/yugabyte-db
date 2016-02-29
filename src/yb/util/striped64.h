@@ -15,8 +15,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
-#ifndef KUDU_UTIL_STRIPED64_H_
-#define KUDU_UTIL_STRIPED64_H_
+#ifndef YB_UTIL_STRIPED64_H_
+#define YB_UTIL_STRIPED64_H_
 
 #include "yb/gutil/port.h"
 #include "yb/util/atomic.h"

@@ -16,8 +16,8 @@
 // under the License.
 //
 // Shared fields and methods for querying local files and directories
-#ifndef KUDU_TOOLS_FS_TOOL_H
-#define KUDU_TOOLS_FS_TOOL_H
+#ifndef YB_TOOLS_FS_TOOL_H
+#define YB_TOOLS_FS_TOOL_H
 
 #include <iostream>
 #include <memory>
@@ -155,4 +155,4 @@ class FsTool {
 } // namespace tools
 } // namespace yb
 
-#endif // KUDU_TOOLS_FS_TOOL_H
+#endif // YB_TOOLS_FS_TOOL_H
